@@ -246,17 +246,26 @@ if st.button("🚀 Run Full Explainability Analysis", type="primary", use_contai
                         explainer = shap.KernelExplainer(model_step.predict, bg_small)
                     shap_values = explainer.shap_values(X_ev)
 
-                # Handle multiclass
-                if isinstance(shap_values, list):
-                    if len(shap_values) == 2:
-                        sv_plot = shap_values[1]
+                # Handle multiclass / multi-output SHAP values
+                sv_raw = shap_values
+                if isinstance(sv_raw, list):
+                    # List of arrays — one per class
+                    if len(sv_raw) == 2:
+                        sv_plot = np.asarray(sv_raw[1])
                         class_label = "Class 1 (Positive)"
                     else:
-                        sv_plot = shap_values[0]  # default to first; user can switch in display
+                        sv_plot = np.asarray(sv_raw[0])
                         class_label = "Class 0"
                 else:
-                    sv_plot = shap_values
+                    sv_plot = np.asarray(sv_raw)
                     class_label = None
+
+                # Ensure 2D (n_samples, n_features) — some explainers return 3D
+                if sv_plot.ndim == 3:
+                    # (n_samples, n_features, n_classes) → take last class
+                    sv_plot = sv_plot[:, :, -1]
+                elif sv_plot.ndim == 1:
+                    sv_plot = sv_plot.reshape(1, -1)
 
                 # Feature names for SHAP
                 fn_by_model = st.session_state.get('feature_names_by_model', {})
@@ -404,12 +413,22 @@ if perm_data or shap_data:
                     import shap
 
                     s = shap_data[name]
-                    sv = s['shap_values']
-                    X_ev = s['X_eval']
+                    sv = np.asarray(s['shap_values'])
+                    X_ev = np.asarray(s['X_eval'])
                     fn = s['feature_names']
                     cl = s.get('class_label')
 
-                    n_cols = X_ev.shape[1]
+                    # Ensure 2D
+                    if sv.ndim == 3:
+                        sv = sv[:, :, -1]
+                    if sv.ndim == 1:
+                        sv = sv.reshape(1, -1)
+
+                    # Align columns: SHAP values and X_eval must have same n_features
+                    n_cols = min(X_ev.shape[1], sv.shape[1]) if sv.ndim == 2 else X_ev.shape[1]
+                    X_ev = X_ev[:, :n_cols]
+                    if sv.ndim == 2:
+                        sv = sv[:, :n_cols]
                     fn_plot = fn[:n_cols] if len(fn) >= n_cols else [f"Feature {i}" for i in range(n_cols)]
                     X_plot_df = pd.DataFrame(X_ev, columns=fn_plot)
 
@@ -425,8 +444,10 @@ if perm_data or shap_data:
 
                     # Mean absolute SHAP bar chart
                     mean_abs = np.abs(sv).mean(axis=0)
+                    # Ensure mean_abs is 1D and aligned with feature names
+                    mean_abs = np.asarray(mean_abs).ravel()[:len(fn_plot)]
                     shap_df = pd.DataFrame({
-                        'Feature': fn_plot,
+                        'Feature': fn_plot[:len(mean_abs)],
                         'Mean |SHAP|': mean_abs,
                     }).sort_values('Mean |SHAP|', ascending=False)
 
