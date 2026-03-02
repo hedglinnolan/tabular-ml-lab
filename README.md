@@ -1,98 +1,197 @@
-# 🔬 Tabular Machine Learning Lab
+<p align="center">
+  <h1 align="center">🔬 Tabular ML Lab</h1>
+  <p align="center">
+    <strong>From raw data to publication-ready results. No coding required.</strong>
+  </p>
+  <p align="center">
+    <a href="https://app.tabularml.dev">Live Demo</a> ·
+    <a href="#quick-start">Quick Start</a> ·
+    <a href="#features">Features</a> ·
+    <a href="https://github.com/hedglinnolan/tabular-ml-lab/issues">Report Bug</a>
+  </p>
+  <p align="center">
+    <img src="https://img.shields.io/badge/python-3.10+-blue?logo=python&logoColor=white" alt="Python 3.10+">
+    <img src="https://img.shields.io/badge/streamlit-1.28+-FF4B4B?logo=streamlit&logoColor=white" alt="Streamlit">
+    <img src="https://img.shields.io/badge/scikit--learn-1.3+-F7931E?logo=scikit-learn&logoColor=white" alt="scikit-learn">
+    <img src="https://img.shields.io/badge/pytorch-2.0+-EE4C2C?logo=pytorch&logoColor=white" alt="PyTorch">
+    <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
+  </p>
+</p>
 
-**Publication-grade machine learning for tabular research data.**
+---
 
-A guided, interactive Streamlit application for researchers working with tabular data who need defensible methodology and publication-ready outputs. Built for nutrition scientists, epidemiologists, biostatisticians, and anyone who works with structured data and needs to publish papers.
+An interactive research workbench for scientists who work with tabular data and need to publish papers. Upload your CSV, and the app guides you through a complete, defensible ML workflow — from exploratory analysis to a journal-ready methods section.
+
+**Built for researchers, not ML engineers.** Smart defaults get you 90% of the way. Advanced options are always one click away.
+
+> 🌐 **Try it now:** [app.tabularml.dev](https://app.tabularml.dev)
+
+<!-- 
+## Screenshots
+TODO: Add screenshots of key pages
+![Upload & Audit](docs/screenshots/upload.png)
+![Train & Compare](docs/screenshots/train.png)
+![Report Export](docs/screenshots/report.png)
+-->
 
 ## Features
 
-### Guided Research Workflow (9 pages)
-1. **Upload & Audit** — Multi-file projects, intelligent merge builder, data quality assessment
-2. **EDA** — Comprehensive exploration with model-aware diagnostics
-3. **Feature Selection** — LASSO path, RFE-CV, stability selection, univariate screening with FDR correction
-4. **Preprocessing** — Per-model sklearn pipelines with intelligent defaults
-5. **Train & Compare** — Multiple model families with automatic baseline comparison
-6. **Explainability** — SHAP, permutation importance, calibration, decision curves
-7. **Sensitivity Analysis** — Random seed robustness testing, feature dropout analysis
-8. **Hypothesis Testing** — Standalone statistical tests (t-tests, ANOVA, chi-square, correlation)
-9. **Report Export** — Methods sections, TRIPOD checklists, publication-quality figures
+### 📋 9-Step Guided Workflow
 
-### Publication-Ready Outputs
-- **Table 1** — Stratified descriptive statistics with p-values and SMD
-- **Bootstrap 95% CIs** — BCa confidence intervals on all metrics
-- **Calibration Analysis** — Reliability diagrams, Brier score, ECE
-- **Decision Curve Analysis** — Net benefit curves for clinical utility
-- **Subgroup Analysis** — Stratified metrics with forest plots
-- **TRIPOD Checklist** — Auto-tracked compliance for prediction model reporting
-- **Auto-Generated Methods Section** — Draft text based on actual workflow choices
-- **CONSORT-Style Flow Diagrams** — Sample selection visualization
-- **Journal-Quality Figures** — Export-ready plots with DPI control
+| Step | Page | What it does |
+|------|------|-------------|
+| 1 | **Upload & Audit** | Load CSVs/Excel, merge multiple files, data quality checks |
+| 2 | **EDA** | Distributions, correlations, Table 1, missing data analysis |
+| 3 | **Feature Selection** | LASSO path, RFE-CV, stability selection, consensus ranking |
+| 4 | **Preprocess** | Per-model pipelines: MICE imputation, scaling, encoding, outliers |
+| 5 | **Train & Compare** | 18 model families with bootstrap CIs and baseline comparison |
+| 6 | **Explainability** | SHAP, permutation importance, calibration, decision curves |
+| 7 | **Sensitivity Analysis** | Seed robustness, feature dropout — prove your results aren't fragile |
+| 8 | **Hypothesis Testing** | Standalone stats: t-tests, ANOVA, chi-square, correlation |
+| 9 | **Report Export** | Auto-generated methods section, TRIPOD checklist, LaTeX tables |
 
-### Intelligent Guidance
-- Smart defaults with progressive disclosure (simple by default, advanced when needed)
-- AI-powered interpretation (Ollama, OpenAI, or Anthropic)
-- Contextual "why does this matter?" help throughout
-- Reviewer concern flagging
+### 📊 Publication-Ready Outputs
 
-### Models
-- **Linear:** Ridge, Lasso, ElasticNet, Logistic Regression
-- **Trees:** Random Forest, ExtraTrees, HistGradientBoosting
-- **Distance:** KNN
-- **Margin:** SVM (SVR/SVC)
-- **Probabilistic:** Naive Bayes, LDA
-- **Neural Networks:** PyTorch MLP with configurable architecture and loss functions
-- **Automatic Baselines:** Mean/majority-class predictor + simple linear/logistic regression
+- **Table 1** with stratified descriptives, p-values, and SMD
+- **Bootstrap 95% CIs** (BCa, 1000 resamples) on all metrics
+- **Calibration analysis** — reliability diagrams, Brier score, ECE
+- **Decision curve analysis** for clinical utility
+- **Subgroup analysis** with forest plots
+- **TRIPOD checklist** auto-tracked from your workflow
+- **CONSORT-style flow diagrams**
+- **Auto-generated methods section** reflecting your actual choices
+- **Journal-quality figures** with DPI control
+
+### 🧠 18 Models, Zero Configuration
+
+| Category | Models |
+|----------|--------|
+| **Linear** | Ridge, Lasso, ElasticNet, Logistic Regression, GLM, Huber |
+| **Trees** | Random Forest, ExtraTrees, HistGradientBoosting |
+| **Distance** | KNN (regression & classification) |
+| **Margin** | SVM (SVR / SVC) |
+| **Probabilistic** | Gaussian Naive Bayes, LDA |
+| **Neural** | PyTorch MLP (configurable architecture and loss) |
+| **Baselines** | Auto-generated mean/majority + simple linear/logistic |
+
+Every model gets its own preprocessing pipeline. No data leakage. No shortcuts.
+
+### 🤖 AI-Powered Interpretation (Optional)
+
+Connect a local LLM or cloud API for plain-language analysis interpretation:
+
+| Backend | Setup |
+|---------|-------|
+| **Ollama** (free, local) | `ollama serve && ollama pull llama3.2` |
+| **OpenAI** | API key in sidebar |
+| **Anthropic** | API key in sidebar |
+
+---
 
 ## Quick Start
 
+### Linux / macOS
+
 ```bash
-# Clone
-git clone https://github.com/hedglinnolan/glucose-mlp-interactive.git
-cd glucose-mlp-interactive
+git clone https://github.com/hedglinnolan/tabular-ml-lab.git
+cd tabular-ml-lab
 
-# Option A: Automated setup
+# Automated
 chmod +x setup.sh && ./setup.sh
-source venv/bin/activate
-streamlit run app.py
+./run.sh
 
-# Option B: Manual setup
+# Or manual
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-The app will open at **http://localhost:8501**.
+### Windows (PowerShell)
 
-## Requirements
+```powershell
+git clone https://github.com/hedglinnolan/tabular-ml-lab.git
+cd tabular-ml-lab
 
-- Python 3.10+
-- See `requirements.txt` for full dependencies
+# Automated
+.\setup.ps1
+.\run.ps1
 
-## Optional: AI Interpretation
-
-For AI-powered analysis interpretation:
-
-**Ollama (free, local):**
-```bash
-# Install from ollama.ai
-ollama serve
-ollama pull llama3.2
+# Or manual
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+streamlit run app.py
 ```
 
-**OpenAI or Anthropic:** Configure API keys in the app sidebar (🤖 LLM Settings).
+The app opens at **http://localhost:8501**.
+
+### Requirements
+
+- Python 3.10+ (tested on 3.12)
+- ~2GB disk for dependencies (PyTorch, scikit-learn, SHAP)
+- GPU optional (only used by neural network models)
+
+---
 
 ## For Researchers
 
-This tool is designed to help you go from raw data to a publication-ready manuscript. The workflow enforces methodological rigor:
+This tool enforces methodological rigor so reviewers don't have to:
 
-1. Proper train/validation/test splits (no data leakage)
-2. Bootstrap confidence intervals on all metrics
-3. Automatic comparison against null/baseline models
-4. Calibration analysis for clinical models
-5. TRIPOD compliance tracking
-6. Reproducibility manifest (seeds, versions, configurations)
+- ✅ Proper train/validation/test splits (no data leakage)
+- ✅ Bootstrap confidence intervals on all reported metrics
+- ✅ Automatic comparison against null and simple baselines
+- ✅ Calibration analysis for clinical prediction models
+- ✅ Sensitivity analysis to demonstrate robustness
+- ✅ TRIPOD compliance tracking throughout the workflow
+- ✅ Reproducibility manifest (seeds, versions, configurations)
+- ✅ Methods section text generated from your actual analysis choices
+
+**Your data stays private.** All processing happens in your browser session. Nothing is written to disk. No data is sent anywhere (unless you opt into cloud LLM interpretation).
+
+---
+
+## Project Structure
+
+```
+tabular-ml-lab/
+├── app.py                    # Landing page and sidebar
+├── pages/                    # 9 workflow pages
+│   ├── 01_Upload_and_Audit.py
+│   ├── 02_EDA.py
+│   ├── 03_Feature_Selection.py
+│   ├── 04_Preprocess.py
+│   ├── 05_Train_and_Compare.py
+│   ├── 06_Explainability.py
+│   ├── 07_Sensitivity_Analysis.py
+│   ├── 08_Hypothesis_Testing.py
+│   └── 09_Report_Export.py
+├── ml/                       # Core ML modules
+│   ├── model_registry.py     # 18 model definitions
+│   ├── bootstrap.py          # BCa bootstrap CIs
+│   ├── calibration.py        # Calibration metrics & plots
+│   ├── feature_selection.py  # LASSO, RFE, stability selection
+│   ├── publication.py        # Methods section generator
+│   ├── sensitivity.py        # Seed & dropout robustness
+│   ├── table_one.py          # Table 1 generator
+│   └── ...
+├── models/                   # Model implementations
+├── utils/                    # Theme, session state, LLM UI
+├── tests/                    # pytest suite
+├── setup.sh / setup.ps1      # Cross-platform setup
+├── run.sh / run.ps1          # Cross-platform run
+└── requirements.txt
+```
+
+## Contributing
+
+Issues and PRs welcome. If you use this in your research, please cite:
+
+```
+Hedglin, N. (2026). Tabular ML Lab [Computer software]. 
+https://github.com/hedglinnolan/tabular-ml-lab
+```
 
 ## License
 
-MIT
+MIT — use it however you want.
