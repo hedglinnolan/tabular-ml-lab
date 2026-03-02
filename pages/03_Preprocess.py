@@ -155,26 +155,19 @@ for group_name in sorted(model_groups_prep.keys()):
                 "nn": "Multi-layer perceptron. Flexible, needs tuning.",
             }
             desc = _desc_map.get(model_key, notes_text)
-            st.markdown(f"""
-            <div style="border: 2px solid {border_color}; border-radius: 10px; padding: 0.75rem 1rem;
-                        background: {bg_color}; margin-bottom: 0.5rem; transition: all 0.15s;
-                        box-shadow: {'0 2px 8px rgba(102,126,234,0.15)' if is_selected else 'none'};">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <strong style="font-size: 0.95rem;">{spec.name}</strong>
-                    <span style="font-size: 0.75rem; background: {'#667eea' if is_selected else '#e2e8f0'};
-                           color: {'white' if is_selected else '#64748b'}; padding: 2px 8px;
-                           border-radius: 12px;">{group_name}</span>
-                </div>
-                <div style="font-size: 0.8rem; color: #64748b; margin-top: 4px;">{desc}</div>
-                {f'<div style="margin-top: 4px; font-size: 0.8rem;">{check_icon}</div>' if is_selected else ''}
-            </div>
-            """, unsafe_allow_html=True)
-            st.checkbox(
-                "Select",
-                value=is_selected,
-                key=ck,
-                label_visibility="collapsed",
-            )
+            # Card is a toggle button — clicking it selects/deselects the model
+            btn_label = f"{'✅ ' if is_selected else '⬜ '}{spec.name} — {desc}"
+            if st.button(
+                btn_label,
+                key=f"btn_{ck}",
+                use_container_width=True,
+                type="primary" if is_selected else "secondary",
+            ):
+                st.session_state[ck] = not is_selected
+                st.rerun()
+            # Keep hidden checkbox in sync for downstream code
+            if ck not in st.session_state:
+                st.session_state[ck] = False
 
 selected_models = [k.replace("train_model_", "") for k, v in st.session_state.items() if k.startswith("train_model_") and v]
 if selected_models:
