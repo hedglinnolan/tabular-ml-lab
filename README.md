@@ -1,4 +1,4 @@
-# 🔬 Tabular ML Lab
+# 🔬 Tabular Machine Learning Lab
 
 **Publication-grade machine learning for tabular research data.**
 
