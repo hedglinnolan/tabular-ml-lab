@@ -371,6 +371,20 @@ def inject_custom_css():
     details[data-testid="stExpander"][open] {
         border-color: var(--border-hover) !important;
     }
+    /* Expander toggle icon — ensure visible on both light and dark backgrounds */
+    details[data-testid="stExpander"] summary svg {
+        color: var(--text-secondary) !important;
+        fill: var(--text-secondary) !important;
+    }
+    /* Sidebar expander icons need light color */
+    section[data-testid="stSidebar"] details[data-testid="stExpander"] summary svg {
+        color: #94a3b8 !important;
+        fill: #94a3b8 !important;
+    }
+    section[data-testid="stSidebar"] details[data-testid="stExpander"] {
+        background: rgba(255,255,255,0.04) !important;
+        border-color: rgba(255,255,255,0.08) !important;
+    }
 
     /* ── DataFrames / Tables ─────────────────────────────────── */
     .stDataFrame {
