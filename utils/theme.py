@@ -79,7 +79,15 @@ def inject_custom_css():
     h1 { font-weight: 800 !important; }
     h2 { font-weight: 700 !important; font-size: 1.5rem !important; }
     h3 { font-weight: 600 !important; font-size: 1.2rem !important; }
-    p, li, span, div {
+    /* Apply Inter to text elements only — avoid overriding Streamlit's
+       Material Symbols Rounded icon font used for expander arrows, etc. */
+    p, li, label, td, th, caption,
+    .stMarkdown, .stText, .stCaption,
+    .stSelectbox label, .stMultiSelect label,
+    .stRadio label, .stCheckbox label,
+    .stTextInput label, .stNumberInput label,
+    .stSlider label, .stTextArea label,
+    button, input, textarea, select {
         font-family: 'Inter', sans-serif !important;
     }
 
