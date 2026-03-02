@@ -12,7 +12,7 @@ serverAddress = "localhost"
 
 [theme]
 primaryColor = "#667eea"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f8f9ff"
-textColor = "#1e293b"
+backgroundColor = "#f1f5f9"
+secondaryBackgroundColor = "#e2e8f0"
+textColor = "#0f172a"
 font = "sans serif"

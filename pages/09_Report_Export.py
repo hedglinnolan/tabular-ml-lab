@@ -29,7 +29,7 @@ init_session_state()
 from utils.theme import inject_custom_css, render_step_indicator, render_guidance
 st.set_page_config(page_title="Report Export", page_icon="📄", layout="wide")
 inject_custom_css()
-render_step_indicator(7, "Report Export")
+render_step_indicator(9, "Report Export")
 st.title("📄 Report Export")
 render_breadcrumb("09_Report_Export")
 render_page_navigation("09_Report_Export")
