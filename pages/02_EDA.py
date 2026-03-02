@@ -62,8 +62,9 @@ if task_mode == 'prediction' and (data_config is None or not data_config.target_
     st.warning("Please select target and features in the Upload & Audit page first")
     st.stop()
 
-target_col = data_config.target_col
-feature_cols = data_config.feature_cols
+target_col = data_config.target_col if data_config else None
+feature_cols = data_config.feature_cols if data_config and data_config.feature_cols else [c for c in df.columns if c != target_col]
+_has_target = target_col is not None and target_col in df.columns
 
 # Get final detection values
 task_type_detection: TaskTypeDetection = st.session_state.get('task_type_detection', TaskTypeDetection())
@@ -100,7 +101,11 @@ def compute_profile_cached(_df: pd.DataFrame, target: str, features: List[str], 
     return compute_dataset_profile(_df, target, features, task_type, outlier_method)
 
 # Compute the dataset profile
-profile = compute_profile_cached(df, target_col, feature_cols, task_type_final, outlier_method)
+if _has_target:
+    profile = compute_profile_cached(df, target_col, feature_cols, task_type_final, outlier_method)
+else:
+    profile = compute_profile_cached(df, feature_cols[0] if feature_cols else df.columns[0], feature_cols, 'regression', outlier_method)
+
 st.session_state['dataset_profile'] = profile  # Store for other pages
 
 # ============================================================================
@@ -456,25 +461,30 @@ st.header("Standard EDA Views")
 
 # Summary statistics
 st.subheader("Summary Statistics")
-st.dataframe(df[feature_cols + [target_col]].describe(), width="stretch")
+_summary_cols = (feature_cols + [target_col]) if _has_target else feature_cols
+_summary_cols = [c for c in _summary_cols if c in df.columns]
+st.dataframe(df[_summary_cols].describe(), width="stretch")
 
 # Distribution plots
 st.subheader("Distributions")
 
 # Target distribution
-st.markdown(f"**Target Distribution: {target_col}**")
-col1, col2 = st.columns(2)
+if _has_target:
+    st.markdown(f"**Target Distribution: {target_col}**")
+    col1, col2 = st.columns(2)
 
-with col1:
-    fig_hist = px.histogram(df, x=target_col, nbins=30, title=f"Distribution of {target_col}")
-    st.plotly_chart(fig_hist, width="stretch")
+    with col1:
+        fig_hist = px.histogram(df, x=target_col, nbins=30, title=f"Distribution of {target_col}")
+        st.plotly_chart(fig_hist, width="stretch")
 
-with col2:
-    fig_box = px.box(df, y=target_col, title=f"Box Plot of {target_col}")
-    st.plotly_chart(fig_box, width="stretch")
+    with col2:
+        fig_box = px.box(df, y=target_col, title=f"Box Plot of {target_col}")
+        st.plotly_chart(fig_box, width="stretch")
+else:
+    st.info("No target variable selected. Showing feature distributions only.")
 
 # Classification: class balance
-if task_type_final == 'classification':
+if _has_target and task_type_final == 'classification':
     st.subheader("Class Balance")
     class_counts = df[target_col].value_counts().sort_index()
     fig_bar = px.bar(x=class_counts.index.astype(str), y=class_counts.values,
@@ -497,10 +507,11 @@ for i in range(0, n_features_show, cols_per_row):
                 st.plotly_chart(fig, width="stretch")
 
 # Target vs feature plots (collinearity heatmap is upfront)
-st.header("Target vs Features")
+if not _has_target:
+    st.header("Feature Distributions")
+    st.info("Select a target variable to see target-vs-feature plots.")
 
-# Regression: scatter plots
-if task_type_final == 'regression':
+if _has_target and task_type_final == 'regression':
     n_plots = min(6, len(feature_cols))
     cols_per_row = 3
     
@@ -514,7 +525,7 @@ if task_type_final == 'regression':
                     st.plotly_chart(fig, width="stretch")
 
 # Classification: box plots
-else:
+elif _has_target:
     n_plots = min(6, len(feature_cols))
     cols_per_row = 3
     

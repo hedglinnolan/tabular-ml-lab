@@ -1434,25 +1434,47 @@ st.session_state.data_audit = audit_results
 st.markdown("---")
 st.header("Step 4: Configure Analysis")
 
-# Task mode selection
-task_mode_options = {
-    "Prediction (ML Models)": "prediction",
-    "Hypothesis Testing (Statistical Tests)": "hypothesis_testing"
-}
+# Task mode selection — styled cards, no pre-selection
+current_task_mode = st.session_state.get('task_mode')
 
-current_task_mode = st.session_state.get('task_mode', 'prediction')
-task_mode_idx = 0 if current_task_mode == 'prediction' else 1
+st.markdown("**What type of analysis do you want to perform?**")
+_card_cols = st.columns(2)
 
-selected_task_mode_label = st.radio(
-    "What type of analysis do you want to perform?",
-    options=list(task_mode_options.keys()),
-    index=task_mode_idx,
-    key="task_mode_selection",
-    horizontal=True
-)
+with _card_cols[0]:
+    _pred_selected = current_task_mode == 'prediction'
+    _pred_border = "#667eea" if _pred_selected else "#e2e8f0"
+    _pred_bg = "#f0f2ff" if _pred_selected else "#ffffff"
+    st.markdown(f"""<div style="border:2px solid {_pred_border}; border-radius:12px; padding:20px;
+        background:{_pred_bg}; text-align:center; margin-bottom:8px;">
+        <div style="font-size:2em;">📊</div>
+        <div style="font-weight:600; font-size:1.1em;">Prediction</div>
+        <div style="color:#64748b; font-size:0.85em;">Build & compare ML models</div>
+        {"<div style='color:#667eea; font-weight:600; margin-top:4px;'>✓ Selected</div>" if _pred_selected else ""}
+    </div>""", unsafe_allow_html=True)
+    if st.button("Select Prediction", key="btn_prediction", type="primary" if _pred_selected else "secondary", use_container_width=True):
+        st.session_state.task_mode = 'prediction'
+        st.rerun()
 
-task_mode = task_mode_options[selected_task_mode_label]
-st.session_state.task_mode = task_mode
+with _card_cols[1]:
+    _hyp_selected = current_task_mode == 'hypothesis_testing'
+    _hyp_border = "#667eea" if _hyp_selected else "#e2e8f0"
+    _hyp_bg = "#f0f2ff" if _hyp_selected else "#ffffff"
+    st.markdown(f"""<div style="border:2px solid {_hyp_border}; border-radius:12px; padding:20px;
+        background:{_hyp_bg}; text-align:center; margin-bottom:8px;">
+        <div style="font-size:2em;">🔬</div>
+        <div style="font-weight:600; font-size:1.1em;">Hypothesis Testing</div>
+        <div style="color:#64748b; font-size:0.85em;">Statistical tests without ML</div>
+        {"<div style='color:#667eea; font-weight:600; margin-top:4px;'>✓ Selected</div>" if _hyp_selected else ""}
+    </div>""", unsafe_allow_html=True)
+    if st.button("Select Hypothesis Testing", key="btn_hypothesis", type="primary" if _hyp_selected else "secondary", use_container_width=True):
+        st.session_state.task_mode = 'hypothesis_testing'
+        st.rerun()
+
+task_mode = st.session_state.get('task_mode')
+
+if task_mode is None:
+    st.info("👆 Choose an analysis type above to continue.")
+    st.stop()
 
 if task_mode == "prediction":
     st.info("📊 **Prediction Mode**: Select a target variable and features to build predictive models.")
