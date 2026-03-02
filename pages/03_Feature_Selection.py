@@ -103,7 +103,24 @@ with st.expander("⚙️ Advanced Settings", expanded=False):
 # Run feature selection
 # ============================================================================
 
+# Warn about wide datasets
+n_features = len(numeric_features)
+n_samples = len(X)
+if n_features > 200:
+    st.warning(
+        f"⚠️ **Wide dataset detected:** {n_features} features × {n_samples} samples. "
+        f"Feature selection may take several minutes. "
+        f"{'**RFE is especially slow with this many features — consider disabling it.**' if n_features > 500 else ''}"
+    )
+    if n_features > n_samples:
+        st.info(
+            "💡 **p >> n scenario** (more features than samples). "
+            "LASSO and univariate screening are best suited here. "
+            "RFE and stability selection may be unreliable with so few samples."
+        )
+
 if st.button("🔍 Run Feature Selection", type="primary"):
+    import signal, functools
     from ml.feature_selection import (
         lasso_path_selection, rfe_cv_selection,
         univariate_screening, stability_selection, consensus_features,
@@ -127,38 +144,53 @@ if st.button("🔍 Run Feature Selection", type="primary"):
         pct = (i + 1) / len(methods_to_run)
 
         if method == "lasso":
-            status.text("Running LASSO path analysis...")
-            result = lasso_path_selection(
-                X, y, numeric_features, task_type,
-                cv_folds=cv_folds, random_state=random_seed,
-            )
-            results.append(result)
+            status.text(f"Running LASSO path analysis ({n_features} features)...")
+            try:
+                result = lasso_path_selection(
+                    X, y, numeric_features, task_type,
+                    cv_folds=cv_folds, random_state=random_seed,
+                )
+                results.append(result)
+            except Exception as e:
+                st.warning(f"⚠️ LASSO failed: {e}")
 
         elif method == "rfe":
-            status.text("Running Recursive Feature Elimination (CV)...")
-            result = rfe_cv_selection(
-                X, y, numeric_features, task_type,
-                cv_folds=cv_folds, random_state=random_seed,
-            )
-            results.append(result)
+            if n_features > 500:
+                status.text(f"Running RFE-CV ({n_features} features — this will be slow)...")
+            else:
+                status.text("Running Recursive Feature Elimination (CV)...")
+            try:
+                result = rfe_cv_selection(
+                    X, y, numeric_features, task_type,
+                    cv_folds=cv_folds, random_state=random_seed,
+                )
+                results.append(result)
+            except Exception as e:
+                st.warning(f"⚠️ RFE failed: {e}")
 
         elif method == "univariate":
             status.text("Running univariate screening with FDR correction...")
-            result = univariate_screening(
-                X, y, numeric_features, task_type,
-                alpha=fdr_alpha, correction="fdr_bh",
-            )
-            results.append(result)
+            try:
+                result = univariate_screening(
+                    X, y, numeric_features, task_type,
+                    alpha=fdr_alpha, correction="fdr_bh",
+                )
+                results.append(result)
+            except Exception as e:
+                st.warning(f"⚠️ Univariate screening failed: {e}")
 
         elif method == "stability":
-            status.text("Running stability selection (this may take a moment)...")
-            result = stability_selection(
-                X, y, numeric_features, task_type,
-                n_bootstrap=n_stability_bootstrap,
-                threshold=stability_threshold,
-                random_state=random_seed,
-            )
-            results.append(result)
+            status.text(f"Running stability selection ({n_stability_bootstrap} bootstraps × {n_features} features)...")
+            try:
+                result = stability_selection(
+                    X, y, numeric_features, task_type,
+                    n_bootstrap=n_stability_bootstrap,
+                    threshold=stability_threshold,
+                    random_state=random_seed,
+                )
+                results.append(result)
+            except Exception as e:
+                st.warning(f"⚠️ Stability selection failed: {e}")
 
         progress.progress(pct)
 

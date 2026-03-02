@@ -38,8 +38,8 @@ with st.sidebar:
     audit_complete = st.session_state.get('data_audit') is not None
     features_selected = st.session_state.get('feature_selection_results') is not None
     pipeline_built = st.session_state.get('preprocessing_pipeline') is not None
-    models_trained = len(st.session_state.get('trained_models', {})) > 0
-    explainability_run = st.session_state.get('permutation_importance') is not None
+    models_trained = bool(st.session_state.get('trained_models'))
+    explainability_run = bool(st.session_state.get('permutation_importance'))
     report_generated = st.session_state.get('report_data') is not None
 
     sensitivity_run = st.session_state.get('sensitivity_seed_results') is not None
