@@ -156,12 +156,13 @@ for group_name in sorted(model_groups_prep.keys()):
             }
             desc = _desc_map.get(model_key, notes_text)
             # Card is a toggle button — clicking it selects/deselects the model
-            btn_label = f"{'✅ ' if is_selected else '⬜ '}{spec.name} — {desc}"
+            btn_label = f"{'✅ ' if is_selected else ''}{spec.name}"
             if st.button(
                 btn_label,
                 key=f"btn_{ck}",
                 use_container_width=True,
                 type="primary" if is_selected else "secondary",
+                help=desc,
             ):
                 st.session_state[ck] = not is_selected
                 st.rerun()
