@@ -20,6 +20,7 @@ from utils.storyline import render_progress_indicator, render_breadcrumb, render
 from utils.session_projects import get_project_manager
 from utils.dataset_db import detect_common_columns, suggest_join_keys, execute_merge
 from utils.column_utils import make_unique_columns
+from utils.theme import inject_custom_css, render_guidance
 from data_processor import (
     load_tabular_data, get_numeric_columns, get_selectable_columns,
     detect_file_type
@@ -56,8 +57,8 @@ def render_schema_diagram(dataframes: Dict[str, pd.DataFrame], common_cols: Dict
         with cols[col_idx]:
             # Dataset "card"
             st.markdown(f"""
-            <div style="border: 2px solid #4CAF50; border-radius: 8px; padding: 10px; margin: 5px 0; background-color: #f8f9fa;">
-                <div style="font-weight: bold; color: #1a73e8; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-bottom: 8px;">
+            <div style="border: 2px solid #667eea; border-radius: 8px; padding: 10px; margin: 5px 0; background-color: #f8f9fa;">
+                <div style="font-weight: bold; color: #667eea; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-bottom: 8px;">
                     {name}
                 </div>
                 <div style="font-size: 0.85em; color: #666;">
@@ -106,6 +107,7 @@ st.set_page_config(
     page_icon=None,
     layout="wide"
 )
+inject_custom_css()
 
 st.title("Data Upload & Project Management")
 render_breadcrumb("01_Upload_and_Audit")
@@ -127,16 +129,14 @@ with st.sidebar:
     st.caption(f"Projects: {db_stats['n_projects']} | Datasets: {db_stats['n_datasets']}")
     
     with st.expander("About Your Data", expanded=False):
-        st.markdown("""
-        **Your data stays private.** Everything lives in your browser session only — 
-        nothing is saved to disk and no other user can see your projects or data.
-        
-        **When you refresh or close the app:**
-        - All projects, data, and results are cleared
-        - You'll need to re-upload your files
-        
-        **Tip:** Complete your analysis in one session, and use **Report Export** to save your results.
-        """)
+        render_guidance(
+            "<strong>Your data stays private.</strong> Everything lives in your browser session only — "
+            "nothing is saved to disk and no other user can see your projects or data.<br/><br/>"
+            "<strong>When you refresh or close the app:</strong> All projects, data, and results are cleared. "
+            "You'll need to re-upload your files.<br/><br/>"
+            "<strong>Tip:</strong> Complete your analysis in one session, and use <strong>Report Export</strong> to save your results.",
+            icon="🔒"
+        )
     
     # Quick actions
     st.markdown("**Quick Actions:**")
@@ -147,7 +147,7 @@ with st.sidebar:
     
     # Modify Data button - allows going back to change data setup
     if has_working_table or has_analysis_config:
-        if st.button("Modify Data Setup", key="modify_data", help="Go back to change your data or merge settings"):
+        if st.button("Modify Data Setup", type="secondary", key="modify_data", help="Go back to change your data or merge settings"):
             # Clear analysis config but keep working table
             st.session_state.data_config = DataConfig()
             st.session_state.task_mode = None
@@ -160,7 +160,7 @@ with st.sidebar:
             st.info("Analysis config cleared. You can now modify your data setup.")
             st.rerun()
         
-        if st.button("Change Merge Setup", key="change_merge", help="Go back to re-merge your datasets"):
+        if st.button("Change Merge Setup", type="secondary", key="change_merge", help="Go back to re-merge your datasets"):
             st.session_state.pop('working_table', None)
             st.session_state.pop('merge_preview', None)
             st.session_state.pop('merge_config', None)
@@ -180,7 +180,7 @@ with st.sidebar:
         st.warning("These actions cannot be undone!")
         
         if not st.session_state.get('confirm_clear_session'):
-            if st.button("Clear Current Session", key="clear_session", help="Clears uploaded data but keeps project structure"):
+            if st.button("Clear Current Session", type="secondary", key="clear_session", help="Clears uploaded data but keeps project structure"):
                 st.session_state['confirm_clear_session'] = True
         
         if st.session_state.get('confirm_clear_session'):
@@ -197,7 +197,7 @@ with st.sidebar:
                     st.success("Session cleared! Re-upload your files to continue.")
                     st.rerun()
             with c2:
-                if st.button("Cancel", key="confirm_clear_no"):
+                if st.button("Cancel", type="secondary", key="confirm_clear_no"):
                     st.session_state.pop('confirm_clear_session', None)
                     st.rerun()
         
@@ -546,7 +546,7 @@ if len(project_datasets) > 1:
             
             with col2:
                 btn_label = "Undo Transpose" if currently_transposed else "Transpose"
-                if st.button(btn_label, key=f"btn_transpose_{name}"):
+                if st.button(btn_label, type="secondary", key=f"btn_transpose_{name}"):
                     st.session_state.transposed_for_merge[name] = not currently_transposed
                     st.rerun()
             
@@ -1130,7 +1130,7 @@ if len(project_datasets) > 1:
                 st.warning("Are you sure? This will clear your working table and you will need to re-merge datasets.")
                 c1, c2 = st.columns(2)
                 with c1:
-                    if st.button("Yes, Clear Working Table", type="primary", key="confirm_clear_working_yes"):
+                    if st.button("Yes, Clear Working Table", type="secondary", key="confirm_clear_working_yes"):
                         st.session_state.pop('working_table', None)
                         st.session_state.pop('merge_preview', None)
                         st.session_state.pop('merge_config', None)

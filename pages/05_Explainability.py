@@ -108,7 +108,7 @@ with st.expander("What is Permutation Importance?", expanded=False):
     st.caption(f"**Interpreting these numbers:** {interpretation_permutation_importance()}")
 st.info("Available for all models with `predict` method.")
 
-if st.button("Calculate Permutation Importance", key="explain_perm_importance_button"):
+if st.button("Calculate Permutation Importance", type="primary", key="explain_perm_importance_button"):
     perm_errors = []
     for name, model_wrapper in st.session_state.trained_models.items():
         try:
@@ -255,7 +255,7 @@ with st.expander("What is Cross-Model Robustness?", expanded=False):
     st.caption(f"**Interpreting these numbers:** {interpretation_robustness()}")
 perm_names = list(st.session_state.get('permutation_importance', {}).keys())
 if len(perm_names) >= 2:
-    if st.button("Run Robustness Check", key="explain_robustness_button"):
+    if st.button("Run Robustness Check", type="primary", key="explain_robustness_button"):
         from ml.eval import compare_importance_ranks
         perm = st.session_state.permutation_importance
         fn_by_model = st.session_state.get('feature_names_by_model', {})
@@ -316,7 +316,7 @@ with st.expander("What is Partial Dependence?", expanded=False):
     st.caption(f"**Interpreting these numbers:** {interpretation_partial_dependence()}")
 st.info("Available for models with `predict` or `predict_proba` methods.")
 
-if st.button("Calculate Partial Dependence"):
+if st.button("Calculate Partial Dependence", type="primary"):
     original_features = data_config.feature_cols if data_config else []
     pd_errors = []
     nn_skipped = False
@@ -953,7 +953,7 @@ with st.expander("Upload External Validation Dataset", expanded=False):
             if missing_cols:
                 st.error(f"Missing columns in external dataset: {missing_cols}")
             else:
-                if st.button("Validate on External Dataset", key="run_ext_val"):
+                if st.button("Validate on External Dataset", type="primary", key="run_ext_val"):
                     from ml.bootstrap import bootstrap_all_regression_metrics, bootstrap_all_classification_metrics, format_metric_with_ci
 
                     ext_y = ext_df[data_config.target_col].values
@@ -1004,7 +1004,7 @@ with st.expander("Run Subgroup Analysis", expanded=False):
         if subgroup_options:
             subgroup_var = st.selectbox("Stratify by", subgroup_options, key="subgroup_var")
 
-            if st.button("Run Subgroup Analysis", key="run_subgroup"):
+            if st.button("Run Subgroup Analysis", type="primary", key="run_subgroup"):
                 from ml.publication import subgroup_analysis, plot_forest_subgroups
 
                 for name, results in st.session_state.model_results.items():

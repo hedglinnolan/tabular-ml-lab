@@ -14,12 +14,18 @@ import pandas as pd
 import time
 
 from utils.theme import inject_custom_css
-from utils.session_state import get_data_config, get_split_data
+from utils.session_state import init_session_state
+from utils.storyline import render_progress_indicator, render_breadcrumb, render_page_navigation
+
+init_session_state()
 
 st.set_page_config(page_title="Sensitivity Analysis | Tabular ML Lab", layout="wide")
 inject_custom_css()
 
 st.title("🔬 Sensitivity Analysis")
+render_breadcrumb("07_Sensitivity_Analysis")
+render_page_navigation("07_Sensitivity_Analysis")
+render_progress_indicator("07_Sensitivity_Analysis")
 st.markdown(
     "Test whether your results hold up under different conditions. "
     "Robust results survive changes in random seeds and minor feature perturbations — "
@@ -27,8 +33,7 @@ st.markdown(
 )
 
 # ── Check prerequisites ──────────────────────────────────────────────
-data_config = get_data_config()
-split_data = get_split_data()
+data_config = st.session_state.get("data_config")
 trained_models = st.session_state.get("trained_models", {})
 model_results = st.session_state.get("model_results", {})
 
@@ -36,16 +41,16 @@ if not trained_models:
     st.warning("⚠️ No trained models found. Please run **Train & Compare** first.")
     st.stop()
 
-X_train = split_data.get("X_train")
-X_test = split_data.get("X_test")
-y_train = split_data.get("y_train")
-y_test = split_data.get("y_test")
+X_train = st.session_state.get("X_train")
+X_test = st.session_state.get("X_test")
+y_train = st.session_state.get("y_train")
+y_test = st.session_state.get("y_test")
 
 if X_train is None or X_test is None:
     st.warning("⚠️ Train/test split not found. Please run **Preprocess** and **Train & Compare** first.")
     st.stop()
 
-task_type = data_config.task_type or "regression"
+task_type = getattr(data_config, "task_type", "regression") or "regression"
 feature_names = list(X_train.columns) if hasattr(X_train, "columns") else [f"feature_{i}" for i in range(X_train.shape[1])]
 
 # ── Model selector ───────────────────────────────────────────────────

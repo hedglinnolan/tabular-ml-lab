@@ -878,7 +878,7 @@ if pipelines_by_model:
     st.success(f"✅ **Pipelines ready for: {_built_names}**. Head to **Train & Compare** → your models and preprocessing are already synced.")
     st.page_link("pages/04_Train_and_Compare.py", label="➡️ Go to Train & Compare", icon="🏋️")
 
-    if st.button("Rebuild Pipeline", key="preprocess_rebuild_button"):
+    if st.button("Rebuild Pipeline", type="secondary", key="preprocess_rebuild_button", help="Clear current pipelines and reconfigure"):
         st.session_state.preprocessing_pipeline = None
         st.session_state.preprocessing_config = None
         st.session_state.preprocessing_pipelines_by_model = {}

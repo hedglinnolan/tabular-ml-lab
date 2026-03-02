@@ -12,6 +12,7 @@ import logging
 
 from utils.session_state import init_session_state, get_data
 from utils.storyline import render_progress_indicator, render_breadcrumb, render_page_navigation
+from utils.theme import inject_custom_css, render_guidance
 from data_processor import get_numeric_columns, get_categorical_columns
 from ml.stats_tests import (
     correlation_test,
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 init_session_state()
 
 st.set_page_config(page_title="Hypothesis Testing", page_icon=None, layout="wide")
+inject_custom_css()
 st.title("Hypothesis Testing")
 render_breadcrumb("07_Hypothesis_Testing")
 render_page_navigation("07_Hypothesis_Testing")
@@ -153,7 +155,13 @@ st.markdown("---")
 # Test-specific UI and execution
 if test_type == "Correlation (two numeric variables)":
     st.subheader("Correlation Test")
-    st.caption("Test whether two numeric variables are linearly or monotonically related.")
+    render_guidance(
+        "Correlation measures the strength and direction of association between two numeric variables. "
+        "<strong>Pearson</strong> detects linear relationships (assumes normality). "
+        "<strong>Spearman</strong> detects monotonic relationships (rank-based, robust to outliers). "
+        "<strong>Kendall</strong> is also rank-based and works well for small samples.",
+        icon="📊"
+    )
     
     if len(numeric_cols) < 2:
         st.error(f"""
@@ -297,6 +305,11 @@ if test_type == "Correlation (two numeric variables)":
 
 elif test_type == "Two-sample comparison (numeric variable, two groups)":
     st.subheader("Two-Sample Comparison")
+    render_guidance(
+        "Compare means between two independent groups. <strong>t-test</strong> (parametric) assumes normality. "
+        "<strong>Mann-Whitney U</strong> (non-parametric) is robust when data is skewed or has outliers.",
+        icon="📊"
+    )
     
     if len(numeric_cols) == 0:
         st.error("Need at least 1 numeric variable for two-sample test")
@@ -386,6 +399,12 @@ elif test_type == "Two-sample comparison (numeric variable, two groups)":
 
 elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
     st.subheader("Multi-Group Comparison")
+    render_guidance(
+        "Compare means across 3+ groups. <strong>ANOVA</strong> (parametric) assumes normality and equal variances. "
+        "<strong>Kruskal-Wallis</strong> (non-parametric) is robust to violations. "
+        "If significant, follow up with post-hoc tests to identify which groups differ.",
+        icon="📊"
+    )
     
     if len(numeric_cols) == 0:
         st.error("Need at least 1 numeric variable for multi-group test")
@@ -471,6 +490,11 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
 
 elif test_type == "Categorical association (two categorical variables)":
     st.subheader("Categorical Association Test")
+    render_guidance(
+        "Test whether two categorical variables are associated. <strong>Chi-square</strong> works for most cases. "
+        "<strong>Fisher's exact test</strong> is more accurate for 2×2 tables with small sample sizes (&lt;5 expected counts in any cell).",
+        icon="📊"
+    )
     
     if len(categorical_cols) < 2:
         st.error("Need at least 2 categorical variables for association test")
@@ -541,6 +565,12 @@ elif test_type == "Categorical association (two categorical variables)":
 
 elif test_type == "Normality test (one numeric variable)":
     st.subheader("Normality Test")
+    render_guidance(
+        "Test whether a variable follows a normal (Gaussian) distribution. "
+        "Many parametric tests (t-test, ANOVA, linear regression) assume normality. "
+        "<strong>Shapiro-Wilk</strong> is sensitive to deviations and works well for small-to-medium samples.",
+        icon="📊"
+    )
     
     if len(numeric_cols) == 0:
         st.error("Need at least 1 numeric variable for normality test")
@@ -601,6 +631,12 @@ elif test_type == "Normality test (one numeric variable)":
 
 elif test_type == "Paired comparison (numeric variable, before/after)":
     st.subheader("Paired Comparison Test")
+    render_guidance(
+        "Compare two measurements on the same subjects (e.g., before/after treatment). "
+        "<strong>Paired t-test</strong> (parametric) assumes differences are normally distributed. "
+        "<strong>Wilcoxon signed-rank</strong> (non-parametric) is robust to non-normality.",
+        icon="📊"
+    )
     
     if len(numeric_cols) < 2:
         st.error("Need at least 2 numeric variables for paired comparison (before/after)")
