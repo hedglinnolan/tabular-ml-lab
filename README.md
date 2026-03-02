@@ -6,14 +6,16 @@ A guided, interactive Streamlit application for researchers working with tabular
 
 ## Features
 
-### Guided Research Workflow
-- **Upload & Audit** — Multi-file projects, intelligent merge builder, data quality assessment
-- **EDA** — Comprehensive exploration with model-aware diagnostics
-- **Feature Selection** — LASSO path, RFE-CV, stability selection, univariate screening with FDR correction
-- **Preprocessing** — Per-model sklearn pipelines with intelligent defaults
-- **Train & Compare** — Multiple model families with automatic baseline comparison
-- **Explainability** — SHAP, permutation importance, calibration, decision curves
-- **Report Export** — Methods sections, TRIPOD checklists, publication-quality figures
+### Guided Research Workflow (9 pages)
+1. **Upload & Audit** — Multi-file projects, intelligent merge builder, data quality assessment
+2. **EDA** — Comprehensive exploration with model-aware diagnostics
+3. **Feature Selection** — LASSO path, RFE-CV, stability selection, univariate screening with FDR correction
+4. **Preprocessing** — Per-model sklearn pipelines with intelligent defaults
+5. **Train & Compare** — Multiple model families with automatic baseline comparison
+6. **Explainability** — SHAP, permutation importance, calibration, decision curves
+7. **Sensitivity Analysis** — Random seed robustness testing, feature dropout analysis
+8. **Hypothesis Testing** — Standalone statistical tests (t-tests, ANOVA, chi-square, correlation)
+9. **Report Export** — Methods sections, TRIPOD checklists, publication-quality figures
 
 ### Publication-Ready Outputs
 - **Table 1** — Stratified descriptive statistics with p-values and SMD

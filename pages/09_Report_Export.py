@@ -31,11 +31,11 @@ st.set_page_config(page_title="Report Export", page_icon="📄", layout="wide")
 inject_custom_css()
 render_step_indicator(7, "Report Export")
 st.title("📄 Report Export")
-render_breadcrumb("06_Report_Export")
-render_page_navigation("06_Report_Export")
+render_breadcrumb("09_Report_Export")
+render_page_navigation("09_Report_Export")
 
 # Progress indicator
-render_progress_indicator("06_Report_Export")
+render_progress_indicator("09_Report_Export")
 
 # Guardrail: Report Export is primarily for prediction mode
 task_mode = st.session_state.get('task_mode')

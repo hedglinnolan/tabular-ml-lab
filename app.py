@@ -42,6 +42,8 @@ with st.sidebar:
     explainability_run = st.session_state.get('permutation_importance') is not None
     report_generated = st.session_state.get('report_data') is not None
 
+    sensitivity_run = st.session_state.get('sensitivity_seed_results') is not None
+
     checklist_items = [
         ("📂 Upload & Configure", data_uploaded),
         ("🔍 Explore (EDA)", data_configured),
@@ -49,6 +51,7 @@ with st.sidebar:
         ("⚙️ Preprocess", pipeline_built),
         ("🧠 Train Models", models_trained),
         ("🔬 Explain & Validate", explainability_run),
+        ("🔬 Sensitivity Analysis", sensitivity_run),
         ("📄 Export Report", report_generated),
     ]
 
@@ -112,7 +115,9 @@ steps = [
     ("4", "Preprocess", "Build per-model preprocessing pipelines: imputation, scaling, encoding, outlier treatment.", "⚙️"),
     ("5", "Train & Compare", "Multiple model families with bootstrap CIs, baseline comparison, and calibration analysis.", "🧠"),
     ("6", "Explain & Validate", "SHAP values, permutation importance, external validation, subgroup analysis.", "🔬"),
-    ("7", "Export Report", "Methods section, TRIPOD checklist, flow diagrams, publication-quality figures & tables.", "📄"),
+    ("7", "Sensitivity Analysis", "Test robustness: random seed sensitivity and feature dropout analysis.", "🔬"),
+    ("8", "Hypothesis Testing", "Statistical tests without ML — t-tests, ANOVA, chi-square, correlation.", "📐"),
+    ("9", "Export Report", "Methods section, TRIPOD checklist, flow diagrams, publication-quality figures & tables.", "📄"),
 ]
 
 for num, title, desc, icon in steps:

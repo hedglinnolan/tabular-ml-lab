@@ -1,25 +1,19 @@
 #!/bin/bash
-# Run script for macOS/Linux (uses uv)
-# Activates the virtual environment and runs the Streamlit app
+# Tabular ML Lab — Run Script (macOS/Linux)
+set -e
 
-echo "🚀 Starting Regression Model Trainer..."
+echo "🔬 Starting Tabular ML Lab..."
 
-# Check if virtual environment exists
-if [ ! -d ".venv" ]; then
+# Find virtual environment
+if [ -d "venv" ]; then
+    source venv/bin/activate
+elif [ -d ".venv" ]; then
+    source .venv/bin/activate
+else
     echo "❌ Virtual environment not found!"
-    echo "Please run ./setup.sh first to set up the environment."
+    echo "Run ./setup.sh first to set up the environment."
     exit 1
 fi
 
-# Check for uv
-if ! command -v uv &> /dev/null; then
-    echo "❌ uv not found! Install: curl -LsSf https://astral.sh/uv/install.sh | sh"
-    exit 1
-fi
-
-# Run the app (uv run uses .venv automatically)
-echo "🌐 Starting Streamlit app..."
-echo "The app will open in your browser at http://localhost:8501"
-echo ""
-
-uv run streamlit run app.py
+echo "🌐 Opening at http://localhost:8501"
+streamlit run app.py --server.headless true

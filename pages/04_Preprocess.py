@@ -38,11 +38,11 @@ st.set_page_config(page_title="Preprocessing", page_icon="⚙️", layout="wide"
 inject_custom_css()
 render_step_indicator(4, "Preprocessing")
 st.title("⚙️ Preprocessing Builder")
-render_breadcrumb("03_Preprocess")
-render_page_navigation("03_Preprocess")
+render_breadcrumb("04_Preprocess")
+render_page_navigation("04_Preprocess")
 
 # Progress indicator
-render_progress_indicator("03_Preprocess")
+render_progress_indicator("04_Preprocess")
 
 df = get_data()
 if df is None:
@@ -876,7 +876,7 @@ if pipelines_by_model:
                 )
     _built_names = ", ".join(k.upper() for k in pipelines_by_model.keys())
     st.success(f"✅ **Pipelines ready for: {_built_names}**. Head to **Train & Compare** → your models and preprocessing are already synced.")
-    st.page_link("pages/04_Train_and_Compare.py", label="➡️ Go to Train & Compare", icon="🏋️")
+    st.page_link("pages/05_Train_and_Compare.py", label="➡️ Go to Train & Compare", icon="🏋️")
 
     if st.button("Rebuild Pipeline", type="secondary", key="preprocess_rebuild_button", help="Clear current pipelines and reconfigure"):
         st.session_state.preprocessing_pipeline = None

@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- **Python 3.8 or 3.9** (3.10+ not supported: `llvmlite`/`numba`/`shap` require &lt;3.10)
+- **Python 3.10+** (tested on 3.12)
 - **uv** (recommended): [Install uv](https://docs.astral.sh/uv/getting-started/installation/)
 - Git (for cloning)
 - 4GB RAM minimum

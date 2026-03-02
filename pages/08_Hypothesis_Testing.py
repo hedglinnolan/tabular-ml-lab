@@ -30,11 +30,11 @@ init_session_state()
 st.set_page_config(page_title="Hypothesis Testing", page_icon=None, layout="wide")
 inject_custom_css()
 st.title("Hypothesis Testing")
-render_breadcrumb("07_Hypothesis_Testing")
-render_page_navigation("07_Hypothesis_Testing")
+render_breadcrumb("08_Hypothesis_Testing")
+render_page_navigation("08_Hypothesis_Testing")
 
 # Progress indicator
-render_progress_indicator("07_Hypothesis_Testing")
+render_progress_indicator("08_Hypothesis_Testing")
 
 # Check prerequisites
 task_mode = st.session_state.get('task_mode')

@@ -33,11 +33,11 @@ st.set_page_config(page_title="Explainability", page_icon="🔬", layout="wide")
 inject_custom_css()
 render_step_indicator(6, "Explain & Validate")
 st.title("🔬 Explain & Validate")
-render_breadcrumb("05_Explainability")
-render_page_navigation("05_Explainability")
+render_breadcrumb("06_Explainability")
+render_page_navigation("06_Explainability")
 
 # Progress indicator
-render_progress_indicator("05_Explainability")
+render_progress_indicator("06_Explainability")
 
 # Guardrail: Explainability is only for prediction mode
 task_mode = st.session_state.get('task_mode')

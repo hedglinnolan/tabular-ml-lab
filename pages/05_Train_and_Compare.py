@@ -85,11 +85,11 @@ st.set_page_config(page_title="Train & Compare", page_icon="🧠", layout="wide"
 inject_custom_css()
 render_step_indicator(5, "Train & Compare Models")
 st.title("🧠 Train & Compare Models")
-render_breadcrumb("04_Train_and_Compare")
-render_page_navigation("04_Train_and_Compare")
+render_breadcrumb("05_Train_and_Compare")
+render_page_navigation("05_Train_and_Compare")
 
 # Progress indicator
-render_progress_indicator("04_Train_and_Compare")
+render_progress_indicator("05_Train_and_Compare")
 
 # Global random seed control
 with st.sidebar:

@@ -10,11 +10,12 @@ PAGE_ORDER = [
     ("01_Upload_and_Audit", "Upload & Audit", "pages/01_Upload_and_Audit.py"),
     ("02_EDA", "EDA", "pages/02_EDA.py"),
     ("03_Feature_Selection", "Feature Selection", "pages/03_Feature_Selection.py"),
-    ("03_Preprocess", "Preprocess", "pages/03_Preprocess.py"),
-    ("04_Train_and_Compare", "Train & Compare", "pages/04_Train_and_Compare.py"),
-    ("05_Explainability", "Explainability", "pages/05_Explainability.py"),
-    ("06_Report_Export", "Report Export", "pages/06_Report_Export.py"),
-    ("07_Hypothesis_Testing", "Hypothesis Testing", "pages/07_Hypothesis_Testing.py"),
+    ("04_Preprocess", "Preprocess", "pages/04_Preprocess.py"),
+    ("05_Train_and_Compare", "Train & Compare", "pages/05_Train_and_Compare.py"),
+    ("06_Explainability", "Explainability", "pages/06_Explainability.py"),
+    ("07_Sensitivity_Analysis", "Sensitivity Analysis", "pages/07_Sensitivity_Analysis.py"),
+    ("08_Hypothesis_Testing", "Hypothesis Testing", "pages/08_Hypothesis_Testing.py"),
+    ("09_Report_Export", "Report Export", "pages/09_Report_Export.py"),
 ]
 
 
@@ -81,10 +82,10 @@ PHASES = [
     StorylinePhase("target_confirmed", "Target & Task Confirmed", "Target variable and task type (regression/classification) set", "01_Upload_and_Audit"),
     StorylinePhase("cohort_confirmed", "Cohort Structure Confirmed", "Cross-sectional vs longitudinal structure identified", "01_Upload_and_Audit"),
     StorylinePhase("eda_insights", "EDA Insights Gathered", "Key patterns and relationships explored", "02_EDA"),
-    StorylinePhase("preprocessing", "Preprocessing Configured", "Data transformation pipeline built", "03_Preprocess"),
-    StorylinePhase("models_trained", "Models Trained & Compared", "Models trained and performance evaluated", "04_Train_and_Compare"),
-    StorylinePhase("explainability", "Explainability Completed", "Model interpretations and feature importance analyzed", "05_Explainability"),
-    StorylinePhase("report_exported", "Report Exported", "Comprehensive report generated and downloaded", "06_Report_Export"),
+    StorylinePhase("preprocessing", "Preprocessing Configured", "Data transformation pipeline built", "04_Preprocess"),
+    StorylinePhase("models_trained", "Models Trained & Compared", "Models trained and performance evaluated", "05_Train_and_Compare"),
+    StorylinePhase("explainability", "Explainability Completed", "Model interpretations and feature importance analyzed", "06_Explainability"),
+    StorylinePhase("report_exported", "Report Exported", "Comprehensive report generated and downloaded", "09_Report_Export"),
 ]
 
 

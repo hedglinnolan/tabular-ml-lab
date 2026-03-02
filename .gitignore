@@ -60,3 +60,5 @@ debug*.log
 
 # Cache directory (session persistence)
 .cache/
+datasets.db
+.pytest_cache/
