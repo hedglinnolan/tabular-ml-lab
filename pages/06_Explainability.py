@@ -244,11 +244,15 @@ if st.button("🚀 Run Full Explainability Analysis", type="primary", use_contai
                 else:
                     task_type = data_config.task_type if data_config else 'regression'
                     bg_small = X_bg[:min(50, len(X_bg))]
+                    # KernelExplainer is very slow — cap eval samples at 50
+                    X_ev_kernel = X_ev[:min(50, len(X_ev))]
                     if task_type == 'classification' and hasattr(model_step, 'predict_proba'):
                         explainer = shap.KernelExplainer(model_step.predict_proba, bg_small)
                     else:
                         explainer = shap.KernelExplainer(model_step.predict, bg_small)
-                    shap_values = explainer.shap_values(X_ev)
+                    overall_status.text(f"SHAP (KernelExplainer): {name.upper()}... this may take a minute")
+                    shap_values = explainer.shap_values(X_ev_kernel)
+                    X_ev = X_ev_kernel  # use subsampled version downstream
 
                 # Handle multiclass / multi-output SHAP values
                 sv_raw = shap_values
