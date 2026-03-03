@@ -69,6 +69,8 @@ def inject_custom_css():
     .stDeployButton { display: none !important; }
     /* Hide "Made with Streamlit" */
     .viewerBadge_container__r5tak { display: none !important; }
+    /* Hide default Streamlit multipage navigation — we use our own sidebar checklist */
+    [data-testid="stSidebarNav"] { display: none !important; }
 
     /* ── Typography ──────────────────────────────────────────── */
     h1, h2, h3, h4, h5, h6 {
@@ -702,6 +704,8 @@ def render_sidebar_workflow(current_page: str = ""):
             </div>
         </div>
         """, unsafe_allow_html=True)
+        if current_page:
+            st.page_link("app.py", label="🏠 Home")
         st.markdown("---")
 
         data_uploaded = get_data() is not None
@@ -715,27 +719,24 @@ def render_sidebar_workflow(current_page: str = ""):
         report_generated = st.session_state.get('report_data') is not None
 
         checklist_items = [
-            ("Upload & Configure", data_uploaded, "01"),
-            ("Explore (EDA)", data_configured, "02"),
-            ("Select Features", features_selected, "03"),
-            ("Preprocess", pipeline_built, "04"),
-            ("Train Models", models_trained, "05"),
-            ("Explain & Validate", explainability_run, "06"),
-            ("Sensitivity Analysis", sensitivity_run, "07"),
-            ("Hypothesis Testing", False, "08"),
-            ("Export Report", report_generated, "09"),
+            ("Upload & Configure", data_uploaded, "01", "01_Upload_and_Audit"),
+            ("Explore (EDA)", data_configured, "02", "02_EDA"),
+            ("Select Features", features_selected, "03", "03_Feature_Selection"),
+            ("Preprocess", pipeline_built, "04", "04_Preprocess"),
+            ("Train Models", models_trained, "05", "05_Train_and_Compare"),
+            ("Explain & Validate", explainability_run, "06", "06_Explainability"),
+            ("Sensitivity Analysis", sensitivity_run, "07", "07_Sensitivity_Analysis"),
+            ("Hypothesis Testing", False, "08", "08_Hypothesis_Testing"),
+            ("Export Report", report_generated, "09", "09_Report_Export"),
         ]
 
-        for item, completed, page_id in checklist_items:
+        for item, completed, page_id, page_file in checklist_items:
             is_current = current_page.startswith(page_id)
-            dot_class = "sidebar-dot-done" if completed else "sidebar-dot-pending"
-            text_class = "sidebar-step-done" if completed else "sidebar-step-pending"
 
             if is_current:
-                # Highlight current page
                 st.markdown(
                     f'<div class="sidebar-step" style="background: rgba(102,126,234,0.12); '
-                    f'border-radius: 6px; padding: 0.3rem 0.5rem; margin: 0 -0.5rem;">'
+                    f'border-radius: 6px; padding: 0.3rem 0.5rem; margin: 0.1rem -0.5rem;">'
                     f'<span class="sidebar-dot" style="background: var(--accent, #667eea); '
                     f'box-shadow: 0 0 8px rgba(102,126,234,0.5);"></span>'
                     f'<span style="color: #e2e8f0; font-weight: 600;">{item}</span></div>',
@@ -743,11 +744,9 @@ def render_sidebar_workflow(current_page: str = ""):
                 )
             else:
                 check = "✓ " if completed else ""
-                st.markdown(
-                    f'<div class="sidebar-step {text_class}">'
-                    f'<span class="sidebar-dot {dot_class}"></span>{check}{item}</div>',
-                    unsafe_allow_html=True
-                )
+                dot_class = "sidebar-dot-done" if completed else "sidebar-dot-pending"
+                text_class = "sidebar-step-done" if completed else "sidebar-step-pending"
+                st.page_link(f"pages/{page_file}.py", label=f"{check}{item}")
 
         completed_count = sum(1 for _, completed, _ in checklist_items if completed)
         st.markdown("<div style='margin-top: 0.75rem;'></div>", unsafe_allow_html=True)
