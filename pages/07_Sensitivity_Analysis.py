@@ -84,9 +84,16 @@ if st.button("▶️ Run Seed Sensitivity", type="primary", key="run_seed"):
     from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score, accuracy_score, f1_score, roc_auc_score
     from sklearn.base import clone
 
-    model_obj = trained_models[selected_model]
+    model_wrapper = trained_models[selected_model]
+    # Get the underlying sklearn estimator, not the wrapper
+    model_obj = model_wrapper.get_model() if hasattr(model_wrapper, 'get_model') else model_wrapper
     pipelines = st.session_state.get("fitted_preprocessing_pipelines", {})
     pipeline = pipelines.get(selected_model)
+
+    # Skip NN models — PyTorch models don't support sklearn clone
+    if selected_model == 'nn':
+        st.warning("⚠️ Seed sensitivity is not supported for Neural Network models (PyTorch doesn't support sklearn clone). Select a different model.")
+        st.stop()
 
     progress = st.progress(0, text=f"Initializing seed sensitivity for {selected_model.upper()}... (retraining model {n_seeds} times)")
     status_text = st.empty()
