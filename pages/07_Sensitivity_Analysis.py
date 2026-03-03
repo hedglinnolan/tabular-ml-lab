@@ -85,7 +85,7 @@ if st.button("▶️ Run Seed Sensitivity", type="primary", key="run_seed"):
     from sklearn.base import clone
 
     model_obj = trained_models[selected_model]
-    pipelines = st.session_state.get("preprocessing_pipelines_by_model", {})
+    pipelines = st.session_state.get("fitted_preprocessing_pipelines", {})
     pipeline = pipelines.get(selected_model)
 
     progress = st.progress(0, text="Running seed sensitivity...")
@@ -203,7 +203,7 @@ if st.button("▶️ Run Feature Dropout", type="primary", key="run_dropout"):
     from sklearn.base import clone
 
     model_obj = trained_models[selected_model]
-    pipelines = st.session_state.get("preprocessing_pipelines_by_model", {})
+    pipelines = st.session_state.get("fitted_preprocessing_pipelines", {})
     pipeline = pipelines.get(selected_model)
 
     # Get baseline performance

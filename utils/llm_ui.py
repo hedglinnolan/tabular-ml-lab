@@ -461,28 +461,26 @@ def render_interpretation_with_llm_button(
             api_key = st.session_state.get("openai_api_key", "")
             if not api_key:
                 st.session_state[sk] = "__no_key__"
-                st.rerun()
-                return
         elif backend == "anthropic":
             model = st.session_state.get("anthropic_model", "claude-sonnet-4-20250514")
             api_key = st.session_state.get("anthropic_api_key", "")
             if not api_key:
                 st.session_state[sk] = "__no_key__"
-                st.rerun()
-                return
 
-        with st.spinner(f"Getting interpretation from {backend} ({model})..."):
-            result = _call_llm(
-                ctx, INTERPRETATION_SYSTEM_PROMPT,
-                backend=backend, model=model, api_key=api_key, ollama_url=ollama_url,
-            )
+        if st.session_state.get(sk) != "__no_key__":
+            with st.spinner(f"Getting interpretation from {backend} ({model})..."):
+                result = _call_llm(
+                    ctx, INTERPRETATION_SYSTEM_PROMPT,
+                    backend=backend, model=model, api_key=api_key, ollama_url=ollama_url,
+                )
 
-        if result:
-            st.session_state[sk] = result
-        else:
-            st.session_state[sk] = "__error__"
-            logger.error(f"LLM call returned None: backend={backend}, model={model}")
-        st.rerun()
+            if result:
+                st.session_state[sk] = result
+            else:
+                st.session_state[sk] = "__error__"
+                logger.error(f"LLM call returned None: backend={backend}, model={model}")
+            # No st.rerun() — result is in session state and displays below
+            # Avoids resetting tab/expander position on the page
 
     # Display result
     res = st.session_state.get(sk)

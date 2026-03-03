@@ -714,7 +714,7 @@ def render_sidebar_workflow(current_page: str = ""):
         features_selected = st.session_state.get('feature_selection_results') is not None
         pipeline_built = st.session_state.get('preprocessing_pipeline') is not None
         models_trained = bool(st.session_state.get('trained_models'))
-        explainability_run = bool(st.session_state.get('permutation_importance'))
+        explainability_run = len(st.session_state.get('permutation_importance', {})) > 0 or len(st.session_state.get('shap_results', {})) > 0
         sensitivity_run = st.session_state.get('sensitivity_seed_results') is not None
         report_generated = st.session_state.get('report_data') is not None
 

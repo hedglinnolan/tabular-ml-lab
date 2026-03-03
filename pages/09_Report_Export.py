@@ -667,18 +667,6 @@ def generate_report() -> str:
 
 
 # ============================================================================
-# REPORT PREVIEW
-# ============================================================================
-st.header("Report Preview")
-
-# Generate report
-report_text = generate_report()
-
-# Display in a nice container
-with st.container():
-    st.markdown(report_text)
-
-# ============================================================================
 # PUBLICATION TOOLS
 # ============================================================================
 st.header("📝 Publication Tools")
@@ -1094,6 +1082,18 @@ with col3:
     )
 
 st.success("Report generated successfully!")
+
+# ============================================================================
+# REPORT PREVIEW
+# ============================================================================
+st.header("Report Preview")
+
+# Generate report
+report_text = generate_report()
+
+# Display in a nice container
+with st.container():
+    st.markdown(report_text)
 
 # ============================================================================
 # STATE DEBUG

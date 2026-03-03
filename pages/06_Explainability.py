@@ -91,6 +91,10 @@ def _get_pipeline_and_data(name):
             try:
                 X_raw = df_raw[data_config.feature_cols].iloc[test_indices]
                 y_raw = df_raw[data_config.target_col].iloc[test_indices].values
+                # Encode string labels to match what the model was trained on
+                label_encoder = st.session_state.get('target_label_encoder')
+                if label_encoder is not None and y_raw.dtype == object:
+                    y_raw = label_encoder.transform(y_raw)
                 return full_pipeline, X_raw, y_raw, X_raw
             except:
                 pass

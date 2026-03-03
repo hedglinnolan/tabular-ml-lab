@@ -383,6 +383,7 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
         
         # Training loop
         best_val_metric = float('inf') if self.task_type == 'regression' else 0.0
+        best_model_state = self.model.state_dict().copy()
         patience_counter = 0
         history = {
             'train_loss': [],
