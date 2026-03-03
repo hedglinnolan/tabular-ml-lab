@@ -7,7 +7,7 @@ who need defensible methodology and publication-ready outputs.
 import streamlit as st
 
 from utils.session_state import get_data, init_session_state
-from utils.llm_ui import render_llm_settings_sidebar
+# LLM settings now rendered by render_sidebar_workflow in theme.py
 from utils.theme import inject_custom_css, render_info_card, render_guidance, render_step_indicator, render_sidebar_workflow
 
 # Initialize session state
@@ -25,8 +25,6 @@ st.set_page_config(
 inject_custom_css()
 
 # Sidebar: LLM settings
-render_llm_settings_sidebar()
-
 # Sidebar: Workflow Progress
 render_sidebar_workflow(current_page="")
 

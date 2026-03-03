@@ -691,6 +691,9 @@ def render_sidebar_workflow(current_page: str = ""):
     current_page: identifier like '01_Upload', '02_EDA', etc.
     """
     from utils.session_state import get_data
+    from utils.llm_ui import render_llm_settings_sidebar
+
+    render_llm_settings_sidebar()
 
     with st.sidebar:
         st.markdown("""
