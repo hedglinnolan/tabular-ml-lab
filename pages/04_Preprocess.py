@@ -25,7 +25,7 @@ from ml.pipeline import (
 )
 from ml.model_registry import get_registry
 from data_processor import get_numeric_columns
-from utils.theme import inject_custom_css, render_step_indicator, render_guidance
+from utils.theme import inject_custom_css, render_step_indicator, render_guidance, render_sidebar_workflow
 
 @st.cache_resource
 def _get_registry_cached():
@@ -36,6 +36,7 @@ init_session_state()
 
 st.set_page_config(page_title="Preprocessing", page_icon="⚙️", layout="wide")
 inject_custom_css()
+render_sidebar_workflow(current_page="04_Preprocess")
 render_step_indicator(4, "Preprocessing")
 st.title("⚙️ Preprocessing Builder")
 render_breadcrumb("04_Preprocess")

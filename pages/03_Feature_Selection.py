@@ -10,13 +10,14 @@ from typing import List, Dict
 
 from utils.session_state import init_session_state, get_data, DataConfig
 from utils.storyline import render_progress_indicator, render_breadcrumb, render_page_navigation
-from utils.theme import inject_custom_css, render_guidance, render_reviewer_concern, render_step_indicator
+from utils.theme import inject_custom_css, render_guidance, render_reviewer_concern, render_step_indicator, render_sidebar_workflow
 from data_processor import get_numeric_columns
 
 init_session_state()
 
 st.set_page_config(page_title="Feature Selection", page_icon="🎯", layout="wide")
 inject_custom_css()
+render_sidebar_workflow(current_page="03_Feature")
 render_step_indicator(3, "Feature Selection")
 st.title("🎯 Feature Selection")
 render_breadcrumb("03_Feature_Selection")

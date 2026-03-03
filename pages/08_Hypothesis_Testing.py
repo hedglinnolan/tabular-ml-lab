@@ -12,7 +12,7 @@ import logging
 
 from utils.session_state import init_session_state, get_data
 from utils.storyline import render_progress_indicator, render_breadcrumb, render_page_navigation
-from utils.theme import inject_custom_css, render_guidance
+from utils.theme import inject_custom_css, render_guidance, render_sidebar_workflow
 from data_processor import get_numeric_columns, get_categorical_columns
 from ml.stats_tests import (
     correlation_test,
@@ -29,6 +29,7 @@ init_session_state()
 
 st.set_page_config(page_title="Hypothesis Testing", page_icon=None, layout="wide")
 inject_custom_css()
+render_sidebar_workflow(current_page="08_Hypothesis")
 st.title("Hypothesis Testing")
 render_breadcrumb("08_Hypothesis_Testing")
 render_page_navigation("08_Hypothesis_Testing")

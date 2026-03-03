@@ -16,7 +16,7 @@ from utils.session_state import (
 )
 from utils.seed import set_global_seed, get_global_seed
 from utils.storyline import render_progress_indicator, get_insights_by_category, render_breadcrumb, render_page_navigation
-from utils.theme import inject_custom_css, render_guidance, render_reviewer_concern, render_step_indicator, render_metric_row
+from utils.theme import inject_custom_css, render_guidance, render_reviewer_concern, render_step_indicator, render_metric_row, render_sidebar_workflow
 from ml.splits import to_numpy_1d
 
 logger = logging.getLogger(__name__)
@@ -83,6 +83,7 @@ set_global_seed(st.session_state.get('random_seed', 42))
 
 st.set_page_config(page_title="Train & Compare", page_icon="🧠", layout="wide")
 inject_custom_css()
+render_sidebar_workflow(current_page="05_Train")
 render_step_indicator(5, "Train & Compare Models")
 st.title("🧠 Train & Compare Models")
 render_breadcrumb("05_Train_and_Compare")

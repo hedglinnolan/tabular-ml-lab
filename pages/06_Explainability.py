@@ -18,7 +18,7 @@ from utils.session_state import (
 from utils.storyline import render_progress_indicator, render_breadcrumb, render_page_navigation
 from ml.estimator_utils import is_estimator_fitted
 from ml.model_registry import get_registry
-from utils.theme import inject_custom_css, render_step_indicator, render_guidance, render_reviewer_concern
+from utils.theme import inject_custom_css, render_step_indicator, render_guidance, render_reviewer_concern, render_sidebar_workflow
 from sklearn.pipeline import Pipeline as SklearnPipeline
 
 @st.cache_resource
@@ -31,6 +31,7 @@ init_session_state()
 
 st.set_page_config(page_title="Explainability", page_icon="🔬", layout="wide")
 inject_custom_css()
+render_sidebar_workflow(current_page="06_Explain")
 render_step_indicator(6, "Explain & Validate")
 
 # ── Page Header ─────────────────────────────────────────────────

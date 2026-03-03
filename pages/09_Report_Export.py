@@ -26,9 +26,10 @@ logger = logging.getLogger(__name__)
 
 init_session_state()
 
-from utils.theme import inject_custom_css, render_step_indicator, render_guidance
+from utils.theme import inject_custom_css, render_step_indicator, render_guidance, render_sidebar_workflow
 st.set_page_config(page_title="Report Export", page_icon="📄", layout="wide")
 inject_custom_css()
+render_sidebar_workflow(current_page="09_Report")
 render_step_indicator(9, "Report Export")
 st.title("📄 Report Export")
 render_breadcrumb("09_Report_Export")

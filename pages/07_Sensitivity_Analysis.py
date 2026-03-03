@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import time
 
-from utils.theme import inject_custom_css
+from utils.theme import inject_custom_css, render_sidebar_workflow
 from utils.session_state import init_session_state
 from utils.storyline import render_progress_indicator, render_breadcrumb, render_page_navigation
 
@@ -21,6 +21,7 @@ init_session_state()
 
 st.set_page_config(page_title="Sensitivity Analysis | Tabular ML Lab", layout="wide")
 inject_custom_css()
+render_sidebar_workflow(current_page="07_Sensitivity")
 
 st.title("🔬 Sensitivity Analysis")
 render_breadcrumb("07_Sensitivity_Analysis")

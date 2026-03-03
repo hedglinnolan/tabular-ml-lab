@@ -681,6 +681,81 @@ def inject_custom_css():
     """, unsafe_allow_html=True)
 
 
+def render_sidebar_workflow(current_page: str = ""):
+    """Render the unified sidebar with branding + workflow checklist.
+    
+    Call this at the top of every page. Pages can add their own sidebar
+    content after calling this function.
+    
+    current_page: identifier like '01_Upload', '02_EDA', etc.
+    """
+    from utils.session_state import get_data
+
+    with st.sidebar:
+        st.markdown("""
+        <div style="padding: 0.5rem 0 0.75rem 0;">
+            <div style="font-size: 1.15rem; font-weight: 800; letter-spacing: -0.03em; color: #f1f5f9;">
+                🔬 Tabular ML Lab
+            </div>
+            <div style="font-size: 0.75rem; color: #64748b; margin-top: 0.15rem;">
+                Publication-grade ML for research
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown("---")
+
+        data_uploaded = get_data() is not None
+        data_configured = (st.session_state.get('data_config') is not None
+                           and getattr(st.session_state.get('data_config'), 'target_col', None) is not None)
+        features_selected = st.session_state.get('feature_selection_results') is not None
+        pipeline_built = st.session_state.get('preprocessing_pipeline') is not None
+        models_trained = bool(st.session_state.get('trained_models'))
+        explainability_run = bool(st.session_state.get('permutation_importance'))
+        sensitivity_run = st.session_state.get('sensitivity_seed_results') is not None
+        report_generated = st.session_state.get('report_data') is not None
+
+        checklist_items = [
+            ("Upload & Configure", data_uploaded, "01"),
+            ("Explore (EDA)", data_configured, "02"),
+            ("Select Features", features_selected, "03"),
+            ("Preprocess", pipeline_built, "04"),
+            ("Train Models", models_trained, "05"),
+            ("Explain & Validate", explainability_run, "06"),
+            ("Sensitivity Analysis", sensitivity_run, "07"),
+            ("Hypothesis Testing", False, "08"),
+            ("Export Report", report_generated, "09"),
+        ]
+
+        for item, completed, page_id in checklist_items:
+            is_current = current_page.startswith(page_id)
+            dot_class = "sidebar-dot-done" if completed else "sidebar-dot-pending"
+            text_class = "sidebar-step-done" if completed else "sidebar-step-pending"
+
+            if is_current:
+                # Highlight current page
+                st.markdown(
+                    f'<div class="sidebar-step" style="background: rgba(102,126,234,0.12); '
+                    f'border-radius: 6px; padding: 0.3rem 0.5rem; margin: 0 -0.5rem;">'
+                    f'<span class="sidebar-dot" style="background: var(--accent, #667eea); '
+                    f'box-shadow: 0 0 8px rgba(102,126,234,0.5);"></span>'
+                    f'<span style="color: #e2e8f0; font-weight: 600;">{item}</span></div>',
+                    unsafe_allow_html=True
+                )
+            else:
+                check = "✓ " if completed else ""
+                st.markdown(
+                    f'<div class="sidebar-step {text_class}">'
+                    f'<span class="sidebar-dot {dot_class}"></span>{check}{item}</div>',
+                    unsafe_allow_html=True
+                )
+
+        completed_count = sum(1 for _, completed, _ in checklist_items if completed)
+        st.markdown("<div style='margin-top: 0.75rem;'></div>", unsafe_allow_html=True)
+        st.progress(completed_count / len(checklist_items))
+        st.caption(f"{completed_count}/{len(checklist_items)} steps complete")
+        st.markdown("---")
+
+
 def render_guidance(text: str, icon: str = "💡"):
     """Render a guidance card with actionable advice."""
     st.markdown(f"""

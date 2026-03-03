@@ -20,7 +20,7 @@ from utils.storyline import render_progress_indicator, render_breadcrumb, render
 from utils.session_projects import get_project_manager
 from utils.dataset_db import detect_common_columns, suggest_join_keys, execute_merge
 from utils.column_utils import make_unique_columns
-from utils.theme import inject_custom_css, render_guidance
+from utils.theme import inject_custom_css, render_guidance, render_sidebar_workflow
 from data_processor import (
     load_tabular_data, get_numeric_columns, get_selectable_columns,
     detect_file_type
@@ -108,6 +108,7 @@ st.set_page_config(
     layout="wide"
 )
 inject_custom_css()
+render_sidebar_workflow(current_page="01_Upload")
 
 st.title("Data Upload & Project Management")
 render_breadcrumb("01_Upload_and_Audit")
