@@ -71,7 +71,8 @@ def _create_knn_clf(task_type: str, random_state: int):
 
 def _create_logreg(task_type: str, random_state: int):
     """Factory for Logistic Regression."""
-    return LogisticRegression(random_state=random_state, C=1.0, penalty='l2', max_iter=1000)
+    # Use saga solver — supports both l1 and l2 penalties (lbfgs only supports l2)
+    return LogisticRegression(random_state=random_state, C=1.0, penalty='l2', solver='saga', max_iter=1000)
 
 
 def _create_extratrees_reg(task_type: str, random_state: int):
