@@ -748,7 +748,7 @@ def render_sidebar_workflow(current_page: str = ""):
                 text_class = "sidebar-step-done" if completed else "sidebar-step-pending"
                 st.page_link(f"pages/{page_file}.py", label=f"{check}{item}")
 
-        completed_count = sum(1 for _, completed, _ in checklist_items if completed)
+        completed_count = sum(1 for _, completed, _, _ in checklist_items if completed)
         st.markdown("<div style='margin-top: 0.75rem;'></div>", unsafe_allow_html=True)
         st.progress(completed_count / len(checklist_items))
         st.caption(f"{completed_count}/{len(checklist_items)} steps complete")
