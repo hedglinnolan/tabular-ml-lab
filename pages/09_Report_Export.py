@@ -19,7 +19,7 @@ from utils.session_state import (
     DataConfig, SplitConfig, ModelConfig
 )
 from ml.pipeline import get_pipeline_recipe
-from utils.storyline import render_progress_indicator, get_insights_by_category, render_breadcrumb, render_page_navigation
+from utils.storyline import get_insights_by_category, render_breadcrumb, render_page_navigation
 from ml.model_registry import get_registry
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,6 @@ render_breadcrumb("09_Report_Export")
 render_page_navigation("09_Report_Export")
 
 # Progress indicator
-render_progress_indicator("09_Report_Export")
 
 # Guardrail: Report Export is primarily for prediction mode
 task_mode = st.session_state.get('task_mode')

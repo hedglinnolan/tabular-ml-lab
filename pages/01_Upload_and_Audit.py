@@ -16,7 +16,7 @@ from utils.session_state import (
 from utils.datasets import get_builtin_datasets
 from utils.reconcile import reconcile_target_features
 from utils.state_reconcile import reconcile_state_with_df
-from utils.storyline import render_progress_indicator, render_breadcrumb, render_page_navigation
+from utils.storyline import render_breadcrumb, render_page_navigation
 from utils.session_projects import get_project_manager
 from utils.dataset_db import detect_common_columns, suggest_join_keys, execute_merge
 from utils.column_utils import make_unique_columns
@@ -115,7 +115,6 @@ render_breadcrumb("01_Upload_and_Audit")
 render_page_navigation("01_Upload_and_Audit")
 
 # Progress indicator
-render_progress_indicator("01_Upload_and_Audit")
 
 # ============================================================================
 # DATA PERSISTENCE INFO & MANAGEMENT (Sidebar)

@@ -11,7 +11,7 @@ import plotly.express as px
 import logging
 
 from utils.session_state import init_session_state, get_data
-from utils.storyline import render_progress_indicator, render_breadcrumb, render_page_navigation
+from utils.storyline import render_breadcrumb, render_page_navigation
 from utils.theme import inject_custom_css, render_guidance, render_sidebar_workflow
 from data_processor import get_numeric_columns, get_categorical_columns
 from ml.stats_tests import (
@@ -35,7 +35,6 @@ render_breadcrumb("08_Hypothesis_Testing")
 render_page_navigation("08_Hypothesis_Testing")
 
 # Progress indicator
-render_progress_indicator("08_Hypothesis_Testing")
 
 # Check prerequisites
 task_mode = st.session_state.get('task_mode')

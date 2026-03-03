@@ -15,7 +15,7 @@ import time
 
 from utils.theme import inject_custom_css, render_sidebar_workflow
 from utils.session_state import init_session_state
-from utils.storyline import render_progress_indicator, render_breadcrumb, render_page_navigation
+from utils.storyline import render_breadcrumb, render_page_navigation
 
 init_session_state()
 
@@ -26,7 +26,6 @@ render_sidebar_workflow(current_page="07_Sensitivity")
 st.title("🔬 Sensitivity Analysis")
 render_breadcrumb("07_Sensitivity_Analysis")
 render_page_navigation("07_Sensitivity_Analysis")
-render_progress_indicator("07_Sensitivity_Analysis")
 st.markdown(
     "Test whether your results hold up under different conditions. "
     "Robust results survive changes in random seeds and minor feature perturbations — "

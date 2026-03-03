@@ -15,7 +15,7 @@ import logging
 from utils.session_state import (
     init_session_state, get_preprocessing_pipeline, DataConfig, get_data
 )
-from utils.storyline import render_progress_indicator, render_breadcrumb, render_page_navigation
+from utils.storyline import render_breadcrumb, render_page_navigation
 from ml.estimator_utils import is_estimator_fitted
 from ml.model_registry import get_registry
 from utils.theme import inject_custom_css, render_step_indicator, render_guidance, render_reviewer_concern, render_sidebar_workflow
@@ -47,7 +47,6 @@ st.markdown("""
 
 render_breadcrumb("06_Explainability")
 render_page_navigation("06_Explainability")
-render_progress_indicator("06_Explainability")
 
 # ── Guardrails ──────────────────────────────────────────────────
 task_mode = st.session_state.get('task_mode')

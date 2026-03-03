@@ -69,8 +69,7 @@ def inject_custom_css():
     .stDeployButton { display: none !important; }
     /* Hide "Made with Streamlit" */
     .viewerBadge_container__r5tak { display: none !important; }
-    /* Hide default Streamlit multipage navigation — we use our own sidebar checklist */
-    [data-testid="stSidebarNav"] { display: none !important; }
+    /* Keep Streamlit's default page navigation visible */
 
     /* ── Typography ──────────────────────────────────────────── */
     h1, h2, h3, h4, h5, h6 {
@@ -704,8 +703,6 @@ def render_sidebar_workflow(current_page: str = ""):
             </div>
         </div>
         """, unsafe_allow_html=True)
-        if current_page:
-            st.page_link("app.py", label="🏠 Home")
         st.markdown("---")
 
         data_uploaded = get_data() is not None
@@ -746,7 +743,11 @@ def render_sidebar_workflow(current_page: str = ""):
                 check = "✓ " if completed else ""
                 dot_class = "sidebar-dot-done" if completed else "sidebar-dot-pending"
                 text_class = "sidebar-step-done" if completed else "sidebar-step-pending"
-                st.page_link(f"pages/{page_file}.py", label=f"{check}{item}")
+                st.markdown(
+                    f'<div class="sidebar-step {text_class}">'
+                    f'<span class="sidebar-dot {dot_class}"></span>{check}{item}</div>',
+                    unsafe_allow_html=True
+                )
 
         completed_count = sum(1 for _, completed, _, _ in checklist_items if completed)
         st.markdown("<div style='margin-top: 0.75rem;'></div>", unsafe_allow_html=True)

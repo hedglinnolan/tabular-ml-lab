@@ -14,7 +14,7 @@ from utils.session_state import (
     init_session_state, get_data, DataConfig, set_preprocessing_pipeline, set_preprocessing_pipelines,
     TaskTypeDetection,
 )
-from utils.storyline import render_progress_indicator, get_insights_by_category, add_insight, render_breadcrumb, render_page_navigation
+from utils.storyline import get_insights_by_category, add_insight, render_breadcrumb, render_page_navigation
 from ml.pipeline import (
     build_preprocessing_pipeline,
     get_pipeline_recipe,
@@ -43,7 +43,6 @@ render_breadcrumb("04_Preprocess")
 render_page_navigation("04_Preprocess")
 
 # Progress indicator
-render_progress_indicator("04_Preprocess")
 
 df = get_data()
 if df is None:

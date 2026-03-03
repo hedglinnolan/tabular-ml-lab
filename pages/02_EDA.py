@@ -13,7 +13,7 @@ from utils.session_state import (
     init_session_state, get_data, DataConfig,
     TaskTypeDetection, CohortStructureDetection
 )
-from utils.storyline import render_progress_indicator, add_insight, get_insights_by_category, render_breadcrumb, render_page_navigation
+from utils.storyline import add_insight, get_insights_by_category, render_breadcrumb, render_page_navigation
 from data_processor import get_numeric_columns
 from utils.theme import inject_custom_css, render_guidance, render_reviewer_concern, render_step_indicator, render_sidebar_workflow
 from ml.eda_recommender import compute_dataset_signals, recommend_eda, DatasetSignals
@@ -39,7 +39,6 @@ render_breadcrumb("02_EDA")
 render_page_navigation("02_EDA")
 
 # Progress indicator
-render_progress_indicator("02_EDA")
 
 df = get_data()
 if df is None:

@@ -15,7 +15,7 @@ from utils.session_state import (
     TaskTypeDetection, CohortStructureDetection
 )
 from utils.seed import set_global_seed, get_global_seed
-from utils.storyline import render_progress_indicator, get_insights_by_category, render_breadcrumb, render_page_navigation
+from utils.storyline import get_insights_by_category, render_breadcrumb, render_page_navigation
 from utils.theme import inject_custom_css, render_guidance, render_reviewer_concern, render_step_indicator, render_metric_row, render_sidebar_workflow
 from ml.splits import to_numpy_1d
 
@@ -90,7 +90,6 @@ render_breadcrumb("05_Train_and_Compare")
 render_page_navigation("05_Train_and_Compare")
 
 # Progress indicator
-render_progress_indicator("05_Train_and_Compare")
 
 # Global random seed control
 with st.sidebar:
