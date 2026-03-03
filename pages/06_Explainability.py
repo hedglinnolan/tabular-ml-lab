@@ -310,6 +310,13 @@ if st.button("🚀 Run Full Explainability Analysis", type="primary", use_contai
                     X_pdp = _to_dense_numpy(X_raw)
                     model_for_pdp = full_pipe
 
+                # Subsample for PDP if dataset is large (>2000 rows)
+                max_pdp_samples = 2000
+                if X_pdp.shape[0] > max_pdp_samples:
+                    rng = np.random.RandomState(42)
+                    idx = rng.choice(X_pdp.shape[0], max_pdp_samples, replace=False)
+                    X_pdp = X_pdp[idx]
+
                 pd_result = partial_dependence(model_for_pdp, X_pdp, features=top_features_idx, kind='average')
                 pdp_results[name] = {
                     'pd_result': pd_result,
