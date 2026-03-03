@@ -5,6 +5,8 @@ address = "localhost"
 headless = true
 enableCORS = true
 enableXsrfProtection = true
+maxUploadSize = 50
+maxMessageSize = 50
 
 [browser]
 gatherUsageStats = false
