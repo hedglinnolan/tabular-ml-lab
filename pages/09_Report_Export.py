@@ -1040,21 +1040,99 @@ with col3:
         
         # Plots
         if export_plots:
+            from sklearn.metrics import confusion_matrix as sk_confusion_matrix, roc_curve, precision_recall_curve, auc as sk_auc
+
             for name, results in model_results.items():
+                y_true = results['y_test']
+                y_pred = results['y_test_pred']
+
                 if data_config.task_type == 'regression':
+                    # Predictions vs Actual
                     fig = px.scatter(
-                        x=results['y_test'], y=results['y_test_pred'],
+                        x=y_true, y=y_pred,
                         labels={'x': 'Actual', 'y': 'Predicted'},
                         title=f"{name.upper()} - Predictions vs Actual"
                     )
                     fig.add_trace(go.Scatter(
-                        x=[min(results['y_test']), max(results['y_test'])],
-                        y=[min(results['y_test']), max(results['y_test'])],
+                        x=[min(y_true), max(y_true)],
+                        y=[min(y_true), max(y_true)],
                         mode='lines', name='Perfect', line=dict(dash='dash', color='red')
                     ))
                     plot_bytes = save_plotly_fig(fig, f"plot_{name}.png")
                     if plot_bytes:
-                        zip_file.writestr(f"plots/{name}_predictions.png", plot_bytes)
+                        zip_file.writestr(f"plots/train/{name}_predictions.png", plot_bytes)
+
+                    # Residuals
+                    residuals = np.array(y_true) - np.array(y_pred)
+                    fig_res = px.histogram(residuals, nbins=30, title=f"{name.upper()} - Residual Distribution",
+                                           labels={'value': 'Residual', 'count': 'Count'})
+                    plot_bytes = save_plotly_fig(fig_res, f"resid_{name}.png")
+                    if plot_bytes:
+                        zip_file.writestr(f"plots/train/{name}_residuals.png", plot_bytes)
+                else:
+                    # Confusion Matrix
+                    cm = sk_confusion_matrix(y_true, y_pred)
+                    fig_cm = px.imshow(cm, text_auto=True, aspect="auto", title=f"{name.upper()} - Confusion Matrix",
+                                       labels=dict(x="Predicted", y="Actual"), color_continuous_scale="Blues")
+                    plot_bytes = save_plotly_fig(fig_cm, f"cm_{name}.png")
+                    if plot_bytes:
+                        zip_file.writestr(f"plots/train/{name}_confusion_matrix.png", plot_bytes)
+
+                    # ROC curve (if probabilities available)
+                    y_proba = results.get('y_test_proba')
+                    if y_proba is not None:
+                        try:
+                            unique_classes = np.unique(y_true)
+                            if len(unique_classes) == 2:
+                                proba_pos = y_proba[:, 1] if y_proba.ndim > 1 else y_proba
+                                fpr, tpr, _ = roc_curve(y_true, proba_pos)
+                                roc_auc_val = sk_auc(fpr, tpr)
+                                fig_roc = px.area(x=fpr, y=tpr, labels=dict(x="FPR", y="TPR"),
+                                                  title=f"{name.upper()} - ROC Curve (AUC={roc_auc_val:.3f})")
+                                plot_bytes = save_plotly_fig(fig_roc, f"roc_{name}.png")
+                                if plot_bytes:
+                                    zip_file.writestr(f"plots/train/{name}_roc_curve.png", plot_bytes)
+
+                                prec, rec, _ = precision_recall_curve(y_true, proba_pos)
+                                pr_auc_val = sk_auc(rec, prec)
+                                fig_pr = px.area(x=rec, y=prec, labels=dict(x="Recall", y="Precision"),
+                                                 title=f"{name.upper()} - PR Curve (AUC={pr_auc_val:.3f})")
+                                plot_bytes = save_plotly_fig(fig_pr, f"pr_{name}.png")
+                                if plot_bytes:
+                                    zip_file.writestr(f"plots/train/{name}_pr_curve.png", plot_bytes)
+                        except Exception:
+                            pass
+
+            # Explainability plots
+            perm_data = st.session_state.get('permutation_importance', {})
+            for name, pi in perm_data.items():
+                try:
+                    fn = pi.get('feature_names', [])
+                    imp = pi.get('importances_mean', [])
+                    if len(fn) > 0 and len(imp) > 0:
+                        sort_idx = np.argsort(imp)[::-1][:15]
+                        fig_pi = px.bar(x=np.array(imp)[sort_idx], y=np.array(fn)[sort_idx],
+                                        orientation='h', title=f"{name.upper()} - Permutation Importance",
+                                        labels={'x': 'Importance', 'y': 'Feature'})
+                        fig_pi.update_layout(yaxis=dict(autorange="reversed"))
+                        plot_bytes = save_plotly_fig(fig_pi, f"pi_{name}.png")
+                        if plot_bytes:
+                            zip_file.writestr(f"plots/explainability/{name}_permutation_importance.png", plot_bytes)
+                except Exception:
+                    pass
+
+            # Seed sensitivity plot
+            seed_df = st.session_state.get('sensitivity_seed_results')
+            if seed_df is not None:
+                try:
+                    metric_cols = [c for c in seed_df.columns if c not in ('seed', '_error')]
+                    if metric_cols:
+                        fig_seed = px.bar(seed_df, x='seed', y=metric_cols[0], title=f"Seed Sensitivity - {metric_cols[0]}")
+                        plot_bytes = save_plotly_fig(fig_seed, "seed_sensitivity.png")
+                        if plot_bytes:
+                            zip_file.writestr(f"plots/sensitivity/seed_sensitivity.png", plot_bytes)
+                except Exception:
+                    pass
         
         # Raw data sample
         if include_raw_data:
