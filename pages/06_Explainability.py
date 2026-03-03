@@ -295,7 +295,7 @@ if st.button("🚀 Run Full Explainability Analysis", type="primary", use_contai
         # ── 3. Partial Dependence (top 4 features from perm) ───
         overall_status.text(f"Partial dependence: {name.upper()}...")
         try:
-            if name in perm_results and spec and spec.capabilities.supports_pdp:
+            if name in perm_results and spec and spec.capabilities.supports_partial_dependence:
                 pi_data = perm_results[name]
                 top_idx = np.argsort(pi_data['importances_mean'])[::-1][:4]
                 top_features_idx = top_idx.tolist()

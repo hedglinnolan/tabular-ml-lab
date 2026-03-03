@@ -947,6 +947,7 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                     'history': results.get('history', {}),
                     'y_test_pred': y_test_pred,
                     'y_test': y_test,
+                    'y_test_proba': y_test_proba if data_config.task_type == 'classification' else None,
                     'cv_results': cv_results
                 }
                 
@@ -1347,17 +1348,57 @@ if st.session_state.get('trained_models'):
                     render_interpretation_with_llm_button(ctx, key=f"llm_resid_{name}", result_session_key=f"llm_result_resid_{name}")
                 else:
                     st.subheader("Classification Performance")
-                    if model.supports_proba():
-                        st.info("For classification, see Confusion Matrix and metrics above. ROC/PR curves can be added later.")
-                    else:
-                        st.info("This model does not support probability predictions. See Confusion Matrix above.")
-                    from sklearn.metrics import confusion_matrix as sk_confusion_matrix
+                    from sklearn.metrics import confusion_matrix as sk_confusion_matrix, roc_curve, precision_recall_curve, auc
                     from ml.eval import analyze_confusion_matrix
                     from ml.plot_narrative import narrative_confusion_matrix
                     from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button
+
+                    # ROC and PR curves (if model supports probability predictions)
+                    if model.supports_proba() and "y_test_proba" in results:
+                        y_proba = results["y_test_proba"]
+                        y_true = results["y_test"]
+
+                        # Handle binary vs multiclass
+                        unique_classes = np.unique(y_true)
+                        if len(unique_classes) == 2:
+                            # Binary: ROC curve
+                            proba_pos = y_proba[:, 1] if y_proba.ndim > 1 else y_proba
+                            fpr, tpr, _ = roc_curve(y_true, proba_pos)
+                            roc_auc = auc(fpr, tpr)
+                            fig_roc = px.area(x=fpr, y=tpr, labels=dict(x="False Positive Rate", y="True Positive Rate"),
+                                              title=f"ROC Curve (AUC = {roc_auc:.3f})")
+                            fig_roc.add_shape(type="line", x0=0, x1=1, y0=0, y1=1, line=dict(dash="dash", color="gray"))
+                            fig_roc.update_layout(template="plotly_white")
+                            st.plotly_chart(fig_roc, use_container_width=True, key=f"diag_roc_{name}")
+
+                            # Precision-Recall curve
+                            prec, rec, _ = precision_recall_curve(y_true, proba_pos)
+                            pr_auc = auc(rec, prec)
+                            fig_pr = px.area(x=rec, y=prec, labels=dict(x="Recall", y="Precision"),
+                                             title=f"Precision-Recall Curve (AUC = {pr_auc:.3f})")
+                            baseline = np.mean(y_true == unique_classes[1]) if len(unique_classes) == 2 else 0.5
+                            fig_pr.add_shape(type="line", x0=0, x1=1, y0=baseline, y1=baseline, line=dict(dash="dash", color="gray"))
+                            fig_pr.update_layout(template="plotly_white")
+                            st.plotly_chart(fig_pr, use_container_width=True, key=f"diag_pr_{name}")
+                        else:
+                            # Multiclass: per-class ROC curves
+                            from sklearn.preprocessing import label_binarize
+                            y_bin = label_binarize(y_true, classes=unique_classes)
+                            fig_roc = go.Figure()
+                            for i, cls in enumerate(unique_classes):
+                                fpr_i, tpr_i, _ = roc_curve(y_bin[:, i], y_proba[:, i])
+                                auc_i = auc(fpr_i, tpr_i)
+                                fig_roc.add_trace(go.Scatter(x=fpr_i, y=tpr_i, mode='lines', name=f"Class {cls} (AUC={auc_i:.3f})"))
+                            fig_roc.add_shape(type="line", x0=0, x1=1, y0=0, y1=1, line=dict(dash="dash", color="gray"))
+                            fig_roc.update_layout(title="ROC Curves (One-vs-Rest)", xaxis_title="FPR", yaxis_title="TPR", template="plotly_white")
+                            st.plotly_chart(fig_roc, use_container_width=True, key=f"diag_roc_{name}")
+                    elif not model.supports_proba():
+                        st.caption("This model does not support probability predictions — ROC/PR curves unavailable.")
+
+                    # Confusion Matrix
                     cm = sk_confusion_matrix(results["y_test"], results["y_test_pred"])
                     fig_cm = px.imshow(cm, text_auto=True, aspect="auto", title="Confusion Matrix", labels=dict(x="Predicted", y="Actual"), color_continuous_scale="Blues")
-                    st.plotly_chart(fig_cm, width="stretch", key=f"diag_cm_{name}")
+                    st.plotly_chart(fig_cm, use_container_width=True, key=f"diag_cm_{name}")
                     cm_stats = analyze_confusion_matrix(results["y_test"], results["y_test_pred"])
                     nar = narrative_confusion_matrix(cm_stats, model_name=name)
                     if nar:

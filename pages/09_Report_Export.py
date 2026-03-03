@@ -666,6 +666,9 @@ def generate_report() -> str:
     return "\n".join(report_lines)
 
 
+# Generate report text once — used by Export Options and Report Preview below
+report_text = generate_report()
+
 # ============================================================================
 # PUBLICATION TOOLS
 # ============================================================================
@@ -1087,9 +1090,6 @@ st.success("Report generated successfully!")
 # REPORT PREVIEW
 # ============================================================================
 st.header("Report Preview")
-
-# Generate report
-report_text = generate_report()
 
 # Display in a nice container
 with st.container():

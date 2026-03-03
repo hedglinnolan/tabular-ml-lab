@@ -88,10 +88,12 @@ if st.button("▶️ Run Seed Sensitivity", type="primary", key="run_seed"):
     pipelines = st.session_state.get("fitted_preprocessing_pipelines", {})
     pipeline = pipelines.get(selected_model)
 
-    progress = st.progress(0, text="Running seed sensitivity...")
+    progress = st.progress(0, text=f"Initializing seed sensitivity for {selected_model.upper()}... (retraining model {n_seeds} times)")
+    status_text = st.empty()
     results = []
 
     for i, seed in enumerate(seed_list):
+        status_text.text(f"Training {selected_model.upper()} with seed {seed} ({i+1}/{len(seed_list)})...")
         try:
             # Clone and retrain with different seed
             cloned = clone(model_obj)
@@ -141,6 +143,7 @@ if st.button("▶️ Run Seed Sensitivity", type="primary", key="run_seed"):
         progress.progress((i + 1) / len(seed_list), text=f"Seed {seed} ({i+1}/{len(seed_list)})")
 
     progress.empty()
+    status_text.empty()
 
     if results:
         df_seeds = pd.DataFrame(results)

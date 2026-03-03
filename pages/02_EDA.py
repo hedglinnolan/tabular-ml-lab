@@ -596,9 +596,10 @@ with st.expander("Generate Table 1", expanded=False):
         show_pvalues = st.checkbox("Show p-values", value=True, key="table1_pval")
     with col_t1b:
         show_smd = st.checkbox("Show SMD", value=False, key="table1_smd",
-                               help="Standardized Mean Difference (for 2 groups)")
+                               help="Standardized Mean Difference — requires exactly 2 groups in grouping variable")
     with col_t1c:
-        show_missing = st.checkbox("Show missing counts", value=True, key="table1_miss")
+        show_missing = st.checkbox("Show missing counts", value=True, key="table1_miss",
+                                    help="Shows count and % missing for each variable — only appears for variables with missing data")
 
     if st.button("Generate Table 1", key="gen_table1", type="primary"):
         config = Table1Config(
