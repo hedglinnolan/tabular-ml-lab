@@ -321,9 +321,12 @@ if st.button("🚀 Run Full Explainability Analysis", type="primary", use_contai
                     idx = rng.choice(X_pdp.shape[0], max_pdp_samples, replace=False)
                     X_pdp = X_pdp[idx]
 
-                pd_result = partial_dependence(model_for_pdp, X_pdp, features=top_features_idx, kind='average')
+                # Compute PDP for each feature individually (NOT as a multi-way interaction)
+                pd_per_feature = {}
+                for fidx in top_features_idx:
+                    pd_per_feature[fidx] = partial_dependence(model_for_pdp, X_pdp, features=[fidx], kind='average')
                 pdp_results[name] = {
-                    'pd_result': pd_result,
+                    'pd_per_feature': pd_per_feature,
                     'feature_indices': top_features_idx,
                     'feature_names': pi_data['feature_names'],
                 }
@@ -492,7 +495,7 @@ if perm_data or shap_data:
             with analysis_tabs[2]:
                 if name in pdp_data:
                     pd_info = pdp_data[name]
-                    pd_result = pd_info['pd_result']
+                    pd_per_feature = pd_info.get('pd_per_feature', {})
                     feat_idx = pd_info['feature_indices']
                     feat_names = pd_info['feature_names']
 
@@ -500,8 +503,9 @@ if perm_data or shap_data:
                     for i, fidx in enumerate(feat_idx):
                         fname = feat_names[fidx] if fidx < len(feat_names) else f"Feature {fidx}"
                         with cols[i % 2]:
-                            grid = pd_result['grid_values'][i]
-                            avg = pd_result['average'][i].ravel()
+                            pf = pd_per_feature.get(fidx, {})
+                            grid = pf['grid_values'][0]
+                            avg = pf['average'][0].ravel()
                             fig = go.Figure()
                             fig.add_trace(go.Scatter(x=grid, y=avg, mode='lines+markers',
                                                       line=dict(color='#667eea', width=2),
