@@ -1,0 +1,50 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation
+README.md
+DEPLOYMENT.md
+QUICKSTART.md
+docs/
+*.md
+
+# CI/CD
+.github/
+
+# Data (exclude large sample datasets)
+data/
+*.csv
+*.xlsx
+*.parquet
+
+# Logs
+*.log
+logs/

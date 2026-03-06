@@ -1,7 +1,7 @@
 """
 Reusable UI for LLM-powered interpretation of analysis results.
 
-Supports: Ollama (default), OpenAI API, Anthropic API.
+Supports: Ollama (default), OpenAI API.
 Sends rich context with a system prompt that demands actionable, specific interpretation.
 """
 from __future__ import annotations
@@ -265,15 +265,13 @@ def _call_llm(
 ) -> Optional[str]:
     """Call LLM backend with context and system prompt.
 
-    Supports: ollama, openai, anthropic.
+    Supports: ollama, openai.
     Returns the response text or None on error.
     """
     if backend == "ollama":
         return _call_ollama(context, system_prompt, model or "llama3.1:8b", ollama_url)
     elif backend == "openai":
         return _call_openai(context, system_prompt, model or "gpt-4o-mini", api_key)
-    elif backend == "anthropic":
-        return _call_anthropic(context, system_prompt, model or "claude-sonnet-4-20250514", api_key)
     else:
         logger.warning(f"Unknown LLM backend: {backend}")
         return None
@@ -333,24 +331,6 @@ def _call_openai(context: str, system_prompt: str, model: str, api_key: str) -> 
         return None
 
 
-def _call_anthropic(context: str, system_prompt: str, model: str, api_key: str) -> Optional[str]:
-    """Call Anthropic API."""
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        resp = client.messages.create(
-            model=model,
-            system=system_prompt,
-            messages=[{"role": "user", "content": context}],
-            max_tokens=800,
-            temperature=0.3,
-        )
-        return resp.content[0].text.strip()
-    except Exception as e:
-        logger.warning(f"Anthropic call failed: {e}")
-        return None
-
-
 # ============================================================================
 # Streamlit UI components
 # ============================================================================
@@ -362,12 +342,12 @@ def render_llm_settings_sidebar():
     with st.sidebar.expander("🤖 LLM Settings", expanded=False):
         backend = st.selectbox(
             "LLM Backend",
-            ["ollama", "openai", "anthropic"],
-            index=["ollama", "openai", "anthropic"].index(
+            ["ollama", "openai"],
+            index=["ollama", "openai"].index(
                 st.session_state.get("llm_backend", "ollama")
             ),
             key="llm_backend",
-            help="Choose which LLM to use for interpretation. Ollama runs locally (free), OpenAI and Anthropic require API keys.",
+            help="Choose which LLM to use for interpretation. Ollama connects to institutional models, OpenAI requires API key.",
         )
 
         if backend == "ollama":
@@ -377,7 +357,7 @@ def render_llm_settings_sidebar():
                 key="ollama_model",
                 help="Model name (e.g., llama3.1:8b, mistral, gemma2)",
             )
-            st.caption("Ollama is running locally on this server — no API key needed.")
+            st.caption("Connected to institutional Ollama backend — no API key needed.")
         elif backend == "openai":
             st.text_input(
                 "OpenAI API Key",
@@ -389,18 +369,6 @@ def render_llm_settings_sidebar():
                 "Model",
                 value=st.session_state.get("openai_model", "gpt-4o-mini"),
                 key="openai_model",
-            )
-        elif backend == "anthropic":
-            st.text_input(
-                "Anthropic API Key",
-                value=st.session_state.get("anthropic_api_key", ""),
-                key="anthropic_api_key",
-                type="password",
-            )
-            st.text_input(
-                "Model",
-                value=st.session_state.get("anthropic_model", "claude-sonnet-4-20250514"),
-                key="anthropic_model",
             )
 
 
@@ -450,20 +418,16 @@ def render_interpretation_with_llm_button(
             ctx += "\n\nPrior findings from this analysis session:\n" + "\n".join(f"- {i}" for i in eda_insights)
 
         # Call LLM
+        import os
         model = ""
         api_key = ""
-        ollama_url = "http://localhost:11434"
+        ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
         if backend == "ollama":
             model = st.session_state.get("ollama_model", "llama3.1:8b")
         elif backend == "openai":
             model = st.session_state.get("openai_model", "gpt-4o-mini")
             api_key = st.session_state.get("openai_api_key", "")
-            if not api_key:
-                st.session_state[sk] = "__no_key__"
-        elif backend == "anthropic":
-            model = st.session_state.get("anthropic_model", "claude-sonnet-4-20250514")
-            api_key = st.session_state.get("anthropic_api_key", "")
             if not api_key:
                 st.session_state[sk] = "__no_key__"
 

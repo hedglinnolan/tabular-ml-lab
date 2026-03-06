@@ -6,9 +6,13 @@ who need defensible methodology and publication-ready outputs.
 """
 import streamlit as st
 
+from utils.auth import require_authentication, show_user_info
 from utils.session_state import get_data, init_session_state
 # LLM settings now rendered by render_sidebar_workflow in theme.py
 from utils.theme import inject_custom_css, render_info_card, render_guidance, render_step_indicator, render_sidebar_workflow
+
+# Authentication gate (if enabled via AUTH_ENABLED env var)
+require_authentication()
 
 # Initialize session state
 init_session_state()
@@ -23,6 +27,9 @@ st.set_page_config(
 
 # Inject Material Design theme
 inject_custom_css()
+
+# Sidebar: Show authenticated user (if auth enabled)
+show_user_info()
 
 # Sidebar: LLM settings
 # Sidebar: Workflow Progress
