@@ -16,6 +16,7 @@ from utils.session_state import (
 from utils.storyline import add_insight, get_insights_by_category, render_breadcrumb, render_page_navigation
 from data_processor import get_numeric_columns
 from utils.theme import inject_custom_css, render_guidance, render_reviewer_concern, render_step_indicator, render_sidebar_workflow
+from utils.table_export import table
 from ml.eda_recommender import compute_dataset_signals, recommend_eda, DatasetSignals
 from ml import eda_actions
 from ml.plot_narrative import (
@@ -615,7 +616,6 @@ with st.expander("Generate Table 1", expanded=False):
         st.session_state["table1_metadata"] = table1_metadata
 
     if st.session_state.get("table1_df") is not None:
-        from utils.table_export import table
         table1_df = st.session_state["table1_df"]
         table(table1_df, key="table1")
         st.caption("💡 **Tip:** Select cells and copy (Cmd+C / Ctrl+C) to paste in Excel with headers")
