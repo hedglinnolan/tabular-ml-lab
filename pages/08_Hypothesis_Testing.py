@@ -13,6 +13,7 @@ import logging
 from utils.session_state import init_session_state, get_data
 from utils.storyline import render_breadcrumb, render_page_navigation
 from utils.theme import inject_custom_css, render_guidance, render_sidebar_workflow
+from utils.table_export import table
 from data_processor import get_numeric_columns, get_categorical_columns
 from ml.stats_tests import (
     correlation_test,
@@ -473,7 +474,7 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
             {'Group': group, 'Mean': mean}
             for group, mean in results['group_means'].items()
         ])
-        st.dataframe(means_df, width="stretch", hide_index=True)
+        table(means_df, width="stretch", hide_index=True)
         
         st.info(f"""
         **Interpretation:**
@@ -538,7 +539,7 @@ elif test_type == "Categorical association (two categorical variables)":
         # Contingency table
         contingency = pd.DataFrame(results['contingency'])
         st.write("**Contingency Table:**")
-        st.dataframe(contingency, width="stretch")
+        table(contingency, width="stretch")
         
         col1, col2 = st.columns(2)
         with col1:

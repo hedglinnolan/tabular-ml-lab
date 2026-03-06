@@ -252,7 +252,7 @@ def _run_and_show(action_id: str, title: str, run_action: str):
             if fig_type == 'plotly':
                 st.plotly_chart(fig_data, width="stretch", key=f"upfront_plot_{action_id}_{idx}")
             elif fig_type == 'table':
-                st.dataframe(fig_data, width="stretch", key=f"upfront_table_{action_id}_{idx}")
+                table(fig_data, width="stretch", key=f"upfront_table_{action_id}_{idx}")
         if interp:
             st.markdown(f"**Interpretation:** {interp}")
             stats_summary = build_eda_full_results_context(result, action_id)
@@ -357,7 +357,7 @@ for family, tasks in FAMILY_TASKS.items():
                 if fig_type == "plotly":
                     st.plotly_chart(fig_data, width="stretch", key=f"eda_plot_{fkey}_{idx}")
                 elif fig_type == "table":
-                    st.dataframe(fig_data, width="stretch", key=f"eda_table_{fkey}_{idx}")
+                    table(fig_data, width="stretch", key=f"eda_table_{fkey}_{idx}")
             if interp:
                 st.markdown(f"**Interpretation:** {interp}")
             elif findings and result.get("figures"):
@@ -408,7 +408,7 @@ if OTHER_ACTIONS:
             if fig_type == 'plotly':
                 st.plotly_chart(fig_data, width="stretch", key=f"other_plot_{other_select}_{idx}")
             elif fig_type == 'table':
-                st.dataframe(fig_data, width="stretch", key=f"other_table_{other_select}_{idx}")
+                table(fig_data, width="stretch", key=f"other_table_{other_select}_{idx}")
         if interp:
             st.markdown(f"**Interpretation:** {interp}")
             from utils.llm_ui import build_llm_context, build_eda_full_results_context, render_interpretation_with_llm_button
@@ -463,7 +463,7 @@ st.header("Standard EDA Views")
 st.subheader("Summary Statistics")
 _summary_cols = (feature_cols + [target_col]) if _has_target else feature_cols
 _summary_cols = [c for c in _summary_cols if c in df.columns]
-st.dataframe(df[_summary_cols].describe(), width="stretch")
+table(df[_summary_cols].describe(), width="stretch")
 
 # Distribution plots
 st.subheader("Distributions")

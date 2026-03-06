@@ -11,6 +11,7 @@ from typing import List, Dict
 from utils.session_state import init_session_state, get_data, DataConfig
 from utils.storyline import render_breadcrumb, render_page_navigation
 from utils.theme import inject_custom_css, render_guidance, render_reviewer_concern, render_step_indicator, render_sidebar_workflow
+from utils.table_export import table
 from data_processor import get_numeric_columns
 
 init_session_state()
@@ -221,7 +222,7 @@ if results:
                 {"Feature": f, "Score": s, "Selected": "✅" if f in result.selected_features else ""}
                 for f, s in sorted(result.scores.items(), key=lambda x: -x[1])
             ])
-            st.dataframe(scores_df, use_container_width=True, hide_index=True)
+            table(scores_df, use_container_width=True, hide_index=True)
 
             # LASSO-specific: coefficient path plot
             if result.method == "LASSO" and "path_coefs" in result.details and result.details.get("alphas"):
@@ -293,7 +294,7 @@ if results:
             matrix_data.append(row)
 
         matrix_df = pd.DataFrame(matrix_data).sort_values("Count", ascending=False)
-        st.dataframe(matrix_df, use_container_width=True, hide_index=True)
+        table(matrix_df, use_container_width=True, hide_index=True)
 
         # Apply to data config
         st.markdown("---")

@@ -19,6 +19,7 @@ from utils.storyline import render_breadcrumb, render_page_navigation
 from ml.estimator_utils import is_estimator_fitted
 from ml.model_registry import get_registry
 from utils.theme import inject_custom_css, render_step_indicator, render_guidance, render_reviewer_concern, render_sidebar_workflow
+from utils.table_export import table
 from sklearn.pipeline import Pipeline as SklearnPipeline
 
 @st.cache_resource
@@ -449,7 +450,7 @@ if perm_data or shap_data:
                         st.plotly_chart(fig, use_container_width=True, key=f"perm_chart_{name}")
 
                         with st.expander("Full rankings table"):
-                            st.dataframe(importance_df, use_container_width=True, hide_index=True)
+                            table(importance_df, use_container_width=True, hide_index=True)
 
                         from ml.plot_narrative import narrative_permutation_importance
                         nar = narrative_permutation_importance(pd_info, model_name=name)
@@ -835,7 +836,7 @@ with st.expander("Run Subgroup Analysis", expanded=False):
                             task_type=data_config.task_type or "regression",
                             n_bootstrap=200,
                         )
-                        st.dataframe(sub_df[["Subgroup", "N", sub_df.columns[2], "95% CI"]], use_container_width=True, hide_index=True)
+                        table(sub_df[["Subgroup", "N", sub_df.columns[2], "95% CI"]], use_container_width=True, hide_index=True)
 
                         fig = plot_forest_subgroups(sub_df, metric_name=sub_df.columns[2])
                         st.plotly_chart(fig, use_container_width=True, key=f"forest_{name}")

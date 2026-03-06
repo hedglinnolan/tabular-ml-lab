@@ -21,6 +21,7 @@ from utils.session_projects import get_project_manager
 from utils.dataset_db import detect_common_columns, suggest_join_keys, execute_merge
 from utils.column_utils import make_unique_columns
 from utils.theme import inject_custom_css, render_guidance, render_sidebar_workflow
+from utils.table_export import table
 from data_processor import (
     load_tabular_data, get_numeric_columns, get_selectable_columns,
     detect_file_type
@@ -239,7 +240,7 @@ if project_datasets:
             'Status': "Ready" if in_memory else "Missing"
         })
     
-    st.dataframe(pd.DataFrame(dataset_summary), width="stretch", hide_index=True)
+    table(pd.DataFrame(dataset_summary), width="stretch", hide_index=True)
     
     # Dataset actions
     with st.expander("Manage Datasets"):
@@ -336,7 +337,7 @@ if uploaded_files:
                 
                 with col1:
                     preview_rows = min(5, len(df_preview))
-                    st.dataframe(df_preview.head(5), width="stretch")
+                    table(df_preview.head(5), width="stretch")
                     st.caption(f"Shape: {df_preview.shape[0]:,} rows × {df_preview.shape[1]} columns. Showing first {preview_rows} of {len(df_preview):,} rows.")
                     if transpose_this_file:
                         st.info("Preview shows transposed data (original rows are now columns)")
@@ -518,7 +519,7 @@ if len(project_datasets) > 1:
     for name, df in dataframes.items():
         with st.expander(f"**{name}** — {df.shape[0]:,} rows × {df.shape[1]} columns", expanded=False):
             # Show preview
-            st.dataframe(df.head(3), width="stretch")
+            table(df.head(3), width="stretch")
             
             # Check orientation
             cols_much_larger = df.shape[1] > df.shape[0] * 2 and df.shape[1] > 10
@@ -555,7 +556,7 @@ if len(project_datasets) > 1:
                 st.markdown("**Preview after transpose:**")
                 transposed_df = df.T.reset_index()
                 transposed_df.columns = ['index'] + [f"col_{i}" for i in range(len(transposed_df.columns)-1)]
-                st.dataframe(transposed_df.head(5), width="stretch")
+                table(transposed_df.head(5), width="stretch")
                 st.caption(f"After transpose: {transposed_df.shape[0]:,} rows × {transposed_df.shape[1]} columns")
                 
                 # Download transposed data
@@ -721,7 +722,7 @@ if len(project_datasets) > 1:
                     if 'merge_preview' in st.session_state and st.session_state.merge_preview is not None:
                         st.markdown("#### Preview of Combined Data")
                         preview_df = st.session_state.merge_preview
-                        st.dataframe(preview_df.head(10), width="stretch")
+                        table(preview_df.head(10), width="stretch")
                         st.caption(f"Combined result: {preview_df.shape[0]:,} rows × {preview_df.shape[1]} columns")
                         
                         if preview_df.shape[0] == 0:
@@ -910,7 +911,7 @@ if len(project_datasets) > 1:
                     if 'multi_merge_preview' in st.session_state and st.session_state.multi_merge_preview is not None:
                         st.markdown("**Preview:**")
                         preview = st.session_state.multi_merge_preview
-                        st.dataframe(preview.head(10), width="stretch")
+                        table(preview.head(10), width="stretch")
                         st.caption(f"Result would be: {preview.shape[0]:,} rows × {preview.shape[1]:,} columns")
                         
                         if preview.shape[0] == 0:
@@ -933,7 +934,7 @@ if len(project_datasets) > 1:
         )
         
         selected_df = dataframes[selected_single]
-        st.dataframe(selected_df.head(5), width="stretch")
+        table(selected_df.head(5), width="stretch")
         st.caption(f"Shape: {selected_df.shape[0]:,} rows × {selected_df.shape[1]} columns")
         
         if st.button("Use This Dataset", type="primary", key="use_single"):
@@ -1065,7 +1066,7 @@ if len(project_datasets) > 1:
         st.markdown("---")
         st.subheader("Your Combined Data (Working Table)")
         working_df = st.session_state.working_table
-        st.dataframe(working_df.head(10), width="stretch")
+        table(working_df.head(10), width="stretch")
         st.caption(f"Current shape: {working_df.shape[0]:,} rows × {working_df.shape[1]} columns")
         
         # -------------------------------------------------------------------------
@@ -1162,7 +1163,7 @@ else:
         set_data(working_df)
         
         st.success(f"**Working Table:** {single_dataset['name']}")
-        st.dataframe(working_df.head(10), width="stretch")
+        table(working_df.head(10), width="stretch")
         st.caption(f"Shape: {working_df.shape[0]:,} rows × {working_df.shape[1]} columns")
     else:
         st.error("""
@@ -1255,7 +1256,7 @@ with st.expander("Cardinality Analysis (Unique Values per Column)", expanded=Tru
         })
     
     card_df = pd.DataFrame(cardinality_data)
-    st.dataframe(card_df, width="stretch", hide_index=True)
+    table(card_df, width="stretch", hide_index=True)
     audit_results['cardinality'] = cardinality_data
     
     # Warnings
@@ -1306,7 +1307,7 @@ with st.expander("Data Types & Validity Checks", expanded=False):
         })
     
     dtype_df = pd.DataFrame(dtype_data)
-    st.dataframe(dtype_df, width="stretch", hide_index=True)
+    table(dtype_df, width="stretch", hide_index=True)
     audit_results['dtypes'] = dtype_data
 
 # -------------------------------------------------------------------------
@@ -1324,7 +1325,7 @@ with st.expander("Missing Values Detail", expanded=False):
     missing_df = missing_df[missing_df['Missing Count'] > 0].sort_values('Missing Count', ascending=False)
     
     if len(missing_df) > 0:
-        st.dataframe(missing_df, width="stretch", hide_index=True)
+        table(missing_df, width="stretch", hide_index=True)
         audit_results['missing'] = missing_df.to_dict('records')
         
         # Missingness patterns
@@ -1346,7 +1347,7 @@ with st.expander("Duplicate Rows", expanded=False):
         # Show sample duplicates
         dup_mask = df.duplicated(keep=False)
         dup_sample = df[dup_mask].head(10)
-        st.dataframe(dup_sample, width="stretch")
+        table(dup_sample, width="stretch")
         st.caption("Sample of duplicate rows (showing first 10)")
     else:
         st.success("No duplicate rows found!")
@@ -1361,7 +1362,7 @@ if numeric_cols:
         numeric_stats = df[numeric_cols].describe().T
         numeric_stats['skewness'] = df[numeric_cols].skew()
         numeric_stats['kurtosis'] = df[numeric_cols].kurtosis()
-        st.dataframe(numeric_stats.round(3), width="stretch")
+        table(numeric_stats.round(3), width="stretch")
         audit_results['numeric_stats'] = numeric_stats.to_dict()
         
         # Flag potential outliers

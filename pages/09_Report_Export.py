@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 init_session_state()
 
 from utils.theme import inject_custom_css, render_step_indicator, render_guidance, render_sidebar_workflow
+from utils.table_export import table
 st.set_page_config(page_title="Report Export", page_icon="📄", layout="wide")
 inject_custom_css()
 render_sidebar_workflow(current_page="09_Report")
@@ -845,7 +846,7 @@ with st.expander("✅ TRIPOD Checklist", expanded=False):
     st.markdown(f"**{done}/{total} items addressed**")
 
     checklist_df = tracker.get_checklist_df()
-    st.dataframe(checklist_df, use_container_width=True, hide_index=True)
+    table(checklist_df, use_container_width=True, hide_index=True)
 
     st.download_button(
         "📥 Download TRIPOD Checklist",

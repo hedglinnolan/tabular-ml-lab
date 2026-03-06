@@ -14,6 +14,7 @@ import pandas as pd
 import time
 
 from utils.theme import inject_custom_css, render_sidebar_workflow
+from utils.table_export import table
 from utils.session_state import init_session_state
 from utils.storyline import render_breadcrumb, render_page_navigation
 
@@ -177,7 +178,7 @@ if st.button("▶️ Run Seed Sensitivity", type="primary", key="run_seed"):
 
             st.bar_chart(df_seeds.set_index("seed")[[primary_metric]])
             with st.expander("Full results table"):
-                st.dataframe(df_seeds, use_container_width=True)
+                table(df_seeds, use_container_width=True)
 
 # Show cached results if they exist
 elif "sensitivity_seed_results" in st.session_state:
@@ -296,7 +297,7 @@ if st.button("▶️ Run Feature Dropout", type="primary", key="run_dropout"):
                 st.markdown(f"- `{row['feature']}`: removing it improved {primary_metric} by {abs(row['impact']):.4f}")
 
         with st.expander("Full dropout results"):
-            st.dataframe(df_dropout[["feature", "score_without", "impact"]], use_container_width=True)
+            table(df_dropout[["feature", "score_without", "impact"]], use_container_width=True)
 
 elif "sensitivity_dropout_results" in st.session_state:
     df_dropout = st.session_state["sensitivity_dropout_results"]

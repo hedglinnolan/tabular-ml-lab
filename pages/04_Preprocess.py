@@ -26,6 +26,7 @@ from ml.pipeline import (
 from ml.model_registry import get_registry
 from data_processor import get_numeric_columns
 from utils.theme import inject_custom_css, render_step_indicator, render_guidance, render_sidebar_workflow
+from utils.table_export import table
 
 @st.cache_resource
 def _get_registry_cached():
@@ -862,10 +863,10 @@ if pipelines_by_model:
                 _ba, _aa = st.columns(2)
                 with _ba:
                     st.subheader("Before")
-                    st.dataframe(_before, width="stretch")
+                    table(_before, width="stretch")
                 with _aa:
                     st.subheader("After")
-                    st.dataframe(preview_df.head(100), width="stretch")
+                    table(preview_df.head(100), width="stretch")
                 csv_bytes = preview_df.to_csv(index=False).encode()
                 st.download_button(
                     "Download as CSV",
