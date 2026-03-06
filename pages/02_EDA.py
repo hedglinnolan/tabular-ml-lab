@@ -615,8 +615,10 @@ with st.expander("Generate Table 1", expanded=False):
         st.session_state["table1_metadata"] = table1_metadata
 
     if st.session_state.get("table1_df") is not None:
+        from utils.table_export import table
         table1_df = st.session_state["table1_df"]
-        st.dataframe(table1_df, use_container_width=True)
+        table(table1_df, key="table1")
+        st.caption("💡 **Tip:** Select cells and copy (Cmd+C / Ctrl+C) to paste in Excel with headers")
 
         # Test info
         table1_metadata = st.session_state.get("table1_metadata", {})

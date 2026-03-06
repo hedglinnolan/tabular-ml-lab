@@ -1076,8 +1076,8 @@ if st.session_state.get('trained_models'):
             - Check calibration plots if available
             """)
     
-    # Metrics table
-    from utils.table_export import render_table_with_copy
+    # Metrics table with native copy support
+    from utils.table_export import table
     
     comparison_data = []
     for name, results in st.session_state.model_results.items():
@@ -1089,30 +1089,12 @@ if st.session_state.get('trained_models'):
     
     if data_config.task_type == 'regression':
         comparison_df = comparison_df.sort_values('RMSE')
-        st.dataframe(
-            comparison_df.style.highlight_min(subset=['RMSE', 'MAE'], axis=0, color='lightgreen')
-            .highlight_max(subset=['R2'], axis=0, color='lightgreen'),
-            width="stretch"
-        )
     else:
         comparison_df = comparison_df.sort_values('Accuracy', ascending=False)
-        st.dataframe(
-            comparison_df.style.highlight_max(subset=['Accuracy', 'F1'], axis=0, color='lightgreen'),
-            width="stretch"
-        )
     
-    # Copy button for table export
-    tsv_data = comparison_df.to_csv(sep='\t', index=False)
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.download_button(
-            label="📋 Download Metrics Table",
-            data=tsv_data,
-            file_name="model_comparison.tsv",
-            mime="text/tab-separated-values",
-            help="Download table with headers (opens in Excel)",
-            type="secondary"
-        )
+    # Render with full copy support (select cells → Cmd+C → paste in Excel with headers)
+    table(comparison_df, key="model_metrics")
+    st.caption("💡 **Tip:** Select cells and press Cmd+C (Mac) or Ctrl+C (Windows) to copy with headers for Excel")
 
     # ================================================================
     # BOOTSTRAP CONFIDENCE INTERVALS
