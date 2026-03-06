@@ -617,8 +617,7 @@ with st.expander("Generate Table 1", expanded=False):
 
     if st.session_state.get("table1_df") is not None:
         table1_df = st.session_state["table1_df"]
-        table(table1_df, key="table1")
-        st.caption("💡 **Tip:** Select cells and copy (Cmd+C / Ctrl+C) to paste in Excel with headers")
+        table(table1_df)  # No key - CSV/LaTeX downloads provided below
 
         # Test info
         table1_metadata = st.session_state.get("table1_metadata", {})

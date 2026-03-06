@@ -1092,9 +1092,8 @@ if st.session_state.get('trained_models'):
     else:
         comparison_df = comparison_df.sort_values('Accuracy', ascending=False)
     
-    # Render with full copy support (select cells → Cmd+C → paste in Excel with headers)
+    # Model metrics table with export option
     table(comparison_df, key="model_metrics")
-    st.caption("💡 **Tip:** Select cells and press Cmd+C (Mac) or Ctrl+C (Windows) to copy with headers for Excel")
 
     # ================================================================
     # BOOTSTRAP CONFIDENCE INTERVALS
@@ -1149,7 +1148,7 @@ if st.session_state.get('trained_models'):
                     row[metric_name] = format_metric_with_ci(result, decimal_places=4)
                 ci_rows.append(row)
             ci_df = pd.DataFrame(ci_rows)
-            st.dataframe(ci_df, use_container_width=True, hide_index=True)
+            table(ci_df, key="bootstrap_ci")
             st.caption("Format: estimate [95% CI lower, upper] via BCa bootstrap (1000 resamples)")
 
     # ================================================================

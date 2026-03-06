@@ -222,7 +222,7 @@ if results:
                 {"Feature": f, "Score": s, "Selected": "✅" if f in result.selected_features else ""}
                 for f, s in sorted(result.scores.items(), key=lambda x: -x[1])
             ])
-            table(scores_df, use_container_width=True, hide_index=True)
+            table(scores_df, key="feature_scores", use_container_width=True, hide_index=True)
 
             # LASSO-specific: coefficient path plot
             if result.method == "LASSO" and "path_coefs" in result.details and result.details.get("alphas"):
@@ -294,7 +294,7 @@ if results:
             matrix_data.append(row)
 
         matrix_df = pd.DataFrame(matrix_data).sort_values("Count", ascending=False)
-        table(matrix_df, use_container_width=True, hide_index=True)
+        table(matrix_df, key="consensus_matrix", use_container_width=True, hide_index=True)
 
         # Apply to data config
         st.markdown("---")

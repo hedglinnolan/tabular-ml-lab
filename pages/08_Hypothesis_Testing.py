@@ -474,7 +474,7 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
             {'Group': group, 'Mean': mean}
             for group, mean in results['group_means'].items()
         ])
-        table(means_df, width="stretch", hide_index=True)
+        table(means_df, key="group_means", width="stretch", hide_index=True)
         
         st.info(f"""
         **Interpretation:**
@@ -539,7 +539,7 @@ elif test_type == "Categorical association (two categorical variables)":
         # Contingency table
         contingency = pd.DataFrame(results['contingency'])
         st.write("**Contingency Table:**")
-        table(contingency, width="stretch")
+        table(contingency, key="contingency_table", width="stretch")
         
         col1, col2 = st.columns(2)
         with col1:
