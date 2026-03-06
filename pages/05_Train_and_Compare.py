@@ -1077,6 +1077,8 @@ if st.session_state.get('trained_models'):
             """)
     
     # Metrics table
+    from utils.table_export import render_table_with_copy
+    
     comparison_data = []
     for name, results in st.session_state.model_results.items():
         row = {'Model': name.upper()}
@@ -1097,6 +1099,19 @@ if st.session_state.get('trained_models'):
         st.dataframe(
             comparison_df.style.highlight_max(subset=['Accuracy', 'F1'], axis=0, color='lightgreen'),
             width="stretch"
+        )
+    
+    # Copy button for table export
+    tsv_data = comparison_df.to_csv(sep='\t', index=False)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.download_button(
+            label="📋 Download Metrics Table",
+            data=tsv_data,
+            file_name="model_comparison.tsv",
+            mime="text/tab-separated-values",
+            help="Download table with headers (opens in Excel)",
+            type="secondary"
         )
 
     # ================================================================

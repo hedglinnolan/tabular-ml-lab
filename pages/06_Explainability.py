@@ -163,19 +163,44 @@ if shap_support_info:
     st.caption("SHAP methods: " + " · ".join(shap_support_info))
 
 # ── Run Button ──────────────────────────────────────────────────
-if st.button("🚀 Run Full Explainability Analysis", type="primary", use_container_width=True):
+# Initialize cancel flag
+if 'cancel_explainability' not in st.session_state:
+    st.session_state.cancel_explainability = False
+
+run_col, cancel_col = st.columns([3, 1])
+with run_col:
+    run_button = st.button("🚀 Run Full Explainability Analysis", type="primary", use_container_width=True)
+with cancel_col:
+    if st.button("🛑 Cancel", type="secondary", key="cancel_explain_init"):
+        st.session_state.cancel_explainability = True
+
+if run_button:
+    st.session_state.cancel_explainability = False  # Reset flag
     t0 = time.perf_counter()
     total_steps = len(trained) * 3  # perm + shap + pdp per model
     step_count = 0
     overall_progress = st.progress(0)
     overall_status = st.empty()
+    cancel_container = st.empty()
 
     perm_results = {}
     shap_results = {}
     pdp_results = {}
     errors = []
+    
+    # Display cancel button during execution
+    with cancel_container:
+        if st.button("🛑 Skip Current Model", type="secondary", key="cancel_explain_running"):
+            st.session_state.cancel_explainability = True
+            st.warning("Skipping current model...")
 
     for name in trained:
+        # Check if user canceled
+        if st.session_state.cancel_explainability:
+            st.warning(f"Analysis canceled. Results saved for completed models.")
+            break
+        
+        step_start = time.perf_counter()
         full_pipe, X_perm, y_perm, X_raw = _get_pipeline_and_data(name)
         if full_pipe is None:
             errors.append(f"{name}: Fitted estimator not found or not fitted. Please retrain.")
@@ -186,6 +211,7 @@ if st.button("🚀 Run Full Explainability Analysis", type="primary", use_contai
         spec = registry.get(name)
 
         # ── 1. Permutation Importance ───────────────────────────
+        perm_start = time.perf_counter()
         overall_status.text(f"Permutation importance: {name.upper()}...")
         try:
             pi = permutation_importance(full_pipe, X_perm, y_perm, n_repeats=perm_repeats,
@@ -199,12 +225,21 @@ if st.button("🚀 Run Full Explainability Analysis", type="primary", use_contai
                 'importances_std': pi.importances_std,
                 'feature_names': fnames,
             }
+            perm_time = time.perf_counter() - perm_start
+            if perm_time > 10:
+                st.caption(f"⏱️ {name.upper()} permutation took {perm_time:.1f}s (slow model)")
         except Exception as e:
             errors.append(f"{name} permutation: {e}")
         step_count += 1
         overall_progress.progress(min(step_count / total_steps, 1.0))
+        
+        # Check cancel after slow operation
+        if st.session_state.cancel_explainability:
+            st.warning(f"Canceled after permutation importance for {name.upper()}")
+            break
 
         # ── 2. SHAP ────────────────────────────────────────────
+        shap_start = time.perf_counter()
         overall_status.text(f"SHAP values: {name.upper()}...")
         try:
             import shap
@@ -288,6 +323,9 @@ if st.button("🚀 Run Full Explainability Analysis", type="primary", use_contai
                     'class_label': class_label,
                     'all_shap_values': shap_values,  # keep for class switching
                 }
+                shap_time = time.perf_counter() - shap_start
+                if shap_time > 10:
+                    st.caption(f"⏱️ {name.upper()} SHAP took {shap_time:.1f}s (slow for this model type)")
         except ImportError:
             errors.append(f"{name} SHAP: shap package not installed")
         except Exception as e:
@@ -295,6 +333,11 @@ if st.button("🚀 Run Full Explainability Analysis", type="primary", use_contai
             logger.exception(f"SHAP error for {name}: {e}")
         step_count += 1
         overall_progress.progress(min(step_count / total_steps, 1.0))
+        
+        # Check cancel after SHAP
+        if st.session_state.cancel_explainability:
+            st.warning(f"Canceled after SHAP for {name.upper()}")
+            break
 
         # ── 3. Partial Dependence (top 4 features from perm) ───
         overall_status.text(f"Partial dependence: {name.upper()}...")
