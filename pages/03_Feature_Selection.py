@@ -222,7 +222,9 @@ if results:
                 {"Feature": f, "Score": s, "Selected": "✅" if f in result.selected_features else ""}
                 for f, s in sorted(result.scores.items(), key=lambda x: -x[1])
             ])
-            table(scores_df, key="feature_scores", use_container_width=True, hide_index=True)
+            # Use method name in key to avoid duplicates in loop
+            safe_method = result.method.replace(" ", "_").replace("-", "_").lower()
+            table(scores_df, key=f"feature_scores_{safe_method}", use_container_width=True, hide_index=True)
 
             # LASSO-specific: coefficient path plot
             if result.method == "LASSO" and "path_coefs" in result.details and result.details.get("alphas"):
