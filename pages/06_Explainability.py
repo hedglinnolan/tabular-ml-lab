@@ -458,6 +458,12 @@ if perm_data or shap_data:
                     if cl:
                         ax.set_title(f"SHAP Values ({cl})", fontsize=11)
                     st.pyplot(fig)
+                    
+                    # Store figure for export
+                    if 'shap_matplotlib_figs' not in st.session_state:
+                        st.session_state['shap_matplotlib_figs'] = {}
+                    st.session_state['shap_matplotlib_figs'][f"{name}_summary"] = fig
+                    
                     plt.close(fig)
 
                     # Mean absolute SHAP bar chart
@@ -488,6 +494,69 @@ if perm_data or shap_data:
                                             feature_names=fn_plot, sample_size=X_ev.shape[0],
                                             task_type=data_config.task_type if data_config else None)
                     render_interpretation_with_llm_button(ctx, key=f"llm_shap_{name}", result_session_key=f"llm_result_shap_{name}")
+                    
+                    # Enhanced SHAP visualizations
+                    st.markdown("---")
+                    st.markdown("### 📊 Individual Prediction Explanations")
+                    
+                    # Waterfall plot for first prediction
+                    try:
+                        if sv.shape[0] > 0:
+                            sample_idx = st.slider(f"Select sample to explain (0-{min(sv.shape[0]-1, 99)})", 
+                                                   0, min(sv.shape[0]-1, 99), 0, key=f"waterfall_idx_{name}")
+                            
+                            fig_waterfall, ax_wf = plt.subplots(figsize=(10, 6))
+                            # Ensure we handle both 1D and 2D SHAP values
+                            sv_sample = sv[sample_idx] if sv.ndim > 1 else sv
+                            
+                            # Manually create waterfall plot data
+                            shap_vals_sample = pd.DataFrame({
+                                'Feature': fn_plot[:len(sv_sample)],
+                                'SHAP Value': sv_sample
+                            }).sort_values('SHAP Value', key=abs, ascending=False).head(10)
+                            
+                            # Create horizontal bar chart as waterfall approximation
+                            colors = ['#FF6B6B' if v < 0 else '#4ECDC4' for v in shap_vals_sample['SHAP Value']]
+                            ax_wf.barh(shap_vals_sample['Feature'], shap_vals_sample['SHAP Value'], color=colors)
+                            ax_wf.set_xlabel('SHAP Value (impact on prediction)')
+                            ax_wf.set_title(f'Top 10 Features Impacting Sample {sample_idx}')
+                            ax_wf.axvline(x=0, color='black', linestyle='--', linewidth=0.8)
+                            plt.tight_layout()
+                            st.pyplot(fig_waterfall)
+                            st.session_state['shap_matplotlib_figs'][f"{name}_waterfall"] = fig_waterfall
+                            plt.close(fig_waterfall)
+                            
+                            st.caption(f"🔴 Negative values push prediction lower • 🟢 Positive values push prediction higher")
+                    except Exception as e:
+                        st.info(f"Individual explanation not available: {str(e)[:100]}")
+                    
+                    # Dependence plot for top feature
+                    try:
+                        top_feature_idx = np.argmax(mean_abs)
+                        if top_feature_idx < len(fn_plot) and top_feature_idx < X_ev.shape[1]:
+                            top_feature = fn_plot[top_feature_idx]
+                            
+                            fig_dep, ax_dep = plt.subplots(figsize=(10, 5))
+                            # Create dependence scatter
+                            feature_vals = X_ev[:, top_feature_idx]
+                            shap_vals_feat = sv[:, top_feature_idx] if sv.ndim > 1 else sv
+                            
+                            scatter = ax_dep.scatter(feature_vals, shap_vals_feat, 
+                                                    alpha=0.5, c=feature_vals, cmap='viridis', s=20)
+                            ax_dep.set_xlabel(f'{top_feature} (feature value)')
+                            ax_dep.set_ylabel(f'SHAP value for {top_feature}')
+                            ax_dep.set_title(f'Feature Dependence: {top_feature}')
+                            ax_dep.axhline(y=0, color='black', linestyle='--', linewidth=0.8)
+                            plt.colorbar(scatter, ax=ax_dep, label='Feature Value')
+                            plt.tight_layout()
+                            st.pyplot(fig_dep)
+                            st.session_state['shap_matplotlib_figs'][f"{name}_dependence"] = fig_dep
+                            plt.close(fig_dep)
+                            
+                            st.caption(f"Shows how {top_feature} values influence the model's predictions")
+                    except Exception as e:
+                        st.info(f"Dependence plot not available: {str(e)[:100]}")
+                        
                 else:
                     st.info("SHAP was not computed for this model. Check the issues log above.")
 

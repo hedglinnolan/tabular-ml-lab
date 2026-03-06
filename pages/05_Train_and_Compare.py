@@ -761,13 +761,30 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
     progress_container = st.container()
     random_seed = st.session_state.get('random_seed', 42)
     
+    # Training time warning
+    slow_models = {'nn', 'extratrees', 'svc', 'svr'}
+    has_slow = any(m in slow_models for m in models_to_train)
+    if has_slow or use_optimization:
+        st.warning("""
+        ⏱️ **Training in progress.** Some models (Neural Networks, ExtraTrees, SVM) or hyperparameter 
+        optimization may take several minutes. You can:
+        - Wait for training to complete (progress shown below)
+        - Click the **X** at top-right to navigate away and return later
+        - **Refresh the page** to cancel training and start over
+        """)
+    
     for model_name in models_to_train:
         with progress_container:
             if use_optimization:
                 st.subheader(f"Optimizing and Training {model_name.upper()}")
-                st.info("⏱️ Hyperparameter optimization in progress. This may take several minutes...")
+                if model_name in slow_models:
+                    st.info("⏱️ This model typically takes 2-5 minutes with optimization. Please be patient...")
+                else:
+                    st.info("⏱️ Hyperparameter optimization in progress...")
             else:
                 st.subheader(f"Training {model_name.upper()}")
+                if model_name in slow_models:
+                    st.info("⏱️ This model may take 30-90 seconds to train...")
             progress_bar = st.progress(0)
             status_text = st.empty()
             

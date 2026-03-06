@@ -949,6 +949,18 @@ def save_plotly_fig(fig, filename: str) -> Optional[bytes]:
             return None
 
 
+def save_matplotlib_fig(fig, filename: str) -> Optional[bytes]:
+    """Save matplotlib figure as PNG bytes."""
+    try:
+        import io
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        buf.seek(0)
+        return buf.getvalue()
+    except Exception:
+        return None
+
+
 def export_model_artifact(model_wrapper, model_key: str) -> Optional[bytes]:
     """Export trained model as bytes."""
     try:
@@ -1115,6 +1127,7 @@ with col3:
                                 pass
 
             if export_plots_explain:
+                # Permutation importance (Plotly)
                 perm_data = st.session_state.get('permutation_importance', {})
                 for name, pi in perm_data.items():
                     try:
@@ -1129,6 +1142,16 @@ with col3:
                             plot_bytes = save_plotly_fig(fig_pi, f"pi_{name}.png")
                             if plot_bytes:
                                 zip_file.writestr(f"plots/explainability/{name}_permutation_importance.png", plot_bytes)
+                    except Exception:
+                        pass
+                
+                # SHAP plots (matplotlib)
+                shap_figs = st.session_state.get('shap_matplotlib_figs', {})
+                for fig_key, fig in shap_figs.items():
+                    try:
+                        plot_bytes = save_matplotlib_fig(fig, f"{fig_key}.png")
+                        if plot_bytes:
+                            zip_file.writestr(f"plots/explainability/{fig_key}.png", plot_bytes)
                     except Exception:
                         pass
 
