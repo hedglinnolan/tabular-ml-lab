@@ -761,17 +761,26 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
     progress_container = st.container()
     random_seed = st.session_state.get('random_seed', 42)
     
-    # Training time warning
+    # Training time warning with cancel option
     slow_models = {'nn', 'extratrees', 'svc', 'svr'}
     has_slow = any(m in slow_models for m in models_to_train)
+    
+    # Initialize cancel flag in session state
+    if 'cancel_training' not in st.session_state:
+        st.session_state.cancel_training = False
+    
     if has_slow or use_optimization:
-        st.warning("""
-        ⏱️ **Training in progress.** Some models (Neural Networks, ExtraTrees, SVM) or hyperparameter 
-        optimization may take several minutes. You can:
-        - Wait for training to complete (progress shown below)
-        - Click the **X** at top-right to navigate away and return later
-        - **Refresh the page** to cancel training and start over
-        """)
+        col_warn, col_cancel = st.columns([4, 1])
+        with col_warn:
+            st.warning("""
+            ⏱️ **Training in progress.** Some models (Neural Networks, ExtraTrees, SVM) or hyperparameter 
+            optimization may take several minutes. Training progress shown below.
+            """)
+        with col_cancel:
+            if st.button("🛑 Cancel Training", type="secondary", key="cancel_training_btn"):
+                st.session_state.cancel_training = True
+                st.warning("Training canceled. Trained models saved. Refresh page to train again.")
+                st.stop()
     
     for model_name in models_to_train:
         with progress_container:

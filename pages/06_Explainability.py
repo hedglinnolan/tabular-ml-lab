@@ -499,7 +499,13 @@ if perm_data or shap_data:
                     st.markdown("---")
                     st.markdown("### 📊 Individual Prediction Explanations")
                     
-                    # Waterfall plot for first prediction
+                    st.info("""
+                    **What are waterfall plots?** These show which features had the biggest impact on a single prediction. 
+                    For example, if predicting diabetes risk for patient #5, you can see exactly which lab values or demographics 
+                    pushed the prediction higher (green) or lower (red). This helps explain individual model decisions.
+                    """)
+                    
+                    # Waterfall plot for individual prediction
                     try:
                         if sv.shape[0] > 0:
                             sample_idx = st.slider(f"Select sample to explain (0-{min(sv.shape[0]-1, 99)})", 
@@ -526,36 +532,47 @@ if perm_data or shap_data:
                             st.session_state['shap_matplotlib_figs'][f"{name}_waterfall"] = fig_waterfall
                             plt.close(fig_waterfall)
                             
-                            st.caption(f"🔴 Negative values push prediction lower • 🟢 Positive values push prediction higher")
+                            st.caption(f"🔴 Negative SHAP values decrease the prediction • 🟢 Positive SHAP values increase the prediction")
                     except Exception as e:
                         st.info(f"Individual explanation not available: {str(e)[:100]}")
                     
-                    # Dependence plot for top feature
+                    # Dependence plots for top features
+                    st.markdown("---")
+                    st.info("""
+                    **What are dependence plots?** These show the relationship between a feature's value and its impact on predictions. 
+                    For example, you can see if higher glucose levels consistently push diabetes predictions higher (positive relationship), 
+                    or if the relationship is more complex (e.g., U-shaped). Each dot is one sample in your data.
+                    """)
+                    
                     try:
-                        top_feature_idx = np.argmax(mean_abs)
-                        if top_feature_idx < len(fn_plot) and top_feature_idx < X_ev.shape[1]:
-                            top_feature = fn_plot[top_feature_idx]
-                            
-                            fig_dep, ax_dep = plt.subplots(figsize=(10, 5))
-                            # Create dependence scatter
-                            feature_vals = X_ev[:, top_feature_idx]
-                            shap_vals_feat = sv[:, top_feature_idx] if sv.ndim > 1 else sv
-                            
-                            scatter = ax_dep.scatter(feature_vals, shap_vals_feat, 
-                                                    alpha=0.5, c=feature_vals, cmap='viridis', s=20)
-                            ax_dep.set_xlabel(f'{top_feature} (feature value)')
-                            ax_dep.set_ylabel(f'SHAP value for {top_feature}')
-                            ax_dep.set_title(f'Feature Dependence: {top_feature}')
-                            ax_dep.axhline(y=0, color='black', linestyle='--', linewidth=0.8)
-                            plt.colorbar(scatter, ax=ax_dep, label='Feature Value')
-                            plt.tight_layout()
-                            st.pyplot(fig_dep)
-                            st.session_state['shap_matplotlib_figs'][f"{name}_dependence"] = fig_dep
-                            plt.close(fig_dep)
-                            
-                            st.caption(f"Shows how {top_feature} values influence the model's predictions")
+                        # Get indices of top features (up to 3, or fewer if not enough features)
+                        n_top_features = min(3, len(mean_abs), X_ev.shape[1])
+                        top_feature_indices = np.argsort(mean_abs)[::-1][:n_top_features]
+                        
+                        for i, top_idx in enumerate(top_feature_indices):
+                            if top_idx < len(fn_plot) and top_idx < X_ev.shape[1]:
+                                top_feature = fn_plot[top_idx]
+                                
+                                fig_dep, ax_dep = plt.subplots(figsize=(10, 5))
+                                # Create dependence scatter
+                                feature_vals = X_ev[:, top_idx]
+                                shap_vals_feat = sv[:, top_idx] if sv.ndim > 1 else sv
+                                
+                                scatter = ax_dep.scatter(feature_vals, shap_vals_feat, 
+                                                        alpha=0.5, c=feature_vals, cmap='viridis', s=20)
+                                ax_dep.set_xlabel(f'{top_feature} (feature value)')
+                                ax_dep.set_ylabel(f'SHAP value for {top_feature}')
+                                ax_dep.set_title(f'Feature Dependence #{i+1}: {top_feature}')
+                                ax_dep.axhline(y=0, color='black', linestyle='--', linewidth=0.8)
+                                plt.colorbar(scatter, ax=ax_dep, label='Feature Value')
+                                plt.tight_layout()
+                                st.pyplot(fig_dep)
+                                st.session_state['shap_matplotlib_figs'][f"{name}_dependence_{i}"] = fig_dep
+                                plt.close(fig_dep)
+                                
+                                st.caption(f"Shows how **{top_feature}** values influence predictions. Higher on Y-axis = stronger positive impact.")
                     except Exception as e:
-                        st.info(f"Dependence plot not available: {str(e)[:100]}")
+                        st.info(f"Dependence plots not available: {str(e)[:100]}")
                         
                 else:
                     st.info("SHAP was not computed for this model. Check the issues log above.")
