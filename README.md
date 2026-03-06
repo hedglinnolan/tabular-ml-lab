@@ -16,7 +16,16 @@
     <img src="https://img.shields.io/badge/pytorch-2.0+-EE4C2C?logo=pytorch&logoColor=white" alt="PyTorch">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
   </p>
+  <p align="center">
+    <a href="https://github.com/hedglinnolan/tabular-ml-lab/tree/university-docker">
+      <img src="https://img.shields.io/badge/🎓_University_Deployment-Docker_+_AD_Auth-0066cc?style=for-the-badge" alt="University Deployment">
+    </a>
+  </p>
 </p>
+
+---
+
+> 🎓 **University IT Administrators:** Looking to deploy for your institution? Check out the [**university-docker branch**](https://github.com/hedglinnolan/tabular-ml-lab/tree/university-docker) for Docker deployment with Active Directory authentication and institutional Ollama integration. Complete setup guide included.
 
 ---
 
@@ -182,6 +191,47 @@ tabular-ml-lab/
 ├── run.sh / run.ps1          # Cross-platform run
 └── requirements.txt
 ```
+
+---
+
+## 🎓 Institutional Deployment
+
+**University IT Administrators:** Deploy Tabular ML Lab on your institutional infrastructure with Docker, Active Directory authentication, and Ollama integration.
+
+👉 **[university-docker branch](https://github.com/hedglinnolan/tabular-ml-lab/tree/university-docker)**
+
+**What's included:**
+- 🐋 **Docker/Kubernetes configs** - Production-ready deployment
+- 🔐 **Active Directory SSO** - Reverse proxy authentication (nginx/Apache examples)
+- 🤖 **Institutional Ollama** - Connect to your LLM infrastructure
+- ⚡ **Compute profiles** - Optimize for your hardware (GTX 1080 Ti → multi-GPU clusters)
+- 📚 **Complete docs** - UNIVERSITY_DEPLOYMENT.md, DOCKER_DEPLOYMENT.md, COMPUTE_PROFILES.md
+
+**Quick start:**
+```bash
+git clone -b university-docker https://github.com/hedglinnolan/tabular-ml-lab.git
+cd tabular-ml-lab
+cp .env.example .env
+nano .env  # Configure OLLAMA_URL, COMPUTE_PROFILE, AUTH settings
+docker build -t tabular-ml-lab .
+docker run -d -p 8501:8501 --env-file .env tabular-ml-lab
+```
+
+**Perfect for:**
+- 📖 Statistics courses - Students analyze data without coding
+- 🔬 PhD research - Publication-ready outputs with TRIPOD checklists
+- 🎯 Capstone projects - Guided ML workflow ensures quality
+- 👨‍🏫 Faculty research - Bootstrap CIs, SHAP, calibration analysis
+
+**Security features:**
+- ✅ On-premises deployment (no external APIs)
+- ✅ Session-isolated (no persistent data between users)
+- ✅ Non-root containers
+- ✅ Health check endpoints
+
+See [UNIVERSITY_DEPLOYMENT.md](https://github.com/hedglinnolan/tabular-ml-lab/blob/university-docker/UNIVERSITY_DEPLOYMENT.md) for complete setup guide.
+
+---
 
 ## Contributing
 
