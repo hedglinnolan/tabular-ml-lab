@@ -17,6 +17,7 @@ from utils.session_state import (
 from utils.seed import set_global_seed, get_global_seed
 from utils.storyline import get_insights_by_category, render_breadcrumb, render_page_navigation
 from utils.theme import inject_custom_css, render_guidance, render_reviewer_concern, render_step_indicator, render_metric_row, render_sidebar_workflow
+from utils.compute_config import get_limit
 from ml.splits import to_numpy_1d
 
 logger = logging.getLogger(__name__)
@@ -628,7 +629,10 @@ except Exception:
     pass
 
 # Generic Optuna optimization function
-def optimize_model_hyperparameters(model_name, spec, X_train_transformed, y_train, X_val_transformed, y_val, task_type, random_seed, n_trials=30):
+def optimize_model_hyperparameters(model_name, spec, X_train_transformed, y_train, X_val_transformed, y_val, task_type, random_seed, n_trials=None):
+    """Optimize hyperparameters with Optuna. Uses compute profile for n_trials if not specified."""
+    if n_trials is None:
+        n_trials = get_limit("optuna_trials", 30)
     """
     Generic function to optimize hyperparameters for any model using Optuna.
     
@@ -820,7 +824,7 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                     status_text.text("Running Optuna hyperparameter optimization...")
                     best_params = optimize_model_hyperparameters(
                         model_name, spec, X_train_model, y_train, X_val_model, y_val,
-                        task_type_final, random_seed, n_trials=30
+                        task_type_final, random_seed  # n_trials reads from compute profile
                     )
                     if best_params:
                         # Update selected_model_params with optimized values

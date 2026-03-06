@@ -20,6 +20,7 @@ from ml.estimator_utils import is_estimator_fitted
 from ml.model_registry import get_registry
 from utils.theme import inject_custom_css, render_step_indicator, render_guidance, render_reviewer_concern, render_sidebar_workflow
 from utils.table_export import table
+from utils.compute_config import get_limit
 from sklearn.pipeline import Pipeline as SklearnPipeline
 
 @st.cache_resource
@@ -279,9 +280,11 @@ if run_button:
                     shap_values = explainer.shap_values(X_ev)
                 else:
                     task_type = data_config.task_type if data_config else 'regression'
-                    bg_small = X_bg[:min(50, len(X_bg))]
-                    # KernelExplainer is very slow — cap eval samples at 50
-                    X_ev_kernel = X_ev[:min(50, len(X_ev))]
+                    bg_limit = get_limit("shap_kernel_max_background", 50)
+                    eval_limit = get_limit("shap_kernel_max_eval", 50)
+                    bg_small = X_bg[:min(bg_limit, len(X_bg))]
+                    # KernelExplainer can be slow — cap based on hardware profile
+                    X_ev_kernel = X_ev[:min(eval_limit, len(X_ev))]
                     if task_type == 'classification' and hasattr(model_step, 'predict_proba'):
                         explainer = shap.KernelExplainer(model_step.predict_proba, bg_small)
                     else:
@@ -358,8 +361,8 @@ if run_button:
                     X_pdp = _to_dense_numpy(X_raw)
                     model_for_pdp = full_pipe
 
-                # Subsample for PDP if dataset is large (>2000 rows)
-                max_pdp_samples = 2000
+                # Subsample for PDP if dataset is large (configurable limit)
+                max_pdp_samples = get_limit("pdp_max_samples", 2000)
                 if X_pdp.shape[0] > max_pdp_samples:
                     rng = np.random.RandomState(42)
                     idx = rng.choice(X_pdp.shape[0], max_pdp_samples, replace=False)

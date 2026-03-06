@@ -39,10 +39,16 @@ AUTH_ENABLED=true
 # Header name from reverse proxy (default: X-Remote-User)
 AUTH_HEADER=X-Remote-User
 
+# Computational resources (see COMPUTE_PROFILES.md)
+# Options: standard, high_performance, enterprise
+COMPUTE_PROFILE=enterprise
+
 # Streamlit settings (defaults usually work)
 STREAMLIT_SERVER_PORT=8501
 STREAMLIT_SERVER_ADDRESS=0.0.0.0
 ```
+
+> 💡 **Performance Tuning:** The `COMPUTE_PROFILE` setting adjusts computational limits based on your hardware. With A6000 GPUs and large RAM, use `enterprise` for maximum quality. See [COMPUTE_PROFILES.md](COMPUTE_PROFILES.md) for details.
 
 ### 3. Build and Deploy
 

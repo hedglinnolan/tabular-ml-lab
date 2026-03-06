@@ -47,7 +47,8 @@ ENV STREAMLIT_SERVER_PORT=8501 \
     STREAMLIT_SERVER_FILE_WATCHER_TYPE=none \
     OLLAMA_URL=http://ollama:11434 \
     AUTH_ENABLED=true \
-    AUTH_HEADER=X-Remote-User
+    AUTH_HEADER=X-Remote-User \
+    COMPUTE_PROFILE=enterprise
 
 USER appuser
 
