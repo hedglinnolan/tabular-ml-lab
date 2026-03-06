@@ -1,197 +1,190 @@
-<p align="center">
-  <h1 align="center">🔬 Tabular ML Lab</h1>
-  <p align="center">
-    <strong>From raw data to publication-ready results. No coding required.</strong>
-  </p>
-  <p align="center">
-    <a href="https://app.tabularml.dev">Live Demo</a> ·
-    <a href="#quick-start">Quick Start</a> ·
-    <a href="#features">Features</a> ·
-    <a href="https://github.com/hedglinnolan/tabular-ml-lab/issues">Report Bug</a>
-  </p>
-  <p align="center">
-    <img src="https://img.shields.io/badge/python-3.10+-blue?logo=python&logoColor=white" alt="Python 3.10+">
-    <img src="https://img.shields.io/badge/streamlit-1.28+-FF4B4B?logo=streamlit&logoColor=white" alt="Streamlit">
-    <img src="https://img.shields.io/badge/scikit--learn-1.3+-F7931E?logo=scikit-learn&logoColor=white" alt="scikit-learn">
-    <img src="https://img.shields.io/badge/pytorch-2.0+-EE4C2C?logo=pytorch&logoColor=white" alt="PyTorch">
-    <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
-  </p>
-</p>
+# 🔬 Tabular ML Lab - University Deployment
+
+**Publication-grade machine learning for institutional research.**
+
+An interactive research workbench for scientists working with tabular data. Upload your CSV and follow a guided, defensible ML workflow — from exploratory analysis to journal-ready methods sections.
+
+> 🎓 **University IT Administrators:** This branch (`university-docker`) is ready for deployment on your institutional infrastructure with Docker, AD authentication, and Ollama integration.
 
 ---
 
-An interactive research workbench for scientists who work with tabular data and need to publish papers. Upload your CSV, and the app guides you through a complete, defensible ML workflow — from exploratory analysis to a journal-ready methods section.
+## Institutional Features
 
-**Built for researchers, not ML engineers.** Smart defaults get you 90% of the way. Advanced options are always one click away.
-
-> 🌐 **Try it now:** [app.tabularml.dev](https://app.tabularml.dev)
-
-<!-- 
-## Screenshots
-TODO: Add screenshots of key pages
-![Upload & Audit](docs/screenshots/upload.png)
-![Train & Compare](docs/screenshots/train.png)
-![Report Export](docs/screenshots/report.png)
--->
-
-## Features
-
-### 📋 9-Step Guided Workflow
-
-| Step | Page | What it does |
-|------|------|-------------|
-| 1 | **Upload & Audit** | Load CSVs/Excel, merge multiple files, data quality checks |
-| 2 | **EDA** | Distributions, correlations, Table 1, missing data analysis |
-| 3 | **Feature Selection** | LASSO path, RFE-CV, stability selection, consensus ranking |
-| 4 | **Preprocess** | Per-model pipelines: MICE imputation, scaling, encoding, outliers |
-| 5 | **Train & Compare** | 18 model families with bootstrap CIs and baseline comparison |
-| 6 | **Explainability** | SHAP, permutation importance, calibration, decision curves |
-| 7 | **Sensitivity Analysis** | Seed robustness, feature dropout — prove your results aren't fragile |
-| 8 | **Hypothesis Testing** | Standalone stats: t-tests, ANOVA, chi-square, correlation |
-| 9 | **Report Export** | Auto-generated methods section, TRIPOD checklist, LaTeX tables |
-
-### 📊 Publication-Ready Outputs
-
-- **Table 1** with stratified descriptives, p-values, and SMD
-- **Bootstrap 95% CIs** (BCa, 1000 resamples) on all metrics
-- **Calibration analysis** — reliability diagrams, Brier score, ECE
-- **Decision curve analysis** for clinical utility
-- **Subgroup analysis** with forest plots
-- **TRIPOD checklist** auto-tracked from your workflow
-- **CONSORT-style flow diagrams**
-- **Auto-generated methods section** reflecting your actual choices
-- **Journal-quality figures** with DPI control
-
-### 🧠 18 Models, Zero Configuration
-
-| Category | Models |
-|----------|--------|
-| **Linear** | Ridge, Lasso, ElasticNet, Logistic Regression, GLM, Huber |
-| **Trees** | Random Forest, ExtraTrees, HistGradientBoosting |
-| **Distance** | KNN (regression & classification) |
-| **Margin** | SVM (SVR / SVC) |
-| **Probabilistic** | Gaussian Naive Bayes, LDA |
-| **Neural** | PyTorch MLP (configurable architecture and loss) |
-| **Baselines** | Auto-generated mean/majority + simple linear/logistic |
-
-Every model gets its own preprocessing pipeline. No data leakage. No shortcuts.
-
-### 🤖 AI-Powered Interpretation (Optional)
-
-Connect a local LLM or cloud API for plain-language analysis interpretation:
-
-| Backend | Setup |
-|---------|-------|
-| **Ollama** (free, local) | `ollama serve && ollama pull llama3.2` |
-| **OpenAI** | API key in sidebar |
-| **Anthropic** | API key in sidebar |
+✅ **Docker containerized** - Deploy on your cluster or VMs  
+✅ **Active Directory integration** - SSO via reverse proxy (nginx/Apache)  
+✅ **Institutional Ollama backend** - Connect to your LLM infrastructure  
+✅ **No external dependencies** - Runs entirely on-premises  
+✅ **Multi-user ready** - Session isolation, no data persistence between users  
+✅ **Configurable compute profiles** - Optimize for your hardware (GTX 1080 Ti → multi-GPU clusters)  
 
 ---
 
 ## Quick Start
 
-### Linux / macOS
+### For Administrators
 
+Complete deployment guide: **[UNIVERSITY_DEPLOYMENT.md](UNIVERSITY_DEPLOYMENT.md)**  
+Technical details: **[DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md)**  
+Performance tuning: **[COMPUTE_PROFILES.md](COMPUTE_PROFILES.md)**
+
+**TL;DR:**
 ```bash
-git clone https://github.com/hedglinnolan/tabular-ml-lab.git
+# Clone this branch
+git clone -b university-docker https://github.com/hedglinnolan/tabular-ml-lab.git
 cd tabular-ml-lab
 
-# Automated
-chmod +x setup.sh && ./setup.sh
-./run.sh
+# Configure for your institution
+cp .env.example .env
+nano .env  # Set OLLAMA_URL, COMPUTE_PROFILE, etc.
 
-# Or manual
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-streamlit run app.py
+# Build and deploy
+docker build -t tabular-ml-lab .
+docker run -d -p 8501:8501 --env-file .env tabular-ml-lab
 ```
 
-### Windows (PowerShell)
+### For Students/Faculty
 
-```powershell
-git clone https://github.com/hedglinnolan/tabular-ml-lab.git
-cd tabular-ml-lab
-
-# Automated
-.\setup.ps1
-.\run.ps1
-
-# Or manual
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-streamlit run app.py
-```
-
-The app opens at **http://localhost:8501**.
-
-### Requirements
-
-- Python 3.10+ (tested on 3.12)
-- ~2GB disk for dependencies (PyTorch, scikit-learn, SHAP)
-- GPU optional (only used by neural network models)
+Access the app through your institutional portal. Authentication is handled automatically via your university credentials.
 
 ---
 
-## For Researchers
+## 9-Step Research Workflow
 
-This tool enforces methodological rigor so reviewers don't have to:
-
-- ✅ Proper train/validation/test splits (no data leakage)
-- ✅ Bootstrap confidence intervals on all reported metrics
-- ✅ Automatic comparison against null and simple baselines
-- ✅ Calibration analysis for clinical prediction models
-- ✅ Sensitivity analysis to demonstrate robustness
-- ✅ TRIPOD compliance tracking throughout the workflow
-- ✅ Reproducibility manifest (seeds, versions, configurations)
-- ✅ Methods section text generated from your actual analysis choices
-
-**Your data stays private.** All processing happens in your browser session. Nothing is written to disk. No data is sent anywhere (unless you opt into cloud LLM interpretation).
+| Step | Page | What it does |
+|------|------|-------------|
+| 1 | **Upload & Audit** | Load CSVs/Excel, data quality checks, missing data analysis |
+| 2 | **EDA** | Distributions, correlations, Table 1, statistical summaries |
+| 3 | **Feature Selection** | LASSO, RFE-CV, stability selection, consensus ranking |
+| 4 | **Preprocess** | Model-specific pipelines: imputation, scaling, encoding |
+| 5 | **Train & Compare** | 18 models with bootstrap confidence intervals |
+| 6 | **Explainability** | SHAP, permutation importance, calibration curves |
+| 7 | **Sensitivity Analysis** | Seed robustness, feature dropout testing |
+| 8 | **Hypothesis Testing** | t-tests, ANOVA, chi-square, correlation |
+| 9 | **Report Export** | Auto-generated methods section + TRIPOD checklist |
 
 ---
 
-## Project Structure
+## 18 Models Included
+
+**Linear:** Ridge, Lasso, ElasticNet, Logistic, GLM, Huber  
+**Trees:** Random Forest, ExtraTrees, HistGradientBoosting  
+**Distance:** KNN (regression & classification)  
+**Margin:** SVM (SVR / SVC)  
+**Probabilistic:** Gaussian Naive Bayes, LDA  
+**Neural:** PyTorch MLP (configurable)  
+**Baselines:** Mean/majority + simple linear/logistic  
+
+---
+
+## Publication-Ready Outputs
+
+- **Table 1** with p-values and standardized mean differences
+- **Bootstrap 95% CIs** (BCa, 1000 resamples) on all metrics
+- **Calibration analysis** with reliability diagrams
+- **Decision curve analysis** for clinical utility
+- **Subgroup forest plots**
+- **TRIPOD checklist** auto-tracked
+- **Auto-generated methods section**
+- **Journal-quality figures** (300+ DPI)
+
+---
+
+## AI-Powered Interpretation
+
+Connect to your institution's Ollama backend for plain-language result interpretation.
+
+**Supported:**
+- Ollama (institutional backend, no API key needed)
+- OpenAI (optional, requires API key)
+
+---
+
+## Technical Stack
+
+- **Frontend:** Streamlit 1.28+
+- **ML:** scikit-learn 1.3+, PyTorch 2.0+
+- **Explainability:** SHAP 0.42+
+- **Visualization:** Plotly 5.14+
+- **Optimization:** Optuna 3.0+
+- **Authentication:** Reverse proxy (nginx/Apache + AD)
+- **Containerization:** Docker 20.10+
+
+---
+
+## Architecture
 
 ```
-tabular-ml-lab/
-├── app.py                    # Landing page and sidebar
-├── pages/                    # 9 workflow pages
-│   ├── 01_Upload_and_Audit.py
-│   ├── 02_EDA.py
-│   ├── 03_Feature_Selection.py
-│   ├── 04_Preprocess.py
-│   ├── 05_Train_and_Compare.py
-│   ├── 06_Explainability.py
-│   ├── 07_Sensitivity_Analysis.py
-│   ├── 08_Hypothesis_Testing.py
-│   └── 09_Report_Export.py
-├── ml/                       # Core ML modules
-│   ├── model_registry.py     # 18 model definitions
-│   ├── bootstrap.py          # BCa bootstrap CIs
-│   ├── calibration.py        # Calibration metrics & plots
-│   ├── feature_selection.py  # LASSO, RFE, stability selection
-│   ├── publication.py        # Methods section generator
-│   ├── sensitivity.py        # Seed & dropout robustness
-│   ├── table_one.py          # Table 1 generator
-│   └── ...
-├── models/                   # Model implementations
-├── utils/                    # Theme, session state, LLM UI
-├── tests/                    # pytest suite
-├── setup.sh / setup.ps1      # Cross-platform setup
-├── run.sh / run.ps1          # Cross-platform run
-└── requirements.txt
+┌─────────────────────────────────────────────────────────────┐
+│  User Browser (.edu credentials)                            │
+└─────────────────────────────────────────────────────────────┘
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Reverse Proxy (nginx/Apache + AD)                          │
+│  - Handles authentication                                   │
+│  - Passes X-Remote-User header                              │
+└─────────────────────────────────────────────────────────────┘
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Docker Container (Tabular ML Lab)                          │
+│  - Verifies authentication header                           │
+│  - Runs analysis workflows                                  │
+│  - Session-isolated (no persistent data)                    │
+└─────────────────────────────────────────────────────────────┘
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Institutional Ollama Backend                                │
+│  - Provides LLM interpretation                              │
+│  - No external API calls                                    │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## Contributing
+---
 
-Issues and PRs welcome. If you use this in your research, please cite:
+## Security & Privacy
 
-```
-Hedglin, N. (2026). Tabular ML Lab [Computer software]. 
-https://github.com/hedglinnolan/tabular-ml-lab
-```
+✅ **No data persistence** - All analysis happens in-memory, sessions isolated  
+✅ **On-premises deployment** - No data leaves institutional network  
+✅ **AD authentication** - Leverages existing identity infrastructure  
+✅ **Non-root container** - Runs as unprivileged user  
+✅ **No external APIs** - Ollama backend runs on institutional servers  
+
+---
+
+## Requirements
+
+**Runtime:**
+- Docker Engine 20.10+
+- 8GB RAM minimum (16GB recommended for large datasets)
+- 4 CPU cores minimum
+
+**Infrastructure:**
+- Reverse proxy with AD/LDAP authentication (nginx or Apache)
+- Institutional Ollama endpoint
+- HTTPS certificate (for production)
+
+---
+
+## Support
+
+**Deployment:** See [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md)  
+**Issues:** Open a ticket with your institution's IT support  
+**Feature Requests:** Contact your institutional administrator  
+
+---
 
 ## License
 
-MIT — use it however you want.
+MIT License - See LICENSE file for details
+
+---
+
+## Differences from Public Version
+
+This `university-docker` branch adds institutional deployment features:
+- ✅ Docker/Kubernetes deployment configs
+- ✅ Reverse proxy authentication (AD/SAML SSO)
+- ✅ Institutional Ollama backend integration
+- ✅ Configurable compute profiles (standard/high_performance/enterprise)
+- ❌ Removes Anthropic/Claude API support (on-premises only)
+
+**For personal use:** See the `main` branch at https://github.com/hedglinnolan/tabular-ml-lab (includes all features)
