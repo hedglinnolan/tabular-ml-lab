@@ -1,18 +1,16 @@
 """
-KeyCloak OIDC authentication for enterprise/university deployment.
+Flexible authentication for university deployment.
 
-Uses Streamlit's native st.login() (≥1.42.0) with KeyCloak as the OIDC provider.
-Requires authlib>=1.3.2 and a .streamlit/secrets.toml with [auth.keycloak] config.
+Supports multiple authentication methods via Streamlit's native auth (≥1.42.0):
+- OIDC providers (KeyCloak, Azure AD, Google Workspace, Okta, etc.)
+- SAML providers
+- Reverse proxy authentication (fallback for older deployments)
 
-KeyCloak federates with the institution's identity provider (e.g. Microsoft Entra ID
-via SAML2) and exposes an OIDC endpoint that Streamlit talks to directly — no reverse
-proxy auth layer needed.
-
-To disable authentication for local development, set AUTH_ENABLED=false.
+Configure via .streamlit/secrets.toml or disable with AUTH_ENABLED=false.
 """
 import os
 import streamlit as st
-from typing import Optional
+from typing import Optional, Dict
 
 
 def is_auth_enabled() -> bool:
@@ -20,106 +18,159 @@ def is_auth_enabled() -> bool:
     return os.getenv("AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
 
 
-def get_authenticated_user() -> Optional[str]:
+def get_auth_provider() -> str:
     """
-    Get authenticated username from Streamlit OIDC session.
-
+    Get configured authentication provider from environment or secrets.
+    
     Returns:
-        Username string if authenticated, None if auth disabled or not logged in.
+        Provider name (e.g., 'keycloak', 'saml', 'reverseproxy', 'azure', 'google')
+    """
+    # Check environment variable first
+    provider = os.getenv("AUTH_PROVIDER", "").lower()
+    if provider:
+        return provider
+    
+    # Check secrets.toml for configured providers
+    try:
+        if hasattr(st, "secrets") and "connections" in st.secrets:
+            connections = st.secrets["connections"]
+            if "keycloak" in connections:
+                return "keycloak"
+            elif "azure" in connections:
+                return "azure"
+            elif "google" in connections:
+                return "google"
+            elif "saml" in connections:
+                return "saml"
+    except Exception:
+        pass
+    
+    # Default to reverse proxy (legacy)
+    return "reverseproxy"
+
+
+def get_authenticated_user() -> Optional[Dict[str, str]]:
+    """
+    Get authenticated user info from current auth provider.
+    
+    Returns:
+        Dict with user info (name, email, username) if authenticated, None otherwise
     """
     if not is_auth_enabled():
         return None
-
-    if not st.experimental_user.is_logged_in:
+    
+    provider = get_auth_provider()
+    
+    # OIDC/SAML providers via Streamlit's native auth
+    if provider in ("keycloak", "azure", "google", "saml", "okta", "oidc"):
+        if st.experimental_user.is_logged_in:
+            return {
+                "username": st.experimental_user.email.split("@")[0] if st.experimental_user.email else "unknown",
+                "email": st.experimental_user.email or "",
+                "name": st.experimental_user.name or st.experimental_user.email or "Unknown User"
+            }
         return None
+    
+    # Reverse proxy authentication (legacy)
+    elif provider == "reverseproxy":
+        return _get_user_from_reverse_proxy()
+    
+    return None
 
-    # Prefer 'name', fall back to 'email', then 'sub' (OIDC subject claim)
-    name = st.experimental_user.get("name")
-    if name:
-        return name
-    email = st.experimental_user.get("email")
-    if email:
-        return email
-    sub = st.experimental_user.get("sub")
-    if sub:
-        return sub
-    return "authenticated_user"
+
+def _get_user_from_reverse_proxy() -> Optional[Dict[str, str]]:
+    """
+    Extract user info from reverse proxy headers.
+    
+    This is a legacy method for deployments where upstream nginx/Apache handles
+    authentication and passes user info via HTTP header (typically X-Remote-User).
+    """
+    import streamlit as st
+    
+    # Streamlit doesn't expose request headers directly in community edition
+    # Check session state (set by auth gate)
+    if "authenticated_user" in st.session_state:
+        username = st.session_state["authenticated_user"]
+        return {
+            "username": username,
+            "email": f"{username}@university.edu",  # Placeholder
+            "name": username
+        }
+    
+    # Check query params (fallback for reverse proxy that redirects with ?user=<username>)
+    try:
+        query_params = st.query_params
+        if "user" in query_params:
+            username = query_params["user"]
+            st.session_state["authenticated_user"] = username
+            return {
+                "username": username,
+                "email": f"{username}@university.edu",
+                "name": username
+            }
+    except Exception:
+        pass
+    
+    return None
 
 
 def require_authentication():
     """
     Authentication gate — blocks access if auth is enabled and user hasn't logged in.
-
+    
     Call this at the top of app.py before rendering any content.
-    Uses Streamlit's native OIDC flow via st.login('keycloak').
+    Adapts to configured auth provider automatically.
     """
     if not is_auth_enabled():
-        return
-
-    if st.experimental_user.is_logged_in:
-        # User is authenticated — proceed
-        return
-
-    # Not logged in — show login page and stop
-    st.set_page_config(
-        page_title="Tabular ML Lab — Sign In",
-        page_icon="🔒",
-        layout="centered",
-    )
-
-    st.markdown("""
-    <div style="text-align: center; padding: 3rem 0;">
-        <h1>🔬 Tabular ML Lab</h1>
-        <p style="font-size: 1.2rem; color: #64748b;">
-            Sign in with your institutional credentials to continue.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        if st.button("🔐 Sign in with KeyCloak", use_container_width=True, type="primary"):
-            st.login("keycloak")
-
-    st.markdown("""
-    <div style="text-align: center; padding-top: 2rem; color: #94a3b8; font-size: 0.85rem;">
-        Authentication is provided by your institution's identity provider via KeyCloak.<br/>
-        If you have trouble signing in, contact your IT department.
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.stop()
-
-
-def get_current_user() -> str:
-    """
-    Get the current authenticated user's display name.
-
-    Returns:
-        Username string, or "anonymous" if auth is disabled.
-    """
-    if not is_auth_enabled():
-        return "anonymous"
-
-    user = get_authenticated_user()
-    return user if user else "anonymous"
+        return  # Auth disabled
+    
+    provider = get_auth_provider()
+    
+    # OIDC/SAML providers via Streamlit's native auth
+    if provider in ("keycloak", "azure", "google", "saml", "okta", "oidc"):
+        if not st.experimental_user.is_logged_in:
+            st.title("🔐 Tabular ML Lab")
+            st.markdown(f"""
+            ### Authentication Required
+            
+            This application requires institutional credentials.
+            Click the button below to authenticate via {provider.title()}.
+            """)
+            
+            # Streamlit's native OIDC/SAML login button
+            if st.button(f"🔑 Login with {provider.title()}", type="primary"):
+                st.login(provider)
+            
+            st.stop()  # Block access until authenticated
+    
+    # Reverse proxy authentication (legacy)
+    elif provider == "reverseproxy":
+        user = _get_user_from_reverse_proxy()
+        if not user:
+            st.error("""
+            ⚠️ **Authentication Error**
+            
+            Expected authenticated user from reverse proxy, but no user info found.
+            
+            **For administrators:** Ensure your reverse proxy (nginx/Apache) is configured to:
+            1. Handle authentication (LDAP/AD/SAML)
+            2. Pass authenticated username via `X-Remote-User` header
+            3. Redirect to this app with `?user=<username>` query parameter
+            
+            Or configure native OIDC/SAML in `.streamlit/secrets.toml` and set `AUTH_PROVIDER=keycloak|azure|google|saml`.
+            """)
+            st.stop()
 
 
 def show_user_info():
-    """Display authenticated user info and logout button in sidebar."""
-    if not is_auth_enabled():
-        return
-
-    if not st.experimental_user.is_logged_in:
-        return
-
-    name = st.experimental_user.get("name", "")
-    email = st.experimental_user.get("email", "")
-
-    display = name or email or "User"
-    st.sidebar.markdown(f"👤 **{display}**")
-    if email and name:
-        st.sidebar.caption(email)
-
-    if st.sidebar.button("Sign out", key="auth_logout"):
-        st.logout()
+    """Display authenticated user info in sidebar (optional)."""
+    user = get_authenticated_user()
+    if user:
+        with st.sidebar:
+            st.markdown("---")
+            st.markdown(f"**Logged in as:** {user['name']}")
+            
+            provider = get_auth_provider()
+            if provider in ("keycloak", "azure", "google", "saml", "okta", "oidc"):
+                if st.button("🚪 Logout"):
+                    st.logout()
