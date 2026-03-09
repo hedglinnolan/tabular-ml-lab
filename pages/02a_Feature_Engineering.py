@@ -20,8 +20,8 @@ init_session_state()
 inject_custom_css()
 
 st.title("🧬 Feature Engineering (Optional)")
-render_breadcrumb("02_5_Feature_Engineering")
-render_page_navigation("02_5_Feature_Engineering")
+render_breadcrumb("02a_Feature_Engineering")
+render_page_navigation("02a_Feature_Engineering")
 
 # ============================================================================
 # Introduction & Educational Content
