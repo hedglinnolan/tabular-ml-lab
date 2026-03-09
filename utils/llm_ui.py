@@ -1,11 +1,12 @@
 """
 Reusable UI for LLM-powered interpretation of analysis results.
 
-Supports: Ollama (default), OpenAI API.
+Supports: vLLM (default for enterprise), Ollama, OpenAI API.
 Sends rich context with a system prompt that demands actionable, specific interpretation.
 """
 from __future__ import annotations
 
+import os
 from typing import Optional, Dict, Any, List
 import logging
 
@@ -251,8 +252,8 @@ def build_llm_context(
 def _get_llm_backend(session_state: Optional[Dict] = None) -> str:
     """Get configured LLM backend from session state or default."""
     if session_state:
-        return session_state.get("llm_backend", "ollama")
-    return "ollama"
+        return session_state.get("llm_backend", "vllm")
+    return "vllm"
 
 
 def _call_llm(
@@ -268,12 +269,47 @@ def _call_llm(
     Supports: ollama, openai.
     Returns the response text or None on error.
     """
-    if backend == "ollama":
+    if backend == "vllm":
+        vllm_url = os.getenv("VLLM_URL", "http://localhost:8000")
+        return _call_vllm(context, system_prompt, model or os.getenv("VLLM_MODEL", ""), vllm_url)
+    elif backend == "ollama":
         return _call_ollama(context, system_prompt, model or "llama3.1:8b", ollama_url)
     elif backend == "openai":
         return _call_openai(context, system_prompt, model or "gpt-4o-mini", api_key)
     else:
         logger.warning(f"Unknown LLM backend: {backend}")
+        return None
+
+
+def _call_vllm(context: str, system_prompt: str, model: str, url: str) -> Optional[str]:
+    """Call vLLM via its OpenAI-compatible API."""
+    try:
+        import openai
+        client = openai.OpenAI(
+            base_url=f"{url.rstrip('/')}/v1",
+            api_key="none",  # vLLM doesn't require an API key by default
+        )
+        # If no model specified, list available and use the first one
+        if not model:
+            models = client.models.list()
+            if models.data:
+                model = models.data[0].id
+            else:
+                logger.warning("vLLM has no models loaded")
+                return None
+
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": context},
+            ],
+            temperature=0.3,
+            max_tokens=800,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        logger.warning(f"vLLM call failed: {e}")
         return None
 
 
@@ -340,17 +376,34 @@ def render_llm_settings_sidebar():
     import streamlit as st
 
     with st.sidebar.expander("🤖 LLM Settings", expanded=False):
+        options = ["vllm", "ollama", "openai"]
+        labels = {
+            "vllm": "vLLM (Institutional)",
+            "ollama": "Ollama",
+            "openai": "OpenAI API",
+        }
+        current = st.session_state.get("llm_backend", "vllm")
+        if current not in options:
+            current = "vllm"
+
         backend = st.selectbox(
             "LLM Backend",
-            ["ollama", "openai"],
-            index=["ollama", "openai"].index(
-                st.session_state.get("llm_backend", "ollama")
-            ),
+            options,
+            index=options.index(current),
+            format_func=lambda x: labels.get(x, x),
             key="llm_backend",
-            help="Choose which LLM to use for interpretation. Ollama connects to institutional models, OpenAI requires API key.",
+            help="Choose which LLM to use for interpretation.",
         )
 
-        if backend == "ollama":
+        if backend == "vllm":
+            st.text_input(
+                "vLLM model (optional)",
+                value=st.session_state.get("vllm_model", ""),
+                key="vllm_model",
+                help="Leave blank to auto-detect the loaded model.",
+            )
+            st.caption("Connected to institutional vLLM endpoint — no API key needed.")
+        elif backend == "ollama":
             st.text_input(
                 "Ollama model",
                 value=st.session_state.get("ollama_model", "llama3.1:8b"),
@@ -423,7 +476,9 @@ def render_interpretation_with_llm_button(
         api_key = ""
         ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
-        if backend == "ollama":
+        if backend == "vllm":
+            model = st.session_state.get("vllm_model", "") or os.getenv("VLLM_MODEL", "")
+        elif backend == "ollama":
             model = st.session_state.get("ollama_model", "llama3.1:8b")
         elif backend == "openai":
             model = st.session_state.get("openai_model", "gpt-4o-mini")

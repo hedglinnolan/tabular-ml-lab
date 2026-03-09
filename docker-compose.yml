@@ -10,18 +10,21 @@ services:
     ports:
       - "8501:8501"
     environment:
-      - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434}
+      - VLLM_URL=${VLLM_URL:-http://vllm:8000}
+      - VLLM_MODEL=${VLLM_MODEL:-}
+      - OLLAMA_URL=${OLLAMA_URL:-}
       - AUTH_ENABLED=${AUTH_ENABLED:-true}
-      - AUTH_HEADER=${AUTH_HEADER:-X-Remote-User}
+      - COMPUTE_PROFILE=${COMPUTE_PROFILE:-enterprise}
       - PYTHONUNBUFFERED=1
     volumes:
-      # Mount for persistent session data (optional)
+      # Persistent session data (optional)
       - ./data:/app/data
+      # Mount secrets.toml for KeyCloak OIDC auth.
+      # Copy secrets.toml.example → secrets.toml and fill in your values.
+      - ./.streamlit/secrets.toml:/app/.streamlit/secrets.toml:ro
     networks:
       - ml-network
     restart: unless-stopped
-    depends_on:
-      - ollama
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
       interval: 30s
@@ -29,7 +32,7 @@ services:
       retries: 3
       start_period: 40s
 
-  # Local Ollama instance (for testing - school will provide their own)
+  # Local Ollama instance (legacy / fallback — vLLM is the recommended backend)
   ollama:
     image: ollama/ollama:latest
     container_name: ollama-backend
@@ -40,6 +43,8 @@ services:
     networks:
       - ml-network
     restart: unless-stopped
+    profiles:
+      - ollama  # Only starts with: docker-compose --profile ollama up
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 30s

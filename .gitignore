@@ -34,9 +34,8 @@ env/
 *.swo
 *~
 
-# Streamlit (but allow config)
-.streamlit/*
-!.streamlit/config.toml
+# Streamlit secrets (NEVER commit secrets.toml)
+.streamlit/secrets.toml
 
 # Data files (but allow example data)
 *.csv

@@ -1,14 +1,14 @@
 # University Deployment Guide
 
-This guide helps universities deploy Tabular ML Lab on their own infrastructure with Docker containerization, Active Directory authentication, and institutional Ollama integration.
+This guide helps universities deploy Tabular ML Lab on their own infrastructure with Docker containerization, KeyCloak OIDC authentication, and institutional LLM integration.
 
 ---
 
 ## Prerequisites
 
 - Docker Engine 20.10+ and Docker Compose 1.29+
-- Reverse proxy with AD/SAML authentication (nginx or Apache)
-- Institutional Ollama endpoint (or deploy your own)
+- KeyCloak instance with OIDC client (admin access required to create one)
+- Institutional LLM endpoint — vLLM (recommended) or Ollama
 - Git access to this repository
 
 ---
@@ -32,14 +32,17 @@ nano .env
 Edit `.env` file:
 
 ```bash
-# Ollama Backend - Point to your institutional endpoint
-OLLAMA_URL=http://your-ollama-server.university.edu:11434
+# LLM Backend — vLLM is recommended (OpenAI-compatible API)
+VLLM_URL=http://your-vllm-server.university.edu:8000
+VLLM_MODEL=          # Leave blank to auto-detect loaded model
+
+# Ollama (legacy fallback — only needed if using Ollama instead of vLLM)
+OLLAMA_URL=
 
 # Authentication
 AUTH_ENABLED=true
-AUTH_HEADER=X-Remote-User  # Header from reverse proxy
 
-# Compute Profile - Adjust based on your hardware
+# Compute Profile — Adjust based on your hardware
 # Options: standard, high_performance, enterprise
 COMPUTE_PROFILE=high_performance
 
@@ -48,7 +51,55 @@ STREAMLIT_SERVER_PORT=8501
 STREAMLIT_SERVER_ADDRESS=0.0.0.0
 ```
 
-### Step 3: Choose Compute Profile
+### Step 3: Configure KeyCloak OIDC Authentication
+
+#### 3a. Create a KeyCloak OIDC Client
+
+In the KeyCloak admin console:
+
+1. **Select your realm** (or create one)
+2. Navigate to **Clients → Create Client**
+3. Set:
+   - **Client type:** OpenID Connect
+   - **Client ID:** `tabular-ml-lab` (or any name)
+4. Under **Settings:**
+   - **Valid Redirect URIs:** `https://YOUR_APP_URL/oauth2callback`
+   - **Web Origins:** `https://YOUR_APP_URL` (or `*` for testing)
+5. Under **Credentials:**
+   - Copy the **Client Secret**
+6. Note the **OIDC Discovery URL:**
+   ```
+   https://YOUR_KEYCLOAK_DOMAIN/auth/realms/YOUR_REALM/.well-known/openid-configuration
+   ```
+
+#### 3b. Configure Streamlit Secrets
+
+```bash
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml
+nano .streamlit/secrets.toml
+```
+
+Fill in the values from KeyCloak:
+
+```toml
+[auth]
+redirect_uri = "https://ml-lab.university.edu/oauth2callback"
+cookie_secret = "your-random-secret-string"
+
+[auth.keycloak]
+client_id = "tabular-ml-lab"
+client_secret = "your-client-secret-from-keycloak"
+server_metadata_url = "https://keycloak.university.edu/auth/realms/myrealm/.well-known/openid-configuration"
+```
+
+Generate the cookie secret:
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+> **⚠️ Never commit secrets.toml to version control.** It is already in `.gitignore`.
+
+### Step 4: Choose Compute Profile
 
 See [COMPUTE_PROFILES.md](COMPUTE_PROFILES.md) for detailed performance guidance.
 
@@ -57,35 +108,28 @@ See [COMPUTE_PROFILES.md](COMPUTE_PROFILES.md) for detailed performance guidance
 - **Professional GPUs** (A6000, A100): `COMPUTE_PROFILE=high_performance`
 - **Multi-GPU Cluster**: `COMPUTE_PROFILE=enterprise`
 
-### Step 4: Build and Deploy
+### Step 5: Build and Deploy
 
 ```bash
 # Build Docker image
 docker build -t tabular-ml-lab:latest .
 
-# Run container
+# Run with Docker Compose (recommended)
+docker-compose up -d
+
+# Or run standalone container
 docker run -d \
   --name tabular-ml-lab \
   --restart unless-stopped \
   -p 8501:8501 \
   --env-file .env \
+  -v $(pwd)/.streamlit/secrets.toml:/app/.streamlit/secrets.toml:ro \
   tabular-ml-lab:latest
 
 # Verify deployment
 docker logs tabular-ml-lab
 curl http://localhost:8501/_stcore/health
 ```
-
-### Step 5: Configure Reverse Proxy
-
-The app expects authentication to be handled by an upstream reverse proxy (nginx or Apache with AD integration).
-
-**Complete examples in [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md):**
-- nginx with mod_auth_ldap
-- Apache with mod_authnz_ldap
-- Kubernetes with OAuth2 Proxy
-
-**Key requirement:** Proxy must pass authenticated username via HTTP header (default: `X-Remote-User`)
 
 ---
 
@@ -94,133 +138,120 @@ The app expects authentication to be handled by an upstream reverse proxy (nginx
 ```
 ┌────────────────────────────────────────────────────────┐
 │  Student/Faculty Browser                               │
-│  (logs in with university credentials)                 │
+│  (clicks "Sign in with KeyCloak")                      │
 └────────────────────────────────────────────────────────┘
-                        ▼
+              │                          ▲
+              │  OIDC redirect           │  ID token
+              ▼                          │
 ┌────────────────────────────────────────────────────────┐
-│  Reverse Proxy (nginx/Apache)                          │
-│  - Active Directory / LDAP authentication              │
-│  - Passes X-Remote-User header to backend              │
+│  KeyCloak (Identity Broker)                            │
+│  - Federates with Entra ID / SAML2 / LDAP / etc.      │
+│  - Issues OIDC tokens to Streamlit                     │
 └────────────────────────────────────────────────────────┘
-                        ▼
+              │                          ▲
+              │  SAML2 / OIDC            │  Assertion
+              ▼                          │
+┌────────────────────────────────────────────────────────┐
+│  Institutional Identity Provider                       │
+│  (Microsoft Entra ID, Shibboleth, Okta, etc.)          │
+└────────────────────────────────────────────────────────┘
+
 ┌────────────────────────────────────────────────────────┐
 │  Docker Container (Tabular ML Lab)                     │
-│  - Verifies authentication header                      │
+│  - st.login("keycloak") handles OIDC flow natively     │
 │  - Session-isolated analysis workflows                 │
-│  - No persistent data storage                          │
+│  - User identity available for audit logging           │
 └────────────────────────────────────────────────────────┘
                         ▼
 ┌────────────────────────────────────────────────────────┐
-│  Institutional Ollama Backend                          │
-│  - Provides LLM interpretation (optional)              │
-│  - No external API calls                               │
+│  LLM Backend (vLLM recommended)                        │
+│  - OpenAI-compatible API                               │
+│  - No external API calls — fully on-premises           │
 └────────────────────────────────────────────────────────┘
+```
+
+---
+
+## LLM Backend Configuration
+
+### Option A: vLLM (Recommended)
+
+vLLM provides an OpenAI-compatible API and typically hosts more capable models than Ollama.
+
+```bash
+VLLM_URL=http://your-vllm-server.university.edu:8000
+VLLM_MODEL=          # Auto-detects the loaded model if blank
+```
+
+The app connects to `{VLLM_URL}/v1/chat/completions`. No API key is required by default.
+
+**Verify connectivity:**
+```bash
+curl http://your-vllm-server:8000/v1/models
+```
+
+### Option B: Ollama (Legacy)
+
+If your institution runs Ollama:
+
+```bash
+OLLAMA_URL=http://ollama.cs.university.edu:11434
+VLLM_URL=             # Leave blank to disable vLLM
+```
+
+Users can switch between backends in the sidebar LLM Settings panel.
+
+**To start the bundled Ollama (for testing only):**
+```bash
+docker-compose --profile ollama up -d
+docker exec -it ollama-backend ollama pull llama3.1:8b
 ```
 
 ---
 
 ## Deployment Options
 
-### Option A: Docker (Simplest)
+### Option A: Docker Compose (Recommended)
 
-Best for: Single-server deployments, testing, small classes
-
-```bash
-docker run -d -p 8501:8501 --env-file .env tabular-ml-lab
-```
-
-### Option B: Docker Compose (Recommended)
-
-Best for: Coordinating multiple services (app + Ollama)
+Best for: Coordinating app + services, standard deployments
 
 ```bash
 docker-compose up -d
 ```
 
-Includes local Ollama instance for testing. Edit `docker-compose.yml` to point to institutional Ollama.
+### Option B: Docker (Simplest)
+
+Best for: Single-server, custom orchestration
+
+```bash
+docker run -d -p 8501:8501 --env-file .env \
+  -v $(pwd)/.streamlit/secrets.toml:/app/.streamlit/secrets.toml:ro \
+  tabular-ml-lab
+```
 
 ### Option C: Kubernetes (Production)
 
-Best for: Large-scale deployments, high availability, auto-scaling
+Best for: Large-scale, high availability, auto-scaling
 
 See [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md) for complete Kubernetes manifests.
 
----
-
-## Authentication Setup
-
-### Method 1: Reverse Proxy Header (Recommended)
-
-Your existing web infrastructure handles authentication:
-
-1. User hits `https://ml-lab.university.edu`
-2. Nginx/Apache redirects to university login
-3. After authentication, proxy sets `X-Remote-User: username` header
-4. Request forwarded to Docker container with header
-
-**Pros:**
-- Leverages existing SSO infrastructure
-- No code changes needed
-- Works with any identity provider
-
-**Configuration examples in DOCKER_DEPLOYMENT.md**
-
-### Method 2: Direct LDAP (Alternative)
-
-App queries AD directly - requires more configuration.
-
-**Not recommended** - use reverse proxy method instead.
-
----
-
-## Ollama Backend
-
-### Connect to Institutional Ollama
-
-If your university runs a centralized Ollama service:
-
-```bash
-OLLAMA_URL=http://ollama.cs.university.edu:11434
+Mount `secrets.toml` as a Kubernetes Secret:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tabular-ml-secrets
+type: Opaque
+stringData:
+  secrets.toml: |
+    [auth]
+    redirect_uri = "https://ml-lab.university.edu/oauth2callback"
+    cookie_secret = "..."
+    [auth.keycloak]
+    client_id = "..."
+    client_secret = "..."
+    server_metadata_url = "..."
 ```
-
-### Deploy Your Own
-
-If you don't have institutional Ollama:
-
-```bash
-# Use included docker-compose setup
-docker-compose up -d
-
-# Pull models
-docker exec -it ollama-backend ollama pull llama3.1:8b
-docker exec -it ollama-backend ollama pull mistral:7b
-```
-
-**Models recommended:**
-- `llama3.1:8b` - Best balance of quality and speed
-- `mistral:7b` - Alternative, slightly faster
-- `gemma2:9b` - Google's open model
-
----
-
-## Compute Profile Optimization
-
-The app automatically adjusts performance based on your hardware.
-
-**Set in `.env`:**
-```bash
-COMPUTE_PROFILE=enterprise  # For powerful clusters
-```
-
-**Performance comparison:**
-
-| Profile | PDP Samples | SHAP Evals | Optuna Trials | Best For |
-|---------|-------------|------------|---------------|----------|
-| standard | 2,000 | 50 | 30 | Consumer GPUs, laptops |
-| high_performance | 10,000 | 200 | 50 | A6000, A100 single GPU |
-| enterprise | 50,000 | 500 | 100 | Multi-GPU clusters |
-
-**Full details:** [COMPUTE_PROFILES.md](COMPUTE_PROFILES.md)
 
 ---
 
@@ -228,16 +259,16 @@ COMPUTE_PROFILE=enterprise  # For powerful clusters
 
 ✅ **Already implemented:**
 - Non-root container user
-- Session-only data storage (no persistence)
-- Authentication gate before app loads
+- OIDC authentication (no credentials stored in app)
+- Session-only data storage (no persistence by default)
 - Health check endpoint for monitoring
 
 ⚠️ **Your responsibility:**
-- HTTPS on reverse proxy
-- Firewall rules (restrict container access)
+- HTTPS termination (TLS certificate on load balancer or reverse proxy)
+- Keep `secrets.toml` secure (restrict file permissions, don't commit to git)
+- Firewall rules (restrict container network access)
 - Regular Docker image updates
-- AD/LDAP credentials security
-- Audit logs enabled on reverse proxy
+- KeyCloak client configuration review
 
 ---
 
@@ -252,73 +283,102 @@ curl http://localhost:8501/_stcore/health
 
 ### 2. Authentication Test
 
-```bash
-# Without auth header (should fail)
-curl http://localhost:8501
+1. Open `https://ml-lab.university.edu` in a browser
+2. You should see the "Sign in with KeyCloak" button
+3. Click it — you'll be redirected to KeyCloak → your IdP login
+4. After login, you should see the app with your name in the sidebar
 
-# With auth header (should work)
-curl -H "X-Remote-User: testuser" http://localhost:8501
-```
-
-### 3. Ollama Connectivity
+### 3. LLM Connectivity
 
 ```bash
-# From inside container
-docker exec -it tabular-ml-lab curl http://your-ollama-server:11434/api/tags
+# vLLM
+curl http://your-vllm-server:8000/v1/models
 
-# Should return JSON list of available models
+# Ollama (if using)
+curl http://your-ollama-server:11434/api/tags
 ```
 
 ### 4. Full Integration Test
 
-1. Access through reverse proxy: `https://ml-lab.university.edu`
-2. Log in with university credentials
+1. Access the app through your deployment URL
+2. Sign in with institutional credentials
 3. Upload a CSV file
-4. Run through EDA page
-5. Try LLM interpretation (if Ollama configured)
+4. Run through the EDA page
+5. Try LLM interpretation (sidebar → LLM Settings → Interpret with AI)
 
 ---
 
 ## Troubleshooting
 
-### "Authentication Required" Error
+### "Sign in with KeyCloak" doesn't work
 
 **Possible causes:**
-- Reverse proxy not passing `X-Remote-User` header
-- Header name mismatch (check `AUTH_HEADER` in `.env`)
-- Proxy authentication not working
+- `secrets.toml` not mounted or not readable
+- `redirect_uri` doesn't match what's registered in KeyCloak
+- `server_metadata_url` is unreachable from the container
+- `authlib` not installed (check `pip list | grep Authlib` in container)
 
 **Debug:**
 ```bash
-# Check what headers the app sees
-docker exec -it tabular-ml-lab env | grep AUTH
+# Check secrets are mounted
+docker exec tabular-ml-lab cat /app/.streamlit/secrets.toml
+
+# Check OIDC discovery is reachable from container
+docker exec tabular-ml-lab curl -s https://YOUR_KEYCLOAK/auth/realms/YOUR_REALM/.well-known/openid-configuration
+
+# Check app logs
+docker logs tabular-ml-lab | grep -i auth
 ```
+
+### Redirect URI Mismatch
+
+KeyCloak returns "Invalid parameter: redirect_uri":
+- The `redirect_uri` in `secrets.toml` must **exactly** match what's registered in KeyCloak's Valid Redirect URIs
+- Must be `https://YOUR_APP_URL/oauth2callback` (with the `/oauth2callback` path)
+- Check for trailing slashes or http vs https mismatch
 
 ### LLM Interpretation Not Working
 
-**Possible causes:**
-- Ollama URL incorrect
-- Firewall blocking port 11434
-- Model not pulled
-
-**Debug:**
+**vLLM:**
 ```bash
-# Test Ollama directly
-curl http://your-ollama-server:11434/api/tags
-
-# Check app logs
-docker logs tabular-ml-lab | grep -i ollama
+# Test from inside container
+docker exec tabular-ml-lab curl http://your-vllm-server:8000/v1/models
 ```
+
+**Ollama:**
+```bash
+docker exec tabular-ml-lab curl http://your-ollama-server:11434/api/tags
+```
+
+**Common issues:**
+- Firewall blocking the port
+- DNS not resolving from inside Docker network
+- No model loaded on the vLLM server
 
 ### Slow Performance
 
-**If analysis is taking too long:**
-
-1. Check compute profile: `docker exec -it tabular-ml-lab env | grep COMPUTE`
+1. Check compute profile: `docker exec tabular-ml-lab env | grep COMPUTE`
 2. Consider lowering profile: `COMPUTE_PROFILE=standard`
 3. Monitor resources: `docker stats tabular-ml-lab`
 
 **See [COMPUTE_PROFILES.md](COMPUTE_PROFILES.md) for benchmarking guide.**
+
+---
+
+## Compute Profile Optimization
+
+**Set in `.env`:**
+```bash
+COMPUTE_PROFILE=enterprise  # For powerful clusters
+```
+
+| Profile | PDP Samples | SHAP Evals | Optuna Trials | Best For |
+|---------|-------------|------------|---------------|----------|
+| standard | 2,000 | 50 | 30 | Consumer GPUs, laptops |
+| high_performance | 10,000 | 200 | 50 | A6000, A100 single GPU |
+| enterprise | 50,000 | 500 | 100 | Multi-GPU clusters |
+
+**Full details:** [COMPUTE_PROFILES.md](COMPUTE_PROFILES.md)
 
 ---
 
@@ -327,57 +387,30 @@ docker logs tabular-ml-lab | grep -i ollama
 ### Resource Usage
 
 ```bash
-# Real-time monitoring
 docker stats tabular-ml-lab
-
-# Memory usage over time
-docker stats --no-stream tabular-ml-lab
-
-# Logs
 docker logs -f tabular-ml-lab
 ```
 
 ### User Activity
 
-Enable reverse proxy access logs:
-
-```nginx
-# nginx example
-access_log /var/log/nginx/ml-lab-access.log combined;
-```
-
-Track:
-- Login frequency
-- Page views per session
-- Analysis completion rates
+With OIDC, user identity is available in the app. Enable access logging on your HTTPS proxy to track usage.
 
 ---
 
 ## Updating the Application
 
 ```bash
-# Pull latest changes
 cd tabular-ml-lab
 git pull origin university-docker
-
-# Rebuild image
 docker build -t tabular-ml-lab:latest .
-
-# Stop old container
-docker stop tabular-ml-lab && docker rm tabular-ml-lab
-
-# Start new container
-docker run -d --name tabular-ml-lab --restart unless-stopped \
-  -p 8501:8501 --env-file .env tabular-ml-lab:latest
+docker-compose down && docker-compose up -d
 ```
-
-**For Kubernetes:** Update deployment image tag and roll out.
 
 ---
 
 ## Scaling for Large Classes
 
-### Horizontal Scaling (Multiple Containers)
+### Horizontal Scaling
 
 ```yaml
 # docker-compose.yml
@@ -387,22 +420,9 @@ services:
       replicas: 3
 ```
 
-### Load Balancing
-
-Use nginx upstream:
-
-```nginx
-upstream tabular_ml {
-    server app1:8501;
-    server app2:8501;
-    server app3:8501;
-}
-```
-
-### Resource Limits
+### Resource Limits (Kubernetes)
 
 ```yaml
-# Kubernetes example
 resources:
   requests:
     memory: "4Gi"
@@ -414,43 +434,12 @@ resources:
 
 ---
 
-## Support
-
-**For deployment questions:**
-1. Check [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md) for detailed configs
-2. Review [COMPUTE_PROFILES.md](COMPUTE_PROFILES.md) for performance tuning
-3. Check Docker logs: `docker logs tabular-ml-lab`
-4. Open an issue on GitHub: https://github.com/hedglinnolan/tabular-ml-lab/issues
-
-**For application bugs:**
-- GitHub Issues: https://github.com/hedglinnolan/tabular-ml-lab/issues
-- Include logs and reproduction steps
-
----
-
-## Example Use Cases
-
-✅ **Statistics courses** - Students analyze datasets without coding  
-✅ **PhD research** - Publication-ready outputs with TRIPOD checklists  
-✅ **Capstone projects** - Guided ML workflow ensures methodology quality  
-✅ **Faculty research** - Bootstrap CIs, SHAP, calibration analysis  
-
----
-
-## License
-
-MIT License - Free for educational and research use
-
-See [LICENSE](LICENSE) for full terms.
-
----
-
 ## Differences from Public Version
 
 This university-docker branch includes:
 - ✅ Docker/Kubernetes deployment configs
-- ✅ Reverse proxy authentication
-- ✅ Institutional Ollama integration
+- ✅ KeyCloak OIDC authentication (any IdP: Entra ID, Shibboleth, Okta, etc.)
+- ✅ vLLM + Ollama institutional LLM integration
 - ✅ Configurable compute profiles
 - ❌ Removed Anthropic/Claude API (on-premises only)
 
@@ -458,15 +447,14 @@ The main branch at https://github.com/hedglinnolan/tabular-ml-lab includes all f
 
 ---
 
-## Questions?
+## Support
 
-**Common questions answered in:**
-- [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md) - Detailed deployment configs
-- [COMPUTE_PROFILES.md](COMPUTE_PROFILES.md) - Performance tuning
-- [README.md](README.md) - Feature overview
+- GitHub Issues: https://github.com/hedglinnolan/tabular-ml-lab/issues
+- [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md) — Detailed deployment configs
+- [COMPUTE_PROFILES.md](COMPUTE_PROFILES.md) — Performance tuning
 
-**Still stuck?** Open a GitHub issue with:
-- Deployment method (Docker/K8s)
-- Hardware specs
-- Error messages and logs
-- What you've tried
+---
+
+## License
+
+MIT License — Free for educational and research use. See [LICENSE](LICENSE) for full terms.

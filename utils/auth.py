@@ -1,11 +1,14 @@
 """
-Reverse proxy authentication for enterprise deployment.
+KeyCloak OIDC authentication for enterprise/university deployment.
 
-Expects authentication to be handled by upstream reverse proxy (nginx/Apache)
-with Active Directory integration. The proxy passes authenticated username
-via HTTP header (typically X-Remote-User).
+Uses Streamlit's native st.login() (≥1.42.0) with KeyCloak as the OIDC provider.
+Requires authlib>=1.3.2 and a .streamlit/secrets.toml with [auth.keycloak] config.
 
-This module verifies the header is present and extracts user information.
+KeyCloak federates with the institution's identity provider (e.g. Microsoft Entra ID
+via SAML2) and exposes an OIDC endpoint that Streamlit talks to directly — no reverse
+proxy auth layer needed.
+
+To disable authentication for local development, set AUTH_ENABLED=false.
 """
 import os
 import streamlit as st
@@ -17,94 +20,106 @@ def is_auth_enabled() -> bool:
     return os.getenv("AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
 
 
-def get_auth_header_name() -> str:
-    """Get the name of the authentication header from environment."""
-    return os.getenv("AUTH_HEADER", "X-Remote-User")
-
-
 def get_authenticated_user() -> Optional[str]:
     """
-    Get authenticated username from reverse proxy header.
-    
+    Get authenticated username from Streamlit OIDC session.
+
     Returns:
-        Username string if authenticated, None if auth disabled or header missing
+        Username string if authenticated, None if auth disabled or not logged in.
     """
     if not is_auth_enabled():
         return None
-    
-    # Streamlit doesn't expose request headers directly in community edition
-    # We use a workaround via query params or session state
-    # The reverse proxy should be configured to pass user as query param
-    # OR the deployment should use Streamlit Enterprise with custom component
-    
-    # Method 1: Check session state (set by auth gate)
-    if "authenticated_user" in st.session_state:
-        return st.session_state["authenticated_user"]
-    
-    # Method 2: Check query params (fallback)
-    # Proxy can be configured to redirect to /?user=<username>
-    try:
-        query_params = st.query_params
-        if "user" in query_params:
-            username = query_params["user"]
-            st.session_state["authenticated_user"] = username
-            return username
-    except Exception:
-        pass
-    
-    return None
+
+    if not st.experimental_user.is_logged_in:
+        return None
+
+    # Prefer 'name', fall back to 'email', then 'sub' (OIDC subject claim)
+    name = st.experimental_user.get("name")
+    if name:
+        return name
+    email = st.experimental_user.get("email")
+    if email:
+        return email
+    sub = st.experimental_user.get("sub")
+    if sub:
+        return sub
+    return "authenticated_user"
 
 
 def require_authentication():
     """
-    Authentication gate - blocks access if auth enabled and no valid user.
-    
+    Authentication gate — blocks access if auth is enabled and user hasn't logged in.
+
     Call this at the top of app.py before rendering any content.
+    Uses Streamlit's native OIDC flow via st.login('keycloak').
     """
     if not is_auth_enabled():
-        # Auth disabled - allow access
         return
-    
-    user = get_authenticated_user()
-    
-    if not user:
-        # No authenticated user - show error and stop
-        st.error("🔒 Authentication Required")
-        st.markdown("""
-        **Access Denied**
-        
-        This application requires authentication through your institution's identity provider.
-        
-        If you reached this page directly:
-        - You must access the application through the institutional portal
-        - Your session may have expired - please log in again
-        - Contact IT support if you continue to see this message
-        """)
-        st.stop()
-    
-    # User authenticated - store in session state for access by other pages
-    st.session_state["authenticated_user"] = user
+
+    if st.experimental_user.is_logged_in:
+        # User is authenticated — proceed
+        return
+
+    # Not logged in — show login page and stop
+    st.set_page_config(
+        page_title="Tabular ML Lab — Sign In",
+        page_icon="🔒",
+        layout="centered",
+    )
+
+    st.markdown("""
+    <div style="text-align: center; padding: 3rem 0;">
+        <h1>🔬 Tabular ML Lab</h1>
+        <p style="font-size: 1.2rem; color: #64748b;">
+            Sign in with your institutional credentials to continue.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("🔐 Sign in with KeyCloak", use_container_width=True, type="primary"):
+            st.login("keycloak")
+
+    st.markdown("""
+    <div style="text-align: center; padding-top: 2rem; color: #94a3b8; font-size: 0.85rem;">
+        Authentication is provided by your institution's identity provider via KeyCloak.<br/>
+        If you have trouble signing in, contact your IT department.
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.stop()
 
 
 def get_current_user() -> str:
     """
-    Get the current authenticated user's username.
-    
+    Get the current authenticated user's display name.
+
     Returns:
-        Username string, or "anonymous" if auth is disabled
+        Username string, or "anonymous" if auth is disabled.
     """
     if not is_auth_enabled():
         return "anonymous"
-    
+
     user = get_authenticated_user()
     return user if user else "anonymous"
 
 
 def show_user_info():
-    """Display authenticated user info in sidebar (optional)."""
+    """Display authenticated user info and logout button in sidebar."""
     if not is_auth_enabled():
         return
-    
-    user = get_current_user()
-    if user != "anonymous":
-        st.sidebar.markdown(f"👤 **Logged in as:** {user}")
+
+    if not st.experimental_user.is_logged_in:
+        return
+
+    name = st.experimental_user.get("name", "")
+    email = st.experimental_user.get("email", "")
+
+    display = name or email or "User"
+    st.sidebar.markdown(f"👤 **{display}**")
+    if email and name:
+        st.sidebar.caption(email)
+
+    if st.sidebar.button("Sign out", key="auth_logout"):
+        st.logout()
