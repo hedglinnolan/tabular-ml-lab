@@ -40,6 +40,11 @@ if task_mode != 'prediction':
     st.warning("⚠️ Feature Selection is available in Prediction mode only.")
     st.stop()
 
+# Check if feature engineering was applied
+if st.session_state.get('feature_engineering_applied'):
+    n_engineered = len(st.session_state.get('engineered_feature_names', []))
+    st.info(f"🧬 **Feature Engineering Applied:** Working with engineered dataset ({n_engineered} new features created)")
+
 # Get feature info
 all_features = data_config.feature_cols
 target_col = data_config.target_col

@@ -103,6 +103,9 @@ def init_session_state():
     defaults = {
         # Data
         'raw_data': None,
+        'df_engineered': None,  # Dataset after feature engineering
+        'feature_engineering_applied': False,
+        'engineered_feature_names': [],
         'data_config': DataConfig(),
         'data_audit': None,
         
@@ -174,8 +177,11 @@ def init_session_state():
 
 
 def get_data() -> Optional[pd.DataFrame]:
-    """Get active data from session state. Uses filtered_data when plausibility filter mode was used, else raw_data."""
-    return st.session_state.get('filtered_data') or st.session_state.get('raw_data')
+    """Get active data from session state. 
+    Priority: df_engineered (if feature engineering was applied) > filtered_data > raw_data"""
+    return (st.session_state.get('df_engineered') or 
+            st.session_state.get('filtered_data') or 
+            st.session_state.get('raw_data'))
 
 
 def set_data(df: pd.DataFrame):
