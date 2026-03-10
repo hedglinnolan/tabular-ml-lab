@@ -973,45 +973,57 @@ if new_features > 0:
     with st.expander("📋 View All New Feature Names"):
         st.write(engineered_features)
     
-    st.warning("""
-    ⚠️ **Next Steps:**
+    # Check if already saved
+    already_saved = st.session_state.get('feature_engineering_applied', False)
     
-    1. **Save** engineered features below
-    2. Go to **Feature Selection**  to identify the most important features
-    3. Feature selection is **strongly recommended** after engineering to remove redundant/unhelpful features
-    
-    **Explainability reminder:** Be prepared to justify feature engineering choices to peer reviewers!
-    """)
-    
-    # Save button
-    if st.button("💾 Save Engineered Features & Proceed", type="primary", key="save_btn"):
-        df_engineered = pd.concat([X_engineered, y], axis=1)
+    if already_saved:
+        st.success("""
+        ✅ **Features already saved!**
         
-        st.session_state["df_engineered"] = df_engineered
-        st.session_state["feature_engineering_applied"] = True
-        st.session_state["engineered_feature_names"] = engineered_features
-        st.session_state["engineering_log"] = engineering_log
+        Your engineered features are part of the working dataset.
         
-        # Log methodology action
-        log_methodology(
-            step='Feature Engineering',
-            action=f"Created {len(engineered_features)} engineered features",
-            details={
-                'techniques': engineering_log,
-                'feature_count': len(engineered_features)
-            }
-        )
-        
-        st.success(f"✅ Saved engineered dataset! ({len(engineered_features)} new features)")
-        st.balloons()
-        st.info("""
-        👉 **Next step: Feature Selection**
-        
-        Your engineered features are now part of the working dataset.
-        Navigate to **Feature Selection** to identify the most important features.
+        👉 **Next:** Navigate to **Feature Selection** to identify the most important features.
         """)
-        # Force page rerun to show updated state
-        st.rerun()
+    else:
+        st.warning("""
+        ⚠️ **Next Steps:**
+        
+        1. **Save** engineered features below
+        2. Go to **Feature Selection**  to identify the most important features
+        3. Feature selection is **strongly recommended** after engineering to remove redundant/unhelpful features
+        
+        **Explainability reminder:** Be prepared to justify feature engineering choices to peer reviewers!
+        """)
+        
+        # Save button (only show if not already saved)
+        if st.button("💾 Save Engineered Features & Proceed", type="primary", key="save_btn"):
+            df_engineered = pd.concat([X_engineered, y], axis=1)
+            
+            st.session_state["df_engineered"] = df_engineered
+            st.session_state["feature_engineering_applied"] = True
+            st.session_state["engineered_feature_names"] = engineered_features
+            st.session_state["engineering_log"] = engineering_log
+            
+            # Log methodology action
+            log_methodology(
+                step='Feature Engineering',
+                action=f"Created {len(engineered_features)} engineered features",
+                details={
+                    'techniques': engineering_log,
+                    'feature_count': len(engineered_features)
+                }
+            )
+            
+            st.success(f"✅ Saved engineered dataset! ({len(engineered_features)} new features)")
+            st.balloons()
+            st.info("""
+            👉 **Next step: Feature Selection**
+            
+            Your engineered features are now part of the working dataset.
+            Navigate to **Feature Selection** to identify the most important features.
+            """)
+            # Force page rerun to show updated state
+            st.rerun()
 else:
     st.info("ℹ️ No feature engineering applied yet. Enable techniques above, or click **⏭️ Skip** at the top to proceed with original features.")
 
