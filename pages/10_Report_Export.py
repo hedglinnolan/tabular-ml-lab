@@ -77,6 +77,10 @@ data_audit = st.session_state.get('data_audit')
 profile = st.session_state.get('dataset_profile')
 coach_output = st.session_state.get('coach_output')
 
+if not data_config:
+    st.warning("Please configure your data in Upload & Audit first")
+    st.stop()
+
 if not trained_models:
     st.warning("Please train models first")
     st.stop()

@@ -160,6 +160,10 @@ if not st.session_state.get('trained_models'):
     st.stop()
 
 data_config: DataConfig = st.session_state.get('data_config')
+if not data_config:
+    st.warning("Please configure your data in Upload & Audit first")
+    st.stop()
+
 pipeline = get_preprocessing_pipeline()
 X_test = st.session_state.get('X_test')
 y_test = st.session_state.get('y_test')
