@@ -109,7 +109,7 @@ st.set_page_config(
     layout="wide"
 )
 inject_custom_css()
-render_sidebar_workflow(current_page="01_Upload")
+render_sidebar_workflow(current_page="01_Upload_and_Audit")
 
 st.title("Data Upload & Project Management")
 render_breadcrumb("01_Upload_and_Audit")

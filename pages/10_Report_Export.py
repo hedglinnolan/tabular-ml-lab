@@ -30,7 +30,7 @@ from utils.theme import inject_custom_css, render_step_indicator, render_guidanc
 from utils.table_export import table
 st.set_page_config(page_title="Report Export", page_icon="📄", layout="wide")
 inject_custom_css()
-render_sidebar_workflow(current_page="09_Report")
+render_sidebar_workflow(current_page="10_Report_Export")
 render_step_indicator(9, "Report Export")
 st.title("📄 Report Export")
 render_breadcrumb("10_Report_Export")

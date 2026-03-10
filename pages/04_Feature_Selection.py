@@ -18,7 +18,7 @@ init_session_state()
 
 st.set_page_config(page_title="Feature Selection", page_icon="🎯", layout="wide")
 inject_custom_css()
-render_sidebar_workflow(current_page="03_Feature")
+render_sidebar_workflow(current_page="04_Feature_Selection")
 render_step_indicator(3, "Feature Selection")
 st.title("🎯 Feature Selection")
 render_breadcrumb("04_Feature_Selection")

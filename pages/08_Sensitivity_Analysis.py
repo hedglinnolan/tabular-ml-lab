@@ -22,7 +22,7 @@ init_session_state()
 
 st.set_page_config(page_title="Sensitivity Analysis | Tabular ML Lab", layout="wide")
 inject_custom_css()
-render_sidebar_workflow(current_page="07_Sensitivity")
+render_sidebar_workflow(current_page="08_Sensitivity_Analysis")
 
 st.title("🔬 Sensitivity Analysis")
 render_breadcrumb("08_Sensitivity_Analysis")

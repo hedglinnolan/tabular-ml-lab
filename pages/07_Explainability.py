@@ -32,7 +32,7 @@ init_session_state()
 
 st.set_page_config(page_title="Explainability", page_icon="🔬", layout="wide")
 inject_custom_css()
-render_sidebar_workflow(current_page="06_Explain")
+render_sidebar_workflow(current_page="07_Explainability")
 render_step_indicator(6, "Explain & Validate")
 
 # ── Page Header ─────────────────────────────────────────────────

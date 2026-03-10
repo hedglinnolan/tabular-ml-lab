@@ -37,7 +37,7 @@ init_session_state()
 
 st.set_page_config(page_title="Preprocessing", page_icon="⚙️", layout="wide")
 inject_custom_css()
-render_sidebar_workflow(current_page="05_Preprocess")
+render_sidebar_workflow(current_page="05_Preprocess")  # Page ID correct after renumbering
 render_step_indicator(4, "Preprocessing")
 st.title("⚙️ Preprocessing Builder")
 render_breadcrumb("05_Preprocess")

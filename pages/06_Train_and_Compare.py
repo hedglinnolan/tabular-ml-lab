@@ -83,7 +83,7 @@ set_global_seed(st.session_state.get('random_seed', 42))
 
 st.set_page_config(page_title="Train & Compare", page_icon="🧠", layout="wide")
 inject_custom_css()
-render_sidebar_workflow(current_page="05_Train")
+render_sidebar_workflow(current_page="06_Train_and_Compare")
 render_step_indicator(5, "Train & Compare Models")
 st.title("🧠 Train & Compare Models")
 render_breadcrumb("06_Train_and_Compare")

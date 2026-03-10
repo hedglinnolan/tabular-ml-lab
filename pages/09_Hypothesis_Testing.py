@@ -31,7 +31,7 @@ init_session_state()
 
 st.set_page_config(page_title="Statistical Validation", page_icon="📊", layout="wide")
 inject_custom_css()
-render_sidebar_workflow(current_page="08_Hypothesis")
+render_sidebar_workflow(current_page="09_Hypothesis_Testing")
 st.title("📊 Statistical Validation")
 render_breadcrumb("09_Hypothesis_Testing")
 render_page_navigation("09_Hypothesis_Testing")
