@@ -74,13 +74,16 @@ with st.expander("📚 Should I use Feature Engineering?", expanded=True):
 
 df = get_data()
 if df is None:
-    st.info("👈 Please upload data first ")
+    st.info("👈 Please upload data first in Upload & Audit")
     st.stop()
 
-target = st.session_state.get("target")
-if not target:
-    st.info("👈 Please select target variable in Upload & Audit ")
+# Get data configuration
+data_config = st.session_state.get('data_config')
+if not data_config or not data_config.target_col:
+    st.info("👈 Please configure your target variable in Upload & Audit")
     st.stop()
+
+target = data_config.target_col
 
 # Check if we're working with an already-engineered dataset
 if st.session_state.get('feature_engineering_applied'):
