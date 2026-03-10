@@ -123,20 +123,35 @@ st.info(f"""
 - {len(numeric_features)} numeric, {len(categorical_features)} categorical, {len(datetime_features)} datetime
 """)
 
-# Initialize tracking
-X_engineered = X.copy()
-engineered_features = []
-engineering_log = []  # Track what was done for reporting
+# Initialize tracking - persist across reruns using session state
+if 'fe_work_in_progress' not in st.session_state or st.session_state.get('fe_reset_requested'):
+    st.session_state.fe_work_in_progress = {
+        'X_engineered': X.copy(),
+        'engineered_features': [],
+        'engineering_log': []
+    }
+    st.session_state.fe_reset_requested = False
+
+# Get working copy from session state
+X_engineered = st.session_state.fe_work_in_progress['X_engineered']
+engineered_features = st.session_state.fe_work_in_progress['engineered_features']
+engineering_log = st.session_state.fe_work_in_progress['engineering_log']
 
 # ============================================================================
 # Navigation: Skip or Proceed
 # ============================================================================
 
-col1, col2 = st.columns([3, 1])
+col1, col2, col3 = st.columns([2, 1, 1])
 with col1:
     st.markdown("**Choose whether to engineer features or skip this step:**")
 with col2:
-    if st.button("⏭️ Skip Feature Engineering", help="Proceed to Feature Selection with original features"):
+    if st.button("🔄 Reset", help="Clear all engineered features and start over", type="secondary"):
+        st.session_state.fe_reset_requested = True
+        st.session_state.pop("df_engineered", None)
+        st.session_state["feature_engineering_applied"] = False
+        st.rerun()
+with col3:
+    if st.button("⏭️ Skip", help="Proceed to Feature Selection with original features"):
         st.info("✅ Skipped feature engineering. Proceeding with original features.")
         # Make sure no engineered features are in session state
         st.session_state.pop("df_engineered", None)
@@ -267,7 +282,13 @@ if use_poly:
                 engineered_features.extend(new_cols)
                 engineering_log.append(f"Polynomial degree {poly_degree} ({'interaction-only' if interaction_only else 'full'}): +{len(new_cols)} features")
                 
+                # Save back to session state
+                st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
+                st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
+                st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                
                 st.success(f"✅ Created **{len(new_cols):,} polynomial features**")
+                st.rerun()  # Refresh to show updated summary
                 
             except Exception as e:
                 st.error(f"❌ Error: {e}")
@@ -368,6 +389,13 @@ if use_transforms:
                                 st.warning(f"⚠️ Skipped 1/{feat}: contains zeros")
                     
                     engineered_features.extend(new_cols)
+                    
+                    # Save back to session state
+                    st.session_state.fe_work_in_progress["X_engineered"] = X_engineered
+                    st.session_state.fe_work_in_progress["engineered_features"] = engineered_features
+                    st.session_state.fe_work_in_progress["engineering_log"] = engineering_log
+                    
+                    st.rerun()
                     engineering_log.append(f"Mathematical transforms: +{len(new_cols)} features")
                     st.success(f"✅ Created **{len(new_cols)} transformed features**")
                     
@@ -442,8 +470,15 @@ if use_ratios:
                     
                     if new_cols:
                         engineering_log.append(f"Ratio features: +{len(new_cols)} features")
-                        st.success(f"✅ Created **{len(new_cols)} ratio features**")
+                        
+                        # Save back to session state
+                        st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
+                        st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
+                        st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                        
                         st.session_state.ratio_list = []  # Clear list
+                        st.success(f"✅ Created **{len(new_cols)} ratio features**")
+                        st.rerun()
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
 
@@ -528,7 +563,14 @@ if use_binning:
                     
                     engineered_features.extend(new_cols)
                     engineering_log.append(f"Binning ({strategy}, {n_bins} bins): +{len(new_cols)} features")
+                    
+                    # Save back to session state
+                    st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
+                    st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
+                    st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                    
                     st.success(f"✅ Created **{len(new_cols)} binned features**")
+                    st.rerun()
                     
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
@@ -704,9 +746,15 @@ if use_tda:
                 engineered_features.extend(tda_feature_names)
                 engineering_log.append(f"TDA (H{homology_dims}): +{len(tda_feature_names)} features")
                 
+                # Save back to session state
+                st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
+                st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
+                st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                
                 progress_bar.progress(100, "Complete!")
                 
                 st.success(f"✅ Created **{len(tda_feature_names)} TDA features**")
+                st.rerun()
                 
                 with st.expander("View TDA features"):
                     st.dataframe(tda_df.describe())
@@ -771,7 +819,13 @@ if use_dimred:
                     engineered_features.extend(pca_cols)
                     engineering_log.append(f"PCA: +{n_components_pca} features ({pca.explained_variance_ratio_.sum():.1%} variance)")
                     
+                    # Save back to session state
+                    st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
+                    st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
+                    st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                    
                     st.success(f"✅ Created **{n_components_pca} PCA features** ({pca.explained_variance_ratio_.sum():.1%} variance)")
+                    st.rerun()
                     
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
@@ -804,7 +858,13 @@ if use_dimred:
                     engineered_features.extend(umap_cols)
                     engineering_log.append(f"UMAP: +{n_components_umap} features")
                     
+                    # Save back to session state
+                    st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
+                    st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
+                    st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                    
                     st.success(f"✅ Created **{n_components_umap} UMAP features**")
+                    st.rerun()
                     
                 except ImportError:
                     st.error("❌ umap-learn not installed. Run: `pip install umap-learn`")
