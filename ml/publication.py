@@ -78,6 +78,29 @@ class TRIPODTracker:
 # Methods Section Generator
 # ============================================================================
 
+def generate_methods_from_log() -> Dict[str, List[Dict[str, Any]]]:
+    """Extract methodology actions grouped by step from session state log.
+    
+    Returns:
+        Dictionary mapping step name to list of log entries for that step.
+    """
+    try:
+        import streamlit as st
+        log = st.session_state.get('methodology_log', [])
+    except ImportError:
+        # Not in Streamlit context
+        return {}
+    
+    steps = {}
+    for entry in log:
+        step = entry.get('step', 'Unknown')
+        if step not in steps:
+            steps[step] = []
+        steps[step].append(entry)
+    
+    return steps
+
+
 def generate_methods_section(
     data_config: Dict[str, Any],
     preprocessing_config: Dict[str, Any],
@@ -132,6 +155,21 @@ def generate_methods_section(
 
     if feature_selection_method:
         sections.append(f" Feature selection was performed using {feature_selection_method}.")
+    
+    # Use logged Feature Selection data if available
+    logged_steps = generate_methods_from_log()
+    if 'Feature Selection' in logged_steps:
+        for entry in logged_steps['Feature Selection']:
+            details = entry.get('details', {})
+            n_before = details.get('n_features_before')
+            n_after = details.get('n_features_after')
+            methods = details.get('methods', [])
+            if n_before and n_after:
+                if methods:
+                    methods_str = ", ".join(methods)
+                    sections.append(f" Feature selection using {methods_str} reduced the feature set from {n_before} to {n_after} predictors.")
+                else:
+                    sections.append(f" This reduced the feature set from {n_before} to {n_after} predictors.")
 
     # Feature Engineering (if applied)
     try:
@@ -190,7 +228,56 @@ def generate_methods_section(
         sections.append("[PLACEHOLDER: Describe how missing data were handled.]")
 
     sections.append("\n\n### Data Preprocessing\n")
-    if _has_summary:
+    
+    # Check logged preprocessing data
+    if 'Preprocessing' in logged_steps:
+        preprocessing_logged = True
+        for entry in logged_steps['Preprocessing']:
+            details = entry.get('details', {})
+            # Use logged preprocessing details if available
+            if details:
+                sentences = []
+                if details.get('imputation'):
+                    imp_labels = {
+                        "median": "median imputation",
+                        "mean": "mean imputation",
+                        "iterative": "multiple imputation by chained equations (MICE)",
+                        "constant": "constant value imputation"
+                    }
+                    imp_label = imp_labels.get(details['imputation'], details['imputation'])
+                    sentences.append(f"Missing values were handled using {imp_label}.")
+                
+                if details.get('scaling') and details['scaling'] != 'none':
+                    scale_labels = {
+                        "standard": "z-score standardization",
+                        "robust": "robust scaling",
+                        "minmax": "min-max normalization"
+                    }
+                    scale_label = scale_labels.get(details['scaling'], details['scaling'])
+                    sentences.append(f"Continuous features were scaled using {scale_label}.")
+                
+                if details.get('encoding'):
+                    enc_labels = {
+                        "onehot": "one-hot encoding",
+                        "target": "target encoding",
+                        "ordinal": "ordinal encoding"
+                    }
+                    enc_label = enc_labels.get(details['encoding'], details['encoding'])
+                    sentences.append(f"Categorical variables were encoded using {enc_label}.")
+                
+                if details.get('outlier_handling') and details['outlier_handling'] != 'none':
+                    outlier_labels = {
+                        "percentile": "percentile-based winsorization",
+                        "mad": "MAD-based outlier clipping",
+                        "iqr": "IQR-based outlier removal"
+                    }
+                    outlier_label = outlier_labels.get(details['outlier_handling'], details['outlier_handling'])
+                    sentences.append(f"Outliers were addressed using {outlier_label}.")
+                
+                if sentences:
+                    sections.append(" ".join(sentences))
+                    break  # Use first logged preprocessing entry
+    elif _has_summary:
         sentences = []
         _sc = _preproc.get("scaling", {})
         if _sc.get("method", "none") != "none":
@@ -229,18 +316,54 @@ def generate_methods_section(
 
     # Model development
     sections.append("\n\n### Model Development\n")
-    model_names = list(model_configs.keys()) if model_configs else []
-    if model_names:
-        sections.append(
-            f"The following models were developed and compared: {', '.join(n.upper() for n in model_names)}."
-        )
+    
+    # Use logged Model Training data if available
+    if 'Model Training' in logged_steps:
+        for entry in logged_steps['Model Training']:
+            details = entry.get('details', {})
+            models_trained = details.get('models', [])
+            best_model = details.get('best_model')
+            use_cv = details.get('use_cv', False)
+            cv_folds_logged = details.get('cv_folds')
+            hyperopt = details.get('hyperparameter_optimization', False)
+            
+            if models_trained:
+                models_str = ', '.join(m.upper() for m in models_trained)
+                sections.append(f"The following models were developed and compared: {models_str}.")
+            
+            if hyperopt:
+                sections.append(" Hyperparameter optimization was performed using Optuna with 30 trials per model.")
+            
+            if best_model:
+                sections.append(f" The {best_model.upper()} model achieved the best performance on the validation set.")
+            
+            break  # Use first logged training entry
+    else:
+        model_names = list(model_configs.keys()) if model_configs else []
+        if model_names:
+            sections.append(
+                f"The following models were developed and compared: {', '.join(n.upper() for n in model_names)}."
+            )
+    
     sections.append(
         f" Data were split into training ({n_train:,}, {n_train/n_total*100:.0f}%), "
         f"validation ({n_val:,}, {n_val/n_total*100:.0f}%), and "
         f"test ({n_test:,}, {n_test/n_total*100:.0f}%) sets."
     )
-    if cv_folds:
-        sections.append(f" {cv_folds}-fold cross-validation was used for internal validation.")
+    
+    # Check for CV from logged data or parameters
+    cv_to_use = None
+    if 'Model Training' in logged_steps:
+        for entry in logged_steps['Model Training']:
+            details = entry.get('details', {})
+            if details.get('use_cv'):
+                cv_to_use = details.get('cv_folds', 5)
+                break
+    if cv_to_use is None and cv_folds:
+        cv_to_use = cv_folds
+    
+    if cv_to_use:
+        sections.append(f" {cv_to_use}-fold cross-validation was used for internal validation.")
 
     # Performance evaluation
     sections.append("\n\n### Performance Evaluation\n")

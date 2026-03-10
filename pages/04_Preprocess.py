@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Optional
 
 from utils.session_state import (
     init_session_state, get_data, DataConfig, set_preprocessing_pipeline, set_preprocessing_pipelines,
-    TaskTypeDetection,
+    TaskTypeDetection, log_methodology,
 )
 from utils.storyline import get_insights_by_category, add_insight, render_breadcrumb, render_page_navigation
 from ml.pipeline import (
@@ -824,6 +824,20 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
             )
         elapsed = time.perf_counter() - t0
         st.session_state.setdefault("last_timings", {})["Build Pipelines"] = round(elapsed, 2)
+        
+        # Log methodology action
+        log_methodology(
+            step='Preprocessing',
+            action="Configured preprocessing pipeline",
+            details={
+                'imputation': _imp_method,
+                'scaling': _scale_method,
+                'encoding': _enc_method,
+                'outlier_handling': _outlier,
+                'transformation': _transform,
+                'models_configured': list(configs_by_model.keys())
+            }
+        )
 
         st.success("Preprocessing pipelines built successfully. Expand each model below to view recipe and transformed data.")
         

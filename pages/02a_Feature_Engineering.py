@@ -12,7 +12,7 @@ from sklearn.decomposition import PCA
 import warnings
 warnings.filterwarnings('ignore')
 
-from utils.session_state import get_data, init_session_state
+from utils.session_state import get_data, init_session_state, log_methodology
 from utils.theme import inject_custom_css, render_breadcrumb, render_page_navigation, render_guidance
 
 # Initialize
@@ -132,6 +132,41 @@ with col2:
         st.stop()
 
 st.markdown("---")
+
+# ============================================================================
+# EDA-DRIVEN RECOMMENDATIONS
+# ============================================================================
+# Show recommendations based on EDA insights
+eda_insights = st.session_state.get('eda_insights', {})
+
+if eda_insights:
+    skewed = eda_insights.get('skewed_features', [])
+    high_corr = eda_insights.get('high_corr_pairs', [])
+    
+    if skewed or high_corr:
+        st.markdown("### 💡 Recommendations Based on Your EDA")
+        
+        if skewed:
+            skewed_names = [f"**{s['name']}** (skew: {s['skewness']})" for s in skewed]
+            st.info(f"""
+**Right-skewed features detected:** {', '.join(skewed_names)}
+
+→ **Recommended:** Apply log transforms (Section 2) to normalize these distributions.  
+This can improve linear model performance and reduce the influence of extreme values.
+""")
+        
+        if high_corr:
+            corr_str = ", ".join([f"**{p['feature1']}/{p['feature2']}** ({p['correlation']})" for p in high_corr[:3]])
+            if len(high_corr) > 3:
+                corr_str += f" ... and {len(high_corr) - 3} more"
+            st.warning(f"""
+**High correlation detected:** {corr_str}
+
+→ **Caution:** Polynomial features will amplify these correlations.  
+Consider using Feature Selection (next step) to filter redundant interactions.
+""")
+        
+        st.markdown("---")
 
 # ============================================================================
 # Section 1: Polynomial Features & Interactions
@@ -255,11 +290,16 @@ use_transforms = st.checkbox(
 if use_transforms:
     st.caption("Select features to transform (numeric only):")
     
+    # Pre-populate with skewed features from EDA
+    eda_insights = st.session_state.get('eda_insights', {})
+    skewed_feature_names = [s['name'] for s in eda_insights.get('skewed_features', [])]
+    default_selection = [f for f in skewed_feature_names if f in numeric_features]
+    
     selected_features = st.multiselect(
         "Features",
         numeric_features,
-        default=[],
-        help="Choose which features to transform. Original features will be kept."
+        default=default_selection,  # Pre-select skewed features from EDA
+        help="Choose which features to transform. Original features will be kept. Pre-populated with skewed features detected in EDA."
     )
     
     if selected_features:
@@ -802,6 +842,16 @@ if new_features > 0:
         st.session_state["feature_engineering_applied"] = True
         st.session_state["engineered_feature_names"] = engineered_features
         st.session_state["engineering_log"] = engineering_log
+        
+        # Log methodology action
+        log_methodology(
+            step='Feature Engineering',
+            action=f"Created {len(engineered_features)} engineered features",
+            details={
+                'techniques': engineering_log,
+                'feature_count': len(engineered_features)
+            }
+        )
         
         st.success("✅ Saved engineered dataset!")
         st.balloons()

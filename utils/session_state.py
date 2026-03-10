@@ -169,6 +169,9 @@ def init_session_state():
         'dataset_history': [],  # Archive of replaced datasets (metadata only)
         'has_completed_tour': False,  # Guided tour dismissed/completed
         'show_guided_tour': False,  # Expand guided tour in sidebar
+        
+        # Methodology logging for auto-generated methods section
+        'methodology_log': [],  # List of methodology actions for publication
     }
     
     for key, value in defaults.items():
@@ -295,3 +298,26 @@ def add_trained_model(name: str, model: Any, results: Dict[str, Any]):
     """Add a trained model and its results to session state."""
     st.session_state.trained_models[name] = model
     st.session_state.model_results[name] = results
+
+
+def log_methodology(step: str, action: str, details: Optional[Dict[str, Any]] = None):
+    """Log a methodology action for the final report.
+    
+    Args:
+        step: Workflow step name (e.g., 'Feature Engineering', 'Feature Selection')
+        action: Description of what was done
+        details: Optional dict with additional parameters
+    """
+    from datetime import datetime
+    
+    entry = {
+        'timestamp': datetime.now().isoformat(),
+        'step': step,
+        'action': action,
+        'details': details or {}
+    }
+    
+    if 'methodology_log' not in st.session_state:
+        st.session_state.methodology_log = []
+    
+    st.session_state.methodology_log.append(entry)

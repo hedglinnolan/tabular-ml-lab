@@ -12,7 +12,7 @@ import logging
 from utils.session_state import (
     init_session_state, get_data, get_preprocessing_pipeline,
     DataConfig, SplitConfig, ModelConfig, set_splits, add_trained_model,
-    TaskTypeDetection, CohortStructureDetection
+    TaskTypeDetection, CohortStructureDetection, log_methodology,
 )
 from utils.seed import set_global_seed, get_global_seed
 from utils.storyline import get_insights_by_category, render_breadcrumb, render_page_navigation
@@ -1008,6 +1008,41 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                     st.error(f"Training failed: {str(e)}")
                     st.code(str(e), language='python')
                     logger.exception(e)
+    
+    # Log methodology action after all models are trained
+    trained_models = st.session_state.get('trained_models', {})
+    model_results = st.session_state.get('model_results', {})
+    if trained_models:
+        # Get best model and metrics
+        best_model_name = None
+        best_metric_value = None
+        task_type_final_local = st.session_state.get('task_type_detection', TaskTypeDetection()).final or data_config.task_type
+        
+        for name, results in model_results.items():
+            metrics = results.get('metrics', {})
+            if task_type_final_local == 'regression':
+                metric_val = metrics.get('RMSE', float('inf'))
+                if best_metric_value is None or metric_val < best_metric_value:
+                    best_metric_value = metric_val
+                    best_model_name = name
+            else:
+                metric_val = metrics.get('Accuracy', 0)
+                if best_metric_value is None or metric_val > best_metric_value:
+                    best_metric_value = metric_val
+                    best_model_name = name
+        
+        log_methodology(
+            step='Model Training',
+            action=f"Trained {len(trained_models)} models with validation",
+            details={
+                'models': list(trained_models.keys()),
+                'best_model': best_model_name,
+                'best_metric_value': best_metric_value,
+                'use_cv': st.session_state.get('use_cv', False),
+                'cv_folds': st.session_state.get('cv_folds', 5) if st.session_state.get('use_cv', False) else None,
+                'hyperparameter_optimization': use_optimization
+            }
+        )
 
 # Training section with two buttons
 st.markdown("---")
@@ -1046,6 +1081,50 @@ if st.session_state.get('trained_models'):
     calculate_regression_metrics, calculate_classification_metrics, perform_cross_validation, analyze_residuals = _get_eval_functions()
     
     st.header("Results Comparison")
+    
+    # ================================================================
+    # TRAINING CONFIGURATION SUMMARY
+    # ================================================================
+    st.markdown("### What You're Training On")
+    
+    # Get dataset statistics
+    X_train_data = st.session_state.get("X_train")
+    X_val_data = st.session_state.get("X_val")
+    X_test_data = st.session_state.get("X_test")
+    
+    n_train = len(X_train_data) if X_train_data is not None else 0
+    n_val = len(X_val_data) if X_val_data is not None else 0
+    n_test = len(X_test_data) if X_test_data is not None else 0
+    n_total = n_train + n_val + n_test
+    
+    # Get feature information
+    selected_features = st.session_state.get('selected_features')
+    feature_cols = data_config.feature_cols if data_config else []
+    n_features_used = len(selected_features) if selected_features else len(feature_cols)
+    n_original_features = len(feature_cols)
+    n_engineered = len(st.session_state.get('engineered_feature_names', []))
+    
+    # Get target information
+    target_name = data_config.target_col if data_config else "Unknown"
+    task_type_display = task_type_final if task_type_final else (data_config.task_type if data_config else "Unknown")
+    
+    st.markdown(f"""
+    **Dataset:**
+    - Total samples: {n_total:,} ({n_train:,} train, {n_val:,} val, {n_test:,} test)
+    - Original features: {n_original_features}
+    - Engineered features: {n_engineered}
+    - **Selected features: {n_features_used}** ← Training on these
+    
+    **Target:** {target_name} ({task_type_display})
+    
+    **Preprocessing:** Per-model pipelines (see Preprocessing page)
+    """)
+    
+    if n_engineered > 0:
+        engineered_names = st.session_state.get('engineered_feature_names', [])
+        st.info(f"🧬 **{n_engineered} engineered features** included: {', '.join(engineered_names[:5])}{'...' if len(engineered_names) > 5 else ''}")
+    
+    st.markdown("---")
     
     # How to read results explainer
     with st.expander("How to Read These Results", expanded=False):
@@ -1285,6 +1364,121 @@ if st.session_state.get('trained_models'):
                         sig = " *" if (p is not None and np.isfinite(p) and p < 0.05) else ""
                         rows.append({"Model A": ma.upper(), "Model B": mb.upper(), "Mean Δ": round(mean_d, 4), "Test": tname, "p": round(p, 4) if p is not None and np.isfinite(p) else None, "Significant": "Yes" if (p is not None and np.isfinite(p) and p < 0.05) else "No"})
                     st.dataframe(pd.DataFrame(rows), width="stretch")
+
+    # ================================================================
+    # MODEL SELECTION GUIDANCE
+    # ================================================================
+    st.markdown("---")
+    st.markdown("### 🎯 How to Choose Your Model")
+    
+    # Helper function for complexity description
+    def get_model_complexity(model_name: str) -> str:
+        """Return human-readable complexity description."""
+        simple_models = ['LOGISTIC', 'RIDGE', 'LASSO', 'ELASTIC_NET']
+        moderate_models = ['RF', 'RANDOM_FOREST', 'SVM_LINEAR']
+        complex_models = ['XGB', 'LGBM', 'NN', 'SVM_RBF']
+        
+        if model_name in simple_models:
+            return "Simple, highly interpretable"
+        elif model_name in moderate_models:
+            return "Moderate complexity, good interpretability"
+        elif model_name in complex_models:
+            return "Complex, black-box (use SHAP for interpretation)"
+        else:
+            return "Unknown complexity"
+    
+    # Get top 3 models by performance
+    metric_col = 'AUC (val)' if task_type_final == 'classification' else 'R² (val)'
+    
+    # Check if the metric column exists in the comparison_df
+    if metric_col in comparison_df.columns and len(comparison_df) > 0:
+        top_models = comparison_df.nlargest(3, metric_col)
+        
+        # Check if top models have overlapping confidence intervals
+        if len(top_models) >= 2:
+            # Get bootstrap CIs for top 2 models
+            model1_name = top_models.index[0]
+            model2_name = top_models.index[1]
+            
+            bootstrap_results = st.session_state.get("bootstrap_results", {})
+            
+            if bootstrap_results:
+                # Get BootstrapResult objects
+                metric_name = metric_col.replace(' (val)', '')  # 'AUC' or 'R²'
+                model1_result = bootstrap_results.get(model1_name, {}).get(metric_name)
+                model2_result = bootstrap_results.get(model2_name, {}).get(metric_name)
+                
+                # Extract CI bounds from BootstrapResult dataclass
+                from ml.bootstrap import BootstrapResult
+                if isinstance(model1_result, BootstrapResult) and isinstance(model2_result, BootstrapResult):
+                    model1_ci = [model1_result.ci_lower, model1_result.ci_upper]
+                    model2_ci = [model2_result.ci_lower, model2_result.ci_upper]
+                    
+                    # Check for overlap
+                    ci_overlap = (model1_ci[0] <= model2_ci[1] and model2_ci[0] <= model1_ci[1])
+                else:
+                    # Bootstrap results incomplete, skip CI analysis
+                    ci_overlap = None
+                
+                if ci_overlap is not None:
+                    if ci_overlap:
+                        st.info(f"""
+                        **Models Perform Similarly**
+                        
+                        Your top models ({model1_name}, {model2_name}) have overlapping confidence intervals,
+                        meaning there's no statistically significant performance difference.
+                        
+                        **Decision Framework:**
+                        
+                        1. **Interpretability** → Choose simpler model
+                           - Order: Logistic Regression > Ridge/LASSO > Random Forest > Gradient Boosting > Neural Networks
+                           - For publication: Simpler models are easier to explain to reviewers
+                        
+                        2. **Deployment** → Choose faster model
+                           - Logistic/Ridge: Near-instant predictions
+                           - Random Forest/XGBoost: Fast but larger memory footprint
+                           - Neural Networks: Slower, requires PyTorch/TensorFlow
+                        
+                        3. **Calibration** → Check the Explainability page
+                           - Well-calibrated models have predicted probabilities that match observed frequencies
+                           - Important for risk prediction and clinical applications
+                        
+                        4. **Robustness** → Check Sensitivity Analysis (next page)
+                           - Some models are more sensitive to random seed or feature dropout
+                        
+                        **Our Recommendation:**
+                        """)
+                        
+                        # Auto-recommend based on overlap
+                        if model1_name in ['LOGISTIC', 'RIDGE', 'LASSO']:
+                            st.success(f"✅ **{model1_name}**: Best balance of performance, interpretability, and deployability.")
+                        elif model1_name in ['RF', 'RANDOM_FOREST']:
+                            st.success(f"✅ **{model1_name}**: Excellent choice. Robust, feature importances available, widely trusted.")
+                        else:
+                            st.success(f"✅ **{model1_name}**: Best performer, but consider if interpretability is important.")
+                        
+                        # Show all top 3
+                        st.markdown("**Top 3 Models:**")
+                        for idx, (model_name, row) in enumerate(top_models.iterrows(), 1):
+                            metric_val = row[metric_col]
+                            complexity = get_model_complexity(model_name)
+                            st.markdown(f"{idx}. **{model_name}**: {metric_val:.3f} — {complexity}")
+                    
+                    else:
+                        st.success(f"""
+                        **Clear Winner**
+                        
+                        **{model1_name}** significantly outperforms other models (non-overlapping CIs).
+                        
+                        → **Recommendation:** Use {model1_name} unless you have specific concerns about interpretability or deployment.
+                        """)
+            else:
+                st.info("💡 **Tip:** Compute Bootstrap CIs above to get statistical guidance on model selection.")
+        
+        else:
+            st.info("Train multiple models to see comparison and recommendations.")
+    else:
+        st.info("Train models to see selection guidance.")
 
     # Model diagnostics (one tab per model so pred-vs-actual etc. visible for all)
     st.header("Model Diagnostics")

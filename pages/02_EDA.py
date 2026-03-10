@@ -636,6 +636,55 @@ with st.expander("Generate Table 1", expanded=False):
             st.download_button("📥 Download LaTeX", latex_data, "table1.tex", "text/plain", key="dl_table1_latex")
 
 # ============================================================================
+# STORE EDA INSIGHTS FOR FEATURE ENGINEERING PAGE
+# ============================================================================
+# Store insights in session state for downstream pages
+eda_insights = {
+    'skewed_features': [],  # Features with abs(skewness) > 1.0
+    'high_corr_pairs': [],  # Pairs with correlation > 0.9
+    'has_missing': False,
+    'numeric_features': [],
+}
+
+# Compute numeric columns for analysis
+numeric_cols_check = df.select_dtypes(include=[np.number]).columns
+eda_insights['numeric_features'] = list(numeric_cols_check)
+
+# Detect skewed features
+for col in numeric_cols_check:
+    try:
+        skew_val = df[col].skew()
+        if pd.notna(skew_val) and abs(skew_val) > 1.0:
+            eda_insights['skewed_features'].append({
+                'name': col,
+                'skewness': round(float(skew_val), 2)
+            })
+    except:
+        pass  # Skip features that can't compute skewness
+
+# Detect high correlations
+correlation_matrix = df[numeric_cols_check].corr() if len(numeric_cols_check) > 1 else None
+if correlation_matrix is not None and len(correlation_matrix.columns) > 1:
+    for i in range(len(correlation_matrix.columns)):
+        for j in range(i+1, len(correlation_matrix.columns)):
+            try:
+                corr_val = correlation_matrix.iloc[i, j]
+                if pd.notna(corr_val) and abs(corr_val) > 0.9:
+                    eda_insights['high_corr_pairs'].append({
+                        'feature1': correlation_matrix.columns[i],
+                        'feature2': correlation_matrix.columns[j],
+                        'correlation': round(float(corr_val), 3)
+                    })
+            except:
+                pass
+
+# Check missing data
+eda_insights['has_missing'] = (df.isnull().sum() > 0).any()
+
+# Store in session state for Feature Engineering page
+st.session_state['eda_insights'] = eda_insights
+
+# ============================================================================
 # NEXT STEPS BASED ON YOUR DATA
 # ============================================================================
 st.markdown("---")

@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict
 
-from utils.session_state import init_session_state, get_data, DataConfig
+from utils.session_state import init_session_state, get_data, DataConfig, log_methodology
 from utils.storyline import render_breadcrumb, render_page_navigation
 from utils.theme import inject_custom_css, render_guidance, render_reviewer_concern, render_step_indicator, render_sidebar_workflow
 from utils.table_export import table
@@ -226,6 +226,19 @@ if st.button("🔍 Run Feature Selection", type="primary"):
     # Consensus
     consensus = consensus_features(results, min_methods=max(1, len(results) // 2))
     st.session_state["consensus_features"] = consensus
+    
+    # Log methodology action
+    methods_used = ", ".join(methods_to_run)
+    log_methodology(
+        step='Feature Selection',
+        action=f"Selected {len(consensus)} features using {methods_used}",
+        details={
+            'methods': methods_to_run,
+            'n_features_before': len(numeric_features),
+            'n_features_after': len(consensus),
+            'selected': list(consensus)
+        }
+    )
 
     st.success(f"Feature selection complete! {len(results)} methods run.")
 
