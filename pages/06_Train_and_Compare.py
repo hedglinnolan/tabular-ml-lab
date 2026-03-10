@@ -228,8 +228,15 @@ if st.button("Prepare Splits", type="primary"):
         train_test_split, GroupShuffleSplit, GroupKFold = _get_sklearn_splits()
         from sklearn.preprocessing import LabelEncoder
 
-        X = df[data_config.feature_cols].copy()
-        y = df[data_config.target_col].copy()
+        # Get feature columns - use engineered features if applied
+        target_col = data_config.target_col
+        if st.session_state.get('feature_engineering_applied'):
+            feature_cols = [col for col in df.columns if col != target_col]
+        else:
+            feature_cols = data_config.feature_cols
+
+        X = df[feature_cols].copy()
+        y = df[target_col].copy()
         mask = y.notna()
         X = X[mask].reset_index(drop=True)
         y = y[mask].reset_index(drop=True)
@@ -340,7 +347,8 @@ if st.button("Prepare Splits", type="primary"):
             X_val = X.iloc[idx_val]
             X_test = X.iloc[idx_test]
         
-        feature_names = list(data_config.feature_cols)
+        # Use the same feature list we used above for X
+        feature_names = list(feature_cols)
         set_splits(X_train, X_val, X_test, to_numpy_1d(y_train), to_numpy_1d(y_val), to_numpy_1d(y_test), feature_names)
         elapsed = time.perf_counter() - t0
         st.session_state.setdefault("last_timings", {})["Prepare Splits"] = round(elapsed, 2)

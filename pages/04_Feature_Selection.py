@@ -74,8 +74,15 @@ if st.session_state.get('feature_engineering_applied'):
     )
 
 # Get feature info
-all_features = data_config.feature_cols
 target_col = data_config.target_col
+
+# If feature engineering was applied, use ALL columns from df (except target)
+# Otherwise use configured feature_cols
+if st.session_state.get('feature_engineering_applied'):
+    all_features = [col for col in df.columns if col != target_col]
+else:
+    all_features = data_config.feature_cols
+
 numeric_cols = get_numeric_columns(df)
 numeric_features = [f for f in all_features if f in numeric_cols]
 

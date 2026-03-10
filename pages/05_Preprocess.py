@@ -85,8 +85,15 @@ if data_config is None or not data_config.target_col:
     st.warning("Please select target and features in the Upload & Audit page first")
     st.stop()
 
-# Identify feature types (safe access with defaults)
-all_features = data_config.feature_cols if data_config else []
+# Identify feature types
+# If feature engineering was applied, use ALL columns except target
+# Otherwise use configured feature_cols
+target_col = data_config.target_col
+if st.session_state.get('feature_engineering_applied'):
+    all_features = [col for col in df.columns if col != target_col]
+else:
+    all_features = data_config.feature_cols if data_config else []
+
 if not all_features:
     st.warning("No features selected. Please select features in the Upload & Audit page first")
     st.stop()
