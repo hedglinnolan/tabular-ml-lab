@@ -308,8 +308,9 @@ def generate_report() -> str:
     
     # Key insights after pre-processing (EDA + preprocessing)
     insights = get_insights_by_category()
-    eda_insights = [i for i in insights if i.get("category") != "preprocessing"]
-    prep_insights = [i for i in insights if i.get("category") == "preprocessing"]
+    # Safety check: ensure insights are dicts
+    eda_insights = [i for i in insights if isinstance(i, dict) and i.get("category") != "preprocessing"]
+    prep_insights = [i for i in insights if isinstance(i, dict) and i.get("category") == "preprocessing"]
     if eda_insights or prep_insights:
         report_lines.append("## Key insights after pre-processing")
         report_lines.append("")

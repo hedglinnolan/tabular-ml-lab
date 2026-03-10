@@ -102,7 +102,8 @@ profile = st.session_state.get('dataset_profile')
 coach_output = st.session_state.get('coach_output')
 insights = get_insights_by_category()
 eda_results = st.session_state.get('eda_results', {})
-relevant_insights = [i for i in insights if i.get('category') in ['feature_relationships', 'data_quality']]
+# Safety check: ensure insights is a list of dicts, not strings
+relevant_insights = [i for i in insights if isinstance(i, dict) and i.get('category') in ['feature_relationships', 'data_quality']]
 
 # EDA-based recommendation cues (for display next to options)
 _eda_outliers = bool(profile and profile.features_with_outliers)

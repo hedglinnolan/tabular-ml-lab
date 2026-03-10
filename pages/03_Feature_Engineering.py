@@ -139,7 +139,7 @@ st.markdown("---")
 # EDA-DRIVEN RECOMMENDATIONS
 # ============================================================================
 # Show recommendations based on EDA insights
-eda_insights = st.session_state.get('eda_insights', {})
+eda_insights = st.session_state.get('feature_engineering_hints', {})
 
 if eda_insights:
     skewed = eda_insights.get('skewed_features', [])
@@ -293,7 +293,7 @@ if use_transforms:
     st.caption("Select features to transform (numeric only):")
     
     # Pre-populate with skewed features from EDA
-    eda_insights = st.session_state.get('eda_insights', {})
+    eda_insights = st.session_state.get('feature_engineering_hints', {})
     skewed_feature_names = [s['name'] for s in eda_insights.get('skewed_features', [])]
     default_selection = [f for f in skewed_feature_names if f in numeric_features]
     
