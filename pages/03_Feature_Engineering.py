@@ -33,6 +33,21 @@ Functionality is stable but UI and workflow may change based on feedback.
 Report issues: [GitHub](https://github.com/hedglinnolan/tabular-ml-lab/issues)
 """)
 
+# Disambiguation: Feature Engineering vs Preprocessing
+st.info("""
+📌 **Feature Engineering vs. Preprocessing — Important Distinction:**
+
+**This page (Feature Engineering):** **ADDS** new features alongside your originals  
+**Preprocessing (page 5):** **TRANSFORMS** existing features in-place
+
+**Example:**
+- **Here:** `Glucose` → `Glucose` + `log_Glucose` (both available for model)
+- **Preprocessing:** `Glucose` → `log(Glucose)` (original replaced)
+
+→ Use Feature Engineering to **expand** the feature space  
+→ Use Preprocessing to **prepare** features for modeling (scaling, normalization, imputation)
+""")
+
 # ============================================================================
 # Introduction & Educational Content
 # ============================================================================
@@ -314,6 +329,10 @@ render_guidance("""
 **Explainability impact:** 🟡 **Medium** — "`log(glucose)`" is still interpretable, just transformed.
 
 **Scientific precedent:** Log transforms are standard in biology, economics, epidemiology.
+""")
+
+st.warning("""
+⚠️ **vs. Preprocessing:** Here, transforms create NEW columns (e.g., `log_Glucose`) alongside originals. In Preprocessing (page 5), transforms REPLACE features. Use this page to give models a choice between original and transformed.
 """)
 
 use_transforms = st.checkbox(
@@ -784,6 +803,10 @@ as supplementary features alongside originals.
 **Explainability impact:** 🟡 **Medium** — Original features stay interpretable, but "PC1" is abstract.
 
 **Scientific precedent:** Common in genomics (thousands of genes → 10 PCA components + original features).
+""")
+
+st.warning("""
+⚠️ **vs. Preprocessing:** Here, PCA/UMAP components are ADDED alongside originals (e.g., 10 features → 10 originals + 3 PCA = 13 total). In Preprocessing (page 5), PCA REPLACES originals (10 → 3). Use this for supplementary features, use Preprocessing for dimensionality reduction.
 """)
 
 use_dimred = st.checkbox(
