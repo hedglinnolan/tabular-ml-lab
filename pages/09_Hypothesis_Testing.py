@@ -62,10 +62,10 @@ st.markdown("""
 
 **Your workflow:**
 1. ✅ Built ML model (pages 1-6)
-2. ✅ Explained predictions (page 7)
-3. ✅ Validated robustness (page 8)
+2. ✅ Explained predictions 
+3. ✅ Validated robustness 
 4. **NOW:** Generate statistics for Table 1 and Methods section
-5. **NEXT:** Export everything (page 10)
+5. **NEXT:** Export everything 
 
 **These tests will appear in:**
 - **Table 1:** Baseline characteristics with p-values
