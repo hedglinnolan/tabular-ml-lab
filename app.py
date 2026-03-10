@@ -38,47 +38,101 @@ st.markdown("""
     <div class="hero-badge">Open Source · 18 Models · 10-Step Workflow</div>
     <h1>Tabular ML Lab</h1>
     <p class="hero-sub">
-        From raw data to publication-ready results.<br/>
-        Built for researchers who need defensible methodology.
+        Interactive machine learning workbench for researchers.<br/>
+        Upload your CSV, follow the guided workflow, export publication materials.
     </p>
 </div>
 """, unsafe_allow_html=True)
 
-# Three value props
-col1, col2, col3 = st.columns(3)
-with col1:
+# Who this is for
+st.markdown("### 👥 Who This Is For")
+
+col_audience1, col_audience2 = st.columns(2)
+with col_audience1:
+    st.markdown("""
+    **✅ This tool is designed for:**
+    - Clinical researchers analyzing trial data
+    - Biomedical scientists working with experimental results
+    - Graduate students writing methods sections
+    - Anyone who needs to build and document a prediction model
+    
+    **📊 Works best with:**
+    - Tabular data (CSV, Excel)
+    - 50-10,000 rows
+    - Supervised learning (classification or regression)
+    - Research that requires transparent, reproducible methods
+    """)
+with col_audience2:
+    st.markdown("""
+    **❌ Not designed for:**
+    - Production ML deployment
+    - Time series forecasting
+    - Image, text, or audio data
+    - Extremely large datasets (>100K rows)
+    
+    **📝 What you need to know:**
+    - **No coding required** — point-and-click interface
+    - **Basic stats helpful** — p-values, confidence intervals
+    - **Domain expertise required** — you interpret the results
+    """)
+
+st.markdown("---")
+
+# Problem/Solution
+st.markdown("### 🎯 What Problem Does This Solve?")
+
+col_prob, col_sol = st.columns(2)
+with col_prob:
     render_info_card(
-        "🎯 Guided Workflow",
-        "Step-by-step from upload to publication. Smart defaults with advanced options when you need them."
+        "❌ The Manual Workflow Problem",
+        """
+        Building a defensible ML model for publication typically requires:
+        
+        • 15+ separate Python/R scripts  
+        • Tracking dozens of preprocessing decisions  
+        • Generating Table 1, calibration plots, SHAP values  
+        • Writing methods sections from scratch  
+        • Manually creating TRIPOD checklists  
+        
+        **Result:** Weeks of work, inconsistent methodology, reproducibility issues.
+        """
     )
-with col2:
+with col_sol:
     render_info_card(
-        "📊 Publication Ready",
-        "Table 1, bootstrap CIs, TRIPOD checklists, methods sections — straight into your paper."
-    )
-with col3:
-    render_info_card(
-        "🛡️ Reviewer Proof",
-        "Baselines, calibration, sensitivity checks — anticipate and address reviewer concerns."
+        "✅ The Tabular ML Lab Solution",
+        """
+        This app provides a **single guided workflow** that:
+        
+        • Walks you through every step (upload → export)  
+        • Tracks all your choices automatically  
+        • Generates publication materials as you go  
+        • Applies best practices by default  
+        • Lets you save and resume your session  
+        
+        **Result:** Complete workflow in 30-60 minutes, with draft methods section and figures ready for your paper.
+        """
     )
 
-st.markdown("<br/>", unsafe_allow_html=True)
+st.markdown("---")
 
 # Workflow steps
-st.markdown("### How It Works")
-st.markdown("Follow the pages in the sidebar, in order. Each step builds on the previous one.")
+st.markdown("### 📋 How It Works")
+st.markdown("""
+Follow the pages in the sidebar, in order. Each step builds on the previous one.  
+**Time estimate:** 30-60 minutes for a complete workflow (varies by dataset size). You can save and resume anytime.
+""")
 
 steps = [
-    ("1", "Upload & Audit", "Load your data, configure target variable and features, review data quality.", "📂"),
-    ("2", "Explore (EDA)", "Distributions, correlations, Table 1, missing data analysis, AI-powered insights.", "📈"),
-    ("3", "Feature Engineering (Optional)", "Create polynomial, ratio, binning, TDA features to improve model performance.", "🧬"),
-    ("4", "Feature Selection", "LASSO path, RFE-CV, stability selection — find the most informative predictors.", "🎯"),
-    ("5", "Preprocess", "Build per-model preprocessing pipelines: imputation, scaling, encoding, outlier treatment.", "⚙️"),
-    ("6", "Train & Compare", "Multiple model families with bootstrap CIs, baseline comparison, and calibration analysis.", "🧠"),
-    ("7", "Explain & Validate", "SHAP values, permutation importance, external validation, subgroup analysis.", "🔬"),
-    ("8", "Sensitivity Analysis", "Test robustness: random seed sensitivity and feature dropout analysis.", "🔬"),
-    ("9", "Hypothesis Testing", "Statistical tests without ML — t-tests, ANOVA, chi-square, correlation.", "📐"),
-    ("10", "Export Report", "Methods section, TRIPOD checklist, flow diagrams, publication-quality figures & tables.", "📄"),
+    ("1", "Upload & Audit", "Load your data, configure target variable and features, review data quality checks.", "📂"),
+    ("2", "Explore (EDA)", "Distributions, correlations, generate Table 1 with p-values, analyze missing data.", "📈"),
+    ("3", "Feature Engineering", "**Optional:** Create polynomial, ratio, binning, or topological features to improve models.", "🧬"),
+    ("4", "Feature Selection", "LASSO path, RFE-CV, stability selection — identify the most informative predictors.", "🎯"),
+    ("5", "Preprocess", "Build preprocessing pipelines: imputation, scaling, encoding, outlier treatment (per-model).", "⚙️"),
+    ("6", "Train & Compare", "Train 18 model families with bootstrap confidence intervals and baseline comparisons.", "🧠"),
+    ("7", "Explainability", "SHAP values, permutation importance, calibration curves, decision curve analysis.", "🔬"),
+    ("8", "Sensitivity Analysis", "Validate robustness: test random seed stability and feature dropout impacts.", "🔍"),
+    ("9", "Statistical Validation", "Add custom statistical tests (t-tests, ANOVA, chi-square) to validate ML findings.", "📐"),
+    ("10", "Export Report", "Download methods section, TRIPOD checklist, flow diagrams, and publication figures.", "📄"),
 ]
 
 for num, title, desc, icon in steps:
@@ -92,63 +146,137 @@ for num, title, desc, icon in steps:
     </div>
     """, unsafe_allow_html=True)
 
-st.markdown("<br/>", unsafe_allow_html=True)
+st.markdown("---")
+
+# What you get
+st.markdown("### 📦 What You'll Get")
+
+col_out1, col_out2, col_out3 = st.columns(3)
+with col_out1:
+    render_info_card(
+        "📊 Publication Tables",
+        "• Table 1 (characteristics + p-values)  \n• Model comparison with bootstrap CIs  \n• Calibration metrics  \n• CSV and LaTeX formats"
+    )
+with col_out2:
+    render_info_card(
+        "📈 Publication Figures",
+        "• Calibration curves  \n• SHAP importance plots  \n• ROC/Precision-Recall curves  \n• Forest plots for subgroups"
+    )
+with col_out3:
+    render_info_card(
+        "📝 Draft Methods Section",
+        "• Auto-generated from your choices  \n• TRIPOD checklist tracker  \n• Flow diagram (CONSORT-style)  \n• Ready to edit for your paper"
+    )
+
+st.markdown("""
+**⚠️ Important:** This app generates **draft materials** that you must review and adapt for your specific study. 
+You are responsible for interpreting results, ensuring scientific validity, and addressing reviewer feedback.
+""")
+
+st.markdown("---")
 
 # Quick start CTA
+st.markdown("### 🚀 Getting Started")
+
 col_qs1, col_qs2 = st.columns([2, 1])
 with col_qs1:
     render_guidance(
-        "<strong>First time?</strong> Click <strong>Upload & Audit</strong> in the sidebar to get started. "
-        "Upload a CSV or Excel file, select your target variable, and the app will guide you from there.",
+        "<strong>Ready to start?</strong> Click <strong>📂 Upload & Audit</strong> in the sidebar. "
+        "Upload a CSV or Excel file, select your target variable, and the app will guide you through the rest. "
+        "Your session is automatically saved in your browser.",
         icon="👋"
     )
 with col_qs2:
     st.markdown("""
-    **Also available:**
-    - **Hypothesis Testing** — Statistical tests without ML (t-tests, ANOVA, chi-square)
+    **⏱️ Time commitment:**
+    - Quick exploration: 10 minutes
+    - Full workflow: 30-60 minutes
+    - Iterative refinement: 2-4 hours
+    
+    **💾 Save & resume:**
+    - Download `.pkl` session file anytime
+    - Resume later from same point
     """)
 
 # Capabilities (collapsed)
-with st.expander("📋 Full Capabilities List", expanded=False):
+with st.expander("🔍 Full Capabilities & Technical Details", expanded=False):
     col_a, col_b = st.columns(2)
     with col_a:
         st.markdown("""
-        **Models:**
-        - Linear (Ridge, Lasso, ElasticNet)
-        - Trees (Random Forest, ExtraTrees, HistGBT)
-        - KNN · SVM · Naive Bayes · LDA
-        - Neural Networks (PyTorch, configurable)
-        - Automatic baseline comparisons
+        **18 Model Families:**
+        - Linear: Ridge, Lasso, ElasticNet, Logistic Regression, GLM, Huber
+        - Trees: Random Forest, ExtraTrees, HistGradientBoosting
+        - Other: KNN, SVM, Naive Bayes, LDA, Neural Networks (PyTorch)
+        - Automatic baseline comparisons (dummy classifiers/regressors)
 
-        **Evaluation:**
-        - Bootstrap 95% CIs (BCa, 1000 resamples)
-        - Calibration (Brier, ECE, reliability diagrams)
-        - Decision curve analysis
+        **Evaluation Metrics:**
+        - Bootstrap 95% CIs (BCa method, 1000 resamples)
+        - Calibration: Brier score, ECE, reliability diagrams
+        - Decision curve analysis for clinical utility
         - Subgroup analysis with forest plots
-        - Cross-validation with paired tests
+        - Cross-validation with statistical comparisons
         """)
     with col_b:
         st.markdown("""
+        **Feature Engineering:**
+        - Polynomial features (degree 2-3)
+        - Mathematical transforms (log, sqrt, reciprocal)
+        - Ratio features (pairwise divisions)
+        - Binning (quantile, K-means, equal-width)
+        - Topological Data Analysis (persistent homology)
+        - PCA/UMAP dimensionality reduction
+
         **Publication Tools:**
-        - Table 1 generator (stratified, p-values, SMD)
-        - Auto-generated methods section
-        - TRIPOD checklist tracker
+        - Table 1 generator (stratified, automatic tests)
+        - Statistical validation (t-test, ANOVA, chi-square, correlation)
+        - Auto-generated methods section reflecting your workflow
+        - TRIPOD checklist tracking
         - CONSORT-style flow diagrams
-        - LaTeX/Word table export
+        - LaTeX and CSV table export
 
-        **Feature Selection:**
-        - LASSO path visualization
-        - RFE-CV · Stability selection
-        - Univariate screening (FDR-corrected)
-        - Consensus across methods
-
-        **AI Interpretation:**
-        - Ollama / OpenAI / Anthropic
+        **AI Assistance (Optional):**
+        - LLM-powered data insights (Ollama, OpenAI, or Anthropic)
+        - Preprocessing recommendations
+        - Not required to use the app — all features work without AI
         """)
+
+# FAQ
+with st.expander("❓ Frequently Asked Questions", expanded=False):
+    st.markdown("""
+    **Q: Do I need to know Python or R?**  
+    A: No. This is a point-and-click web app — no coding required.
+    
+    **Q: Is my data private?**  
+    A: Yes. All data processing happens in your browser session. Nothing is uploaded to external servers (unless you enable optional AI features that use external APIs).
+    
+    **Q: How long does a complete workflow take?**  
+    A: 30-60 minutes for a full analysis. You can save and resume at any point.
+    
+    **Q: What file formats are supported?**  
+    A: CSV and Excel (.xlsx, .xls). You can also merge multiple files.
+    
+    **Q: Can I use this for my thesis/dissertation?**  
+    A: Yes. The app generates draft methods sections and TRIPOD checklists. You'll need to review, interpret, and adapt the outputs for your specific study.
+    
+    **Q: What if my models perform poorly?**  
+    A: The app includes a diagnostic assistant that explains possible causes (weak features, class imbalance, insufficient data, high missingness) and suggests next steps.
+    
+    **Q: Can I deploy models trained here to production?**  
+    A: No. This tool is designed for research and publication, not production deployment. You can export trained models, but deploying them safely requires additional engineering work.
+    
+    **Q: What makes this different from scikit-learn?**  
+    A: scikit-learn is a Python library — you write code. Tabular ML Lab is a guided UI that walks you through best practices and generates publication materials automatically.
+    
+    **Q: Is this peer-reviewed or validated?**  
+    A: The statistical methods used (bootstrap CIs, calibration, SHAP) are standard in the field. However, **you are responsible** for ensuring your analysis is scientifically sound and appropriate for your research question.
+    """)
 
 # Footer
 st.markdown("---")
-st.caption("Tabular ML Lab · Built for researchers, by researchers · [GitHub](https://github.com/hedglinnolan/tabular-ml-lab)")
+st.caption("""
+**Tabular ML Lab** · Open source research tool · Not for clinical decision-making  
+[GitHub](https://github.com/hedglinnolan/tabular-ml-lab) · [Report Issues](https://github.com/hedglinnolan/tabular-ml-lab/issues) · [University Deployment Guide](https://github.com/hedglinnolan/tabular-ml-lab/tree/university-docker)
+""")
 
 # Debug
 if st.sidebar.checkbox("Show Session State", value=False):
