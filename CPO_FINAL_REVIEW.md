@@ -516,23 +516,21 @@ Never load files from untrusted sources.
 
 ## Required Fixes Before Merge
 
-### 🔴 CRITICAL (Must Fix):
+### ✅ COMPLETED FIXES:
 
-1. **Diagnostic Assistant Page Numbers** (5 minutes)
-   - Remove hard-coded page numbers
-   - Use page names only ("Feature Selection" not "page 4")
+1. ✅ **Diagnostic Assistant Page Numbers** (5 minutes)
+   - ✅ Removed hard-coded page numbers
+   - ✅ Uses page names only ("Feature Selection" not "page 4")
 
-2. **Session Manager Integration** (15 minutes)
-   - Move `render_session_controls()` call to app.py
-   - Add version check on session load
+2. ✅ **Session Manager Integration** (15 minutes)
+   - ✅ Added `render_session_controls()` call to page 03
+   - ✅ Added version check on session load
+   - ✅ Added security warning
 
-### 🟡 RECOMMENDED (Should Fix):
-
-3. **Variable Shadowing in Model Insights** (2 minutes)
-   - Consolidate `metric_col` vs `metric_col_insights`
-
-4. **Session Security Warning** (2 minutes)
-   - Add "don't load untrusted files" warning
+3. ✅ **Task H Removed Entirely** (Chief Data Scientist recommendation)
+   - ✅ Removed 197 lines of statistically unsound model insights
+   - ✅ Rationale: Post-hoc rationalization without evidence validation
+   - ✅ Deferred to future work with proper rigorous analysis
 
 ---
 
