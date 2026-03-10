@@ -63,14 +63,15 @@ This step uses multiple methods (LASSO, RFE-CV, Stability Selection) to find con
 if st.session_state.get('feature_engineering_applied'):
     n_engineered = len(st.session_state.get('engineered_feature_names', []))
     original_count = len(df.columns) - n_engineered - 1  # -1 for target
-    st.success(f"""
-    📊 **Working Dataset:** Engineered Data  
-    • Original features: {original_count}  
-    • Engineered features: {n_engineered}  
-    • Total features: {len(df.columns) - 1}
+    total_features = len(df.columns) - 1
     
-    💡 Feature selection will help identify which engineered features are actually useful.
-    """)
+    st.success(
+        f"📊 **Working Dataset:** Engineered Data\n\n"
+        f"• Original features: {original_count}\n\n"
+        f"• Engineered features: {n_engineered}\n\n"
+        f"• Total features: {total_features}\n\n"
+        f"💡 Feature selection will help identify which engineered features are actually useful."
+    )
 
 # Get feature info
 all_features = data_config.feature_cols

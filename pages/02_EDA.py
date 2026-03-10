@@ -68,17 +68,16 @@ if task_mode == 'prediction' and (data_config is None or not data_config.target_
 # ============================================================================
 if st.session_state.get('feature_engineering_applied'):
     n_engineered = len(st.session_state.get('engineered_feature_names', []))
-    st.warning(f"""
-    ⚠️ **You've already applied feature engineering ({n_engineered} features created).**
     
-    EDA will now analyze the ENGINEERED dataset, which includes:
-    - Polynomial terms (e.g., `BMI^2`, `Age × BMI`)
-    - Transformed features (e.g., `log(Glucose)`)
-    - Topological features (if applied)
-    
-    **This is expected if you're exploring your engineered features.**  
-    To start over with original data: Go to Upload & Audit and re-upload.
-    """)
+    st.warning(
+        f"⚠️ **You've already applied feature engineering ({n_engineered} features created).**\n\n"
+        "EDA will now analyze the ENGINEERED dataset, which includes:\n\n"
+        "- Polynomial terms (e.g., `BMI^2`, `Age × BMI`)\n\n"
+        "- Transformed features (e.g., `log(Glucose)`)\n\n"
+        "- Topological features (if applied)\n\n"
+        "**This is expected if you're exploring your engineered features.**\n\n"
+        "To start over with original data: Go to Upload & Audit and re-upload."
+    )
 
 target_col = data_config.target_col if data_config else None
 feature_cols = data_config.feature_cols if data_config and data_config.feature_cols else [c for c in df.columns if c != target_col]
