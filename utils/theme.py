@@ -692,6 +692,7 @@ def render_sidebar_workflow(current_page: str = ""):
     """
     from utils.session_state import get_data
     from utils.llm_ui import render_llm_settings_sidebar
+    from utils.session_manager import render_session_controls
 
     render_llm_settings_sidebar()
 
@@ -756,6 +757,10 @@ def render_sidebar_workflow(current_page: str = ""):
         st.markdown("<div style='margin-top: 0.75rem;'></div>", unsafe_allow_html=True)
         st.progress(completed_count / len(checklist_items))
         st.caption(f"{completed_count}/{len(checklist_items)} steps complete")
+        
+        # Session save/load controls
+        render_session_controls()
+        
         st.markdown("---")
 
 
