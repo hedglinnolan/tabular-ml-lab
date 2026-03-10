@@ -770,18 +770,25 @@ def render_sidebar_workflow(current_page: str = ""):
 
 def render_guidance(text: str, icon: str = "💡"):
     """Render a guidance card with actionable advice."""
-    st.markdown(f"""
-    <div class="guidance-card">
-        {icon} {text}
-    </div>
-    """, unsafe_allow_html=True)
+    # Convert markdown to HTML for safe rendering inside div
+    import re
+    html_text = text
+    # Bold: **text** → <strong>text</strong>
+    html_text = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', html_text)
+    # Preserve newlines as <br> for proper line breaks
+    html_text = html_text.replace('\n\n', '<br><br>').replace('\n', '<br>')
+    
+    st.markdown(f"""<div class="guidance-card">{icon} {html_text}</div>""", unsafe_allow_html=True)
 
 
 def render_reviewer_concern(text: str):
     """Render a reviewer concern badge."""
-    st.markdown(f"""
-    <div class="reviewer-concern">{text}</div>
-    """, unsafe_allow_html=True)
+    # Convert markdown to HTML
+    import re
+    html_text = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', text)
+    html_text = html_text.replace('\n\n', '<br><br>').replace('\n', '<br>')
+    
+    st.markdown(f"""<div class="reviewer-concern">{html_text}</div>""", unsafe_allow_html=True)
 
 
 def render_step_indicator(step_number: int, step_name: str, total_steps: int = 9):
@@ -795,12 +802,12 @@ def render_step_indicator(step_number: int, step_name: str, total_steps: int = 9
 
 def render_info_card(title: str, body: str):
     """Render a glassmorphism info card."""
-    st.markdown(f"""
-    <div class="info-card">
-        <h3>{title}</h3>
-        <p>{body}</p>
-    </div>
-    """, unsafe_allow_html=True)
+    # Convert markdown to HTML for safe rendering
+    import re
+    html_body = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', body)
+    html_body = html_body.replace('\n\n', '<br><br>').replace('\n', '<br>')
+    
+    st.markdown(f"""<div class="info-card"><h3>{title}</h3><p>{html_body}</p></div>""", unsafe_allow_html=True)
 
 
 def render_glass_card(content: str):
