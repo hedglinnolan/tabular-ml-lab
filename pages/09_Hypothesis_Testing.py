@@ -1,6 +1,7 @@
 """
-Page 07: Hypothesis Testing
-Run statistical tests to test hypotheses about your data.
+Page 09: Statistical Validation
+Generate traditional statistical tests to validate ML findings and populate Table 1.
+These tests provide p-values and effect sizes required for publication.
 """
 import streamlit as st
 import pandas as pd
@@ -28,39 +29,64 @@ logger = logging.getLogger(__name__)
 
 init_session_state()
 
-st.set_page_config(page_title="Hypothesis Testing", page_icon=None, layout="wide")
+st.set_page_config(page_title="Statistical Validation", page_icon="📊", layout="wide")
 inject_custom_css()
 render_sidebar_workflow(current_page="08_Hypothesis")
-st.title("Hypothesis Testing")
-render_breadcrumb("08_Hypothesis_Testing")
-render_page_navigation("08_Hypothesis_Testing")
+st.title("📊 Statistical Validation")
+render_breadcrumb("09_Hypothesis_Testing")
+render_page_navigation("09_Hypothesis_Testing")
 
 st.markdown("""
-### Why Hypothesis Testing After ML?
+### Why Statistical Validation?
 
-**ML tells you:** "Feature X is important for prediction"  
-**Statistical tests tell you:** "Feature X significantly differs between groups (p<0.001)"
+Your ML model is trained and performing well. But reviewers will ask:
 
-**Use this page to:**
-- Validate ML findings with traditional statistics
-- Generate p-values for Table 1  
-- Explore relationships without ML assumptions
+**"Did you test your features statistically?"**
 
-**Note:** This complements ML analysis, doesn't replace it.
+This page generates traditional statistical tests that:
+1. ✅ **Validate ML findings** — Confirm important features differ between groups
+2. ✅ **Populate Table 1** — Generate p-values for baseline characteristics table
+3. ✅ **Strengthen your paper** — Show both ML and statistical evidence
+
+**ML vs Statistics:**
+- **ML:** "Glucose is the most important predictor (SHAP value 0.42)"
+- **Statistics:** "Glucose differs significantly between groups (t-test p<0.001, Cohen's d=0.85)"
+
+**For publication:** Report both. ML shows prediction power, stats show group differences.
 """)
+
+st.markdown("---")
+
+st.markdown("""
+### 📄 How This Fits Your Publication
+
+**Your workflow:**
+1. ✅ Built ML model (pages 1-6)
+2. ✅ Explained predictions (page 7)
+3. ✅ Validated robustness (page 8)
+4. **NOW:** Generate statistics for Table 1 and Methods section
+5. **NEXT:** Export everything (page 10)
+
+**These tests will appear in:**
+- **Table 1:** Baseline characteristics with p-values
+- **Methods:** "Univariate associations were tested using..."
+- **Results:** "Features X, Y, Z differed significantly between groups"
+""")
+
+st.markdown("---")
 
 # Progress indicator
 
 # Check prerequisites
 task_mode = st.session_state.get('task_mode')
 if task_mode != 'hypothesis_testing':
-    st.warning("⚠️ **Hypothesis Testing mode not selected.**")
+    st.warning("⚠️ **Statistical Validation mode not selected.**")
     st.info("""
     Please go to the **Upload & Audit** page and select **Hypothesis Testing** as your task mode.
     
     Alternatively, you can use this page in "exploration mode" by clicking below.
     """)
-    if st.button("Enable Hypothesis Testing for This Session", key="enable_hyp_test"):
+    if st.button("Enable Statistical Validation for This Session", key="enable_hyp_test"):
         st.session_state.task_mode = 'hypothesis_testing'
         st.rerun()
     st.stop()
@@ -149,7 +175,7 @@ with st.sidebar:
     st.caption(f"• Current α = {alpha_level}")
 
 # Test selection
-st.header("Select Statistical Test")
+st.header("Generate Table 1 Statistics")
 
 test_type = st.selectbox(
     "What do you want to test?",
@@ -296,6 +322,19 @@ if test_type == "Correlation (two numeric variables)":
             - Sample size: n = {results['n']}
             """)
         
+        # Export to Table 1 button
+        if st.button("📋 Copy p-values to Table 1", key="export_corr_table1"):
+            # Store results in session state for Table 1 generation
+            if 'table1_pvalues' not in st.session_state:
+                st.session_state['table1_pvalues'] = {}
+            st.session_state['table1_pvalues'][f"{results['var1']} vs {results['var2']}"] = {
+                'test': results['test_name'],
+                'statistic': results['r'],
+                'p_value': results['p'],
+                'method': results['method']
+            }
+            st.success("✅ p-values saved! These will appear in your Table 1 (Export page)")
+        
         # Scatter plot (trendline requires statsmodels; skip if unavailable)
         try:
             fig = px.scatter(
@@ -400,6 +439,19 @@ elif test_type == "Two-sample comparison (numeric variable, two groups)":
         - This {'suggests' if results['p'] < 0.05 else 'does not suggest'} a significant difference between {results['group1']} and {results['group2']}
         """)
         
+        # Export to Table 1 button
+        if st.button("📋 Copy p-values to Table 1", key="export_ttest_table1"):
+            if 'table1_pvalues' not in st.session_state:
+                st.session_state['table1_pvalues'] = {}
+            st.session_state['table1_pvalues'][f"{results['numeric_var']} by {results['group_var']}"] = {
+                'test': results['test_name'],
+                'statistic': results['stat'],
+                'p_value': results['p'],
+                'group1_mean': results['group1_mean'],
+                'group2_mean': results['group2_mean']
+            }
+            st.success("✅ p-values saved! These will appear in your Table 1 (Export page)")
+        
         # Box plot
         plot_df = pd.DataFrame({
             numeric_var: np.concatenate([
@@ -498,6 +550,18 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
         - Note: If significant, consider post-hoc tests to identify which groups differ
         """)
         
+        # Export to Table 1 button
+        if st.button("📋 Copy p-values to Table 1", key="export_anova_table1"):
+            if 'table1_pvalues' not in st.session_state:
+                st.session_state['table1_pvalues'] = {}
+            st.session_state['table1_pvalues'][f"{results['numeric_var']} by {results['group_var']}"] = {
+                'test': results['test_name'],
+                'statistic': results['stat'],
+                'p_value': results['p'],
+                'group_means': results['group_means']
+            }
+            st.success("✅ p-values saved! These will appear in your Table 1 (Export page)")
+        
         # Box plot
         plot_df = df[[numeric_var, group_var]].dropna()
         fig = px.box(plot_df, x=group_var, y=numeric_var, title=f"Distribution: {numeric_var} by {group_var}")
@@ -567,6 +631,17 @@ elif test_type == "Categorical association (two categorical variables)":
         - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < 0.05 else 'not statistically significant'} at α=0.05)
         - This {'suggests' if results['p'] < 0.05 else 'does not suggest'} an association between {var1} and {var2}
         """)
+        
+        # Export to Table 1 button
+        if st.button("📋 Copy p-values to Table 1", key="export_chi_table1"):
+            if 'table1_pvalues' not in st.session_state:
+                st.session_state['table1_pvalues'] = {}
+            st.session_state['table1_pvalues'][f"{results['var1']} vs {results['var2']}"] = {
+                'test': results['test_name'],
+                'statistic': results['stat'],
+                'p_value': results['p']
+            }
+            st.success("✅ p-values saved! These will appear in your Table 1 (Export page)")
         
         # Heatmap
         fig = px.imshow(
@@ -718,6 +793,20 @@ elif test_type == "Paired comparison (numeric variable, before/after)":
         - Number of pairs: **{results['n_pairs']}**
         - This {'suggests' if results['p'] < 0.05 else 'does not suggest'} a significant change from {results['var_before']} to {results['var_after']}
         """)
+        
+        # Export to Table 1 button
+        if st.button("📋 Copy p-values to Table 1", key="export_paired_table1"):
+            if 'table1_pvalues' not in st.session_state:
+                st.session_state['table1_pvalues'] = {}
+            st.session_state['table1_pvalues'][f"{results['var_before']} vs {results['var_after']} (paired)"] = {
+                'test': results['test_name'],
+                'statistic': results['stat'],
+                'p_value': results['p'],
+                'mean_difference': results['mean_diff'],
+                'before_mean': results['before_mean'],
+                'after_mean': results['after_mean']
+            }
+            st.success("✅ p-values saved! These will appear in your Table 1 (Export page)")
         
         # Before/after plot
         plot_df = pd.DataFrame({

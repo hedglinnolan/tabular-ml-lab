@@ -700,9 +700,9 @@ if correlation_matrix is not None:
 
 recommendations = []
 if has_missing:
-    recommendations.append("⚠️ **Missing data detected** → Preprocessing (page 4) will handle imputation")
+    recommendations.append("⚠️ **Missing data detected** → Preprocessing (page 5) will handle imputation")
 if high_corr:
-    recommendations.append("✅ **High correlation detected** → Feature Selection (page 3) will help choose which features to keep")
+    recommendations.append("✅ **High correlation detected** → Feature Selection (page 4) will help choose which features to keep")
 
 if recommendations:
     for rec in recommendations:
@@ -710,6 +710,6 @@ if recommendations:
 else:
     st.markdown("✅ Your data looks clean. Proceed to Feature Engineering (optional) or Feature Selection.")
 
-st.markdown("👉 **Recommended:** Feature Engineering (optional, page 2a) or Feature Selection (page 3)")
+st.markdown("👉 **Recommended:** Feature Engineering (optional, page 3) or Feature Selection (page 4)")
 
 st.success("EDA complete. Proceed to Feature Selection or Preprocessing.")

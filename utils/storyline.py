@@ -9,13 +9,14 @@ PAGE_ORDER = [
     ("Home", "Home", "app.py"),
     ("01_Upload_and_Audit", "Upload & Audit", "pages/01_Upload_and_Audit.py"),
     ("02_EDA", "EDA", "pages/02_EDA.py"),
-    ("03_Feature_Selection", "Feature Selection", "pages/03_Feature_Selection.py"),
-    ("04_Preprocess", "Preprocess", "pages/04_Preprocess.py"),
-    ("05_Train_and_Compare", "Train & Compare", "pages/05_Train_and_Compare.py"),
-    ("06_Explainability", "Explainability", "pages/06_Explainability.py"),
-    ("07_Sensitivity_Analysis", "Sensitivity Analysis", "pages/07_Sensitivity_Analysis.py"),
-    ("08_Hypothesis_Testing", "Hypothesis Testing", "pages/08_Hypothesis_Testing.py"),
-    ("09_Report_Export", "Report Export", "pages/09_Report_Export.py"),
+    ("03_Feature_Engineering", "Feature Engineering", "pages/03_Feature_Engineering.py"),
+    ("04_Feature_Selection", "Feature Selection", "pages/04_Feature_Selection.py"),
+    ("05_Preprocess", "Preprocess", "pages/05_Preprocess.py"),
+    ("06_Train_and_Compare", "Train & Compare", "pages/06_Train_and_Compare.py"),
+    ("07_Explainability", "Explainability", "pages/07_Explainability.py"),
+    ("08_Sensitivity_Analysis", "Sensitivity Analysis", "pages/08_Sensitivity_Analysis.py"),
+    ("09_Hypothesis_Testing", "Statistical Validation", "pages/09_Hypothesis_Testing.py"),
+    ("10_Report_Export", "Report Export", "pages/10_Report_Export.py"),
 ]
 
 

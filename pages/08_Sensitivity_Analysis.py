@@ -25,8 +25,8 @@ inject_custom_css()
 render_sidebar_workflow(current_page="07_Sensitivity")
 
 st.title("🔬 Sensitivity Analysis")
-render_breadcrumb("07_Sensitivity_Analysis")
-render_page_navigation("07_Sensitivity_Analysis")
+render_breadcrumb("08_Sensitivity_Analysis")
+render_page_navigation("08_Sensitivity_Analysis")
 
 st.markdown("""
 ### Why Sensitivity Analysis?

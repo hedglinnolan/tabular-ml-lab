@@ -86,8 +86,8 @@ inject_custom_css()
 render_sidebar_workflow(current_page="05_Train")
 render_step_indicator(5, "Train & Compare Models")
 st.title("🧠 Train & Compare Models")
-render_breadcrumb("05_Train_and_Compare")
-render_page_navigation("05_Train_and_Compare")
+render_breadcrumb("06_Train_and_Compare")
+render_page_navigation("06_Train_and_Compare")
 
 # Progress indicator
 

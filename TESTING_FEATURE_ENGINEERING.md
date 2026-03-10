@@ -70,7 +70,7 @@ Navigate to: `http://localhost:8501`
 5. **Verify:**
    - Should see: "✅ Skipped feature engineering"
    - Should see: "👉 Continue to Feature Selection"
-6. **Go to Feature Selection** (page 3)
+6. **Go to Feature Selection** (page 4)
    - Should NOT see "🧬 Feature Engineering Applied" banner
    - Feature count should match original (no engineered features)
 7. **Continue workflow** (Preprocess → Train)
@@ -94,7 +94,7 @@ Navigate to: `http://localhost:8501`
    - Should show: "Original Features: M → New Features Created: +X → Total: M+X"
 10. Click **"💾 Save Engineered Features & Proceed"**
 11. Should see balloons 🎉
-12. Go to **Feature Selection** (page 3)
+12. Go to **Feature Selection** (page 4)
     - Should see blue banner: "🧬 Feature Engineering Applied: Working with engineered dataset (X new features)"
     - Feature count should match engineered total
 
@@ -246,18 +246,18 @@ This verifies the entire pipeline with engineered features.
    - Apply log transforms on 2 features
    - Create 1 ratio
    - **Save engineered features**
-4. **Feature Selection** (page 3):
+4. **Feature Selection** (page 4):
    - Should see banner
    - Run LASSO, RFE-CV
    - Should work on engineered features
    - Select top features
-5. **Preprocess** (page 4):
+5. **Preprocess** (page 5):
    - Should see engineered feature count
    - Configure preprocessing
-6. **Train & Compare** (page 5):
+6. **Train & Compare** (page 6):
    - Train 2-3 models
    - Should see engineered features in feature importance
-7. **Explainability** (page 6):
+7. **Explainability** (page 7):
    - Run SHAP
    - Should work on engineered features
 

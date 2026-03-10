@@ -37,11 +37,11 @@ init_session_state()
 
 st.set_page_config(page_title="Preprocessing", page_icon="⚙️", layout="wide")
 inject_custom_css()
-render_sidebar_workflow(current_page="04_Preprocess")
+render_sidebar_workflow(current_page="05_Preprocess")
 render_step_indicator(4, "Preprocessing")
 st.title("⚙️ Preprocessing Builder")
-render_breadcrumb("04_Preprocess")
-render_page_navigation("04_Preprocess")
+render_breadcrumb("05_Preprocess")
+render_page_navigation("05_Preprocess")
 
 st.markdown("""
 ### Why Preprocessing?

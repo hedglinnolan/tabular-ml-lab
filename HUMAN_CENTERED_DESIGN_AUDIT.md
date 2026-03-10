@@ -168,13 +168,13 @@ Add **"EDA Insights → Next Steps"** section at bottom:
 Based on your data analysis:
 
 ✅ **Detected:** 3 highly correlated feature pairs (>0.9)  
-→ **Action:** Feature Selection (page 3) will help you choose which to keep
+→ **Action:** Feature Selection (page 4) will help you choose which to keep
 
 ⚠️ **Detected:** 5 features with >20% missing data  
-→ **Action:** Preprocessing (page 4) will handle imputation
+→ **Action:** Preprocessing (page 5) will handle imputation
 
 ✅ **Detected:** Skewed distributions in income, glucose  
-→ **Consider:** Log transforms in Feature Engineering (optional, page 2a)
+→ **Consider:** Log transforms in Feature Engineering (optional, page 3)
 
 👉 **Recommended next step:** Feature Engineering (optional) or Feature Selection
 ```
@@ -357,7 +357,7 @@ Add **"Model Selection Guide"** after results:
 **If models perform similarly (within confidence intervals):**
 1. Choose simpler model (Logistic > Random Forest > Neural Net)
 2. Prioritize interpretability if needed for publication
-3. Check calibration (page 6)
+3. Check calibration (page 7)
 
 **Your case:** Ridge, Random Forest, and XGBoost all achieve 0.82 AUC
 → **Recommendation:** Ridge (most interpretable) or Random Forest (robust)
@@ -394,7 +394,7 @@ if st.session_state.get('feature_engineering_applied'):
     engineered_names = st.session_state.get('engineered_feature_names', [])
     
     st.info(f"""
-    **💡 Remember:** {len(engineered_names)} features were engineered (page 2a).
+    **💡 Remember:** {len(engineered_names)} features were engineered (page 3).
     
     Engineered features in your model:
     - log_glucose ← Log transform of glucose
@@ -592,7 +592,7 @@ if has_high_missing(df):
     st.warning("""
     ⚠️ **Action Needed:** 5 features have >20% missing data
     
-    → In Preprocessing (page 4), you'll need to choose an imputation strategy.
+    → In Preprocessing (page 5), you'll need to choose an imputation strategy.
     Consider: Multiple imputation or dropping these features in Feature Selection.
     """)
 
@@ -600,7 +600,7 @@ if has_skewed_features(df):
     st.info("""
     💡 **Consider:** 3 features are right-skewed (income, glucose, BMI)
     
-    → Feature Engineering (page 2a) offers log transforms to normalize these.
+    → Feature Engineering (page 3) offers log transforms to normalize these.
     This can improve linear model performance.
     """)
 ```
@@ -734,22 +734,22 @@ else:
    - [ ] Each page appends actions
    - [ ] Report generates from log
 
-6. **Add model selection guidance** (page 5)
+6. **Add model selection guidance** (page 6)
    - [ ] When models are tied, explain how to choose
    - [ ] Reference interpretability, deployment, robustness
 
 ### Priority 3 (Medium - Polish):
 
-7. **Add "Training Configuration" summary** (page 5)
+7. **Add "Training Configuration" summary** (page 6)
    - [ ] Show: n_samples, n_features (original vs selected), target
    - [ ] Reference Feature Selection choices
    - [ ] Show preprocessing configuration
 
-8. **Add sensitivity interpretation guide** (page 7)
+8. **Add sensitivity interpretation guide** (page 8)
    - [ ] Thresholds: stable (<0.03), moderate (0.03-0.05), unstable (>0.05)
    - [ ] Recommendations for each case
 
-9. **Explainability feature engineering reminders** (page 6)
+9. **Explainability feature engineering reminders** (page 7)
    - [ ] When engineered features are important, remind user how they were created
    - [ ] Link back to Feature Engineering page
 

@@ -20,8 +20,8 @@ init_session_state()
 inject_custom_css()
 
 st.title("🧬 Feature Engineering (Optional)")
-render_breadcrumb("02a_Feature_Engineering")
-render_page_navigation("02a_Feature_Engineering")
+render_breadcrumb("03_Feature_Engineering")
+render_page_navigation("03_Feature_Engineering")
 
 # ============================================================================
 # Introduction & Educational Content
@@ -128,7 +128,7 @@ with col2:
         # Make sure no engineered features are in session state
         st.session_state.pop("df_engineered", None)
         st.session_state["feature_engineering_applied"] = False
-        st.success("👉 Continue to **Feature Selection** (page 3)")
+        st.success("👉 Continue to **Feature Selection** (page 4)")
         st.stop()
 
 st.markdown("---")
@@ -828,7 +828,7 @@ if new_features > 0:
     ⚠️ **Next Steps:**
     
     1. **Save** engineered features below
-    2. Go to **Feature Selection** (page 3) to identify the most important features
+    2. Go to **Feature Selection** (page 4) to identify the most important features
     3. Feature selection is **strongly recommended** after engineering to remove redundant/unhelpful features
     
     **Explainability reminder:** Be prepared to justify feature engineering choices to peer reviewers!
@@ -855,7 +855,7 @@ if new_features > 0:
         
         st.success("✅ Saved engineered dataset!")
         st.balloons()
-        st.info("👉 **Continue to Feature Selection** (page 3) to filter important features")
+        st.info("👉 **Continue to Feature Selection** (page 4) to filter important features")
 else:
     st.info("ℹ️ No feature engineering applied yet. Enable techniques above, or click **⏭️ Skip** at the top to proceed with original features.")
 

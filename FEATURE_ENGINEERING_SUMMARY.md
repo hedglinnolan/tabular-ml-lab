@@ -48,7 +48,7 @@
 
 ### **New Page: 🧬 Feature Engineering (Optional)**
 
-Appears between **EDA** (page 2) and **Feature Selection** (page 3).
+Appears between **EDA** (page 2) and **Feature Selection** (page 4).
 
 #### **Intro Section**
 
@@ -297,13 +297,13 @@ When user clicks "Save":
 ### **Downstream Integration:**
 
 All pages that call `get_data()` automatically see engineered features:
-- Feature Selection (page 3) ✓
-- Preprocess (page 4) ✓
-- Train & Compare (page 5) ✓
-- Explainability (page 6) ✓
-- Sensitivity Analysis (page 7) ✓
-- Hypothesis Testing (page 8) ✓
-- Report Export (page 9) ✓
+- Feature Selection (page 4) ✓
+- Preprocess (page 5) ✓
+- Train & Compare (page 6) ✓
+- Explainability (page 7) ✓
+- Sensitivity Analysis (page 8) ✓
+- Hypothesis Testing (page 9) ✓
+- Report Export (page 10) ✓
 
 **Verified:** Skipping the page causes no issues.
 

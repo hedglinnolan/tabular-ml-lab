@@ -33,8 +33,8 @@ inject_custom_css()
 render_sidebar_workflow(current_page="09_Report")
 render_step_indicator(9, "Report Export")
 st.title("📄 Report Export")
-render_breadcrumb("09_Report_Export")
-render_page_navigation("09_Report_Export")
+render_breadcrumb("10_Report_Export")
+render_page_navigation("10_Report_Export")
 
 st.markdown("""
 ### Export Publication-Ready Materials

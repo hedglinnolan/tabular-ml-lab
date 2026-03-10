@@ -21,8 +21,8 @@ inject_custom_css()
 render_sidebar_workflow(current_page="03_Feature")
 render_step_indicator(3, "Feature Selection")
 st.title("🎯 Feature Selection")
-render_breadcrumb("03_Feature_Selection")
-render_page_navigation("03_Feature_Selection")
+render_breadcrumb("04_Feature_Selection")
+render_page_navigation("04_Feature_Selection")
 
 # Prerequisites
 df = get_data()

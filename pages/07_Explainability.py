@@ -46,8 +46,8 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-render_breadcrumb("06_Explainability")
-render_page_navigation("06_Explainability")
+render_breadcrumb("07_Explainability")
+render_page_navigation("07_Explainability")
 
 # ── Feature Engineering Reminder ────────────────────────────────
 # Check if feature engineering was applied
@@ -57,7 +57,7 @@ if st.session_state.get('feature_engineering_applied'):
     
     if engineered_names:
         st.info(f"""
-        **💡 Remember:** You created {len(engineered_names)} engineered features in Feature Engineering (page 2a).
+        **💡 Remember:** You created {len(engineered_names)} engineered features in Feature Engineering (page 3).
         
         When interpreting feature importance below, some features are transformations of your original data:
         """)

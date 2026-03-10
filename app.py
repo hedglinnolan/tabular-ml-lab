@@ -71,7 +71,7 @@ st.markdown("Follow the pages in the sidebar, in order. Each step builds on the 
 steps = [
     ("1", "Upload & Audit", "Load your data, configure target variable and features, review data quality.", "📂"),
     ("2", "Explore (EDA)", "Distributions, correlations, Table 1, missing data analysis, AI-powered insights.", "📈"),
-    ("2a", "Feature Engineering (Optional)", "Create polynomial, ratio, binning, TDA features to improve model performance.", "🧬"),
+    ("3", "Feature Engineering (Optional)", "Create polynomial, ratio, binning, TDA features to improve model performance.", "🧬"),
     ("4", "Feature Selection", "LASSO path, RFE-CV, stability selection — find the most informative predictors.", "🎯"),
     ("5", "Preprocess", "Build per-model preprocessing pipelines: imputation, scaling, encoding, outlier treatment.", "⚙️"),
     ("6", "Train & Compare", "Multiple model families with bootstrap CIs, baseline comparison, and calibration analysis.", "🧠"),
