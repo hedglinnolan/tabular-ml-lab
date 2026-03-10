@@ -546,6 +546,9 @@ st.header("📋 Table 1: Study Population Characteristics")
 st.markdown("""
 **Why this matters:** Table 1 is the first table in nearly every clinical/research paper.
 It summarizes your study population, stratified by groups, with appropriate statistical tests.
+
+💡 **Note:** This generates Table 1 with automatic p-values. You can add custom statistical tests 
+later in **Statistical Validation** (page 9) if you need specific comparisons beyond the defaults.
 """)
 
 with st.expander("Generate Table 1", expanded=False):

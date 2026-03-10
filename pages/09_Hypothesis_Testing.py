@@ -62,14 +62,19 @@ st.markdown("""
 
 **Your workflow:**
 1. ✅ Built ML model (pages 1-6)
-2. ✅ Explained predictions 
-3. ✅ Validated robustness 
-4. **NOW:** Generate statistics for Table 1 and Methods section
-5. **NEXT:** Export everything 
+2. ✅ Explained predictions (page 7)
+3. ✅ Validated robustness (page 8)
+4. **NOW:** Add custom statistical tests to validate ML findings
+5. **NEXT:** Export everything (page 10)
+
+**About Table 1:**
+- You already generated Table 1 in **EDA** (page 2) with automatic p-values
+- This page lets you add **CUSTOM tests** for specific variables or comparisons
+- Custom p-values will be merged into your Table 1 in the Export page
 
 **These tests will appear in:**
-- **Table 1:** Baseline characteristics with p-values
-- **Methods:** "Univariate associations were tested using..."
+- **Table 1:** Your custom p-values will be added alongside the automatic ones
+- **Methods:** "Additional univariate associations were tested using..."
 - **Results:** "Features X, Y, Z differed significantly between groups"
 """)
 
@@ -175,7 +180,7 @@ with st.sidebar:
     st.caption(f"• Current α = {alpha_level}")
 
 # Test selection
-st.header("Generate Table 1 Statistics")
+st.header("Run Statistical Tests")
 
 test_type = st.selectbox(
     "What do you want to test?",
@@ -323,17 +328,19 @@ if test_type == "Correlation (two numeric variables)":
             """)
         
         # Export to Table 1 button
-        if st.button("📋 Copy p-values to Table 1", key="export_corr_table1"):
-            # Store results in session state for Table 1 generation
-            if 'table1_pvalues' not in st.session_state:
-                st.session_state['table1_pvalues'] = {}
-            st.session_state['table1_pvalues'][f"{results['var1']} vs {results['var2']}"] = {
+        if st.button("📋 Add to Table 1", key="export_corr_table1"):
+            # Store results in session state for Table 1 merging
+            if 'custom_table1_tests' not in st.session_state:
+                st.session_state['custom_table1_tests'] = []
+            
+            st.session_state['custom_table1_tests'].append({
+                'variable': f"{results['var1']} vs {results['var2']}",
                 'test': results['test_name'],
-                'statistic': results['r'],
+                'statistic': f"r = {results['r']:.3f}",
                 'p_value': results['p'],
-                'method': results['method']
-            }
-            st.success("✅ p-values saved! These will appear in your Table 1 (Export page)")
+                'note': f"{results['method']} correlation"
+            })
+            st.success(f"✅ Test result saved! Will be added to Table 1 in Export page. ({len(st.session_state['custom_table1_tests'])} custom tests total)")
         
         # Scatter plot (trendline requires statsmodels; skip if unavailable)
         try:
@@ -440,17 +447,18 @@ elif test_type == "Two-sample comparison (numeric variable, two groups)":
         """)
         
         # Export to Table 1 button
-        if st.button("📋 Copy p-values to Table 1", key="export_ttest_table1"):
-            if 'table1_pvalues' not in st.session_state:
-                st.session_state['table1_pvalues'] = {}
-            st.session_state['table1_pvalues'][f"{results['numeric_var']} by {results['group_var']}"] = {
+        if st.button("📋 Add to Table 1", key="export_ttest_table1"):
+            if 'custom_table1_tests' not in st.session_state:
+                st.session_state['custom_table1_tests'] = []
+            
+            st.session_state['custom_table1_tests'].append({
+                'variable': results['numeric_var'],
                 'test': results['test_name'],
-                'statistic': results['stat'],
+                'statistic': f"Δ = {results['group1_mean'] - results['group2_mean']:.3f}",
                 'p_value': results['p'],
-                'group1_mean': results['group1_mean'],
-                'group2_mean': results['group2_mean']
-            }
-            st.success("✅ p-values saved! These will appear in your Table 1 (Export page)")
+                'note': f"Comparing {results['group1']} vs {results['group2']}"
+            })
+            st.success(f"✅ Test result saved! Will be added to Table 1 in Export page. ({len(st.session_state['custom_table1_tests'])} custom tests total)")
         
         # Box plot
         plot_df = pd.DataFrame({
@@ -551,16 +559,18 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
         """)
         
         # Export to Table 1 button
-        if st.button("📋 Copy p-values to Table 1", key="export_anova_table1"):
-            if 'table1_pvalues' not in st.session_state:
-                st.session_state['table1_pvalues'] = {}
-            st.session_state['table1_pvalues'][f"{results['numeric_var']} by {results['group_var']}"] = {
+        if st.button("📋 Add to Table 1", key="export_anova_table1"):
+            if 'custom_table1_tests' not in st.session_state:
+                st.session_state['custom_table1_tests'] = []
+            
+            st.session_state['custom_table1_tests'].append({
+                'variable': results['numeric_var'],
                 'test': results['test_name'],
-                'statistic': results['stat'],
+                'statistic': f"F = {results['stat']:.3f}",
                 'p_value': results['p'],
-                'group_means': results['group_means']
-            }
-            st.success("✅ p-values saved! These will appear in your Table 1 (Export page)")
+                'note': f"{len(results['group_means'])} groups compared"
+            })
+            st.success(f"✅ Test result saved! Will be added to Table 1 in Export page. ({len(st.session_state['custom_table1_tests'])} custom tests total)")
         
         # Box plot
         plot_df = df[[numeric_var, group_var]].dropna()
@@ -633,15 +643,18 @@ elif test_type == "Categorical association (two categorical variables)":
         """)
         
         # Export to Table 1 button
-        if st.button("📋 Copy p-values to Table 1", key="export_chi_table1"):
-            if 'table1_pvalues' not in st.session_state:
-                st.session_state['table1_pvalues'] = {}
-            st.session_state['table1_pvalues'][f"{results['var1']} vs {results['var2']}"] = {
+        if st.button("📋 Add to Table 1", key="export_chi_table1"):
+            if 'custom_table1_tests' not in st.session_state:
+                st.session_state['custom_table1_tests'] = []
+            
+            st.session_state['custom_table1_tests'].append({
+                'variable': f"{results['var1']} vs {results['var2']}",
                 'test': results['test_name'],
-                'statistic': results['stat'],
-                'p_value': results['p']
-            }
-            st.success("✅ p-values saved! These will appear in your Table 1 (Export page)")
+                'statistic': f"χ² = {results['stat']:.3f}",
+                'p_value': results['p'],
+                'note': 'Categorical association'
+            })
+            st.success(f"✅ Test result saved! Will be added to Table 1 in Export page. ({len(st.session_state['custom_table1_tests'])} custom tests total)")
         
         # Heatmap
         fig = px.imshow(
@@ -795,18 +808,18 @@ elif test_type == "Paired comparison (numeric variable, before/after)":
         """)
         
         # Export to Table 1 button
-        if st.button("📋 Copy p-values to Table 1", key="export_paired_table1"):
-            if 'table1_pvalues' not in st.session_state:
-                st.session_state['table1_pvalues'] = {}
-            st.session_state['table1_pvalues'][f"{results['var_before']} vs {results['var_after']} (paired)"] = {
+        if st.button("📋 Add to Table 1", key="export_paired_table1"):
+            if 'custom_table1_tests' not in st.session_state:
+                st.session_state['custom_table1_tests'] = []
+            
+            st.session_state['custom_table1_tests'].append({
+                'variable': f"{results['var_before']} → {results['var_after']}",
                 'test': results['test_name'],
-                'statistic': results['stat'],
+                'statistic': f"Δ = {results['mean_diff']:.3f}",
                 'p_value': results['p'],
-                'mean_difference': results['mean_diff'],
-                'before_mean': results['before_mean'],
-                'after_mean': results['after_mean']
-            }
-            st.success("✅ p-values saved! These will appear in your Table 1 (Export page)")
+                'note': f"Paired comparison (n={results['n_pairs']})"
+            })
+            st.success(f"✅ Test result saved! Will be added to Table 1 in Export page. ({len(st.session_state['custom_table1_tests'])} custom tests total)")
         
         # Before/after plot
         plot_df = pd.DataFrame({

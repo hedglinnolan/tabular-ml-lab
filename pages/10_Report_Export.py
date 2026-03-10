@@ -868,6 +868,52 @@ with st.expander("✅ TRIPOD Checklist", expanded=False):
         key="dl_tripod",
     )
 
+# Table 1 with Custom Tests
+if st.session_state.get("table1_df") is not None:
+    with st.expander("📋 Table 1: Study Population (with Custom Tests)", expanded=False):
+        st.markdown("""
+        This is your final Table 1, including any custom statistical tests you added in **Statistical Validation** (page 9).
+        """)
+        
+        table1_display = st.session_state["table1_df"].copy()
+        custom_tests = st.session_state.get('custom_table1_tests', [])
+        
+        if custom_tests:
+            st.info(f"✅ {len(custom_tests)} custom statistical test(s) added from Statistical Validation page")
+            
+            # Add custom tests as additional rows
+            for test in custom_tests:
+                new_row = pd.DataFrame({
+                    'Variable': [f"{test['variable']}"],
+                    'p-value': [f"{test['p_value']:.4f}" if test['p_value'] >= 0.001 else "<0.001"]
+                })
+                # Add note column if not exists
+                if 'Test/Note' not in table1_display.columns:
+                    table1_display['Test/Note'] = ''
+                new_row['Test/Note'] = f"{test['test']}: {test['statistic']} ({test['note']})"
+                
+                # Match other columns from original table
+                for col in table1_display.columns:
+                    if col not in new_row.columns:
+                        new_row[col] = '—'
+                
+                table1_display = pd.concat([table1_display, new_row], ignore_index=True)
+        
+        table(table1_display, use_container_width=True, hide_index=True)
+        
+        # Export buttons
+        col_t1_exp1, col_t1_exp2 = st.columns(2)
+        with col_t1_exp1:
+            csv_data = table1_display.to_csv(index=False)
+            st.download_button("📥 Download CSV", csv_data, "table1_final.csv", "text/csv", key="dl_table1_final_csv")
+        with col_t1_exp2:
+            from ml.table_one import table1_to_latex
+            try:
+                latex_data = table1_to_latex(table1_display)
+                st.download_button("📥 Download LaTeX", latex_data, "table1_final.tex", "text/plain", key="dl_table1_final_latex")
+            except:
+                st.caption("LaTeX export requires standard Table 1 format")
+
 # LaTeX Manuscript Template
 with st.expander("📝 LaTeX Manuscript Template", expanded=False):
     st.markdown("""
@@ -890,6 +936,23 @@ with st.expander("📝 LaTeX Manuscript Template", expanded=False):
         val_n = len(st.session_state.get('X_val', []))
         test_n = len(st.session_state.get('X_test', []))
         table1_df_local = st.session_state.get("table1_df")
+        
+        # Merge custom statistical tests from page 09 into Table 1
+        custom_tests = st.session_state.get('custom_table1_tests', [])
+        if custom_tests and table1_df_local is not None:
+            # Add custom tests as additional rows at the end of Table 1
+            for test in custom_tests:
+                new_row = pd.DataFrame({
+                    'Variable': [f"{test['variable']} ({test['note']})"],
+                    'Test': [test['test']],
+                    'Statistic': [test['statistic']],
+                    'p-value': [f"{test['p_value']:.4f}" if test['p_value'] >= 0.001 else "<0.001"]
+                })
+                # Match columns from original table1_df (may have group columns)
+                for col in table1_df_local.columns:
+                    if col not in new_row.columns:
+                        new_row[col] = '—'
+                table1_df_local = pd.concat([table1_df_local, new_row], ignore_index=True)
         methods_text = st.session_state.get("methods_section", "")
         bootstrap_res = st.session_state.get("bootstrap_results")
 
