@@ -35,6 +35,15 @@ An interactive research workbench for scientists who work with tabular data and 
 
 > 🌐 **Try it now:** [app.tabularml.dev](https://app.tabularml.dev) (Note: this demo contains experimental features not yet released for production)
 
+### 🎉 What's New in v1.1 (Human-Centered Design Improvements)
+
+- **💾 Session Save/Resume** — Pause your 45-minute workflow and continue later. Download `.pkl` files to save progress.
+- **🔍 Diagnostic Assistant** — When models perform poorly (AUC < 0.65), get intelligent explanations: weak features, insufficient data, class imbalance, or high missing data.
+- **📊 Explainability Prioritization** — Three-tier system (Essential/Recommended/Advanced) helps you focus on what reviewers actually care about.
+- **📐 Statistical Validation** — Renamed "Hypothesis Testing" to emphasize publication value. Generate p-values for Table 1 and validate ML findings with traditional statistics.
+- **🧬 Feature Engineering** — NEW optional step: create polynomial features, log transforms, ratios, binning, and topological features (TDA). Integrates seamlessly with feature selection.
+- **🔗 Workflow Connective Tissue** — Every page now explains "Why This Step?" and "What Happens Next?" for better learning experience.
+
 <!-- 
 ## Screenshots
 TODO: Add screenshots of key pages
@@ -45,19 +54,20 @@ TODO: Add screenshots of key pages
 
 ## Features
 
-### 📋 9-Step Guided Workflow
+### 📋 10-Step Guided Workflow
 
 | Step | Page | What it does |
 |------|------|-------------|
 | 1 | **Upload & Audit** | Load CSVs/Excel, merge multiple files, data quality checks |
 | 2 | **EDA** | Distributions, correlations, Table 1, missing data analysis |
-| 3 | **Feature Selection** | LASSO path, RFE-CV, stability selection, consensus ranking |
-| 4 | **Preprocess** | Per-model pipelines: MICE imputation, scaling, encoding, outliers |
-| 5 | **Train & Compare** | 18 model families with bootstrap CIs and baseline comparison |
-| 6 | **Explainability** | SHAP, permutation importance, calibration, decision curves |
-| 7 | **Sensitivity Analysis** | Seed robustness, feature dropout — prove your results aren't fragile |
-| 8 | **Hypothesis Testing** | Standalone stats: t-tests, ANOVA, chi-square, correlation |
-| 9 | **Report Export** | Auto-generated methods section, TRIPOD checklist, LaTeX tables |
+| 3 | **Feature Engineering** | 🆕 Create polynomial, ratio, binning, TDA features (optional) |
+| 4 | **Feature Selection** | LASSO path, RFE-CV, stability selection, consensus ranking |
+| 5 | **Preprocess** | Per-model pipelines: MICE imputation, scaling, encoding, outliers |
+| 6 | **Train & Compare** | 18 model families with bootstrap CIs and baseline comparison |
+| 7 | **Explainability** | SHAP, permutation importance, calibration, decision curves |
+| 8 | **Sensitivity Analysis** | Seed robustness, feature dropout — prove your results aren't fragile |
+| 9 | **Statistical Validation** | 🆕 Traditional stats for Table 1: t-tests, ANOVA, chi-square |
+| 10 | **Report Export** | Auto-generated methods section, TRIPOD checklist, LaTeX tables |
 
 ### 📊 Publication-Ready Outputs
 
