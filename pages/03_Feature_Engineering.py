@@ -13,11 +13,12 @@ import warnings
 warnings.filterwarnings('ignore')
 
 from utils.session_state import get_data, init_session_state, log_methodology
-from utils.theme import inject_custom_css, render_breadcrumb, render_page_navigation, render_guidance
+from utils.theme import inject_custom_css, render_breadcrumb, render_page_navigation, render_guidance, render_sidebar_workflow
 
 # Initialize
 init_session_state()
 inject_custom_css()
+render_sidebar_workflow(current_page="03_Feature_Engineering")
 
 st.title("🧬 Feature Engineering (Optional)")
 render_breadcrumb("03_Feature_Engineering")

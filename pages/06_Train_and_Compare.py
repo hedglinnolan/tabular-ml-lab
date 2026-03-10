@@ -1723,7 +1723,7 @@ if st.session_state.get('trained_models'):
                                 'issue': 'Weak Features',
                                 'severity': 'HIGH',
                                 'description': f'No feature has correlation >0.1 with target (max: {max_corr:.3f})',
-                                'action': 'Review EDA (page 2) for feature-target relationships. Consider feature engineering (page 3) or collecting more informative data.'
+                                'action': 'Review EDA for feature-target relationships. Consider Feature Engineering or collect more informative data.'
                             })
                     except Exception:
                         pass  # Skip if correlation calculation fails
@@ -1738,7 +1738,7 @@ if st.session_state.get('trained_models'):
                         'issue': 'Insufficient Data',
                         'severity': 'HIGH',
                         'description': f'Only {samples_per_feature:.1f} samples per feature (need ≥10-20)',
-                        'action': 'Reduce features via Feature Selection (page 4) or collect more samples. Consider this a pilot study.'
+                        'action': 'Reduce features via Feature Selection or collect more samples. Consider this a pilot study.'
                     })
                 
                 # Check 3: Class imbalance (classification only)
@@ -1765,7 +1765,7 @@ if st.session_state.get('trained_models'):
                             'issue': 'High Missing Data',
                             'severity': 'MEDIUM',
                             'description': f'{missing_pct:.1f}% of data is missing',
-                            'action': 'Review Preprocessing (page 5). Consider multiple imputation or dropping high-missingness features.'
+                            'action': 'Review Preprocessing step. Consider multiple imputation or dropping high-missingness features.'
                         })
                 except Exception:
                     pass  # Skip if missing data check fails

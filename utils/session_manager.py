@@ -197,6 +197,21 @@ def render_session_controls():
                 st.sidebar.error("❌ Invalid session file (missing metadata)")
                 return
             
+            # Check version compatibility
+            metadata = session_data.get('_metadata', {})
+            session_version = metadata.get('version', 'unknown')
+            current_version = '1.0'  # Match what we save
+            
+            if session_version != current_version:
+                st.sidebar.warning(f"""
+                ⚠️ **Version Mismatch**
+                
+                Session was saved with version {session_version}, 
+                but current version is {current_version}.
+                
+                Attempting to restore anyway, but some features may not work correctly.
+                """)
+            
             # Restore to session state
             restored_count, metadata = _restore_session_data(session_data)
             
@@ -221,8 +236,15 @@ def render_session_controls():
             st.sidebar.error(f"❌ **Error loading session:**\n\n{str(e)}")
     
     # ========================================================================
-    # PRIVACY WARNING
+    # PRIVACY & SECURITY WARNINGS
     # ========================================================================
+    st.sidebar.warning("""
+    🔒 **Security Warning**
+    
+    Only load session files you created yourself.  
+    **Never load files from untrusted sources.**
+    """)
+    
     st.sidebar.info("""
     ⚠️ **Privacy Note**
     

@@ -94,6 +94,59 @@ You've trained models and seen performance metrics. Now: **WHY did the model mak
 This page provides publication-grade explainability using SHAP, permutation importance, and calibration analysis.
 """)
 
+# ── Prioritization Checklist ────────────────────────────────────
+st.markdown("---")
+st.markdown("### 📋 Explainability Checklist")
+
+st.markdown("""
+Use this checklist to prioritize your analysis time. For publication, focus on **Essential** first.
+""")
+
+# Three-tier priority system
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.markdown("""
+    **📊 Essential** (include in paper)
+    - [ ] SHAP feature importance
+    - [ ] Calibration plot (classification)
+    - [ ] Feature importance table
+    
+    **Why:** Reviewers expect SHAP as gold standard. Calibration proves your probabilities are trustworthy.
+    
+    **Time:** ~5 minutes
+    """)
+
+with col2:
+    st.markdown("""
+    **📈 Recommended** (if asked by reviewers)
+    - [ ] Permutation importance
+    - [ ] Partial dependence plots (PDP)
+    
+    **Why:** Validates SHAP findings. Shows feature-outcome relationships.
+    
+    **Time:** ~10 minutes
+    """)
+
+with col3:
+    st.markdown("""
+    **🔬 Advanced** (optional)
+    - [ ] Individual conditional expectation (ICE)
+    - [ ] LIME explanations
+    - [ ] Interaction plots
+    
+    **Why:** Deep dive for specific questions. Overkill for most papers.
+    
+    **Time:** ~15 minutes
+    """)
+
+st.info("""
+**💡 Recommendation:** Run Essential analyses first. If models perform well, add Recommended. 
+Skip Advanced unless reviewers specifically request or you're investigating complex interactions.
+""")
+
+st.markdown("---")
+
 # ── Guardrails ──────────────────────────────────────────────────
 task_mode = st.session_state.get('task_mode')
 if task_mode != 'prediction':
@@ -457,7 +510,7 @@ if perm_data or shap_data:
     for tab, name in zip(model_tabs, [n for n in trained if n in perm_data or n in shap_data]):
         with tab:
             # Sub-tabs within each model
-            analysis_tabs = st.tabs(["Permutation Importance", "SHAP Values", "Partial Dependence"])
+            analysis_tabs = st.tabs(["📈 Permutation Importance (Recommended)", "📊 SHAP Values (Essential)", "📈 Partial Dependence (Recommended)"])
 
             # ── Permutation Importance Tab ──────────────────────
             with analysis_tabs[0]:
