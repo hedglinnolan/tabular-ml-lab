@@ -1366,6 +1366,202 @@ if st.session_state.get('trained_models'):
                     st.dataframe(pd.DataFrame(rows), width="stretch")
 
     # ================================================================
+    # MODEL INSIGHTS: WHY DID THIS MODEL WIN?
+    # ================================================================
+    st.markdown("---")
+    st.markdown("### 🔍 Why Did This Model Win?")
+    
+    # Get best model
+    metric_col_insights = 'AUC (val)' if task_type_final == 'classification' else 'R² (val)'
+    
+    if metric_col_insights in comparison_df.columns and len(comparison_df) > 0:
+        # Find best performing model
+        best_model_idx = comparison_df[metric_col_insights].idxmax()
+        best_model_name = comparison_df.loc[best_model_idx, 'Model']
+        best_metric_value = comparison_df.loc[best_model_idx, metric_col_insights]
+        
+        # Generate insights based on model type and data characteristics
+        insights = []
+        
+        # Analyze data characteristics
+        df = get_data()
+        feature_cols_insights = st.session_state.get('selected_features') or st.session_state.get('feature_cols') or []
+        n_samples = len(df)
+        n_features = len(feature_cols_insights) if feature_cols_insights else 0
+        
+        # Calculate data properties
+        numeric_features = []
+        outlier_count = 0
+        high_corr_count = 0
+        
+        if feature_cols_insights:
+            try:
+                numeric_features = df[feature_cols_insights].select_dtypes(include=[np.number]).columns.tolist()
+                
+                # Count outliers
+                if len(numeric_features) > 0:
+                    for col in numeric_features:
+                        Q1 = df[col].quantile(0.25)
+                        Q3 = df[col].quantile(0.75)
+                        IQR = Q3 - Q1
+                        outliers = ((df[col] < (Q1 - 1.5 * IQR)) | (df[col] > (Q3 + 1.5 * IQR))).sum()
+                        outlier_count += outliers
+                
+                # Check feature correlations
+                if len(numeric_features) > 1:
+                    corr_matrix = df[numeric_features].corr().abs()
+                    high_corr_count = int(((corr_matrix > 0.8) & (corr_matrix < 1.0)).sum().sum() // 2)
+            except Exception as e:
+                logger.warning(f"Could not analyze data characteristics: {e}")
+        
+        # Generate model-specific insights
+        if best_model_name in ['RF', 'RANDOM_FOREST', 'XGB', 'LGBM']:
+            # Tree-based models
+            insights.append({
+                'reason': 'Handles Non-Linearity',
+                'icon': '✅',
+                'explanation': 'Tree-based models capture complex, non-linear relationships without manual feature engineering.'
+            })
+            
+            if outlier_count > n_samples * 0.05:
+                insights.append({
+                    'reason': 'Robust to Outliers',
+                    'icon': '✅',
+                    'explanation': f'Your data has {outlier_count} outliers. Tree-based models handle these naturally without scaling.'
+                })
+            
+            if high_corr_count > 0:
+                insights.append({
+                    'reason': 'Handles Collinearity',
+                    'icon': '✅',
+                    'explanation': f'Found {high_corr_count} highly correlated feature pairs. Trees naturally handle redundant features.'
+                })
+            
+            insights.append({
+                'reason': 'No Scaling Required',
+                'icon': '⚙️',
+                'explanation': 'Unlike linear models, trees work directly on raw feature scales (faster preprocessing).'
+            })
+            
+        elif best_model_name in ['LOGISTIC', 'RIDGE', 'LASSO', 'ELASTIC_NET']:
+            # Linear models
+            insights.append({
+                'reason': 'Linear Relationships',
+                'icon': '✅',
+                'explanation': 'Your outcome appears to have linear relationships with predictors.'
+            })
+            
+            insights.append({
+                'reason': 'High Interpretability',
+                'icon': '🔍',
+                'explanation': 'Coefficients directly show feature importance and direction of effect (unlike black-box models).'
+            })
+            
+            if best_model_name in ['RIDGE', 'LASSO', 'ELASTIC_NET']:
+                insights.append({
+                    'reason': 'Regularization Benefit',
+                    'icon': '✅',
+                    'explanation': f'L1/L2 regularization prevents overfitting with {n_features} features and {n_samples} samples.'
+                })
+            
+            insights.append({
+                'reason': 'Fast Predictions',
+                'icon': '⚡',
+                'explanation': 'Linear models are near-instant for deployment (important for real-time applications).'
+            })
+
+        elif best_model_name in ['SVM_LINEAR', 'SVM_RBF']:
+            # SVM
+            insights.append({
+                'reason': 'Maximum Margin',
+                'icon': '✅',
+                'explanation': 'SVM finds optimal decision boundary that maximizes class separation.'
+            })
+            
+            if best_model_name == 'SVM_RBF':
+                insights.append({
+                    'reason': 'Non-Linear Kernel',
+                    'icon': '✅',
+                    'explanation': 'RBF kernel captures complex, non-linear decision boundaries.'
+                })
+            
+            if n_samples < 1000:
+                insights.append({
+                    'reason': 'Works on Small Data',
+                    'icon': '✅',
+                    'explanation': f'SVMs often excel with smaller datasets ({n_samples} samples).'
+                })
+
+        elif best_model_name in ['NN', 'MLP']:
+            # Neural networks
+            insights.append({
+                'reason': 'Complex Patterns',
+                'icon': '✅',
+                'explanation': 'Neural networks can learn highly complex, hierarchical representations.'
+            })
+            
+            insights.append({
+                'reason': 'Feature Interactions',
+                'icon': '✅',
+                'explanation': 'Hidden layers automatically discover feature interactions without manual engineering.'
+            })
+        
+        # Display insights
+        if insights:
+            metric_name_display = metric_col_insights.replace(' (val)', '')
+            st.markdown(f"**{best_model_name}** achieved the best performance ({metric_name_display}: {best_metric_value:.3f}). Here's why:")
+            
+            for insight in insights:
+                st.markdown(f"""
+{insight['icon']} **{insight['reason']}**  
+{insight['explanation']}
+""")
+        
+        # Trade-offs section
+        st.markdown("### ⚖️ Trade-offs to Consider")
+        
+        if best_model_name in ['RF', 'RANDOM_FOREST', 'XGB', 'LGBM']:
+            st.markdown("""
+- ⚠️ **Less interpretable** than linear models (use SHAP for explanations)
+- ⚠️ **Slower predictions** than linear models (ensemble of trees)
+- ⚠️ **Larger memory** footprint for deployment
+- ✅ **But:** Superior performance often worth the trade-off
+""")
+
+        elif best_model_name in ['LOGISTIC', 'RIDGE', 'LASSO']:
+            st.markdown("""
+- ⚠️ **Assumes linearity** (may miss complex patterns)
+- ⚠️ **Requires scaling** (preprocessing adds complexity)
+- ✅ **But:** Highly interpretable coefficients
+- ✅ **But:** Fast, lightweight deployment
+""")
+
+        elif best_model_name in ['NN', 'MLP']:
+            st.markdown("""
+- ⚠️ **Black box** (hardest to interpret)
+- ⚠️ **Requires tuning** (many hyperparameters)
+- ⚠️ **Needs more data** (risk of overfitting on small datasets)
+- ✅ **But:** Can capture any pattern given enough data
+""")
+        
+        elif best_model_name in ['SVM_LINEAR', 'SVM_RBF']:
+            st.markdown("""
+- ⚠️ **Can be slow** to train on large datasets
+- ⚠️ **Sensitive to scaling** (requires careful preprocessing)
+- ⚠️ **Hyperparameter tuning** critical for good performance
+- ✅ **But:** Strong theoretical foundation (maximum margin)
+""")
+        
+        else:
+            st.markdown("""
+- Check model documentation for specific trade-offs
+- Consider interpretability, speed, and deployment requirements
+- Use SHAP for post-hoc explanations if needed
+""")
+    else:
+        st.info("Train models to see performance insights")
+
+    # ================================================================
     # MODEL SELECTION GUIDANCE
     # ================================================================
     st.markdown("---")
@@ -1479,6 +1675,129 @@ if st.session_state.get('trained_models'):
             st.info("Train multiple models to see comparison and recommendations.")
     else:
         st.info("Train models to see selection guidance.")
+
+    # ================================================================
+    # DIAGNOSTIC ASSISTANT FOR POOR PERFORMANCE
+    # ================================================================
+    # Check if we have model results and comparison data
+    if len(comparison_df) > 0 and metric_col in comparison_df.columns:
+        best_metric = comparison_df[metric_col].max()
+        
+        # Define poor performance thresholds
+        if task_type_final == 'classification':
+            poor_threshold = 0.65
+            metric_name = 'AUC'
+        else:
+            poor_threshold = 0.40
+            metric_name = 'R²'
+        
+        # Trigger diagnostics if performance is poor
+        if best_metric < poor_threshold:
+            st.markdown("---")
+            st.error(f"""
+            ⚠️ **Poor Model Performance Detected**
+            
+            Your best model achieved {metric_name} = {best_metric:.2f}, which is below the acceptable threshold ({poor_threshold:.2f}).
+            """)
+            
+            st.markdown("### 🔍 Diagnostic Analysis")
+            
+            # Run diagnostics
+            diagnostics = []
+            
+            # Get the raw data
+            df = get_data()
+            target = data_config.target_col if data_config else None
+            feature_cols = st.session_state.get('selected_features') or (data_config.feature_cols if data_config else None)
+            
+            if df is not None and target and feature_cols:
+                # Check 1: Feature-target correlations
+                numeric_features = df[feature_cols].select_dtypes(include=[np.number]).columns
+                if len(numeric_features) > 0:
+                    try:
+                        correlations = df[numeric_features].corrwith(df[target]).abs()
+                        max_corr = correlations.max()
+                        
+                        if max_corr < 0.1:
+                            diagnostics.append({
+                                'issue': 'Weak Features',
+                                'severity': 'HIGH',
+                                'description': f'No feature has correlation >0.1 with target (max: {max_corr:.3f})',
+                                'action': 'Review EDA (page 2) for feature-target relationships. Consider feature engineering (page 3) or collecting more informative data.'
+                            })
+                    except Exception:
+                        pass  # Skip if correlation calculation fails
+                
+                # Check 2: Sample size
+                n_samples = len(df)
+                n_features = len(feature_cols) if feature_cols else 0
+                samples_per_feature = n_samples / n_features if n_features > 0 else 0
+                
+                if samples_per_feature < 10:
+                    diagnostics.append({
+                        'issue': 'Insufficient Data',
+                        'severity': 'HIGH',
+                        'description': f'Only {samples_per_feature:.1f} samples per feature (need ≥10-20)',
+                        'action': 'Reduce features via Feature Selection (page 4) or collect more samples. Consider this a pilot study.'
+                    })
+                
+                # Check 3: Class imbalance (classification only)
+                if task_type_final == 'classification':
+                    try:
+                        class_counts = df[target].value_counts()
+                        minority_pct = (class_counts.min() / class_counts.sum()) * 100
+                        
+                        if minority_pct < 10:
+                            diagnostics.append({
+                                'issue': 'Severe Class Imbalance',
+                                'severity': 'HIGH',
+                                'description': f'Minority class is only {minority_pct:.1f}% of data',
+                                'action': 'Use stratified splits (already done), consider class weights, or collect more minority samples.'
+                            })
+                    except Exception:
+                        pass  # Skip if class imbalance check fails
+                
+                # Check 4: Missing data
+                try:
+                    missing_pct = (df.isnull().sum().sum() / (df.shape[0] * df.shape[1])) * 100
+                    if missing_pct > 20:
+                        diagnostics.append({
+                            'issue': 'High Missing Data',
+                            'severity': 'MEDIUM',
+                            'description': f'{missing_pct:.1f}% of data is missing',
+                            'action': 'Review Preprocessing (page 5). Consider multiple imputation or dropping high-missingness features.'
+                        })
+                except Exception:
+                    pass  # Skip if missing data check fails
+            
+            # Display diagnostics
+            if diagnostics:
+                for diag in diagnostics:
+                    severity_icon = '🔴' if diag['severity'] == 'HIGH' else '🟡'
+                    st.markdown(f"""
+**{severity_icon} {diag['issue']}**  
+{diag['description']}
+
+**→ Action:** {diag['action']}
+""")
+            else:
+                # No specific issues detected, provide general guidance
+                if df is not None:
+                    n_samples = len(df)
+                else:
+                    n_samples = "unknown"
+                    
+                st.info(f"""
+**No obvious data quality issues detected.**
+
+Poor performance may be due to:
+- Inherent unpredictability of the outcome
+- Missing important features not in your dataset
+- Need for more complex feature engineering
+- Small dataset size (current: {n_samples} samples)
+
+**Recommendation:** Frame this as an exploratory/pilot study. Report confidence intervals and discuss limitations.
+""")
 
     # Model diagnostics (one tab per model so pred-vs-actual etc. visible for all)
     st.header("Model Diagnostics")
