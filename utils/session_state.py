@@ -182,9 +182,16 @@ def init_session_state():
 def get_data() -> Optional[pd.DataFrame]:
     """Get active data from session state. 
     Priority: df_engineered (if feature engineering was applied) > filtered_data > raw_data"""
-    return (st.session_state.get('df_engineered') or 
-            st.session_state.get('filtered_data') or 
-            st.session_state.get('raw_data'))
+    # Explicitly check for None to avoid DataFrame boolean ambiguity
+    df_eng = st.session_state.get('df_engineered')
+    if df_eng is not None:
+        return df_eng
+    
+    df_filt = st.session_state.get('filtered_data')
+    if df_filt is not None:
+        return df_filt
+    
+    return st.session_state.get('raw_data')
 
 
 def set_data(df: pd.DataFrame):
