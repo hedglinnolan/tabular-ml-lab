@@ -33,7 +33,8 @@ An interactive research workbench for scientists who work with tabular data and 
 
 **Built for researchers, not ML engineers.** Smart defaults get you 90% of the way. Advanced options are always one click away.
 
-> 🌐 **Try it now:** [app.tabularml.dev](https://app.tabularml.dev) (Note: this demo contains experimental features not yet released for production)
+> 🌐 **Try it now:** [app.tabularml.dev](https://app.tabularml.dev)  
+> ⚠️ **Note:** The live demo currently runs the `feature/feature-engineering` branch (experimental features in testing). The stable release is on `main`.
 
 ### 🎉 What's New in v1.1 (Human-Centered Design Improvements)
 
