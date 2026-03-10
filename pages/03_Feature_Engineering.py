@@ -212,10 +212,30 @@ Consider using Feature Selection (next step) to filter redundant interactions.
         st.markdown("---")
 
 # ============================================================================
+# Feature Engineering Techniques
+# ============================================================================
+
+st.markdown("### 🔧 Feature Engineering Techniques")
+st.markdown("Enable the techniques you want to apply. Each creates new features alongside your originals.")
+
+# Progress indicator
+progress_data = []
+if len(engineered_features) > 0:
+    st.success(f"✅ **{len(engineered_features)} features created so far** — Continue adding more or scroll to Summary to save.")
+
+# ============================================================================
 # Section 1: Polynomial Features & Interactions
 # ============================================================================
 
-st.header("1️⃣ Polynomial Features & Interactions")
+st.markdown("""
+<div style="background: linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(102,126,234,0.05) 100%); 
+            border-left: 4px solid #667eea; 
+            padding: 1rem; 
+            margin: 1.5rem 0; 
+            border-radius: 8px;">
+    <h3 style="margin: 0; color: #667eea;">1️⃣ Polynomial Features & Interactions</h3>
+</div>
+""", unsafe_allow_html=True)
 
 render_guidance("""
 **What:** Create new features by multiplying existing features together and raising them to powers.
@@ -308,13 +328,19 @@ if use_poly:
             except Exception as e:
                 st.error(f"❌ Error: {e}")
 
-st.markdown("---")
-
 # ============================================================================
 # Section 2: Domain-Specific Mathematical Transforms
 # ============================================================================
 
-st.header("2️⃣ Domain-Specific Transforms")
+st.markdown("""
+<div style="background: linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(102,126,234,0.05) 100%); 
+            border-left: 4px solid #667eea; 
+            padding: 1rem; 
+            margin: 1.5rem 0; 
+            border-radius: 8px;">
+    <h3 style="margin: 0; color: #667eea;">2️⃣ Domain-Specific Transforms</h3>
+</div>
+""", unsafe_allow_html=True)
 
 render_guidance("""
 **What:** Apply mathematical functions to individual features: log, sqrt, square, etc.
@@ -427,7 +453,15 @@ st.markdown("---")
 # Section 3: Ratio Features (Domain-Driven)
 # ============================================================================
 
-st.header("3️⃣ Ratio Features")
+st.markdown("""
+<div style="background: linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(102,126,234,0.05) 100%); 
+            border-left: 4px solid #667eea; 
+            padding: 1rem; 
+            margin: 1.5rem 0; 
+            border-radius: 8px;">
+    <h3 style="margin: 0; color: #667eea;">3️⃣ Ratio Features</h3>
+</div>
+""", unsafe_allow_html=True)
 
 render_guidance("""
 **What:** Divide one feature by another to create meaningful ratios.
@@ -501,13 +535,19 @@ if use_ratios:
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
 
-st.markdown("---")
-
 # ============================================================================
 # Section 4: Binning / Discretization
 # ============================================================================
 
-st.header("4️⃣ Binning (Discretization)")
+st.markdown("""
+<div style="background: linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(102,126,234,0.05) 100%); 
+            border-left: 4px solid #667eea; 
+            padding: 1rem; 
+            margin: 1.5rem 0; 
+            border-radius: 8px;">
+    <h3 style="margin: 0; color: #667eea;">4️⃣ Binning (Discretization)</h3>
+</div>
+""", unsafe_allow_html=True)
 
 render_guidance("""
 **What:** Convert continuous numeric features into categorical bins (e.g., "low", "medium", "high").
@@ -594,13 +634,20 @@ if use_binning:
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
 
-st.markdown("---")
-
 # ============================================================================
 # Section 5: Topological Data Analysis (TDA) - Advanced
 # ============================================================================
 
-st.header("5️⃣ Topological Data Analysis (TDA) — Advanced")
+st.markdown("""
+<div style="background: linear-gradient(135deg, rgba(255,152,0,0.1) 0%, rgba(255,152,0,0.05) 100%); 
+            border-left: 4px solid #ff9800; 
+            padding: 1rem; 
+            margin: 1.5rem 0; 
+            border-radius: 8px;">
+    <h3 style="margin: 0; color: #ff9800;">5️⃣ Topological Data Analysis (TDA) — Advanced ⚠️</h3>
+    <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #666;">Computationally intensive — Recommended only for advanced users</p>
+</div>
+""", unsafe_allow_html=True)
 
 render_guidance("""
 **What:** TDA captures the **shape** and **structure** of your data using algebraic topology. It computes **persistent homology** 
@@ -783,13 +830,19 @@ if use_tda:
                 import traceback
                 st.code(traceback.format_exc())
 
-st.markdown("---")
-
 # ============================================================================
 # Section 6: Dimensionality Reduction as Features
 # ============================================================================
 
-st.header("6️⃣ Dimensionality Reduction as Features")
+st.markdown("""
+<div style="background: linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(102,126,234,0.05) 100%); 
+            border-left: 4px solid #667eea; 
+            padding: 1rem; 
+            margin: 1.5rem 0; 
+            border-radius: 8px;">
+    <h3 style="margin: 0; color: #667eea;">6️⃣ Dimensionality Reduction as Features</h3>
+</div>
+""", unsafe_allow_html=True)
 
 render_guidance("""
 **What:** Instead of replacing features with PCA/UMAP (like in preprocessing), **add** low-dimensional embeddings 
