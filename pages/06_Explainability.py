@@ -49,6 +49,51 @@ st.markdown("""
 render_breadcrumb("06_Explainability")
 render_page_navigation("06_Explainability")
 
+# ── Feature Engineering Reminder ────────────────────────────────
+# Check if feature engineering was applied
+if st.session_state.get('feature_engineering_applied'):
+    engineered_names = st.session_state.get('engineered_feature_names', [])
+    engineering_log = st.session_state.get('engineering_log', [])
+    
+    if engineered_names:
+        st.info(f"""
+        **💡 Remember:** You created {len(engineered_names)} engineered features in Feature Engineering (page 2a).
+        
+        When interpreting feature importance below, some features are transformations of your original data:
+        """)
+        
+        # Show engineering log summary
+        if engineering_log:
+            st.markdown("**Transformations applied:**")
+            for log_entry in engineering_log[:5]:  # Show first 5
+                st.markdown(f"- {log_entry}")
+            if len(engineering_log) > 5:
+                with st.expander("Show all transformations"):
+                    for log_entry in engineering_log[5:]:
+                        st.markdown(f"- {log_entry}")
+        
+        st.markdown("""
+        **For publication:** When reporting important features, explain transformations.
+        
+        Example: "The most important predictor was log-transformed glucose (log₁₊ₓ glucose), 
+        indicating that the relationship between glucose and outcome is non-linear."
+        """)
+        
+        st.markdown("---")
+
+st.markdown("""
+### Why Explainability?
+
+You've trained models and seen performance metrics. Now: **WHY did the model make those predictions?**
+
+**Reviewers will ask:**
+- Which features drive predictions?
+- Are predictions calibrated (do probabilities match reality)?
+- Can you explain individual predictions?
+
+This page provides publication-grade explainability using SHAP, permutation importance, and calibration analysis.
+""")
+
 # ── Guardrails ──────────────────────────────────────────────────
 task_mode = st.session_state.get('task_mode')
 if task_mode != 'prediction':
@@ -430,6 +475,14 @@ if perm_data or shap_data:
                             'Importance': np.asarray(_im)[:n],
                             'Std': np.asarray(_is)[:n],
                         }).sort_values('Importance', ascending=False)
+                        
+                        # Add source column to indicate engineered features
+                        if st.session_state.get('feature_engineering_applied'):
+                            engineered_names = st.session_state.get('engineered_feature_names', [])
+                            if engineered_names:
+                                importance_df['Source'] = importance_df['Feature'].map(
+                                    lambda x: '🧬 Engineered' if x in engineered_names else '📊 Original'
+                                )
 
                         top_n = min(10, len(importance_df))
                         fig = px.bar(
@@ -450,7 +503,12 @@ if perm_data or shap_data:
                         st.plotly_chart(fig, use_container_width=True, key=f"perm_chart_{name}")
 
                         with st.expander("Full rankings table"):
-                            table(importance_df, key=f"perm_importance_{name}", use_container_width=True, hide_index=True)
+                            # Show appropriate columns based on whether Source was added
+                            if 'Source' in importance_df.columns:
+                                table(importance_df[['Feature', 'Importance', 'Std', 'Source']], 
+                                     key=f"perm_importance_{name}", use_container_width=True, hide_index=True)
+                            else:
+                                table(importance_df, key=f"perm_importance_{name}", use_container_width=True, hide_index=True)
 
                         from ml.plot_narrative import narrative_permutation_importance
                         nar = narrative_permutation_importance(pd_info, model_name=name)
@@ -518,6 +576,14 @@ if perm_data or shap_data:
                         'Feature': fn_plot[:len(mean_abs)],
                         'Mean |SHAP|': mean_abs,
                     }).sort_values('Mean |SHAP|', ascending=False)
+                    
+                    # Add source column to indicate engineered features
+                    if st.session_state.get('feature_engineering_applied'):
+                        engineered_names = st.session_state.get('engineered_feature_names', [])
+                        if engineered_names:
+                            shap_df['Source'] = shap_df['Feature'].map(
+                                lambda x: '🧬 Engineered' if x in engineered_names else '📊 Original'
+                            )
 
                     fig2 = px.bar(shap_df.head(10), x='Mean |SHAP|', y='Feature', orientation='h',
                                   title="Mean Absolute SHAP Value (Global Importance)",
@@ -526,6 +592,15 @@ if perm_data or shap_data:
                                        showlegend=False, coloraxis_showscale=False,
                                        margin=dict(l=10, r=10, t=40, b=10))
                     st.plotly_chart(fig2, use_container_width=True, key=f"shap_bar_{name}")
+                    
+                    # Show full SHAP table with source column
+                    with st.expander("Full SHAP rankings table"):
+                        if 'Source' in shap_df.columns:
+                            table(shap_df[['Feature', 'Mean |SHAP|', 'Source']], 
+                                 key=f"shap_importance_{name}", use_container_width=True, hide_index=True)
+                        else:
+                            table(shap_df[['Feature', 'Mean |SHAP|']], 
+                                 key=f"shap_importance_{name}", use_container_width=True, hide_index=True)
 
                     from ml.plot_narrative import narrative_shap
                     from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button

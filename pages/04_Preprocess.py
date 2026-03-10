@@ -43,6 +43,23 @@ st.title("⚙️ Preprocessing Builder")
 render_breadcrumb("04_Preprocess")
 render_page_navigation("04_Preprocess")
 
+st.markdown("""
+### Why Preprocessing?
+
+After selecting your features, you need to prepare them for machine learning.
+
+**Your workflow so far:**
+1. ✅ Uploaded data → Explored (EDA) → Selected features
+2. **NOW:** Prepare features for training
+
+**Why this matters:**
+- Different models need different preprocessing (tree-based models don't need scaling, linear models do)
+- Missing data must be handled before training
+- Proper preprocessing prevents "data leakage" (test set contamination)
+
+This step creates **per-model pipelines** that will transform your data correctly during training.
+""")
+
 # Progress indicator
 
 df = get_data()

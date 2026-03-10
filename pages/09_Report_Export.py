@@ -36,6 +36,19 @@ st.title("📄 Report Export")
 render_breadcrumb("09_Report_Export")
 render_page_navigation("09_Report_Export")
 
+st.markdown("""
+### Export Publication-Ready Materials
+
+You've completed the full workflow. This page generates:
+
+1. **Methods Section** — Auto-generated from your actual workflow choices
+2. **TRIPOD Checklist** — Prediction model reporting standards
+3. **Results Tables** — Model performance with bootstrap CIs
+4. **Figures** — Calibration, feature importance, SHAP plots
+
+**Download everything as a ZIP** for your manuscript.
+""")
+
 # Progress indicator
 
 # Guardrail: Report Export is primarily for prediction mode

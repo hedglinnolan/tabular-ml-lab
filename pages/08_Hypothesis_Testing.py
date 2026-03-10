@@ -35,6 +35,20 @@ st.title("Hypothesis Testing")
 render_breadcrumb("08_Hypothesis_Testing")
 render_page_navigation("08_Hypothesis_Testing")
 
+st.markdown("""
+### Why Hypothesis Testing After ML?
+
+**ML tells you:** "Feature X is important for prediction"  
+**Statistical tests tell you:** "Feature X significantly differs between groups (p<0.001)"
+
+**Use this page to:**
+- Validate ML findings with traditional statistics
+- Generate p-values for Table 1  
+- Explore relationships without ML assumptions
+
+**Note:** This complements ML analysis, doesn't replace it.
+""")
+
 # Progress indicator
 
 # Check prerequisites
