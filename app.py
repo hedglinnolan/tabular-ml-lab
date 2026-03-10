@@ -83,35 +83,35 @@ st.markdown("### 🎯 What Problem Does This Solve?")
 
 col_prob, col_sol = st.columns(2)
 with col_prob:
-    render_info_card(
-        "❌ The Manual Workflow Problem",
-        """
-        Building a defensible ML model for publication typically requires:
-        
-        • 15+ separate Python/R scripts  
-        • Tracking dozens of preprocessing decisions  
-        • Generating Table 1, calibration plots, SHAP values  
-        • Writing methods sections from scratch  
-        • Manually creating TRIPOD checklists  
-        
-        **Result:** Weeks of work, inconsistent methodology, reproducibility issues.
-        """
-    )
+    st.markdown("""
+    <div class="info-card">
+        <h3>❌ The Manual Workflow Problem</h3>
+        <p>Building a defensible ML model for publication typically requires:</p>
+        <ul>
+            <li>15+ separate Python/R scripts</li>
+            <li>Tracking dozens of preprocessing decisions</li>
+            <li>Generating Table 1, calibration plots, SHAP values</li>
+            <li>Writing methods sections from scratch</li>
+            <li>Manually creating TRIPOD checklists</li>
+        </ul>
+        <p><strong>Result:</strong> Weeks of work, inconsistent methodology, reproducibility issues.</p>
+    </div>
+    """, unsafe_allow_html=True)
 with col_sol:
-    render_info_card(
-        "✅ The Tabular ML Lab Solution",
-        """
-        This app provides a **single guided workflow** that:
-        
-        • Walks you through every step (upload → export)  
-        • Tracks all your choices automatically  
-        • Generates publication materials as you go  
-        • Applies best practices by default  
-        • Lets you save and resume your session  
-        
-        **Result:** Complete workflow in 30-60 minutes, with draft methods section and figures ready for your paper.
-        """
-    )
+    st.markdown("""
+    <div class="info-card">
+        <h3>✅ The Tabular ML Lab Solution</h3>
+        <p>This app provides a <strong>single guided workflow</strong> that:</p>
+        <ul>
+            <li>Walks you through every step (upload → export)</li>
+            <li>Tracks all your choices automatically</li>
+            <li>Generates publication materials as you go</li>
+            <li>Applies best practices by default</li>
+            <li>Lets you save and resume your session</li>
+        </ul>
+        <p><strong>Result:</strong> Complete workflow in 30-60 minutes, with draft methods section and figures ready for your paper.</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -153,20 +153,41 @@ st.markdown("### 📦 What You'll Get")
 
 col_out1, col_out2, col_out3 = st.columns(3)
 with col_out1:
-    render_info_card(
-        "📊 Publication Tables",
-        "• Table 1 (characteristics + p-values)  \n• Model comparison with bootstrap CIs  \n• Calibration metrics  \n• CSV and LaTeX formats"
-    )
+    st.markdown("""
+    <div class="info-card">
+        <h3>📊 Publication Tables</h3>
+        <ul>
+            <li>Table 1 (characteristics + p-values)</li>
+            <li>Model comparison with bootstrap CIs</li>
+            <li>Calibration metrics</li>
+            <li>CSV and LaTeX formats</li>
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
 with col_out2:
-    render_info_card(
-        "📈 Publication Figures",
-        "• Calibration curves  \n• SHAP importance plots  \n• ROC/Precision-Recall curves  \n• Forest plots for subgroups"
-    )
+    st.markdown("""
+    <div class="info-card">
+        <h3>📈 Publication Figures</h3>
+        <ul>
+            <li>Calibration curves</li>
+            <li>SHAP importance plots</li>
+            <li>ROC/Precision-Recall curves</li>
+            <li>Forest plots for subgroups</li>
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
 with col_out3:
-    render_info_card(
-        "📝 Draft Methods Section",
-        "• Auto-generated from your choices  \n• TRIPOD checklist tracker  \n• Flow diagram (CONSORT-style)  \n• Ready to edit for your paper"
-    )
+    st.markdown("""
+    <div class="info-card">
+        <h3>📝 Draft Methods Section</h3>
+        <ul>
+            <li>Auto-generated from your choices</li>
+            <li>TRIPOD checklist tracker</li>
+            <li>Flow diagram (CONSORT-style)</li>
+            <li>Ready to edit for your paper</li>
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
 
 st.markdown("""
 **⚠️ Important:** This app generates **draft materials** that you must review and adapt for your specific study. 
