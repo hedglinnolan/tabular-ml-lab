@@ -1,5 +1,5 @@
 """
-Page 03: Preprocessing Builder
+Page 05: Preprocessing Builder
 Build sklearn Pipeline with ColumnTransformer.
 Integrates coach recommendations for intelligent preprocessing suggestions.
 """

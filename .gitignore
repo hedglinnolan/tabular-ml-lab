@@ -62,3 +62,7 @@ debug*.log
 .cache/
 datasets.db
 .pytest_cache/
+
+# Session files (user data)
+tabular_ml_session_*.pkl
+*.pkl

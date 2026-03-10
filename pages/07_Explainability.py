@@ -1,5 +1,5 @@
 """
-Page 06: Model Explainability
+Page 07: Model Explainability
 Permutation importance, SHAP, partial dependence, external validation, subgroup analysis.
 """
 import streamlit as st

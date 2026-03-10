@@ -1,5 +1,5 @@
 """
-Page 04: Train and Compare Models
+Page 06: Train and Compare Models
 Train models, evaluate, compare metrics, show diagnostics.
 """
 import streamlit as st
