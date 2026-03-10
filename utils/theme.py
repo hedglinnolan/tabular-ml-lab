@@ -719,16 +719,20 @@ def render_sidebar_workflow(current_page: str = ""):
         sensitivity_run = st.session_state.get('sensitivity_seed_results') is not None
         report_generated = st.session_state.get('report_data') is not None
 
+        # Check if feature engineering was applied
+        feature_engineering_applied = st.session_state.get('feature_engineering_applied', False)
+        
         checklist_items = [
             ("Upload & Configure", data_uploaded, "01", "01_Upload_and_Audit"),
             ("Explore (EDA)", data_configured, "02", "02_EDA"),
-            ("Select Features", features_selected, "03", "03_Feature_Selection"),
-            ("Preprocess", pipeline_built, "04", "04_Preprocess"),
-            ("Train Models", models_trained, "05", "05_Train_and_Compare"),
-            ("Explain & Validate", explainability_run, "06", "06_Explainability"),
-            ("Sensitivity Analysis", sensitivity_run, "07", "07_Sensitivity_Analysis"),
-            ("Hypothesis Testing", False, "08", "08_Hypothesis_Testing"),
-            ("Export Report", report_generated, "09", "09_Report_Export"),
+            ("Feature Engineering", feature_engineering_applied, "03", "03_Feature_Engineering"),
+            ("Select Features", features_selected, "04", "04_Feature_Selection"),
+            ("Preprocess", pipeline_built, "05", "05_Preprocess"),
+            ("Train Models", models_trained, "06", "06_Train_and_Compare"),
+            ("Explain & Validate", explainability_run, "07", "07_Explainability"),
+            ("Sensitivity Analysis", sensitivity_run, "08", "08_Sensitivity_Analysis"),
+            ("Statistical Validation", False, "09", "09_Hypothesis_Testing"),
+            ("Export Report", report_generated, "10", "10_Report_Export"),
         ]
 
         for item, completed, page_id, page_file in checklist_items:
