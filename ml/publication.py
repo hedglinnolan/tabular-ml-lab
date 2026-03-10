@@ -133,6 +133,44 @@ def generate_methods_section(
     if feature_selection_method:
         sections.append(f" Feature selection was performed using {feature_selection_method}.")
 
+    # Feature Engineering (if applied)
+    try:
+        import streamlit as st
+        feature_engineering_applied = st.session_state.get('feature_engineering_applied', False)
+        if feature_engineering_applied:
+            sections.append("\n\n### Feature Engineering\n")
+            engineering_log = st.session_state.get('engineering_log', [])
+            engineered_feature_names = st.session_state.get('engineered_feature_names', [])
+            
+            sections.append("Feature engineering was performed prior to feature selection. ")
+            
+            # List techniques from engineering log
+            if engineering_log:
+                sections.append("The following transformations were applied: ")
+                techniques = []
+                for log_entry in engineering_log:
+                    # Parse entries like "Polynomial degree 2: +45 features"
+                    if ':' in log_entry:
+                        technique, detail = log_entry.split(':', 1)
+                        techniques.append(f"{technique.strip()} ({detail.strip()})")
+                    else:
+                        techniques.append(log_entry)
+                sections.append("; ".join(techniques) + ". ")
+            
+            # Total features created
+            n_engineered = len(engineered_feature_names) if engineered_feature_names else 0
+            if n_engineered > 0:
+                sections.append(
+                    f"In total, {n_engineered} engineered features were created and included in subsequent feature selection."
+                )
+            else:
+                sections.append(
+                    "The engineered features were included in subsequent feature selection and model training."
+                )
+    except ImportError:
+        # Not in a Streamlit context, skip feature engineering section
+        pass
+
     # Missing data & Preprocessing (combined when preprocessing_summary available)
     _preproc = preprocessing_config or {}
     _has_summary = bool(_preproc.get("missing_data"))

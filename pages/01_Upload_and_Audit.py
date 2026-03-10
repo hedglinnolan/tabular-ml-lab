@@ -1645,6 +1645,24 @@ else:
     """)
 
 # ============================================================================
+# WHAT HAPPENS NEXT
+# ============================================================================
+st.markdown("---")
+st.markdown("""
+### What Happens Next?
+
+You've uploaded your data and selected a target variable. Here's your workflow:
+
+1. **Explore Your Data (EDA)** — Distributions, correlations, missing patterns, Table 1
+2. **Optional: Engineer Features** — Create polynomial, ratio, or TDA features if needed
+3. **Select Features** — Identify the most predictive variables
+4. **Train Models** — Compare 18 different algorithms with bootstrap CIs
+5. **Validate & Export** — SHAP, calibration, sensitivity, publication-ready reports
+
+👉 **Continue to Exploratory Data Analysis (EDA)**
+""")
+
+# ============================================================================
 # STATE DEBUG
 # ============================================================================
 with st.expander("Debug: Session State", expanded=False):

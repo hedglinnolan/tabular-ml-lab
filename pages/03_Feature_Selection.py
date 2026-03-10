@@ -40,10 +40,30 @@ if task_mode != 'prediction':
     st.warning("⚠️ Feature Selection is available in Prediction mode only.")
     st.stop()
 
-# Check if feature engineering was applied
+# ============================================================================
+# WHY FEATURE SELECTION?
+# ============================================================================
+st.markdown("""
+### Why Feature Selection?
+
+After uploading and exploring your data, you likely have many features (predictors). 
+Feature selection helps you:
+
+1. **Remove redundant features** (e.g., BMI and Weight are highly correlated — keep one)
+2. **Identify the most predictive variables** (focus your analysis)  
+3. **Reduce overfitting** (fewer features = simpler, more generalizable models)
+4. **Improve interpretability** (explain 5 key predictors vs. explaining 50)
+
+This step uses multiple methods (LASSO, RFE-CV, Stability Selection) to find consensus features.
+""")
+
+# If feature engineering was applied, add note
 if st.session_state.get('feature_engineering_applied'):
     n_engineered = len(st.session_state.get('engineered_feature_names', []))
-    st.info(f"🧬 **Feature Engineering Applied:** Working with engineered dataset ({n_engineered} new features created)")
+    st.info(f"""
+    💡 **Note:** You created {n_engineered} engineered features in the previous step. 
+    Many may be redundant or unhelpful — feature selection will filter them.
+    """)
 
 # Get feature info
 all_features = data_config.feature_cols

@@ -35,7 +35,7 @@ render_sidebar_workflow(current_page="")
 # Hero section
 st.markdown("""
 <div class="hero-container">
-    <div class="hero-badge">Open Source · 18 Models · 9-Step Workflow</div>
+    <div class="hero-badge">Open Source · 18 Models · 10-Step Workflow</div>
     <h1>Tabular ML Lab</h1>
     <p class="hero-sub">
         From raw data to publication-ready results.<br/>
@@ -71,13 +71,14 @@ st.markdown("Follow the pages in the sidebar, in order. Each step builds on the 
 steps = [
     ("1", "Upload & Audit", "Load your data, configure target variable and features, review data quality.", "📂"),
     ("2", "Explore (EDA)", "Distributions, correlations, Table 1, missing data analysis, AI-powered insights.", "📈"),
-    ("3", "Feature Selection", "LASSO path, RFE-CV, stability selection — find the most informative predictors.", "🎯"),
-    ("4", "Preprocess", "Build per-model preprocessing pipelines: imputation, scaling, encoding, outlier treatment.", "⚙️"),
-    ("5", "Train & Compare", "Multiple model families with bootstrap CIs, baseline comparison, and calibration analysis.", "🧠"),
-    ("6", "Explain & Validate", "SHAP values, permutation importance, external validation, subgroup analysis.", "🔬"),
-    ("7", "Sensitivity Analysis", "Test robustness: random seed sensitivity and feature dropout analysis.", "🔬"),
-    ("8", "Hypothesis Testing", "Statistical tests without ML — t-tests, ANOVA, chi-square, correlation.", "📐"),
-    ("9", "Export Report", "Methods section, TRIPOD checklist, flow diagrams, publication-quality figures & tables.", "📄"),
+    ("2a", "Feature Engineering (Optional)", "Create polynomial, ratio, binning, TDA features to improve model performance.", "🧬"),
+    ("4", "Feature Selection", "LASSO path, RFE-CV, stability selection — find the most informative predictors.", "🎯"),
+    ("5", "Preprocess", "Build per-model preprocessing pipelines: imputation, scaling, encoding, outlier treatment.", "⚙️"),
+    ("6", "Train & Compare", "Multiple model families with bootstrap CIs, baseline comparison, and calibration analysis.", "🧠"),
+    ("7", "Explain & Validate", "SHAP values, permutation importance, external validation, subgroup analysis.", "🔬"),
+    ("8", "Sensitivity Analysis", "Test robustness: random seed sensitivity and feature dropout analysis.", "🔬"),
+    ("9", "Hypothesis Testing", "Statistical tests without ML — t-tests, ANOVA, chi-square, correlation.", "📐"),
+    ("10", "Export Report", "Methods section, TRIPOD checklist, flow diagrams, publication-quality figures & tables.", "📄"),
 ]
 
 for num, title, desc, icon in steps:

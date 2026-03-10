@@ -635,4 +635,32 @@ with st.expander("Generate Table 1", expanded=False):
             latex_data = table1_to_latex(table1_df)
             st.download_button("📥 Download LaTeX", latex_data, "table1.tex", "text/plain", key="dl_table1_latex")
 
+# ============================================================================
+# NEXT STEPS BASED ON YOUR DATA
+# ============================================================================
+st.markdown("---")
+st.markdown("### 📊 Next Steps Based on Your Data")
+
+# Check for common patterns
+has_missing = (df.isnull().sum() > 0).any()
+numeric_cols_check = df.select_dtypes(include=[np.number]).columns
+correlation_matrix = df[numeric_cols_check].corr() if len(numeric_cols_check) > 1 else None
+high_corr = False
+if correlation_matrix is not None:
+    high_corr = ((correlation_matrix.abs() > 0.9) & (correlation_matrix != 1.0)).any().any()
+
+recommendations = []
+if has_missing:
+    recommendations.append("⚠️ **Missing data detected** → Preprocessing (page 4) will handle imputation")
+if high_corr:
+    recommendations.append("✅ **High correlation detected** → Feature Selection (page 3) will help choose which features to keep")
+
+if recommendations:
+    for rec in recommendations:
+        st.markdown(f"- {rec}")
+else:
+    st.markdown("✅ Your data looks clean. Proceed to Feature Engineering (optional) or Feature Selection.")
+
+st.markdown("👉 **Recommended:** Feature Engineering (optional, page 2a) or Feature Selection (page 3)")
+
 st.success("EDA complete. Proceed to Feature Selection or Preprocessing.")
