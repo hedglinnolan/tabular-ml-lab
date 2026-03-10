@@ -21,9 +21,17 @@ init_session_state()
 inject_custom_css()
 render_sidebar_workflow(current_page="03_Feature_Engineering")
 
-st.title("🧬 Feature Engineering (Optional)")
+st.title("🧬 Feature Engineering (⚠️ Experimental)")
 render_breadcrumb("03_Feature_Engineering")
 render_page_navigation("03_Feature_Engineering")
+
+# Experimental banner
+st.warning("""
+⚠️ **EXPERIMENTAL FEATURE** — This page is in active testing and not yet in the main production branch.
+
+Functionality is stable but UI and workflow may change based on feedback.  
+Report issues: [GitHub](https://github.com/hedglinnolan/tabular-ml-lab/issues)
+""")
 
 # ============================================================================
 # Introduction & Educational Content
@@ -858,9 +866,16 @@ if new_features > 0:
             }
         )
         
-        st.success("✅ Saved engineered dataset!")
+        st.success(f"✅ Saved engineered dataset! ({len(engineered_features)} new features)")
         st.balloons()
-        st.info("👉 **Continue to Feature Selection**  to filter important features")
+        st.info("""
+        👉 **Next step: Feature Selection**
+        
+        Your engineered features are now part of the working dataset.
+        Navigate to **Feature Selection** to identify the most important features.
+        """)
+        # Force page rerun to show updated state
+        st.rerun()
 else:
     st.info("ℹ️ No feature engineering applied yet. Enable techniques above, or click **⏭️ Skip** at the top to proceed with original features.")
 

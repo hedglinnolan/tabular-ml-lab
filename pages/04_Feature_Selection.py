@@ -57,12 +57,19 @@ Feature selection helps you:
 This step uses multiple methods (LASSO, RFE-CV, Stability Selection) to find consensus features.
 """)
 
-# If feature engineering was applied, add note
+# ============================================================================
+# Data Source Indicator
+# ============================================================================
 if st.session_state.get('feature_engineering_applied'):
     n_engineered = len(st.session_state.get('engineered_feature_names', []))
-    st.info(f"""
-    💡 **Note:** You created {n_engineered} engineered features in the previous step. 
-    Many may be redundant or unhelpful — feature selection will filter them.
+    original_count = len(df.columns) - n_engineered - 1  # -1 for target
+    st.success(f"""
+    📊 **Working Dataset:** Engineered Data  
+    • Original features: {original_count}  
+    • Engineered features: {n_engineered}  
+    • Total features: {len(df.columns) - 1}
+    
+    💡 Feature selection will help identify which engineered features are actually useful.
     """)
 
 # Get feature info
