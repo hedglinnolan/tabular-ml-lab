@@ -196,36 +196,42 @@ def generate_methods_section(
     
     # Check for "Feature Selection Applied" step first (the final applied selection)
     feature_selection_logged = False
-    if 'Feature Selection Applied' in logged_steps:
-        for entry in logged_steps['Feature Selection Applied']:
+    for fs_step in ['Feature Selection Applied', 'Feature Selection']:
+        if feature_selection_logged:
+            break
+        if fs_step not in logged_steps:
+            continue
+        for entry in logged_steps[fs_step]:
             details = entry.get('details', {})
             n_before = details.get('n_features_before')
             n_after = details.get('n_features_after')
             methods = details.get('methods', [])
+            method = details.get('method', '')
             if n_before and n_after:
-                if methods:
-                    methods_str = ", ".join(methods)
-                    sections.append(f" Feature selection using {methods_str} reduced the feature set from {n_before} to {n_after} predictors.")
+                methods_str = ", ".join(methods) if methods else method
+                if n_before == n_after:
+                    # All features retained — say so clearly
+                    if methods_str:
+                        sections.append(
+                            f" Feature selection was performed using {methods_str}; "
+                            f"all {n_after} features met the retention threshold and were included in modeling."
+                        )
+                    else:
+                        sections.append(
+                            f" Feature selection was performed; all {n_after} features were retained."
+                        )
                 else:
-                    sections.append(f" Feature selection reduced the feature set from {n_before} to {n_after} predictors.")
+                    if methods_str:
+                        sections.append(
+                            f" Feature selection using {methods_str} reduced the feature set "
+                            f"from {n_before} to {n_after} predictors."
+                        )
+                    else:
+                        sections.append(
+                            f" Feature selection reduced the feature set from {n_before} to {n_after} predictors."
+                        )
                 feature_selection_logged = True
-                break  # Only use the final applied selection
-    
-    # If no "Feature Selection Applied", fall back to "Feature Selection" step
-    if not feature_selection_logged and 'Feature Selection' in logged_steps:
-        for entry in logged_steps['Feature Selection']:
-            details = entry.get('details', {})
-            n_before = details.get('n_features_before')
-            n_after = details.get('n_features_after')
-            methods = details.get('methods', [])
-            if n_before and n_after:
-                if methods:
-                    methods_str = ", ".join(methods)
-                    sections.append(f" Feature selection using {methods_str} reduced the feature set from {n_before} to {n_after} predictors.")
-                else:
-                    sections.append(f" Feature selection reduced the feature set from {n_before} to {n_after} predictors.")
-                feature_selection_logged = True
-                break  # Only use first entry to avoid duplicates
+                break  # Use first valid entry only
     
     # Only fall back to parameter if no log entries exist
     if not feature_selection_logged and feature_selection_method:

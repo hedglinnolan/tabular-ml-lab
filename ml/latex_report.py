@@ -358,28 +358,29 @@ Model performance was assessed using [METRICS] with 95\% confidence intervals co
     else:
         sections.append(r"[INSERT TABLE 1: Characteristics of the study population]")
 
-    # If we have draft results from methods section, include them
-    if draft_results:
+    # Model Performance — always use proper LaTeX table when results available
+    sections.append(r"""
+\subsection{Model Performance}""")
+
+    if model_results:
+        # Use the proper LaTeX tabular table (not prose from draft_results)
+        sections.append(_metrics_to_latex_table(model_results, task_type, bootstrap_results))
+    elif draft_results:
+        # Fallback: use draft results text if no structured model_results
         sections.append("\n")
         sections.append(draft_results)
     else:
+        sections.append(r"[INSERT TABLE: Model performance metrics with 95\% CIs]")
+
+    # Calibration
+    if calibration_text:
         sections.append(r"""
-\subsection{Model Performance}""")
-
-        # Metrics table
-        if model_results:
-            sections.append(_metrics_to_latex_table(model_results, task_type, bootstrap_results))
-        else:
-            sections.append(r"[INSERT TABLE: Model performance metrics with 95\% CIs]")
-
-        # Calibration
-        if calibration_text:
-            sections.append(r"\subsection{Calibration}")
-            sections.append(_escape_latex(calibration_text))
-        else:
-            sections.append(r"""
+\subsection{Calibration}""")
+        sections.append(_escape_latex(calibration_text))
+    else:
+        sections.append(r"""
 \subsection{Calibration}
-[PLACEHOLDER: Report calibration results — Brier score, ECE, calibration slope/intercept. Include calibration plot as a figure.]
+[PLACEHOLDER: Report calibration results --- Brier score, ECE, calibration slope/intercept. Include calibration plot as a figure.]
 """)
 
     # ── Discussion ──
