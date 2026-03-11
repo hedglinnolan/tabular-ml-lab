@@ -6,6 +6,11 @@ Assess robustness of modeling results by testing how sensitive they are to:
 - Individual feature removal (dropout)
 
 This page helps answer: "Would a reviewer trust that these results aren't fragile?"
+
+AUDIT NOTE (Data Flow):
+- Operates on: trained_models, X_train/X_test/y_train/y_test from session state
+- Requires: Completed Train & Compare (page 6)
+- Methodology logging: Added for seed sensitivity and feature dropout analyses
 """
 
 import streamlit as st
@@ -15,7 +20,7 @@ import time
 
 from utils.theme import inject_custom_css, render_sidebar_workflow
 from utils.table_export import table
-from utils.session_state import init_session_state
+from utils.session_state import init_session_state, log_methodology
 from utils.storyline import render_breadcrumb, render_page_navigation
 
 init_session_state()
@@ -163,6 +168,11 @@ if st.button("▶️ Run Seed Sensitivity", type="primary", key="run_seed"):
     if results:
         df_seeds = pd.DataFrame(results)
         st.session_state["sensitivity_seed_results"] = df_seeds
+        log_methodology(step='Sensitivity Analysis', action='Ran seed stability analysis', details={
+            'model': selected_model,
+            'n_seeds': n_seeds,
+            'metric': primary_metric
+        })
 
         # Display
         valid = df_seeds[primary_metric].dropna()
@@ -353,6 +363,11 @@ if st.button("▶️ Run Feature Dropout", type="primary", key="run_dropout"):
         df_dropout = pd.DataFrame(dropout_results).sort_values("impact", ascending=False)
         st.session_state["sensitivity_dropout_results"] = df_dropout
         st.session_state["sensitivity_dropout_baseline"] = baseline_score
+        log_methodology(step='Sensitivity Analysis', action='Ran feature dropout analysis', details={
+            'model': selected_model,
+            'n_features_tested': len(features_to_test),
+            'metric': primary_metric
+        })
 
         st.metric(f"Baseline {primary_metric}", f"{baseline_score:.4f}")
 

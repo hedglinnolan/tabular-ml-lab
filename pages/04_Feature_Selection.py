@@ -2,6 +2,12 @@
 Page 04: Feature Selection
 LASSO path, RFE-CV, univariate screening, stability selection.
 Results feed into preprocessing for recommended feature sets.
+
+AUDIT NOTE (Data Flow):
+- get_data() returns: df_engineered (if FE applied) > filtered_data > raw_data
+- Operates on: data_config.feature_cols (if FE applied, includes engineered features)
+- Methodology logging: Added for running analyses (already existed) AND for Apply actions (consensus/manual)
+- Applying selection updates data_config.feature_cols, which downstream pages use
 """
 import streamlit as st
 import pandas as pd
@@ -19,7 +25,7 @@ init_session_state()
 st.set_page_config(page_title="Feature Selection", page_icon="🎯", layout="wide")
 inject_custom_css()
 render_sidebar_workflow(current_page="04_Feature_Selection")
-render_step_indicator(3, "Feature Selection")
+render_step_indicator(4, "Feature Selection")
 st.title("🎯 Feature Selection")
 render_breadcrumb("04_Feature_Selection")
 render_page_navigation("04_Feature_Selection")
@@ -356,6 +362,11 @@ if results:
         if st.button("📋 Use consensus features for modeling", type="primary"):
             data_config.feature_cols = consensus
             st.session_state['data_config'] = data_config
+            log_methodology(step='Feature Selection Applied', action='Applied consensus feature selection', details={
+                'method': 'consensus',
+                'n_features_selected': len(consensus),
+                'features': consensus
+            })
             st.success(f"Updated feature set to {len(consensus)} consensus features. Proceed to Preprocessing.")
     else:
         st.warning("No consensus features found. Try lowering the threshold or running more methods.")
@@ -372,4 +383,9 @@ if results:
         if st.button("Apply manual selection"):
             data_config.feature_cols = manual_selection
             st.session_state['data_config'] = data_config
+            log_methodology(step='Feature Selection Applied', action='Applied manual feature selection', details={
+                'method': 'manual',
+                'n_features_selected': len(manual_selection),
+                'features': manual_selection
+            })
             st.success(f"Updated feature set to {len(manual_selection)} features.")

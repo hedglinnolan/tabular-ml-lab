@@ -38,7 +38,7 @@ init_session_state()
 st.set_page_config(page_title="Preprocessing", page_icon="⚙️", layout="wide")
 inject_custom_css()
 render_sidebar_workflow(current_page="05_Preprocess")  # Page ID correct after renumbering
-render_step_indicator(4, "Preprocessing")
+render_step_indicator(5, "Preprocessing")
 st.title("⚙️ Preprocessing Builder")
 render_breadcrumb("05_Preprocess")
 render_page_navigation("05_Preprocess")
@@ -103,6 +103,22 @@ numeric_features = [f for f in all_features if f in numeric_cols]
 categorical_features = [f for f in all_features if f not in numeric_cols]
 
 st.info(f"**Numeric features:** {len(numeric_features)} | **Categorical features:** {len(categorical_features)}")
+
+# ── Double-transformation guardrail ─────────────────────────────
+_eng_transform_map = st.session_state.get("engineered_feature_transforms", {})
+_log_engineered = [f for f, t in _eng_transform_map.items() if t == "log" and f in numeric_features]
+_power_engineered = [f for f, t in _eng_transform_map.items() if t == "power" and f in numeric_features]
+_pca_engineered = [f for f, t in _eng_transform_map.items() if t == "pca" and f in numeric_features]
+
+if _log_engineered or _power_engineered or _pca_engineered:
+    st.warning(f"""
+    ⚠️ **Double-transformation risk detected!**
+    
+    Some features were already transformed in Feature Engineering:
+    {"- **Log-transformed:** " + ", ".join(f"`{f}`" for f in _log_engineered[:5]) + chr(10) if _log_engineered else ""}{"- **Power-transformed:** " + ", ".join(f"`{f}`" for f in _power_engineered[:5]) + chr(10) if _power_engineered else ""}{"- **PCA components:** " + ", ".join(f"`{f}`" for f in _pca_engineered[:5]) + chr(10) if _pca_engineered else ""}
+    Applying log/power transforms or PCA again in preprocessing would double-transform these features.
+    The preprocessing pipeline below will **auto-exclude** these from redundant transforms.
+    """)
 
 # Get profile, insights, EDA results for recommendations
 profile = st.session_state.get('dataset_profile')
@@ -733,13 +749,34 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                     model_config["pca_n_components"] = actual_n
                     override_notes.append(f"Adjusted PCA components to {actual_n} (available features).")
 
+                # Guard against double-transforming engineered features
+                _safe_log = model_config["numeric_log_transform"]
+                _safe_power = model_config.get("numeric_power_transform", "none")
+                _safe_pca = model_config["use_pca"]
+                if _eng_transform_map:
+                    if _safe_log and _log_engineered:
+                        override_notes.append(f"Auto-excluded {len(_log_engineered)} already log-transformed features from log transform.")
+                    if _safe_power != "none" and _power_engineered:
+                        override_notes.append(f"Auto-excluded {len(_power_engineered)} already power-transformed features from power transform.")
+                    if _safe_pca and _pca_engineered:
+                        override_notes.append(f"Auto-excluded {len(_pca_engineered)} PCA-derived features from PCA reduction.")
+
+                # Split numeric features: exclude already-transformed from redundant transforms
+                _exclude_from_log = set(_log_engineered) if _safe_log else set()
+                _exclude_from_power = set(_power_engineered) if _safe_power != "none" else set()
+                _exclude_from_pca = set(_pca_engineered) if _safe_pca else set()
+                _all_excluded = _exclude_from_log | _exclude_from_power | _exclude_from_pca
+                numeric_features_safe = [f for f in numeric_features if f not in _all_excluded]
+                numeric_features_passthrough = [f for f in numeric_features if f in _all_excluded]
+
                 pipeline = build_preprocessing_pipeline(
-                    numeric_features=numeric_features,
+                    numeric_features=numeric_features_safe,
                     categorical_features=categorical_features,
                     numeric_imputation=model_config["numeric_imputation"],
                     numeric_scaling=model_config["numeric_scaling"],
-                    numeric_log_transform=model_config["numeric_log_transform"],
-                    numeric_power_transform=model_config.get("numeric_power_transform", "none"),
+                    numeric_log_transform=_safe_log,
+                    numeric_power_transform=_safe_power,
+                    passthrough_numeric_features=numeric_features_passthrough,
                     numeric_missing_indicators=model_config["numeric_missing_indicators"],
                     numeric_outlier_treatment=model_config["numeric_outlier_treatment"],
                     numeric_outlier_params=model_config["numeric_outlier_params"],
@@ -916,7 +953,7 @@ if pipelines_by_model:
                 )
     _built_names = ", ".join(k.upper() for k in pipelines_by_model.keys())
     st.success(f"✅ **Pipelines ready for: {_built_names}**. Head to **Train & Compare** → your models and preprocessing are already synced.")
-    st.page_link("pages/05_Train_and_Compare.py", label="➡️ Go to Train & Compare", icon="🏋️")
+    st.page_link("pages/06_Train_and_Compare.py", label="➡️ Go to Train & Compare", icon="🏋️")
 
     if st.button("Rebuild Pipeline", type="secondary", key="preprocess_rebuild_button", help="Clear current pipelines and reconfigure"):
         st.session_state.preprocessing_pipeline = None

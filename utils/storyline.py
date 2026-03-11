@@ -83,10 +83,10 @@ PHASES = [
     StorylinePhase("target_confirmed", "Target & Task Confirmed", "Target variable and task type (regression/classification) set", "01_Upload_and_Audit"),
     StorylinePhase("cohort_confirmed", "Cohort Structure Confirmed", "Cross-sectional vs longitudinal structure identified", "01_Upload_and_Audit"),
     StorylinePhase("eda_insights", "EDA Insights Gathered", "Key patterns and relationships explored", "02_EDA"),
-    StorylinePhase("preprocessing", "Preprocessing Configured", "Data transformation pipeline built", "04_Preprocess"),
-    StorylinePhase("models_trained", "Models Trained & Compared", "Models trained and performance evaluated", "05_Train_and_Compare"),
-    StorylinePhase("explainability", "Explainability Completed", "Model interpretations and feature importance analyzed", "06_Explainability"),
-    StorylinePhase("report_exported", "Report Exported", "Comprehensive report generated and downloaded", "09_Report_Export"),
+    StorylinePhase("preprocessing", "Preprocessing Configured", "Data transformation pipeline built", "05_Preprocess"),
+    StorylinePhase("models_trained", "Models Trained & Compared", "Models trained and performance evaluated", "06_Train_and_Compare"),
+    StorylinePhase("explainability", "Explainability Completed", "Model interpretations and feature importance analyzed", "07_Explainability"),
+    StorylinePhase("report_exported", "Report Exported", "Comprehensive report generated and downloaded", "10_Report_Export"),
 ]
 
 

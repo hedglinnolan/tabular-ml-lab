@@ -327,4 +327,16 @@ def log_methodology(step: str, action: str, details: Optional[Dict[str, Any]] = 
     if 'methodology_log' not in st.session_state:
         st.session_state.methodology_log = []
     
-    st.session_state.methodology_log.append(entry)
+    # Steps where re-doing replaces the previous entry (user iterates on a single config)
+    REPLACE_STEPS = {'Upload & Audit', 'Feature Engineering', 'Feature Selection Applied',
+                     'Preprocessing', 'Model Training', 'Explainability'}
+    
+    log = st.session_state.methodology_log
+    if step in REPLACE_STEPS:
+        # Last-wins: replace previous entry with same step
+        for i in range(len(log) - 1, -1, -1):
+            if log[i]['step'] == step:
+                log[i] = entry
+                return
+    # Additive steps (EDA, Statistical Validation, Data Cleaning) — always append
+    log.append(entry)

@@ -22,6 +22,10 @@ from utils.theme import inject_custom_css, render_step_indicator, render_guidanc
 from utils.table_export import table
 from sklearn.pipeline import Pipeline as SklearnPipeline
 
+class _SkipAnalysis(Exception):
+    """Raised to skip an analysis block when user deselected it."""
+    pass
+
 @st.cache_resource
 def _get_registry_cached():
     return get_registry()
@@ -33,7 +37,7 @@ init_session_state()
 st.set_page_config(page_title="Explainability", page_icon="🔬", layout="wide")
 inject_custom_css()
 render_sidebar_workflow(current_page="07_Explainability")
-render_step_indicator(6, "Explain & Validate")
+render_step_indicator(7, "Explain & Validate")
 
 # ── Page Header ─────────────────────────────────────────────────
 st.markdown("""
@@ -265,14 +269,41 @@ for name in trained:
 if shap_support_info:
     st.caption("SHAP methods: " + " · ".join(shap_support_info))
 
-# ── Run Button ──────────────────────────────────────────────────
+# ── Analysis Selection ──────────────────────────────────────────
+st.markdown("### Select Analyses to Run")
+sel_col1, sel_col2, sel_col3 = st.columns(3)
+with sel_col1:
+    run_perm = st.checkbox("📊 Permutation Importance", value=True, key="run_perm",
+                           help="Essential — which features matter most to each model")
+with sel_col2:
+    run_shap = st.checkbox("🎯 SHAP Values", value=True, key="run_shap",
+                           help="Essential — how each feature pushes predictions up or down")
+with sel_col3:
+    run_pdp = st.checkbox("📈 Partial Dependence", value=False, key="run_pdp",
+                          help="Recommended — marginal effect of each feature on predictions")
+
+# Model selection
+st.markdown("**Models to analyze:**")
+model_selection = st.multiselect(
+    "Select models",
+    options=trained,
+    default=trained,
+    key="explain_model_selection",
+    format_func=lambda x: x.upper(),
+    label_visibility="collapsed",
+)
+
+if not any([run_perm, run_shap, run_pdp]):
+    st.info("Select at least one analysis above.")
+
 # Initialize cancel flag
 if 'cancel_explainability' not in st.session_state:
     st.session_state.cancel_explainability = False
 
 run_col, cancel_col = st.columns([3, 1])
 with run_col:
-    run_button = st.button("🚀 Run Full Explainability Analysis", type="primary", use_container_width=True)
+    run_button = st.button("🚀 Run Selected Analyses", type="primary", use_container_width=True,
+                           disabled=not any([run_perm, run_shap, run_pdp]) or not model_selection)
 with cancel_col:
     if st.button("🛑 Cancel", type="secondary", key="cancel_explain_init"):
         st.session_state.cancel_explainability = True
@@ -280,7 +311,8 @@ with cancel_col:
 if run_button:
     st.session_state.cancel_explainability = False  # Reset flag
     t0 = time.perf_counter()
-    total_steps = len(trained) * 3  # perm + shap + pdp per model
+    analyses_per_model = sum([run_perm, run_shap, run_pdp])
+    total_steps = len(model_selection) * analyses_per_model
     step_count = 0
     overall_progress = st.progress(0)
     overall_status = st.empty()
@@ -297,7 +329,7 @@ if run_button:
             st.session_state.cancel_explainability = True
             st.warning("Skipping current model...")
 
-    for name in trained:
+    for name in model_selection:
         # Check if user canceled
         if st.session_state.cancel_explainability:
             st.warning(f"Analysis canceled. Results saved for completed models.")
@@ -314,27 +346,28 @@ if run_button:
         spec = registry.get(name)
 
         # ── 1. Permutation Importance ───────────────────────────
-        perm_start = time.perf_counter()
-        overall_status.text(f"Permutation importance: {name.upper()}...")
-        try:
-            pi = permutation_importance(full_pipe, X_perm, y_perm, n_repeats=perm_repeats,
-                                        random_state=42, n_jobs=-1)
-            fn_by_model = st.session_state.get('feature_names_by_model', {})
-            n = len(pi.importances_mean)
-            base = list(fn_by_model.get(name, feature_names) or [])
-            fnames = (base + [f"feature_{i}" for i in range(len(base), n)])[:n]
-            perm_results[name] = {
-                'importances_mean': pi.importances_mean,
-                'importances_std': pi.importances_std,
-                'feature_names': fnames,
-            }
-            perm_time = time.perf_counter() - perm_start
-            if perm_time > 10:
-                st.caption(f"⏱️ {name.upper()} permutation took {perm_time:.1f}s (slow model)")
-        except Exception as e:
-            errors.append(f"{name} permutation: {e}")
-        step_count += 1
-        overall_progress.progress(min(step_count / total_steps, 1.0))
+        if run_perm:
+            perm_start = time.perf_counter()
+            overall_status.text(f"Permutation importance: {name.upper()}...")
+            try:
+                pi = permutation_importance(full_pipe, X_perm, y_perm, n_repeats=perm_repeats,
+                                            random_state=42, n_jobs=-1)
+                fn_by_model = st.session_state.get('feature_names_by_model', {})
+                n = len(pi.importances_mean)
+                base = list(fn_by_model.get(name, feature_names) or [])
+                fnames = (base + [f"feature_{i}" for i in range(len(base), n)])[:n]
+                perm_results[name] = {
+                    'importances_mean': pi.importances_mean,
+                    'importances_std': pi.importances_std,
+                    'feature_names': fnames,
+                }
+                perm_time = time.perf_counter() - perm_start
+                if perm_time > 10:
+                    st.caption(f"⏱️ {name.upper()} permutation took {perm_time:.1f}s (slow model)")
+            except Exception as e:
+                errors.append(f"{name} permutation: {e}")
+            step_count += 1
+            overall_progress.progress(min(step_count / total_steps, 1.0))
         
         # Check cancel after slow operation
         if st.session_state.cancel_explainability:
@@ -345,6 +378,8 @@ if run_button:
         shap_start = time.perf_counter()
         overall_status.text(f"SHAP values: {name.upper()}...")
         try:
+            if not run_shap:
+                raise _SkipAnalysis()
             import shap
             import matplotlib
             matplotlib.use('Agg')
@@ -429,13 +464,20 @@ if run_button:
                 shap_time = time.perf_counter() - shap_start
                 if shap_time > 10:
                     st.caption(f"⏱️ {name.upper()} SHAP took {shap_time:.1f}s (slow for this model type)")
+        except _SkipAnalysis:
+            pass  # User opted out of SHAP — don't increment step_count
         except ImportError:
             errors.append(f"{name} SHAP: shap package not installed")
+            step_count += 1
+            overall_progress.progress(min(step_count / total_steps, 1.0))
         except Exception as e:
             errors.append(f"{name} SHAP: {e}")
             logger.exception(f"SHAP error for {name}: {e}")
-        step_count += 1
-        overall_progress.progress(min(step_count / total_steps, 1.0))
+            step_count += 1
+            overall_progress.progress(min(step_count / total_steps, 1.0))
+        else:
+            step_count += 1
+            overall_progress.progress(min(step_count / total_steps, 1.0))
         
         # Check cancel after SHAP
         if st.session_state.cancel_explainability:
@@ -445,6 +487,11 @@ if run_button:
         # ── 3. Partial Dependence (top 4 features from perm) ───
         overall_status.text(f"Partial dependence: {name.upper()}...")
         try:
+            if not run_pdp:
+                raise _SkipAnalysis()
+            if not run_perm or name not in perm_results:
+                errors.append(f"{name} PDP: requires Permutation Importance to identify top features. Enable it above.")
+                raise _SkipAnalysis()
             if name in perm_results and spec and spec.capabilities.supports_partial_dependence:
                 pi_data = perm_results[name]
                 top_idx = np.argsort(pi_data['importances_mean'])[::-1][:4]
@@ -476,11 +523,16 @@ if run_button:
                     'feature_indices': top_features_idx,
                     'feature_names': pi_data['feature_names'],
                 }
+        except _SkipAnalysis:
+            pass  # User opted out of PDP — don't increment step_count
         except Exception as e:
             errors.append(f"{name} PDP: {e}")
             logger.exception(f"PDP error for {name}: {e}")
-        step_count += 1
-        overall_progress.progress(min(step_count / total_steps, 1.0))
+            step_count += 1
+            overall_progress.progress(min(step_count / total_steps, 1.0))
+        else:
+            step_count += 1
+            overall_progress.progress(min(step_count / total_steps, 1.0))
 
     # Store all results
     st.session_state.permutation_importance = perm_results
@@ -496,6 +548,18 @@ if run_button:
         with st.expander(f"⚠️ {len(errors)} issue(s) during analysis", expanded=False):
             for err in errors:
                 st.text(err)
+
+    # Log methodology
+    analyses_run = []
+    if run_perm and perm_results: analyses_run.append("permutation_importance")
+    if run_shap and shap_results: analyses_run.append("shap")
+    if run_pdp and pdp_results: analyses_run.append("partial_dependence")
+    from utils.session_state import log_methodology
+    log_methodology(
+        step='Explainability',
+        action=f"Ran {', '.join(analyses_run)} on {len(model_selection)} models",
+        details={'analyses': analyses_run, 'models': list(model_selection)}
+    )
 
     st.success(f"✅ Explainability analysis complete ({elapsed:.1f}s)")
 

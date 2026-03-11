@@ -1,6 +1,12 @@
 """
 Page 01: Upload and Data Audit
 Project-based data management with intelligent merging.
+
+AUDIT NOTE (Data Flow):
+- Sets raw_data and working_table in session state
+- Data cleaning actions modify working_table and call set_data()
+- Methodology logging: Added for all suggested data cleaning actions (drop columns, drop duplicates, impute, etc.)
+- Feature selection stored in data_config.feature_cols
 """
 import streamlit as st
 import pandas as pd
@@ -11,7 +17,7 @@ from datetime import datetime
 
 from utils.session_state import (
     init_session_state, set_data, get_data, DataConfig, reset_data_dependent_state,
-    TaskTypeDetection, CohortStructureDetection
+    TaskTypeDetection, CohortStructureDetection, log_methodology
 )
 from utils.datasets import get_builtin_datasets
 from utils.reconcile import reconcile_target_features
@@ -1421,6 +1427,13 @@ if suggested_actions:
                     else:
                         st.session_state.working_table = new_df
                         set_data(new_df)
+                        log_methodology(step='Data Cleaning', action=label, details={
+                            'affected_columns': cols if cols else 'all',
+                            'rows_before': df.shape[0],
+                            'rows_after': new_df.shape[0],
+                            'cols_before': df.shape[1],
+                            'cols_after': new_df.shape[1]
+                        })
                         st.success(f"Applied: {label}. New shape: {new_df.shape[0]:,} rows × {new_df.shape[1]} columns")
                         st.rerun()
                 except Exception as e:
@@ -1614,6 +1627,20 @@ if task_mode == "prediction":
             task_type=task_type_final
         )
         st.session_state.data_config = data_config
+        
+        # Log methodology
+        log_methodology(
+            step='Upload & Audit',
+            action=f"Configured {task_type_final} task with {len(selected_features)} features, target: {target_col}",
+            details={
+                'target': target_col,
+                'task_type': task_type_final,
+                'n_features': len(selected_features),
+                'features': selected_features,
+                'n_samples': len(df),
+                'data_source': st.session_state.get('data_source', 'unknown'),
+            }
+        )
         
         st.success(f"✅ Configuration saved: **{task_type_final.title()}** task with **{len(selected_features)}** features")
         

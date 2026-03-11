@@ -791,7 +791,7 @@ def render_reviewer_concern(text: str):
     st.markdown(f"""<div class="reviewer-concern">{html_text}</div>""", unsafe_allow_html=True)
 
 
-def render_step_indicator(step_number: int, step_name: str, total_steps: int = 9):
+def render_step_indicator(step_number: int, step_name: str, total_steps: int = 10):
     """Render a step indicator breadcrumb badge."""
     st.markdown(f"""
     <div class="step-indicator">

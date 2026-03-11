@@ -3,6 +3,12 @@
 
 Create new features from existing data to improve model performance.
 This step is OPTIONAL — skip if you prioritize interpretability over accuracy.
+
+AUDIT NOTE (Data Flow):
+- get_data() returns: df_engineered (if FE applied) > filtered_data > raw_data
+- Operates on: data_config.feature_cols (user-selected features from Upload & Audit)
+- Edge case handled: fe_work_in_progress tracks feature set hash and resets when features change
+- Downstream invalidation: Saving FE clears preprocessing, models, splits, explainability
 """
 import streamlit as st
 import pandas as pd
@@ -15,6 +21,38 @@ warnings.filterwarnings('ignore')
 from utils.session_state import get_data, init_session_state, log_methodology
 from utils.theme import inject_custom_css, render_guidance, render_sidebar_workflow
 from utils.storyline import render_breadcrumb, render_page_navigation
+
+
+def _build_transform_map(engineered_features, engineering_log):
+    """Map each engineered feature name to its transform type for downstream guardrails."""
+    transform_map = {}
+    for feat in engineered_features:
+        if feat.startswith("log_") or feat.startswith("log1p_"):
+            transform_map[feat] = "log"
+        elif feat.startswith("sqrt_"):
+            transform_map[feat] = "sqrt"
+        elif feat.endswith("_squared"):
+            transform_map[feat] = "power"
+        elif feat.endswith("_cubed"):
+            transform_map[feat] = "power"
+        elif feat.startswith("inv_"):
+            transform_map[feat] = "reciprocal"
+        elif feat.startswith("PCA_"):
+            transform_map[feat] = "pca"
+        elif feat.startswith("UMAP_"):
+            transform_map[feat] = "umap"
+        elif feat.startswith("TDA_"):
+            transform_map[feat] = "tda"
+        elif "_div_" in feat:
+            transform_map[feat] = "ratio"
+        elif "_binned" in feat or "_bin_" in feat:
+            transform_map[feat] = "binning"
+        elif " " in feat:
+            transform_map[feat] = "polynomial"
+        else:
+            transform_map[feat] = "other"
+    return transform_map
+
 
 # Initialize
 init_session_state()
@@ -120,8 +158,9 @@ if st.session_state.get('feature_engineering_applied'):
     Or continue to modify the existing engineered features below.
     """)
 
-# Separate features and target
-X = df.drop(columns=[target])
+# Separate features and target — ONLY use features the user selected in Upload & Audit
+selected_features = data_config.feature_cols if data_config.feature_cols else [c for c in df.columns if c != target]
+X = df[selected_features]
 y = df[target]
 
 numeric_features = X.select_dtypes(include=[np.number]).columns.tolist()
@@ -139,12 +178,19 @@ st.info(f"""
 """)
 
 # Initialize tracking - persist across reruns using session state
-if 'fe_work_in_progress' not in st.session_state or st.session_state.get('fe_reset_requested'):
+# After getting selected_features, before initializing fe_work_in_progress:
+import hashlib
+_features_hash = hashlib.md5(",".join(sorted(selected_features)).encode()).hexdigest()[:8]
+
+if ('fe_work_in_progress' not in st.session_state 
+    or st.session_state.get('fe_reset_requested')
+    or st.session_state.get('fe_features_hash') != _features_hash):
     st.session_state.fe_work_in_progress = {
         'X_engineered': X.copy(),
         'engineered_features': [],
         'engineering_log': []
     }
+    st.session_state.fe_features_hash = _features_hash
     st.session_state.fe_reset_requested = False
 
 # Get working copy from session state
@@ -1003,6 +1049,32 @@ if new_features > 0:
             st.session_state["feature_engineering_applied"] = True
             st.session_state["engineered_feature_names"] = engineered_features
             st.session_state["engineering_log"] = engineering_log
+            
+            # Track which transforms produced each engineered feature
+            st.session_state["engineered_feature_transforms"] = _build_transform_map(engineered_features, engineering_log)
+            
+            # CASCADE INVALIDATION: clear all downstream state
+            st.session_state.pop("feature_selection_results", None)
+            st.session_state.pop("consensus_features", None)
+            st.session_state["preprocessing_pipeline"] = None
+            st.session_state["preprocessing_config"] = None
+            st.session_state["preprocessing_pipelines_by_model"] = {}
+            st.session_state["preprocessing_config_by_model"] = {}
+            st.session_state["trained_models"] = {}
+            st.session_state["model_results"] = {}
+            st.session_state["fitted_estimators"] = {}
+            st.session_state["fitted_preprocessing_pipelines"] = {}
+            st.session_state["X_train"] = None
+            st.session_state["X_val"] = None
+            st.session_state["X_test"] = None
+            st.session_state["y_train"] = None
+            st.session_state["y_val"] = None
+            st.session_state["y_test"] = None
+            st.session_state["permutation_importance"] = {}
+            st.session_state["partial_dependence"] = {}
+            st.session_state["shap_results"] = {}
+            st.session_state.pop("sensitivity_seed_results", None)
+            st.session_state["report_data"] = None
             
             # Log methodology action
             log_methodology(

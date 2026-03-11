@@ -1,6 +1,12 @@
 """
 Page 02: Exploratory Data Analysis
 Shows summary stats, distributions, correlations, and target analysis.
+
+AUDIT NOTE (Data Flow):
+- get_data() returns: df_engineered (if FE applied) > filtered_data > raw_data
+- Operates on: data_config.target_col and data_config.feature_cols
+- Works in both prediction and hypothesis_testing modes (some features prediction-specific)
+- Methodology logging: Added for all analysis runs (upfront, family, other, Table 1)
 """
 import streamlit as st
 import pandas as pd
@@ -11,7 +17,7 @@ from typing import Optional, Dict, Any, List
 
 from utils.session_state import (
     init_session_state, get_data, DataConfig,
-    TaskTypeDetection, CohortStructureDetection
+    TaskTypeDetection, CohortStructureDetection, log_methodology
 )
 from utils.storyline import add_insight, get_insights_by_category, render_breadcrumb, render_page_navigation
 from data_processor import get_numeric_columns
@@ -256,6 +262,7 @@ def _run_and_show(action_id: str, title: str, run_action: str):
                 with st.spinner(f"Running {title}..."):
                     result = action_func(df, target_col, feature_cols, signals, st.session_state)
                     st.session_state.eda_results[action_id] = result
+                    log_methodology(step='EDA', action=f'Ran {title}', details={'analysis': run_action, 'result_id': action_id})
                     st.rerun()
             else:
                 st.error(f"Action '{run_action}' not found")
@@ -356,6 +363,7 @@ for family, tasks in FAMILY_TASKS.items():
                     st.session_state.eda_results[f"family_{family}_{act}"] = {
                         "findings": [], "warnings": [str(e)], "figures": [], "stats": {}
                     }
+            log_methodology(step='EDA', action=f'Ran {family} analyses', details={'family': family, 'analyses': [act for _desc, act in run_list]})
             st.rerun()
         for desc, act in run_list:
             fkey = f"family_{family}_{act}"
@@ -413,6 +421,7 @@ if OTHER_ACTIONS:
                 with st.spinner(f"Running {other_select}..."):
                     result = action_func(df, target_col, feature_cols, signals, st.session_state)
                     st.session_state.eda_results[f"other_{other_select}"] = result
+                    log_methodology(step='EDA', action=f'Ran {other_select} analysis', details={'analysis': other_select})
                     st.rerun()
         except Exception as e:
             st.error(f"Error: {str(e)}")
@@ -635,6 +644,13 @@ with st.expander("Generate Table 1", expanded=False):
         table1_df, table1_metadata = generate_table1(df, config)
         st.session_state["table1_df"] = table1_df
         st.session_state["table1_metadata"] = table1_metadata
+        log_methodology(step='EDA', action='Generated Table 1', details={
+            'grouping_var': grouping_var if grouping_var != "None" else None,
+            'n_continuous': len(t1_continuous),
+            'n_categorical': len(t1_categorical),
+            'show_pvalues': show_pvalues,
+            'show_smd': show_smd
+        })
 
     if st.session_state.get("table1_df") is not None:
         table1_df = st.session_state["table1_df"]
