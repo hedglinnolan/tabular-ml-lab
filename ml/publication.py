@@ -400,6 +400,97 @@ def generate_methods_section(
         f"[PLACEHOLDER: Add specific software versions from the reproducibility manifest.]"
     )
 
+    # Methodological Considerations
+    sections.append("\n\n### Methodological Considerations\n")
+    sections.append(
+        "The following methodological choices and their implications are documented "
+        "for transparency and reproducibility.\n\n"
+    )
+
+    # 1. CV on pre-transformed data
+    if cv_folds:
+        _has_pca = False
+        _has_feature_selection = feature_selection_method is not None
+        try:
+            import streamlit as st
+            _preproc_configs = st.session_state.get('preprocessing_config_by_model', {})
+            for _mc in _preproc_configs.values():
+                if isinstance(_mc, dict) and _mc.get('use_pca'):
+                    _has_pca = True
+                    break
+        except ImportError:
+            pass
+
+        sections.append(
+            f"**Cross-validation and preprocessing:** {cv_folds}-fold cross-validation was performed "
+            f"on data that had already been preprocessed using the full training set. "
+            f"In a strict nested cross-validation framework, preprocessing would be re-fit within "
+            f"each fold to avoid information leakage. For scale-invariant models (tree-based ensembles), "
+            f"this has no practical effect. For scale-sensitive models (linear, SVM, neural networks), "
+            f"the impact of this choice on reported cross-validation metrics is expected to be minimal "
+            f"for imputation and scaling operations"
+        )
+        if _has_pca or _has_feature_selection:
+            sections.append(
+                f", though it may introduce optimistic bias for dimensionality reduction "
+                f"{'(PCA was applied)' if _has_pca else ''}"
+                f"{'(feature selection was applied)' if _has_feature_selection else ''}"
+            )
+        sections.append(
+            ". Held-out test set performance, which uses a strict train/test separation "
+            "for preprocessing, remains unaffected by this consideration.\n\n"
+        )
+
+    # 2. Feature dropout methodology
+    try:
+        import streamlit as st
+        _has_dropout = st.session_state.get('sensitivity_dropout_results') is not None
+    except ImportError:
+        _has_dropout = False
+
+    if _has_dropout:
+        sections.append(
+            "**Feature dropout analysis:** When assessing the impact of individual feature removal, "
+            "models were retrained using median imputation only (without the full preprocessing pipeline) "
+            "due to the complexity of dynamically reconstructing column-specific pipelines for each "
+            "feature permutation. This simplification is inconsequential for tree-based models, which are "
+            "invariant to monotonic feature transformations. For linear and neural network models, "
+            "dropout impact estimates should be interpreted with caution, as the absence of scaling "
+            "may confound the effect of feature removal. Permutation importance and SHAP values, "
+            "which operate on the fully preprocessed data, provide more reliable feature importance "
+            "estimates for these model types.\n\n"
+        )
+
+    # 3. Feature engineering transform detection
+    try:
+        import streamlit as st
+        _has_eng = st.session_state.get('feature_engineering_applied', False)
+        _transform_map = st.session_state.get('engineered_feature_transforms', {})
+    except ImportError:
+        _has_eng = False
+        _transform_map = {}
+
+    if _has_eng and _transform_map:
+        sections.append(
+            "**Engineered feature handling in preprocessing:** To prevent double-transformation "
+            "(e.g., applying a log transform to an already log-transformed feature), engineered features "
+            "were identified by naming convention and automatically excluded from redundant preprocessing "
+            "transforms. These features received imputation and scaling only. "
+            "This detection relies on standard naming prefixes (e.g., `log_`, `sqrt_`, `PCA_`); "
+            "features with non-standard names were treated as untransformed and received full preprocessing.\n\n"
+        )
+
+    # 4. Methodology audit trail
+    if logged_steps:
+        step_names = sorted(logged_steps.keys())
+        sections.append(
+            f"**Reproducibility:** All data processing decisions were recorded in an automated "
+            f"methodology log covering {len(step_names)} analysis phases "
+            f"({', '.join(step_names)}). "
+            f"This log captures the specific parameters used at each step and can be "
+            f"exported for full reproducibility.\n\n"
+        )
+
     # ── Results Section (if actual results provided) ──
     if selected_model_results:
         sections.append("\n\n---\n\n## Results (Draft)\n")
