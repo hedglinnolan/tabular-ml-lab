@@ -18,7 +18,7 @@ def _escape_latex(text: str) -> str:
     chars = {
         '&': r'\&', '%': r'\%', '$': r'\$', '#': r'\#',
         '_': r'\_', '{': r'\{', '}': r'\}', '~': r'\textasciitilde{}',
-        '^': r'\textasciicircum{}',
+        '^': r'\textasciicircum{}', '<': r'\textless{}', '>': r'\textgreater{}',
     }
     for char, replacement in chars.items():
         text = text.replace(char, replacement)
@@ -51,8 +51,8 @@ def _convert_markdown_to_latex(markdown_text: str) -> Tuple[str, str]:
         # First part (before any ###) is intro text
         if parts[0].strip():
             intro = parts[0].strip()
-            # Remove leading --- if present
-            intro = re.sub(r'^---\s*', '', intro)
+            # Remove --- separators
+            intro = re.sub(r'\n?---\s*\n?', '\n\n', intro).strip()
             # Convert markdown formatting (this handles escaping internally)
             intro_processed = _convert_inline_markdown(intro)
             # Escape any remaining text that wasn't in markdown formatting
@@ -66,9 +66,9 @@ def _convert_markdown_to_latex(markdown_text: str) -> Tuple[str, str]:
             title = lines[0].strip()
             body = lines[1].strip() if len(lines) > 1 else ""
             
-            # Remove --- separators
-            body = re.sub(r'\n---\s*\n', '\n\n', body)
-            body = re.sub(r'^---\s*\n', '', body)
+            # Remove --- separators (anywhere in body)
+            body = re.sub(r'\n?---\s*\n?', '\n\n', body)
+            body = body.strip()
             
             # Convert inline markdown (handles escaping internally)
             title_processed = _convert_inline_markdown(title)
