@@ -295,48 +295,154 @@ def generate_methods_section(
 
     sections.append("\n\n### Data Preprocessing\n")
     
-    # Check logged preprocessing data
-    if 'Preprocessing' in logged_steps:
+    # Per-model preprocessing: check session state for configs_by_model
+    _per_model_configs = {}
+    try:
+        import streamlit as st
+        _per_model_configs = st.session_state.get('preprocessing_config_by_model', {})
+    except ImportError:
+        pass
+    
+    # Helper labels
+    _scale_labels = {
+        "standard": "z-score standardization", "robust": "robust scaling",
+        "minmax": "min-max normalization", "none": None,
+    }
+    _enc_labels = {
+        "onehot": "one-hot encoding", "target": "target encoding",
+        "ordinal": "ordinal encoding",
+    }
+    _outlier_labels = {
+        "percentile": "percentile-based winsorization",
+        "mad": "MAD-based outlier clipping", "iqr": "IQR-based outlier removal",
+        "none": None,
+    }
+    
+    def _describe_model_preproc(cfg: Dict) -> List[str]:
+        """Build list of preprocessing description sentences for one model config."""
+        sents = []
+        scaling = cfg.get('numeric_scaling', 'none')
+        sl = _scale_labels.get(scaling)
+        if sl:
+            sents.append(f"scaled using {sl}")
+        encoding = cfg.get('categorical_encoding', '')
+        el = _enc_labels.get(encoding)
+        if el:
+            sents.append(f"categorical variables encoded using {el}")
+        outlier = cfg.get('numeric_outlier_treatment', 'none')
+        ol = _outlier_labels.get(outlier)
+        if ol:
+            params = cfg.get('numeric_outlier_params', {})
+            lower = params.get('lower_percentile')
+            upper = params.get('upper_percentile')
+            if lower is not None and upper is not None:
+                sents.append(f"outliers clipped at {lower}th/{upper}th percentiles")
+            else:
+                sents.append(f"outliers addressed using {ol}")
+        transform = cfg.get('numeric_power_transform', 'none')
+        if transform and transform != 'none':
+            sents.append(f"{transform} power transform applied")
+        log_t = cfg.get('numeric_log_transform', False)
+        if log_t:
+            sents.append("log transform applied")
+        return sents
+    
+    if _per_model_configs and len(_per_model_configs) > 1:
+        # Check if all models share the same preprocessing
+        config_signatures = {}
+        for mk, cfg in _per_model_configs.items():
+            sig = (
+                cfg.get('numeric_scaling', 'none'),
+                cfg.get('categorical_encoding', ''),
+                cfg.get('numeric_outlier_treatment', 'none'),
+                cfg.get('numeric_power_transform', 'none'),
+                cfg.get('numeric_log_transform', False),
+            )
+            config_signatures[mk] = sig
+        
+        unique_sigs = set(config_signatures.values())
+        
+        if len(unique_sigs) == 1:
+            # All models share the same preprocessing
+            first_cfg = next(iter(_per_model_configs.values()))
+            sents = _describe_model_preproc(first_cfg)
+            if sents:
+                sections.append("All models shared identical preprocessing: " + "; ".join(sents) + ".")
+            else:
+                sections.append("No additional preprocessing transformations were applied beyond imputation.")
+        else:
+            # Models differ — describe shared settings first, then per-model differences
+            # Find common settings
+            all_cfgs = list(_per_model_configs.values())
+            shared_scaling = all_cfgs[0].get('numeric_scaling') if len(set(c.get('numeric_scaling', 'none') for c in all_cfgs)) == 1 else None
+            shared_encoding = all_cfgs[0].get('categorical_encoding') if len(set(c.get('categorical_encoding', '') for c in all_cfgs)) == 1 else None
+            
+            shared_parts = []
+            if shared_scaling and _scale_labels.get(shared_scaling):
+                shared_parts.append(f"continuous features were scaled using {_scale_labels[shared_scaling]}")
+            if shared_encoding and _enc_labels.get(shared_encoding):
+                shared_parts.append(f"categorical variables were encoded using {_enc_labels[shared_encoding]}")
+            
+            if shared_parts:
+                sections.append("Across all models, " + "; ".join(shared_parts) + ".")
+            
+            # Describe per-model differences
+            sections.append(" Model-specific preprocessing differed as follows:")
+            for mk, cfg in _per_model_configs.items():
+                diffs = []
+                # Only describe settings that differ from shared
+                outlier = cfg.get('numeric_outlier_treatment', 'none')
+                ol = _outlier_labels.get(outlier)
+                if ol:
+                    params = cfg.get('numeric_outlier_params', {})
+                    lower = params.get('lower_percentile')
+                    upper = params.get('upper_percentile')
+                    if lower is not None and upper is not None:
+                        diffs.append(f"outliers clipped at {lower}th/{upper}th percentiles")
+                    else:
+                        diffs.append(f"outliers addressed using {ol}")
+                if not shared_scaling:
+                    sl = _scale_labels.get(cfg.get('numeric_scaling', 'none'))
+                    if sl:
+                        diffs.append(f"scaled using {sl}")
+                transform = cfg.get('numeric_power_transform', 'none')
+                if transform and transform != 'none':
+                    diffs.append(f"{transform} power transform")
+                log_t = cfg.get('numeric_log_transform', False)
+                if log_t:
+                    diffs.append("log transform")
+                
+                if diffs:
+                    sections.append(f" {mk.upper()}: {'; '.join(diffs)}.")
+                else:
+                    sections.append(f" {mk.upper()}: default preprocessing (no additional transformations).")
+    elif 'Preprocessing' in logged_steps:
+        # Fallback to logged preprocessing (single-config path)
         preprocessing_logged = False
         for entry in logged_steps['Preprocessing']:
             details = entry.get('details', {})
-            # Use logged preprocessing details if available
             if details:
                 sentences = []
                 
-                # Skip imputation here (already covered in Missing Data section)
-                
                 if details.get('scaling') and details['scaling'] != 'none':
-                    scale_labels = {
-                        "standard": "z-score standardization",
-                        "robust": "robust scaling",
-                        "minmax": "min-max normalization"
-                    }
-                    scale_label = scale_labels.get(details['scaling'], details['scaling'])
-                    sentences.append(f"Continuous features were scaled using {scale_label}.")
+                    scale_label = _scale_labels.get(details['scaling'], details['scaling'])
+                    if scale_label:
+                        sentences.append(f"Continuous features were scaled using {scale_label}.")
                 
                 if details.get('encoding'):
-                    enc_labels = {
-                        "onehot": "one-hot encoding",
-                        "target": "target encoding",
-                        "ordinal": "ordinal encoding"
-                    }
-                    enc_label = enc_labels.get(details['encoding'], details['encoding'])
-                    sentences.append(f"Categorical variables were encoded using {enc_label}.")
+                    enc_label = _enc_labels.get(details['encoding'], details['encoding'])
+                    if enc_label:
+                        sentences.append(f"Categorical variables were encoded using {enc_label}.")
                 
                 if details.get('outlier_handling') and details['outlier_handling'] != 'none':
-                    outlier_labels = {
-                        "percentile": "percentile-based winsorization",
-                        "mad": "MAD-based outlier clipping",
-                        "iqr": "IQR-based outlier removal"
-                    }
-                    outlier_label = outlier_labels.get(details['outlier_handling'], details['outlier_handling'])
-                    sentences.append(f"Outliers were addressed using {outlier_label}.")
+                    outlier_label = _outlier_labels.get(details['outlier_handling'], details['outlier_handling'])
+                    if outlier_label:
+                        sentences.append(f"Outliers were addressed using {outlier_label}.")
                 
                 if sentences:
                     sections.append(" ".join(sentences))
                     preprocessing_logged = True
-                    break  # Use first logged preprocessing entry
+                    break
         
         if not preprocessing_logged:
             sections.append("No additional preprocessing transformations were applied beyond imputation.")
@@ -464,6 +570,79 @@ def generate_methods_section(
         for method in sorted(explainability_to_mention):
             desc = method_descriptions.get(method, f"{method} analysis was performed.")
             sections.append(f"{desc} ")
+
+    # Sensitivity Analysis — check methodology log and session state
+    _has_seed_sensitivity = False
+    _has_feature_dropout = False
+    try:
+        import streamlit as st
+        _has_seed_sensitivity = st.session_state.get('sensitivity_seed_results') is not None
+        _has_feature_dropout = st.session_state.get('sensitivity_dropout_results') is not None
+    except ImportError:
+        pass
+    
+    # Also check methodology log
+    if 'Sensitivity Analysis' in logged_steps:
+        for entry in logged_steps['Sensitivity Analysis']:
+            action = entry.get('action', '')
+            if 'seed' in action.lower():
+                _has_seed_sensitivity = True
+            if 'dropout' in action.lower():
+                _has_feature_dropout = True
+    
+    if _has_seed_sensitivity or _has_feature_dropout:
+        sections.append("\n\n### Sensitivity Analysis\n")
+        if _has_seed_sensitivity:
+            # Get details from log
+            seed_details = {}
+            if 'Sensitivity Analysis' in logged_steps:
+                for entry in logged_steps['Sensitivity Analysis']:
+                    if 'seed' in entry.get('action', '').lower():
+                        seed_details = entry.get('details', {})
+                        break
+            
+            model_name = seed_details.get('model', 'the selected model').upper()
+            n_seeds = seed_details.get('n_seeds', 'multiple')
+            metric = seed_details.get('metric', 'the primary metric')
+            
+            sections.append(
+                f"Seed stability analysis was performed on {model_name} "
+                f"using {n_seeds} random seeds to assess sensitivity of {metric} "
+                f"to random initialization. "
+            )
+            
+            # Include actual results if available
+            try:
+                seed_df = st.session_state.get('sensitivity_seed_results')
+                if seed_df is not None and metric in seed_df.columns:
+                    valid = seed_df[metric].dropna()
+                    if len(valid) > 1:
+                        cv = valid.std() / abs(valid.mean()) * 100 if valid.mean() != 0 else 0
+                        sections.append(
+                            f"The coefficient of variation across seeds was {cv:.1f}%, "
+                            f"with {metric} ranging from {valid.min():.4f} to {valid.max():.4f} "
+                            f"(mean: {valid.mean():.4f}, SD: {valid.std():.4f}). "
+                        )
+            except Exception:
+                pass
+        
+        if _has_feature_dropout:
+            dropout_details = {}
+            if 'Sensitivity Analysis' in logged_steps:
+                for entry in logged_steps['Sensitivity Analysis']:
+                    if 'dropout' in entry.get('action', '').lower():
+                        dropout_details = entry.get('details', {})
+                        break
+            
+            model_name = dropout_details.get('model', 'the selected model').upper()
+            n_features = dropout_details.get('n_features_tested', '')
+            metric = dropout_details.get('metric', 'the primary metric')
+            
+            sections.append(
+                f"Feature dropout analysis was performed on {model_name}, "
+                f"sequentially removing each of {n_features} features and retraining "
+                f"to measure the impact on {metric}. "
+            )
 
     # Software - get actual versions
     try:
