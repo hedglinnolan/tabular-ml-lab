@@ -4,9 +4,10 @@ LaTeX report generator.
 Generates a complete LaTeX manuscript template populated with actual results
 from the modeling workflow. Ready to compile with pdflatex.
 """
+import re
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 
 
@@ -22,6 +23,110 @@ def _escape_latex(text: str) -> str:
     for char, replacement in chars.items():
         text = text.replace(char, replacement)
     return text
+
+
+def _convert_markdown_to_latex(markdown_text: str) -> Tuple[str, str]:
+    """Convert markdown methods section to LaTeX, separating Methods and Results.
+    
+    Returns:
+        Tuple of (methods_latex, results_latex)
+    """
+    if not markdown_text:
+        return "", ""
+    
+    # Split on ## Results to separate Methods from Results
+    parts = re.split(r'\n## Results.*?\n', markdown_text, maxsplit=1)
+    methods_md = parts[0]
+    results_md = parts[1] if len(parts) > 1 else ""
+    
+    def convert_section(md_text):
+        if not md_text:
+            return ""
+        
+        sections = []
+        
+        # Split on ### headers (handle both \n### and ^###)
+        parts = re.split(r'(?:\n|^)### ', md_text)
+        
+        # First part (before any ###) is intro text
+        if parts[0].strip():
+            intro = parts[0].strip()
+            # Remove leading --- if present
+            intro = re.sub(r'^---\s*', '', intro)
+            # Convert markdown formatting (this handles escaping internally)
+            intro_processed = _convert_inline_markdown(intro)
+            # Escape any remaining text that wasn't in markdown formatting
+            # We need to escape text NOT inside LaTeX commands
+            intro_final = _escape_remaining_text(intro_processed)
+            sections.append(intro_final)
+        
+        # Process each subsection
+        for part in parts[1:]:
+            lines = part.split('\n', 1)
+            title = lines[0].strip()
+            body = lines[1].strip() if len(lines) > 1 else ""
+            
+            # Remove --- separators
+            body = re.sub(r'\n---\s*\n', '\n\n', body)
+            body = re.sub(r'^---\s*\n', '', body)
+            
+            # Convert inline markdown (handles escaping internally)
+            title_processed = _convert_inline_markdown(title)
+            body_processed = _convert_inline_markdown(body)
+            
+            # Escape remaining text
+            title_final = _escape_remaining_text(title_processed)
+            body_final = _escape_remaining_text(body_processed)
+            
+            # Create subsection
+            sections.append(f"\\subsection{{{title_final}}}\n\n{body_final}")
+        
+        return "\n\n".join(sections)
+    
+    def _escape_remaining_text(text):
+        """Escape text that's not already inside LaTeX commands."""
+        # Split on LaTeX commands (\textbf{...}, \texttt{...}, etc.)
+        # This is a simple approach: find all LaTeX command blocks and escape everything else
+        result = []
+        last_end = 0
+        
+        # Find all LaTeX commands
+        for match in re.finditer(r'\\(?:textbf|texttt|textit|emph)\{[^}]*\}', text):
+            # Escape text before this command
+            before = text[last_end:match.start()]
+            result.append(_escape_latex(before))
+            # Keep the command as-is
+            result.append(match.group(0))
+            last_end = match.end()
+        
+        # Escape any remaining text
+        result.append(_escape_latex(text[last_end:]))
+        
+        return ''.join(result)
+    
+    def _convert_inline_markdown(text):
+        """Convert markdown inline formatting to LaTeX.
+        
+        This function must be called BEFORE _escape_latex to preserve LaTeX commands.
+        """
+        # Convert **bold** to \textbf{bold} - escape the content
+        def escape_bold(match):
+            content = _escape_latex(match.group(1))
+            return f"\\textbf{{{content}}}"
+        text = re.sub(r'\*\*(.+?)\*\*', escape_bold, text)
+        
+        # Convert `code` to \texttt{code} - escape the content
+        def escape_code(match):
+            content = _escape_latex(match.group(1))
+            return f"\\texttt{{{content}}}"
+        text = re.sub(r'`(.+?)`', escape_code, text)
+        
+        return text
+    
+    methods_latex = convert_section(methods_md)
+    results_latex = convert_section(results_md)
+    
+    return methods_latex, results_latex
 
 
 def _metrics_to_latex_table(
@@ -199,12 +304,14 @@ def generate_latex_report(
     sections.append("")
 
     if methods_section:
-        # Convert markdown headers to LaTeX subsections
-        latex_methods = methods_section.replace("### ", "\\subsection{").replace("\n\n", "}\n\n\\noindent ")
-        # Clean up any trailing issues
-        latex_methods = _escape_latex(latex_methods)
-        sections.append(latex_methods)
+        # Convert markdown to LaTeX properly
+        methods_latex, results_latex = _convert_markdown_to_latex(methods_section)
+        if methods_latex:
+            sections.append(methods_latex)
+        # Store results_latex for later use in Results section
+        draft_results = results_latex
     else:
+        draft_results = ""
         sections.append(r"""
 \subsection{Study Design and Participants}
 [PLACEHOLDER: Describe the study design, data source, eligibility criteria, and key dates.]
@@ -251,21 +358,26 @@ Model performance was assessed using [METRICS] with 95\% confidence intervals co
     else:
         sections.append(r"[INSERT TABLE 1: Characteristics of the study population]")
 
-    sections.append(r"""
-\subsection{Model Performance}""")
-
-    # Metrics table
-    if model_results:
-        sections.append(_metrics_to_latex_table(model_results, task_type, bootstrap_results))
-    else:
-        sections.append(r"[INSERT TABLE: Model performance metrics with 95\% CIs]")
-
-    # Calibration
-    if calibration_text:
-        sections.append(r"\subsection{Calibration}")
-        sections.append(_escape_latex(calibration_text))
+    # If we have draft results from methods section, include them
+    if draft_results:
+        sections.append("\n")
+        sections.append(draft_results)
     else:
         sections.append(r"""
+\subsection{Model Performance}""")
+
+        # Metrics table
+        if model_results:
+            sections.append(_metrics_to_latex_table(model_results, task_type, bootstrap_results))
+        else:
+            sections.append(r"[INSERT TABLE: Model performance metrics with 95\% CIs]")
+
+        # Calibration
+        if calibration_text:
+            sections.append(r"\subsection{Calibration}")
+            sections.append(_escape_latex(calibration_text))
+        else:
+            sections.append(r"""
 \subsection{Calibration}
 [PLACEHOLDER: Report calibration results — Brier score, ECE, calibration slope/intercept. Include calibration plot as a figure.]
 """)

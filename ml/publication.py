@@ -3,6 +3,7 @@ Publication engine: methods section generator, flow diagrams, TRIPOD tracking.
 
 Generates publication-ready text, figures, and compliance checklists.
 """
+import sys
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Any, Tuple
@@ -101,6 +102,43 @@ def generate_methods_from_log() -> Dict[str, List[Dict[str, Any]]]:
     return steps
 
 
+def _determine_best_model(selected_model_results: Dict[str, Dict], task_type: str) -> Optional[str]:
+    """Determine the best model from actual metrics.
+    
+    Args:
+        selected_model_results: Dict of model_name -> {"metrics": {...}}
+        task_type: "regression" or "classification"
+    
+    Returns:
+        Name of the best model, or None if no results.
+    """
+    if not selected_model_results:
+        return None
+    
+    if task_type == "regression":
+        # Lowest RMSE wins
+        best = min(
+            selected_model_results.items(),
+            key=lambda x: x[1].get('metrics', {}).get('RMSE', float('inf'))
+        )
+        return best[0] if best[1].get('metrics', {}).get('RMSE') != float('inf') else None
+    else:
+        # Highest F1 (or AUC if F1 not available, or Accuracy as fallback)
+        def score(item):
+            metrics = item[1].get('metrics', {})
+            if 'F1' in metrics:
+                return metrics['F1']
+            elif 'AUC' in metrics:
+                return metrics['AUC']
+            elif 'Accuracy' in metrics:
+                return metrics['Accuracy']
+            else:
+                return -float('inf')
+        
+        best = max(selected_model_results.items(), key=score)
+        return best[0] if score(best) > -float('inf') else None
+
+
 def generate_methods_section(
     data_config: Dict[str, Any],
     preprocessing_config: Dict[str, Any],
@@ -153,12 +191,28 @@ def generate_methods_section(
             f"(see Supplementary Table S1 for full list)."
         )
 
-    if feature_selection_method:
-        sections.append(f" Feature selection was performed using {feature_selection_method}.")
-    
-    # Use logged Feature Selection data if available
+    # Feature selection: use logged data as source of truth
     logged_steps = generate_methods_from_log()
-    if 'Feature Selection' in logged_steps:
+    
+    # Check for "Feature Selection Applied" step first (the final applied selection)
+    feature_selection_logged = False
+    if 'Feature Selection Applied' in logged_steps:
+        for entry in logged_steps['Feature Selection Applied']:
+            details = entry.get('details', {})
+            n_before = details.get('n_features_before')
+            n_after = details.get('n_features_after')
+            methods = details.get('methods', [])
+            if n_before and n_after:
+                if methods:
+                    methods_str = ", ".join(methods)
+                    sections.append(f" Feature selection using {methods_str} reduced the feature set from {n_before} to {n_after} predictors.")
+                else:
+                    sections.append(f" Feature selection reduced the feature set from {n_before} to {n_after} predictors.")
+                feature_selection_logged = True
+                break  # Only use the final applied selection
+    
+    # If no "Feature Selection Applied", fall back to "Feature Selection" step
+    if not feature_selection_logged and 'Feature Selection' in logged_steps:
         for entry in logged_steps['Feature Selection']:
             details = entry.get('details', {})
             n_before = details.get('n_features_before')
@@ -169,7 +223,13 @@ def generate_methods_section(
                     methods_str = ", ".join(methods)
                     sections.append(f" Feature selection using {methods_str} reduced the feature set from {n_before} to {n_after} predictors.")
                 else:
-                    sections.append(f" This reduced the feature set from {n_before} to {n_after} predictors.")
+                    sections.append(f" Feature selection reduced the feature set from {n_before} to {n_after} predictors.")
+                feature_selection_logged = True
+                break  # Only use first entry to avoid duplicates
+    
+    # Only fall back to parameter if no log entries exist
+    if not feature_selection_logged and feature_selection_method:
+        sections.append(f" Feature selection was performed using {feature_selection_method}.")
 
     # Feature Engineering (if applied)
     try:
@@ -231,21 +291,14 @@ def generate_methods_section(
     
     # Check logged preprocessing data
     if 'Preprocessing' in logged_steps:
-        preprocessing_logged = True
+        preprocessing_logged = False
         for entry in logged_steps['Preprocessing']:
             details = entry.get('details', {})
             # Use logged preprocessing details if available
             if details:
                 sentences = []
-                if details.get('imputation'):
-                    imp_labels = {
-                        "median": "median imputation",
-                        "mean": "mean imputation",
-                        "iterative": "multiple imputation by chained equations (MICE)",
-                        "constant": "constant value imputation"
-                    }
-                    imp_label = imp_labels.get(details['imputation'], details['imputation'])
-                    sentences.append(f"Missing values were handled using {imp_label}.")
+                
+                # Skip imputation here (already covered in Missing Data section)
                 
                 if details.get('scaling') and details['scaling'] != 'none':
                     scale_labels = {
@@ -276,7 +329,11 @@ def generate_methods_section(
                 
                 if sentences:
                     sections.append(" ".join(sentences))
+                    preprocessing_logged = True
                     break  # Use first logged preprocessing entry
+        
+        if not preprocessing_logged:
+            sections.append("No additional preprocessing transformations were applied beyond imputation.")
     elif _has_summary:
         sentences = []
         _sc = _preproc.get("scaling", {})
@@ -298,14 +355,13 @@ def generate_methods_section(
         if sentences:
             sections.append(" ".join(sentences))
         else:
-            sections.append("No additional preprocessing transformations were applied.")
+            sections.append("No additional preprocessing transformations were applied beyond imputation.")
     elif _preproc:
         steps = []
         scaling = _preproc.get("numeric_scaling", "standard")
         if scaling != "none":
             steps.append(f"numeric features were {scaling}-scaled")
-        imputation = _preproc.get("numeric_imputation", "median")
-        steps.append(f"missing numeric values were imputed using the {imputation}")
+        # Don't mention imputation here (already in Missing Data section)
         cat_enc = _preproc.get("categorical_encoding", "onehot")
         if cat_enc:
             steps.append(f"categorical variables were encoded using {cat_enc} encoding")
@@ -334,8 +390,7 @@ def generate_methods_section(
             if hyperopt:
                 sections.append(" Hyperparameter optimization was performed using Optuna with 30 trials per model.")
             
-            if best_model:
-                sections.append(f" The {best_model.upper()} model achieved the best performance on the validation set.")
+            # Don't use logged best_model here - we'll determine it from actual results below
             
             break  # Use first logged training entry
     else:
@@ -376,8 +431,20 @@ def generate_methods_section(
             "External validation was performed on an independent dataset. "
         )
 
-    # Explainability
-    if explainability_methods:
+    # Explainability - check both parameter and session state
+    explainability_to_mention = set(explainability_methods or [])
+    
+    # Check session state for SHAP and Bland-Altman
+    try:
+        import streamlit as st
+        if st.session_state.get('shap_results'):
+            explainability_to_mention.add('shap')
+        if st.session_state.get('bland_altman_results'):
+            explainability_to_mention.add('bland_altman')
+    except ImportError:
+        pass
+    
+    if explainability_to_mention:
         sections.append("\n\n### Model Interpretability\n")
         method_descriptions = {
             "permutation_importance": "Permutation importance was computed to assess feature contributions by measuring the decrease in model performance when each feature was randomly shuffled.",
@@ -386,19 +453,40 @@ def generate_methods_section(
             "calibration": "Model calibration was assessed using reliability diagrams, Brier score, and expected calibration error (ECE).",
             "subgroup": "Subgroup analysis was performed to evaluate model performance across clinically relevant subgroups.",
             "decision_curve": "Decision curve analysis was performed to assess the clinical utility of the model at various probability thresholds.",
+            "bland_altman": "Bland-Altman analysis was performed to assess agreement between model predictions.",
         }
-        for method in explainability_methods:
+        for method in sorted(explainability_to_mention):
             desc = method_descriptions.get(method, f"{method} analysis was performed.")
             sections.append(f"{desc} ")
 
-    # Software
-    sections.append("\n\n### Software\n")
-    sections.append(
-        f"All analyses were performed using Python (version 3.x) with "
-        f"scikit-learn, NumPy, pandas, and SciPy. "
-        f"Random seed was set to {random_seed} for reproducibility. "
-        f"[PLACEHOLDER: Add specific software versions from the reproducibility manifest.]"
-    )
+    # Software - get actual versions
+    try:
+        import sklearn
+        import numpy
+        import pandas
+        import scipy
+        
+        py_version = sys.version.split()[0]
+        sklearn_version = sklearn.__version__
+        numpy_version = numpy.__version__
+        pandas_version = pandas.__version__
+        scipy_version = scipy.__version__
+        
+        sections.append("\n\n### Software\n")
+        sections.append(
+            f"All analyses were performed using Python (version {py_version}) with "
+            f"scikit-learn ({sklearn_version}), NumPy ({numpy_version}), "
+            f"pandas ({pandas_version}), and SciPy ({scipy_version}). "
+            f"Random seed was set to {random_seed} for reproducibility."
+        )
+    except Exception:
+        # Fallback if imports fail
+        sections.append("\n\n### Software\n")
+        sections.append(
+            f"All analyses were performed using Python with "
+            f"scikit-learn, NumPy, pandas, and SciPy. "
+            f"Random seed was set to {random_seed} for reproducibility."
+        )
 
     # Methodological Considerations
     sections.append("\n\n### Methodological Considerations\n")
@@ -408,9 +496,9 @@ def generate_methods_section(
     )
 
     # 1. CV on pre-transformed data
-    if cv_folds:
+    if cv_folds or cv_to_use:
         _has_pca = False
-        _has_feature_selection = feature_selection_method is not None
+        _has_feature_selection = feature_selection_logged or feature_selection_method is not None
         try:
             import streamlit as st
             _preproc_configs = st.session_state.get('preprocessing_config_by_model', {})
@@ -421,8 +509,9 @@ def generate_methods_section(
         except ImportError:
             pass
 
+        cv_num = cv_to_use if cv_to_use else cv_folds
         sections.append(
-            f"**Cross-validation and preprocessing:** {cv_folds}-fold cross-validation was performed "
+            f"**Cross-validation and preprocessing:** {cv_num}-fold cross-validation was performed "
             f"on data that had already been preprocessed using the full training set. "
             f"In a strict nested cross-validation framework, preprocessing would be re-fit within "
             f"each fold to avoid information leakage. For scale-invariant models (tree-based ensembles), "
@@ -434,7 +523,7 @@ def generate_methods_section(
             sections.append(
                 f", though it may introduce optimistic bias for dimensionality reduction "
                 f"{'(PCA was applied)' if _has_pca else ''}"
-                f"{'(feature selection was applied)' if _has_feature_selection else ''}"
+                f"{' (feature selection was applied)' if _has_feature_selection else ''}"
             )
         sections.append(
             ". Held-out test set performance, which uses a strict train/test separation "
@@ -496,8 +585,12 @@ def generate_methods_section(
         sections.append("\n\n---\n\n## Results (Draft)\n")
         sections.append(f"\n### Model Performance\n")
 
-        if best_model_name:
-            sections.append(f"The best-performing model was **{best_model_name.upper()}**. ")
+        # Determine best model from actual metrics
+        actual_best = _determine_best_model(selected_model_results, task_type)
+        model_to_highlight = actual_best or best_model_name
+        
+        if model_to_highlight:
+            sections.append(f"The best-performing model was **{model_to_highlight.upper()}**. ")
 
         sections.append("Table X presents the performance of all evaluated models on the held-out test set.\n\n")
 
