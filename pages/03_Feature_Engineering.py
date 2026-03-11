@@ -210,6 +210,36 @@ with col2:
         st.session_state.fe_reset_requested = True
         st.session_state.pop("df_engineered", None)
         st.session_state["feature_engineering_applied"] = False
+        st.session_state.pop("engineered_feature_names", None)
+        st.session_state.pop("engineering_log", None)
+        st.session_state.pop("engineered_feature_transforms", None)
+        # Restore original feature_cols so downstream pages don't
+        # reference columns that no longer exist
+        pre_fe = st.session_state.pop("pre_fe_feature_cols", None)
+        if pre_fe is not None and data_config is not None:
+            data_config.feature_cols = pre_fe
+        # Cascade: clear downstream state that may reference engineered columns
+        st.session_state.pop("feature_selection_results", None)
+        st.session_state.pop("consensus_features", None)
+        st.session_state["preprocessing_pipeline"] = None
+        st.session_state["preprocessing_config"] = None
+        st.session_state["preprocessing_pipelines_by_model"] = {}
+        st.session_state["preprocessing_config_by_model"] = {}
+        st.session_state["trained_models"] = {}
+        st.session_state["model_results"] = {}
+        st.session_state["fitted_estimators"] = {}
+        st.session_state["fitted_preprocessing_pipelines"] = {}
+        st.session_state["X_train"] = None
+        st.session_state["X_val"] = None
+        st.session_state["X_test"] = None
+        st.session_state["y_train"] = None
+        st.session_state["y_val"] = None
+        st.session_state["y_test"] = None
+        st.session_state["permutation_importance"] = {}
+        st.session_state["partial_dependence"] = {}
+        st.session_state["shap_results"] = {}
+        st.session_state.pop("sensitivity_seed_results", None)
+        st.session_state["report_data"] = None
         st.rerun()
 with col3:
     if st.button("⏭️ Skip", help="Proceed to Feature Selection with original features"):
@@ -782,6 +812,10 @@ if use_tda:
         with st.spinner("Computing persistent homology... This may take a few minutes."):
             try:
                 try:
+                    # Patch giotto-tda for sklearn >= 1.8 compatibility
+                    # (force_all_finite renamed to ensure_all_finite)
+                    from ml.compat import patch_gtda_for_sklearn
+                    patch_gtda_for_sklearn()
                     from gtda.homology import VietorisRipsPersistence
                     from gtda.diagrams import PersistenceEntropy, Amplitude, NumberOfPoints
                 except ImportError:
@@ -1044,6 +1078,10 @@ if new_features > 0:
         # Save button (only show if not already saved)
         if st.button("💾 Save Engineered Features & Proceed", type="primary", key="save_btn"):
             df_engineered = pd.concat([X_engineered, y], axis=1)
+            
+            # Preserve original feature_cols so reset can restore them
+            if "pre_fe_feature_cols" not in st.session_state:
+                st.session_state["pre_fe_feature_cols"] = list(data_config.feature_cols) if data_config.feature_cols else list(selected_features)
             
             st.session_state["df_engineered"] = df_engineered
             st.session_state["feature_engineering_applied"] = True
