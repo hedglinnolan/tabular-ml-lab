@@ -194,32 +194,95 @@ def generate_methods_section(
     # Feature selection: use logged data as source of truth
     logged_steps = generate_methods_from_log()
     
-    # Check for "Feature Selection Applied" step first (the final applied selection)
+    # Build the feature selection narrative from the methodology log.
+    # Priority: use the LAST "Feature Selection Applied" entry (consensus or manual
+    # override), supplemented by the analysis run details from "Feature Selection".
     feature_selection_logged = False
-    for fs_step in ['Feature Selection Applied', 'Feature Selection']:
-        if feature_selection_logged:
-            break
-        if fs_step not in logged_steps:
-            continue
-        for entry in logged_steps[fs_step]:
+    
+    # 1. Check what was actually applied (may be consensus or manual override)
+    applied_entries = logged_steps.get('Feature Selection Applied', [])
+    analysis_entries = logged_steps.get('Feature Selection', [])
+    
+    if applied_entries:
+        # Use the LAST applied entry (manual override supersedes consensus)
+        applied = applied_entries[-1]
+        details = applied.get('details', {})
+        method = details.get('method', '')
+        n_selected = details.get('n_features_selected')
+        
+        # Get the methods used from the analysis step (lasso, rfe, etc.)
+        analysis_methods = []
+        n_original = None
+        for ae in analysis_entries:
+            ad = ae.get('details', {})
+            analysis_methods = ad.get('methods', analysis_methods)
+            if ad.get('n_features_before'):
+                n_original = ad['n_features_before']
+        
+        if method == 'manual' and n_selected is not None:
+            # Manual override — report it as such
+            if analysis_methods and n_original:
+                methods_str = ", ".join(analysis_methods)
+                sections.append(
+                    f" Feature selection was performed using {methods_str}. "
+                    f"After review, {n_selected} features were manually selected for modeling."
+                )
+            else:
+                sections.append(
+                    f" {n_selected} features were manually selected for modeling."
+                )
+            feature_selection_logged = True
+        elif method == 'consensus' and n_selected is not None:
+            # Consensus selection
+            if analysis_methods:
+                methods_str = ", ".join(analysis_methods)
+            else:
+                methods_str = ""
+            n_before = n_original or details.get('n_features_before')
+            if n_before and n_before == n_selected:
+                if methods_str:
+                    sections.append(
+                        f" Feature selection was performed using {methods_str}; "
+                        f"all {n_selected} features met the consensus threshold and were included in modeling."
+                    )
+                else:
+                    sections.append(
+                        f" Feature selection was performed; all {n_selected} features were retained."
+                    )
+            elif n_before:
+                if methods_str:
+                    sections.append(
+                        f" Feature selection using {methods_str} reduced the feature set "
+                        f"from {n_before} to {n_selected} predictors."
+                    )
+                else:
+                    sections.append(
+                        f" Feature selection reduced the feature set from {n_before} to {n_selected} predictors."
+                    )
+            else:
+                if methods_str:
+                    sections.append(f" Feature selection was performed using {methods_str}, retaining {n_selected} features.")
+                else:
+                    sections.append(f" Feature selection retained {n_selected} features.")
+            feature_selection_logged = True
+    
+    # 2. Fall back to analysis entries if nothing was explicitly applied
+    if not feature_selection_logged and analysis_entries:
+        for entry in analysis_entries:
             details = entry.get('details', {})
             n_before = details.get('n_features_before')
             n_after = details.get('n_features_after')
             methods = details.get('methods', [])
-            method = details.get('method', '')
             if n_before and n_after:
-                methods_str = ", ".join(methods) if methods else method
+                methods_str = ", ".join(methods) if methods else ""
                 if n_before == n_after:
-                    # All features retained — say so clearly
                     if methods_str:
                         sections.append(
                             f" Feature selection was performed using {methods_str}; "
                             f"all {n_after} features met the retention threshold and were included in modeling."
                         )
                     else:
-                        sections.append(
-                            f" Feature selection was performed; all {n_after} features were retained."
-                        )
+                        sections.append(f" Feature selection was performed; all {n_after} features were retained.")
                 else:
                     if methods_str:
                         sections.append(
@@ -227,11 +290,9 @@ def generate_methods_section(
                             f"from {n_before} to {n_after} predictors."
                         )
                     else:
-                        sections.append(
-                            f" Feature selection reduced the feature set from {n_before} to {n_after} predictors."
-                        )
+                        sections.append(f" Feature selection reduced the feature set from {n_before} to {n_after} predictors.")
                 feature_selection_logged = True
-                break  # Use first valid entry only
+                break
     
     # Only fall back to parameter if no log entries exist
     if not feature_selection_logged and feature_selection_method:
@@ -339,6 +400,15 @@ def generate_methods_section(
                 sents.append(f"outliers clipped at {lower}th/{upper}th percentiles")
             else:
                 sents.append(f"outliers addressed using {ol}")
+        # PCA
+        if cfg.get('use_pca'):
+            pca_n = cfg.get('pca_n_components')
+            if isinstance(pca_n, float) and pca_n < 1:
+                sents.append(f"PCA applied (retaining {pca_n*100:.0f}% variance)")
+            elif isinstance(pca_n, int):
+                sents.append(f"PCA applied ({pca_n} components)")
+            else:
+                sents.append("PCA dimensionality reduction applied")
         transform = cfg.get('numeric_power_transform', 'none')
         if transform and transform != 'none':
             sents.append(f"{transform} power transform applied")
@@ -357,6 +427,7 @@ def generate_methods_section(
                 cfg.get('numeric_outlier_treatment', 'none'),
                 cfg.get('numeric_power_transform', 'none'),
                 cfg.get('numeric_log_transform', False),
+                cfg.get('use_pca', False),
             )
             config_signatures[mk] = sig
         
@@ -371,14 +442,14 @@ def generate_methods_section(
             else:
                 sections.append("No additional preprocessing transformations were applied beyond imputation.")
         else:
-            # Models differ — describe shared settings first, then per-model differences
-            # Find common settings
+            # Models differ — describe each model's full preprocessing
+            # Check for any truly shared settings
             all_cfgs = list(_per_model_configs.values())
-            shared_scaling = all_cfgs[0].get('numeric_scaling') if len(set(c.get('numeric_scaling', 'none') for c in all_cfgs)) == 1 else None
-            shared_encoding = all_cfgs[0].get('categorical_encoding') if len(set(c.get('categorical_encoding', '') for c in all_cfgs)) == 1 else None
+            shared_scaling = all_cfgs[0].get('numeric_scaling', 'none') if len(set(c.get('numeric_scaling', 'none') for c in all_cfgs)) == 1 else None
+            shared_encoding = all_cfgs[0].get('categorical_encoding', '') if len(set(c.get('categorical_encoding', '') for c in all_cfgs)) == 1 else None
             
             shared_parts = []
-            if shared_scaling and _scale_labels.get(shared_scaling):
+            if shared_scaling and shared_scaling != 'none' and _scale_labels.get(shared_scaling):
                 shared_parts.append(f"continuous features were scaled using {_scale_labels[shared_scaling]}")
             if shared_encoding and _enc_labels.get(shared_encoding):
                 shared_parts.append(f"categorical variables were encoded using {_enc_labels[shared_encoding]}")
@@ -390,7 +461,15 @@ def generate_methods_section(
             sections.append(" Model-specific preprocessing differed as follows:")
             for mk, cfg in _per_model_configs.items():
                 diffs = []
-                # Only describe settings that differ from shared
+                # Scaling — mention if not shared or if this model differs
+                if not shared_scaling:
+                    scaling = cfg.get('numeric_scaling', 'none')
+                    sl = _scale_labels.get(scaling)
+                    if sl:
+                        diffs.append(f"scaled using {sl}")
+                    else:
+                        diffs.append("no feature scaling")
+                # Outlier treatment
                 outlier = cfg.get('numeric_outlier_treatment', 'none')
                 ol = _outlier_labels.get(outlier)
                 if ol:
@@ -401,13 +480,20 @@ def generate_methods_section(
                         diffs.append(f"outliers clipped at {lower}th/{upper}th percentiles")
                     else:
                         diffs.append(f"outliers addressed using {ol}")
-                if not shared_scaling:
-                    sl = _scale_labels.get(cfg.get('numeric_scaling', 'none'))
-                    if sl:
-                        diffs.append(f"scaled using {sl}")
+                # PCA
+                if cfg.get('use_pca'):
+                    pca_n = cfg.get('pca_n_components')
+                    if isinstance(pca_n, float) and pca_n < 1:
+                        diffs.append(f"PCA applied (retaining {pca_n*100:.0f}% variance)")
+                    elif isinstance(pca_n, int):
+                        diffs.append(f"PCA applied ({pca_n} components)")
+                    else:
+                        diffs.append("PCA dimensionality reduction applied")
+                # Power transform
                 transform = cfg.get('numeric_power_transform', 'none')
                 if transform and transform != 'none':
                     diffs.append(f"{transform} power transform")
+                # Log transform
                 log_t = cfg.get('numeric_log_transform', False)
                 if log_t:
                     diffs.append("log transform")
@@ -592,57 +678,74 @@ def generate_methods_section(
     
     if _has_seed_sensitivity or _has_feature_dropout:
         sections.append("\n\n### Sensitivity Analysis\n")
-        if _has_seed_sensitivity:
-            # Get details from log
-            seed_details = {}
-            if 'Sensitivity Analysis' in logged_steps:
-                for entry in logged_steps['Sensitivity Analysis']:
-                    if 'seed' in entry.get('action', '').lower():
-                        seed_details = entry.get('details', {})
-                        break
+        
+        # Collect ALL seed sensitivity entries (may have multiple models)
+        seed_entries = []
+        dropout_entries = []
+        if 'Sensitivity Analysis' in logged_steps:
+            for entry in logged_steps['Sensitivity Analysis']:
+                action = entry.get('action', '').lower()
+                if 'seed' in action:
+                    seed_entries.append(entry.get('details', {}))
+                if 'dropout' in action:
+                    dropout_entries.append(entry.get('details', {}))
+        
+        if seed_entries:
+            if len(seed_entries) == 1:
+                d = seed_entries[0]
+                sections.append(
+                    f"Seed stability analysis was performed on {d.get('model', '?').upper()} "
+                    f"using {d.get('n_seeds', 'multiple')} random seeds to assess sensitivity of "
+                    f"{d.get('metric', 'the primary metric')} to random initialization. "
+                )
+            else:
+                models_str = ", ".join(
+                    f"{d.get('model', '?').upper()} ({d.get('metric', '?')}, {d.get('n_seeds', '?')} seeds)"
+                    for d in seed_entries
+                )
+                sections.append(
+                    f"Seed stability analysis was performed on {models_str} "
+                    f"to assess sensitivity to random initialization. "
+                )
             
-            model_name = seed_details.get('model', 'the selected model').upper()
-            n_seeds = seed_details.get('n_seeds', 'multiple')
-            metric = seed_details.get('metric', 'the primary metric')
-            
-            sections.append(
-                f"Seed stability analysis was performed on {model_name} "
-                f"using {n_seeds} random seeds to assess sensitivity of {metric} "
-                f"to random initialization. "
-            )
-            
-            # Include actual results if available
+            # Include actual results from session state for the most recent run
             try:
                 seed_df = st.session_state.get('sensitivity_seed_results')
-                if seed_df is not None and metric in seed_df.columns:
-                    valid = seed_df[metric].dropna()
-                    if len(valid) > 1:
-                        cv = valid.std() / abs(valid.mean()) * 100 if valid.mean() != 0 else 0
-                        sections.append(
-                            f"The coefficient of variation across seeds was {cv:.1f}%, "
-                            f"with {metric} ranging from {valid.min():.4f} to {valid.max():.4f} "
-                            f"(mean: {valid.mean():.4f}, SD: {valid.std():.4f}). "
-                        )
+                if seed_df is not None:
+                    # Report results for the last seed entry's metric
+                    last_metric = seed_entries[-1].get('metric', '')
+                    last_model = seed_entries[-1].get('model', '?').upper()
+                    if last_metric and last_metric in seed_df.columns:
+                        valid = seed_df[last_metric].dropna()
+                        if len(valid) > 1:
+                            cv = valid.std() / abs(valid.mean()) * 100 if valid.mean() != 0 else 0
+                            sections.append(
+                                f"For {last_model}, the coefficient of variation across seeds was {cv:.1f}%, "
+                                f"with {last_metric} ranging from {valid.min():.4f} to {valid.max():.4f} "
+                                f"(mean: {valid.mean():.4f}, SD: {valid.std():.4f}). "
+                            )
             except Exception:
                 pass
         
-        if _has_feature_dropout:
-            dropout_details = {}
-            if 'Sensitivity Analysis' in logged_steps:
-                for entry in logged_steps['Sensitivity Analysis']:
-                    if 'dropout' in entry.get('action', '').lower():
-                        dropout_details = entry.get('details', {})
-                        break
-            
-            model_name = dropout_details.get('model', 'the selected model').upper()
-            n_features = dropout_details.get('n_features_tested', '')
-            metric = dropout_details.get('metric', 'the primary metric')
-            
-            sections.append(
-                f"Feature dropout analysis was performed on {model_name}, "
-                f"sequentially removing each of {n_features} features and retraining "
-                f"to measure the impact on {metric}. "
-            )
+        if dropout_entries:
+            if len(dropout_entries) == 1:
+                d = dropout_entries[0]
+                sections.append(
+                    f"Feature dropout analysis was performed on {d.get('model', '?').upper()}, "
+                    f"sequentially removing each of {d.get('n_features_tested', '')} features and retraining "
+                    f"to measure the impact on {d.get('metric', 'the primary metric')}. "
+                )
+            else:
+                parts = []
+                for d in dropout_entries:
+                    parts.append(
+                        f"{d.get('model', '?').upper()} "
+                        f"({d.get('n_features_tested', '?')} features, {d.get('metric', '?')})"
+                    )
+                sections.append(
+                    f"Feature dropout analysis was performed on {' and '.join(parts)}, "
+                    f"sequentially removing individual features and retraining to measure impact. "
+                )
 
     # Software - get actual versions
     try:
