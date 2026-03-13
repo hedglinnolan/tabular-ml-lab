@@ -93,12 +93,12 @@ class TestIssue11_ReportText:
         with open('pages/10_Report_Export.py', 'r') as f:
             source = f.read()
 
-        # report_text = generate_report() should appear before "Export Options"
-        gen_pos = source.find('report_text = generate_report()')
+        # report_text = generate_report(...) should appear before "Export Options"
+        gen_pos = source.find('report_text = generate_report(')
         export_pos = source.find('# EXPORT OPTIONS')
         preview_pos = source.find('# REPORT PREVIEW')
 
-        assert gen_pos > 0, "report_text = generate_report() not found"
+        assert gen_pos > 0, "report_text = generate_report(...) not found"
         assert export_pos > 0, "EXPORT OPTIONS section not found"
         assert gen_pos < export_pos, "report_text must be generated before Export Options"
         assert gen_pos < preview_pos, "report_text must be generated before Report Preview"
