@@ -12,75 +12,62 @@
   <p align="center">
     <img src="https://img.shields.io/badge/python-3.10+-blue?logo=python&logoColor=white" alt="Python 3.10+">
     <img src="https://img.shields.io/badge/streamlit-1.28+-FF4B4B?logo=streamlit&logoColor=white" alt="Streamlit">
-    <img src="https://img.shields.io/badge/scikit--learn-1.3+-F7931E?logo=scikit-learn&logoColor=white" alt="scikit-learn">
+    <img src="https://img.shields.io/badge/scikit--learn-1.8+-F7931E?logo=scikit-learn&logoColor=white" alt="scikit-learn">
     <img src="https://img.shields.io/badge/pytorch-2.0+-EE4C2C?logo=pytorch&logoColor=white" alt="PyTorch">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
   </p>
   <p align="center">
     <a href="https://github.com/hedglinnolan/tabular-ml-lab/tree/university-docker">
-      <img src="https://img.shields.io/badge/🎓_University_Deployment-Docker_+_AD_Auth-0066cc?style=for-the-badge" alt="University Deployment">
+      <img src="https://img.shields.io/badge/🎓_University_Deployment-Docker_+_OIDC_Auth-0066cc?style=for-the-badge" alt="University Deployment">
     </a>
   </p>
 </p>
 
 ---
 
-> 🎓 **University IT Administrators:** Looking to deploy for your institution? Check out the [**university-docker branch**](https://github.com/hedglinnolan/tabular-ml-lab/tree/university-docker) for Docker deployment with Active Directory authentication and institutional Ollama integration. Complete setup guide included.
+> 🎓 **University IT Administrators:** Looking to deploy for your institution? Check out the [**university-docker branch**](https://github.com/hedglinnolan/tabular-ml-lab/tree/university-docker) for Docker deployment with KeyCloak OIDC authentication and institutional LLM integration. Complete setup guide included.
 
 ---
 
-An interactive research workbench for scientists who work with tabular data and need to publish papers. Upload your CSV, and the app guides you through a complete, defensible ML workflow — from exploratory analysis to a draft methods section and supporting manuscript materials.
+An interactive research workbench for scientists who work with tabular data and need to publish papers. Upload your CSV, and the app guides you through a complete, defensible ML workflow — from exploratory analysis to a compilable LaTeX manuscript draft with auto-generated methods, results, and structured discussion.
 
-**Built for researchers, not ML engineers.** Start with the core guided path, then use advanced options only when your study needs them.
+**Built for researchers, not ML engineers.** The app does the mechanical work of writing a prediction model paper. Your only edits are domain-specific context no tool can provide.
 
-> 🌐 **Try it now:** [app.tabularml.dev](https://app.tabularml.dev)  
-> ⚠️ **Note:** The live demo currently runs the `feature/feature-engineering` branch (experimental features in testing). The stable release is on `main`.
-
-### 🎉 What's New in v1.1 (Human-Centered Design Improvements)
-
-- **💾 Session Save/Resume** — Pause your 45-minute workflow and continue later. Download `.pkl` files to save progress.
-- **🔍 Diagnostic Assistant** — When models perform poorly (AUC < 0.65), get intelligent explanations: weak features, insufficient data, class imbalance, or high missing data.
-- **📊 Explainability Prioritization** — Three-tier system (Essential/Recommended/Advanced) helps you focus on what reviewers actually care about.
-- **📐 Statistical Validation** — Renamed "Hypothesis Testing" to emphasize publication value. Generate p-values for Table 1 and validate ML findings with traditional statistics.
-- **🧬 Feature Engineering** — NEW optional step: create polynomial features, log transforms, ratios, binning, and topological features (TDA). Integrates seamlessly with feature selection.
-- **🔗 Workflow Connective Tissue** — Every page now explains "Why This Step?" and "What Happens Next?" for better learning experience.
-
-<!-- 
-## Screenshots
-TODO: Add screenshots of key pages
-![Upload & Audit](docs/screenshots/upload.png)
-![Train & Compare](docs/screenshots/train.png)
-![Report Export](docs/screenshots/report.png)
--->
+> 🌐 **Try it now:** [app.tabularml.dev](https://app.tabularml.dev)
 
 ## Features
 
-### 📋 10-Step Workflow with a Guided Default Path
+### 📋 10-Step Guided Workflow
 
 | Step | Page | What it does |
 |------|------|-------------|
 | 1 | **Upload & Audit** | Load CSVs/Excel, merge multiple files, data quality checks |
-| 2 | **EDA** | Distributions, correlations, Table 1, missing data analysis |
-| 3 | **Feature Engineering** | 🆕 Advanced / optional: create polynomial, ratio, binning, or TDA features when baseline modeling needs help |
-| 4 | **Feature Selection** | LASSO path, RFE-CV, stability selection, consensus ranking |
-| 5 | **Preprocess** | Per-model pipelines: MICE imputation, scaling, encoding, outliers |
-| 6 | **Train & Compare** | 18 model families with bootstrap CIs and baseline comparison |
-| 7 | **Explainability** | SHAP, permutation importance, calibration, decision curves |
+| 2 | **EDA** | Distributions, correlations, Table 1, missing data analysis, interactive decision hub |
+| 3 | **Feature Engineering** | PCA, polynomial features, log transforms, ratios, binning, TDA features |
+| 4 | **Feature Selection** | LASSO path, RFE-CV, univariate, stability selection, consensus ranking |
+| 5 | **Preprocess** | Per-model pipelines: imputation, scaling, encoding, outlier handling, power transforms |
+| 6 | **Train & Compare** | 18 model families with bootstrap CIs, baseline comparison, optional Optuna optimization |
+| 7 | **Explainability** | SHAP, permutation importance, PDP, calibration, decision curves, subgroup analysis |
 | 8 | **Sensitivity Analysis** | Seed robustness, feature dropout — prove your results aren't fragile |
-| 9 | **Statistical Validation** | 🆕 Traditional stats for Table 1: t-tests, ANOVA, chi-square |
-| 10 | **Report Export** | Auto-generated methods section, TRIPOD checklist, LaTeX tables |
+| 9 | **Statistical Validation** | Traditional stats for Table 1: t-tests, ANOVA, chi-square, custom hypothesis tests |
+| 10 | **Report Export** | LaTeX manuscript, markdown report, TRIPOD checklist, methodology audit log |
 
-### 📊 Manuscript-Ready Starting Materials
+### 📄 Publication-Ready Manuscript Generation
 
-- **Table 1** with stratified descriptives, p-values, and SMD
-- **Bootstrap 95% CIs** (BCa, 1000 resamples) on all metrics
-- **Calibration analysis** — reliability diagrams, Brier score, ECE
-- **Decision curve analysis** for clinical utility
-- **Subgroup analysis** with forest plots
+The export pipeline does the mechanical assembly work of writing a prediction model paper:
+
+- **Compilable LaTeX manuscript** with structured abstract, methods, results, and discussion
+- **Auto-generated methods section** reflecting your exact workflow decisions — preprocessing parameters, feature selection thresholds, model hyperparameters, split strategy
+- **Results section** with width-contained performance tables, bootstrap CIs, explainability findings, sensitivity analysis
+- **Structured discussion skeleton** with result-specific prompts referencing your actual best model, top features, and metrics
+- **Table 1** with stratified descriptives, statistical tests, and footnoted custom tests
 - **TRIPOD checklist** auto-tracked from your workflow
-- **CONSORT-style flow diagrams**
-- **Auto-generated methods section** reflecting your actual choices
-- **Journal-quality figures** with DPI control
+- **Commented figure references** matching your export filenames — uncomment after placing figures
+- **Markdown report** with the same content for quick review
+
+**What you still write:** Clinical context, study design rationale, interpretation of findings, comparison with prior work, domain-specific limitations.
+
+**What the app writes for you:** Everything else — sample sizes, split ratios, model names, hyperparameters, metrics with CIs, preprocessing details, feature importance rankings, sensitivity results, software versions, methodological considerations.
 
 ### 🧠 18 Models, Zero Configuration
 
@@ -165,7 +152,8 @@ This tool enforces methodological rigor so reviewers don't have to:
 - ✅ Sensitivity analysis to demonstrate robustness
 - ✅ TRIPOD compliance tracking throughout the workflow
 - ✅ Reproducibility manifest (seeds, versions, configurations)
-- ✅ Methods section text generated from your actual analysis choices
+- ✅ Methods section generated from your actual analysis choices with specific parameters
+- ✅ LaTeX manuscript template populated with your results
 
 **Your data stays private.** All processing happens in your browser session. Nothing is written to disk. No data is sent anywhere (unless you opt into cloud LLM interpretation).
 
@@ -176,21 +164,24 @@ This tool enforces methodological rigor so reviewers don't have to:
 ```
 tabular-ml-lab/
 ├── app.py                    # Landing page and sidebar
-├── pages/                    # 9 workflow pages
+├── pages/                    # 10 workflow pages
 │   ├── 01_Upload_and_Audit.py
 │   ├── 02_EDA.py
-│   ├── 03_Feature_Selection.py
-│   ├── 04_Preprocess.py
-│   ├── 05_Train_and_Compare.py
-│   ├── 06_Explainability.py
-│   ├── 07_Sensitivity_Analysis.py
-│   ├── 08_Hypothesis_Testing.py
-│   └── 09_Report_Export.py
+│   ├── 03_Feature_Engineering.py
+│   ├── 04_Feature_Selection.py
+│   ├── 05_Preprocess.py
+│   ├── 06_Train_and_Compare.py
+│   ├── 07_Explainability.py
+│   ├── 08_Sensitivity_Analysis.py
+│   ├── 09_Hypothesis_Testing.py
+│   └── 10_Report_Export.py
 ├── ml/                       # Core ML modules
 │   ├── model_registry.py     # 18 model definitions
 │   ├── bootstrap.py          # BCa bootstrap CIs
 │   ├── calibration.py        # Calibration metrics & plots
+│   ├── dataset_profile.py    # Automated data profiling
 │   ├── feature_selection.py  # LASSO, RFE, stability selection
+│   ├── latex_report.py       # LaTeX manuscript generator
 │   ├── publication.py        # Methods section generator
 │   ├── sensitivity.py        # Seed & dropout robustness
 │   ├── table_one.py          # Table 1 generator
@@ -207,35 +198,25 @@ tabular-ml-lab/
 
 ## 🎓 Institutional Deployment
 
-**University IT Administrators:** Deploy Tabular ML Lab on your institutional infrastructure with Docker, Active Directory authentication, and Ollama integration.
+**University IT Administrators:** Deploy Tabular ML Lab on your institutional infrastructure with Docker, KeyCloak OIDC authentication, and LLM integration.
 
 👉 **[university-docker branch](https://github.com/hedglinnolan/tabular-ml-lab/tree/university-docker)**
 
 **What's included:**
-- 🐋 **Docker/Kubernetes configs** - Production-ready deployment
-- 🔐 **Active Directory SSO** - Reverse proxy authentication (nginx/Apache examples)
-- 🤖 **Institutional Ollama** - Connect to your LLM infrastructure
-- ⚡ **Compute profiles** - Optimize for your hardware (GTX 1080 Ti → multi-GPU clusters)
-- 📚 **Complete docs** - UNIVERSITY_DEPLOYMENT.md, DOCKER_DEPLOYMENT.md, COMPUTE_PROFILES.md
-
-**Quick start:**
-```bash
-git clone -b university-docker https://github.com/hedglinnolan/tabular-ml-lab.git
-cd tabular-ml-lab
-cp .env.example .env
-nano .env  # Configure OLLAMA_URL, COMPUTE_PROFILE, AUTH settings
-docker build -t tabular-ml-lab .
-docker run -d -p 8501:8501 --env-file .env tabular-ml-lab
-```
+- 🐋 **Docker/Kubernetes configs** — Production-ready deployment
+- 🔐 **KeyCloak OIDC SSO** — Standards-based authentication
+- 🤖 **Institutional LLM** — Connect to your Ollama/vLLM infrastructure
+- ⚡ **Compute profiles** — Optimize for your hardware
+- 📚 **Complete docs** — UNIVERSITY_DEPLOYMENT.md, DOCKER_DEPLOYMENT.md, COMPUTE_PROFILES.md
 
 **Perfect for:**
-- 📖 Statistics courses - Students analyze data without coding
-- 🔬 PhD research - Publication-ready outputs with TRIPOD checklists
-- 🎯 Capstone projects - Guided ML workflow ensures quality
-- 👨‍🏫 Faculty research - Bootstrap CIs, SHAP, calibration analysis
+- 📖 Statistics courses — Students analyze data without coding
+- 🔬 PhD research — Publication-ready outputs with TRIPOD checklists
+- 🎯 Capstone projects — Guided ML workflow ensures quality
+- 👨‍🏫 Faculty research — Bootstrap CIs, SHAP, calibration analysis
 
-**Security features:**
-- ✅ On-premises deployment (no external APIs)
+**Security:**
+- ✅ On-premises deployment (no external APIs required)
 - ✅ Session-isolated (no persistent data between users)
 - ✅ Non-root containers
 - ✅ Health check endpoints
