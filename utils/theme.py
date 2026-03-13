@@ -80,7 +80,7 @@ def inject_custom_css():
     h1 { font-weight: 800 !important; }
     h2 { font-weight: 700 !important; font-size: 1.5rem !important; }
     h3 { font-weight: 600 !important; font-size: 1.2rem !important; }
-    /* Apply Inter to text elements only — avoid overriding Streamlit's
+    /* Apply Inter to text elements only - avoid overriding Streamlit's
        Material Symbols Rounded icon font used for expander arrows, etc. */
     p, li, label, td, th, caption,
     .stMarkdown, .stText, .stCaption,
@@ -144,7 +144,7 @@ def inject_custom_css():
         border-radius: 4px !important;
     }
     /* Sidebar caption */
-    section[data-testid="stSidebar"] .stCaption, 
+    section[data-testid="stSidebar"] .stCaption,
     section[data-testid="stSidebar"] small {
         color: #64748b !important;
     }
@@ -380,7 +380,7 @@ def inject_custom_css():
     details[data-testid="stExpander"][open] {
         border-color: var(--border-hover) !important;
     }
-    /* Expander toggle icon — ensure visible on both light and dark backgrounds */
+    /* Expander toggle icon - ensure visible on both light and dark backgrounds */
     details[data-testid="stExpander"] summary svg {
         color: var(--text-secondary) !important;
         fill: var(--text-secondary) !important;
@@ -684,10 +684,10 @@ def inject_custom_css():
 
 def render_sidebar_workflow(current_page: str = ""):
     """Render the unified sidebar with branding + workflow checklist.
-    
+
     Call this at the top of every page. Pages can add their own sidebar
     content after calling this function.
-    
+
     current_page: identifier like '01_Upload', '02_EDA', etc.
     """
     from utils.session_state import get_data
@@ -709,6 +709,30 @@ def render_sidebar_workflow(current_page: str = ""):
         """, unsafe_allow_html=True)
         st.markdown("---")
 
+        pending_widget_restore = st.session_state.get("_pending_widget_state_restore", {})
+        if "workflow_mode_selector" in pending_widget_restore:
+            st.session_state["workflow_mode"] = pending_widget_restore.pop("workflow_mode_selector")
+            if pending_widget_restore:
+                st.session_state["_pending_widget_state_restore"] = pending_widget_restore
+            else:
+                st.session_state.pop("_pending_widget_state_restore", None)
+
+        workflow_mode = st.radio(
+            "Workflow mode",
+            options=["quick", "advanced"],
+            index=0 if st.session_state.get("workflow_mode", "quick") == "quick" else 1,
+            format_func=lambda mode: "Quick workflow" if mode == "quick" else "Advanced workflow",
+            horizontal=False,
+            key="workflow_mode_selector",
+            help="Quick workflow emphasizes the shortest defensible path to export. Advanced workflow keeps the complete page sequence visible."
+        )
+        st.session_state.workflow_mode = workflow_mode
+        st.caption(
+            "Quick workflow focuses on the shortest defensible path to export. "
+            "Advanced workflow keeps all pages in the primary navigation."
+        )
+        st.markdown("<div style='margin-top: 0.4rem;'></div>", unsafe_allow_html=True)
+
         data_uploaded = get_data() is not None
         data_configured = (st.session_state.get('data_config') is not None
                            and getattr(st.session_state.get('data_config'), 'target_col', None) is not None)
@@ -718,53 +742,74 @@ def render_sidebar_workflow(current_page: str = ""):
         explainability_run = len(st.session_state.get('permutation_importance', {})) > 0 or len(st.session_state.get('shap_results', {})) > 0
         sensitivity_run = st.session_state.get('sensitivity_seed_results') is not None
         report_generated = st.session_state.get('report_data') is not None
+        stat_validation_run = (
+            st.session_state.get('hypothesis_test_results') is not None
+            or len(st.session_state.get('custom_table1_tests', [])) > 0
+        )
 
         # Check if feature engineering was applied
         feature_engineering_applied = st.session_state.get('feature_engineering_applied', False)
-        
-        checklist_items = [
+
+        core_items = [
             ("Upload & Configure", data_uploaded, "01", "01_Upload_and_Audit"),
             ("Explore (EDA)", data_configured, "02", "02_EDA"),
-            ("Feature Engineering", feature_engineering_applied, "03", "03_Feature_Engineering"),
             ("Select Features", features_selected, "04", "04_Feature_Selection"),
             ("Preprocess", pipeline_built, "05", "05_Preprocess"),
             ("Train Models", models_trained, "06", "06_Train_and_Compare"),
             ("Explain & Validate", explainability_run, "07", "07_Explainability"),
-            ("Sensitivity Analysis", sensitivity_run, "08", "08_Sensitivity_Analysis"),
-            ("Statistical Validation", False, "09", "09_Hypothesis_Testing"),
             ("Export Report", report_generated, "10", "10_Report_Export"),
         ]
+        advanced_items = [
+            ("Feature Engineering", feature_engineering_applied, "03", "03_Feature_Engineering"),
+            ("Sensitivity Analysis", sensitivity_run, "08", "08_Sensitivity_Analysis"),
+            ("Statistical Validation", stat_validation_run, "09", "09_Hypothesis_Testing"),
+        ]
 
-        for item, completed, page_id, page_file in checklist_items:
-            is_current = current_page.startswith(page_id)
+        def _render_sidebar_items(items):
+            for item, completed, page_id, page_file in items:
+                is_current = current_page.startswith(page_id)
 
-            if is_current:
-                st.markdown(
-                    f'<div class="sidebar-step" style="background: rgba(102,126,234,0.12); '
-                    f'border-radius: 6px; padding: 0.3rem 0.5rem; margin: 0.1rem -0.5rem;">'
-                    f'<span class="sidebar-dot" style="background: var(--accent, #667eea); '
-                    f'box-shadow: 0 0 8px rgba(102,126,234,0.5);"></span>'
-                    f'<span style="color: #e2e8f0; font-weight: 600;">{item}</span></div>',
-                    unsafe_allow_html=True
-                )
-            else:
-                check = "✓ " if completed else ""
-                dot_class = "sidebar-dot-done" if completed else "sidebar-dot-pending"
-                text_class = "sidebar-step-done" if completed else "sidebar-step-pending"
-                st.markdown(
-                    f'<div class="sidebar-step {text_class}">'
-                    f'<span class="sidebar-dot {dot_class}"></span>{check}{item}</div>',
-                    unsafe_allow_html=True
-                )
+                if is_current:
+                    st.markdown(
+                        f'<div class="sidebar-step" style="background: rgba(102,126,234,0.12); '
+                        f'border-radius: 6px; padding: 0.3rem 0.5rem; margin: 0.1rem -0.5rem;">'
+                        f'<span class="sidebar-dot" style="background: var(--accent, #667eea); '
+                        f'box-shadow: 0 0 8px rgba(102,126,234,0.5);"></span>'
+                        f'<span style="color: #e2e8f0; font-weight: 600;">{item}</span></div>',
+                        unsafe_allow_html=True
+                    )
+                else:
+                    check = "✓ " if completed else ""
+                    dot_class = "sidebar-dot-done" if completed else "sidebar-dot-pending"
+                    text_class = "sidebar-step-done" if completed else "sidebar-step-pending"
+                    st.markdown(
+                        f'<div class="sidebar-step {text_class}">' 
+                        f'<span class="sidebar-dot {dot_class}"></span>{check}{item}</div>',
+                        unsafe_allow_html=True
+                    )
 
-        completed_count = sum(1 for _, completed, _, _ in checklist_items if completed)
+        if workflow_mode == "quick":
+            st.caption("Quick workflow")
+            _render_sidebar_items(core_items)
+            st.markdown("<div style='margin-top: 0.6rem;'></div>", unsafe_allow_html=True)
+            with st.expander("Advanced workflow", expanded=False):
+                _render_sidebar_items(advanced_items)
+        else:
+            st.caption("Quick workflow")
+            _render_sidebar_items(core_items)
+            st.markdown("<div style='margin-top: 0.6rem;'></div>", unsafe_allow_html=True)
+            st.caption("Advanced workflow")
+            _render_sidebar_items(advanced_items)
+
+        all_items = core_items + advanced_items
+        completed_count = sum(1 for _, completed, _, _ in all_items if completed)
         st.markdown("<div style='margin-top: 0.75rem;'></div>", unsafe_allow_html=True)
-        st.progress(completed_count / len(checklist_items))
-        st.caption(f"{completed_count}/{len(checklist_items)} steps complete")
-        
+        st.progress(completed_count / len(all_items))
+        st.caption(f"{completed_count}/{len(all_items)} steps complete")
+
         # Session save/load controls
         render_session_controls()
-        
+
         st.markdown("---")
 
 
@@ -777,7 +822,7 @@ def render_guidance(text: str, icon: str = "💡"):
     html_text = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', html_text)
     # Preserve newlines as <br> for proper line breaks
     html_text = html_text.replace('\n\n', '<br><br>').replace('\n', '<br>')
-    
+
     st.markdown(f"""<div class="guidance-card">{icon} {html_text}</div>""", unsafe_allow_html=True)
 
 
@@ -787,7 +832,7 @@ def render_reviewer_concern(text: str):
     import re
     html_text = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', text)
     html_text = html_text.replace('\n\n', '<br><br>').replace('\n', '<br>')
-    
+
     st.markdown(f"""<div class="reviewer-concern">{html_text}</div>""", unsafe_allow_html=True)
 
 
@@ -806,7 +851,7 @@ def render_info_card(title: str, body: str):
     import re
     html_body = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', body)
     html_body = html_body.replace('\n\n', '<br><br>').replace('\n', '<br>')
-    
+
     st.markdown(f"""<div class="info-card"><h3>{title}</h3><p>{html_body}</p></div>""", unsafe_allow_html=True)
 
 

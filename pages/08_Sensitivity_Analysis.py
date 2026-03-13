@@ -30,13 +30,19 @@ inject_custom_css()
 render_sidebar_workflow(current_page="08_Sensitivity_Analysis")
 
 st.title("🔬 Sensitivity Analysis")
+st.caption("Use this after the quick workflow when you need to show that your result is robust, not just strong once.")
 render_breadcrumb("08_Sensitivity_Analysis")
 render_page_navigation("08_Sensitivity_Analysis")
+
+if st.session_state.get("workflow_mode", "quick") == "quick":
+    st.info("""
+    🧭 **Advanced workflow step** — Return here after the quick workflow when you need to demonstrate that your result is robust across seeds or feature perturbations.
+    """)
 
 st.markdown("""
 ### Why Sensitivity Analysis?
 
-**Reviewer concern:** "Is your model robust, or did you get lucky with one random seed?"
+Use it when a reviewer is likely to ask whether your result is robust or whether it depends on one lucky configuration.
 
 **This page tests:**
 1. **Random seed sensitivity** — Does performance vary across different train/test splits?

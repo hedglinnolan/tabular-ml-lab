@@ -27,6 +27,7 @@ inject_custom_css()
 render_sidebar_workflow(current_page="04_Feature_Selection")
 render_step_indicator(4, "Feature Selection")
 st.title("🎯 Feature Selection")
+st.caption("Recommended workflow: use this step to simplify the modeling problem before you start tuning preprocessing or training multiple models.")
 render_breadcrumb("04_Feature_Selection")
 render_page_navigation("04_Feature_Selection")
 
@@ -245,7 +246,8 @@ if st.button("🔍 Run Feature Selection", type="primary"):
     st.session_state["feature_selection_results"] = results
 
     # Consensus
-    consensus = consensus_features(results, min_methods=max(1, len(results) // 2))
+    consensus_threshold = max(1, len(results) // 2)
+    consensus = consensus_features(results, min_methods=consensus_threshold)
     st.session_state["consensus_features"] = consensus
     
     # Log methodology action
@@ -257,7 +259,8 @@ if st.button("🔍 Run Feature Selection", type="primary"):
             'methods': methods_to_run,
             'n_features_before': len(numeric_features),
             'n_features_after': len(consensus),
-            'selected': list(consensus)
+            'selected': list(consensus),
+            'consensus_threshold': consensus_threshold,
         }
     )
 
@@ -362,10 +365,17 @@ if results:
         if st.button("📋 Use consensus features for modeling", type="primary"):
             data_config.feature_cols = consensus
             st.session_state['data_config'] = data_config
+            # Retrieve consensus_threshold from the analysis log
+            consensus_threshold_logged = None
+            for entry in st.session_state.get('methodology_log', []):
+                if entry.get('step') == 'Feature Selection':
+                    consensus_threshold_logged = entry.get('details', {}).get('consensus_threshold')
+                    break
             log_methodology(step='Feature Selection Applied', action='Applied consensus feature selection', details={
                 'method': 'consensus',
                 'n_features_selected': len(consensus),
-                'features': consensus
+                'features': consensus,
+                'consensus_threshold': consensus_threshold_logged,
             })
             st.success(f"Updated feature set to {len(consensus)} consensus features. Proceed to Preprocessing.")
     else:

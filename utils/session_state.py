@@ -169,6 +169,7 @@ def init_session_state():
         'dataset_history': [],  # Archive of replaced datasets (metadata only)
         'has_completed_tour': False,  # Guided tour dismissed/completed
         'show_guided_tour': False,  # Expand guided tour in sidebar
+        'workflow_mode': 'quick',  # 'quick' | 'advanced' navigation emphasis only
         
         # Methodology logging for auto-generated methods section
         'methodology_log': [],  # List of methodology actions for publication
@@ -245,6 +246,12 @@ def reset_data_dependent_state():
     st.session_state.eda_results = {}
     st.session_state.eda_insights = []
     st.session_state.report_data = None
+    for key in (
+        'methods_section', 'flow_diagram', 'tripod_tracker', 'latex_report',
+        'report_best_model', 'report_model_selection', 'report_explain_selection',
+        'report_include_results', 'report_include_llm', 'shap_matplotlib_figs'
+    ):
+        st.session_state.pop(key, None)
     st.session_state.pop("target_label_encoder", None)
     st.session_state.pop("train_indices", None)
     st.session_state.pop("test_indices", None)

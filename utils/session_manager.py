@@ -10,6 +10,18 @@ from typing import Dict, Any, Set
 import sys
 
 
+_DEFERRED_WIDGET_KEYS = {
+    "llm_backend",
+    "ollama_model",
+    "openai_api_key",
+    "openai_model",
+    "anthropic_api_key",
+    "anthropic_model",
+    "workflow_mode_selector",
+}
+_PENDING_WIDGET_RESTORE_KEY = "_pending_widget_state_restore"
+
+
 def _get_excluded_keys() -> Set[str]:
     """Get set of session state keys that should not be serialized."""
     return {
@@ -21,6 +33,9 @@ def _get_excluded_keys() -> Set[str]:
         # Widget state (auto-managed by Streamlit)
         '_widget_manager',
         '_script_run_ctx',
+        
+        # App widget keys that should not be serialized directly
+        'workflow_mode_selector',
         
         # Large non-serializable objects that may cause issues
         # Add more here if specific keys cause problems
@@ -98,12 +113,31 @@ def _restore_session_data(session_data: Dict[str, Any]) -> tuple[int, Dict[str, 
     """
     restored_count = 0
     metadata = session_data.get('_metadata', {})
-    
+    deferred_widget_state = {}
+
     for key, value in session_data.items():
-        if key != '_metadata':
-            st.session_state[key] = value
-            restored_count += 1
-    
+        if key == '_metadata':
+            continue
+        if key in _DEFERRED_WIDGET_KEYS:
+            deferred_widget_state[key] = value
+            continue
+        st.session_state[key] = value
+        restored_count += 1
+
+    if deferred_widget_state:
+        st.session_state[_PENDING_WIDGET_RESTORE_KEY] = deferred_widget_state
+        restored_count += len(deferred_widget_state)
+    else:
+        st.session_state.pop(_PENDING_WIDGET_RESTORE_KEY, None)
+
+    # Clear derived export artifacts so restored sessions regenerate against current code/state.
+    for key in (
+        'methods_section', 'flow_diagram', 'tripod_tracker', 'latex_report',
+        'report_data', 'report_best_model', 'report_model_selection',
+        'report_explain_selection', 'report_include_results', 'report_include_llm'
+    ):
+        st.session_state.pop(key, None)
+
     return restored_count, metadata
 
 
@@ -115,6 +149,63 @@ def render_session_controls():
     """
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 💾 Session Management")
+    st.sidebar.markdown("""
+    <style>
+    section[data-testid="stSidebar"] div[data-testid="stButton"] > button,
+    section[data-testid="stSidebar"] div[data-testid="stDownloadButton"] > button,
+    section[data-testid="stSidebar"] button[kind],
+    section[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"],
+    section[data-testid="stSidebar"] [data-testid="stBaseButton-primary"],
+    section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {
+        background: #f8fafc !important;
+        border: 1px solid rgba(148, 163, 184, 0.55) !important;
+        color: #0f172a !important;
+        font-weight: 600 !important;
+        opacity: 1 !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stButton"] > button *,
+    section[data-testid="stSidebar"] div[data-testid="stDownloadButton"] > button *,
+    section[data-testid="stSidebar"] button[kind] *,
+    section[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] *,
+    section[data-testid="stSidebar"] [data-testid="stBaseButton-primary"] *,
+    section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] *,
+    section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] small,
+    section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] span,
+    section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] p,
+    section[data-testid="stSidebar"] [data-testid="stFileUploader"] label,
+    section[data-testid="stSidebar"] [data-testid="stFileUploader"] div {
+        color: #0f172a !important;
+        fill: #0f172a !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stButton"] > button:hover,
+    section[data-testid="stSidebar"] div[data-testid="stDownloadButton"] > button:hover,
+    section[data-testid="stSidebar"] button[kind]:hover,
+    section[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:hover,
+    section[data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:hover,
+    section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"]:hover {
+        background: #e2e8f0 !important;
+        color: #020617 !important;
+        border-color: rgba(100, 116, 139, 0.75) !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    restore_notice = st.session_state.pop("session_restore_notice", None)
+    if restore_notice:
+        saved_at = restore_notice.get('saved_at', 'Unknown')
+        saved_date = saved_at[:10] if saved_at != 'Unknown' else 'Unknown'
+        workflow_step = restore_notice.get('workflow_step', 'Unknown')
+        restored_count = restore_notice.get('restored_count', 0)
+
+        st.sidebar.success(f"""
+        ✅ **Session Restored!**
+
+        - **Saved:** {saved_date}
+        - **Items restored:** {restored_count}
+        - **Last step:** {workflow_step}
+
+        Navigate to a page to continue your work.
+        """)
     
     # ========================================================================
     # SAVE SESSION
@@ -178,12 +269,13 @@ def render_session_controls():
     # LOAD SESSION
     # ========================================================================
     st.sidebar.markdown("**Or resume previous session:**")
-    
+
+    uploader_nonce = st.session_state.get("upload_session_file_nonce", 0)
     uploaded_session = st.sidebar.file_uploader(
         "📂 Upload Session File",
         type=['pkl'],
         help="Upload a previously saved session file",
-        key="upload_session_file"
+        key=f"upload_session_file_{uploader_nonce}"
     )
     
     if uploaded_session is not None:
@@ -214,21 +306,13 @@ def render_session_controls():
             
             # Restore to session state
             restored_count, metadata = _restore_session_data(session_data)
-            
-            # Show success
-            saved_at = metadata.get('saved_at', 'Unknown')
-            saved_date = saved_at[:10] if saved_at != 'Unknown' else 'Unknown'
-            workflow_step = metadata.get('workflow_step', 'Unknown')
-            
-            st.sidebar.success(f"""
-            ✅ **Session Restored!**
-            
-            - **Saved:** {saved_date}
-            - **Items restored:** {restored_count}
-            - **Last step:** {workflow_step}
-            
-            Navigate to a page to continue your work.
-            """)
+            st.session_state["upload_session_file_nonce"] = uploader_nonce + 1
+            st.session_state["session_restore_notice"] = {
+                "saved_at": metadata.get('saved_at', 'Unknown'),
+                "restored_count": restored_count,
+                "workflow_step": metadata.get('workflow_step', 'Unknown'),
+            }
+            st.rerun()
             
         except pickle.UnpicklingError:
             st.sidebar.error("❌ **Invalid session file**\n\nFile is corrupted or not a valid session.")

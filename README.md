@@ -1,7 +1,7 @@
 <p align="center">
   <h1 align="center">🔬 Tabular ML Lab</h1>
   <p align="center">
-    <strong>From raw data to publication-ready results. No coding required.</strong>
+    <strong>From raw data to a manuscript-ready starting point. No coding required.</strong>
   </p>
   <p align="center">
     <a href="https://app.tabularml.dev">Live Demo</a> ·
@@ -29,9 +29,9 @@
 
 ---
 
-An interactive research workbench for scientists who work with tabular data and need to publish papers. Upload your CSV, and the app guides you through a complete, defensible ML workflow — from exploratory analysis to a journal-ready methods section.
+An interactive research workbench for scientists who work with tabular data and need to publish papers. Upload your CSV, and the app guides you through a complete, defensible ML workflow — from exploratory analysis to a draft methods section and supporting manuscript materials.
 
-**Built for researchers, not ML engineers.** Smart defaults get you 90% of the way. Advanced options are always one click away.
+**Built for researchers, not ML engineers.** Start with the core guided path, then use advanced options only when your study needs them.
 
 > 🌐 **Try it now:** [app.tabularml.dev](https://app.tabularml.dev)  
 > ⚠️ **Note:** The live demo currently runs the `feature/feature-engineering` branch (experimental features in testing). The stable release is on `main`.
@@ -55,13 +55,13 @@ TODO: Add screenshots of key pages
 
 ## Features
 
-### 📋 10-Step Guided Workflow
+### 📋 10-Step Workflow with a Guided Default Path
 
 | Step | Page | What it does |
 |------|------|-------------|
 | 1 | **Upload & Audit** | Load CSVs/Excel, merge multiple files, data quality checks |
 | 2 | **EDA** | Distributions, correlations, Table 1, missing data analysis |
-| 3 | **Feature Engineering** | 🆕 Create polynomial, ratio, binning, TDA features (optional) |
+| 3 | **Feature Engineering** | 🆕 Advanced / optional: create polynomial, ratio, binning, or TDA features when baseline modeling needs help |
 | 4 | **Feature Selection** | LASSO path, RFE-CV, stability selection, consensus ranking |
 | 5 | **Preprocess** | Per-model pipelines: MICE imputation, scaling, encoding, outliers |
 | 6 | **Train & Compare** | 18 model families with bootstrap CIs and baseline comparison |
@@ -70,7 +70,7 @@ TODO: Add screenshots of key pages
 | 9 | **Statistical Validation** | 🆕 Traditional stats for Table 1: t-tests, ANOVA, chi-square |
 | 10 | **Report Export** | Auto-generated methods section, TRIPOD checklist, LaTeX tables |
 
-### 📊 Publication-Ready Outputs
+### 📊 Manuscript-Ready Starting Materials
 
 - **Table 1** with stratified descriptives, p-values, and SMD
 - **Bootstrap 95% CIs** (BCa, 1000 resamples) on all metrics

@@ -86,6 +86,7 @@ inject_custom_css()
 render_sidebar_workflow(current_page="06_Train_and_Compare")
 render_step_indicator(6, "Train & Compare Models")
 st.title("🧠 Train & Compare Models")
+st.caption("This is the center of the recommended workflow: establish a credible baseline result before deciding whether you need advanced analyses.")
 render_breadcrumb("06_Train_and_Compare")
 render_page_navigation("06_Train_and_Compare")
 

@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List, Tuple
 import io
 import zipfile
 import json
@@ -33,20 +33,23 @@ inject_custom_css()
 render_sidebar_workflow(current_page="10_Report_Export")
 render_step_indicator(10, "Report Export")
 st.title("📄 Report Export")
+st.caption("This is the culmination of the workflow: package the strongest parts of your analysis into one manuscript-ready starting point.")
 render_breadcrumb("10_Report_Export")
 render_page_navigation("10_Report_Export")
 
 st.markdown("""
-### Export Publication-Ready Materials
+### Export a Manuscript-Ready Starting Point
 
-You've completed the full workflow. This page generates:
+This page should feel like the end of one coherent journey: upload data, build a baseline result, explain it, optionally strengthen it, then package the outputs for drafting.
 
-1. **Methods Section** — Auto-generated from your actual workflow choices
-2. **TRIPOD Checklist** — Prediction model reporting standards
+It can generate:
+
+1. **Methods Section Draft** — Auto-generated from your actual workflow choices
+2. **TRIPOD Checklist Materials** — Prediction model reporting support
 3. **Results Tables** — Model performance with bootstrap CIs
 4. **Figures** — Calibration, feature importance, SHAP plots
 
-**Download everything as a ZIP** for your manuscript.
+**Download everything as a ZIP** as a strong starting point for your manuscript.
 """)
 
 # Progress indicator
@@ -57,7 +60,7 @@ if task_mode != 'prediction':
     st.warning("⚠️ **Report Export is primarily designed for Prediction mode.**")
     st.info("""
     Please go to the **Upload & Audit** page and select **Prediction** as your task mode.
-    Comprehensive modeling reports include trained models, metrics, and explainability results.
+    This export workflow packages trained models, metrics, explainability results, and draft manuscript materials.
     """)
     st.stop()
 
@@ -84,6 +87,8 @@ if not data_config:
 if not trained_models:
     st.warning("Please train models first")
     st.stop()
+
+st.info("💡 **Recommended export posture:** finish the recommended workflow first, then include advanced analyses only when they materially strengthen your manuscript.")
 
 # Custom CSS for better report aesthetics
 st.markdown("""
@@ -223,10 +228,372 @@ def extract_model_coefficients(model, model_key: str, feature_names: list) -> Op
     return None
 
 
-def generate_report() -> str:
+def _get_export_best_model(model_results: Dict[str, Dict[str, Any]], task_type: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """Return the best model key and metric used for that decision."""
+    if not model_results:
+        return None, None
+
+    if task_type == 'regression':
+        ranked = [
+            (name, results.get('metrics', {}).get('RMSE'))
+            for name, results in model_results.items()
+            if results.get('metrics', {}).get('RMSE') is not None
+        ]
+        if not ranked:
+            return None, None
+        return min(ranked, key=lambda item: item[1])[0], 'RMSE'
+
+    for metric in ('F1', 'AUC', 'Accuracy'):
+        ranked = [
+            (name, results.get('metrics', {}).get(metric))
+            for name, results in model_results.items()
+            if results.get('metrics', {}).get(metric) is not None
+        ]
+        if ranked:
+            return max(ranked, key=lambda item: item[1])[0], metric
+
+    return None, None
+
+
+def build_export_context() -> Dict[str, Any]:
+    """Freeze the export view into a single snapshot for consistent rendering/export."""
+    pipelines_by_model = st.session_state.get('preprocessing_pipelines_by_model') or {}
+    configs_by_model = st.session_state.get('preprocessing_config_by_model') or {}
+    permutation_importance = st.session_state.get('permutation_importance') or {}
+    shap_results = st.session_state.get('shap_results') or {}
+    legacy_shap = st.session_state.get('shap_values') or {}
+    pdp_results = st.session_state.get('pdp_results') or st.session_state.get('partial_dependence') or {}
+    robustness = st.session_state.get('explainability_robustness') or {}
+    manuscript_primary_model = st.session_state.get('report_best_model') or None
+    best_model_by_metric, best_metric_name = _get_export_best_model(model_results, data_config.task_type if data_config else None)
+
+    readiness = {
+        'models': {'status': 'present' if trained_models else 'missing', 'detail': f"{len(trained_models)} trained model(s) available" if trained_models else 'Train at least one model before export.'},
+        'metrics': {'status': 'present' if model_results else 'missing', 'detail': f"Metrics available for {len(model_results)} model(s)" if model_results else 'No model metrics found.'},
+        'permutation_importance': {'status': 'present' if permutation_importance else 'missing', 'detail': f"Available for {len(permutation_importance)} model(s)" if permutation_importance else 'Permutation importance not computed.'},
+        'shap': {'status': 'present' if shap_results else ('inferred' if legacy_shap else 'missing'), 'detail': f"SHAP results available for {len(shap_results)} model(s)" if shap_results else ('Legacy shap_values detected, but export uses shap_results payloads.' if legacy_shap else 'SHAP results not computed.')},
+        'partial_dependence': {'status': 'present' if pdp_results else 'missing', 'detail': f"PDP results available for {len(pdp_results)} model(s)" if pdp_results else 'Partial dependence not computed.'},
+        'bootstrap': {'status': 'present' if st.session_state.get('bootstrap_results') else 'missing', 'detail': 'Bootstrap confidence intervals available.' if st.session_state.get('bootstrap_results') else 'Bootstrap confidence intervals not found.'},
+        'tripod_table1': {'status': 'present' if st.session_state.get('table1_df') is not None else 'missing', 'detail': 'Table 1 available for manuscript export.' if st.session_state.get('table1_df') is not None else 'Table 1 has not been generated.'},
+        'bland_altman': {'status': 'inferred' if len([1 for r in model_results.values() if r.get('y_test_pred') is not None]) >= 2 and (data_config.task_type if data_config else None) == 'regression' else 'missing', 'detail': 'Can be recomputed from stored test predictions for regression models; not stored as a persistent artifact.' if len([1 for r in model_results.values() if r.get('y_test_pred') is not None]) >= 2 and (data_config.task_type if data_config else None) == 'regression' else 'Requires at least two regression models with test predictions.'},
+    }
+
+    return {
+        'dataset': df,
+        'data_config': data_config,
+        'split_config': split_config,
+        'model_config': model_config,
+        'trained_models': trained_models,
+        'model_results': model_results,
+        'data_audit': data_audit,
+        'profile': profile,
+        'coach_output': coach_output,
+        'pipeline': pipeline,
+        'pipelines_by_model': pipelines_by_model,
+        'configs_by_model': configs_by_model,
+        'selected_model_params': st.session_state.get('selected_model_params', {}),
+        'feature_names': st.session_state.get('feature_names', []),
+        'permutation_importance': permutation_importance,
+        'shap_results': shap_results,
+        'legacy_shap_values': legacy_shap,
+        'pdp_results': pdp_results,
+        'robustness': robustness,
+        'bootstrap_results': st.session_state.get('bootstrap_results') or {},
+        'table1_df': st.session_state.get('table1_df'),
+        'shap_figs': st.session_state.get('shap_matplotlib_figs', {}),
+        'include_llm': st.session_state.get('report_include_llm', False),
+        'manuscript_primary_model': manuscript_primary_model,
+        'best_model_by_metric': best_model_by_metric,
+        'best_metric_name': best_metric_name,
+        'readiness': readiness,
+    }
+
+
+def render_export_readiness_audit(export_ctx: Dict[str, Any]) -> None:
+    """Show what export can truthfully include before download."""
+    status_icon = {'present': '✅', 'inferred': '🟡', 'missing': '❌'}
+    status_label = {'present': 'Present', 'inferred': 'Inferred / recomputable', 'missing': 'Missing'}
+    rows: List[Dict[str, str]] = []
+    for artifact, info in export_ctx['readiness'].items():
+        rows.append({
+            'Artifact': artifact.replace('_', ' ').title(),
+            'Status': f"{status_icon.get(info['status'], '•')} {status_label.get(info['status'], info['status'])}",
+            'Detail': info['detail'],
+        })
+
+    st.subheader('Export Readiness Audit')
+    st.caption('This audit freezes the current session state so the export reflects what is actually available, what can be recomputed, and what is still missing.')
+    table(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    present = sum(1 for info in export_ctx['readiness'].values() if info['status'] == 'present')
+    inferred = sum(1 for info in export_ctx['readiness'].values() if info['status'] == 'inferred')
+    missing = sum(1 for info in export_ctx['readiness'].values() if info['status'] == 'missing')
+    st.info(f"Readiness summary: {present} present · {inferred} inferred/recomputable · {missing} missing")
+
+    best_by_metric = export_ctx.get('best_model_by_metric')
+    best_metric_name = export_ctx.get('best_metric_name')
+    manuscript_primary = export_ctx.get('manuscript_primary_model')
+    if best_by_metric:
+        msg = f"Best by current held-out metric: {best_by_metric.upper()}"
+        if best_metric_name:
+            msg += f" ({best_metric_name})"
+        if manuscript_primary and manuscript_primary != best_by_metric:
+            msg += f". Manuscript primary model currently selected: {manuscript_primary.upper()}."
+        st.caption(msg)
+
+
+def _build_manuscript_context(
+    selected_for_report: List[str],
+    selected_explain: List[str],
+    include_results: bool,
+    best_model: Optional[str],
+) -> Dict[str, Any]:
+    """Freeze manuscript-scoped facts once so markdown and LaTeX share the same boundary."""
+    selected_results = {k: v for k, v in model_results.items() if k in selected_for_report} if include_results else None
+    selected_bootstrap = {k: v for k, v in export_ctx['bootstrap_results'].items() if k in selected_for_report} if include_results else None
+
+    x_train = st.session_state.get('X_train')
+    x_train_columns = getattr(x_train, 'columns', None)
+    if x_train_columns is not None:
+        workflow_feature_names = list(x_train_columns)
+    else:
+        feature_names_state = st.session_state.get('feature_names')
+        if feature_names_state is not None:
+            workflow_feature_names = list(feature_names_state)
+        else:
+            workflow_feature_names = list(data_config.feature_cols)
+
+    from ml.publication import _resolve_workflow_feature_counts, generate_methods_from_log
+
+    feature_counts = _resolve_workflow_feature_counts(
+        workflow_feature_names,
+        logged_steps=generate_methods_from_log(),
+        data_config={'feature_cols': list(data_config.feature_cols)},
+    )
+
+    return {
+        'included_models': list(selected_for_report),
+        'selected_model_results': selected_results,
+        'selected_bootstrap_results': selected_bootstrap,
+        'feature_names_for_manuscript': workflow_feature_names,
+        'feature_counts': feature_counts,
+        'manuscript_primary_model': best_model,
+        'best_model_by_metric': export_ctx.get('best_model_by_metric'),
+        'best_metric_name': export_ctx.get('best_metric_name'),
+        'explainability_methods': list(selected_explain),
+    }
+
+
+def _build_methods_section_for_export(
+    manuscript_context: Dict[str, Any],
+) -> str:
+    """Build the current methods/results draft directly from workflow state."""
+    from ml.publication import generate_methods_section
+
+    train_n = len(st.session_state.get('X_train', []))
+    val_n = len(st.session_state.get('X_val', []))
+    test_n = len(st.session_state.get('X_test', []))
+
+    prep_summary = st.session_state.get('preprocessing_summary') or {}
+    prep_config_raw = st.session_state.get('preprocessing_config') or {}
+    prep_config = dict(prep_summary) if prep_summary else dict(prep_config_raw)
+    if prep_summary and prep_config_raw:
+        merged_outliers = dict(prep_summary.get('outliers') or {})
+        raw_outliers = prep_config_raw.get('outliers') or {}
+        raw_params = raw_outliers.get('params') or {
+            key: raw_outliers.get(key)
+            for key in (
+                'lower_percentile', 'upper_percentile', 'threshold',
+                'mad_threshold', 'n_mad', 'multiplier', 'iqr_multiplier'
+            )
+            if raw_outliers.get(key) is not None
+        }
+        if raw_params:
+            merged_outliers['params'] = raw_params
+        if merged_outliers:
+            prep_config['outliers'] = merged_outliers
+
+    selected_for_report = manuscript_context.get('included_models', [])
+    selected_results = manuscript_context.get('selected_model_results')
+    selected_bootstrap = manuscript_context.get('selected_bootstrap_results')
+
+    fs_results = st.session_state.get("feature_selection_results")
+    fs_method = fs_results[0].method if fs_results else None
+
+    first_result = next(iter((selected_results or model_results).values()), {})
+    metrics_used = list(first_result.get('metrics', {}).keys()) or ["RMSE"]
+    
+    # Build split_strategy from split_config
+    split_strategy = None
+    if split_config:
+        if split_config.use_time_split:
+            split_strategy = "chronological"
+        elif split_config.stratify:
+            split_strategy = "stratified"
+        else:
+            split_strategy = "random"
+    
+    # Build model_hyperparameters — prefer explicit params, fallback to trained model objects
+    model_hyperparameters = dict(st.session_state.get('selected_model_params', {}))
+    # If explicit params are sparse, extract from trained model objects
+    if not model_hyperparameters or all(not v for v in model_hyperparameters.values()):
+        trained_models = st.session_state.get('trained_models', {})
+        for model_key, model_obj in trained_models.items():
+            if model_key in model_hyperparameters and model_hyperparameters[model_key]:
+                continue  # already have explicit params
+            try:
+                params = model_obj.get_params() if hasattr(model_obj, 'get_params') else {}
+                # Filter to publication-relevant params only
+                key_lower = model_key.lower()
+                relevant = {}
+                if key_lower in ('ridge', 'lasso', 'elasticnet'):
+                    for k in ('alpha', 'l1_ratio'):
+                        if k in params:
+                            relevant[k] = params[k]
+                elif key_lower in ('histgb_reg', 'histgb_clf'):
+                    for k in ('max_iter', 'max_depth', 'learning_rate', 'min_samples_leaf', 'max_leaf_nodes'):
+                        if k in params and params[k] is not None:
+                            relevant[k] = params[k]
+                elif key_lower in ('rf', 'xgb', 'lgbm'):
+                    for k in ('n_estimators', 'max_depth', 'learning_rate'):
+                        if k in params and params[k] is not None:
+                            relevant[k] = params[k]
+                elif key_lower == 'nn':
+                    for k in ('hidden_layer_sizes', 'learning_rate_init', 'max_iter', 'activation'):
+                        if k in params and params[k] is not None:
+                            relevant[k] = params[k]
+                elif key_lower == 'svm':
+                    for k in ('C', 'kernel', 'gamma'):
+                        if k in params and params[k] is not None:
+                            relevant[k] = params[k]
+                elif key_lower == 'knn':
+                    for k in ('n_neighbors', 'weights'):
+                        if k in params and params[k] is not None:
+                            relevant[k] = params[k]
+                if relevant:
+                    model_hyperparameters[model_key] = relevant
+            except Exception:
+                pass
+    
+    # Check methodology log for hyperparameter_optimization
+    hyperparameter_optimization = False
+    methodology_log = st.session_state.get('methodology_log', [])
+    for entry in methodology_log:
+        if entry.get('step') == 'Model Training':
+            details = entry.get('details', {})
+            if details.get('hyperparameter_optimization'):
+                hyperparameter_optimization = True
+                break
+    
+    # Build missing_data_summary from dataset_profile or data_audit
+    missing_data_summary = None
+    profile = st.session_state.get('dataset_profile')
+    if profile and hasattr(profile, 'n_features_with_missing'):
+        # Build summary from profile
+        total_features = profile.n_numeric + profile.n_categorical
+        if profile.n_features_with_missing > 0:
+            # Try to get per-feature missing rates
+            data_audit = st.session_state.get('data_audit')
+            if data_audit and 'missing_counts' in data_audit:
+                missing_counts = data_audit['missing_counts']
+                n_rows = len(df)
+                missing_rates = {k: v / n_rows for k, v in missing_counts.items() if v > 0}
+                if missing_rates:
+                    min_rate = min(missing_rates.values())
+                    max_rate = max(missing_rates.values())
+                    missing_data_summary = {
+                        'n_features_with_missing': profile.n_features_with_missing,
+                        'total_features': total_features,
+                        'min_missing_rate': min_rate,
+                        'max_missing_rate': max_rate,
+                    }
+                else:
+                    missing_data_summary = {
+                        'n_features_with_missing': profile.n_features_with_missing,
+                        'total_features': total_features,
+                    }
+    
+    # Fallback: check data_audit directly
+    if not missing_data_summary:
+        data_audit = st.session_state.get('data_audit')
+        if data_audit and 'missing_counts' in data_audit:
+            missing_counts = data_audit['missing_counts']
+            features_with_missing = sum(1 for v in missing_counts.values() if v > 0)
+            if features_with_missing > 0:
+                n_rows = len(df)
+                missing_rates = {k: v / n_rows for k, v in missing_counts.items() if v > 0}
+                total_features = len(data_config.feature_cols) if data_config else len(missing_counts)
+                if missing_rates:
+                    min_rate = min(missing_rates.values())
+                    max_rate = max(missing_rates.values())
+                    missing_data_summary = {
+                        'n_features_with_missing': features_with_missing,
+                        'total_features': total_features,
+                        'min_missing_rate': min_rate,
+                        'max_missing_rate': max_rate,
+                    }
+
+    # Final fallback: compute directly from the dataframe
+    if not missing_data_summary and df is not None:
+        try:
+            feature_cols = list(data_config.feature_cols) if data_config else list(df.columns)
+            feature_df = df[feature_cols] if all(c in df.columns for c in feature_cols) else df
+            missing_per_col = feature_df.isnull().sum()
+            cols_with_missing = missing_per_col[missing_per_col > 0]
+            if len(cols_with_missing) > 0:
+                n_rows = len(feature_df)
+                rates = (cols_with_missing / n_rows)
+                missing_data_summary = {
+                    'n_features_with_missing': len(cols_with_missing),
+                    'total_features': len(feature_cols),
+                    'min_missing_rate': rates.min(),
+                    'max_missing_rate': rates.max(),
+                }
+        except Exception:
+            pass
+
+    return generate_methods_section(
+        data_config={},
+        preprocessing_config=prep_config,
+        model_configs={name: {} for name in selected_for_report},
+        split_config={},
+        n_total=len(df),
+        n_train=train_n,
+        n_val=val_n,
+        n_test=test_n,
+        feature_names=manuscript_context.get('feature_names_for_manuscript', []),
+        target_name=data_config.target_col,
+        task_type=data_config.task_type or "regression",
+        metrics_used=metrics_used,
+        feature_selection_method=fs_method,
+        selected_model_results=selected_results,
+        bootstrap_results=selected_bootstrap,
+        best_model_name=manuscript_context.get('manuscript_primary_model'),
+        explainability_methods=manuscript_context.get('explainability_methods'),
+        random_seed=st.session_state.get("random_seed", 42),
+        manuscript_context=manuscript_context,
+        model_hyperparameters=model_hyperparameters,
+        hyperparameter_optimization=hyperparameter_optimization,
+        split_strategy=split_strategy,
+        missing_data_summary=missing_data_summary,
+    )
+
+
+def generate_report(export_ctx: Dict[str, Any]) -> str:
     """Generate markdown report with improved structure and aesthetics."""
     report_lines = []
-    
+
+    data_config = export_ctx['data_config']
+    split_config = export_ctx['split_config']
+    trained_models = export_ctx['trained_models']
+    model_results = export_ctx['model_results']
+    profile = export_ctx['profile']
+    coach_output = export_ctx['coach_output']
+    pipeline = export_ctx['pipeline']
+    pipelines_by_model = export_ctx['pipelines_by_model']
+    configs_by_model = export_ctx['configs_by_model']
+    feature_names = export_ctx['feature_names']
+
     git_info = get_git_info()
     
     # Header with metadata
@@ -244,17 +611,26 @@ def generate_report() -> str:
     report_lines.append("")
     
     # Best model summary
-    if data_config.task_type == 'regression':
-        best_model = min(model_results.items(), key=lambda x: x[1]['metrics'].get('RMSE', float('inf')))
-        report_lines.append(f"**Best Model:** {best_model[0].upper()}")
-        report_lines.append(f"**Test RMSE:** {best_model[1]['metrics']['RMSE']:.4f}")
-        report_lines.append(f"**Test R²:** {best_model[1]['metrics']['R2']:.4f}")
-    else:
-        best_model = max(model_results.items(), key=lambda x: x[1]['metrics'].get('F1', x[1]['metrics'].get('Accuracy', 0)))
-        report_lines.append(f"**Best Model:** {best_model[0].upper()}")
-        report_lines.append(f"**Test Accuracy:** {best_model[1]['metrics'].get('Accuracy', 'N/A'):.4f}")
-        if 'F1' in best_model[1]['metrics']:
-            report_lines.append(f"**Test F1:** {best_model[1]['metrics']['F1']:.4f}")
+    best_model_key = export_ctx.get('best_model_by_metric')
+    best_metric_name = export_ctx.get('best_metric_name')
+    manuscript_primary_model = export_ctx.get('manuscript_primary_model')
+    if best_model_key and best_model_key in model_results:
+        best_model = model_results[best_model_key]
+        report_lines.append(f"**Best Model (by held-out {best_metric_name or 'metric'}):** {best_model_key.upper()}")
+        if data_config.task_type == 'regression':
+            if best_model['metrics'].get('RMSE') is not None:
+                report_lines.append(f"**Test RMSE:** {best_model['metrics']['RMSE']:.4f}")
+            if best_model['metrics'].get('R2') is not None:
+                report_lines.append(f"**Test R²:** {best_model['metrics']['R2']:.4f}")
+        else:
+            if best_model['metrics'].get('Accuracy') is not None:
+                report_lines.append(f"**Test Accuracy:** {best_model['metrics']['Accuracy']:.4f}")
+            if best_model['metrics'].get('F1') is not None:
+                report_lines.append(f"**Test F1:** {best_model['metrics']['F1']:.4f}")
+    if manuscript_primary_model:
+        report_lines.append(f"**Manuscript Primary Model:** {manuscript_primary_model.upper()}")
+        if best_model_key and manuscript_primary_model != best_model_key:
+            report_lines.append("**Note:** The manuscript primary model differs from the current best held-out metric winner.")
     
     report_lines.append("")
     
@@ -264,6 +640,54 @@ def generate_report() -> str:
         for w in profile.warnings[:3]:
             report_lines.append(f"- {w.short_message}")
         report_lines.append("")
+    
+    report_lines.append("---")
+    report_lines.append("")
+    
+    # Abstract (Draft) - auto-scaffold from known facts
+    report_lines.append("## Abstract (Draft)")
+    report_lines.append("")
+    
+    # Objective
+    report_lines.append(f"**Objective:** [PLACEHOLDER: clinical context]. This study developed and validated a prediction model for {data_config.target_col} using {data_config.task_type}.")
+    report_lines.append("")
+    
+    # Methods
+    train_n = len(st.session_state.get('X_train', []))
+    val_n = len(st.session_state.get('X_val', []))
+    test_n = len(st.session_state.get('X_test', []))
+    report_lines.append(f"**Methods:** A total of {len(df):,} observations with {len(data_config.feature_cols)} predictors were split into training (n={train_n:,}), validation (n={val_n:,}), and test (n={test_n:,}) sets. {len(model_results)} models were compared.")
+    report_lines.append("")
+    
+    # Results - extract best model metrics
+    if best_model_key and best_model_key in model_results:
+        best_model = model_results[best_model_key]
+        if data_config.task_type == 'regression':
+            primary_metric = 'RMSE'
+            primary_val = best_model['metrics'].get('RMSE')
+        else:
+            primary_metric = 'F1' if 'F1' in best_model['metrics'] else 'Accuracy'
+            primary_val = best_model['metrics'].get(primary_metric)
+        
+        if primary_val is not None:
+            # Check for bootstrap CIs
+            bootstrap_results_ctx = export_ctx.get('bootstrap_results', {})
+            ci_str = ""
+            if best_model_key in bootstrap_results_ctx:
+                ci = bootstrap_results_ctx[best_model_key].get(primary_metric)
+                if ci and hasattr(ci, 'ci_lower') and hasattr(ci, 'ci_upper'):
+                    ci_str = f" (95% CI: [{ci.ci_lower:.4f}, {ci.ci_upper:.4f}])"
+            
+            report_lines.append(f"**Results:** The best model ({best_model_key.upper()}) achieved {primary_metric}: {primary_val:.4f}{ci_str}.")
+        else:
+            report_lines.append("**Results:** [PLACEHOLDER: Summarize key results with metrics and CIs].")
+    else:
+        report_lines.append("**Results:** [PLACEHOLDER: Summarize key results with metrics and CIs].")
+    report_lines.append("")
+    
+    # Conclusion
+    report_lines.append("**Conclusion:** [PLACEHOLDER: Summarize clinical implications].")
+    report_lines.append("")
     
     report_lines.append("---")
     report_lines.append("")
@@ -355,8 +779,6 @@ def generate_report() -> str:
     report_lines.append("")
     
     # Preprocessing (per-model when available)
-    pipelines_by_model = st.session_state.get("preprocessing_pipelines_by_model") or {}
-    configs_by_model = st.session_state.get("preprocessing_config_by_model") or {}
     if pipelines_by_model:
         report_lines.append("## Preprocessing (per model)")
         report_lines.append("")
@@ -391,6 +813,20 @@ def generate_report() -> str:
     # Model Performance Comparison
     report_lines.append("## Model Performance")
     report_lines.append("")
+    
+    # Brief narrative before table
+    if best_model_key and best_model_key in model_results:
+        best_model = model_results[best_model_key]
+        if data_config.task_type == 'regression':
+            primary_metric = 'RMSE'
+            primary_val = best_model['metrics'].get('RMSE')
+        else:
+            primary_metric = 'F1' if 'F1' in best_model['metrics'] else 'Accuracy'
+            primary_val = best_model['metrics'].get(primary_metric)
+        
+        if primary_val is not None:
+            report_lines.append(f"Best model: **{best_model_key.upper()}** with {primary_metric} = {primary_val:.4f} on the held-out test set.")
+            report_lines.append("")
     
     # Metrics table
     comparison_data = []
@@ -460,8 +896,7 @@ def generate_report() -> str:
     report_lines.append("")
     
     registry = get_registry()
-    selected_model_params = st.session_state.get('selected_model_params', {})
-    feature_names = st.session_state.get('feature_names', [])
+    selected_model_params = export_ctx['selected_model_params']
     
     for model_key, model_wrapper in trained_models.items():
         spec = registry.get(model_key)
@@ -543,7 +978,7 @@ def generate_report() -> str:
     report_lines.append("")
     
     # Feature Importance
-    perm_importance = st.session_state.get('permutation_importance', {})
+    perm_importance = export_ctx['permutation_importance']
     if perm_importance:
         report_lines.append("## Feature Importance (Permutation)")
         report_lines.append("")
@@ -563,9 +998,9 @@ def generate_report() -> str:
         report_lines.append("")
 
     # Explainability: Partial Dependence, SHAP, Bland-Altman, Robustness
-    pd_data = st.session_state.get("partial_dependence") or {}
-    shap_data = st.session_state.get("shap_results") or {}
-    rob = st.session_state.get("explainability_robustness") or {}
+    pd_data = export_ctx['pdp_results']
+    shap_data = export_ctx['shap_results']
+    rob = export_ctx['robustness']
 
     if pd_data and any(pd_data.values()):
         report_lines.append("## Partial Dependence")
@@ -573,8 +1008,15 @@ def generate_report() -> str:
         for name, data in pd_data.items():
             if not data:
                 continue
-            feats = list(data.keys())[:5]
-            report_lines.append(f"**{name.upper()}:** {', '.join(feats)}{'…' if len(data) > 5 else ''}")
+            pd_feature_names = data.get('feature_names', [])
+            pd_feature_indices = data.get('feature_indices', [])
+            feats = [
+                pd_feature_names[idx] if isinstance(idx, int) and idx < len(pd_feature_names) else str(idx)
+                for idx in pd_feature_indices[:5]
+            ]
+            if not feats and data.get('pd_per_feature'):
+                feats = [str(idx) for idx in list(data['pd_per_feature'].keys())[:5]]
+            report_lines.append(f"**{name.upper()}:** {', '.join(feats)}{'…' if len(pd_feature_indices) > 5 else ''}")
         report_lines.append("")
         report_lines.append("---")
         report_lines.append("")
@@ -605,39 +1047,28 @@ def generate_report() -> str:
         report_lines.append("---")
         report_lines.append("")
 
-    # Bland-Altman (compute from model pairs when we have predictions)
-    try:
-        from ml.eval import analyze_bland_altman
-        model_keys = list(trained_models.keys())
-        ba_pairs = []
-        for i, ma in enumerate(model_keys):
-            for mb in model_keys[i + 1 :]:
-                ra = model_results.get(ma, {})
-                rb = model_results.get(mb, {})
-                ya = ra.get("y_test_pred")
-                yb = rb.get("y_test_pred")
-                if ya is not None and yb is not None and len(ya) == len(yb):
-                    ba = analyze_bland_altman(ya, yb)
-                    if ba:
-                        ba_pairs.append((ma, mb, ba))
-        if ba_pairs:
-            report_lines.append("## 📉 Bland-Altman")
-            report_lines.append("")
-            report_lines.append("| Model A | Model B | Mean diff | LoA width | % outside LoA |")
-            report_lines.append("|---------|---------|-----------|-----------|---------------|")
-            for ma, mb, ba in ba_pairs[:10]:
-                md = ba.get("mean_diff", 0)
-                w = ba.get("width_loa", 0)
-                pct = ba.get("pct_outside_loa", 0)
-                report_lines.append(f"| {ma} | {mb} | {md:.4f} | {w:.4f} | {pct:.1%} |")
-            report_lines.append("")
-            report_lines.append("---")
-            report_lines.append("")
-    except Exception:
-        pass
+    # Bland-Altman: include only if the analysis was explicitly run and stored in workflow state.
+    bland_altman_results = st.session_state.get('bland_altman_results')
+    if bland_altman_results:
+        report_lines.append("## 📉 Bland-Altman")
+        report_lines.append("")
+        report_lines.append("This section reports Bland-Altman outputs that were explicitly generated in the workflow.")
+        report_lines.append("")
+        report_lines.append("| Comparison | Mean diff | LoA width | % outside LoA |")
+        report_lines.append("|------------|-----------|-----------|---------------|")
+        for comparison, ba in list(bland_altman_results.items())[:10]:
+            if not isinstance(ba, dict):
+                continue
+            md = ba.get("mean_diff", 0)
+            w = ba.get("width_loa", 0)
+            pct = ba.get("pct_outside_loa", 0)
+            report_lines.append(f"| {comparison} | {md:.4f} | {w:.4f} | {pct:.1%} |")
+        report_lines.append("")
+        report_lines.append("---")
+        report_lines.append("")
 
     # LLM-backed interpretations (optional)
-    include_llm = st.session_state.get("report_include_llm", False)
+    include_llm = export_ctx['include_llm']
     if include_llm:
         llm_items = [
             (k, v) for k, v in st.session_state.items()
@@ -670,6 +1101,91 @@ def generate_report() -> str:
         report_lines.append("---")
         report_lines.append("")
     
+    # Discussion (Draft)
+    report_lines.append("## Discussion (Draft)")
+    report_lines.append("")
+    
+    # Principal Findings - result-specific prompt
+    report_lines.append("### Principal Findings")
+    report_lines.append("")
+    if best_model_key and best_model_key in model_results:
+        best_model = model_results[best_model_key]
+        if data_config.task_type == 'regression':
+            primary_metric = 'RMSE'
+            primary_val = best_model['metrics'].get('RMSE')
+        else:
+            primary_metric = 'F1' if 'F1' in best_model['metrics'] else 'Accuracy'
+            primary_val = best_model['metrics'].get(primary_metric)
+        
+        if primary_val is not None:
+            report_lines.append(f"The {best_model_key.upper()} achieved {primary_metric} of {primary_val:.4f} on held-out data. [PLACEHOLDER: Interpret this performance in clinical context]")
+        else:
+            report_lines.append("[PLACEHOLDER: Summarize the main results in context of the study objectives.]")
+    else:
+        report_lines.append("[PLACEHOLDER: Summarize the main results in context of the study objectives.]")
+    report_lines.append("")
+    
+    # Feature importance interpretation
+    perm_imp = export_ctx.get('permutation_importance', {})
+    if perm_imp and best_model_key and best_model_key in perm_imp:
+        pi_data = perm_imp[best_model_key]
+        feat_names = pi_data.get('feature_names', [])
+        importances = pi_data.get('importances_mean', [])
+        if len(feat_names) > 0 and len(importances) > 0:
+            sorted_idx = sorted(range(len(importances)), key=lambda i: importances[i], reverse=True)
+            top_feats = [feat_names[i] for i in sorted_idx[:3]]
+            report_lines.append(f"Key predictors identified were {', '.join(top_feats)}. [PLACEHOLDER: Discuss biological plausibility and consistency with prior knowledge]")
+            report_lines.append("")
+    
+    # Comparison with Prior Work
+    report_lines.append("### Comparison with Prior Work")
+    report_lines.append("")
+    task_label = "regression" if data_config.task_type == "regression" else "classification"
+    report_lines.append(f"[PLACEHOLDER: Compare the performance to prior work. Note: typical {task_label} models in this domain achieve...]")
+    report_lines.append("")
+    
+    # Clinical Implications
+    report_lines.append("### Clinical Implications")
+    report_lines.append("")
+    report_lines.append("[PLACEHOLDER: Discuss practical implications for clinical decision-making or research.]")
+    report_lines.append("")
+    
+    # Strengths and Limitations
+    report_lines.append("### Strengths and Limitations")
+    report_lines.append("")
+    
+    # Auto-fill methodological strengths
+    strength_items = []
+    if len(df) > 0:
+        strength_items.append(f"Sample size of {len(df):,} observations")
+    if export_ctx.get('bootstrap_results'):
+        strength_items.append("Bootstrap confidence intervals for uncertainty quantification")
+    if export_ctx.get('shap_results'):
+        strength_items.append("Model-agnostic explainability via SHAP analysis")
+    if perm_imp:
+        strength_items.append("Permutation importance for feature contribution assessment")
+    
+    if strength_items:
+        report_lines.append("**Strengths:**")
+        for item in strength_items:
+            report_lines.append(f"- {item}")
+        report_lines.append("- [PLACEHOLDER: Add study-specific strengths]")
+    else:
+        report_lines.append("**Strengths:** [PLACEHOLDER: Discuss methodological strengths]")
+    report_lines.append("")
+    
+    report_lines.append("**Limitations:** [PLACEHOLDER: Discuss study limitations, data constraints, generalizability, etc.]")
+    report_lines.append("")
+    
+    # Conclusion
+    report_lines.append("### Conclusion")
+    report_lines.append("")
+    report_lines.append("[PLACEHOLDER: State the main conclusion and its implications.]")
+    report_lines.append("")
+    
+    report_lines.append("---")
+    report_lines.append("")
+    
     # Notes and Reproducibility
     report_lines.append("## 📝 Notes")
     report_lines.append("")
@@ -685,8 +1201,12 @@ def generate_report() -> str:
     return "\n".join(report_lines)
 
 
+# Freeze export state once per page render so downstream UI and downloads stay consistent
+export_ctx = build_export_context()
+render_export_readiness_audit(export_ctx)
+
 # Generate report text once — used by Export Options and Report Preview below
-report_text = generate_report()
+report_text = generate_report(export_ctx)
 
 # ============================================================================
 # PUBLICATION TOOLS
@@ -696,8 +1216,8 @@ st.header("📝 Publication Tools")
 # Methods Section Generator
 with st.expander("📄 Auto-Generated Methods Section", expanded=False):
     st.markdown("""
-    Generate a draft methods section based on your actual workflow choices.
-    Fill in the `[PLACEHOLDER]` sections with study-specific details.
+    Generate a workflow-derived draft of the methods section and, optionally, a factual results draft.
+    Fill in the `[PLACEHOLDER]` sections with study-specific details and add your own interpretation separately.
     """)
     # Let user select which models to include in the report
     all_model_names = list(trained_models.keys()) if trained_models else []
@@ -716,10 +1236,14 @@ with st.expander("📄 Auto-Generated Methods Section", expanded=False):
     available_explain = []
     if st.session_state.get("permutation_importance"):
         available_explain.append("permutation_importance")
-    if st.session_state.get("shap_values"):
+    if st.session_state.get("shap_results") or st.session_state.get("shap_values"):
         available_explain.append("shap")
-    if st.session_state.get("bootstrap_results"):
+    if st.session_state.get("pdp_results") or st.session_state.get("partial_dependence"):
+        available_explain.append("partial_dependence")
+    if st.session_state.get("calibration_results"):
         available_explain.append("calibration")
+    if st.session_state.get("bland_altman_results"):
+        available_explain.append("bland_altman")
 
     if available_explain:
         selected_explain = st.multiselect(
@@ -732,56 +1256,42 @@ with st.expander("📄 Auto-Generated Methods Section", expanded=False):
     else:
         selected_explain = []
 
-    # Best model selection
+    # Manuscript-primary model selection is optional and should only reflect an explicit user choice
     best_model = None
     if selected_for_report:
-        best_model = st.selectbox(
-            "Best/primary model (highlighted in results)",
-            options=selected_for_report,
-            index=0,
-            key="report_best_model",
+        default_best_model = export_ctx.get('best_model_by_metric')
+        st.caption(
+            f"Current best by held-out metric: {default_best_model.upper()}"
+            if default_best_model else
+            "Current best-by-metric model is not available."
         )
+        primary_options = ["None (describe best-by-metric only)"] + selected_for_report
+        stored_primary_model = st.session_state.get("report_best_model")
+        default_primary_index = primary_options.index(stored_primary_model) if stored_primary_model in selected_for_report else 0
+        selected_primary_option = st.selectbox(
+            "Manuscript-primary model (optional)",
+            options=primary_options,
+            index=default_primary_index,
+            key="report_best_model_selection",
+            help="Select a manuscript-primary model only if you want to explicitly frame one model as primary in the draft.",
+        )
+        best_model = selected_primary_option if selected_primary_option in selected_for_report else None
+        st.session_state["report_best_model"] = best_model
 
     include_results = st.checkbox("Include draft Results section with actual metrics", value=True,
                                    key="report_include_results",
                                    help="Adds a Results section populated with your model's actual performance numbers and CIs.")
 
     if st.button("Generate Methods Section", key="gen_methods", type="primary"):
-        from ml.publication import generate_methods_section
-        train_n = len(st.session_state.get('X_train', []))
-        val_n = len(st.session_state.get('X_val', []))
-        test_n = len(st.session_state.get('X_test', []))
-        # Prefer the detailed preprocessing_summary; fall back to raw config
-        prep_config = st.session_state.get('preprocessing_summary') or st.session_state.get('preprocessing_config', {})
-
-        # Filter model results to selected models
-        selected_results = {k: v for k, v in model_results.items() if k in selected_for_report} if include_results else None
-        selected_bootstrap = {k: v for k, v in st.session_state.get("bootstrap_results", {}).items() if k in selected_for_report} if include_results else None
-
-        fs_results = st.session_state.get("feature_selection_results")
-        fs_method = fs_results[0].method if fs_results else None
-
-        methods_text = generate_methods_section(
-            data_config={},
-            preprocessing_config=prep_config,
-            model_configs={name: {} for name in selected_for_report},
-            split_config={},
-            n_total=len(df),
-            n_train=train_n,
-            n_val=val_n,
-            n_test=test_n,
-            feature_names=data_config.feature_cols,
-            target_name=data_config.target_col,
-            task_type=data_config.task_type or "regression",
-            metrics_used=list(next(iter(model_results.values()))['metrics'].keys()) if model_results else ["RMSE"],
-            feature_selection_method=fs_method,
-            selected_model_results=selected_results,
-            bootstrap_results=selected_bootstrap,
-            best_model_name=best_model,
-            explainability_methods=selected_explain,
-            random_seed=st.session_state.get("random_seed", 42),
+        manuscript_context = _build_manuscript_context(
+            selected_for_report=selected_for_report,
+            selected_explain=selected_explain,
+            include_results=include_results,
+            best_model=best_model,
         )
+        methods_text = _build_methods_section_for_export(manuscript_context)
         st.session_state["methods_section"] = methods_text
+        st.session_state["manuscript_export_context"] = manuscript_context
 
     if st.session_state.get("methods_section"):
         st.markdown(st.session_state["methods_section"])
@@ -943,23 +1453,96 @@ with st.expander("📝 LaTeX Manuscript Template", expanded=False):
         table1_df_local = st.session_state.get("table1_df")
         
         # Merge custom statistical tests from page 09 into Table 1
+        # Format test info within existing Table 1 columns (not as extra columns)
         custom_tests = st.session_state.get('custom_table1_tests', [])
         if custom_tests and table1_df_local is not None:
-            # Add custom tests as additional rows at the end of Table 1
-            for test in custom_tests:
-                new_row = pd.DataFrame({
-                    'Variable': [f"{test['variable']} ({test['note']})"],
-                    'Test': [test['test']],
-                    'Statistic': [test['statistic']],
-                    'p-value': [f"{test['p_value']:.4f}" if test['p_value'] >= 0.001 else "<0.001"]
-                })
-                # Match columns from original table1_df (may have group columns)
-                for col in table1_df_local.columns:
-                    if col not in new_row.columns:
-                        new_row[col] = '—'
-                table1_df_local = pd.concat([table1_df_local, new_row], ignore_index=True)
+            # Add footnote marker to variable names and collect footnotes
+            footnotes = []
+            for idx, test in enumerate(custom_tests, start=1):
+                var_name = test['variable']
+                # Find matching row in table1_df_local and add footnote marker
+                mask = table1_df_local.index.str.contains(var_name, case=False, na=False)
+                if mask.any():
+                    first_match_idx = table1_df_local.index[mask][0]
+                    current_label = str(first_match_idx)
+                    table1_df_local = table1_df_local.rename(index={first_match_idx: f"{current_label}^{idx}"})
+                    p_str = f"{test['p_value']:.4f}" if test['p_value'] >= 0.001 else "<0.001"
+                    footnotes.append(f"^{idx} {test['test']}: {test['statistic']}, p={p_str} ({test['note']})")
+            
+            # Store footnotes in metadata for LaTeX generation
+            if footnotes:
+                st.session_state['table1_custom_test_footnotes'] = footnotes
         methods_text = st.session_state.get("methods_section", "")
-        bootstrap_res = st.session_state.get("bootstrap_results")
+        if not methods_text.strip():
+            manuscript_context = _build_manuscript_context(
+                selected_for_report=selected_for_report,
+                selected_explain=selected_explain,
+                include_results=include_results,
+                best_model=best_model,
+            )
+            methods_text = _build_methods_section_for_export(manuscript_context)
+            st.session_state["methods_section"] = methods_text
+            st.session_state["manuscript_export_context"] = manuscript_context
+
+        manuscript_context = st.session_state.get("manuscript_export_context") or _build_manuscript_context(
+            selected_for_report=selected_for_report,
+            selected_explain=selected_explain,
+            include_results=include_results,
+            best_model=best_model,
+        )
+        st.session_state["manuscript_export_context"] = manuscript_context
+        bootstrap_res = manuscript_context.get('selected_bootstrap_results') or {}
+        
+        # Build explainability summary from session state
+        explainability_summary = {}
+        perm_imp = st.session_state.get('permutation_importance', {})
+        shap_results = st.session_state.get('shap_results', {})
+        calibration_results = st.session_state.get('calibration_results', {})
+        
+        if perm_imp:
+            explainability_summary['permutation_importance_available'] = True
+            # Extract top features from permutation importance
+            best_model_key = manuscript_context.get('manuscript_primary_model') or manuscript_context.get('best_model_by_metric')
+            if best_model_key and best_model_key in perm_imp:
+                pi_data = perm_imp[best_model_key]
+                feat_names = pi_data.get('feature_names', [])
+                importances = pi_data.get('importances_mean', [])
+                if len(feat_names) > 0 and len(importances) > 0:
+                    # Sort by importance
+                    sorted_idx = sorted(range(len(importances)), key=lambda i: importances[i], reverse=True)
+                    explainability_summary['top_features'] = [feat_names[i] for i in sorted_idx[:10]]
+        
+        if shap_results:
+            explainability_summary['shap_available'] = True
+        
+        if calibration_results:
+            # Extract calibration metrics if available
+            best_model_key = manuscript_context.get('manuscript_primary_model') or manuscript_context.get('best_model_by_metric')
+            if best_model_key and best_model_key in calibration_results:
+                cal_data = calibration_results[best_model_key]
+                explainability_summary['calibration_metrics'] = {
+                    k: v for k, v in cal_data.items() 
+                    if isinstance(v, (int, float)) and k not in ('model', 'timestamp')
+                }
+        
+        # Build sensitivity summary from session state
+        sensitivity_summary = {}
+        seed_sensitivity = st.session_state.get('sensitivity_seed_results')
+        if seed_sensitivity is not None and not seed_sensitivity.empty:
+            # Calculate CV% for the primary metric
+            metric_cols = [c for c in seed_sensitivity.columns if c not in ('seed', '_error')]
+            if metric_cols:
+                metric_vals = seed_sensitivity[metric_cols[0]].dropna()
+                if len(metric_vals) > 1:
+                    cv_pct = (metric_vals.std() / metric_vals.mean() * 100) if metric_vals.mean() != 0 else 0
+                    sensitivity_summary['seed_stability'] = {
+                        'cv_percent': cv_pct,
+                        'range': f"{metric_vals.min():.4f} to {metric_vals.max():.4f}"
+                    }
+        
+        feature_dropout = st.session_state.get('sensitivity_feature_dropout')
+        if feature_dropout is not None:
+            sensitivity_summary['feature_dropout_conducted'] = True
 
         latex_source = generate_latex_report(
             title=paper_title,
@@ -967,15 +1550,18 @@ with st.expander("📝 LaTeX Manuscript Template", expanded=False):
             affiliation=affiliation,
             methods_section=methods_text,
             table1_df=table1_df_local,
-            model_results=model_results,
+            model_results=manuscript_context.get('selected_model_results'),
             bootstrap_results=bootstrap_res,
             task_type=data_config.task_type or "regression",
-            feature_names=data_config.feature_cols,
+            feature_names=manuscript_context.get('feature_names_for_manuscript'),
             target_name=data_config.target_col,
             n_total=len(df),
             n_train=train_n,
             n_val=val_n,
             n_test=test_n,
+            explainability_summary=explainability_summary if explainability_summary else None,
+            sensitivity_summary=sensitivity_summary if sensitivity_summary else None,
+            manuscript_context=manuscript_context,
         )
         st.session_state["latex_report"] = latex_source
 
@@ -1136,15 +1722,35 @@ with col3:
                         }
                         zip_file.writestr(f"models/{model_key}_info.json", json.dumps(model_info, indent=2))
         
-        # Preprocessing pipeline
+        # Preprocessing artifacts
+        preprocessing_manifest = {'global_pipeline': None, 'per_model': {}}
         if pipeline:
             try:
                 import joblib
                 pipeline_buffer = io.BytesIO()
                 joblib.dump(pipeline, pipeline_buffer)
                 zip_file.writestr("preprocessing_pipeline.joblib", pipeline_buffer.getvalue())
+                preprocessing_manifest['global_pipeline'] = 'preprocessing_pipeline.joblib'
             except Exception as e:
                 logger.warning(f"Could not export pipeline: {e}")
+
+        for model_key, model_pipeline in export_ctx['pipelines_by_model'].items():
+            artifact_path = f"preprocessing/{model_key}_pipeline.joblib"
+            config_path = f"preprocessing/{model_key}_config.json"
+            entry = {'pipeline_artifact': None, 'config_artifact': None}
+            try:
+                import joblib
+                pipeline_buffer = io.BytesIO()
+                joblib.dump(model_pipeline, pipeline_buffer)
+                zip_file.writestr(artifact_path, pipeline_buffer.getvalue())
+                entry['pipeline_artifact'] = artifact_path
+            except Exception as e:
+                logger.warning(f"Could not export preprocessing pipeline for {model_key}: {e}")
+            cfg = export_ctx['configs_by_model'].get(model_key)
+            if cfg is not None:
+                zip_file.writestr(config_path, json.dumps(cfg, indent=2, default=str))
+                entry['config_artifact'] = config_path
+            preprocessing_manifest['per_model'][model_key] = entry
         
         # Plots
         if export_plots and (export_plots_train or export_plots_explain or export_plots_sensitivity):
@@ -1228,7 +1834,7 @@ with col3:
                         pass
                 
                 # SHAP plots (matplotlib)
-                shap_figs = st.session_state.get('shap_matplotlib_figs', {})
+                shap_figs = export_ctx['shap_figs']
                 for fig_key, fig in shap_figs.items():
                     try:
                         plot_bytes = save_matplotlib_fig(fig, f"{fig_key}.png")
@@ -1264,8 +1870,13 @@ with col3:
             'export_timestamp': datetime.now().isoformat(),
             'models_trained': list(trained_models.keys()),
             'metrics_summary': {name: results['metrics'] for name, results in model_results.items()},
-            'preprocessing_available': pipeline is not None,
-            'permutation_importance_available': len(st.session_state.get('permutation_importance', {})) > 0
+            'preprocessing_available': pipeline is not None or bool(export_ctx['pipelines_by_model']),
+            'permutation_importance_available': len(export_ctx['permutation_importance']) > 0,
+            'export_readiness': export_ctx['readiness'],
+            'best_model_by_metric': export_ctx.get('best_model_by_metric'),
+            'best_metric_name': export_ctx.get('best_metric_name'),
+            'manuscript_primary_model': export_ctx.get('manuscript_primary_model'),
+            'preprocessing_artifacts': preprocessing_manifest
         }
         if selected_model_params:
             manifest['model_hyperparameters'] = selected_model_params

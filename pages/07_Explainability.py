@@ -18,6 +18,7 @@ from utils.session_state import (
 from utils.storyline import render_breadcrumb, render_page_navigation
 from ml.estimator_utils import is_estimator_fitted
 from ml.model_registry import get_registry
+from ml.pipeline import get_feature_names_after_transform
 from utils.theme import inject_custom_css, render_step_indicator, render_guidance, render_reviewer_concern, render_sidebar_workflow
 from utils.table_export import table
 from sklearn.pipeline import Pipeline as SklearnPipeline
@@ -44,8 +45,7 @@ st.markdown("""
 <div style="margin-bottom: 1.5rem;">
     <h1 style="margin-bottom: 0.25rem;">🔬 Explain & Validate</h1>
     <p style="color: var(--text-secondary, #475569); font-size: 0.95rem; margin: 0;">
-        Understand <em>why</em> your models make the predictions they do. Every analysis here
-        strengthens your paper's methodology section.
+        Recommended workflow: explain the baseline models you just trained, then decide whether any additional validation is actually necessary.
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -88,14 +88,14 @@ if st.session_state.get('feature_engineering_applied'):
 st.markdown("""
 ### Why Explainability?
 
-You've trained models and seen performance metrics. Now: **WHY did the model make those predictions?**
+You've trained models and seen performance metrics. Now: **why did the model make those predictions, and do you trust them enough to write them up?**
 
 **Reviewers will ask:**
 - Which features drive predictions?
 - Are predictions calibrated (do probabilities match reality)?
 - Can you explain individual predictions?
 
-This page provides publication-grade explainability using SHAP, permutation importance, and calibration analysis.
+This page is the default finishing step before export. Use Statistical Validation afterward only if you need additional classical support for specific claims.
 """)
 
 # ── Prioritization Checklist ────────────────────────────────────
@@ -192,18 +192,33 @@ def _get_pipeline_and_data(name):
     if name in st.session_state.get('fitted_preprocessing_pipelines', {}):
         prep_pipeline = st.session_state.fitted_preprocessing_pipelines[name]
         full_pipeline = SklearnPipeline([('preprocess', prep_pipeline), ('model', estimator)])
+        feature_names_in = getattr(prep_pipeline, 'feature_names_in_', None)
+        expected_cols = list(feature_names_in) if feature_names_in is not None else []
+
         df_raw = get_data()
         test_indices = st.session_state.get('test_indices')
         if df_raw is not None and data_config and test_indices is not None:
             try:
-                X_raw = df_raw[data_config.feature_cols].iloc[test_indices]
+                raw_candidate = df_raw.iloc[test_indices]
+                if expected_cols and all(col in raw_candidate.columns for col in expected_cols):
+                    X_raw = raw_candidate.loc[:, expected_cols].copy()
+                elif isinstance(X_test, pd.DataFrame) and expected_cols and all(col in X_test.columns for col in expected_cols):
+                    X_raw = X_test.loc[:, expected_cols].copy()
+                elif isinstance(X_test, pd.DataFrame):
+                    X_raw = X_test.copy()
+                else:
+                    fallback_cols = list(data_config.feature_cols or feature_names or [])
+                    X_raw = raw_candidate.loc[:, [c for c in fallback_cols if c in raw_candidate.columns]].copy()
+
                 y_raw = df_raw[data_config.target_col].iloc[test_indices].values
                 # Encode string labels to match what the model was trained on
                 label_encoder = st.session_state.get('target_label_encoder')
                 if label_encoder is not None and y_raw.dtype == object:
                     y_raw = label_encoder.transform(y_raw)
-                return full_pipeline, X_raw, y_raw, X_raw
-            except:
+
+                if len(X_raw.columns) > 0:
+                    return full_pipeline, X_raw, y_raw, X_raw
+            except Exception:
                 pass
         return estimator, X_test, y_test, X_test
     return estimator, X_test, y_test, X_test
@@ -354,7 +369,18 @@ if run_button:
                                             random_state=42, n_jobs=-1)
                 fn_by_model = st.session_state.get('feature_names_by_model', {})
                 n = len(pi.importances_mean)
-                base = list(fn_by_model.get(name, feature_names) or [])
+                base = list(fn_by_model.get(name) or [])
+                if len(base) != n and name in st.session_state.get('fitted_preprocessing_pipelines', {}):
+                    try:
+                        base = list(get_feature_names_after_transform(
+                            st.session_state.fitted_preprocessing_pipelines[name],
+                            list(getattr(X_perm, 'columns', feature_names))
+                        ) or [])
+                    except Exception:
+                        base = list(base)
+                if len(base) != n:
+                    fallback_base = list(getattr(X_perm, 'columns', feature_names))
+                    base = fallback_base
                 fnames = (base + [f"feature_{i}" for i in range(len(base), n)])[:n]
                 perm_results[name] = {
                     'importances_mean': pi.importances_mean,
@@ -450,9 +476,20 @@ if run_button:
 
                 # Feature names for SHAP
                 fn_by_model = st.session_state.get('feature_names_by_model', {})
-                fn_for_shap = fn_by_model.get(name, feature_names)
+                fn_for_shap = list(fn_by_model.get(name) or [])
                 n_cols = X_ev.shape[1]
-                fn_shap = list(fn_for_shap[:n_cols]) if len(fn_for_shap) >= n_cols else [f"Feature {i}" for i in range(n_cols)]
+                if len(fn_for_shap) != n_cols and name in st.session_state.get('fitted_preprocessing_pipelines', {}):
+                    try:
+                        fn_for_shap = list(get_feature_names_after_transform(
+                            st.session_state.fitted_preprocessing_pipelines[name],
+                            list(getattr(X_raw, 'columns', feature_names))
+                        ) or [])
+                    except Exception:
+                        fn_for_shap = list(fn_for_shap)
+                if len(fn_for_shap) != n_cols:
+                    fallback_names = list(getattr(X_raw, 'columns', feature_names))
+                    fn_for_shap = fallback_names
+                fn_shap = (fn_for_shap + [f"Feature {i}" for i in range(len(fn_for_shap), n_cols)])[:n_cols]
 
                 shap_results[name] = {
                     'shap_values': sv_plot,

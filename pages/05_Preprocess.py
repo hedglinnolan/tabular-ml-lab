@@ -39,7 +39,8 @@ st.set_page_config(page_title="Preprocessing", page_icon="⚙️", layout="wide"
 inject_custom_css()
 render_sidebar_workflow(current_page="05_Preprocess")  # Page ID correct after renumbering
 render_step_indicator(5, "Preprocessing")
-st.title("⚙️ Preprocessing Builder")
+st.title("⚙️ Preprocess for Modeling")
+st.caption("Recommended workflow: make the data model-ready here, then move directly into training and comparison.")
 render_breadcrumb("05_Preprocess")
 render_page_navigation("05_Preprocess")
 
@@ -48,9 +49,10 @@ st.markdown("""
 
 After selecting your features, you need to prepare them for machine learning.
 
-**Your workflow so far:**
-1. ✅ Uploaded data → Explored (EDA) → Selected features
-2. **NOW:** Prepare features for training
+**Where this fits in the product:**
+1. ✅ Upload → EDA → Feature Selection
+2. **NOW:** prepare the data for training
+3. **NEXT:** train models and compare a strong baseline result
 
 **Why this matters:**
 - Different models need different preprocessing (tree-based models don't need scaling, linear models do)
@@ -888,6 +890,13 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
         st.session_state.setdefault("last_timings", {})["Build Pipelines"] = round(elapsed, 2)
         
         # Log methodology action
+        # Collect per-model outlier params for methodology log
+        _outlier_params_by_model = {}
+        for mk, mc in configs_by_model.items():
+            op = mc.get("numeric_outlier_params", {})
+            if op:
+                _outlier_params_by_model[mk] = op
+
         log_methodology(
             step='Preprocessing',
             action="Configured preprocessing pipeline",
@@ -896,6 +905,7 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                 'scaling': _scale_method,
                 'encoding': _enc_method,
                 'outlier_handling': _outlier,
+                'numeric_outlier_params': _outlier_params_by_model if _outlier_params_by_model else _first_cfg.get("numeric_outlier_params", {}),
                 'transformation': _transform,
                 'models_configured': list(configs_by_model.keys())
             }

@@ -35,11 +35,11 @@ render_sidebar_workflow(current_page="")
 # Hero section
 st.markdown("""
 <div class="hero-container">
-    <div class="hero-badge">Open Source · 18 Models · 10-Step Workflow</div>
+    <div class="hero-badge">Open Source · Guided Default Path · Advanced Options When Needed</div>
     <h1>Tabular ML Lab</h1>
     <p class="hero-sub">
         Interactive machine learning workbench for researchers.<br/>
-        Upload your CSV, follow the guided workflow, export publication materials.
+        Start with the core guided workflow, then add advanced analyses only when they help your study.
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -101,15 +101,15 @@ with col_sol:
     st.markdown("""
     <div class="info-card">
         <h3>✅ The Tabular ML Lab Solution</h3>
-        <p>This app provides a <strong>single guided workflow</strong> that:</p>
+        <p>This app provides a <strong>guided default workflow</strong> that:</p>
         <ul>
-            <li>Walks you through every step (upload → export)</li>
-            <li>Tracks all your choices automatically</li>
-            <li>Generates publication materials as you go</li>
+            <li>Gets you from upload → baseline model → export without requiring every advanced step</li>
+            <li>Tracks your choices automatically as you work</li>
+            <li>Generates draft manuscript materials as you go</li>
             <li>Applies best practices by default</li>
-            <li>Lets you save and resume your session</li>
+            <li>Keeps advanced options available when your study needs them</li>
         </ul>
-        <p><strong>Result:</strong> Complete workflow in 30-60 minutes, with draft methods section and figures ready for your paper.</p>
+        <p><strong>Result:</strong> A manuscript-ready starting point in 30-60 minutes, with advanced analyses available when you want to go deeper.</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -118,33 +118,51 @@ st.markdown("---")
 # Workflow steps
 st.markdown("### 📋 How It Works")
 st.markdown("""
-Follow the pages in the sidebar, in order. Each step builds on the previous one.  
-**Time estimate:** 30-60 minutes for a complete workflow (varies by dataset size). You can save and resume anytime.
+For a first pass, follow the **recommended workflow**: **Upload → EDA → Feature Selection → Preprocess → Train → Explain → Export**.  
+Advanced analyses are available when they strengthen your study, but they should not slow down your first run through the product.
 """)
 
-steps = [
-    ("1", "Upload & Audit", "Load your data, configure target variable and features, review data quality checks.", "📂"),
-    ("2", "Explore (EDA)", "Distributions, correlations, generate Table 1 with p-values, analyze missing data.", "📈"),
-    ("3", "Feature Engineering", "**Optional:** Create polynomial, ratio, binning, or topological features to improve models.", "🧬"),
-    ("4", "Feature Selection", "LASSO path, RFE-CV, stability selection — identify the most informative predictors.", "🎯"),
-    ("5", "Preprocess", "Build preprocessing pipelines: imputation, scaling, encoding, outlier treatment (per-model).", "⚙️"),
-    ("6", "Train & Compare", "Train 18 model families with bootstrap confidence intervals and baseline comparisons.", "🧠"),
-    ("7", "Explainability", "SHAP values, permutation importance, calibration curves, decision curve analysis.", "🔬"),
-    ("8", "Sensitivity Analysis", "Validate robustness: test random seed stability and feature dropout impacts.", "🔍"),
-    ("9", "Statistical Validation", "Add custom statistical tests (t-tests, ANOVA, chi-square) to validate ML findings.", "📐"),
-    ("10", "Export Report", "Download methods section, TRIPOD checklist, flow diagrams, and publication figures.", "📄"),
-]
+col_flow1, col_flow2 = st.columns([1.5, 1])
+with col_flow1:
+    st.markdown("#### Recommended first run")
+    recommended_steps = [
+        ("1", "Upload & Audit", "Load your data, set the target, and confirm the dataset is usable."),
+        ("2", "Explore (EDA)", "Understand distributions, missingness, and relationships before modeling."),
+        ("3", "Feature Selection", "Narrow the predictor set to the variables most worth carrying forward."),
+        ("4", "Preprocess", "Build the transformations each model needs without leaking information."),
+        ("5", "Train & Compare", "Fit models, compare performance, and establish a baseline result."),
+        ("6", "Explainability", "Interpret what the best models learned and whether the result is defensible."),
+        ("7", "Export Report", "Download draft methods, tables, and figures as a manuscript starting point."),
+    ]
 
-for num, title, desc, icon in steps:
-    st.markdown(f"""
-    <div class="step-item">
-        <div class="step-num">{num}</div>
-        <div class="step-content">
-            <strong>{icon} {title}</strong><br/>
-            <span>{desc}</span>
+    for num, title, desc in recommended_steps:
+        st.markdown(f"""
+        <div class="step-item">
+            <div class="step-num">{num}</div>
+            <div class="step-content">
+                <strong>{title}</strong><br/>
+                <span>{desc}</span>
+            </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
+
+with col_flow2:
+    render_info_card(
+        "Navigation modes",
+        "**Quick workflow** keeps the default research spine front and center.\n\n"
+        "**Advanced workflow** keeps the complete page sequence in the main navigation without changing how data flows through the app."
+    )
+    render_info_card(
+        "Advanced workflow",
+        "Use these when your first pass shows you need more depth, stronger robustness claims, or a specific statistical narrative.\n\n"
+        "**Feature Engineering** — Add richer derived features if baseline models underperform.\n\n"
+        "**Sensitivity Analysis** — Show that results are not fragile to seeds or feature dropout.\n\n"
+        "**Statistical Validation** — Add classical tests when you need complementary p-values or Table 1 support."
+    )
+    render_guidance(
+        "**Recommendation:** reach Export once on the quick workflow before deciding whether an advanced workflow step is actually necessary. You can switch workflow modes at any time from the sidebar.",
+        icon="🧭"
+    )
 
 st.markdown("---")
 
@@ -190,8 +208,8 @@ with col_out3:
     """, unsafe_allow_html=True)
 
 st.markdown("""
-**⚠️ Important:** This app generates **draft materials** that you must review and adapt for your specific study. 
-You are responsible for interpreting results, ensuring scientific validity, and addressing reviewer feedback.
+**⚠️ Important:** This app generates a **manuscript-ready starting point** that you must review and adapt for your specific study. 
+You are responsible for interpreting results, ensuring scientific validity, and adding the domain-specific context no tool can infer for you.
 """)
 
 st.markdown("---")
@@ -203,8 +221,8 @@ col_qs1, col_qs2 = st.columns([2, 1])
 with col_qs1:
     render_guidance(
         "<strong>Ready to start?</strong> Click <strong>📂 Upload & Audit</strong> in the sidebar. "
-        "Upload a CSV or Excel file, select your target variable, and the app will guide you through the rest. "
-        "Your session is automatically saved in your browser.",
+        "For most users, the best first pass is: upload data, review EDA, select features, preprocess, train, explain, and export. "
+        "Advanced steps stay available when you need them.",
         icon="👋"
     )
 with col_qs2:

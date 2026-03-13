@@ -39,49 +39,56 @@ st.set_page_config(page_title="Statistical Validation", page_icon="📊", layout
 inject_custom_css()
 render_sidebar_workflow(current_page="09_Hypothesis_Testing")
 st.title("📊 Statistical Validation")
+st.caption("Use this when you need classical tests to support the story coming out of EDA and model explainability.")
 render_breadcrumb("09_Hypothesis_Testing")
 render_page_navigation("09_Hypothesis_Testing")
+
+if st.session_state.get("workflow_mode", "quick") == "quick":
+    st.info("""
+    🧭 **Advanced workflow step** — Return here after the quick workflow when a manuscript or reviewer needs targeted classical tests in addition to your ML result.
+    """)
 
 st.markdown("""
 ### Why Statistical Validation?
 
-Your ML model is trained and performing well. But reviewers will ask:
+This page is **not required for every project**. Use it when you need classical statistics to complement the result you already built through EDA, training, and explainability.
 
-**"Did you test your features statistically?"**
+Reviewers may still ask:
 
-This page generates traditional statistical tests that:
-1. ✅ **Validate ML findings** — Confirm important features differ between groups
-2. ✅ **Populate Table 1** — Generate p-values for baseline characteristics table
-3. ✅ **Strengthen your paper** — Show both ML and statistical evidence
+**"Did you test these findings statistically?"**
+
+This page helps you:
+1. ✅ **Add targeted confirmatory tests** for features or comparisons you care about
+2. ✅ **Populate Table 1** with custom p-values when the automatic outputs are not enough
+3. ✅ **Strengthen your paper's narrative** by pairing ML evidence with classical tests
 
 **ML vs Statistics:**
-- **ML:** "Glucose is the most important predictor (SHAP value 0.42)"
-- **Statistics:** "Glucose differs significantly between groups (t-test p<0.001, Cohen's d=0.85)"
+- **ML:** "Glucose is an important predictor"
+- **Statistics:** "Glucose differs significantly between groups"
 
-**For publication:** Report both. ML shows prediction power, stats show group differences.
+Use both when they answer different parts of the reviewer's question.
 """)
 
 st.markdown("---")
 
 st.markdown("""
-### 📄 How This Fits Your Publication
+### 📄 How This Fits the End of the Workflow
 
-**Your workflow:**
-1. ✅ Built ML model (pages 1-6)
-2. ✅ Explained predictions (page 7)
-3. ✅ Validated robustness (page 8)
-4. **NOW:** Add custom statistical tests to validate ML findings
-5. **NEXT:** Export everything (page 10)
+**Recommended sequence:**
+1. ✅ Build a baseline result
+2. ✅ Explain the model and check whether the result is interpretable
+3. **OPTIONAL NOW:** Add targeted statistical tests only if they strengthen the manuscript
+4. **NEXT:** Export one coherent package of methods, tables, and figures
 
 **About Table 1:**
-- You already generated Table 1 in **EDA** (page 2) with automatic p-values
-- This page lets you add **CUSTOM tests** for specific variables or comparisons
-- Custom p-values will be merged into your Table 1 in the Export page
+- EDA already generates automatic descriptive statistics and baseline p-values
+- This page is for **targeted additions**, not for repeating everything you already ran
+- Custom test results will be merged into the Export page
 
-**These tests will appear in:**
-- **Table 1:** Your custom p-values will be added alongside the automatic ones
-- **Methods:** "Additional univariate associations were tested using..."
-- **Results:** "Features X, Y, Z differed significantly between groups"
+**Use this page when:**
+- a reviewer will expect a familiar statistical test
+- you need a specific p-value or effect size in the manuscript
+- the ML result is strong, but you want a more classical supporting argument
 """)
 
 st.markdown("---")

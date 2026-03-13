@@ -19,6 +19,17 @@ PAGE_ORDER = [
     ("10_Report_Export", "Report Export", "pages/10_Report_Export.py"),
 ]
 
+RECOMMENDED_PAGE_IDS = [
+    "Home",
+    "01_Upload_and_Audit",
+    "02_EDA",
+    "04_Feature_Selection",
+    "05_Preprocess",
+    "06_Train_and_Compare",
+    "07_Explainability",
+    "10_Report_Export",
+]
+
 
 def render_breadcrumb(current_page: str, step_label: Optional[str] = None) -> None:
     """Render breadcrumb at top of page: Upload & Audit > Step 4: Data Audit"""
@@ -34,14 +45,28 @@ def render_breadcrumb(current_page: str, step_label: Optional[str] = None) -> No
     st.caption(f"**{breadcrumb}**")
 
 
+def _get_navigation_order(current_page: str):
+    """Return page order for navigation without changing underlying state flow.
+
+    Recommended mode keeps the core workflow spine intact and leaves advanced pages
+    available without making them part of the default next/previous flow.
+    """
+    workflow_mode = st.session_state.get("workflow_mode", "quick")
+    if workflow_mode == "quick" and current_page in RECOMMENDED_PAGE_IDS:
+        return [p for p in PAGE_ORDER if p[0] in RECOMMENDED_PAGE_IDS]
+    return PAGE_ORDER
+
+
+
 def get_prev_next_pages(current_page: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     """Return (prev_path, prev_label, next_path, next_label) for navigation buttons."""
-    pages = [p[0] for p in PAGE_ORDER]
+    navigation_order = _get_navigation_order(current_page)
+    pages = [p[0] for p in navigation_order]
     if current_page not in pages:
         return None, None, None, None
     idx = pages.index(current_page)
-    prev = PAGE_ORDER[idx - 1] if idx > 0 else None
-    next_ = PAGE_ORDER[idx + 1] if idx < len(PAGE_ORDER) - 1 else None
+    prev = navigation_order[idx - 1] if idx > 0 else None
+    next_ = navigation_order[idx + 1] if idx < len(navigation_order) - 1 else None
     prev_path, prev_label = (prev[2], prev[1]) if prev else (None, None)
     next_path, next_label = (next_[2], next_[1]) if next_ else (None, None)
     return prev_path, prev_label, next_path, next_label

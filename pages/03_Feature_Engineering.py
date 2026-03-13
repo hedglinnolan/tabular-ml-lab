@@ -59,17 +59,15 @@ init_session_state()
 inject_custom_css()
 render_sidebar_workflow(current_page="03_Feature_Engineering")
 
-st.title("🧬 Feature Engineering (⚠️ Experimental)")
+st.title("🧬 Feature Engineering")
+st.caption("Advanced workflow step: expand the feature space only after the quick workflow baseline tells you richer features may be worth the complexity.")
 render_breadcrumb("03_Feature_Engineering")
 render_page_navigation("03_Feature_Engineering")
 
-# Experimental banner
-st.warning("""
-⚠️ **EXPERIMENTAL FEATURE** — This page is in active testing and not yet in the main production branch.
-
-Functionality is stable but UI and workflow may change based on feedback.  
-Report issues: [GitHub](https://github.com/hedglinnolan/tabular-ml-lab/issues)
-""")
+if st.session_state.get("workflow_mode", "quick") == "quick":
+    st.info("""
+    🧭 **Advanced workflow step** — Complete the quick workflow first, then return here only if baseline performance or domain knowledge suggests richer features are worth the extra complexity.
+    """)
 
 # Disambiguation: Feature Engineering vs Preprocessing
 st.info("""
@@ -93,8 +91,10 @@ st.info("""
 st.markdown("""
 ### What is Feature Engineering?
 
-**Feature engineering** is the art of creating new features (columns) from your existing data to help machine learning models 
-find patterns more easily. Think of it as **translating your raw data into a language models understand better**.
+**Feature engineering** is an advanced step where you create new features (columns) from your existing data to help some models find patterns more easily.
+Think of it as **translating your raw data into a language models may understand better**.
+
+**Default recommendation:** start with the quick workflow first. If your first-pass models are already strong and interpretable, you may not need this advanced workflow step at all.
 
 **Example:** You have `height` and `weight`. A model might struggle to learn obesity patterns directly. 
 But if you create `BMI = weight / height²`, the pattern becomes obvious.
@@ -104,7 +104,8 @@ with st.expander("📚 Should I use Feature Engineering?", expanded=True):
     st.markdown("""
     ### When to Use Feature Engineering ✅
     
-    - **Linear models** (Ridge, Lasso, Logistic) that can't capture non-linearity on their own
+    - Your **baseline workflow is underperforming** and you need another lever to improve signal
+    - You're using **linear models** (Ridge, Lasso, Logistic) that can't capture non-linearity on their own
     - You have **domain knowledge** about useful combinations (e.g., ratios, products)
     - Your data has **interactions** between features (Age × Gender affects outcomes differently)
     - You're willing to **sacrifice some interpretability** for better accuracy
@@ -242,8 +243,8 @@ with col2:
         st.session_state["report_data"] = None
         st.rerun()
 with col3:
-    if st.button("⏭️ Skip", help="Proceed to Feature Selection with original features"):
-        st.info("✅ Skipped feature engineering. Proceeding with original features.")
+    if st.button("⏭️ Skip", help="Recommended for most first passes: continue with your original features"):
+        st.info("✅ Skipped feature engineering. Proceeding with your original features — this is the recommended first pass for many projects.")
         # Make sure no engineered features are in session state
         st.session_state.pop("df_engineered", None)
         st.session_state["feature_engineering_applied"] = False

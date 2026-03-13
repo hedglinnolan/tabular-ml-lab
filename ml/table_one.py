@@ -275,17 +275,55 @@ def generate_table1(
 
 
 def table1_to_latex(table_df: pd.DataFrame, caption: str = "Characteristics of study population") -> str:
-    """Export Table 1 to LaTeX format."""
-    latex = table_df.to_latex(
-        caption=caption,
-        label="tab:table1",
-        position="htbp",
-        column_format="l" + "c" * len(table_df.columns),
-        escape=True,
-    )
-    # Clean up ± symbol
-    latex = latex.replace("±", "$\\pm$")
-    return latex
+    """Export Table 1 to LaTeX format with width containment."""
+    if table_df is None or table_df.empty:
+        return ""
+    
+    n_cols = len(table_df.columns)
+    is_wide = n_cols > 4
+    
+    # Build LaTeX manually for better control over formatting
+    # Use p{4cm} for first column (Characteristic/index) to allow wrapping
+    col_spec = "p{4cm}" + "c" * n_cols
+    
+    lines = []
+    lines.append(r"\begin{table}[htbp]")
+    lines.append(r"\centering")
+    lines.append(f"\\caption{{{caption}}}")
+    lines.append(r"\label{tab:table1}")
+    
+    # Width containment: wrap in adjustbox
+    lines.append(r"\begin{adjustbox}{max width=\textwidth}")
+    
+    # Use smaller font for wide tables
+    if is_wide:
+        lines.append(r"\small")
+    
+    lines.append(f"\\begin{{tabular}}{{{col_spec}}}")
+    lines.append(r"\toprule")
+    
+    # Header
+    index_name = table_df.index.name if table_df.index.name else "Characteristic"
+    header = index_name + " & " + " & ".join(str(c).replace("_", "\\_").replace("%", "\\%") for c in table_df.columns) + r" \\"
+    lines.append(header)
+    lines.append(r"\midrule")
+    
+    # Rows
+    for idx, row in table_df.iterrows():
+        idx_str = str(idx).replace("_", "\\_").replace("%", "\\%").replace("±", "$\\pm$")
+        cells = [idx_str]
+        for val in row.values:
+            val_str = str(val) if val and val != "" else "—"
+            val_str = val_str.replace("_", "\\_").replace("%", "\\%").replace("±", "$\\pm$")
+            cells.append(val_str)
+        lines.append(" & ".join(cells) + r" \\")
+    
+    lines.append(r"\bottomrule")
+    lines.append(r"\end{tabular}")
+    lines.append(r"\end{adjustbox}")
+    lines.append(r"\end{table}")
+    
+    return "\n".join(lines)
 
 
 def table1_to_csv(table_df: pd.DataFrame) -> str:
