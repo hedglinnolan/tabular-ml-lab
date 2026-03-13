@@ -1187,6 +1187,17 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     report_lines.append("")
     
     # Notes and Reproducibility
+    # FIX 7: Decision Audit Trail Appendix
+    from ml.publication import generate_decision_audit_trail
+    audit_trail = generate_decision_audit_trail()
+    if audit_trail:
+        report_lines.append("---")
+        report_lines.append("")
+        report_lines.append("## Appendix: Decision Audit Trail")
+        report_lines.append("")
+        report_lines.append(audit_trail)
+        report_lines.append("")
+
     report_lines.append("## 📝 Notes")
     report_lines.append("")
     report_lines.append("- This report was generated automatically by Tabular ML Lab")
@@ -1544,6 +1555,20 @@ with st.expander("📝 LaTeX Manuscript Template", expanded=False):
         if feature_dropout is not None:
             sensitivity_summary['feature_dropout_conducted'] = True
 
+        # FIX 4: Build statistical validation summary from methodology log
+        stat_validation_summary = []
+        methodology_log = st.session_state.get('methodology_log', [])
+        for entry in methodology_log:
+            if entry.get('step') == 'Statistical Validation':
+                details = entry.get('details', {})
+                action = entry.get('action', '')
+                stat_validation_summary.append({
+                    'test_name': details.get('test_name') or action,
+                    'variable': details.get('variable', 'unknown variable'),
+                    'statistic': details.get('statistic'),
+                    'p_value': details.get('p_value'),
+                })
+
         latex_source = generate_latex_report(
             title=paper_title,
             authors=authors,
@@ -1561,6 +1586,7 @@ with st.expander("📝 LaTeX Manuscript Template", expanded=False):
             n_test=test_n,
             explainability_summary=explainability_summary if explainability_summary else None,
             sensitivity_summary=sensitivity_summary if sensitivity_summary else None,
+            stat_validation_summary=stat_validation_summary if stat_validation_summary else None,
             manuscript_context=manuscript_context,
         )
         st.session_state["latex_report"] = latex_source
