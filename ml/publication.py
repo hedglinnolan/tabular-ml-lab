@@ -3,6 +3,8 @@ Publication engine: methods section generator, flow diagrams, TRIPOD tracking.
 
 Generates publication-ready text, figures, and compliance checklists.
 """
+import sys
+import json
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Any, Tuple
@@ -78,6 +80,225 @@ class TRIPODTracker:
 # Methods Section Generator
 # ============================================================================
 
+def _fmt_param_value(value: Any) -> str:
+    """Format numeric parameter values compactly for narrative text."""
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(value))
+        return f"{value:g}"
+    return str(value)
+
+
+def _describe_outlier_handling(method: str, params: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    """Return a specific outlier-handling description when reliable params exist."""
+    params = params or {}
+    method = (method or "none").lower()
+
+    if method == "percentile":
+        lower = params.get("lower_percentile")
+        upper = params.get("upper_percentile")
+        # Also accept quantile-fraction keys (lower_q / upper_q) stored by the
+        # preprocessing page and convert 0-1 fractions to percentile integers.
+        if lower is None and "lower_q" in params:
+            lower = params["lower_q"] * 100
+        if upper is None and "upper_q" in params:
+            upper = params["upper_q"] * 100
+        if lower is not None and upper is not None:
+            return (
+                f"outliers clipped at the {_fmt_param_value(lower)}th and "
+                f"{_fmt_param_value(upper)}th percentiles"
+            )
+        return "outliers addressed using percentile-based winsorization"
+
+    if method == "mad":
+        threshold = (
+            params.get("threshold")
+            or params.get("mad_threshold")
+            or params.get("n_mad")
+        )
+        if threshold is not None:
+            return f"outliers clipped using a MAD threshold of {_fmt_param_value(threshold)}"
+        return "outliers addressed using MAD-based outlier clipping"
+
+    if method == "iqr":
+        multiplier = params.get("multiplier") or params.get("iqr_multiplier")
+        if multiplier is not None:
+            return f"outliers removed using an IQR multiplier of {_fmt_param_value(multiplier)}"
+        return "outliers addressed using IQR-based outlier removal"
+
+    return None
+
+
+def generate_methods_from_log() -> Dict[str, List[Dict[str, Any]]]:
+    """Extract methodology actions grouped by step from session state log.
+    
+    Returns:
+        Dictionary mapping step name to list of log entries for that step.
+    """
+    try:
+        import streamlit as st
+        log = st.session_state.get('methodology_log', [])
+    except ImportError:
+        # Not in Streamlit context
+        return {}
+    
+    steps = {}
+    for entry in log:
+        step = entry.get('step', 'Unknown')
+        if step not in steps:
+            steps[step] = []
+        steps[step].append(entry)
+    
+    return steps
+
+
+def _resolve_workflow_feature_counts(
+    feature_names: Optional[List[str]],
+    logged_steps: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    data_config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Optional[int]]:
+    """Resolve original/candidate/selected/engineered feature counts consistently.
+
+    Priority is the explicit workflow audit trail, then known session-state artifacts,
+    then the function inputs.
+    """
+    logged_steps = logged_steps or {}
+    data_config = data_config or {}
+
+    original_count = None
+    candidate_count = None
+    selected_count = None
+    engineered_count = None
+
+    base_features = data_config.get("feature_cols") or []
+    if base_features:
+        original_count = len(base_features)
+
+    fs_entries = logged_steps.get('Feature Selection', [])
+    if fs_entries:
+        last_fs = fs_entries[-1].get('details', {})
+        candidate_count = last_fs.get('n_features_before') or candidate_count
+        selected_count = last_fs.get('n_features_after') or selected_count
+
+    applied_entries = logged_steps.get('Feature Selection Applied', [])
+    if applied_entries:
+        last_applied = applied_entries[-1].get('details', {})
+        selected_count = last_applied.get('n_features_selected') or selected_count
+
+    try:
+        import streamlit as st
+        pre_fe = st.session_state.get('pre_fe_feature_cols') or []
+        engineered_names = st.session_state.get('engineered_feature_names') or []
+        selected_features = st.session_state.get('selected_features') or []
+        if pre_fe:
+            original_count = len(pre_fe)
+        engineered_count = len(engineered_names) if engineered_names else engineered_count
+        if candidate_count is None and pre_fe:
+            candidate_count = len(pre_fe) + (len(engineered_names) if engineered_names else 0)
+        if selected_count is None and selected_features:
+            selected_count = len(selected_features)
+    except ImportError:
+        pass
+
+    if selected_count is None and feature_names:
+        selected_count = len(feature_names)
+
+    if candidate_count is None:
+        candidate_count = selected_count
+
+    if engineered_count is None and original_count is not None and candidate_count is not None:
+        engineered_count = max(candidate_count - original_count, 0)
+
+    return {
+        'original': original_count,
+        'candidate': candidate_count,
+        'selected': selected_count,
+        'engineered': engineered_count,
+    }
+
+
+def _dedupe_latest_by(entries: List[Dict[str, Any]], key_fields: Tuple[str, ...]) -> List[Dict[str, Any]]:
+    """Keep only the latest entry for each logical analysis key."""
+    latest_by_key: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
+    ordered_keys: List[Tuple[Any, ...]] = []
+    for entry in entries:
+        key = tuple(entry.get(field) for field in key_fields)
+        if key not in latest_by_key:
+            ordered_keys.append(key)
+        latest_by_key[key] = entry
+    return [latest_by_key[key] for key in ordered_keys]
+
+
+def _determine_best_model(selected_model_results: Dict[str, Dict], task_type: str) -> Optional[str]:
+    """Determine the best model from actual metrics.
+    
+    Args:
+        selected_model_results: Dict of model_name -> {"metrics": {...}}
+        task_type: "regression" or "classification"
+    
+    Returns:
+        Name of the best model, or None if no results.
+    """
+    if not selected_model_results:
+        return None
+    
+    if task_type == "regression":
+        # Lowest RMSE wins
+        best = min(
+            selected_model_results.items(),
+            key=lambda x: x[1].get('metrics', {}).get('RMSE', float('inf'))
+        )
+        return best[0] if best[1].get('metrics', {}).get('RMSE') != float('inf') else None
+    else:
+        # Highest F1 (or AUC if F1 not available, or Accuracy as fallback)
+        def score(item):
+            metrics = item[1].get('metrics', {})
+            if 'F1' in metrics:
+                return metrics['F1']
+            elif 'AUC' in metrics:
+                return metrics['AUC']
+            elif 'Accuracy' in metrics:
+                return metrics['Accuracy']
+            else:
+                return -float('inf')
+        
+        best = max(selected_model_results.items(), key=score)
+        return best[0] if score(best) > -float('inf') else None
+
+
+def _ordered_metric_items(metrics: Dict[str, Any], task_type: str) -> List[Tuple[str, Any]]:
+    """Return metrics in a stable, manuscript-friendly order."""
+    preferred = ["RMSE", "MAE", "R2", "MedianAE"] if task_type == "regression" else ["Accuracy", "F1", "AUC"]
+    ordered_names = [name for name in preferred if name in metrics] + [name for name in metrics if name not in preferred]
+    return [(name, metrics[name]) for name in ordered_names]
+
+
+def _resolve_manuscript_context(
+    manuscript_context: Optional[Dict[str, Any]],
+    feature_names: List[str],
+    selected_model_results: Optional[Dict[str, Dict]],
+    bootstrap_results: Optional[Dict[str, Dict]],
+    best_model_name: Optional[str],
+) -> Dict[str, Any]:
+    """Resolve explicit manuscript facts, preferring export-frozen context over live state."""
+    context = manuscript_context or {}
+    frozen_feature_names = list(context.get('feature_names_for_manuscript') or feature_names or [])
+    frozen_feature_counts = dict(context.get('feature_counts') or {})
+    frozen_model_results = context.get('selected_model_results')
+    frozen_bootstrap_results = context.get('selected_bootstrap_results')
+
+    return {
+        'included_models': list(context.get('included_models') or list((frozen_model_results or selected_model_results or {}).keys())),
+        'feature_names_for_manuscript': frozen_feature_names,
+        'feature_counts': frozen_feature_counts,
+        'selected_model_results': frozen_model_results if frozen_model_results is not None else selected_model_results,
+        'selected_bootstrap_results': frozen_bootstrap_results if frozen_bootstrap_results is not None else bootstrap_results,
+        'manuscript_primary_model': context.get('manuscript_primary_model'),
+        'best_model_by_metric': context.get('best_model_by_metric'),
+        'best_metric_name': context.get('best_metric_name'),
+    }
+
+
 def generate_methods_section(
     data_config: Dict[str, Any],
     preprocessing_config: Dict[str, Any],
@@ -102,6 +323,12 @@ def generate_methods_section(
     explainability_methods: Optional[List[str]] = None,
     calibration_results: Optional[Dict[str, Any]] = None,
     random_seed: int = 42,
+    manuscript_context: Optional[Dict[str, Any]] = None,
+    # NEW: methods parameter precision
+    model_hyperparameters: Optional[Dict[str, Dict]] = None,
+    hyperparameter_optimization: bool = False,
+    split_strategy: Optional[str] = None,
+    missing_data_summary: Optional[Dict] = None,
 ) -> str:
     """Generate a draft methods section for a publication.
 
@@ -109,29 +336,240 @@ def generate_methods_section(
     """
     sections = []
 
+    manuscript_facts = _resolve_manuscript_context(
+        manuscript_context,
+        feature_names,
+        selected_model_results,
+        bootstrap_results,
+        best_model_name,
+    )
+    feature_names = manuscript_facts['feature_names_for_manuscript']
+    selected_model_results = manuscript_facts['selected_model_results']
+    bootstrap_results = manuscript_facts['selected_bootstrap_results']
+
+    # Feature counts: derive once so manuscript text stays internally consistent.
+    logged_steps = generate_methods_from_log()
+    feature_counts = manuscript_facts['feature_counts'] or _resolve_workflow_feature_counts(feature_names, logged_steps, data_config)
+    predictor_count = feature_counts.get('selected') or len(feature_names)
+
     # Study design
     sections.append("### Study Design and Participants\n")
     sections.append(
         f"[PLACEHOLDER: Describe your study design, data source, and recruitment/selection criteria.] "
-        f"The analysis included {n_total:,} observations with {len(feature_names)} predictor variables. "
-        f"The outcome variable was {target_name}"
-        + (", treated as a continuous outcome (regression)." if task_type == "regression"
-           else ", treated as a categorical outcome (classification).")
+        f"This workflow-derived draft documents {n_total:,} observations carried into the modeling workflow, with {predictor_count} predictors in the final modeling set. "
+        f"The modeled outcome was {target_name}"
+        + (" as a continuous target (regression)." if task_type == "regression"
+           else " as a categorical target (classification).")
     )
 
     # Predictors
     sections.append("\n\n### Predictor Variables\n")
-    if len(feature_names) <= 15:
+    if feature_counts.get('original') and feature_counts.get('selected') and feature_counts['original'] != feature_counts['selected']:
+        original_count = feature_counts['original']
+        candidate_count = feature_counts.get('candidate')
+        selected_count = feature_counts['selected']
+        if candidate_count and candidate_count != original_count:
+            sections.append(
+                f"The workflow began with {original_count} original predictors, expanded this to {candidate_count} candidate predictors after feature engineering, and retained {selected_count} predictors for final modeling."
+            )
+        else:
+            sections.append(
+                f"The workflow began with {original_count} original predictors and retained {selected_count} predictors for final modeling."
+            )
+    elif predictor_count <= 15 and feature_names:
         feat_list = ", ".join(feature_names)
         sections.append(f"The following predictor variables were included: {feat_list}.")
     else:
         sections.append(
-            f"A total of {len(feature_names)} predictor variables were included "
+            f"A total of {predictor_count} predictor variables were included "
             f"(see Supplementary Table S1 for full list)."
         )
 
-    if feature_selection_method:
+    # Feature selection: use logged data as source of truth
+    
+    # Build the feature selection narrative from the methodology log.
+    # Priority: use the LAST "Feature Selection Applied" entry (consensus or manual
+    # override), supplemented by the analysis run details from "Feature Selection".
+    feature_selection_logged = False
+    
+    # 1. Check what was actually applied (may be consensus or manual override)
+    applied_entries = logged_steps.get('Feature Selection Applied', [])
+    analysis_entries = logged_steps.get('Feature Selection', [])
+    
+    if applied_entries:
+        # Use the LAST applied entry (manual override supersedes consensus)
+        applied = applied_entries[-1]
+        details = applied.get('details', {})
+        method = details.get('method', '')
+        n_selected = details.get('n_features_selected')
+        
+        # Get the methods used from the analysis step (lasso, rfe, etc.)
+        analysis_methods = []
+        n_original = None
+        for ae in analysis_entries:
+            ad = ae.get('details', {})
+            analysis_methods = ad.get('methods', analysis_methods)
+            if ad.get('n_features_before'):
+                n_original = ad['n_features_before']
+        
+        if method == 'manual' and n_selected is not None:
+            # Manual override — report it as such
+            if analysis_methods and n_original:
+                methods_str = ", ".join(analysis_methods)
+                sections.append(
+                    f" Feature selection was performed using {methods_str}. "
+                    f"After review, {n_selected} features were manually selected for modeling."
+                )
+            else:
+                sections.append(
+                    f" {n_selected} features were manually selected for modeling."
+                )
+            feature_selection_logged = True
+        elif method == 'consensus' and n_selected is not None:
+            # Consensus selection
+            if analysis_methods:
+                methods_str = ", ".join(analysis_methods)
+            else:
+                methods_str = ""
+            n_before = n_original or details.get('n_features_before')
+            
+            # Check for consensus threshold in details
+            consensus_threshold = details.get('consensus_threshold') or details.get('threshold')
+            n_methods = len(analysis_methods) if analysis_methods else None
+            
+            if n_before and n_before == n_selected:
+                if methods_str:
+                    threshold_clause = ""
+                    if consensus_threshold and n_methods:
+                        threshold_clause = f" Features were retained if selected by at least {consensus_threshold} of {n_methods} methods."
+                    sections.append(
+                        f" Feature selection was performed using {methods_str}; "
+                        f"all {n_selected} features met the consensus threshold and were included in modeling."
+                        f"{threshold_clause}"
+                    )
+                else:
+                    sections.append(
+                        f" Feature selection was performed; all {n_selected} features were retained."
+                    )
+            elif n_before:
+                threshold_clause = ""
+                if consensus_threshold and n_methods:
+                    threshold_clause = f" Features were retained if selected by at least {consensus_threshold} of {n_methods} methods."
+                if methods_str:
+                    sections.append(
+                        f" Feature selection using {methods_str} reduced the feature set "
+                        f"from {n_before} to {n_selected} predictors."
+                        f"{threshold_clause}"
+                    )
+                else:
+                    sections.append(
+                        f" Feature selection reduced the feature set from {n_before} to {n_selected} predictors."
+                        f"{threshold_clause}"
+                    )
+            else:
+                threshold_clause = ""
+                if consensus_threshold and n_methods:
+                    threshold_clause = f" Features were retained if selected by at least {consensus_threshold} of {n_methods} methods."
+                if methods_str:
+                    sections.append(f" Feature selection was performed using {methods_str}, retaining {n_selected} features.{threshold_clause}")
+                else:
+                    sections.append(f" Feature selection retained {n_selected} features.{threshold_clause}")
+            feature_selection_logged = True
+    
+    # 2. Fall back to analysis entries if nothing was explicitly applied
+    if not feature_selection_logged and analysis_entries:
+        for entry in analysis_entries:
+            details = entry.get('details', {})
+            n_before = details.get('n_features_before')
+            n_after = details.get('n_features_after')
+            methods = details.get('methods', [])
+            if n_before and n_after:
+                methods_str = ", ".join(methods) if methods else ""
+                if n_before == n_after:
+                    if methods_str:
+                        sections.append(
+                            f" Feature selection was performed using {methods_str}; "
+                            f"all {n_after} features met the retention threshold and were included in modeling."
+                        )
+                    else:
+                        sections.append(f" Feature selection was performed; all {n_after} features were retained.")
+                else:
+                    if methods_str:
+                        sections.append(
+                            f" Feature selection using {methods_str} reduced the feature set "
+                            f"from {n_before} to {n_after} predictors."
+                        )
+                    else:
+                        sections.append(f" Feature selection reduced the feature set from {n_before} to {n_after} predictors.")
+                feature_selection_logged = True
+                break
+    
+    # Only fall back to parameter if no log entries exist
+    if not feature_selection_logged and feature_selection_method:
         sections.append(f" Feature selection was performed using {feature_selection_method}.")
+
+    # Feature Engineering (if applied)
+    try:
+        import streamlit as st
+        feature_engineering_applied = st.session_state.get('feature_engineering_applied', False)
+        if feature_engineering_applied:
+            sections.append("\n\n### Feature Engineering\n")
+            engineering_log = st.session_state.get('engineering_log', [])
+            engineered_feature_names = st.session_state.get('engineered_feature_names', [])
+            
+            sections.append("Feature engineering was performed prior to feature selection. ")
+            
+            # List techniques from engineering log
+            if engineering_log:
+                sections.append("The following transformations were applied: ")
+                techniques = []
+                # Get per-model PCA configs for more precise reporting
+                configs_by_model = st.session_state.get('preprocessing_config_by_model', {})
+                pca_details = {}
+                for model_key, cfg in configs_by_model.items():
+                    if cfg.get('use_pca'):
+                        pca_mode = cfg.get('pca_mode')
+                        pca_n = cfg.get('pca_n_components')
+                        pca_details[model_key] = {'mode': pca_mode, 'n_components': pca_n}
+                
+                for log_entry in engineering_log:
+                    # Parse entries like "Polynomial degree 2: +45 features"
+                    if ':' in log_entry:
+                        technique, detail = log_entry.split(':', 1)
+                        technique_name = technique.strip()
+                        # Enhanced PCA reporting with mode/component info
+                        if 'PCA' in technique_name.upper() and pca_details:
+                            # Use the first PCA config as representative (or report all if they differ)
+                            first_pca = next(iter(pca_details.values()))
+                            mode = first_pca.get('mode')
+                            n_comp = first_pca.get('n_components')
+                            if mode == "Fixed Components" and n_comp:
+                                techniques.append(f"PCA dimensionality reduction ({int(n_comp)} fixed components)")
+                            elif mode == "Variance Threshold" and n_comp:
+                                techniques.append(f"PCA dimensionality reduction (retaining {int(n_comp*100)}% of variance)")
+                            else:
+                                techniques.append(f"{technique_name} ({detail.strip()})")
+                        else:
+                            techniques.append(f"{technique_name} ({detail.strip()})")
+                    else:
+                        techniques.append(log_entry)
+                sections.append("; ".join(techniques) + ". ")
+            
+            # Total features created
+            n_engineered = feature_counts.get('engineered')
+            if n_engineered is None:
+                n_engineered = len(engineered_feature_names) if engineered_feature_names else 0
+            if n_engineered > 0:
+                sections.append(
+                    f"In total, {n_engineered} engineered features were created and included in subsequent feature selection."
+                )
+            else:
+                sections.append(
+                    "The engineered features were included in subsequent feature selection and model training."
+                )
+    except ImportError:
+        # Not in a Streamlit context, skip feature engineering section
+        pass
 
     # Missing data & Preprocessing (combined when preprocessing_summary available)
     _preproc = preprocessing_config or {}
@@ -150,9 +588,194 @@ def generate_methods_section(
         sections.append(f"Missing data were handled using {missing_data_strategy}.")
     else:
         sections.append("[PLACEHOLDER: Describe how missing data were handled.]")
+    
+    # Add missing data summary if available
+    if missing_data_summary:
+        n_features_with_missing = missing_data_summary.get('n_features_with_missing')
+        total_features = missing_data_summary.get('total_features')
+        min_missing_rate = missing_data_summary.get('min_missing_rate')
+        max_missing_rate = missing_data_summary.get('max_missing_rate')
+        
+        if n_features_with_missing is not None and total_features is not None:
+            if min_missing_rate is not None and max_missing_rate is not None:
+                sections.append(
+                    f" {n_features_with_missing} of {total_features} features had missing values "
+                    f"(missing rates ranging from {min_missing_rate*100:.1f}% to {max_missing_rate*100:.1f}%)."
+                )
+            else:
+                sections.append(
+                    f" {n_features_with_missing} of {total_features} features had missing values."
+                )
 
     sections.append("\n\n### Data Preprocessing\n")
-    if _has_summary:
+    
+    # Per-model preprocessing: check session state for configs_by_model
+    _per_model_configs = {}
+    try:
+        import streamlit as st
+        _per_model_configs = st.session_state.get('preprocessing_config_by_model', {})
+    except ImportError:
+        pass
+    
+    # Helper labels
+    _scale_labels = {
+        "standard": "z-score standardization", "robust": "robust scaling",
+        "minmax": "min-max normalization", "none": None,
+    }
+    _enc_labels = {
+        "onehot": "one-hot encoding", "target": "target encoding",
+        "ordinal": "ordinal encoding",
+    }
+    
+    def _describe_model_preproc(cfg: Dict) -> List[str]:
+        """Build list of preprocessing description sentences for one model config."""
+        sents = []
+        scaling = cfg.get('numeric_scaling', 'none')
+        sl = _scale_labels.get(scaling)
+        if sl:
+            sents.append(f"scaled using {sl}")
+        encoding = cfg.get('categorical_encoding', '')
+        el = _enc_labels.get(encoding)
+        if el:
+            sents.append(f"categorical variables encoded using {el}")
+        outlier = cfg.get('numeric_outlier_treatment', 'none')
+        outlier_desc = _describe_outlier_handling(outlier, cfg.get('numeric_outlier_params', {}))
+        if outlier_desc:
+            sents.append(outlier_desc)
+        # PCA
+        if cfg.get('use_pca'):
+            pca_n = cfg.get('pca_n_components')
+            if isinstance(pca_n, float) and pca_n < 1:
+                sents.append(f"PCA applied (retaining {pca_n*100:.0f}% variance)")
+            elif isinstance(pca_n, int):
+                sents.append(f"PCA applied ({pca_n} components)")
+            else:
+                sents.append("PCA dimensionality reduction applied")
+        transform = cfg.get('numeric_power_transform', 'none')
+        if transform and transform != 'none':
+            sents.append(f"{transform} power transform applied")
+        log_t = cfg.get('numeric_log_transform', False)
+        if log_t:
+            sents.append("log transform applied")
+        return sents
+    
+    if _per_model_configs and len(_per_model_configs) > 1:
+        # Check if all models share the same preprocessing
+        config_signatures = {}
+        for mk, cfg in _per_model_configs.items():
+            sig = (
+                cfg.get('numeric_scaling', 'none'),
+                cfg.get('categorical_encoding', ''),
+                cfg.get('numeric_outlier_treatment', 'none'),
+                json.dumps(cfg.get('numeric_outlier_params', {}), sort_keys=True, default=str),
+                cfg.get('numeric_power_transform', 'none'),
+                cfg.get('numeric_log_transform', False),
+                cfg.get('use_pca', False),
+                cfg.get('pca_n_components'),
+            )
+            config_signatures[mk] = sig
+        
+        unique_sigs = set(config_signatures.values())
+        
+        if len(unique_sigs) == 1:
+            # All models share the same preprocessing
+            first_cfg = next(iter(_per_model_configs.values()))
+            sents = _describe_model_preproc(first_cfg)
+            if sents:
+                sections.append("All models shared identical preprocessing: " + "; ".join(sents) + ".")
+            else:
+                sections.append("No additional preprocessing transformations were applied beyond imputation.")
+        else:
+            # Models differ — describe each model's full preprocessing
+            # Check for any truly shared settings
+            all_cfgs = list(_per_model_configs.values())
+            shared_scaling = all_cfgs[0].get('numeric_scaling', 'none') if len(set(c.get('numeric_scaling', 'none') for c in all_cfgs)) == 1 else None
+            shared_encoding = all_cfgs[0].get('categorical_encoding', '') if len(set(c.get('categorical_encoding', '') for c in all_cfgs)) == 1 else None
+            
+            shared_parts = []
+            if shared_scaling and shared_scaling != 'none' and _scale_labels.get(shared_scaling):
+                shared_parts.append(f"continuous features were scaled using {_scale_labels[shared_scaling]}")
+            if shared_encoding and _enc_labels.get(shared_encoding):
+                shared_parts.append(f"categorical variables were encoded using {_enc_labels[shared_encoding]}")
+            
+            if shared_parts:
+                sections.append("Across all models, " + "; ".join(shared_parts) + ".")
+            
+            # Describe per-model differences
+            sections.append(" Model-specific preprocessing differed as follows:")
+            for mk, cfg in _per_model_configs.items():
+                diffs = []
+                # Scaling — mention if not shared or if this model differs
+                if not shared_scaling:
+                    scaling = cfg.get('numeric_scaling', 'none')
+                    sl = _scale_labels.get(scaling)
+                    if sl:
+                        diffs.append(f"scaled using {sl}")
+                    else:
+                        diffs.append("no feature scaling")
+                # Outlier treatment
+                outlier = cfg.get('numeric_outlier_treatment', 'none')
+                outlier_desc = _describe_outlier_handling(outlier, cfg.get('numeric_outlier_params', {}))
+                if outlier_desc:
+                    diffs.append(outlier_desc)
+                # PCA
+                if cfg.get('use_pca'):
+                    pca_n = cfg.get('pca_n_components')
+                    if isinstance(pca_n, float) and pca_n < 1:
+                        diffs.append(f"PCA applied (retaining {pca_n*100:.0f}% variance)")
+                    elif isinstance(pca_n, int):
+                        diffs.append(f"PCA applied ({pca_n} components)")
+                    else:
+                        diffs.append("PCA dimensionality reduction applied")
+                # Power transform
+                transform = cfg.get('numeric_power_transform', 'none')
+                if transform and transform != 'none':
+                    diffs.append(f"{transform} power transform")
+                # Log transform
+                log_t = cfg.get('numeric_log_transform', False)
+                if log_t:
+                    diffs.append("log transform")
+                
+                if diffs:
+                    sections.append(f" {mk.upper()}: {'; '.join(diffs)}.")
+                else:
+                    sections.append(f" {mk.upper()}: default preprocessing (no additional transformations).")
+    elif 'Preprocessing' in logged_steps:
+        # Fallback to logged preprocessing (single-config path)
+        preprocessing_logged = False
+        for entry in logged_steps['Preprocessing']:
+            details = entry.get('details', {})
+            if details:
+                sentences = []
+                
+                if details.get('scaling') and details['scaling'] != 'none':
+                    scale_label = _scale_labels.get(details['scaling'], details['scaling'])
+                    if scale_label:
+                        sentences.append(f"Continuous features were scaled using {scale_label}.")
+                
+                if details.get('encoding'):
+                    enc_label = _enc_labels.get(details['encoding'], details['encoding'])
+                    if enc_label:
+                        sentences.append(f"Categorical variables were encoded using {enc_label}.")
+                
+                if details.get('outlier_handling') and details['outlier_handling'] != 'none':
+                    outlier_params = (
+                        details.get('outlier_params')
+                        or details.get('numeric_outlier_params')
+                        or {}
+                    )
+                    outlier_desc = _describe_outlier_handling(details['outlier_handling'], outlier_params)
+                    if outlier_desc:
+                        sentences.append(f"Outliers were {outlier_desc}.")
+                
+                if sentences:
+                    sections.append(" ".join(sentences))
+                    preprocessing_logged = True
+                    break
+        
+        if not preprocessing_logged:
+            sections.append("No additional preprocessing transformations were applied beyond imputation.")
+    elif _has_summary:
         sentences = []
         _sc = _preproc.get("scaling", {})
         if _sc.get("method", "none") != "none":
@@ -164,7 +787,21 @@ def generate_methods_section(
             sentences.append(f"A {_tr['label']} was applied to reduce skewness.")
         _ol = _preproc.get("outliers", {})
         if _ol.get("method", "none") != "none":
-            sentences.append(f"Outliers were addressed via {_ol['label']}.")
+            outlier_params = _ol.get("params", {})
+            if not outlier_params:
+                outlier_params = {
+                    key: _ol.get(key)
+                    for key in (
+                        "lower_percentile", "upper_percentile", "threshold",
+                        "mad_threshold", "n_mad", "multiplier", "iqr_multiplier"
+                    )
+                    if _ol.get(key) is not None
+                }
+            outlier_desc = _describe_outlier_handling(_ol.get("method", "none"), outlier_params)
+            if outlier_desc:
+                sentences.append(f"Outliers were {outlier_desc}.")
+            else:
+                sentences.append(f"Outliers were addressed via {_ol['label']}.")
         _en = _preproc.get("encoding", {})
         if _en.get("method"):
             n_cat = _preproc.get("n_categorical", 0)
@@ -173,14 +810,19 @@ def generate_methods_section(
         if sentences:
             sections.append(" ".join(sentences))
         else:
-            sections.append("No additional preprocessing transformations were applied.")
+            sections.append("No additional preprocessing transformations were applied beyond imputation.")
     elif _preproc:
         steps = []
         scaling = _preproc.get("numeric_scaling", "standard")
         if scaling != "none":
             steps.append(f"numeric features were {scaling}-scaled")
-        imputation = _preproc.get("numeric_imputation", "median")
-        steps.append(f"missing numeric values were imputed using the {imputation}")
+        outlier_desc = _describe_outlier_handling(
+            _preproc.get("numeric_outlier_treatment", "none"),
+            _preproc.get("numeric_outlier_params", {}),
+        )
+        if outlier_desc:
+            steps.append(outlier_desc)
+        # Don't mention imputation here (already in Missing Data section)
         cat_enc = _preproc.get("categorical_encoding", "onehot")
         if cat_enc:
             steps.append(f"categorical variables were encoded using {cat_enc} encoding")
@@ -191,32 +833,148 @@ def generate_methods_section(
 
     # Model development
     sections.append("\n\n### Model Development\n")
-    model_names = list(model_configs.keys()) if model_configs else []
-    if model_names:
-        sections.append(
-            f"The following models were developed and compared: {', '.join(n.upper() for n in model_names)}."
-        )
-    sections.append(
-        f" Data were split into training ({n_train:,}, {n_train/n_total*100:.0f}%), "
+    
+    # Use logged Model Training data if available
+    models_str = None
+    if 'Model Training' in logged_steps:
+        for entry in logged_steps['Model Training']:
+            details = entry.get('details', {})
+            models_trained = details.get('models', [])
+            best_model = details.get('best_model')
+            use_cv = details.get('use_cv', False)
+            cv_folds_logged = details.get('cv_folds')
+            hyperopt_logged = details.get('hyperparameter_optimization', False)
+            
+            if models_trained:
+                models_str = ', '.join(m.upper() for m in models_trained)
+                sections.append(f"The workflow trained and compared the following model candidates: {models_str}.")
+            
+            # Don't use logged best_model here - we'll determine it from actual results below
+            
+            break  # Use first logged training entry
+    else:
+        model_names = list(model_configs.keys()) if model_configs else []
+        if model_names:
+            models_str = ', '.join(n.upper() for n in model_names)
+            sections.append(
+                f"The following models were developed and compared: {models_str}."
+            )
+    
+    # Add hyperparameter details if available
+    if model_hyperparameters:
+        hp_details = []
+        for model_name, params in model_hyperparameters.items():
+            if not params:
+                continue
+            model_key = model_name.lower()
+            # Format publication-relevant params by model type
+            if model_key in ('ridge', 'lasso', 'elasticnet'):
+                relevant = []
+                if 'alpha' in params:
+                    relevant.append(f"α={_fmt_param_value(params['alpha'])}")
+                if 'l1_ratio' in params and model_key == 'elasticnet':
+                    relevant.append(f"l1_ratio={_fmt_param_value(params['l1_ratio'])}")
+                if relevant:
+                    hp_details.append(f"{model_name.upper()} ({', '.join(relevant)})")
+            elif model_key in ('histgb_reg', 'histgb_clf', 'rf', 'xgb', 'lgbm'):
+                relevant = []
+                if 'n_estimators' in params:
+                    relevant.append(f"n_estimators={_fmt_param_value(params['n_estimators'])}")
+                if 'max_depth' in params:
+                    relevant.append(f"max_depth={_fmt_param_value(params['max_depth'])}")
+                if 'learning_rate' in params:
+                    relevant.append(f"learning_rate={_fmt_param_value(params['learning_rate'])}")
+                if relevant:
+                    hp_details.append(f"{model_name.upper()} ({', '.join(relevant)})")
+            elif model_key == 'nn':
+                relevant = []
+                if 'hidden_layer_sizes' in params:
+                    hls = params['hidden_layer_sizes']
+                    if isinstance(hls, (list, tuple)):
+                        relevant.append(f"hidden layers: {list(hls)}")
+                    else:
+                        relevant.append(f"hidden layers: {hls}")
+                if 'learning_rate_init' in params:
+                    relevant.append(f"learning rate={_fmt_param_value(params['learning_rate_init'])}")
+                if 'max_iter' in params:
+                    relevant.append(f"max epochs={_fmt_param_value(params['max_iter'])}")
+                if relevant:
+                    hp_details.append(f"{model_name.upper()} ({', '.join(relevant)})")
+            elif model_key == 'svm':
+                relevant = []
+                if 'C' in params:
+                    relevant.append(f"C={_fmt_param_value(params['C'])}")
+                if 'kernel' in params:
+                    relevant.append(f"kernel={params['kernel']}")
+                if 'gamma' in params:
+                    relevant.append(f"gamma={_fmt_param_value(params['gamma'])}")
+                if relevant:
+                    hp_details.append(f"{model_name.upper()} ({', '.join(relevant)})")
+            elif model_key == 'knn':
+                relevant = []
+                if 'n_neighbors' in params:
+                    relevant.append(f"n_neighbors={_fmt_param_value(params['n_neighbors'])}")
+                if 'weights' in params:
+                    relevant.append(f"weights={params['weights']}")
+                if relevant:
+                    hp_details.append(f"{model_name.upper()} ({', '.join(relevant)})")
+        if hp_details:
+            sections.append(f" Key hyperparameters: {'; '.join(hp_details)}.")
+    
+    # Add hyperparameter optimization note
+    if hyperparameter_optimization:
+        sections.append(" Hyperparameter optimization was performed using Optuna (30 trials per model).")
+    
+    # Construct split description with strategy
+    split_desc = "Data were split"
+    if split_strategy:
+        split_desc += f" using {split_strategy} sampling"
+    split_desc += (
+        f" into training ({n_train:,}, {n_train/n_total*100:.0f}%), "
         f"validation ({n_val:,}, {n_val/n_total*100:.0f}%), and "
         f"test ({n_test:,}, {n_test/n_total*100:.0f}%) sets."
     )
-    if cv_folds:
-        sections.append(f" {cv_folds}-fold cross-validation was used for internal validation.")
+    sections.append(split_desc)
+    
+    # Check for CV from logged data or parameters
+    cv_to_use = None
+    if 'Model Training' in logged_steps:
+        for entry in logged_steps['Model Training']:
+            details = entry.get('details', {})
+            if details.get('use_cv'):
+                cv_to_use = details.get('cv_folds', 5)
+                break
+    if cv_to_use is None and cv_folds:
+        cv_to_use = cv_folds
+    
+    if cv_to_use:
+        sections.append(f" {cv_to_use}-fold cross-validation was used for internal validation.")
 
     # Performance evaluation
     sections.append("\n\n### Performance Evaluation\n")
     sections.append(
-        f"Model performance was evaluated using {', '.join(metrics_used)}. "
-        f"95% confidence intervals were computed using 1,000 BCa bootstrap resamples. "
+        f"Model performance was evaluated on the workflow's held-out data using {', '.join(metrics_used)}. "
+        f"When available, 95% confidence intervals were computed from 1,000 BCa bootstrap resamples. "
     )
     if external_validation:
         sections.append(
             "External validation was performed on an independent dataset. "
         )
 
-    # Explainability
-    if explainability_methods:
+    # Explainability - check both parameter and session state
+    explainability_to_mention = set(explainability_methods or [])
+    
+    # Check session state for SHAP and Bland-Altman
+    try:
+        import streamlit as st
+        if st.session_state.get('shap_results'):
+            explainability_to_mention.add('shap')
+        if st.session_state.get('bland_altman_results'):
+            explainability_to_mention.add('bland_altman')
+    except ImportError:
+        pass
+    
+    if explainability_to_mention:
         sections.append("\n\n### Model Interpretability\n")
         method_descriptions = {
             "permutation_importance": "Permutation importance was computed to assess feature contributions by measuring the decrease in model performance when each feature was randomly shuffled.",
@@ -225,36 +983,255 @@ def generate_methods_section(
             "calibration": "Model calibration was assessed using reliability diagrams, Brier score, and expected calibration error (ECE).",
             "subgroup": "Subgroup analysis was performed to evaluate model performance across clinically relevant subgroups.",
             "decision_curve": "Decision curve analysis was performed to assess the clinical utility of the model at various probability thresholds.",
+            "bland_altman": "Bland-Altman analysis was performed to assess agreement between model predictions.",
         }
-        for method in explainability_methods:
+        for method in sorted(explainability_to_mention):
             desc = method_descriptions.get(method, f"{method} analysis was performed.")
             sections.append(f"{desc} ")
 
-    # Software
-    sections.append("\n\n### Software\n")
+    # Sensitivity Analysis — check methodology log and session state
+    _has_seed_sensitivity = False
+    _has_feature_dropout = False
+    try:
+        import streamlit as st
+        _has_seed_sensitivity = st.session_state.get('sensitivity_seed_results') is not None
+        _has_feature_dropout = st.session_state.get('sensitivity_dropout_results') is not None
+    except ImportError:
+        pass
+    
+    # Also check methodology log
+    if 'Sensitivity Analysis' in logged_steps:
+        for entry in logged_steps['Sensitivity Analysis']:
+            action = entry.get('action', '')
+            if 'seed' in action.lower():
+                _has_seed_sensitivity = True
+            if 'dropout' in action.lower():
+                _has_feature_dropout = True
+    
+    if _has_seed_sensitivity or _has_feature_dropout:
+        sections.append("\n\n### Sensitivity Analysis\n")
+        
+        # Collect ALL seed sensitivity entries (may have multiple models)
+        seed_entries = []
+        dropout_entries = []
+        if 'Sensitivity Analysis' in logged_steps:
+            for entry in logged_steps['Sensitivity Analysis']:
+                action = entry.get('action', '').lower()
+                if 'seed' in action:
+                    seed_entries.append(entry.get('details', {}))
+                if 'dropout' in action:
+                    dropout_entries.append(entry.get('details', {}))
+        
+        if seed_entries:
+            seed_entries = _dedupe_latest_by(seed_entries, ('model', 'metric'))
+            if len(seed_entries) == 1:
+                d = seed_entries[0]
+                sections.append(
+                    f"Seed stability analysis was performed on {d.get('model', '?').upper()} "
+                    f"using {d.get('n_seeds', 'multiple')} random seeds to assess sensitivity of "
+                    f"{d.get('metric', 'the primary metric')} to random initialization. "
+                )
+            else:
+                models_str = ", ".join(
+                    f"{d.get('model', '?').upper()} ({d.get('metric', '?')}, {d.get('n_seeds', '?')} seeds)"
+                    for d in seed_entries
+                )
+                sections.append(
+                    f"Seed stability analysis was performed on {models_str} "
+                    f"to assess sensitivity to random initialization. "
+                )
+            
+            # Include actual results from session state for the most recent run
+            try:
+                seed_df = st.session_state.get('sensitivity_seed_results')
+                if seed_df is not None:
+                    # Report results for the last seed entry's metric
+                    last_metric = seed_entries[-1].get('metric', '')
+                    last_model = seed_entries[-1].get('model', '?').upper()
+                    if last_metric and last_metric in seed_df.columns:
+                        valid = seed_df[last_metric].dropna()
+                        if len(valid) > 1:
+                            cv = valid.std() / abs(valid.mean()) * 100 if valid.mean() != 0 else 0
+                            sections.append(
+                                f"For {last_model}, the coefficient of variation across seeds was {cv:.1f}%, "
+                                f"with {last_metric} ranging from {valid.min():.4f} to {valid.max():.4f} "
+                                f"(mean: {valid.mean():.4f}, SD: {valid.std():.4f}). "
+                            )
+            except Exception:
+                pass
+        
+        if dropout_entries:
+            dropout_entries = _dedupe_latest_by(dropout_entries, ('model', 'metric'))
+            if len(dropout_entries) == 1:
+                d = dropout_entries[0]
+                sections.append(
+                    f"Feature dropout analysis was performed on {d.get('model', '?').upper()}, "
+                    f"sequentially removing each of {d.get('n_features_tested', '')} features and retraining "
+                    f"to measure the impact on {d.get('metric', 'the primary metric')}. "
+                )
+            else:
+                parts = []
+                for d in dropout_entries:
+                    parts.append(
+                        f"{d.get('model', '?').upper()} "
+                        f"({d.get('n_features_tested', '?')} features, {d.get('metric', '?')})"
+                    )
+                sections.append(
+                    f"Feature dropout analysis was performed on {' and '.join(parts)}, "
+                    f"sequentially removing individual features and retraining to measure impact. "
+                )
+
+    # Software - get actual versions
+    try:
+        import sklearn
+        import numpy
+        import pandas
+        import scipy
+        
+        py_version = sys.version.split()[0]
+        sklearn_version = sklearn.__version__
+        numpy_version = numpy.__version__
+        pandas_version = pandas.__version__
+        scipy_version = scipy.__version__
+        
+        sections.append("\n\n### Software\n")
+        sections.append(
+            f"All analyses were performed using Python (version {py_version}) with "
+            f"scikit-learn ({sklearn_version}), NumPy ({numpy_version}), "
+            f"pandas ({pandas_version}), and SciPy ({scipy_version}). "
+            f"Random seed was set to {random_seed} for reproducibility."
+        )
+    except Exception:
+        # Fallback if imports fail
+        sections.append("\n\n### Software\n")
+        sections.append(
+            f"All analyses were performed using Python with "
+            f"scikit-learn, NumPy, pandas, and SciPy. "
+            f"Random seed was set to {random_seed} for reproducibility."
+        )
+
+    # Methodological Considerations
+    sections.append("\n\n### Methodological Considerations\n")
     sections.append(
-        f"All analyses were performed using Python (version 3.x) with "
-        f"scikit-learn, NumPy, pandas, and SciPy. "
-        f"Random seed was set to {random_seed} for reproducibility. "
-        f"[PLACEHOLDER: Add specific software versions from the reproducibility manifest.]"
+        "The following methodological choices and their implications are documented "
+        "for transparency and reproducibility.\n\n"
     )
+
+    # 1. CV on pre-transformed data
+    if cv_folds or cv_to_use:
+        _has_pca = False
+        _has_feature_selection = feature_selection_logged or feature_selection_method is not None
+        try:
+            import streamlit as st
+            _preproc_configs = st.session_state.get('preprocessing_config_by_model', {})
+            for _mc in _preproc_configs.values():
+                if isinstance(_mc, dict) and _mc.get('use_pca'):
+                    _has_pca = True
+                    break
+        except ImportError:
+            pass
+
+        cv_num = cv_to_use if cv_to_use else cv_folds
+        sections.append(
+            f"**Cross-validation and preprocessing:** {cv_num}-fold cross-validation was performed "
+            f"on data that had already been preprocessed using the full training set. "
+            f"In a strict nested cross-validation framework, preprocessing would be re-fit within "
+            f"each fold to avoid information leakage. For scale-invariant models (tree-based ensembles), "
+            f"this has no practical effect. For scale-sensitive models (linear, SVM, neural networks), "
+            f"the impact of this choice on reported cross-validation metrics is expected to be minimal "
+            f"for imputation and scaling operations"
+        )
+        if _has_pca or _has_feature_selection:
+            sections.append(
+                f", though it may introduce optimistic bias for dimensionality reduction "
+                f"{'(PCA was applied)' if _has_pca else ''}"
+                f"{' (feature selection was applied)' if _has_feature_selection else ''}"
+            )
+        sections.append(
+            ". Held-out test set performance, which uses a strict train/test separation "
+            "for preprocessing, remains unaffected by this consideration.\n\n"
+        )
+
+    # 2. Feature dropout methodology
+    try:
+        import streamlit as st
+        _has_dropout = st.session_state.get('sensitivity_dropout_results') is not None
+    except ImportError:
+        _has_dropout = False
+
+    if _has_dropout:
+        sections.append(
+            "**Feature dropout analysis:** When assessing the impact of individual feature removal, "
+            "models were retrained using median imputation only (without the full preprocessing pipeline) "
+            "due to the complexity of dynamically reconstructing column-specific pipelines for each "
+            "feature permutation. This simplification is inconsequential for tree-based models, which are "
+            "invariant to monotonic feature transformations. For linear and neural network models, "
+            "dropout impact estimates should be interpreted with caution, as the absence of scaling "
+            "may confound the effect of feature removal. Permutation importance and SHAP values, "
+            "which operate on the fully preprocessed data, provide more reliable feature importance "
+            "estimates for these model types.\n\n"
+        )
+
+    # 3. Feature engineering transform detection
+    try:
+        import streamlit as st
+        _has_eng = st.session_state.get('feature_engineering_applied', False)
+        _transform_map = st.session_state.get('engineered_feature_transforms', {})
+    except ImportError:
+        _has_eng = False
+        _transform_map = {}
+
+    if _has_eng and _transform_map:
+        sections.append(
+            "**Engineered feature handling in preprocessing:** To prevent double-transformation "
+            "(e.g., applying a log transform to an already log-transformed feature), engineered features "
+            "were identified by naming convention and automatically excluded from redundant preprocessing "
+            "transforms. These features received imputation and scaling only. "
+            "This detection relies on standard naming prefixes (e.g., `log_`, `sqrt_`, `PCA_`); "
+            "features with non-standard names were treated as untransformed and received full preprocessing.\n\n"
+        )
+
+    # 4. Methodology audit trail
+    if logged_steps:
+        step_names = sorted(logged_steps.keys())
+        sections.append(
+            f"**Reproducibility:** All data processing decisions were recorded in an automated "
+            f"methodology log covering {len(step_names)} analysis phases "
+            f"({', '.join(step_names)}). "
+            f"This log captures the specific parameters used at each step and can be "
+            f"exported for full reproducibility.\n\n"
+        )
 
     # ── Results Section (if actual results provided) ──
     if selected_model_results:
-        sections.append("\n\n---\n\n## Results (Draft)\n")
+        sections.append("\n\n---\n\n## Results (Workflow-Derived Draft)\n")
         sections.append(f"\n### Model Performance\n")
+        sections.append("This draft reports computed model outputs from the current workflow state and leaves interpretation to the author. ")
 
-        if best_model_name:
-            sections.append(f"The best-performing model was **{best_model_name.upper()}**. ")
+        # Determine best model from actual metrics while preserving manuscript-primary policy
+        actual_best = manuscript_facts.get('best_model_by_metric') or _determine_best_model(selected_model_results, task_type)
+        manuscript_primary_model = manuscript_facts.get('manuscript_primary_model')
 
-        sections.append("Table X presents the performance of all evaluated models on the held-out test set.\n\n")
+        if manuscript_primary_model:
+            sections.append(f"The manuscript-primary model was **{manuscript_primary_model.upper()}**. ")
+            if actual_best and actual_best != manuscript_primary_model:
+                metric_name = manuscript_facts.get('best_metric_name') or 'held-out metric'
+                sections.append(f"The best model by {metric_name} was **{actual_best.upper()}**. ")
+        elif actual_best:
+            metric_name = manuscript_facts.get('best_metric_name') or 'held-out metric'
+            sections.append(f"The best model by {metric_name} was **{actual_best.upper()}**. No manuscript-primary model was explicitly selected in the workflow. ")
+
+        sections.append(
+            f"Table X should summarize the held-out performance of the {len(selected_model_results)} included model(s); "
+            "the bullet list below mirrors those computed outputs for draft writing.\n\n"
+        )
 
         # Build a text table
         for name, res in selected_model_results.items():
             metrics = res.get("metrics", {})
             cis = bootstrap_results.get(name, {}) if bootstrap_results else {}
             metric_strs = []
-            for m, v in metrics.items():
+            for m, v in _ordered_metric_items(metrics, task_type):
                 ci = cis.get(m)
                 if ci and hasattr(ci, 'ci_lower'):
                     metric_strs.append(f"{m}: {v:.4f} (95% CI: {ci.ci_lower:.4f}–{ci.ci_upper:.4f})")
@@ -265,19 +1242,20 @@ def generate_methods_section(
         # Calibration
         if calibration_results:
             sections.append("\n### Calibration\n")
+            sections.append("Calibration outputs are reported only for models with computed calibration artifacts.\n\n")
             for model_name, cal in calibration_results.items():
                 if hasattr(cal, 'brier_score') and cal.brier_score is not None:
                     sections.append(
-                        f"**{model_name}:** Brier score = {cal.brier_score:.4f}, "
+                        f"**{model_name.upper()}:** Brier score = {cal.brier_score:.4f}, "
                         f"ECE = {cal.ece:.4f}.\n\n"
                     )
                 elif hasattr(cal, 'calibration_slope') and cal.calibration_slope is not None:
                     sections.append(
-                        f"**{model_name}:** Calibration slope = {cal.calibration_slope:.3f}, "
+                        f"**{model_name.upper()}:** Calibration slope = {cal.calibration_slope:.3f}, "
                         f"intercept = {cal.calibration_intercept:.3f}.\n\n"
                     )
 
-    return "".join(sections)
+    return "\n".join(sections)
 
 
 # ============================================================================

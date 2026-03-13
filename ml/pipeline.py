@@ -148,7 +148,9 @@ def build_preprocessing_pipeline(
     use_pca: bool = False,
     pca_n_components: Optional[Union[int, float]] = None,
     pca_whiten: bool = False,
-    random_state: int = 42
+    random_state: int = 42,
+    # Passthrough features (already transformed by Feature Engineering)
+    passthrough_numeric_features: Optional[List[str]] = None,
 ) -> Pipeline:
     """
     Build preprocessing pipeline using ColumnTransformer.
@@ -261,6 +263,27 @@ def build_preprocessing_pipeline(
         categorical_pipeline = Pipeline(categorical_steps)
         transformers.append(('categorical', categorical_pipeline, categorical_features))
     
+    # Passthrough numeric features: already transformed by Feature Engineering
+    # They get imputation + scaling only (no log/power/outlier transforms)
+    if passthrough_numeric_features:
+        pt_steps = []
+        # Imputation (same strategy as main numeric)
+        if numeric_imputation == 'mean':
+            pt_steps.append(('imputer', SimpleImputer(strategy='mean')))
+        elif numeric_imputation == 'constant':
+            pt_steps.append(('imputer', SimpleImputer(strategy='constant', fill_value=0)))
+        else:
+            pt_steps.append(('imputer', SimpleImputer(strategy='median')))
+        # Scaling (same as main numeric)
+        if numeric_scaling == 'standard':
+            pt_steps.append(('scaler', StandardScaler()))
+        elif numeric_scaling == 'robust':
+            pt_steps.append(('scaler', RobustScaler()))
+        elif numeric_scaling == 'minmax':
+            pt_steps.append(('scaler', MinMaxScaler()))
+        pt_pipeline = Pipeline(pt_steps)
+        transformers.append(('numeric_passthrough', pt_pipeline, passthrough_numeric_features))
+
     # Create ColumnTransformer
     preprocessor = ColumnTransformer(
         transformers=transformers,

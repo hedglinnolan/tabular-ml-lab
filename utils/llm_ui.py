@@ -371,9 +371,37 @@ def _call_openai(context: str, system_prompt: str, model: str, api_key: str) -> 
 # Streamlit UI components
 # ============================================================================
 
+def _apply_pending_llm_widget_restore():
+    """Apply deferred LLM widget state before sidebar widgets are instantiated."""
+    import streamlit as st
+
+    pending = st.session_state.pop("_pending_widget_state_restore", None)
+    if not pending:
+        return
+
+    llm_keys = {
+        "llm_backend",
+        "ollama_model",
+        "openai_api_key",
+        "openai_model",
+        "anthropic_api_key",
+        "anthropic_model",
+    }
+    for key, value in pending.items():
+        if key in llm_keys:
+            st.session_state[key] = value
+        else:
+            # Preserve any unrelated deferred widget state for the next owner.
+            remaining = st.session_state.get("_pending_widget_state_restore", {})
+            remaining[key] = value
+            st.session_state["_pending_widget_state_restore"] = remaining
+
+
 def render_llm_settings_sidebar():
     """Render LLM configuration in sidebar."""
     import streamlit as st
+
+    _apply_pending_llm_widget_restore()
 
     with st.sidebar.expander("🤖 LLM Settings", expanded=False):
         options = ["vllm", "ollama", "openai"]

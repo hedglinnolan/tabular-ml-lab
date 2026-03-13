@@ -1,14 +1,20 @@
 """
-Page 03: Feature Selection
+Page 04: Feature Selection
 LASSO path, RFE-CV, univariate screening, stability selection.
 Results feed into preprocessing for recommended feature sets.
+
+AUDIT NOTE (Data Flow):
+- get_data() returns: df_engineered (if FE applied) > filtered_data > raw_data
+- Operates on: data_config.feature_cols (if FE applied, includes engineered features)
+- Methodology logging: Added for running analyses (already existed) AND for Apply actions (consensus/manual)
+- Applying selection updates data_config.feature_cols, which downstream pages use
 """
 import streamlit as st
 import pandas as pd
 import numpy as np
 from typing import List, Dict
 
-from utils.session_state import init_session_state, get_data, DataConfig
+from utils.session_state import init_session_state, get_data, DataConfig, log_methodology
 from utils.storyline import render_breadcrumb, render_page_navigation
 from utils.theme import inject_custom_css, render_guidance, render_reviewer_concern, render_step_indicator, render_sidebar_workflow
 from utils.table_export import table
@@ -18,11 +24,12 @@ init_session_state()
 
 st.set_page_config(page_title="Feature Selection", page_icon="🎯", layout="wide")
 inject_custom_css()
-render_sidebar_workflow(current_page="03_Feature")
-render_step_indicator(3, "Feature Selection")
+render_sidebar_workflow(current_page="04_Feature_Selection")
+render_step_indicator(4, "Feature Selection")
 st.title("🎯 Feature Selection")
-render_breadcrumb("03_Feature_Selection")
-render_page_navigation("03_Feature_Selection")
+st.caption("Recommended workflow: use this step to simplify the modeling problem before you start tuning preprocessing or training multiple models.")
+render_breadcrumb("04_Feature_Selection")
+render_page_navigation("04_Feature_Selection")
 
 # Prerequisites
 df = get_data()
@@ -40,9 +47,49 @@ if task_mode != 'prediction':
     st.warning("⚠️ Feature Selection is available in Prediction mode only.")
     st.stop()
 
+# ============================================================================
+# WHY FEATURE SELECTION?
+# ============================================================================
+st.markdown("""
+### Why Feature Selection?
+
+After uploading and exploring your data, you likely have many features (predictors). 
+Feature selection helps you:
+
+1. **Remove redundant features** (e.g., BMI and Weight are highly correlated — keep one)
+2. **Identify the most predictive variables** (focus your analysis)  
+3. **Reduce overfitting** (fewer features = simpler, more generalizable models)
+4. **Improve interpretability** (explain 5 key predictors vs. explaining 50)
+
+This step uses multiple methods (LASSO, RFE-CV, Stability Selection) to find consensus features.
+""")
+
+# ============================================================================
+# Data Source Indicator
+# ============================================================================
+if st.session_state.get('feature_engineering_applied'):
+    n_engineered = len(st.session_state.get('engineered_feature_names', []))
+    original_count = len(df.columns) - n_engineered - 1  # -1 for target
+    total_features = len(df.columns) - 1
+    
+    st.success(
+        f"📊 **Working Dataset:** Engineered Data\n\n"
+        f"• Original features: {original_count}\n\n"
+        f"• Engineered features: {n_engineered}\n\n"
+        f"• Total features: {total_features}\n\n"
+        f"💡 Feature selection will help identify which engineered features are actually useful."
+    )
+
 # Get feature info
-all_features = data_config.feature_cols
 target_col = data_config.target_col
+
+# If feature engineering was applied, use ALL columns from df (except target)
+# Otherwise use configured feature_cols
+if st.session_state.get('feature_engineering_applied'):
+    all_features = [col for col in df.columns if col != target_col]
+else:
+    all_features = data_config.feature_cols
+
 numeric_cols = get_numeric_columns(df)
 numeric_features = [f for f in all_features if f in numeric_cols]
 
@@ -199,8 +246,23 @@ if st.button("🔍 Run Feature Selection", type="primary"):
     st.session_state["feature_selection_results"] = results
 
     # Consensus
-    consensus = consensus_features(results, min_methods=max(1, len(results) // 2))
+    consensus_threshold = max(1, len(results) // 2)
+    consensus = consensus_features(results, min_methods=consensus_threshold)
     st.session_state["consensus_features"] = consensus
+    
+    # Log methodology action
+    methods_used = ", ".join(methods_to_run)
+    log_methodology(
+        step='Feature Selection',
+        action=f"Selected {len(consensus)} features using {methods_used}",
+        details={
+            'methods': methods_to_run,
+            'n_features_before': len(numeric_features),
+            'n_features_after': len(consensus),
+            'selected': list(consensus),
+            'consensus_threshold': consensus_threshold,
+        }
+    )
 
     st.success(f"Feature selection complete! {len(results)} methods run.")
 
@@ -303,6 +365,18 @@ if results:
         if st.button("📋 Use consensus features for modeling", type="primary"):
             data_config.feature_cols = consensus
             st.session_state['data_config'] = data_config
+            # Retrieve consensus_threshold from the analysis log
+            consensus_threshold_logged = None
+            for entry in st.session_state.get('methodology_log', []):
+                if entry.get('step') == 'Feature Selection':
+                    consensus_threshold_logged = entry.get('details', {}).get('consensus_threshold')
+                    break
+            log_methodology(step='Feature Selection Applied', action='Applied consensus feature selection', details={
+                'method': 'consensus',
+                'n_features_selected': len(consensus),
+                'features': consensus,
+                'consensus_threshold': consensus_threshold_logged,
+            })
             st.success(f"Updated feature set to {len(consensus)} consensus features. Proceed to Preprocessing.")
     else:
         st.warning("No consensus features found. Try lowering the threshold or running more methods.")
@@ -319,4 +393,9 @@ if results:
         if st.button("Apply manual selection"):
             data_config.feature_cols = manual_selection
             st.session_state['data_config'] = data_config
+            log_methodology(step='Feature Selection Applied', action='Applied manual feature selection', details={
+                'method': 'manual',
+                'n_features_selected': len(manual_selection),
+                'features': manual_selection
+            })
             st.success(f"Updated feature set to {len(manual_selection)} features.")

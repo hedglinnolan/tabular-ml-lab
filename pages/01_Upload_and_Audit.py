@@ -1,6 +1,12 @@
 """
 Page 01: Upload and Data Audit
 Project-based data management with intelligent merging.
+
+AUDIT NOTE (Data Flow):
+- Sets raw_data and working_table in session state
+- Data cleaning actions modify working_table and call set_data()
+- Methodology logging: Added for all suggested data cleaning actions (drop columns, drop duplicates, impute, etc.)
+- Feature selection stored in data_config.feature_cols
 """
 import streamlit as st
 import pandas as pd
@@ -11,7 +17,7 @@ from datetime import datetime
 
 from utils.session_state import (
     init_session_state, set_data, get_data, DataConfig, reset_data_dependent_state,
-    TaskTypeDetection, CohortStructureDetection
+    TaskTypeDetection, CohortStructureDetection, log_methodology
 )
 from utils.datasets import get_builtin_datasets
 from utils.reconcile import reconcile_target_features
@@ -109,9 +115,15 @@ st.set_page_config(
     layout="wide"
 )
 inject_custom_css()
-render_sidebar_workflow(current_page="01_Upload")
+render_sidebar_workflow(current_page="01_Upload_and_Audit")
 
-st.title("Data Upload & Project Management")
+st.title("📂 Upload & Audit")
+st.caption("Start here. Upload one dataset, confirm it looks right, then choose your analysis setup. Multi-file workflows are still available when you need them.")
+render_guidance(
+    "<strong>Recommended first pass:</strong> 1) Upload a single dataset, 2) review the working table and audit, 3) choose your target and continue to EDA. "
+    "If your study truly depends on linking files, upload them now and use the combine workflow below.",
+    icon="🧭"
+)
 render_breadcrumb("01_Upload_and_Audit")
 render_page_navigation("01_Upload_and_Audit")
 
@@ -121,7 +133,8 @@ render_page_navigation("01_Upload_and_Audit")
 # DATA PERSISTENCE INFO & MANAGEMENT (Sidebar)
 # ============================================================================
 with st.sidebar:
-    st.subheader("Data Management")
+    st.subheader("Session & Data")
+    st.caption("Most users should start with a single dataset. Multi-dataset setup is available when you actually need it.")
     
     # Get database stats
     db_stats = db.get_database_stats()
@@ -216,8 +229,8 @@ if not active_project:
 # SECTION 2: UPLOAD FILES TO PROJECT
 # ============================================================================
 st.markdown("---")
-st.header("Step 1: Upload Your Data")
-st.caption("Upload one or more data files. If you have multiple files, you can merge them in the next step.")
+st.header("Step 1: Add Your Data")
+st.caption("Fastest path: upload one clean dataset and move straight into review + analysis setup. If your study spans multiple files, you can still upload them here and combine them afterward.")
 
 # Initialize datasets registry for this project
 if 'datasets_registry' not in st.session_state:
@@ -227,39 +240,39 @@ if 'datasets_registry' not in st.session_state:
 project_datasets = db.get_project_datasets(active_project['id'])
 
 if project_datasets:
-    st.subheader("Datasets in This Project")
-    
-    dataset_summary = []
-    for d in project_datasets:
-        in_memory = d['id'] in st.session_state.datasets_registry
-        dataset_summary.append({
-            'Name': d['name'],
-            'Filename': d['filename'],
-            'Rows': f"{d['shape_rows']:,}",
-            'Columns': d['shape_cols'],
-            'Status': "Ready" if in_memory else "Missing"
-        })
-    
-    table(pd.DataFrame(dataset_summary), width="stretch", hide_index=True)
-    
-    # Dataset actions
-    with st.expander("Manage Datasets"):
-        delete_dataset = st.selectbox(
-            "Select dataset to delete",
-            options=[''] + [d['name'] for d in project_datasets],
-            key="delete_dataset_select"
-        )
-        if delete_dataset and st.button("Delete Selected Dataset", type="secondary"):
-            for d in project_datasets:
-                if d['name'] == delete_dataset:
-                    db.delete_dataset(d['id'])
-                    if d['id'] in st.session_state.datasets_registry:
-                        del st.session_state.datasets_registry[d['id']]
-                    st.success(f"Deleted '{delete_dataset}'")
-                    st.rerun()
+    with st.expander("Review uploaded datasets", expanded=len(project_datasets) == 1):
+        dataset_summary = []
+        for d in project_datasets:
+            in_memory = d['id'] in st.session_state.datasets_registry
+            dataset_summary.append({
+                'Name': d['name'],
+                'Filename': d['filename'],
+                'Rows': f"{d['shape_rows']:,}",
+                'Columns': d['shape_cols'],
+                'Status': "Ready" if in_memory else "Missing"
+            })
+        
+        table(pd.DataFrame(dataset_summary), width="stretch", hide_index=True)
+        
+        # Dataset actions
+        with st.expander("Manage uploaded datasets"):
+            delete_dataset = st.selectbox(
+                "Select dataset to delete",
+                options=[''] + [d['name'] for d in project_datasets],
+                key="delete_dataset_select"
+            )
+            if delete_dataset and st.button("Delete Selected Dataset", type="secondary"):
+                for d in project_datasets:
+                    if d['name'] == delete_dataset:
+                        db.delete_dataset(d['id'])
+                        if d['id'] in st.session_state.datasets_registry:
+                            del st.session_state.datasets_registry[d['id']]
+                        st.success(f"Deleted '{delete_dataset}'")
+                        st.rerun()
 
 # File upload
-st.subheader("Upload New Files")
+st.subheader("Quick start: upload a dataset")
+st.caption("You can upload more than one file, but most analyses should begin with a single dataset.")
 
 uploaded_files = st.file_uploader(
     "Upload data files (CSV, Excel, Parquet, TSV)",
@@ -416,7 +429,8 @@ if uploaded_files:
                 logger.exception(e)
 
 # Built-in datasets option
-with st.expander("Or Use Built-in Dataset"):
+with st.expander("Need a practice dataset instead?", expanded=False):
+    st.caption("Useful for exploration or demos. Real projects will usually start with your own dataset.")
     builtin_options = [''] + list(get_builtin_datasets().keys())
     selected_builtin = st.selectbox("Built-in Dataset", builtin_options, key="builtin_select")
     
@@ -479,171 +493,124 @@ if len(project_datasets) > 1:
             df_temp.columns = [str(c) for c in df_temp.columns]
             dataframes[d['name']] = df_temp
     
-    # -------------------------------------------------------------------------
-    # PLAIN LANGUAGE EXPLANATION
-    # -------------------------------------------------------------------------
-    st.info("""
-    **You have multiple files uploaded.** Before analysis, you need to combine them into one table.
-    
-    Think of it like this: if you have patient demographics in one file and their lab results in another, 
-    you need to connect them so each patient's info is on the same row as their results.
-    """)
-    
-    # -------------------------------------------------------------------------
-    # VISUAL SCHEMA DIAGRAM
-    # -------------------------------------------------------------------------
+    st.info(f"You uploaded **{len(project_datasets)} datasets**. The simplest path is still to pick one dataset and continue. Only combine files if your analysis truly depends on information split across them.")
+
+    st.subheader("Choose your setup")
+    merge_choice = st.radio(
+        "Choose an option:",
+        [
+            "Use one dataset for now (recommended first pass)",
+            "Combine datasets using a shared column",
+            "Advanced merge setup"
+        ],
+        key="merge_choice_radio",
+        label_visibility="collapsed",
+        help="For most first passes, pick one dataset. Use Combine when your analysis truly depends on linking files. Advanced gives full control over join type and columns."
+    )
+
     # Detect common columns for the visual
     common_cols = detect_common_columns(project_datasets)
-    
-    render_schema_diagram(dataframes, common_cols)
-    
-    # -------------------------------------------------------------------------
-    # DATA ORIENTATION CHECK
-    # -------------------------------------------------------------------------
-    st.markdown("---")
-    st.subheader("Check Your Data Structure")
-    st.caption("""
-    **Important:** For analysis, your data should usually have:
-    - **Rows** = observations (patients, samples, records) 
-    - **Columns** = variables/features to analyze
-    
-    If your data is structured the other way around, you can transpose it here.
-    """)
-    
+
     # Track transposed dataframes
     if 'transposed_for_merge' not in st.session_state:
         st.session_state.transposed_for_merge = {}
-    
+
     orientation_issues = []
-    
-    for name, df in dataframes.items():
-        with st.expander(f"**{name}** — {df.shape[0]:,} rows × {df.shape[1]} columns", expanded=False):
-            # Show preview
-            table(df.head(3), width="stretch")
-            
-            # Check orientation
-            cols_much_larger = df.shape[1] > df.shape[0] * 2 and df.shape[1] > 10
-            rows_much_larger = df.shape[0] > df.shape[1] * 10 and df.shape[0] > 100
-            
-            if cols_much_larger:
-                st.warning(f"""
-                **Possible issue:** This dataset has {df.shape[1]} columns but only {df.shape[0]} rows.
-                
-                If your {df.shape[1]} columns are actually observations (like patients or samples) 
-                and your {df.shape[0]} rows are features, you should transpose this data.
-                """)
-                orientation_issues.append(name)
-            
-            # Transpose option for this dataset
-            transpose_key = f"transpose_merge_{name}"
-            currently_transposed = st.session_state.transposed_for_merge.get(name, False)
-            
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                if currently_transposed:
-                    st.success(f"This dataset will be transposed (rows ↔ columns) before merging.")
-                else:
-                    st.caption("Data will be used as-is.")
-            
-            with col2:
-                btn_label = "Undo Transpose" if currently_transposed else "Transpose"
-                if st.button(btn_label, type="secondary", key=f"btn_transpose_{name}"):
-                    st.session_state.transposed_for_merge[name] = not currently_transposed
-                    st.rerun()
-            
-            # Show preview of transposed version and download option
-            if currently_transposed:
-                st.markdown("**Preview after transpose:**")
-                transposed_df = df.T.reset_index()
-                transposed_df.columns = ['index'] + [f"col_{i}" for i in range(len(transposed_df.columns)-1)]
-                table(transposed_df.head(5), width="stretch")
-                st.caption(f"After transpose: {transposed_df.shape[0]:,} rows × {transposed_df.shape[1]} columns")
-                
-                # Download transposed data
-                csv_data = transposed_df.to_csv(index=False)
-                st.download_button(
-                    label=f"Download Transposed '{name}' as CSV",
-                    data=csv_data,
-                    file_name=f"{name}_transposed.csv",
-                    mime="text/csv",
-                    key=f"download_transposed_{name}"
-                )
-            
-            # Always offer download of original/current version
-            st.markdown("---")
-            original_csv = df.to_csv(index=False)
-            st.download_button(
-                label=f"Download '{name}' as CSV (current version)",
-                data=original_csv,
-                file_name=f"{name}.csv",
-                mime="text/csv",
-                key=f"download_original_{name}"
-            )
-    
-    # Apply transpositions to dataframes for merging
+
+    if "Use one dataset" not in merge_choice:
+        with st.expander("Review how these datasets relate", expanded=False):
+            st.caption("Use this when you need extra context before combining files.")
+            render_schema_diagram(dataframes, common_cols)
+
+        with st.expander("Check data structure before combining", expanded=False):
+            st.caption("For most analyses, rows should be observations and columns should be variables. Transpose here only if a dataset is flipped.")
+            for name, df in dataframes.items():
+                with st.expander(f"**{name}** — {df.shape[0]:,} rows × {df.shape[1]} columns", expanded=False):
+                    table(df.head(3), width="stretch")
+
+                    cols_much_larger = df.shape[1] > df.shape[0] * 2 and df.shape[1] > 10
+
+                    if cols_much_larger:
+                        st.warning(f"""
+                        **Possible issue:** This dataset has {df.shape[1]} columns but only {df.shape[0]} rows.
+
+                        If your {df.shape[1]} columns are actually observations (like patients or samples)
+                        and your {df.shape[0]} rows are features, you should transpose this data.
+                        """)
+                        orientation_issues.append(name)
+
+                    currently_transposed = st.session_state.transposed_for_merge.get(name, False)
+
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        if currently_transposed:
+                            st.success("This dataset will be transposed (rows ↔ columns) before merging.")
+                        else:
+                            st.caption("Data will be used as-is.")
+
+                    with col2:
+                        btn_label = "Undo Transpose" if currently_transposed else "Transpose"
+                        if st.button(btn_label, type="secondary", key=f"btn_transpose_{name}"):
+                            st.session_state.transposed_for_merge[name] = not currently_transposed
+                            st.rerun()
+
+                    if currently_transposed:
+                        st.markdown("**Preview after transpose:**")
+                        transposed_df = df.T.reset_index()
+                        transposed_df.columns = ['index'] + [f"col_{i}" for i in range(len(transposed_df.columns)-1)]
+                        table(transposed_df.head(5), width="stretch")
+                        st.caption(f"After transpose: {transposed_df.shape[0]:,} rows × {transposed_df.shape[1]} columns")
+
+                        csv_data = transposed_df.to_csv(index=False)
+                        st.download_button(
+                            label=f"Download Transposed '{name}' as CSV",
+                            data=csv_data,
+                            file_name=f"{name}_transposed.csv",
+                            mime="text/csv",
+                            key=f"download_transposed_{name}"
+                        )
+
+                    st.markdown("---")
+                    original_csv = df.to_csv(index=False)
+                    st.download_button(
+                        label=f"Download '{name}' as CSV (current version)",
+                        data=original_csv,
+                        file_name=f"{name}.csv",
+                        mime="text/csv",
+                        key=f"download_original_{name}"
+                    )
+
     for name in list(dataframes.keys()):
         if st.session_state.transposed_for_merge.get(name, False):
             original_df = dataframes[name]
-            # Transpose and use first row as header if it looks like labels
             transposed = original_df.T.reset_index()
-            # Try to use meaningful column names (deduplicate if first row has duplicates)
             if len(transposed.columns) > 0 and len(transposed) > 0:
                 raw_cols = [str(c) for c in transposed.iloc[0]]
                 transposed.columns = make_unique_columns(raw_cols)
                 transposed = transposed.iloc[1:].reset_index(drop=True)
             transposed.columns = make_unique_columns(transposed.columns)
             dataframes[name] = transposed
-    
-    # Re-detect common columns after transposition
-    # Build project_datasets equivalent from dataframes
+
     updated_project_datasets = [
-        {'name': name, 'columns': list(df.columns)} 
+        {'name': name, 'columns': list(df.columns)}
         for name, df in dataframes.items()
     ]
     common_cols = detect_common_columns(updated_project_datasets)
-    
+
     if orientation_issues:
-        st.info(f"""
-        **Tip:** {len(orientation_issues)} dataset(s) may have unusual structure. 
-        Review them above and use the Transpose button if needed.
-        """)
-    
-    st.markdown("---")
-    
-    # -------------------------------------------------------------------------
-    # MERGE OPTIONS
-    # -------------------------------------------------------------------------
-    st.subheader("How would you like to combine them?")
-    
-    # Use the already-computed common_cols from transposed data
-    # Re-compute suggestions based on potentially transposed data
+        st.info(f"Tip: {len(orientation_issues)} dataset(s) may be oriented unusually. Open the structure check above if you need to transpose before combining.")
+
     suggestions = suggest_join_keys(updated_project_datasets)
-    
-    # Initialize merge mode
+
     if 'merge_mode' not in st.session_state:
         st.session_state.merge_mode = 'guided'
     
-    # Option 1: Skip merge (just use first dataset)
-    # Option 2: Guided merge (we help them)
-    # Option 3: Advanced merge (full control)
-    
-    merge_choice = st.radio(
-        "Choose an option:",
-        [
-            "Combine datasets using a shared column (recommended)",
-            "Just use one dataset (ignore the others)",
-            "I know what I'm doing (advanced options)"
-        ],
-        key="merge_choice_radio",
-        label_visibility="collapsed",
-        help="Combine: merge on a shared ID column. Just use one: pick a single dataset. Advanced: full control over join type and columns."
-    )
-    
     # -------------------------------------------------------------------------
-    # OPTION 1: GUIDED MERGE (Recommended)
+    # OPTION 1: GUIDED MERGE
     # -------------------------------------------------------------------------
     if "Combine datasets" in merge_choice:
-        st.markdown("#### Connect Your Datasets")
+        st.markdown("#### Combine the datasets you actually need")
+        st.caption("This guided path assumes you want one analysis-ready table without managing a full merge pipeline.")
         
         if not common_cols:
             st.warning("""
@@ -922,9 +889,9 @@ if len(project_datasets) > 1:
     # -------------------------------------------------------------------------
     # OPTION 2: USE SINGLE DATASET
     # -------------------------------------------------------------------------
-    elif "Just use one" in merge_choice:
-        st.markdown("#### Select Which Dataset to Use")
-        st.caption("The other datasets will be ignored for this analysis.")
+    elif "Use one dataset" in merge_choice:
+        st.markdown("#### Recommended first pass: pick one dataset")
+        st.caption("The other uploaded files stay available, but they will not complicate this first workflow unless you come back and choose a merge path.")
         
         dataset_names = list(dataframes.keys())
         selected_single = st.selectbox(
@@ -947,8 +914,8 @@ if len(project_datasets) > 1:
     # OPTION 3: ADVANCED MERGE
     # -------------------------------------------------------------------------
     else:
-        st.markdown("#### Advanced Merge Options")
-        st.caption("For users familiar with database joins.")
+        st.markdown("#### Advanced merge setup")
+        st.caption("Use this only when the guided path is not flexible enough — for example, different join columns, multi-step chaining, or explicit join types.")
         
         # Initialize merge steps in session state
         if 'merge_steps' not in st.session_state:
@@ -1421,6 +1388,13 @@ if suggested_actions:
                     else:
                         st.session_state.working_table = new_df
                         set_data(new_df)
+                        log_methodology(step='Data Cleaning', action=label, details={
+                            'affected_columns': cols if cols else 'all',
+                            'rows_before': df.shape[0],
+                            'rows_after': new_df.shape[0],
+                            'cols_before': df.shape[1],
+                            'cols_after': new_df.shape[1]
+                        })
                         st.success(f"Applied: {label}. New shape: {new_df.shape[0]:,} rows × {new_df.shape[1]} columns")
                         st.rerun()
                 except Exception as e:
@@ -1615,6 +1589,20 @@ if task_mode == "prediction":
         )
         st.session_state.data_config = data_config
         
+        # Log methodology
+        log_methodology(
+            step='Upload & Audit',
+            action=f"Configured {task_type_final} task with {len(selected_features)} features, target: {target_col}",
+            details={
+                'target': target_col,
+                'task_type': task_type_final,
+                'n_features': len(selected_features),
+                'features': selected_features,
+                'n_samples': len(df),
+                'data_source': st.session_state.get('data_source', 'unknown'),
+            }
+        )
+        
         st.success(f"✅ Configuration saved: **{task_type_final.title()}** task with **{len(selected_features)}** features")
         
         # Next steps
@@ -1643,6 +1631,24 @@ else:
     
     Go to the **Hypothesis Testing** page to run tests.
     """)
+
+# ============================================================================
+# WHAT HAPPENS NEXT
+# ============================================================================
+st.markdown("---")
+st.markdown("""
+### What Happens Next?
+
+You've uploaded your data and selected a target variable. Here's your workflow:
+
+1. **Explore Your Data (EDA)** — Distributions, correlations, missing patterns, Table 1
+2. **Optional: Engineer Features** — Create polynomial, ratio, or TDA features if needed
+3. **Select Features** — Identify the most predictive variables
+4. **Train Models** — Compare 18 different algorithms with bootstrap CIs
+5. **Validate & Export** — SHAP, calibration, sensitivity, publication-ready reports
+
+👉 **Continue to Exploratory Data Analysis (EDA)**
+""")
 
 # ============================================================================
 # STATE DEBUG

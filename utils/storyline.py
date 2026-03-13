@@ -9,13 +9,25 @@ PAGE_ORDER = [
     ("Home", "Home", "app.py"),
     ("01_Upload_and_Audit", "Upload & Audit", "pages/01_Upload_and_Audit.py"),
     ("02_EDA", "EDA", "pages/02_EDA.py"),
-    ("03_Feature_Selection", "Feature Selection", "pages/03_Feature_Selection.py"),
-    ("04_Preprocess", "Preprocess", "pages/04_Preprocess.py"),
-    ("05_Train_and_Compare", "Train & Compare", "pages/05_Train_and_Compare.py"),
-    ("06_Explainability", "Explainability", "pages/06_Explainability.py"),
-    ("07_Sensitivity_Analysis", "Sensitivity Analysis", "pages/07_Sensitivity_Analysis.py"),
-    ("08_Hypothesis_Testing", "Hypothesis Testing", "pages/08_Hypothesis_Testing.py"),
-    ("09_Report_Export", "Report Export", "pages/09_Report_Export.py"),
+    ("03_Feature_Engineering", "Feature Engineering", "pages/03_Feature_Engineering.py"),
+    ("04_Feature_Selection", "Feature Selection", "pages/04_Feature_Selection.py"),
+    ("05_Preprocess", "Preprocess", "pages/05_Preprocess.py"),
+    ("06_Train_and_Compare", "Train & Compare", "pages/06_Train_and_Compare.py"),
+    ("07_Explainability", "Explainability", "pages/07_Explainability.py"),
+    ("08_Sensitivity_Analysis", "Sensitivity Analysis", "pages/08_Sensitivity_Analysis.py"),
+    ("09_Hypothesis_Testing", "Statistical Validation", "pages/09_Hypothesis_Testing.py"),
+    ("10_Report_Export", "Report Export", "pages/10_Report_Export.py"),
+]
+
+RECOMMENDED_PAGE_IDS = [
+    "Home",
+    "01_Upload_and_Audit",
+    "02_EDA",
+    "04_Feature_Selection",
+    "05_Preprocess",
+    "06_Train_and_Compare",
+    "07_Explainability",
+    "10_Report_Export",
 ]
 
 
@@ -33,14 +45,28 @@ def render_breadcrumb(current_page: str, step_label: Optional[str] = None) -> No
     st.caption(f"**{breadcrumb}**")
 
 
+def _get_navigation_order(current_page: str):
+    """Return page order for navigation without changing underlying state flow.
+
+    Recommended mode keeps the core workflow spine intact and leaves advanced pages
+    available without making them part of the default next/previous flow.
+    """
+    workflow_mode = st.session_state.get("workflow_mode", "quick")
+    if workflow_mode == "quick" and current_page in RECOMMENDED_PAGE_IDS:
+        return [p for p in PAGE_ORDER if p[0] in RECOMMENDED_PAGE_IDS]
+    return PAGE_ORDER
+
+
+
 def get_prev_next_pages(current_page: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     """Return (prev_path, prev_label, next_path, next_label) for navigation buttons."""
-    pages = [p[0] for p in PAGE_ORDER]
+    navigation_order = _get_navigation_order(current_page)
+    pages = [p[0] for p in navigation_order]
     if current_page not in pages:
         return None, None, None, None
     idx = pages.index(current_page)
-    prev = PAGE_ORDER[idx - 1] if idx > 0 else None
-    next_ = PAGE_ORDER[idx + 1] if idx < len(PAGE_ORDER) - 1 else None
+    prev = navigation_order[idx - 1] if idx > 0 else None
+    next_ = navigation_order[idx + 1] if idx < len(navigation_order) - 1 else None
     prev_path, prev_label = (prev[2], prev[1]) if prev else (None, None)
     next_path, next_label = (next_[2], next_[1]) if next_ else (None, None)
     return prev_path, prev_label, next_path, next_label
@@ -82,10 +108,10 @@ PHASES = [
     StorylinePhase("target_confirmed", "Target & Task Confirmed", "Target variable and task type (regression/classification) set", "01_Upload_and_Audit"),
     StorylinePhase("cohort_confirmed", "Cohort Structure Confirmed", "Cross-sectional vs longitudinal structure identified", "01_Upload_and_Audit"),
     StorylinePhase("eda_insights", "EDA Insights Gathered", "Key patterns and relationships explored", "02_EDA"),
-    StorylinePhase("preprocessing", "Preprocessing Configured", "Data transformation pipeline built", "04_Preprocess"),
-    StorylinePhase("models_trained", "Models Trained & Compared", "Models trained and performance evaluated", "05_Train_and_Compare"),
-    StorylinePhase("explainability", "Explainability Completed", "Model interpretations and feature importance analyzed", "06_Explainability"),
-    StorylinePhase("report_exported", "Report Exported", "Comprehensive report generated and downloaded", "09_Report_Export"),
+    StorylinePhase("preprocessing", "Preprocessing Configured", "Data transformation pipeline built", "05_Preprocess"),
+    StorylinePhase("models_trained", "Models Trained & Compared", "Models trained and performance evaluated", "06_Train_and_Compare"),
+    StorylinePhase("explainability", "Explainability Completed", "Model interpretations and feature importance analyzed", "07_Explainability"),
+    StorylinePhase("report_exported", "Report Exported", "Comprehensive report generated and downloaded", "10_Report_Export"),
 ]
 
 

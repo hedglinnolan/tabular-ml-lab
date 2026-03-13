@@ -1,6 +1,13 @@
 """
-Page 07: Hypothesis Testing
-Run statistical tests to test hypotheses about your data.
+Page 09: Statistical Validation
+Generate traditional statistical tests to validate ML findings and populate Table 1.
+These tests provide p-values and effect sizes required for publication.
+
+AUDIT NOTE (Data Flow):
+- get_data() returns: df_engineered (if FE applied) > filtered_data > raw_data
+- Works in both prediction and hypothesis_testing modes
+- Methodology logging: Added for all statistical tests (correlation, t-test, ANOVA, chi-square, normality, paired)
+- Custom test results stored in session state for Table 1 export
 """
 import streamlit as st
 import pandas as pd
@@ -10,7 +17,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 import logging
 
-from utils.session_state import init_session_state, get_data
+from utils.session_state import init_session_state, get_data, log_methodology
 from utils.storyline import render_breadcrumb, render_page_navigation
 from utils.theme import inject_custom_css, render_guidance, render_sidebar_workflow
 from utils.table_export import table
@@ -28,28 +35,91 @@ logger = logging.getLogger(__name__)
 
 init_session_state()
 
-st.set_page_config(page_title="Hypothesis Testing", page_icon=None, layout="wide")
+st.set_page_config(page_title="Statistical Validation", page_icon="📊", layout="wide")
 inject_custom_css()
-render_sidebar_workflow(current_page="08_Hypothesis")
-st.title("Hypothesis Testing")
-render_breadcrumb("08_Hypothesis_Testing")
-render_page_navigation("08_Hypothesis_Testing")
+render_sidebar_workflow(current_page="09_Hypothesis_Testing")
+st.title("📊 Statistical Validation")
+st.caption("Use this when you need classical tests to support the story coming out of EDA and model explainability.")
+render_breadcrumb("09_Hypothesis_Testing")
+render_page_navigation("09_Hypothesis_Testing")
+
+if st.session_state.get("workflow_mode", "quick") == "quick":
+    st.info("""
+    🧭 **Advanced workflow step** — Return here after the quick workflow when a manuscript or reviewer needs targeted classical tests in addition to your ML result.
+    """)
+
+st.markdown("""
+### Why Statistical Validation?
+
+This page is **not required for every project**. Use it when you need classical statistics to complement the result you already built through EDA, training, and explainability.
+
+Reviewers may still ask:
+
+**"Did you test these findings statistically?"**
+
+This page helps you:
+1. ✅ **Add targeted confirmatory tests** for features or comparisons you care about
+2. ✅ **Populate Table 1** with custom p-values when the automatic outputs are not enough
+3. ✅ **Strengthen your paper's narrative** by pairing ML evidence with classical tests
+
+**ML vs Statistics:**
+- **ML:** "Glucose is an important predictor"
+- **Statistics:** "Glucose differs significantly between groups"
+
+Use both when they answer different parts of the reviewer's question.
+""")
+
+st.markdown("---")
+
+st.markdown("""
+### 📄 How This Fits the End of the Workflow
+
+**Recommended sequence:**
+1. ✅ Build a baseline result
+2. ✅ Explain the model and check whether the result is interpretable
+3. **OPTIONAL NOW:** Add targeted statistical tests only if they strengthen the manuscript
+4. **NEXT:** Export one coherent package of methods, tables, and figures
+
+**About Table 1:**
+- EDA already generates automatic descriptive statistics and baseline p-values
+- This page is for **targeted additions**, not for repeating everything you already ran
+- Custom test results will be merged into the Export page
+
+**Use this page when:**
+- a reviewer will expect a familiar statistical test
+- you need a specific p-value or effect size in the manuscript
+- the ML result is strong, but you want a more classical supporting argument
+""")
+
+st.markdown("---")
 
 # Progress indicator
 
-# Check prerequisites
+# Check prerequisites — allow both prediction and hypothesis_testing modes
 task_mode = st.session_state.get('task_mode')
-if task_mode != 'hypothesis_testing':
-    st.warning("⚠️ **Hypothesis Testing mode not selected.**")
-    st.info("""
-    Please go to the **Upload & Audit** page and select **Hypothesis Testing** as your task mode.
-    
-    Alternatively, you can use this page in "exploration mode" by clicking below.
-    """)
-    if st.button("Enable Hypothesis Testing for This Session", key="enable_hyp_test"):
-        st.session_state.task_mode = 'hypothesis_testing'
-        st.rerun()
+if task_mode not in ('hypothesis_testing', 'prediction'):
+    st.warning("⚠️ **Please select a task mode first.**")
+    st.info("Go to the **Upload & Audit** page and select either **Prediction** or **Hypothesis Testing** as your task mode.")
     st.stop()
+
+# Show context-appropriate guidance
+if task_mode == 'prediction':
+    st.info("""
+    📊 **Using Statistical Validation in Prediction mode**
+    
+    You're here to validate your ML findings with classical statistics. 
+    This complements your model results — reviewers expect both.
+    """)
+    # Cross-reference EDA to warn about duplicate tests
+    eda_results = st.session_state.get('eda_results', {})
+    if eda_results:
+        eda_test_types = [k for k in eda_results.keys() if 'test' in str(k).lower() or 'correlation' in str(k).lower()]
+        if eda_test_types:
+            st.warning(f"""
+            ⚠️ **Note:** You already ran {len(eda_test_types)} analysis/test(s) in EDA. 
+            Check that you're not duplicating those tests here. 
+            Tests from EDA: {', '.join(str(t) for t in eda_test_types[:5])}
+            """)
 
 df = get_data()
 if df is None:
@@ -135,7 +205,7 @@ with st.sidebar:
     st.caption(f"• Current α = {alpha_level}")
 
 # Test selection
-st.header("Select Statistical Test")
+st.header("Run Statistical Tests")
 
 test_type = st.selectbox(
     "What do you want to test?",
@@ -228,6 +298,13 @@ if test_type == "Correlation (two numeric variables)":
                 'n': len(valid_data),
                 'alpha': alpha_level
             }
+            log_methodology(step='Statistical Validation', action=f'{method} correlation test', details={
+                'var1': var1,
+                'var2': var2,
+                'test': test_name,
+                'p_value': p,
+                'r': r
+            })
             st.rerun()
     
     # Display results
@@ -281,6 +358,21 @@ if test_type == "Correlation (two numeric variables)":
             - **Not statistically significant** (p = {results['p']:.4f} ≥ α = {alpha_level})
             - Sample size: n = {results['n']}
             """)
+        
+        # Export to Table 1 button
+        if st.button("📋 Add to Table 1", key="export_corr_table1"):
+            # Store results in session state for Table 1 merging
+            if 'custom_table1_tests' not in st.session_state:
+                st.session_state['custom_table1_tests'] = []
+            
+            st.session_state['custom_table1_tests'].append({
+                'variable': f"{results['var1']} vs {results['var2']}",
+                'test': results['test_name'],
+                'statistic': f"r = {results['r']:.3f}",
+                'p_value': results['p'],
+                'note': f"{results['method']} correlation"
+            })
+            st.success(f"✅ Test result saved! Will be added to Table 1 in Export page. ({len(st.session_state['custom_table1_tests'])} custom tests total)")
         
         # Scatter plot (trendline requires statsmodels; skip if unavailable)
         try:
@@ -361,6 +453,12 @@ elif test_type == "Two-sample comparison (numeric variable, two groups)":
                 'test_name': test_name,
                 'parametric': use_parametric
             }
+            log_methodology(step='Statistical Validation', action=test_name, details={
+                'numeric_var': numeric_var,
+                'group_var': group_var,
+                'groups': [str(group1_name), str(group2_name)],
+                'p_value': p
+            })
             st.rerun()
     
     # Display results
@@ -385,6 +483,20 @@ elif test_type == "Two-sample comparison (numeric variable, two groups)":
         - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < 0.05 else 'not statistically significant'} at α=0.05)
         - This {'suggests' if results['p'] < 0.05 else 'does not suggest'} a significant difference between {results['group1']} and {results['group2']}
         """)
+        
+        # Export to Table 1 button
+        if st.button("📋 Add to Table 1", key="export_ttest_table1"):
+            if 'custom_table1_tests' not in st.session_state:
+                st.session_state['custom_table1_tests'] = []
+            
+            st.session_state['custom_table1_tests'].append({
+                'variable': results['numeric_var'],
+                'test': results['test_name'],
+                'statistic': f"Δ = {results['group1_mean'] - results['group2_mean']:.3f}",
+                'p_value': results['p'],
+                'note': f"Comparing {results['group1']} vs {results['group2']}"
+            })
+            st.success(f"✅ Test result saved! Will be added to Table 1 in Export page. ({len(st.session_state['custom_table1_tests'])} custom tests total)")
         
         # Box plot
         plot_df = pd.DataFrame({
@@ -456,6 +568,12 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
                 'test_name': test_name,
                 'parametric': use_parametric
             }
+            log_methodology(step='Statistical Validation', action=test_name, details={
+                'numeric_var': numeric_var,
+                'group_var': group_var,
+                'n_groups': len(unique_groups),
+                'p_value': p
+            })
             st.rerun()
     
     # Display results
@@ -483,6 +601,20 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
         - This {'suggests' if results['p'] < 0.05 else 'does not suggest'} a significant difference among groups
         - Note: If significant, consider post-hoc tests to identify which groups differ
         """)
+        
+        # Export to Table 1 button
+        if st.button("📋 Add to Table 1", key="export_anova_table1"):
+            if 'custom_table1_tests' not in st.session_state:
+                st.session_state['custom_table1_tests'] = []
+            
+            st.session_state['custom_table1_tests'].append({
+                'variable': results['numeric_var'],
+                'test': results['test_name'],
+                'statistic': f"F = {results['stat']:.3f}",
+                'p_value': results['p'],
+                'note': f"{len(results['group_means'])} groups compared"
+            })
+            st.success(f"✅ Test result saved! Will be added to Table 1 in Export page. ({len(st.session_state['custom_table1_tests'])} custom tests total)")
         
         # Box plot
         plot_df = df[[numeric_var, group_var]].dropna()
@@ -529,6 +661,11 @@ elif test_type == "Categorical association (two categorical variables)":
                 'p': p,
                 'test_name': test_name
             }
+            log_methodology(step='Statistical Validation', action=test_name, details={
+                'var1': var1,
+                'var2': var2,
+                'p_value': p
+            })
             st.rerun()
     
     # Display results
@@ -553,6 +690,20 @@ elif test_type == "Categorical association (two categorical variables)":
         - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < 0.05 else 'not statistically significant'} at α=0.05)
         - This {'suggests' if results['p'] < 0.05 else 'does not suggest'} an association between {var1} and {var2}
         """)
+        
+        # Export to Table 1 button
+        if st.button("📋 Add to Table 1", key="export_chi_table1"):
+            if 'custom_table1_tests' not in st.session_state:
+                st.session_state['custom_table1_tests'] = []
+            
+            st.session_state['custom_table1_tests'].append({
+                'variable': f"{results['var1']} vs {results['var2']}",
+                'test': results['test_name'],
+                'statistic': f"χ² = {results['stat']:.3f}",
+                'p_value': results['p'],
+                'note': 'Categorical association'
+            })
+            st.success(f"✅ Test result saved! Will be added to Table 1 in Export page. ({len(st.session_state['custom_table1_tests'])} custom tests total)")
         
         # Heatmap
         fig = px.imshow(
@@ -595,6 +746,11 @@ elif test_type == "Normality test (one numeric variable)":
                 'std': float(np.std(data)),
                 'n': len(data)
             }
+            log_methodology(step='Statistical Validation', action=test_name, details={
+                'var': numeric_var,
+                'p_value': p,
+                'n': len(data)
+            })
             st.rerun()
     
     # Display results
@@ -679,6 +835,12 @@ elif test_type == "Paired comparison (numeric variable, before/after)":
                 'n_pairs': len(paired_df),
                 'parametric': use_parametric
             }
+            log_methodology(step='Statistical Validation', action=test_name, details={
+                'var_before': var_before,
+                'var_after': var_after,
+                'n_pairs': len(paired_df),
+                'p_value': p
+            })
             st.rerun()
     
     # Display results
@@ -704,6 +866,20 @@ elif test_type == "Paired comparison (numeric variable, before/after)":
         - Number of pairs: **{results['n_pairs']}**
         - This {'suggests' if results['p'] < 0.05 else 'does not suggest'} a significant change from {results['var_before']} to {results['var_after']}
         """)
+        
+        # Export to Table 1 button
+        if st.button("📋 Add to Table 1", key="export_paired_table1"):
+            if 'custom_table1_tests' not in st.session_state:
+                st.session_state['custom_table1_tests'] = []
+            
+            st.session_state['custom_table1_tests'].append({
+                'variable': f"{results['var_before']} → {results['var_after']}",
+                'test': results['test_name'],
+                'statistic': f"Δ = {results['mean_diff']:.3f}",
+                'p_value': results['p'],
+                'note': f"Paired comparison (n={results['n_pairs']})"
+            })
+            st.success(f"✅ Test result saved! Will be added to Table 1 in Export page. ({len(st.session_state['custom_table1_tests'])} custom tests total)")
         
         # Before/after plot
         plot_df = pd.DataFrame({

@@ -6,6 +6,11 @@ Assess robustness of modeling results by testing how sensitive they are to:
 - Individual feature removal (dropout)
 
 This page helps answer: "Would a reviewer trust that these results aren't fragile?"
+
+AUDIT NOTE (Data Flow):
+- Operates on: trained_models, X_train/X_test/y_train/y_test from session state
+- Requires: Completed Train & Compare (page 6)
+- Methodology logging: Added for seed sensitivity and feature dropout analyses
 """
 
 import streamlit as st
@@ -15,23 +20,36 @@ import time
 
 from utils.theme import inject_custom_css, render_sidebar_workflow
 from utils.table_export import table
-from utils.session_state import init_session_state
+from utils.session_state import init_session_state, log_methodology
 from utils.storyline import render_breadcrumb, render_page_navigation
 
 init_session_state()
 
 st.set_page_config(page_title="Sensitivity Analysis | Tabular ML Lab", layout="wide")
 inject_custom_css()
-render_sidebar_workflow(current_page="07_Sensitivity")
+render_sidebar_workflow(current_page="08_Sensitivity_Analysis")
 
 st.title("🔬 Sensitivity Analysis")
-render_breadcrumb("07_Sensitivity_Analysis")
-render_page_navigation("07_Sensitivity_Analysis")
-st.markdown(
-    "Test whether your results hold up under different conditions. "
-    "Robust results survive changes in random seeds and minor feature perturbations — "
-    "fragile results don't. Reviewers increasingly expect this analysis."
-)
+st.caption("Use this after the quick workflow when you need to show that your result is robust, not just strong once.")
+render_breadcrumb("08_Sensitivity_Analysis")
+render_page_navigation("08_Sensitivity_Analysis")
+
+if st.session_state.get("workflow_mode", "quick") == "quick":
+    st.info("""
+    🧭 **Advanced workflow step** — Return here after the quick workflow when you need to demonstrate that your result is robust across seeds or feature perturbations.
+    """)
+
+st.markdown("""
+### Why Sensitivity Analysis?
+
+Use it when a reviewer is likely to ask whether your result is robust or whether it depends on one lucky configuration.
+
+**This page tests:**
+1. **Random seed sensitivity** — Does performance vary across different train/test splits?
+2. **Feature dropout** — Which features are critical vs redundant?
+
+**For publication:** Report confidence intervals from multiple seeds, not just a single run.
+""")
 
 # ── Check prerequisites ──────────────────────────────────────────────
 data_config = st.session_state.get("data_config")
@@ -156,6 +174,11 @@ if st.button("▶️ Run Seed Sensitivity", type="primary", key="run_seed"):
     if results:
         df_seeds = pd.DataFrame(results)
         st.session_state["sensitivity_seed_results"] = df_seeds
+        log_methodology(step='Sensitivity Analysis', action='Ran seed stability analysis', details={
+            'model': selected_model,
+            'n_seeds': n_seeds,
+            'metric': primary_metric
+        })
 
         # Display
         valid = df_seeds[primary_metric].dropna()
@@ -192,6 +215,73 @@ elif "sensitivity_seed_results" in st.session_state:
         cv = valid.std() / abs(valid.mean()) * 100 if valid.mean() != 0 else 0
         col4.metric("CV (%)", f"{cv:.1f}%")
         st.bar_chart(df_seeds.set_index("seed")[[primary_metric]])
+
+# ── Interpretation Guide ─────────────────────────────────────────────
+if "sensitivity_seed_results" in st.session_state:
+    df_seeds = st.session_state["sensitivity_seed_results"]
+    seed_results = df_seeds.to_dict('records')
+    
+    if len(seed_results) > 1:
+        st.markdown("---")
+        st.markdown("### 📊 Interpreting Seed Sensitivity")
+        
+        # Get metric range
+        metric_col = 'roc_auc' if task_type == 'classification' and primary_metric == 'roc_auc' else primary_metric
+        metric_values = [r[metric_col] for r in seed_results if metric_col in r and not np.isnan(r[metric_col])]
+        
+        if metric_values:
+            metric_range = max(metric_values) - min(metric_values)
+            metric_mean = np.mean(metric_values)
+            
+            st.markdown(f"""
+            **Your Results:**
+            - {metric_col.upper()} range: {min(metric_values):.3f} to {max(metric_values):.3f}
+            - Range width: {metric_range:.3f}
+            - Mean: {metric_mean:.3f}
+            """)
+            
+            # Interpretation thresholds
+            if metric_range < 0.03:
+                stability = "✅ Very stable"
+                interpretation = "Excellent. Your model is highly robust to different train/test splits."
+                recommendation = "Report the mean with standard error. No concerns for publication."
+            elif metric_range < 0.05:
+                stability = "🟡 Moderate stability"
+                interpretation = "Acceptable. Performance varies slightly across seeds, but within normal range."
+                recommendation = "Report confidence intervals (not just point estimates). Mention in limitations if needed."
+            else:
+                stability = "⚠️ High sensitivity"
+                interpretation = "Concerning. Large performance variation suggests model instability or small dataset."
+                recommendation = """
+**Action needed:**
+1. Report full distribution (not just best result)
+2. Consider ensemble methods (average multiple seeds)
+3. Mention as limitation in discussion
+4. Check if dataset is too small (n < 200 often unstable)
+"""
+            
+            st.info(f"""
+**Stability Assessment:** {stability}
+
+**Interpretation:** {interpretation}
+
+**Recommendation:** {recommendation}
+""")
+            
+            # Reference standards
+            with st.expander("📚 What Do These Thresholds Mean?"):
+                st.markdown("""
+**Range < 0.03:** Publication-ready without caveats. Model predictions are consistent.
+
+**Range 0.03-0.05:** Common in clinical ML. Mention seed variation in methods, report CIs.
+
+**Range > 0.05:** Red flag for reviewers. Suggests:
+- Dataset too small (underpowered)
+- Features unstable (high noise)
+- Model overfitting
+
+**Best practice:** Always report results across multiple seeds (5-10 runs), never cherry-pick best seed.
+""")
 
 st.markdown("---")
 
@@ -279,6 +369,11 @@ if st.button("▶️ Run Feature Dropout", type="primary", key="run_dropout"):
         df_dropout = pd.DataFrame(dropout_results).sort_values("impact", ascending=False)
         st.session_state["sensitivity_dropout_results"] = df_dropout
         st.session_state["sensitivity_dropout_baseline"] = baseline_score
+        log_methodology(step='Sensitivity Analysis', action='Ran feature dropout analysis', details={
+            'model': selected_model,
+            'n_features_tested': len(features_to_test),
+            'metric': primary_metric
+        })
 
         st.metric(f"Baseline {primary_metric}", f"{baseline_score:.4f}")
 

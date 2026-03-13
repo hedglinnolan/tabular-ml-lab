@@ -1,5 +1,5 @@
 """
-Page 04: Train and Compare Models
+Page 06: Train and Compare Models
 Train models, evaluate, compare metrics, show diagnostics.
 """
 import streamlit as st
@@ -12,7 +12,7 @@ import logging
 from utils.session_state import (
     init_session_state, get_data, get_preprocessing_pipeline,
     DataConfig, SplitConfig, ModelConfig, set_splits, add_trained_model,
-    TaskTypeDetection, CohortStructureDetection
+    TaskTypeDetection, CohortStructureDetection, log_methodology,
 )
 from utils.seed import set_global_seed, get_global_seed
 from utils.storyline import get_insights_by_category, render_breadcrumb, render_page_navigation
@@ -84,11 +84,12 @@ set_global_seed(st.session_state.get('random_seed', 42))
 
 st.set_page_config(page_title="Train & Compare", page_icon="🧠", layout="wide")
 inject_custom_css()
-render_sidebar_workflow(current_page="05_Train")
-render_step_indicator(5, "Train & Compare Models")
+render_sidebar_workflow(current_page="06_Train_and_Compare")
+render_step_indicator(6, "Train & Compare Models")
 st.title("🧠 Train & Compare Models")
-render_breadcrumb("05_Train_and_Compare")
-render_page_navigation("05_Train_and_Compare")
+st.caption("This is the center of the recommended workflow: establish a credible baseline result before deciding whether you need advanced analyses.")
+render_breadcrumb("06_Train_and_Compare")
+render_page_navigation("06_Train_and_Compare")
 
 # Progress indicator
 
@@ -229,8 +230,15 @@ if st.button("Prepare Splits", type="primary"):
         train_test_split, GroupShuffleSplit, GroupKFold = _get_sklearn_splits()
         from sklearn.preprocessing import LabelEncoder
 
-        X = df[data_config.feature_cols].copy()
-        y = df[data_config.target_col].copy()
+        # Get feature columns - use engineered features if applied
+        target_col = data_config.target_col
+        if st.session_state.get('feature_engineering_applied'):
+            feature_cols = [col for col in df.columns if col != target_col]
+        else:
+            feature_cols = data_config.feature_cols
+
+        X = df[feature_cols].copy()
+        y = df[target_col].copy()
         mask = y.notna()
         X = X[mask].reset_index(drop=True)
         y = y[mask].reset_index(drop=True)
@@ -341,7 +349,8 @@ if st.button("Prepare Splits", type="primary"):
             X_val = X.iloc[idx_val]
             X_test = X.iloc[idx_test]
         
-        feature_names = list(data_config.feature_cols)
+        # Use the same feature list we used above for X
+        feature_names = list(feature_cols)
         set_splits(X_train, X_val, X_test, to_numpy_1d(y_train), to_numpy_1d(y_val), to_numpy_1d(y_test), feature_names)
         elapsed = time.perf_counter() - t0
         st.session_state.setdefault("last_timings", {})["Prepare Splits"] = round(elapsed, 2)
@@ -1012,6 +1021,41 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                     st.error(f"Training failed: {str(e)}")
                     st.code(str(e), language='python')
                     logger.exception(e)
+    
+    # Log methodology action after all models are trained
+    trained_models = st.session_state.get('trained_models', {})
+    model_results = st.session_state.get('model_results', {})
+    if trained_models:
+        # Get best model and metrics
+        best_model_name = None
+        best_metric_value = None
+        task_type_final_local = st.session_state.get('task_type_detection', TaskTypeDetection()).final or data_config.task_type
+        
+        for name, results in model_results.items():
+            metrics = results.get('metrics', {})
+            if task_type_final_local == 'regression':
+                metric_val = metrics.get('RMSE', float('inf'))
+                if best_metric_value is None or metric_val < best_metric_value:
+                    best_metric_value = metric_val
+                    best_model_name = name
+            else:
+                metric_val = metrics.get('Accuracy', 0)
+                if best_metric_value is None or metric_val > best_metric_value:
+                    best_metric_value = metric_val
+                    best_model_name = name
+        
+        log_methodology(
+            step='Model Training',
+            action=f"Trained {len(trained_models)} models with validation",
+            details={
+                'models': list(trained_models.keys()),
+                'best_model': best_model_name,
+                'best_metric_value': best_metric_value,
+                'use_cv': st.session_state.get('use_cv', False),
+                'cv_folds': st.session_state.get('cv_folds', 5) if st.session_state.get('use_cv', False) else None,
+                'hyperparameter_optimization': use_optimization
+            }
+        )
 
 # Training section with two buttons
 st.markdown("---")
@@ -1050,6 +1094,50 @@ if st.session_state.get('trained_models'):
     calculate_regression_metrics, calculate_classification_metrics, perform_cross_validation, analyze_residuals = _get_eval_functions()
     
     st.header("Results Comparison")
+    
+    # ================================================================
+    # TRAINING CONFIGURATION SUMMARY
+    # ================================================================
+    st.markdown("### What You're Training On")
+    
+    # Get dataset statistics
+    X_train_data = st.session_state.get("X_train")
+    X_val_data = st.session_state.get("X_val")
+    X_test_data = st.session_state.get("X_test")
+    
+    n_train = len(X_train_data) if X_train_data is not None else 0
+    n_val = len(X_val_data) if X_val_data is not None else 0
+    n_test = len(X_test_data) if X_test_data is not None else 0
+    n_total = n_train + n_val + n_test
+    
+    # Get feature information
+    selected_features = st.session_state.get('selected_features')
+    feature_cols = data_config.feature_cols if data_config else []
+    n_features_used = len(selected_features) if selected_features else len(feature_cols)
+    n_original_features = len(feature_cols)
+    n_engineered = len(st.session_state.get('engineered_feature_names', []))
+    
+    # Get target information
+    target_name = data_config.target_col if data_config else "Unknown"
+    task_type_display = task_type_final if task_type_final else (data_config.task_type if data_config else "Unknown")
+    
+    st.markdown(f"""
+    **Dataset:**
+    - Total samples: {n_total:,} ({n_train:,} train, {n_val:,} val, {n_test:,} test)
+    - Original features: {n_original_features}
+    - Engineered features: {n_engineered}
+    - **Selected features: {n_features_used}** ← Training on these
+    
+    **Target:** {target_name} ({task_type_display})
+    
+    **Preprocessing:** Per-model pipelines (see Preprocessing page)
+    """)
+    
+    if n_engineered > 0:
+        engineered_names = st.session_state.get('engineered_feature_names', [])
+        st.info(f"🧬 **{n_engineered} engineered features** included: {', '.join(engineered_names[:5])}{'...' if len(engineered_names) > 5 else ''}")
+    
+    st.markdown("---")
     
     # How to read results explainer
     with st.expander("How to Read These Results", expanded=False):
@@ -1289,6 +1377,243 @@ if st.session_state.get('trained_models'):
                         sig = " *" if (p is not None and np.isfinite(p) and p < 0.05) else ""
                         rows.append({"Model A": ma.upper(), "Model B": mb.upper(), "Mean Δ": round(mean_d, 4), "Test": tname, "p": round(p, 4) if p is not None and np.isfinite(p) else None, "Significant": "Yes" if (p is not None and np.isfinite(p) and p < 0.05) else "No"})
                     st.dataframe(pd.DataFrame(rows), width="stretch")
+    # ================================================================
+    # MODEL SELECTION GUIDANCE
+    # ================================================================
+    st.markdown("---")
+    st.markdown("### 🎯 How to Choose Your Model")
+    
+    # Helper function for complexity description
+    def get_model_complexity(model_name: str) -> str:
+        """Return human-readable complexity description."""
+        simple_models = ['LOGISTIC', 'RIDGE', 'LASSO', 'ELASTIC_NET']
+        moderate_models = ['RF', 'RANDOM_FOREST', 'SVM_LINEAR']
+        complex_models = ['XGB', 'LGBM', 'NN', 'SVM_RBF']
+        
+        if model_name in simple_models:
+            return "Simple, highly interpretable"
+        elif model_name in moderate_models:
+            return "Moderate complexity, good interpretability"
+        elif model_name in complex_models:
+            return "Complex, black-box (use SHAP for interpretation)"
+        else:
+            return "Unknown complexity"
+    
+    # Get top 3 models by performance
+    metric_col = 'AUC (val)' if task_type_final == 'classification' else 'R² (val)'
+    
+    # Check if the metric column exists in the comparison_df
+    if metric_col in comparison_df.columns and len(comparison_df) > 0:
+        top_models = comparison_df.nlargest(3, metric_col)
+        
+        # Check if top models have overlapping confidence intervals
+        if len(top_models) >= 2:
+            # Get bootstrap CIs for top 2 models
+            model1_name = top_models.index[0]
+            model2_name = top_models.index[1]
+            
+            bootstrap_results = st.session_state.get("bootstrap_results", {})
+            
+            if bootstrap_results:
+                # Get BootstrapResult objects
+                metric_name = metric_col.replace(' (val)', '')  # 'AUC' or 'R²'
+                model1_result = bootstrap_results.get(model1_name, {}).get(metric_name)
+                model2_result = bootstrap_results.get(model2_name, {}).get(metric_name)
+                
+                # Extract CI bounds from BootstrapResult dataclass
+                from ml.bootstrap import BootstrapResult
+                if isinstance(model1_result, BootstrapResult) and isinstance(model2_result, BootstrapResult):
+                    model1_ci = [model1_result.ci_lower, model1_result.ci_upper]
+                    model2_ci = [model2_result.ci_lower, model2_result.ci_upper]
+                    
+                    # Check for overlap
+                    ci_overlap = (model1_ci[0] <= model2_ci[1] and model2_ci[0] <= model1_ci[1])
+                else:
+                    # Bootstrap results incomplete, skip CI analysis
+                    ci_overlap = None
+                
+                if ci_overlap is not None:
+                    if ci_overlap:
+                        st.info(f"""
+                        **Models Perform Similarly**
+                        
+                        Your top models ({model1_name}, {model2_name}) have overlapping confidence intervals,
+                        meaning there's no statistically significant performance difference.
+                        
+                        **Decision Framework:**
+                        
+                        1. **Interpretability** → Choose simpler model
+                           - Order: Logistic Regression > Ridge/LASSO > Random Forest > Gradient Boosting > Neural Networks
+                           - For publication: Simpler models are easier to explain to reviewers
+                        
+                        2. **Deployment** → Choose faster model
+                           - Logistic/Ridge: Near-instant predictions
+                           - Random Forest/XGBoost: Fast but larger memory footprint
+                           - Neural Networks: Slower, requires PyTorch/TensorFlow
+                        
+                        3. **Calibration** → Check the Explainability page
+                           - Well-calibrated models have predicted probabilities that match observed frequencies
+                           - Important for risk prediction and clinical applications
+                        
+                        4. **Robustness** → Check Sensitivity Analysis (next page)
+                           - Some models are more sensitive to random seed or feature dropout
+                        
+                        **Our Recommendation:**
+                        """)
+                        
+                        # Auto-recommend based on overlap
+                        if model1_name in ['LOGISTIC', 'RIDGE', 'LASSO']:
+                            st.success(f"✅ **{model1_name}**: Best balance of performance, interpretability, and deployability.")
+                        elif model1_name in ['RF', 'RANDOM_FOREST']:
+                            st.success(f"✅ **{model1_name}**: Excellent choice. Robust, feature importances available, widely trusted.")
+                        else:
+                            st.success(f"✅ **{model1_name}**: Best performer, but consider if interpretability is important.")
+                        
+                        # Show all top 3
+                        st.markdown("**Top 3 Models:**")
+                        for idx, (model_name, row) in enumerate(top_models.iterrows(), 1):
+                            metric_val = row[metric_col]
+                            complexity = get_model_complexity(model_name)
+                            st.markdown(f"{idx}. **{model_name}**: {metric_val:.3f} — {complexity}")
+                    
+                    else:
+                        st.success(f"""
+                        **Clear Winner**
+                        
+                        **{model1_name}** significantly outperforms other models (non-overlapping CIs).
+                        
+                        → **Recommendation:** Use {model1_name} unless you have specific concerns about interpretability or deployment.
+                        """)
+            else:
+                st.info("💡 **Tip:** Compute Bootstrap CIs above to get statistical guidance on model selection.")
+        
+        else:
+            st.info("Train multiple models to see comparison and recommendations.")
+    else:
+        st.info("Train models to see selection guidance.")
+
+    # ================================================================
+    # DIAGNOSTIC ASSISTANT FOR POOR PERFORMANCE
+    # ================================================================
+    # Check if we have model results and comparison data
+    if len(comparison_df) > 0 and metric_col in comparison_df.columns:
+        best_metric = comparison_df[metric_col].max()
+        
+        # Define poor performance thresholds
+        if task_type_final == 'classification':
+            poor_threshold = 0.65
+            metric_name = 'AUC'
+        else:
+            poor_threshold = 0.40
+            metric_name = 'R²'
+        
+        # Trigger diagnostics if performance is poor
+        if best_metric < poor_threshold:
+            st.markdown("---")
+            st.error(f"""
+            ⚠️ **Poor Model Performance Detected**
+            
+            Your best model achieved {metric_name} = {best_metric:.2f}, which is below the acceptable threshold ({poor_threshold:.2f}).
+            """)
+            
+            st.markdown("### 🔍 Diagnostic Analysis")
+            
+            # Run diagnostics
+            diagnostics = []
+            
+            # Get the raw data
+            df = get_data()
+            target = data_config.target_col if data_config else None
+            feature_cols = st.session_state.get('selected_features') or (data_config.feature_cols if data_config else None)
+            
+            if df is not None and target and feature_cols:
+                # Check 1: Feature-target correlations
+                numeric_features = df[feature_cols].select_dtypes(include=[np.number]).columns
+                if len(numeric_features) > 0:
+                    try:
+                        correlations = df[numeric_features].corrwith(df[target]).abs()
+                        max_corr = correlations.max()
+                        
+                        if max_corr < 0.1:
+                            diagnostics.append({
+                                'issue': 'Weak Features',
+                                'severity': 'HIGH',
+                                'description': f'No feature has correlation >0.1 with target (max: {max_corr:.3f})',
+                                'action': 'Review EDA for feature-target relationships. Consider Feature Engineering or collect more informative data.'
+                            })
+                    except Exception:
+                        pass  # Skip if correlation calculation fails
+                
+                # Check 2: Sample size
+                n_samples = len(df)
+                n_features = len(feature_cols) if feature_cols else 0
+                samples_per_feature = n_samples / n_features if n_features > 0 else 0
+                
+                if samples_per_feature < 10:
+                    diagnostics.append({
+                        'issue': 'Insufficient Data',
+                        'severity': 'HIGH',
+                        'description': f'Only {samples_per_feature:.1f} samples per feature (need ≥10-20)',
+                        'action': 'Reduce features via Feature Selection or collect more samples. Consider this a pilot study.'
+                    })
+                
+                # Check 3: Class imbalance (classification only)
+                if task_type_final == 'classification':
+                    try:
+                        class_counts = df[target].value_counts()
+                        minority_pct = (class_counts.min() / class_counts.sum()) * 100
+                        
+                        if minority_pct < 10:
+                            diagnostics.append({
+                                'issue': 'Severe Class Imbalance',
+                                'severity': 'HIGH',
+                                'description': f'Minority class is only {minority_pct:.1f}% of data',
+                                'action': 'Use stratified splits (already done), consider class weights, or collect more minority samples.'
+                            })
+                    except Exception:
+                        pass  # Skip if class imbalance check fails
+                
+                # Check 4: Missing data
+                try:
+                    missing_pct = (df.isnull().sum().sum() / (df.shape[0] * df.shape[1])) * 100
+                    if missing_pct > 20:
+                        diagnostics.append({
+                            'issue': 'High Missing Data',
+                            'severity': 'MEDIUM',
+                            'description': f'{missing_pct:.1f}% of data is missing',
+                            'action': 'Review Preprocessing step. Consider multiple imputation or dropping high-missingness features.'
+                        })
+                except Exception:
+                    pass  # Skip if missing data check fails
+            
+            # Display diagnostics
+            if diagnostics:
+                for diag in diagnostics:
+                    severity_icon = '🔴' if diag['severity'] == 'HIGH' else '🟡'
+                    st.markdown(f"""
+**{severity_icon} {diag['issue']}**  
+{diag['description']}
+
+**→ Action:** {diag['action']}
+""")
+            else:
+                # No specific issues detected, provide general guidance
+                if df is not None:
+                    n_samples = len(df)
+                else:
+                    n_samples = "unknown"
+                    
+                st.info(f"""
+**No obvious data quality issues detected.**
+
+Poor performance may be due to:
+- Inherent unpredictability of the outcome
+- Missing important features not in your dataset
+- Need for more complex feature engineering
+- Small dataset size (current: {n_samples} samples)
+
+**Recommendation:** Frame this as an exploratory/pilot study. Report confidence intervals and discuss limitations.
+""")
 
     # Model diagnostics (one tab per model so pred-vs-actual etc. visible for all)
     st.header("Model Diagnostics")

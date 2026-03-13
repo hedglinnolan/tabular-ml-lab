@@ -1,5 +1,5 @@
 """
-Page 06: Model Explainability
+Page 07: Model Explainability
 Permutation importance, SHAP, partial dependence, external validation, subgroup analysis.
 """
 import streamlit as st
@@ -18,10 +18,15 @@ from utils.session_state import (
 from utils.storyline import render_breadcrumb, render_page_navigation
 from ml.estimator_utils import is_estimator_fitted
 from ml.model_registry import get_registry
+from ml.pipeline import get_feature_names_after_transform
 from utils.theme import inject_custom_css, render_step_indicator, render_guidance, render_reviewer_concern, render_sidebar_workflow
 from utils.table_export import table
 from utils.compute_config import get_limit
 from sklearn.pipeline import Pipeline as SklearnPipeline
+
+class _SkipAnalysis(Exception):
+    """Raised to skip an analysis block when user deselected it."""
+    pass
 
 @st.cache_resource
 def _get_registry_cached():
@@ -33,22 +38,119 @@ init_session_state()
 
 st.set_page_config(page_title="Explainability", page_icon="🔬", layout="wide")
 inject_custom_css()
-render_sidebar_workflow(current_page="06_Explain")
-render_step_indicator(6, "Explain & Validate")
+render_sidebar_workflow(current_page="07_Explainability")
+render_step_indicator(7, "Explain & Validate")
 
 # ── Page Header ─────────────────────────────────────────────────
 st.markdown("""
 <div style="margin-bottom: 1.5rem;">
     <h1 style="margin-bottom: 0.25rem;">🔬 Explain & Validate</h1>
     <p style="color: var(--text-secondary, #475569); font-size: 0.95rem; margin: 0;">
-        Understand <em>why</em> your models make the predictions they do. Every analysis here
-        strengthens your paper's methodology section.
+        Recommended workflow: explain the baseline models you just trained, then decide whether any additional validation is actually necessary.
     </p>
 </div>
 """, unsafe_allow_html=True)
 
-render_breadcrumb("06_Explainability")
-render_page_navigation("06_Explainability")
+render_breadcrumb("07_Explainability")
+render_page_navigation("07_Explainability")
+
+# ── Feature Engineering Reminder ────────────────────────────────
+# Check if feature engineering was applied
+if st.session_state.get('feature_engineering_applied'):
+    engineered_names = st.session_state.get('engineered_feature_names', [])
+    engineering_log = st.session_state.get('engineering_log', [])
+    
+    if engineered_names:
+        st.info(f"""
+        **💡 Remember:** You created {len(engineered_names)} engineered features in Feature Engineering .
+        
+        When interpreting feature importance below, some features are transformations of your original data:
+        """)
+        
+        # Show engineering log summary
+        if engineering_log:
+            st.markdown("**Transformations applied:**")
+            for log_entry in engineering_log[:5]:  # Show first 5
+                st.markdown(f"- {log_entry}")
+            if len(engineering_log) > 5:
+                with st.expander("Show all transformations"):
+                    for log_entry in engineering_log[5:]:
+                        st.markdown(f"- {log_entry}")
+        
+        st.markdown("""
+        **For publication:** When reporting important features, explain transformations.
+        
+        Example: "The most important predictor was log-transformed glucose (log₁₊ₓ glucose), 
+        indicating that the relationship between glucose and outcome is non-linear."
+        """)
+        
+        st.markdown("---")
+
+st.markdown("""
+### Why Explainability?
+
+You've trained models and seen performance metrics. Now: **why did the model make those predictions, and do you trust them enough to write them up?**
+
+**Reviewers will ask:**
+- Which features drive predictions?
+- Are predictions calibrated (do probabilities match reality)?
+- Can you explain individual predictions?
+
+This page is the default finishing step before export. Use Statistical Validation afterward only if you need additional classical support for specific claims.
+""")
+
+# ── Prioritization Checklist ────────────────────────────────────
+st.markdown("---")
+st.markdown("### 📋 Explainability Checklist")
+
+st.markdown("""
+Use this checklist to prioritize your analysis time. For publication, focus on **Essential** first.
+""")
+
+# Three-tier priority system
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.markdown("""
+    **📊 Essential** (include in paper)
+    - [ ] SHAP feature importance
+    - [ ] Calibration plot (classification)
+    - [ ] Feature importance table
+    
+    **Why:** Reviewers expect SHAP as gold standard. Calibration proves your probabilities are trustworthy.
+    
+    **Time:** ~5 minutes
+    """)
+
+with col2:
+    st.markdown("""
+    **📈 Recommended** (if asked by reviewers)
+    - [ ] Permutation importance
+    - [ ] Partial dependence plots (PDP)
+    
+    **Why:** Validates SHAP findings. Shows feature-outcome relationships.
+    
+    **Time:** ~10 minutes
+    """)
+
+with col3:
+    st.markdown("""
+    **🔬 Advanced** (optional)
+    - [ ] Individual conditional expectation (ICE)
+    - [ ] LIME explanations
+    - [ ] Interaction plots
+    
+    **Why:** Deep dive for specific questions. Overkill for most papers.
+    
+    **Time:** ~15 minutes
+    """)
+
+st.info("""
+**💡 Recommendation:** Run Essential analyses first. If models perform well, add Recommended. 
+Skip Advanced unless reviewers specifically request or you're investigating complex interactions.
+""")
+
+st.markdown("---")
 
 # ── Guardrails ──────────────────────────────────────────────────
 task_mode = st.session_state.get('task_mode')
@@ -63,6 +165,10 @@ if not st.session_state.get('trained_models'):
     st.stop()
 
 data_config: DataConfig = st.session_state.get('data_config')
+if not data_config:
+    st.warning("Please configure your data in Upload & Audit first")
+    st.stop()
+
 pipeline = get_preprocessing_pipeline()
 X_test = st.session_state.get('X_test')
 y_test = st.session_state.get('y_test')
@@ -87,18 +193,33 @@ def _get_pipeline_and_data(name):
     if name in st.session_state.get('fitted_preprocessing_pipelines', {}):
         prep_pipeline = st.session_state.fitted_preprocessing_pipelines[name]
         full_pipeline = SklearnPipeline([('preprocess', prep_pipeline), ('model', estimator)])
+        feature_names_in = getattr(prep_pipeline, 'feature_names_in_', None)
+        expected_cols = list(feature_names_in) if feature_names_in is not None else []
+
         df_raw = get_data()
         test_indices = st.session_state.get('test_indices')
         if df_raw is not None and data_config and test_indices is not None:
             try:
-                X_raw = df_raw[data_config.feature_cols].iloc[test_indices]
+                raw_candidate = df_raw.iloc[test_indices]
+                if expected_cols and all(col in raw_candidate.columns for col in expected_cols):
+                    X_raw = raw_candidate.loc[:, expected_cols].copy()
+                elif isinstance(X_test, pd.DataFrame) and expected_cols and all(col in X_test.columns for col in expected_cols):
+                    X_raw = X_test.loc[:, expected_cols].copy()
+                elif isinstance(X_test, pd.DataFrame):
+                    X_raw = X_test.copy()
+                else:
+                    fallback_cols = list(data_config.feature_cols or feature_names or [])
+                    X_raw = raw_candidate.loc[:, [c for c in fallback_cols if c in raw_candidate.columns]].copy()
+
                 y_raw = df_raw[data_config.target_col].iloc[test_indices].values
                 # Encode string labels to match what the model was trained on
                 label_encoder = st.session_state.get('target_label_encoder')
                 if label_encoder is not None and y_raw.dtype == object:
                     y_raw = label_encoder.transform(y_raw)
-                return full_pipeline, X_raw, y_raw, X_raw
-            except:
+
+                if len(X_raw.columns) > 0:
+                    return full_pipeline, X_raw, y_raw, X_raw
+            except Exception:
                 pass
         return estimator, X_test, y_test, X_test
     return estimator, X_test, y_test, X_test
@@ -164,14 +285,41 @@ for name in trained:
 if shap_support_info:
     st.caption("SHAP methods: " + " · ".join(shap_support_info))
 
-# ── Run Button ──────────────────────────────────────────────────
+# ── Analysis Selection ──────────────────────────────────────────
+st.markdown("### Select Analyses to Run")
+sel_col1, sel_col2, sel_col3 = st.columns(3)
+with sel_col1:
+    run_perm = st.checkbox("📊 Permutation Importance", value=True, key="run_perm",
+                           help="Essential — which features matter most to each model")
+with sel_col2:
+    run_shap = st.checkbox("🎯 SHAP Values", value=True, key="run_shap",
+                           help="Essential — how each feature pushes predictions up or down")
+with sel_col3:
+    run_pdp = st.checkbox("📈 Partial Dependence", value=False, key="run_pdp",
+                          help="Recommended — marginal effect of each feature on predictions")
+
+# Model selection
+st.markdown("**Models to analyze:**")
+model_selection = st.multiselect(
+    "Select models",
+    options=trained,
+    default=trained,
+    key="explain_model_selection",
+    format_func=lambda x: x.upper(),
+    label_visibility="collapsed",
+)
+
+if not any([run_perm, run_shap, run_pdp]):
+    st.info("Select at least one analysis above.")
+
 # Initialize cancel flag
 if 'cancel_explainability' not in st.session_state:
     st.session_state.cancel_explainability = False
 
 run_col, cancel_col = st.columns([3, 1])
 with run_col:
-    run_button = st.button("🚀 Run Full Explainability Analysis", type="primary", use_container_width=True)
+    run_button = st.button("🚀 Run Selected Analyses", type="primary", use_container_width=True,
+                           disabled=not any([run_perm, run_shap, run_pdp]) or not model_selection)
 with cancel_col:
     if st.button("🛑 Cancel", type="secondary", key="cancel_explain_init"):
         st.session_state.cancel_explainability = True
@@ -179,7 +327,8 @@ with cancel_col:
 if run_button:
     st.session_state.cancel_explainability = False  # Reset flag
     t0 = time.perf_counter()
-    total_steps = len(trained) * 3  # perm + shap + pdp per model
+    analyses_per_model = sum([run_perm, run_shap, run_pdp])
+    total_steps = len(model_selection) * analyses_per_model
     step_count = 0
     overall_progress = st.progress(0)
     overall_status = st.empty()
@@ -196,7 +345,7 @@ if run_button:
             st.session_state.cancel_explainability = True
             st.warning("Skipping current model...")
 
-    for name in trained:
+    for name in model_selection:
         # Check if user canceled
         if st.session_state.cancel_explainability:
             st.warning(f"Analysis canceled. Results saved for completed models.")
@@ -213,27 +362,39 @@ if run_button:
         spec = registry.get(name)
 
         # ── 1. Permutation Importance ───────────────────────────
-        perm_start = time.perf_counter()
-        overall_status.text(f"Permutation importance: {name.upper()}...")
-        try:
-            pi = permutation_importance(full_pipe, X_perm, y_perm, n_repeats=perm_repeats,
-                                        random_state=42, n_jobs=-1)
-            fn_by_model = st.session_state.get('feature_names_by_model', {})
-            n = len(pi.importances_mean)
-            base = list(fn_by_model.get(name, feature_names) or [])
-            fnames = (base + [f"feature_{i}" for i in range(len(base), n)])[:n]
-            perm_results[name] = {
-                'importances_mean': pi.importances_mean,
-                'importances_std': pi.importances_std,
-                'feature_names': fnames,
-            }
-            perm_time = time.perf_counter() - perm_start
-            if perm_time > 10:
-                st.caption(f"⏱️ {name.upper()} permutation took {perm_time:.1f}s (slow model)")
-        except Exception as e:
-            errors.append(f"{name} permutation: {e}")
-        step_count += 1
-        overall_progress.progress(min(step_count / total_steps, 1.0))
+        if run_perm:
+            perm_start = time.perf_counter()
+            overall_status.text(f"Permutation importance: {name.upper()}...")
+            try:
+                pi = permutation_importance(full_pipe, X_perm, y_perm, n_repeats=perm_repeats,
+                                            random_state=42, n_jobs=-1)
+                fn_by_model = st.session_state.get('feature_names_by_model', {})
+                n = len(pi.importances_mean)
+                base = list(fn_by_model.get(name) or [])
+                if len(base) != n and name in st.session_state.get('fitted_preprocessing_pipelines', {}):
+                    try:
+                        base = list(get_feature_names_after_transform(
+                            st.session_state.fitted_preprocessing_pipelines[name],
+                            list(getattr(X_perm, 'columns', feature_names))
+                        ) or [])
+                    except Exception:
+                        base = list(base)
+                if len(base) != n:
+                    fallback_base = list(getattr(X_perm, 'columns', feature_names))
+                    base = fallback_base
+                fnames = (base + [f"feature_{i}" for i in range(len(base), n)])[:n]
+                perm_results[name] = {
+                    'importances_mean': pi.importances_mean,
+                    'importances_std': pi.importances_std,
+                    'feature_names': fnames,
+                }
+                perm_time = time.perf_counter() - perm_start
+                if perm_time > 10:
+                    st.caption(f"⏱️ {name.upper()} permutation took {perm_time:.1f}s (slow model)")
+            except Exception as e:
+                errors.append(f"{name} permutation: {e}")
+            step_count += 1
+            overall_progress.progress(min(step_count / total_steps, 1.0))
         
         # Check cancel after slow operation
         if st.session_state.cancel_explainability:
@@ -244,6 +405,8 @@ if run_button:
         shap_start = time.perf_counter()
         overall_status.text(f"SHAP values: {name.upper()}...")
         try:
+            if not run_shap:
+                raise _SkipAnalysis()
             import shap
             import matplotlib
             matplotlib.use('Agg')
@@ -316,9 +479,20 @@ if run_button:
 
                 # Feature names for SHAP
                 fn_by_model = st.session_state.get('feature_names_by_model', {})
-                fn_for_shap = fn_by_model.get(name, feature_names)
+                fn_for_shap = list(fn_by_model.get(name) or [])
                 n_cols = X_ev.shape[1]
-                fn_shap = list(fn_for_shap[:n_cols]) if len(fn_for_shap) >= n_cols else [f"Feature {i}" for i in range(n_cols)]
+                if len(fn_for_shap) != n_cols and name in st.session_state.get('fitted_preprocessing_pipelines', {}):
+                    try:
+                        fn_for_shap = list(get_feature_names_after_transform(
+                            st.session_state.fitted_preprocessing_pipelines[name],
+                            list(getattr(X_raw, 'columns', feature_names))
+                        ) or [])
+                    except Exception:
+                        fn_for_shap = list(fn_for_shap)
+                if len(fn_for_shap) != n_cols:
+                    fallback_names = list(getattr(X_raw, 'columns', feature_names))
+                    fn_for_shap = fallback_names
+                fn_shap = (fn_for_shap + [f"Feature {i}" for i in range(len(fn_for_shap), n_cols)])[:n_cols]
 
                 shap_results[name] = {
                     'shap_values': sv_plot,
@@ -330,13 +504,20 @@ if run_button:
                 shap_time = time.perf_counter() - shap_start
                 if shap_time > 10:
                     st.caption(f"⏱️ {name.upper()} SHAP took {shap_time:.1f}s (slow for this model type)")
+        except _SkipAnalysis:
+            pass  # User opted out of SHAP — don't increment step_count
         except ImportError:
             errors.append(f"{name} SHAP: shap package not installed")
+            step_count += 1
+            overall_progress.progress(min(step_count / total_steps, 1.0))
         except Exception as e:
             errors.append(f"{name} SHAP: {e}")
             logger.exception(f"SHAP error for {name}: {e}")
-        step_count += 1
-        overall_progress.progress(min(step_count / total_steps, 1.0))
+            step_count += 1
+            overall_progress.progress(min(step_count / total_steps, 1.0))
+        else:
+            step_count += 1
+            overall_progress.progress(min(step_count / total_steps, 1.0))
         
         # Check cancel after SHAP
         if st.session_state.cancel_explainability:
@@ -346,6 +527,11 @@ if run_button:
         # ── 3. Partial Dependence (top 4 features from perm) ───
         overall_status.text(f"Partial dependence: {name.upper()}...")
         try:
+            if not run_pdp:
+                raise _SkipAnalysis()
+            if not run_perm or name not in perm_results:
+                errors.append(f"{name} PDP: requires Permutation Importance to identify top features. Enable it above.")
+                raise _SkipAnalysis()
             if name in perm_results and spec and spec.capabilities.supports_partial_dependence:
                 pi_data = perm_results[name]
                 top_idx = np.argsort(pi_data['importances_mean'])[::-1][:4]
@@ -377,11 +563,16 @@ if run_button:
                     'feature_indices': top_features_idx,
                     'feature_names': pi_data['feature_names'],
                 }
+        except _SkipAnalysis:
+            pass  # User opted out of PDP — don't increment step_count
         except Exception as e:
             errors.append(f"{name} PDP: {e}")
             logger.exception(f"PDP error for {name}: {e}")
-        step_count += 1
-        overall_progress.progress(min(step_count / total_steps, 1.0))
+            step_count += 1
+            overall_progress.progress(min(step_count / total_steps, 1.0))
+        else:
+            step_count += 1
+            overall_progress.progress(min(step_count / total_steps, 1.0))
 
     # Store all results
     st.session_state.permutation_importance = perm_results
@@ -397,6 +588,18 @@ if run_button:
         with st.expander(f"⚠️ {len(errors)} issue(s) during analysis", expanded=False):
             for err in errors:
                 st.text(err)
+
+    # Log methodology
+    analyses_run = []
+    if run_perm and perm_results: analyses_run.append("permutation_importance")
+    if run_shap and shap_results: analyses_run.append("shap")
+    if run_pdp and pdp_results: analyses_run.append("partial_dependence")
+    from utils.session_state import log_methodology
+    log_methodology(
+        step='Explainability',
+        action=f"Ran {', '.join(analyses_run)} on {len(model_selection)} models",
+        details={'analyses': analyses_run, 'models': list(model_selection)}
+    )
 
     st.success(f"✅ Explainability analysis complete ({elapsed:.1f}s)")
 
@@ -415,7 +618,7 @@ if perm_data or shap_data:
     for tab, name in zip(model_tabs, [n for n in trained if n in perm_data or n in shap_data]):
         with tab:
             # Sub-tabs within each model
-            analysis_tabs = st.tabs(["Permutation Importance", "SHAP Values", "Partial Dependence"])
+            analysis_tabs = st.tabs(["📈 Permutation Importance (Recommended)", "📊 SHAP Values (Essential)", "📈 Partial Dependence (Recommended)"])
 
             # ── Permutation Importance Tab ──────────────────────
             with analysis_tabs[0]:
@@ -433,6 +636,14 @@ if perm_data or shap_data:
                             'Importance': np.asarray(_im)[:n],
                             'Std': np.asarray(_is)[:n],
                         }).sort_values('Importance', ascending=False)
+                        
+                        # Add source column to indicate engineered features
+                        if st.session_state.get('feature_engineering_applied'):
+                            engineered_names = st.session_state.get('engineered_feature_names', [])
+                            if engineered_names:
+                                importance_df['Source'] = importance_df['Feature'].map(
+                                    lambda x: '🧬 Engineered' if x in engineered_names else '📊 Original'
+                                )
 
                         top_n = min(10, len(importance_df))
                         fig = px.bar(
@@ -453,7 +664,12 @@ if perm_data or shap_data:
                         st.plotly_chart(fig, use_container_width=True, key=f"perm_chart_{name}")
 
                         with st.expander("Full rankings table"):
-                            table(importance_df, key=f"perm_importance_{name}", use_container_width=True, hide_index=True)
+                            # Show appropriate columns based on whether Source was added
+                            if 'Source' in importance_df.columns:
+                                table(importance_df[['Feature', 'Importance', 'Std', 'Source']], 
+                                     key=f"perm_importance_{name}", use_container_width=True, hide_index=True)
+                            else:
+                                table(importance_df, key=f"perm_importance_{name}", use_container_width=True, hide_index=True)
 
                         from ml.plot_narrative import narrative_permutation_importance
                         nar = narrative_permutation_importance(pd_info, model_name=name)
@@ -521,6 +737,14 @@ if perm_data or shap_data:
                         'Feature': fn_plot[:len(mean_abs)],
                         'Mean |SHAP|': mean_abs,
                     }).sort_values('Mean |SHAP|', ascending=False)
+                    
+                    # Add source column to indicate engineered features
+                    if st.session_state.get('feature_engineering_applied'):
+                        engineered_names = st.session_state.get('engineered_feature_names', [])
+                        if engineered_names:
+                            shap_df['Source'] = shap_df['Feature'].map(
+                                lambda x: '🧬 Engineered' if x in engineered_names else '📊 Original'
+                            )
 
                     fig2 = px.bar(shap_df.head(10), x='Mean |SHAP|', y='Feature', orientation='h',
                                   title="Mean Absolute SHAP Value (Global Importance)",
@@ -529,6 +753,15 @@ if perm_data or shap_data:
                                        showlegend=False, coloraxis_showscale=False,
                                        margin=dict(l=10, r=10, t=40, b=10))
                     st.plotly_chart(fig2, use_container_width=True, key=f"shap_bar_{name}")
+                    
+                    # Show full SHAP table with source column
+                    with st.expander("Full SHAP rankings table"):
+                        if 'Source' in shap_df.columns:
+                            table(shap_df[['Feature', 'Mean |SHAP|', 'Source']], 
+                                 key=f"shap_importance_{name}", use_container_width=True, hide_index=True)
+                        else:
+                            table(shap_df[['Feature', 'Mean |SHAP|']], 
+                                 key=f"shap_importance_{name}", use_container_width=True, hide_index=True)
 
                     from ml.plot_narrative import narrative_shap
                     from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button

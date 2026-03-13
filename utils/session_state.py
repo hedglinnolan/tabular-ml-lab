@@ -103,6 +103,9 @@ def init_session_state():
     defaults = {
         # Data
         'raw_data': None,
+        'df_engineered': None,  # Dataset after feature engineering
+        'feature_engineering_applied': False,
+        'engineered_feature_names': [],
         'data_config': DataConfig(),
         'data_audit': None,
         
@@ -166,6 +169,10 @@ def init_session_state():
         'dataset_history': [],  # Archive of replaced datasets (metadata only)
         'has_completed_tour': False,  # Guided tour dismissed/completed
         'show_guided_tour': False,  # Expand guided tour in sidebar
+        'workflow_mode': 'quick',  # 'quick' | 'advanced' navigation emphasis only
+        
+        # Methodology logging for auto-generated methods section
+        'methodology_log': [],  # List of methodology actions for publication
     }
     
     for key, value in defaults.items():
@@ -174,8 +181,18 @@ def init_session_state():
 
 
 def get_data() -> Optional[pd.DataFrame]:
-    """Get active data from session state. Uses filtered_data when plausibility filter mode was used, else raw_data."""
-    return st.session_state.get('filtered_data') or st.session_state.get('raw_data')
+    """Get active data from session state. 
+    Priority: df_engineered (if feature engineering was applied) > filtered_data > raw_data"""
+    # Explicitly check for None to avoid DataFrame boolean ambiguity
+    df_eng = st.session_state.get('df_engineered')
+    if df_eng is not None:
+        return df_eng
+    
+    df_filt = st.session_state.get('filtered_data')
+    if df_filt is not None:
+        return df_filt
+    
+    return st.session_state.get('raw_data')
 
 
 def set_data(df: pd.DataFrame):
@@ -198,6 +215,12 @@ def reset_data_dependent_state():
     st.session_state.preprocessing_pipelines_by_model = {}
     st.session_state.preprocessing_config_by_model = {}
     st.session_state.pop("filtered_data", None)
+    
+    # Clear feature engineering state
+    st.session_state.pop("df_engineered", None)
+    st.session_state.feature_engineering_applied = False
+    st.session_state.engineered_feature_names = []
+    st.session_state.pop("engineering_log", None)
 
     st.session_state.X_train = None
     st.session_state.X_val = None
@@ -223,6 +246,12 @@ def reset_data_dependent_state():
     st.session_state.eda_results = {}
     st.session_state.eda_insights = []
     st.session_state.report_data = None
+    for key in (
+        'methods_section', 'flow_diagram', 'tripod_tracker', 'latex_report',
+        'report_best_model', 'report_model_selection', 'report_explain_selection',
+        'report_include_results', 'report_include_llm', 'shap_matplotlib_figs'
+    ):
+        st.session_state.pop(key, None)
     st.session_state.pop("target_label_encoder", None)
     st.session_state.pop("train_indices", None)
     st.session_state.pop("test_indices", None)
@@ -283,3 +312,38 @@ def add_trained_model(name: str, model: Any, results: Dict[str, Any]):
     """Add a trained model and its results to session state."""
     st.session_state.trained_models[name] = model
     st.session_state.model_results[name] = results
+
+
+def log_methodology(step: str, action: str, details: Optional[Dict[str, Any]] = None):
+    """Log a methodology action for the final report.
+    
+    Args:
+        step: Workflow step name (e.g., 'Feature Engineering', 'Feature Selection')
+        action: Description of what was done
+        details: Optional dict with additional parameters
+    """
+    from datetime import datetime
+    
+    entry = {
+        'timestamp': datetime.now().isoformat(),
+        'step': step,
+        'action': action,
+        'details': details or {}
+    }
+    
+    if 'methodology_log' not in st.session_state:
+        st.session_state.methodology_log = []
+    
+    # Steps where re-doing replaces the previous entry (user iterates on a single config)
+    REPLACE_STEPS = {'Upload & Audit', 'Feature Engineering', 'Feature Selection Applied',
+                     'Preprocessing', 'Model Training', 'Explainability'}
+    
+    log = st.session_state.methodology_log
+    if step in REPLACE_STEPS:
+        # Last-wins: replace previous entry with same step
+        for i in range(len(log) - 1, -1, -1):
+            if log[i]['step'] == step:
+                log[i] = entry
+                return
+    # Additive steps (EDA, Statistical Validation, Data Cleaning) — always append
+    log.append(entry)

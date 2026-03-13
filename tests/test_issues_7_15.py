@@ -90,7 +90,7 @@ class TestIssue11_ReportText:
 
     def test_report_text_before_export(self):
         import ast
-        with open('pages/09_Report_Export.py', 'r') as f:
+        with open('pages/10_Report_Export.py', 'r') as f:
             source = f.read()
 
         # report_text = generate_report() should appear before "Export Options"
@@ -192,7 +192,7 @@ class TestIssue15_ZipPlots:
 
     def test_export_section_exists_in_code(self):
         """Report export should contain plot directory structure."""
-        with open('pages/09_Report_Export.py', 'r') as f:
+        with open('pages/10_Report_Export.py', 'r') as f:
             source = f.read()
 
         assert 'plots/train/' in source
@@ -232,7 +232,7 @@ class TestIssue2_LabelEncoding:
     """Explainability should encode string labels before permutation importance."""
 
     def test_label_encoder_reference(self):
-        with open('pages/06_Explainability.py', 'r') as f:
+        with open('pages/07_Explainability.py', 'r') as f:
             source = f.read()
 
         assert 'target_label_encoder' in source
