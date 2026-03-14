@@ -353,6 +353,7 @@ def generate_latex_report(
     limitations: str = "[Discuss limitations here]",
     explainability_summary: Optional[Dict[str, Any]] = None,
     sensitivity_summary: Optional[Dict[str, Any]] = None,
+    stat_validation_summary: Optional[List[Dict[str, Any]]] = None,
     manuscript_context: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Generate a complete LaTeX manuscript template.
@@ -619,6 +620,29 @@ def generate_latex_report(
         sections.append("[PLACEHOLDER: Interpret sensitivity results in context]")
         sections.append("")
 
+    # FIX 4: Statistical Validation subsection
+    if stat_validation_summary:
+        sections.append(r"""
+\subsection{Statistical Validation}""")
+        for entry in stat_validation_summary:
+            test_name = _escape_latex(entry.get('test_name', 'Statistical test'))
+            variable = _escape_latex(entry.get('variable', 'unknown variable'))
+            statistic = entry.get('statistic')
+            p_value = entry.get('p_value')
+            
+            if statistic is not None and p_value is not None:
+                sections.append(f"{test_name} was performed on {variable}: statistic = {statistic:.4f}, $p$ = {p_value:.4f}.")
+                sections.append("")
+        
+        # Multiple testing caveat if >3 tests
+        if len(stat_validation_summary) > 3:
+            sections.append(
+                r"Note: Multiple statistical tests were performed; "
+                r"readers should consider the increased risk of Type I error "
+                r"when interpreting individual $p$-values."
+            )
+            sections.append("")
+
     # ── Discussion ──
     sections.append(r"""
 \section{Discussion}
@@ -782,6 +806,25 @@ def generate_latex_report(
 This analysis was conducted using Tabular ML Lab (Python). Full reproducibility manifest including software versions, random seeds, and data hashes is available in the exported analysis package.
 
 """)
+
+    # FIX 7: Decision Audit Trail in LaTeX supplementary
+    from ml.publication import generate_decision_audit_trail
+    audit_trail = generate_decision_audit_trail()
+    if audit_trail:
+        sections.append(r"\subsection{Decision Audit Trail}")
+        sections.append("")
+        sections.append(r"\begin{enumerate}")
+        # Parse the numbered list from audit_trail and convert to LaTeX enumerate
+        for line in audit_trail.split('\n'):
+            if line.strip():
+                # Remove the number prefix "1. " etc.
+                import re
+                match = re.match(r'^\d+\.\s*(.+)$', line)
+                if match:
+                    content = _escape_latex(match.group(1))
+                    sections.append(f"\\item {content}")
+        sections.append(r"\end{enumerate}")
+        sections.append("")
 
     sections.append(r"\end{document}")
 

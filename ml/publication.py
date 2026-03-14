@@ -362,6 +362,36 @@ def generate_methods_section(
            else " as a categorical target (classification).")
     )
 
+    # Data Cleaning (FIX 1)
+    data_cleaning_entries = logged_steps.get('Data Cleaning', [])
+    if data_cleaning_entries:
+        sections.append("\n\n### Data Cleaning\n")
+        cleaning_actions = []
+        total_rows_removed = 0
+        
+        for entry in data_cleaning_entries:
+            action = entry.get('action', '')
+            details = entry.get('details', {})
+            rows_before = details.get('rows_before', 0)
+            rows_after = details.get('rows_after', 0)
+            rows_removed = rows_before - rows_after
+            
+            if action:
+                cleaning_actions.append(action)
+            if rows_removed > 0:
+                total_rows_removed += rows_removed
+        
+        if cleaning_actions:
+            actions_list = ", ".join(cleaning_actions)
+            sections.append(
+                f"Prior to analysis, {len(data_cleaning_entries)} data cleaning operations were performed: {actions_list}. "
+            )
+            if total_rows_removed > 0:
+                sections.append(
+                    f"This resulted in {total_rows_removed:,} observations being excluded, "
+                    f"yielding a final sample of {n_total:,} observations for modeling."
+                )
+
     # Predictors
     sections.append("\n\n### Predictor Variables\n")
     if feature_counts.get('original') and feature_counts.get('selected') and feature_counts['original'] != feature_counts['selected']:
@@ -519,7 +549,7 @@ def generate_methods_section(
             
             sections.append("Feature engineering was performed prior to feature selection. ")
             
-            # List techniques from engineering log
+            # List techniques from engineering log (FIX 2: Enhanced specificity)
             if engineering_log:
                 sections.append("The following transformations were applied: ")
                 techniques = []
@@ -537,20 +567,52 @@ def generate_methods_section(
                     if ':' in log_entry:
                         technique, detail = log_entry.split(':', 1)
                         technique_name = technique.strip()
-                        # Enhanced PCA reporting with mode/component info
+                        
+                        # FIX 2: Specific parsing by transform type
                         if 'PCA' in technique_name.upper() and pca_details:
-                            # Use the first PCA config as representative (or report all if they differ)
+                            # Use the first PCA config as representative
                             first_pca = next(iter(pca_details.values()))
                             mode = first_pca.get('mode')
                             n_comp = first_pca.get('n_components')
                             if mode == "Fixed Components" and n_comp:
-                                techniques.append(f"PCA dimensionality reduction ({int(n_comp)} fixed components)")
+                                techniques.append(f"PCA dimensionality reduction ({int(n_comp)} components)")
                             elif mode == "Variance Threshold" and n_comp:
                                 techniques.append(f"PCA dimensionality reduction (retaining {int(n_comp*100)}% of variance)")
                             else:
-                                techniques.append(f"{technique_name} ({detail.strip()})")
+                                techniques.append(f"PCA dimensionality reduction")
+                        elif 'Polynomial' in technique_name:
+                            # Extract degree and mode from "Polynomial degree 2 (full)" or "Polynomial degree 2 (interaction-only)"
+                            import re
+                            degree_match = re.search(r'degree (\d+)', technique_name)
+                            mode_match = re.search(r'\((.*?)\)', technique_name)
+                            if degree_match:
+                                degree = degree_match.group(1)
+                                mode = mode_match.group(1) if mode_match else 'full'
+                                techniques.append(f"Polynomial features (degree {degree}, {mode})")
+                            else:
+                                techniques.append(f"Polynomial features")
+                        elif 'Binning' in technique_name:
+                            # Extract strategy and bins from "Binning (equal_width, 5 bins)"
+                            import re
+                            strat_match = re.search(r'Binning \(([^,]+),\s*(\d+)\s+bins?\)', technique_name)
+                            if strat_match:
+                                strategy = strat_match.group(1)
+                                n_bins = strat_match.group(2)
+                                techniques.append(f"Binning ({strategy}, {n_bins} bins)")
+                            else:
+                                techniques.append(f"Binning")
+                        elif 'Ratio' in technique_name:
+                            techniques.append(f"Ratio features")
+                        elif 'Mathematical' in technique_name or 'transform' in technique_name.lower():
+                            # Generic mathematical transforms (log, sqrt, etc.)
+                            techniques.append(f"Mathematical transformations (log, sqrt, square, inverse)")
+                        elif 'TDA' in technique_name.upper() or 'Topological' in technique_name:
+                            techniques.append(f"Topological data analysis features")
+                        elif 'UMAP' in technique_name.upper():
+                            techniques.append(f"UMAP dimensionality reduction")
                         else:
-                            techniques.append(f"{technique_name} ({detail.strip()})")
+                            # Fallback to generic parsing
+                            techniques.append(f"{technique_name}")
                     else:
                         techniques.append(log_entry)
                 sections.append("; ".join(techniques) + ". ")
@@ -831,6 +893,35 @@ def generate_methods_section(
     else:
         sections.append("[PLACEHOLDER: Describe preprocessing steps.]")
 
+    # FIX 6: Preprocessing order of operations
+    # Determine which optional steps were actually used
+    outlier_used = False
+    power_transform_used = False
+    
+    if _per_model_configs:
+        for cfg in _per_model_configs.values():
+            if cfg.get('numeric_outlier_treatment', 'none') != 'none':
+                outlier_used = True
+            if cfg.get('numeric_power_transform', 'none') != 'none' or cfg.get('numeric_log_transform', False):
+                power_transform_used = True
+    elif _preproc:
+        if _preproc.get('numeric_outlier_treatment', 'none') != 'none' or (_preproc.get('outliers', {}).get('method', 'none') != 'none'):
+            outlier_used = True
+        if _preproc.get('numeric_power_transform', 'none') != 'none' or _preproc.get('numeric_log_transform', False):
+            power_transform_used = True
+    
+    # Build the order sentence
+    order_steps = ["missing value imputation", "feature scaling", "categorical encoding"]
+    if outlier_used:
+        order_steps.append("outlier treatment")
+    if power_transform_used:
+        order_steps.append("power transformation")
+    
+    sections.append(
+        f" For all models, preprocessing was applied in the following order: "
+        f"{', '.join(order_steps[:-1])}, and {order_steps[-1]}."
+    )
+
     # Model development
     sections.append("\n\n### Model Development\n")
     
@@ -925,6 +1016,15 @@ def generate_methods_section(
     if hyperparameter_optimization:
         sections.append(" Hyperparameter optimization was performed using Optuna (30 trials per model).")
     
+    # FIX 5: Baseline model reporting
+    if selected_model_results:
+        baseline_models = [name for name in selected_model_results.keys() if 'baseline' in name.lower()]
+        if baseline_models:
+            if task_type == "regression":
+                sections.append(" Baseline models (mean predictor and simple linear regression) were automatically generated for comparison.")
+            else:
+                sections.append(" Baseline models (majority class predictor and simple logistic regression) were automatically generated for comparison.")
+    
     # Construct split description with strategy
     split_desc = "Data were split"
     if split_strategy:
@@ -976,6 +1076,19 @@ def generate_methods_section(
     
     if explainability_to_mention:
         sections.append("\n\n### Model Interpretability\n")
+        
+        # FIX 3: Extract model list and sample size from explainability log
+        explainability_models = []
+        explainability_entries = logged_steps.get('Explainability', [])
+        if explainability_entries:
+            for entry in explainability_entries:
+                details = entry.get('details', {})
+                models = details.get('models', [])
+                if models:
+                    explainability_models.extend(models)
+        # Deduplicate models
+        explainability_models = list(set(explainability_models)) if explainability_models else []
+        
         method_descriptions = {
             "permutation_importance": "Permutation importance was computed to assess feature contributions by measuring the decrease in model performance when each feature was randomly shuffled.",
             "shap": "SHapley Additive exPlanations (SHAP) values were computed to quantify the contribution of each feature to individual predictions.",
@@ -985,8 +1098,17 @@ def generate_methods_section(
             "decision_curve": "Decision curve analysis was performed to assess the clinical utility of the model at various probability thresholds.",
             "bland_altman": "Bland-Altman analysis was performed to assess agreement between model predictions.",
         }
+        
         for method in sorted(explainability_to_mention):
             desc = method_descriptions.get(method, f"{method} analysis was performed.")
+            # FIX 3: Add model scope and sample size
+            if method in ['permutation_importance', 'shap'] and explainability_models:
+                model_list = ', '.join(explainability_models)
+                desc = desc.rstrip('.') + f" for {model_list}"
+                if n_test > 0:
+                    desc += f" using {n_test:,} test observations."
+                else:
+                    desc += "."
             sections.append(f"{desc} ")
 
     # Sensitivity Analysis — check methodology log and session state
@@ -1255,6 +1377,34 @@ def generate_methods_section(
                         f"intercept = {cal.calibration_intercept:.3f}.\n\n"
                     )
 
+        # FIX 4: Statistical Validation Results
+        stat_val_entries = logged_steps.get('Statistical Validation', [])
+        if stat_val_entries:
+            sections.append("\n### Statistical Validation\n")
+            for entry in stat_val_entries:
+                action = entry.get('action', '')
+                details = entry.get('details', {})
+                test_name = details.get('test_name') or action
+                variable = details.get('variable', 'unknown variable')
+                statistic = details.get('statistic')
+                p_value = details.get('p_value')
+                
+                if statistic is not None and p_value is not None:
+                    sections.append(
+                        f"{test_name} was performed on {variable}: "
+                        f"statistic = {statistic:.4f}, p = {p_value:.4f}.\n\n"
+                    )
+                elif action:
+                    sections.append(f"{action}.\n\n")
+            
+            # Multiple testing caveat if >3 tests
+            if len(stat_val_entries) > 3:
+                sections.append(
+                    "Note: Multiple statistical tests were performed; "
+                    "readers should consider the increased risk of Type I error "
+                    "when interpreting individual p-values.\n\n"
+                )
+
     return "\n".join(sections)
 
 
@@ -1436,3 +1586,67 @@ def plot_forest_subgroups(subgroup_df: pd.DataFrame, metric_name: str = "Metric"
     )
 
     return fig
+
+
+# ============================================================================
+# FIX 7: Decision Audit Trail
+# ============================================================================
+
+def generate_decision_audit_trail() -> str:
+    """Generate a numbered chronological list of all decisions from methodology log.
+    
+    Returns:
+        Markdown-formatted string with numbered decision list.
+    """
+    try:
+        import streamlit as st
+        methodology_log = st.session_state.get('methodology_log', [])
+    except ImportError:
+        return ""
+    
+    if not methodology_log:
+        return ""
+    
+    # Sort by timestamp if available
+    sorted_log = sorted(
+        methodology_log,
+        key=lambda x: x.get('timestamp', '')
+    )
+    
+    decisions = []
+    for i, entry in enumerate(sorted_log, 1):
+        step = entry.get('step', 'Unknown')
+        action = entry.get('action', '')
+        details = entry.get('details', {})
+        
+        # Format decision text
+        if action:
+            decision_text = f"[{step}] {action}"
+        else:
+            decision_text = f"[{step}]"
+        
+        # Add relevant details for key steps
+        if step == 'Upload & Audit':
+            task = details.get('task_type', '')
+            n_obs = details.get('n_observations', '')
+            n_features = details.get('n_features', '')
+            target = details.get('target', '')
+            if task and n_obs:
+                decision_text = f"[{step}] Configured {task} task with {n_features} features, target: {target} (N={n_obs:,})"
+        elif step == 'Feature Engineering':
+            n_created = details.get('n_features_created', '')
+            if n_created:
+                decision_text += f" ({n_created} features created)"
+        elif step == 'Feature Selection':
+            n_before = details.get('n_features_before', '')
+            n_after = details.get('n_features_after', '')
+            if n_before and n_after:
+                decision_text += f" ({n_before} → {n_after} features)"
+        elif step == 'Model Training':
+            models = details.get('models', [])
+            if models:
+                decision_text += f" ({len(models)} models)"
+        
+        decisions.append(f"{i}. {decision_text}")
+    
+    return "\n".join(decisions)
