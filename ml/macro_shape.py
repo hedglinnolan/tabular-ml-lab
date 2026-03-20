@@ -34,6 +34,36 @@ import sklearn.utils as _skutils
 _skutils.check_array = _compat_check_array
 
 
+def _prepare_numeric(df: pd.DataFrame, max_features: int = 200) -> tuple:
+    """Shared preprocessing: filter numeric, drop zero-variance, impute NaN, scale.
+    
+    Returns (X_scaled, col_names) or raises ValueError.
+    """
+    df = df.select_dtypes(include=[np.number])
+    cols = list(df.columns[:max_features])
+    X = df[cols].values.astype(np.float64)
+    
+    # Drop zero-variance and non-finite columns
+    variances = np.nanvar(X, axis=0)
+    valid_mask = (variances > 0) & np.isfinite(variances)
+    X = X[:, valid_mask]
+    cols = [c for c, v in zip(cols, valid_mask) if v]
+    
+    if X.shape[1] < 2:
+        raise ValueError("Fewer than 2 valid numeric features after filtering")
+    
+    # Impute NaN with column median
+    nan_mask = np.isnan(X)
+    if nan_mask.any():
+        col_medians = np.nanmedian(X, axis=0)
+        for j in range(X.shape[1]):
+            X[nan_mask[:, j], j] = col_medians[j]
+    
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    return X_scaled, cols
+
+
 # ---------------------------------------------------------------------------
 # PCA
 # ---------------------------------------------------------------------------
@@ -58,12 +88,10 @@ def compute_pca(
     if len(df) < 10 or len(df.columns) < 2:
         return {"error": "Insufficient data for PCA"}
 
-    # Limit features if ultra-wide
-    cols = list(df.columns[:max_features])
-    X = df[cols].values
-    
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    try:
+        X_scaled, cols = _prepare_numeric(df, max_features)
+    except ValueError as e:
+        return {"error": str(e)}
     
     n = n_components or min(len(cols), len(df), 50)
     pca = PCA(n_components=n, random_state=42)
@@ -215,11 +243,10 @@ def compute_umap(
     if len(df) > max_samples:
         df = df.sample(max_samples, random_state=42)
     
-    cols = list(df.columns[:max_features])
-    X = df[cols].values
-    
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    try:
+        X_scaled, cols = _prepare_numeric(df, max_features)
+    except ValueError as e:
+        return {"error": str(e)}
     
     try:
         from umap import UMAP
@@ -312,11 +339,10 @@ def compute_persistence(
     if len(df) > max_samples:
         df = df.sample(max_samples, random_state=42)
     
-    cols = list(df.columns[:max_features])
-    X = df[cols].values
-    
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    try:
+        X_scaled, cols = _prepare_numeric(df, max_features)
+    except ValueError as e:
+        return {"error": str(e)}
     
     try:
         from gtda.homology import VietorisRipsPersistence
@@ -474,15 +500,12 @@ def compute_mapper(
     if len(df) > max_samples:
         df = df.sample(max_samples, random_state=42)
     
-    cols = list(df.columns[:max_features])
-    X = df[cols].values
-    
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    try:
+        X_scaled, cols = _prepare_numeric(df, max_features)
+    except ValueError as e:
+        return {"error": str(e)}
     
     try:
-        # Use PCA projection as lens
-        X_scaled = np.asarray(X_scaled, dtype=np.float64)
         pca = PCA(n_components=2, random_state=42)
         lens = pca.fit_transform(X_scaled)
         
