@@ -734,30 +734,45 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     report_lines.append("---")
     report_lines.append("")
     
-    # Key insights after pre-processing (EDA + preprocessing)
-    insights = get_insights_by_category()
-    # Safety check: ensure insights are dicts
-    eda_insights = [i for i in insights if isinstance(i, dict) and i.get("category") != "preprocessing"]
-    prep_insights = [i for i in insights if isinstance(i, dict) and i.get("category") == "preprocessing"]
-    if eda_insights or prep_insights:
-        report_lines.append("## Key insights after pre-processing")
-        report_lines.append("")
-        if eda_insights:
-            report_lines.append("### From EDA")
+    # Key insights after pre-processing — prefer Insight Ledger, fallback to legacy
+    _used_ledger = False
+    try:
+        from utils.insight_ledger import get_ledger as _get_report_ledger
+        _report_ledger = _get_report_ledger()
+        if len(_report_ledger) > 0:
+            _used_ledger = True
+            report_lines.append("## Key Observations and Resolutions")
             report_lines.append("")
-            for insight in eda_insights:
-                report_lines.append(f"**{insight.get('category', 'General').title()}:** {insight['finding']}")
-                report_lines.append(f"→ {insight['implication']}")
-                report_lines.append("")
-        if prep_insights:
-            report_lines.append("### From preprocessing")
+            report_lines.append(_report_ledger.narrative_for_report())
             report_lines.append("")
-            for insight in prep_insights:
-                report_lines.append(f"- {insight['finding']}")
-                report_lines.append(f"  → {insight['implication']}")
+            report_lines.append("---")
+            report_lines.append("")
+    except ImportError:
+        pass
+
+    if not _used_ledger:
+        insights = get_insights_by_category()
+        eda_insights = [i for i in insights if isinstance(i, dict) and i.get("category") != "preprocessing"]
+        prep_insights = [i for i in insights if isinstance(i, dict) and i.get("category") == "preprocessing"]
+        if eda_insights or prep_insights:
+            report_lines.append("## Key insights after pre-processing")
+            report_lines.append("")
+            if eda_insights:
+                report_lines.append("### From EDA")
                 report_lines.append("")
-        report_lines.append("---")
-        report_lines.append("")
+                for insight in eda_insights:
+                    report_lines.append(f"**{insight.get('category', 'General').title()}:** {insight['finding']}")
+                    report_lines.append(f"→ {insight['implication']}")
+                    report_lines.append("")
+            if prep_insights:
+                report_lines.append("### From preprocessing")
+                report_lines.append("")
+                for insight in prep_insights:
+                    report_lines.append(f"- {insight['finding']}")
+                    report_lines.append(f"  → {insight['implication']}")
+                    report_lines.append("")
+            report_lines.append("---")
+            report_lines.append("")
     
     # Split Strategy
     report_lines.append("## 🔀 Data Split Strategy")

@@ -266,24 +266,31 @@ def _auto_generate_insights():
                 metadata={"imbalance_ratio": float(imbalance)},
             ))
 
-    # Feature skewness
-    numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
-    for col in numeric_cols:
-        try:
-            skew_val = float(df[col].skew())
-            if abs(skew_val) > 2.0:
-                ledger.upsert(Insight(
-                    id=f"eda_skew_{col}",
-                    source_page="02_EDA", category="distribution", severity="info",
-                    finding=f"{col} is heavily skewed (skew={skew_val:.1f})",
-                    implication="Log or power transform may improve linear model performance",
-                    affected_features=[col],
-                    recommended_action="Consider transform in Feature Engineering",
-                    action_page="03_Feature_Engineering",
-                    metadata={"skewness": skew_val},
-                ))
-        except (TypeError, ValueError):
-            pass
+    # Feature skewness — use cached computation
+    @st.cache_data
+    def _get_skewed_features(_df, _feature_cols):
+        cols = _df[_feature_cols].select_dtypes(include=[np.number]).columns
+        skewed = []
+        for col in cols:
+            try:
+                sv = float(_df[col].skew())
+                if abs(sv) > 2.0:
+                    skewed.append((col, sv))
+            except (TypeError, ValueError):
+                pass
+        return skewed
+
+    for col, skew_val in _get_skewed_features(df, feature_cols):
+        ledger.upsert(Insight(
+            id=f"eda_skew_{col}",
+            source_page="02_EDA", category="distribution", severity="info",
+            finding=f"{col} is heavily skewed (skew={skew_val:.1f})",
+            implication="Log or power transform may improve linear model performance",
+            affected_features=[col],
+            recommended_action="Consider transform in Feature Engineering",
+            action_page="03_Feature_Engineering",
+            metadata={"skewness": skew_val},
+        ))
 
 
 _auto_generate_insights()
@@ -337,9 +344,9 @@ st.dataframe(
 )
 
 # Type filter pills and column inspector
-type_label = f"# {regime.n_numeric} numeric · Aa {regime.n_categorical} categorical"
+type_label = f"{regime.n_numeric} numeric · {regime.n_categorical} categorical"
 if regime.n_datetime > 0:
-    type_label += f" · 📅 {regime.n_datetime} datetime"
+    type_label += f" · {regime.n_datetime} datetime"
 st.caption(type_label)
 
 # Column inspector
@@ -523,20 +530,26 @@ st.subheader("Outlier Overview")
 
 if numeric_features:
     from ml.outliers import detect_outliers
-    outlier_data = {}
-    methods = ["iqr", "zscore"]
-    for feat in numeric_features[:50]:  # Cap for performance
-        feat_data = df[feat].dropna()
-        if len(feat_data) < 10:
-            continue
-        row = {}
-        for method in methods:
-            try:
-                mask, _ = detect_outliers(feat_data, method=method)
-                row[method.upper()] = float(mask.sum() / len(feat_data) * 100)
-            except Exception:
-                row[method.upper()] = 0.0
-        outlier_data[feat] = row
+
+    @st.cache_data
+    def _compute_outlier_heatmap(_df, _numeric_feats, methods):
+        """Cached outlier prevalence computation."""
+        outlier_data = {}
+        for feat in _numeric_feats[:50]:
+            feat_data = _df[feat].dropna()
+            if len(feat_data) < 10:
+                continue
+            row = {}
+            for method in methods:
+                try:
+                    mask, _ = detect_outliers(feat_data, method=method)
+                    row[method.upper()] = float(mask.sum() / len(feat_data) * 100)
+                except Exception:
+                    row[method.upper()] = 0.0
+            outlier_data[feat] = row
+        return outlier_data
+
+    outlier_data = _compute_outlier_heatmap(df, numeric_features, ["iqr", "zscore"])
 
     if outlier_data:
         outlier_df = pd.DataFrame(outlier_data).T
@@ -619,9 +632,13 @@ if len(numeric_features) >= 2:
     corr_method = st.pills("Method", ["Pearson", "Spearman"], default="Pearson", key="corr_method")
     method_name = corr_method.lower() if corr_method else "pearson"
 
+    @st.cache_data
+    def _compute_corr(_df, _features, method):
+        return _df[_features].corr(method=method).round(3)
+
     if regime.show_full_corr_matrix:
         # Full heatmap for narrow/medium datasets
-        corr_matrix = df[numeric_features].corr(method=method_name).round(3)
+        corr_matrix = _compute_corr(df, numeric_features, method_name)
         threshold = st.slider("Highlight threshold", 0.0, 1.0, 0.8, 0.05, key="corr_threshold")
 
         fig_corr = px.imshow(
@@ -652,7 +669,7 @@ if len(numeric_features) >= 2:
     else:
         # Wide/ultra-wide: top-N pairs list only
         top_n = regime.corr_top_n
-        corr_matrix = df[numeric_features].corr(method=method_name)
+        corr_matrix = _compute_corr(df, numeric_features, method_name)
         pairs = []
         for i in range(len(corr_matrix)):
             for j in range(i + 1, len(corr_matrix)):
@@ -858,8 +875,10 @@ if regime.show_macro_shape and numeric_features:
         st.plotly_chart(fig_scree, use_container_width=True)
         n_90 = pca_result["n_components_90"]
         total_var = pca_result["total_variance_explained"]
+        n_used = len(pca_result["feature_names"])
+        cap_note = f" (computed on {n_used} of {len(numeric_features)})" if n_used < len(numeric_features) else ""
         st.caption(
-            f"**{n_90} components** explain 90% of variance across {len(numeric_features)} features. "
+            f"**{n_90} components** explain 90% of variance across {len(numeric_features)} features{cap_note}. "
             f"Top {min(len(pca_result['explained_variance_ratio']), 5)} components capture {total_var:.1%} total."
         )
 
