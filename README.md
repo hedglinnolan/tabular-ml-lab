@@ -8,13 +8,77 @@ A guided, interactive research workbench for faculty and students working with t
 
 ---
 
-## University Features
+## University Deployment Features
 
 ✅ **Docker containerized** - Deploy on any institutional infrastructure  
 ✅ **Flexible authentication** - KeyCloak, Azure AD, Google, SAML, or reverse proxy  
 ✅ **Multiple LLM backends** - vLLM, Ollama, or OpenAI API  
 ✅ **On-premises deployment** - All data stays within your network  
 ✅ **Compute profiles** - Adapts to available hardware (standard → enterprise)  
+
+---
+
+An interactive research workbench for scientists who work with tabular data and need to publish papers. Upload your CSV, and the app guides you through a complete, defensible ML workflow — from exploratory analysis to a compilable LaTeX manuscript draft with auto-generated methods, results, and structured discussion.
+
+**Built for researchers, not ML engineers.** The app does the mechanical work of writing a prediction model paper. Your only edits are domain-specific context no tool can provide.
+
+## Features
+
+### 📋 10-Step Guided Workflow
+
+| Step | Page | What it does |
+|------|------|-------------|
+| 1 | **Upload & Audit** | Load CSVs/Excel, merge multiple files, data quality checks |
+| 2 | **EDA** | Distributions, correlations, Table 1, missing data analysis, interactive decision hub |
+| 3 | **Feature Engineering** | PCA, polynomial features, log transforms, ratios, binning, TDA features |
+| 4 | **Feature Selection** | LASSO path, RFE-CV, univariate, stability selection, consensus ranking |
+| 5 | **Preprocess** | Per-model pipelines: imputation, scaling, encoding, outlier handling, power transforms |
+| 6 | **Train & Compare** | 18 model families with bootstrap CIs, baseline comparison, optional Optuna optimization |
+| 7 | **Explainability** | SHAP, permutation importance, PDP, calibration, decision curves, subgroup analysis |
+| 8 | **Sensitivity Analysis** | Seed robustness, feature dropout — prove your results aren't fragile |
+| 9 | **Statistical Validation** | Traditional stats for Table 1: t-tests, ANOVA, chi-square, custom hypothesis tests |
+| 10 | **Report Export** | LaTeX manuscript, markdown report, TRIPOD checklist, methodology audit log |
+
+### 📄 Publication-Ready Manuscript Generation
+
+The export pipeline does the mechanical assembly work of writing a prediction model paper:
+
+- **Compilable LaTeX manuscript** with structured abstract, methods, results, and discussion
+- **Auto-generated methods section** reflecting your exact workflow decisions — preprocessing parameters, feature selection thresholds, model hyperparameters, split strategy
+- **Results section** with width-contained performance tables, bootstrap CIs, explainability findings, sensitivity analysis
+- **Structured discussion skeleton** with result-specific prompts referencing your actual best model, top features, and metrics
+- **Table 1** with stratified descriptives, statistical tests, and footnoted custom tests
+- **TRIPOD checklist** auto-tracked from your workflow
+- **Commented figure references** matching your export filenames — uncomment after placing figures
+- **Markdown report** with the same content for quick review
+
+**What you still write:** Clinical context, study design rationale, interpretation of findings, comparison with prior work, domain-specific limitations.
+
+**What the app writes for you:** Everything else — sample sizes, split ratios, model names, hyperparameters, metrics with CIs, preprocessing details, feature importance rankings, sensitivity results, software versions, methodological considerations.
+
+### 🧠 18 Models, Zero Configuration
+
+| Category | Models |
+|----------|--------|
+| **Linear** | Ridge, Lasso, ElasticNet, Logistic Regression, GLM, Huber |
+| **Trees** | Random Forest, ExtraTrees, HistGradientBoosting |
+| **Distance** | KNN (regression & classification) |
+| **Margin** | SVM (SVR / SVC) |
+| **Probabilistic** | Gaussian Naive Bayes, LDA |
+| **Neural** | PyTorch MLP (configurable architecture and loss) |
+| **Baselines** | Auto-generated mean/majority + simple linear/logistic |
+
+Every model gets its own preprocessing pipeline. No data leakage. No shortcuts.
+
+### 🤖 AI-Powered Interpretation (Optional)
+
+Connect a local LLM or cloud API for plain-language analysis interpretation:
+
+| Backend | Setup |
+|---------|-------|
+| **Ollama** (free, local) | `ollama serve && ollama pull llama3.2` |
+| **OpenAI** | API key in sidebar |
+| **Anthropic** | API key in sidebar |
 
 ---
 

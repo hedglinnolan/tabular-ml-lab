@@ -254,39 +254,69 @@ with col3:
 st.markdown("---")
 
 # ============================================================================
-# EDA-DRIVEN RECOMMENDATIONS
+# EDA-DRIVEN RECOMMENDATIONS (via Insight Ledger + backward compat)
 # ============================================================================
-# Show recommendations based on EDA insights
-eda_insights = st.session_state.get('feature_engineering_hints', {})
+try:
+    from utils.insight_ledger import get_ledger as _get_ledger
+    _fe_ledger = _get_ledger()
+    _fe_unresolved = _fe_ledger.get_unresolved(action_page="03_Feature_Engineering")
+    _fe_skew_insights = [i for i in _fe_unresolved if "skew" in i.id or (i.category == "distribution" and "skew" in i.finding.lower())]
+    _fe_corr_insights = [i for i in _fe_unresolved if i.category == "relationship"]
+    _fe_topo_insights = [i for i in _fe_unresolved if i.category == "topology"]
 
-if eda_insights:
-    skewed = eda_insights.get('skewed_features', [])
-    high_corr = eda_insights.get('high_corr_pairs', [])
-    
-    if skewed or high_corr:
-        st.markdown("### 💡 Recommendations Based on Your EDA")
-        
-        if skewed:
-            skewed_names = [f"**{s['name']}** (skew: {s['skewness']})" for s in skewed]
-            st.info(f"""
+    if _fe_skew_insights or _fe_corr_insights or _fe_topo_insights:
+        st.markdown("### 💡 Recommendations from EDA")
+
+        if _fe_skew_insights:
+            # Handle both grouped and individual skew insights
+            all_skewed_feats = []
+            for i in _fe_skew_insights:
+                if i.affected_features:
+                    skew_meta = i.metadata.get("features", {})
+                    for f in i.affected_features:
+                        sv = skew_meta.get(f, i.metadata.get("skewness", "?"))
+                        all_skewed_feats.append((f, sv))
+            if all_skewed_feats:
+                skewed_names = [f"**{f}** (skew: {s:.1f})" if isinstance(s, (int, float)) else f"**{f}**" for f, s in all_skewed_feats[:8]]
+                st.info(f"""
 **Right-skewed features detected:** {', '.join(skewed_names)}
 
-→ **Recommended:** Apply log transforms (Section 2) to normalize these distributions.  
+→ **Recommended:** Apply log transforms (Section 2) to normalize these distributions.
 This can improve linear model performance and reduce the influence of extreme values.
 """)
-        
-        if high_corr:
-            corr_str = ", ".join([f"**{p['feature1']}/{p['feature2']}** ({p['correlation']})" for p in high_corr[:3]])
-            if len(high_corr) > 3:
-                corr_str += f" ... and {len(high_corr) - 3} more"
+
+        if _fe_corr_insights:
+            corr_str = ", ".join([f"**{'/'.join(i.affected_features)}** ({i.metadata.get('correlation', '?'):.2f})" for i in _fe_corr_insights[:3] if i.affected_features])
+            if len(_fe_corr_insights) > 3:
+                corr_str += f" ... and {len(_fe_corr_insights) - 3} more"
             st.warning(f"""
 **High correlation detected:** {corr_str}
 
-→ **Caution:** Polynomial features will amplify these correlations.  
+→ **Caution:** Polynomial features will amplify these correlations.
 Consider using Feature Selection (next step) to filter redundant interactions.
 """)
-        
+
+        if _fe_topo_insights:
+            for ins in _fe_topo_insights:
+                st.info(f"💡 **{ins.finding}** → {ins.recommended_action}")
+
         st.markdown("---")
+
+except ImportError:
+    # Fallback to legacy mechanism
+    eda_insights = st.session_state.get('feature_engineering_hints', {})
+    if eda_insights:
+        skewed = eda_insights.get('skewed_features', [])
+        high_corr = eda_insights.get('high_corr_pairs', [])
+        if skewed or high_corr:
+            st.markdown("### 💡 Recommendations Based on Your EDA")
+            if skewed:
+                skewed_names = [f"**{s['name']}** (skew: {s['skewness']})" for s in skewed]
+                st.info(f"**Right-skewed features detected:** {', '.join(skewed_names)}")
+            if high_corr:
+                corr_str = ", ".join([f"**{p['feature1']}/{p['feature2']}** ({p['correlation']})" for p in high_corr[:3]])
+                st.warning(f"**High correlation detected:** {corr_str}")
+            st.markdown("---")
 
 # ============================================================================
 # Feature Engineering Techniques
@@ -516,6 +546,18 @@ if use_transforms:
                     st.session_state.fe_work_in_progress["X_engineered"] = X_engineered
                     st.session_state.fe_work_in_progress["engineered_features"] = engineered_features
                     st.session_state.fe_work_in_progress["engineering_log"] = engineering_log
+                    
+                    # Resolve skew insight if all skewed features have been transformed
+                    try:
+                        from utils.insight_ledger import get_ledger as _resolve_ledger
+                        _rl = _resolve_ledger()
+                        _skew_ins = _rl.get("eda_skew_group")
+                        if _skew_ins and _skew_ins.affected_features:
+                            untransformed = [f for f in _skew_ins.affected_features if f not in selected_features]
+                            if not untransformed:
+                                _rl.resolve("eda_skew_group", "Applied transforms to all skewed features", "03_Feature_Engineering")
+                    except ImportError:
+                        pass
                     
                     st.rerun()
                     engineering_log.append(f"Mathematical transforms: +{len(new_cols)} features")

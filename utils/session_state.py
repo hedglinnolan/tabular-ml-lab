@@ -156,7 +156,7 @@ def init_session_state():
 
         # EDA
         'eda_results': {},  # Dict[str, Dict] - recommendation_id -> results
-        'eda_insights': [],  # List[Dict] - structured insights from EDA analyses
+        'eda_insights': [],  # LEGACY — backward compat, computed from insight_ledger
         
         # Report
         'report_data': None,
@@ -178,6 +178,12 @@ def init_session_state():
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
+    # Insight ledger — single logical layer for cross-page insight tracking.
+    # Initialized separately because it's a class instance, not a plain default.
+    if 'insight_ledger' not in st.session_state:
+        from utils.insight_ledger import InsightLedger
+        st.session_state.insight_ledger = InsightLedger()
 
 
 def get_data() -> Optional[pd.DataFrame]:
@@ -246,6 +252,10 @@ def reset_data_dependent_state():
     st.session_state.eda_results = {}
     st.session_state.eda_insights = []
     st.session_state.report_data = None
+
+    # Reset insight ledger
+    from utils.insight_ledger import InsightLedger
+    st.session_state.insight_ledger = InsightLedger()
     for key in (
         'methods_section', 'flow_diagram', 'tripod_tracker', 'latex_report',
         'report_best_model', 'report_model_selection', 'report_explain_selection',
