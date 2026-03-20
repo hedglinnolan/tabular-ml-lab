@@ -65,3 +65,19 @@ datasets.db
 # Session files (user data)
 tabular_ml_session_*.pkl
 *.pkl
+
+# Internal dev artifacts (not needed by outside users)
+COMPREHENSIVE_AUDIT_REPORT.md
+CONNECTIVE_TISSUE_CHANGES.md
+DIAGNOSTIC_VERIFICATION.md
+FEATURE_ENGINEERING_FIXES.md
+FEATURE_ENGINEERING_VS_PREPROCESSING.md
+HOMEPAGE_AUDIT.md
+PHASE_B_COMPLETE.md
+PRODUCT_REVIEW.md
+README_PUBLIC.md
+SESSION_SAVE_IMPLEMENTATION.md
+TESTING_FEATURE_ENGINEERING.md
+docs/plans/
+docs/reviews/
+docs/eda-redesign.md
