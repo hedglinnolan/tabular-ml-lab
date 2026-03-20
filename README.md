@@ -33,7 +33,7 @@ An interactive research workbench for scientists who work with tabular data and 
 
 **Built for researchers, not ML engineers.** The app does the mechanical work of writing a prediction model paper. Your only edits are domain-specific context no tool can provide.
 
-> 🌐 **Try it now:** [app.tabularml.dev](https://app.tabularml.dev)
+> 🌐 **Try it now:** [app.tabularml.dev](https://app.tabularml.dev) (Note: I am actively developing a new branch and I use this demo website to test out new features. Functionality may break once in a while.)
 
 ## Features
 
