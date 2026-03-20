@@ -84,7 +84,7 @@ def compute_pca(
         - feature_names: original feature names
         - n_components_90: components needed for 90% variance
     """
-    df = _df_numeric.dropna()
+    df = _df_numeric.copy()
     if len(df) < 10 or len(df.columns) < 2:
         return {"error": "Insufficient data for PCA"}
 
@@ -235,7 +235,7 @@ def compute_umap(
     max_features: int = 200,
 ) -> Dict[str, Any]:
     """Compute UMAP embedding on numeric features."""
-    df = _df_numeric.dropna()
+    df = _df_numeric.copy()
     if len(df) < 15 or len(df.columns) < 2:
         return {"error": "Insufficient data for UMAP"}
     
@@ -331,7 +331,7 @@ def compute_persistence(
     homology_dimensions: Tuple[int, ...] = (0, 1),
 ) -> Dict[str, Any]:
     """Compute persistent homology via giotto-tda."""
-    df = _df_numeric.dropna()
+    df = _df_numeric.copy()
     if len(df) < 20 or len(df.columns) < 2:
         return {"error": "Insufficient data for persistence computation"}
     
@@ -493,7 +493,7 @@ def compute_mapper(
     
     Returns graph as nodes + edges for Plotly network visualization.
     """
-    df = _df_numeric.dropna()
+    df = _df_numeric.copy()
     if len(df) < 30 or len(df.columns) < 2:
         return {"error": "Insufficient data for Mapper"}
     
