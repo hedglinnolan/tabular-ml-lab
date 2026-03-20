@@ -260,7 +260,7 @@ try:
     from utils.insight_ledger import get_ledger as _get_ledger
     _fe_ledger = _get_ledger()
     _fe_unresolved = _fe_ledger.get_unresolved(action_page="03_Feature_Engineering")
-    _fe_skew_insights = [i for i in _fe_unresolved if "skew" in i.id]
+    _fe_skew_insights = [i for i in _fe_unresolved if "skew" in i.id or (i.category == "distribution" and "skew" in i.finding.lower())]
     _fe_corr_insights = [i for i in _fe_unresolved if i.category == "relationship"]
     _fe_topo_insights = [i for i in _fe_unresolved if i.category == "topology"]
 
@@ -268,8 +268,17 @@ try:
         st.markdown("### 💡 Recommendations from EDA")
 
         if _fe_skew_insights:
-            skewed_names = [f"**{i.affected_features[0]}** (skew: {i.metadata.get('skewness', '?'):.1f})" for i in _fe_skew_insights if i.affected_features]
-            st.info(f"""
+            # Handle both grouped and individual skew insights
+            all_skewed_feats = []
+            for i in _fe_skew_insights:
+                if i.affected_features:
+                    skew_meta = i.metadata.get("features", {})
+                    for f in i.affected_features:
+                        sv = skew_meta.get(f, i.metadata.get("skewness", "?"))
+                        all_skewed_feats.append((f, sv))
+            if all_skewed_feats:
+                skewed_names = [f"**{f}** (skew: {s:.1f})" if isinstance(s, (int, float)) else f"**{f}**" for f, s in all_skewed_feats[:8]]
+                st.info(f"""
 **Right-skewed features detected:** {', '.join(skewed_names)}
 
 → **Recommended:** Apply log transforms (Section 2) to normalize these distributions.
@@ -538,12 +547,15 @@ if use_transforms:
                     st.session_state.fe_work_in_progress["engineered_features"] = engineered_features
                     st.session_state.fe_work_in_progress["engineering_log"] = engineering_log
                     
-                    # Resolve skew insights for transformed features
+                    # Resolve skew insight if all skewed features have been transformed
                     try:
                         from utils.insight_ledger import get_ledger as _resolve_ledger
                         _rl = _resolve_ledger()
-                        for feat in selected_features:
-                            _rl.resolve(f"eda_skew_{feat}", f"Applied transform in Feature Engineering", "03_Feature_Engineering")
+                        _skew_ins = _rl.get("eda_skew_group")
+                        if _skew_ins and _skew_ins.affected_features:
+                            untransformed = [f for f in _skew_ins.affected_features if f not in selected_features]
+                            if not untransformed:
+                                _rl.resolve("eda_skew_group", "Applied transforms to all skewed features", "03_Feature_Engineering")
                     except ImportError:
                         pass
                     

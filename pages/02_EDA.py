@@ -204,36 +204,88 @@ def _auto_generate_insights():
                 action_page="04_Feature_Selection",
             ))
 
-    # Collinearity
+    # Collinearity — cluster correlated features into groups instead of per-pair
     max_corr = signals.collinearity_summary.get("max_corr", 0)
     high_pairs = signals.collinearity_summary.get("high_corr_pairs", [])
     if high_pairs:
-        for a, b, corr in high_pairs[:5]:
+        # Build adjacency graph and find connected components
+        from collections import defaultdict, deque
+        adj = defaultdict(set)
+        pair_corrs = {}
+        for a, b, corr in high_pairs:
+            adj[a].add(b)
+            adj[b].add(a)
+            pair_corrs[(a, b)] = float(corr)
+            pair_corrs[(b, a)] = float(corr)
+
+        visited = set()
+        clusters = []
+        for node in adj:
+            if node not in visited:
+                cluster = []
+                queue = deque([node])
+                while queue:
+                    n = queue.popleft()
+                    if n in visited:
+                        continue
+                    visited.add(n)
+                    cluster.append(n)
+                    for neighbor in adj[n]:
+                        if neighbor not in visited:
+                            queue.append(neighbor)
+                if len(cluster) >= 2:
+                    # Find max correlation within cluster
+                    cluster_max_corr = 0
+                    for i, a in enumerate(cluster):
+                        for b in cluster[i+1:]:
+                            c = pair_corrs.get((a, b), 0)
+                            cluster_max_corr = max(cluster_max_corr, c)
+                    clusters.append((cluster, cluster_max_corr))
+
+        for cluster_features, cluster_max in clusters:
+            n_feats = len(cluster_features)
+            feat_list = ", ".join(cluster_features[:6])
+            if n_feats > 6:
+                feat_list += f" +{n_feats - 6} more"
             ledger.upsert(Insight(
-                id=f"eda_corr_{a}_{b}",
+                id=f"eda_corr_cluster_{'_'.join(sorted(cluster_features[:3]))}",
                 source_page="02_EDA", category="relationship", severity="warning",
-                finding=f"{a} and {b} correlated at r={corr:.2f}",
-                implication="Redundant features may inflate coefficient variance in linear models",
-                affected_features=[a, b],
-                recommended_action="Consider dropping one in Feature Selection",
+                finding=f"Collinearity cluster: {n_feats} features are intercorrelated (max r={cluster_max:.2f}): {feat_list}",
+                implication=f"Keeping all {n_feats} may inflate variance in linear models. Consider retaining 1-2 representatives.",
+                affected_features=cluster_features,
+                recommended_action=f"Review in Feature Selection — consider dropping {n_feats - 1} of {n_feats}",
                 action_page="04_Feature_Selection",
-                metadata={"correlation": float(corr)},
+                metadata={"max_correlation": cluster_max, "cluster_size": n_feats},
             ))
 
-    # Missing data
+    # Missing data — synthesize into severity tiers, not per-column
     if signals.high_missing_cols:
-        for col in signals.high_missing_cols:
-            rate = signals.missing_rate_by_col.get(col, 0)
+        severe_missing = [(c, signals.missing_rate_by_col.get(c, 0)) for c in signals.high_missing_cols if signals.missing_rate_by_col.get(c, 0) > 0.3]
+        moderate_missing = [(c, signals.missing_rate_by_col.get(c, 0)) for c in signals.high_missing_cols if 0.05 < signals.missing_rate_by_col.get(c, 0) <= 0.3]
+
+        if severe_missing:
+            cols_str = ", ".join(f"{c} ({r:.0%})" for c, r in severe_missing[:5])
             ledger.upsert(Insight(
-                id=f"eda_missing_{col}",
-                source_page="02_EDA", category="data_quality",
-                severity="warning" if rate > 0.2 else "info",
-                finding=f"{col} has {rate:.1%} missing values",
-                implication="Needs explicit handling strategy (imputation, indicator, or drop)",
-                affected_features=[col],
+                id="eda_missing_severe",
+                source_page="02_EDA", category="data_quality", severity="warning",
+                finding=f"{len(severe_missing)} feature(s) with >30% missing: {cols_str}",
+                implication="High missingness may require column removal or advanced imputation (MICE, kNN). Simple mean imputation may distort distributions.",
+                affected_features=[c for c, _ in severe_missing],
+                recommended_action="Review in Preprocessing — consider dropping or advanced imputation",
+                action_page="05_Preprocess",
+                metadata={"n_features": len(severe_missing), "max_rate": max(r for _, r in severe_missing)},
+            ))
+        if moderate_missing:
+            cols_str = ", ".join(f"{c} ({r:.0%})" for c, r in moderate_missing[:8])
+            ledger.upsert(Insight(
+                id="eda_missing_moderate",
+                source_page="02_EDA", category="data_quality", severity="info",
+                finding=f"{len(moderate_missing)} feature(s) with 5-30% missing: {cols_str}",
+                implication="Standard imputation (median/mode) should be sufficient. Consider adding missingness indicator features.",
+                affected_features=[c for c, _ in moderate_missing],
                 recommended_action="Address in Preprocessing",
                 action_page="05_Preprocess",
-                metadata={"missing_rate": float(rate)},
+                metadata={"n_features": len(moderate_missing)},
             ))
 
     # Target skewness
@@ -280,17 +332,102 @@ def _auto_generate_insights():
                 pass
         return skewed
 
-    for col, skew_val in _get_skewed_features(df, feature_cols):
+    skewed_list = _get_skewed_features(df, feature_cols)
+    if skewed_list:
+        skew_names = ", ".join(f"{c} ({s:.1f})" for c, s in skewed_list[:8])
+        if len(skewed_list) > 8:
+            skew_names += f" +{len(skewed_list) - 8} more"
         ledger.upsert(Insight(
-            id=f"eda_skew_{col}",
+            id="eda_skew_group",
             source_page="02_EDA", category="distribution", severity="info",
-            finding=f"{col} is heavily skewed (skew={skew_val:.1f})",
-            implication="Log or power transform may improve linear model performance",
-            affected_features=[col],
-            recommended_action="Consider transform in Feature Engineering",
+            finding=f"{len(skewed_list)} feature(s) heavily skewed (|skew| > 2): {skew_names}",
+            implication="Log or power transforms may improve linear model performance and reduce outlier influence",
+            affected_features=[c for c, _ in skewed_list],
+            recommended_action="Consider transforms in Feature Engineering",
             action_page="03_Feature_Engineering",
-            metadata={"skewness": skew_val},
+            metadata={"n_skewed": len(skewed_list), "features": {c: s for c, s in skewed_list}},
         ))
+
+    # ------------------------------------------------------------------
+    # OPPORTUNITIES — things to exploit, not just problems to fix
+    # ------------------------------------------------------------------
+
+    # Clean data opportunity
+    n_issues = len([i for i in ledger.get_unresolved() if i.severity in ("blocker", "warning")])
+    if n_issues == 0 and regime.n_features >= 5:
+        ledger.upsert(Insight(
+            id="eda_opportunity_clean_data",
+            source_page="02_EDA", category="data_quality", severity="opportunity",
+            finding="Dataset has no blockers or warnings — unusually clean",
+            implication="You can lean into interpretable models (GLM, GAM) where coefficient interpretation is meaningful, rather than defaulting to black-box approaches",
+            recommended_action="Consider GLM or GAM baselines in Train & Compare",
+            action_page="06_Train_and_Compare",
+        ))
+
+    # Strong target signal opportunity
+    if _has_target and task_type_final == "regression":
+        numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) >= 2:
+            top_corr = max(
+                (abs(df[c].corr(df[target_col])) for c in numeric_cols if c != target_col),
+                default=0,
+            )
+            if top_corr > 0.7:
+                ledger.upsert(Insight(
+                    id="eda_opportunity_strong_signal",
+                    source_page="02_EDA", category="relationship", severity="opportunity",
+                    finding=f"Strong linear signal detected (max |r| with target = {top_corr:.2f})",
+                    implication="Linear models may perform surprisingly well. Establish a strong OLS baseline before trying complex models.",
+                    recommended_action="Run GLM baseline first in Train & Compare",
+                    action_page="06_Train_and_Compare",
+                    metadata={"max_target_correlation": float(top_corr)},
+                ))
+
+    # Non-linear relationship opportunity
+    if _has_target and task_type_final == "regression":
+        numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) >= 3:
+            # Compare Pearson vs Spearman to detect non-linearity
+            pearson_corrs = [abs(df[c].corr(df[target_col])) for c in numeric_cols if c != target_col]
+            spearman_corrs = [abs(df[c].corr(df[target_col], method="spearman")) for c in numeric_cols if c != target_col]
+            if pearson_corrs and spearman_corrs:
+                avg_gap = np.mean([s - p for p, s in zip(pearson_corrs, spearman_corrs) if not (np.isnan(p) or np.isnan(s))])
+                if avg_gap > 0.08:
+                    ledger.upsert(Insight(
+                        id="eda_opportunity_nonlinear",
+                        source_page="02_EDA", category="relationship", severity="opportunity",
+                        finding=f"Features show non-linear relationships with target (avg Spearman-Pearson gap = {avg_gap:.3f})",
+                        implication="Tree-based models (RF, XGBoost) or GAMs may capture structure that linear models miss",
+                        recommended_action="Include tree-based models in Train & Compare",
+                        action_page="06_Train_and_Compare",
+                        metadata={"spearman_pearson_gap": float(avg_gap)},
+                    ))
+
+    # High n/p ratio opportunity
+    n_p_ratio = regime.n_rows / max(regime.n_features, 1)
+    if n_p_ratio > 100:
+        ledger.upsert(Insight(
+            id="eda_opportunity_high_np",
+            source_page="02_EDA", category="sufficiency", severity="opportunity",
+            finding=f"Large sample-to-feature ratio ({n_p_ratio:.0f}:1) — plenty of data relative to complexity",
+            implication="You can afford more complex models (deep trees, neural nets) without overfitting. Cross-validation will be reliable.",
+            recommended_action="Consider full model suite in Train & Compare",
+            action_page="06_Train_and_Compare",
+            metadata={"n_p_ratio": float(n_p_ratio)},
+        ))
+
+    # Classification: balanced classes opportunity
+    if _has_target and task_type_final == "classification":
+        imbalance = signals.target_stats.get("class_imbalance_ratio", 0)
+        if imbalance and imbalance > 0.7:
+            ledger.upsert(Insight(
+                id="eda_opportunity_balanced",
+                source_page="02_EDA", category="distribution", severity="opportunity",
+                finding=f"Classes are well-balanced (ratio = {imbalance:.2f})",
+                implication="Accuracy is a valid metric. No need for class weighting or oversampling.",
+                recommended_action="Standard metrics will be reliable in Train & Compare",
+                action_page="06_Train_and_Compare",
+            ))
 
 
 _auto_generate_insights()
@@ -985,8 +1122,7 @@ if regime.show_macro_shape and numeric_features:
 # ============================================================================
 
 st.markdown("---")
-st.header("Coaching Layer")
-st.caption("What the data is telling you. Auto-detected observations plus anything you've promoted from charts above.")
+st.header("What Your Data Is Telling You")
 
 summary = ledger.summary()
 
@@ -997,18 +1133,104 @@ sc2.metric("⚠️ Warnings", summary["warnings"])
 sc3.metric("ℹ️ Info", summary["info"])
 sc4.metric("💡 Opportunities", summary["opportunities"])
 
-# Unresolved insights grouped by severity
 unresolved = ledger.get_unresolved()
-if unresolved:
-    for ins in unresolved:
-        icon = {"blocker": "🚨", "warning": "⚠️", "info": "ℹ️", "opportunity": "💡"}.get(ins.severity, "ℹ️")
-        with st.container(border=True):
-            st.markdown(f"{icon} **{ins.finding}**")
-            st.caption(f"→ {ins.implication}")
-            if ins.recommended_action:
-                st.caption(f"**Action:** {ins.recommended_action}")
-else:
+
+if not unresolved:
     st.success("No issues detected. Your data looks ready for modeling.")
+else:
+    # ------------------------------------------------------------------
+    # Synthesized view: group insights by category, then render each group
+    # as a single narrative block with expandable details
+    # ------------------------------------------------------------------
+    from collections import defaultdict as _dd
+
+    # Category display config
+    _cat_meta = {
+        "relationship": ("🔗 Relationships", "How features relate to each other and the target"),
+        "distribution": ("📊 Distributions", "Shape and spread of your features"),
+        "data_quality": ("🧹 Data Quality", "Missing values, plausibility, and integrity"),
+        "sufficiency": ("📏 Sample Size", "Whether you have enough data for reliable modeling"),
+        "topology": ("🌐 Data Geometry", "High-dimensional structure of your data"),
+        "methodology": ("📐 Methodology", "Modeling strategy considerations"),
+    }
+
+    # Group by category
+    _groups = _dd(list)
+    for ins in unresolved:
+        _groups[ins.category].append(ins)
+
+    # Render each group
+    for cat in ["relationship", "distribution", "data_quality", "sufficiency", "topology", "methodology"]:
+        group = _groups.get(cat, [])
+        if not group:
+            continue
+
+        cat_title, cat_desc = _cat_meta.get(cat, (cat.title(), ""))
+        blockers_in_group = [i for i in group if i.severity == "blocker"]
+        warnings_in_group = [i for i in group if i.severity == "warning"]
+        info_in_group = [i for i in group if i.severity == "info"]
+        opps_in_group = [i for i in group if i.severity == "opportunity"]
+
+        # Severity indicator for the group header
+        if blockers_in_group:
+            group_icon = "🚨"
+        elif warnings_in_group:
+            group_icon = "⚠️"
+        elif opps_in_group:
+            group_icon = "💡"
+        else:
+            group_icon = "ℹ️"
+
+        with st.container(border=True):
+            st.markdown(f"### {group_icon} {cat_title}")
+
+            # Synthesis: one-sentence summary of the group
+            if cat == "relationship":
+                corr_insights = [i for i in group if "corr" in i.id or "collinear" in i.id.lower()]
+                leakage_insights = [i for i in group if "leakage" in i.id]
+                other_rel = [i for i in group if i not in corr_insights and i not in leakage_insights]
+
+                if leakage_insights:
+                    st.error(f"**Target leakage detected** in {len(leakage_insights)} feature(s). This must be resolved.")
+                    for ins in leakage_insights:
+                        st.caption(f"  🚨 {ins.finding}")
+
+                if corr_insights:
+                    total_affected = len(set(f for i in corr_insights for f in i.affected_features))
+                    st.markdown(f"**{len(corr_insights)} collinearity cluster(s)** affecting {total_affected} features total.")
+                    for ins in corr_insights:
+                        st.caption(f"  ⚠️ {ins.finding}")
+                    st.caption(f"→ {corr_insights[0].recommended_action}")
+
+                for ins in other_rel:
+                    _ic = {"blocker": "🚨", "warning": "⚠️", "info": "ℹ️", "opportunity": "💡"}.get(ins.severity, "ℹ️")
+                    st.markdown(f"{_ic} {ins.finding}")
+                    st.caption(f"→ {ins.implication}")
+
+            elif cat == "distribution":
+                # Separate problems from opportunities
+                problems = warnings_in_group + info_in_group
+                if problems:
+                    for ins in problems:
+                        st.markdown(f"{'⚠️' if ins.severity == 'warning' else 'ℹ️'} {ins.finding}")
+                        st.caption(f"→ {ins.implication}")
+                if opps_in_group:
+                    for ins in opps_in_group:
+                        st.markdown(f"💡 {ins.finding}")
+                        st.caption(f"→ {ins.implication}")
+
+            elif cat == "data_quality":
+                for ins in group:
+                    _ic = "⚠️" if ins.severity == "warning" else "ℹ️"
+                    st.markdown(f"{_ic} {ins.finding}")
+                    st.caption(f"→ {ins.implication}")
+
+            else:
+                # Generic rendering for other categories
+                for ins in group:
+                    _ic = {"blocker": "🚨", "warning": "⚠️", "info": "ℹ️", "opportunity": "💡"}.get(ins.severity, "ℹ️")
+                    st.markdown(f"{_ic} {ins.finding}")
+                    st.caption(f"→ {ins.implication}")
 
 # Reviewer risks
 reviewer_risks = []
@@ -1029,11 +1251,26 @@ if reviewer_risks:
 with st.expander("Recommended next steps"):
     if summary["blockers"] > 0:
         st.markdown("**Do first:** Resolve blockers before proceeding to modeling.")
-    if signals.high_missing_cols:
-        st.markdown("- **Preprocessing:** Address missing data strategy")
-    if max_corr > 0.85:
-        st.markdown("- **Feature Selection:** Consider removing redundant features")
-    if not summary["blockers"]:
+
+    # Build a contextual plan from what the ledger found
+    _next_steps = []
+    if ledger.get_unresolved(action_page="04_Feature_Selection"):
+        n_fs = len(ledger.get_unresolved(action_page="04_Feature_Selection"))
+        _next_steps.append(f"**Feature Selection:** {n_fs} insight(s) to address (collinearity, leakage, dimensionality)")
+    if ledger.get_unresolved(action_page="03_Feature_Engineering"):
+        n_fe = len(ledger.get_unresolved(action_page="03_Feature_Engineering"))
+        _next_steps.append(f"**Feature Engineering:** {n_fe} insight(s) to address (skewness, transforms)")
+    if ledger.get_unresolved(action_page="05_Preprocess"):
+        n_pp = len(ledger.get_unresolved(action_page="05_Preprocess"))
+        _next_steps.append(f"**Preprocessing:** {n_pp} insight(s) to address (missing data, scaling)")
+    if ledger.get_unresolved(action_page="06_Train_and_Compare"):
+        n_tc = len(ledger.get_unresolved(action_page="06_Train_and_Compare"))
+        _next_steps.append(f"**Train & Compare:** {n_tc} coaching note(s) for model selection")
+
+    if _next_steps:
+        for step in _next_steps:
+            st.markdown(f"- {step}")
+    elif not summary["blockers"]:
         st.markdown("- **Feature Selection → Preprocessing → Train & Compare** is a solid next path.")
 
 
