@@ -788,35 +788,44 @@ if len(numeric_features) >= 2:
         fig_corr.update_layout(template="plotly_white", height=max(400, len(numeric_features) * 18 + 100))
         st.plotly_chart(fig_corr, use_container_width=True)
 
-        # List pairs above threshold
-        pairs_above = []
-        for i in range(len(corr_matrix)):
-            for j in range(i + 1, len(corr_matrix)):
-                val = abs(corr_matrix.iloc[i, j])
-                if val >= threshold:
-                    pairs_above.append({
-                        "Feature A": corr_matrix.index[i],
-                        "Feature B": corr_matrix.columns[j],
-                        "Correlation": corr_matrix.iloc[i, j],
-                    })
-        if pairs_above:
-            pairs_df = pd.DataFrame(pairs_above).sort_values("Correlation", key=abs, ascending=False)
+        # List pairs above threshold (numpy-based)
+        corr_vals = corr_matrix.values
+        idx_upper = np.triu_indices_from(corr_vals, k=1)
+        upper_vals = corr_vals[idx_upper]
+        mask = np.abs(upper_vals) >= threshold
+        if mask.any():
+            cols_list = corr_matrix.columns.tolist()
+            pairs_above = pd.DataFrame({
+                "Feature A": [cols_list[idx_upper[0][i]] for i in np.where(mask)[0]],
+                "Feature B": [cols_list[idx_upper[1][i]] for i in np.where(mask)[0]],
+                "Correlation": [round(float(upper_vals[i]), 3) for i in np.where(mask)[0]],
+            }).sort_values("Correlation", key=abs, ascending=False)
             st.caption(f"{len(pairs_above)} pairs above |r| ≥ {threshold}")
-            table(pairs_df)
+            table(pairs_above)
     else:
-        # Wide/ultra-wide: top-N pairs list only
+        # Wide/ultra-wide: top-N pairs via numpy (avoids O(n²) Python loop)
         top_n = regime.corr_top_n
-        corr_matrix = _compute_corr(df, numeric_features, method_name)
-        pairs = []
-        for i in range(len(corr_matrix)):
-            for j in range(i + 1, len(corr_matrix)):
-                pairs.append({
-                    "Feature A": corr_matrix.index[i],
-                    "Feature B": corr_matrix.columns[j],
-                    "Correlation": round(corr_matrix.iloc[i, j], 3),
-                })
-        pairs_df = pd.DataFrame(pairs).sort_values("Correlation", key=abs, ascending=False).head(top_n)
-        st.caption(f"Top {top_n} correlated pairs ({method_name}) out of {len(pairs)} total")
+
+        @st.cache_data
+        def _top_corr_pairs(_df, _features, method, n):
+            corr = _df[_features].corr(method=method).values
+            cols = _features
+            idx_upper = np.triu_indices_from(corr, k=1)
+            vals = corr[idx_upper]
+            # Get top N by absolute value
+            top_idx = np.argsort(np.abs(vals))[-n:][::-1]
+            return pd.DataFrame([
+                {
+                    "Feature A": cols[idx_upper[0][i]],
+                    "Feature B": cols[idx_upper[1][i]],
+                    "Correlation": round(float(vals[i]), 3),
+                }
+                for i in top_idx
+            ])
+
+        pairs_df = _top_corr_pairs(df, numeric_features, method_name, top_n)
+        n_total = len(numeric_features) * (len(numeric_features) - 1) // 2
+        st.caption(f"Top {top_n} correlated pairs ({method_name}) out of {n_total:,} total")
         table(pairs_df)
 else:
     st.info("Need at least 2 numeric features for correlation analysis.")
@@ -825,18 +834,15 @@ else:
 if _has_target:
     st.subheader("Features vs Target")
 
-    target_features = numeric_features if regime.target_relationship_top_n == 0 else numeric_features
-    # Sort by absolute correlation with target
+    target_features = list(numeric_features)
+    # Sort by absolute correlation with target (cached)
     if target_features and task_type_final == "regression":
-        corrs_with_target = []
-        for f in target_features:
-            try:
-                c = abs(df[f].corr(df[target_col]))
-                corrs_with_target.append((f, c if not np.isnan(c) else 0))
-            except Exception:
-                corrs_with_target.append((f, 0))
-        corrs_with_target.sort(key=lambda x: x[1], reverse=True)
-        target_features = [f for f, _ in corrs_with_target]
+        @st.cache_data
+        def _sort_by_target_corr(_df, _features, _target):
+            corrs = _df[_features].corrwith(_df[_target]).abs().fillna(0)
+            return corrs.sort_values(ascending=False).index.tolist()
+
+        target_features = _sort_by_target_corr(df, target_features, target_col)
 
     if regime.target_relationship_top_n > 0:
         target_features = target_features[:regime.target_relationship_top_n]
