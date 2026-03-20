@@ -665,14 +665,19 @@ else:
 # -- Outlier Overview ------------------------------------------------------
 st.subheader("Outlier Overview")
 
-if numeric_features:
+if numeric_features and regime.row_regime != "tiny":
+    # Skip for tiny datasets (outlier detection on <100 rows is unreliable)
     from ml.outliers import detect_outliers
+
+    # Cap at 50 features for performance; show note if capped
+    _outlier_cap = 50
+    _outlier_features = numeric_features[:_outlier_cap]
 
     @st.cache_data
     def _compute_outlier_heatmap(_df, _numeric_feats, methods):
         """Cached outlier prevalence computation."""
         outlier_data = {}
-        for feat in _numeric_feats[:50]:
+        for feat in _numeric_feats:
             feat_data = _df[feat].dropna()
             if len(feat_data) < 10:
                 continue
@@ -686,7 +691,9 @@ if numeric_features:
             outlier_data[feat] = row
         return outlier_data
 
-    outlier_data = _compute_outlier_heatmap(df, numeric_features, ["iqr", "zscore"])
+    outlier_data = _compute_outlier_heatmap(df, _outlier_features, ["iqr", "zscore"])
+    if len(numeric_features) > _outlier_cap:
+        st.caption(f"Showing {_outlier_cap} of {len(numeric_features)} features. Use Column Inspector for individual features.")
 
     if outlier_data:
         outlier_df = pd.DataFrame(outlier_data).T
@@ -710,8 +717,10 @@ if numeric_features:
         )
         st.plotly_chart(fig_outlier, use_container_width=True)
         st.caption(f"Primary method for downstream: **{outlier_method.upper()}**. Change in sidebar settings.")
-else:
+elif not numeric_features:
     st.info("No numeric features for outlier analysis.")
+elif regime.row_regime == "tiny":
+    st.caption(f"Outlier detection skipped — only {regime.n_rows} rows. Statistical outlier methods are unreliable at this sample size.")
 
 # -- Missing Data ----------------------------------------------------------
 total_missing = df[feature_cols].isnull().sum().sum()

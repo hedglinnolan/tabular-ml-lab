@@ -13,6 +13,26 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 import streamlit as st
 
+# ---------------------------------------------------------------------------
+# sklearn 1.8+ compatibility: force_all_finite → ensure_all_finite
+# Some dependencies (umap-learn, giotto-tda) use the old kwarg name.
+# Patch once at module import so all downstream calls work.
+# ---------------------------------------------------------------------------
+import sklearn.utils.validation as _skval
+
+_orig_check_array = _skval.check_array
+
+def _compat_check_array(*args, **kwargs):
+    if "force_all_finite" in kwargs:
+        kwargs["ensure_all_finite"] = kwargs.pop("force_all_finite")
+    return _orig_check_array(*args, **kwargs)
+
+_skval.check_array = _compat_check_array
+
+# Also patch sklearn.utils directly (some libs import from there)
+import sklearn.utils as _skutils
+_skutils.check_array = _compat_check_array
+
 
 # ---------------------------------------------------------------------------
 # PCA
@@ -108,15 +128,34 @@ def plot_pca_biplot(
     
     # Scatter of samples
     if color_values is not None:
-        fig.add_trace(go.Scatter(
-            x=components[:, 0], y=components[:, 1],
-            mode="markers",
-            marker=dict(
-                color=color_values, colorscale="Viridis",
-                size=4, opacity=0.6, colorbar=dict(title=color_label),
-            ),
-            name="Samples",
-        ))
+        # Handle both numeric and categorical color values
+        try:
+            numeric_colors = pd.to_numeric(color_values, errors="raise")
+            fig.add_trace(go.Scatter(
+                x=components[:, 0], y=components[:, 1],
+                mode="markers",
+                marker=dict(
+                    color=numeric_colors, colorscale="Viridis",
+                    size=4, opacity=0.6, colorbar=dict(title=color_label),
+                ),
+                name="Samples",
+            ))
+        except (ValueError, TypeError):
+            # Categorical target — use discrete colors
+            import plotly.express as px
+            unique_vals = list(set(str(v) for v in color_values))
+            color_map = {v: px.colors.qualitative.Set2[i % len(px.colors.qualitative.Set2)] for i, v in enumerate(unique_vals)}
+            colors_discrete = [color_map.get(str(v), "#667eea") for v in color_values]
+            fig.add_trace(go.Scatter(
+                x=components[:, 0], y=components[:, 1],
+                mode="markers",
+                marker=dict(
+                    color=colors_discrete,
+                    size=4, opacity=0.6,
+                ),
+                text=[str(v) for v in color_values],
+                name="Samples",
+            ))
     else:
         fig.add_trace(go.Scatter(
             x=components[:, 0], y=components[:, 1],
@@ -186,11 +225,12 @@ def compute_umap(
         from umap import UMAP
         reducer = UMAP(
             n_components=2,
-            n_neighbors=n_neighbors,
+            n_neighbors=min(n_neighbors, len(df) - 1),
             min_dist=min_dist,
             random_state=42,
         )
         embedding = reducer.fit_transform(X_scaled)
+
         return {
             "embedding": embedding,
             "sample_indices": df.index.tolist(),
@@ -200,7 +240,7 @@ def compute_umap(
     except ImportError:
         return {"error": "umap-learn not installed"}
     except Exception as e:
-        return {"error": f"UMAP failed: {str(e)[:100]}"}
+        return {"error": f"UMAP failed: {str(e)[:200]}"}
 
 
 def plot_umap(
@@ -213,15 +253,26 @@ def plot_umap(
     
     fig = go.Figure()
     if color_values is not None:
-        # Align color values to sampled indices
-        fig.add_trace(go.Scatter(
-            x=embedding[:, 0], y=embedding[:, 1],
-            mode="markers",
-            marker=dict(
-                color=color_values, colorscale="Viridis",
-                size=4, opacity=0.6, colorbar=dict(title=color_label),
-            ),
-        ))
+        try:
+            numeric_colors = pd.to_numeric(color_values, errors="raise")
+            fig.add_trace(go.Scatter(
+                x=embedding[:, 0], y=embedding[:, 1],
+                mode="markers",
+                marker=dict(
+                    color=numeric_colors, colorscale="Viridis",
+                    size=4, opacity=0.6, colorbar=dict(title=color_label),
+                ),
+            ))
+        except (ValueError, TypeError):
+            import plotly.express as px_
+            unique_vals = list(set(str(v) for v in color_values))
+            cmap = {v: px_.colors.qualitative.Set2[i % len(px_.colors.qualitative.Set2)] for i, v in enumerate(unique_vals)}
+            fig.add_trace(go.Scatter(
+                x=embedding[:, 0], y=embedding[:, 1],
+                mode="markers",
+                marker=dict(color=[cmap.get(str(v), "#667eea") for v in color_values], size=4, opacity=0.6),
+                text=[str(v) for v in color_values],
+            ))
     else:
         fig.add_trace(go.Scatter(
             x=embedding[:, 0], y=embedding[:, 1],
@@ -305,7 +356,7 @@ def compute_persistence(
     except ImportError:
         return {"error": "giotto-tda not installed"}
     except Exception as e:
-        return {"error": f"Persistence computation failed: {str(e)[:100]}"}
+        return {"error": f"Persistence computation failed: {str(e)[:200]}"}
 
 
 def plot_persistence_diagram(result: Dict[str, Any]) -> go.Figure:
