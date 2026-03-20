@@ -627,29 +627,65 @@ def plot_mapper(
     node_size = [min(max(sizes[n] * 0.5, 5), 30) for n in positions]
     
     if color_values is not None:
-        # Mean target value per node
-        node_colors = []
-        for nid in positions:
-            indices = nodes[nid]
-            valid_indices = [i for i in indices if i < len(color_values)]
-            if valid_indices:
-                node_colors.append(float(np.mean(color_values[valid_indices])))
-            else:
-                node_colors.append(0)
-        
-        fig.add_trace(go.Scatter(
-            x=node_x, y=node_y,
-            mode="markers",
-            marker=dict(
-                size=node_size,
-                color=node_colors,
-                colorscale="Viridis",
-                colorbar=dict(title=color_label),
-                line=dict(width=1, color="white"),
-            ),
-            hovertemplate="Samples: %{customdata}<br>Mean target: %{marker.color:.3f}",
-            customdata=[sizes[n] for n in positions],
-        ))
+        # Check if numeric or categorical
+        try:
+            numeric_cv = pd.to_numeric(color_values, errors="raise")
+            is_numeric = True
+        except (ValueError, TypeError):
+            is_numeric = False
+
+        if is_numeric:
+            node_colors = []
+            for nid in positions:
+                indices = nodes[nid]
+                valid_indices = [i for i in indices if i < len(numeric_cv)]
+                if valid_indices:
+                    node_colors.append(float(np.mean(numeric_cv[valid_indices])))
+                else:
+                    node_colors.append(0)
+            fig.add_trace(go.Scatter(
+                x=node_x, y=node_y,
+                mode="markers",
+                marker=dict(
+                    size=node_size,
+                    color=node_colors,
+                    colorscale="Viridis",
+                    colorbar=dict(title=color_label),
+                    line=dict(width=1, color="white"),
+                ),
+                hovertemplate="Samples: %{customdata}<br>Mean target: %{marker.color:.3f}",
+                customdata=[sizes[n] for n in positions],
+            ))
+        else:
+            # Categorical: color by mode (most common value) per node
+            import plotly.express as px_m
+            unique_vals = list(set(str(v) for v in color_values))
+            cmap = {v: px_m.colors.qualitative.Set2[i % len(px_m.colors.qualitative.Set2)] for i, v in enumerate(unique_vals)}
+            node_colors = []
+            node_labels = []
+            for nid in positions:
+                indices = nodes[nid]
+                valid_indices = [i for i in indices if i < len(color_values)]
+                if valid_indices:
+                    vals = [str(color_values[i]) for i in valid_indices]
+                    mode_val = max(set(vals), key=vals.count)
+                    node_colors.append(cmap.get(mode_val, "#667eea"))
+                    node_labels.append(mode_val)
+                else:
+                    node_colors.append("#667eea")
+                    node_labels.append("?")
+            fig.add_trace(go.Scatter(
+                x=node_x, y=node_y,
+                mode="markers",
+                marker=dict(
+                    size=node_size,
+                    color=node_colors,
+                    line=dict(width=1, color="white"),
+                ),
+                text=node_labels,
+                hovertemplate="Samples: %{customdata}<br>Mode: %{text}",
+                customdata=[sizes[n] for n in positions],
+            ))
     else:
         fig.add_trace(go.Scatter(
             x=node_x, y=node_y,
