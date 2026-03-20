@@ -482,6 +482,7 @@ def compute_mapper(
     
     try:
         # Use PCA projection as lens
+        X_scaled = np.asarray(X_scaled, dtype=np.float64)
         pca = PCA(n_components=2, random_state=42)
         lens = pca.fit_transform(X_scaled)
         
@@ -518,9 +519,10 @@ def compute_mapper(
                 refined_id += 1
                 continue
             
-            sub_X = X_scaled[indices]
-            eps = np.median(np.std(sub_X, axis=0)) * 1.5
-            if eps < 1e-10:
+            sub_X = np.asarray(X_scaled[indices], dtype=np.float64)
+            stds = np.std(sub_X, axis=0)
+            eps = float(np.median(stds)) * 1.5
+            if eps < 1e-10 or not np.isfinite(eps):
                 eps = 0.5
             
             clustering = DBSCAN(eps=eps, min_samples=2).fit(sub_X)
