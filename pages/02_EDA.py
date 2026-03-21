@@ -179,7 +179,7 @@ def _auto_generate_insights():
             finding=f"Sample size may be insufficient ({regime.n_rows:,} rows, {regime.n_features} features, ratio {regime.n_rows / max(regime.n_features, 1):.0f}:1)",
             implication="Complex models will likely overfit. Prefer simple baselines.",
             recommended_action="Reduce features or gather more data",
-            action_page="04_Feature_Selection",
+            relevant_pages=["04_Feature_Selection", "06_Train_and_Compare", "10_Report_Export"],
         ))
     elif sufficiency == "borderline":
         ledger.upsert(Insight(
@@ -188,7 +188,7 @@ def _auto_generate_insights():
             finding=f"Data sufficiency is borderline ({regime.n_rows:,} rows, {regime.n_features} features)",
             implication="Prefer simpler models and tighter regularization.",
             recommended_action="Consider feature reduction before complex modeling",
-            action_page="04_Feature_Selection",
+            relevant_pages=["04_Feature_Selection", "06_Train_and_Compare"],
         ))
 
     # Leakage
@@ -201,7 +201,7 @@ def _auto_generate_insights():
                 implication="Model performance will be artificially inflated",
                 affected_features=[col],
                 recommended_action=f"Remove {col} from feature set",
-                action_page="04_Feature_Selection",
+                relevant_pages=["04_Feature_Selection", "10_Report_Export"],
             ))
 
     # Collinearity — cluster correlated features into groups instead of per-pair
@@ -254,7 +254,7 @@ def _auto_generate_insights():
                 implication=f"Keeping all {n_feats} may inflate variance in linear models. Consider retaining 1-2 representatives.",
                 affected_features=cluster_features,
                 recommended_action=f"Review in Feature Selection — consider dropping {n_feats - 1} of {n_feats}",
-                action_page="04_Feature_Selection",
+                relevant_pages=["04_Feature_Selection", "05_Preprocess"],
                 metadata={"max_correlation": cluster_max, "cluster_size": n_feats},
             ))
 
@@ -272,7 +272,7 @@ def _auto_generate_insights():
                 implication="High missingness may require column removal or advanced imputation (MICE, kNN). Simple mean imputation may distort distributions.",
                 affected_features=[c for c, _ in severe_missing],
                 recommended_action="Review in Preprocessing — consider dropping or advanced imputation",
-                action_page="05_Preprocess",
+                relevant_pages=["05_Preprocess", "10_Report_Export"],
                 metadata={"n_features": len(severe_missing), "max_rate": max(r for _, r in severe_missing)},
             ))
         if moderate_missing:
@@ -284,7 +284,7 @@ def _auto_generate_insights():
                 implication="Standard imputation (median/mode) should be sufficient. Consider adding missingness indicator features.",
                 affected_features=[c for c, _ in moderate_missing],
                 recommended_action="Address in Preprocessing",
-                action_page="05_Preprocess",
+                relevant_pages=["05_Preprocess"],
                 metadata={"n_features": len(moderate_missing)},
             ))
 
@@ -299,7 +299,7 @@ def _auto_generate_insights():
                 implication="May affect loss function choice and prediction intervals",
                 affected_features=[target_col],
                 recommended_action="Consider log transform in Preprocessing",
-                action_page="05_Preprocess",
+                relevant_pages=["05_Preprocess", "06_Train_and_Compare"],
                 metadata={"skewness": float(skew)},
             ))
 
@@ -314,7 +314,7 @@ def _auto_generate_insights():
                 implication="Accuracy alone may be misleading. Use F1, balanced accuracy, or AUROC.",
                 affected_features=[target_col],
                 recommended_action="Use class weighting or stratified sampling",
-                action_page="06_Train_and_Compare",
+                relevant_pages=["05_Preprocess", "06_Train_and_Compare"],
                 metadata={"imbalance_ratio": float(imbalance)},
             ))
 
@@ -343,8 +343,8 @@ def _auto_generate_insights():
             finding=f"{len(skewed_list)} feature(s) heavily skewed (|skew| > 2): {skew_names}",
             implication="Log or power transforms may improve linear model performance and reduce outlier influence",
             affected_features=[c for c, _ in skewed_list],
-            recommended_action="Consider transforms in Feature Engineering",
-            action_page="03_Feature_Engineering",
+            recommended_action="Consider transforms in Feature Engineering or Preprocessing",
+            relevant_pages=["03_Feature_Engineering", "05_Preprocess"],
             metadata={"n_skewed": len(skewed_list), "features": {c: s for c, s in skewed_list}},
         ))
 
@@ -361,7 +361,7 @@ def _auto_generate_insights():
             finding="Dataset has no blockers or warnings — unusually clean",
             implication="You can lean into interpretable models (GLM, GAM) where coefficient interpretation is meaningful, rather than defaulting to black-box approaches",
             recommended_action="Consider GLM or GAM baselines in Train & Compare",
-            action_page="06_Train_and_Compare",
+            relevant_pages=["06_Train_and_Compare"],
         ))
 
     # Strong target signal opportunity
@@ -379,7 +379,7 @@ def _auto_generate_insights():
                     finding=f"Strong linear signal detected (max |r| with target = {top_corr:.2f})",
                     implication="Linear models may perform surprisingly well. Establish a strong OLS baseline before trying complex models.",
                     recommended_action="Run GLM baseline first in Train & Compare",
-                    action_page="06_Train_and_Compare",
+                    relevant_pages=["06_Train_and_Compare"],
                     metadata={"max_target_correlation": float(top_corr)},
                 ))
 
@@ -399,7 +399,7 @@ def _auto_generate_insights():
                         finding=f"Features show non-linear relationships with target (avg Spearman-Pearson gap = {avg_gap:.3f})",
                         implication="Tree-based models (RF, XGBoost) or GAMs may capture structure that linear models miss",
                         recommended_action="Include tree-based models in Train & Compare",
-                        action_page="06_Train_and_Compare",
+                        relevant_pages=["06_Train_and_Compare"],
                         metadata={"spearman_pearson_gap": float(avg_gap)},
                     ))
 
@@ -412,7 +412,7 @@ def _auto_generate_insights():
             finding=f"Large sample-to-feature ratio ({n_p_ratio:.0f}:1) — plenty of data relative to complexity",
             implication="You can afford more complex models (deep trees, neural nets) without overfitting. Cross-validation will be reliable.",
             recommended_action="Consider full model suite in Train & Compare",
-            action_page="06_Train_and_Compare",
+            relevant_pages=["06_Train_and_Compare"],
             metadata={"n_p_ratio": float(n_p_ratio)},
         ))
 
@@ -426,7 +426,7 @@ def _auto_generate_insights():
                 finding=f"Classes are well-balanced (ratio = {imbalance:.2f})",
                 implication="Accuracy is a valid metric. No need for class weighting or oversampling.",
                 recommended_action="Standard metrics will be reliable in Train & Compare",
-                action_page="06_Train_and_Compare",
+                relevant_pages=["06_Train_and_Compare"],
             ))
 
 
@@ -1042,7 +1042,7 @@ if regime.show_macro_shape and numeric_features:
                 finding=f"Data is effectively {n_90}-dimensional despite {len(numeric_features)} features",
                 implication="Dimensionality reduction (PCA) could simplify models with minimal information loss",
                 recommended_action="Consider PCA preprocessing or feature selection",
-                action_page="04_Feature_Selection",
+                relevant_pages=["04_Feature_Selection", "05_Preprocess"],
                 metadata={"n_components_90": n_90, "n_features": len(numeric_features)},
             ))
     else:
@@ -1111,7 +1111,7 @@ if regime.show_macro_shape and numeric_features:
                         finding=f"Persistent loops detected in data manifold (H₁ max persistence = {h1_info['max_persistence']:.3f})",
                         implication="Data has non-trivial topological structure that linear models cannot capture",
                         recommended_action="Consider TDA features in Feature Engineering",
-                        action_page="03_Feature_Engineering",
+                        relevant_pages=["03_Feature_Engineering"],
                     ))
             else:
                 st.warning(tda_result["error"])
@@ -1269,17 +1269,17 @@ with st.expander("Recommended next steps"):
 
     # Build a contextual plan from what the ledger found
     _next_steps = []
-    if ledger.get_unresolved(action_page="04_Feature_Selection"):
-        n_fs = len(ledger.get_unresolved(action_page="04_Feature_Selection"))
+    if ledger.get_unresolved(page="04_Feature_Selection"):
+        n_fs = len(ledger.get_unresolved(page="04_Feature_Selection"))
         _next_steps.append(f"**Feature Selection:** {n_fs} insight(s) to address (collinearity, leakage, dimensionality)")
-    if ledger.get_unresolved(action_page="03_Feature_Engineering"):
-        n_fe = len(ledger.get_unresolved(action_page="03_Feature_Engineering"))
+    if ledger.get_unresolved(page="03_Feature_Engineering"):
+        n_fe = len(ledger.get_unresolved(page="03_Feature_Engineering"))
         _next_steps.append(f"**Feature Engineering:** {n_fe} insight(s) to address (skewness, transforms)")
-    if ledger.get_unresolved(action_page="05_Preprocess"):
-        n_pp = len(ledger.get_unresolved(action_page="05_Preprocess"))
+    if ledger.get_unresolved(page="05_Preprocess"):
+        n_pp = len(ledger.get_unresolved(page="05_Preprocess"))
         _next_steps.append(f"**Preprocessing:** {n_pp} insight(s) to address (missing data, scaling)")
-    if ledger.get_unresolved(action_page="06_Train_and_Compare"):
-        n_tc = len(ledger.get_unresolved(action_page="06_Train_and_Compare"))
+    if ledger.get_unresolved(page="06_Train_and_Compare"):
+        n_tc = len(ledger.get_unresolved(page="06_Train_and_Compare"))
         _next_steps.append(f"**Train & Compare:** {n_tc} coaching note(s) for model selection")
 
     if _next_steps:

@@ -53,7 +53,7 @@ if task_mode != 'prediction':
 try:
     from utils.insight_ledger import get_ledger as _get_fs_ledger
     _fs_ledger = _get_fs_ledger()
-    _fs_insights = _fs_ledger.get_unresolved(action_page="04_Feature_Selection")
+    _fs_insights = _fs_ledger.get_unresolved(page="04_Feature_Selection")
     if _fs_insights:
         with st.expander(f"💡 {len(_fs_insights)} EDA insight(s) relevant to Feature Selection", expanded=True):
             for _ins in _fs_insights:

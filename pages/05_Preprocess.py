@@ -14,7 +14,7 @@ from utils.session_state import (
     init_session_state, get_data, DataConfig, set_preprocessing_pipeline, set_preprocessing_pipelines,
     TaskTypeDetection, log_methodology,
 )
-from utils.storyline import get_insights_by_category, add_insight, render_breadcrumb, render_page_navigation
+from utils.storyline import render_breadcrumb, render_page_navigation
 from ml.pipeline import (
     build_preprocessing_pipeline,
     get_pipeline_recipe,
@@ -140,7 +140,7 @@ _eda_collinearity = any('collinearity' in str(k).lower() or 'multicollinearity' 
 try:
     from utils.insight_ledger import get_ledger as _get_pp_ledger
     _pp_ledger = _get_pp_ledger()
-    _pp_insights = _pp_ledger.get_unresolved(action_page="05_Preprocess")
+    _pp_insights = _pp_ledger.get_unresolved(page="05_Preprocess")
     if _pp_insights:
         with st.expander(f"💡 {len(_pp_insights)} EDA insight(s) relevant to Preprocessing", expanded=True):
             for _ins in _pp_insights:
@@ -887,18 +887,35 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
             finding = " ".join(model_check_bullets[:5])
             if len(model_check_bullets) > 5:
                 finding += " …"
-            add_insight(
-                "preprocessing_model_checks",
-                finding,
-                "Review that preprocessing matches each model; adjust and rebuild if needed.",
-                category="preprocessing",
-            )
-            add_insight(
-                "preprocessing_summary",
-                f"Pipelines built for {len(pipelines_by_model)} model(s): {', '.join(m.upper() for m in pipelines_by_model.keys())}.",
-                "Use Train & Compare to train models; preprocessing is applied per model.",
-                category="preprocessing",
-            )
+            from utils.insight_ledger import Insight, get_ledger as _get_pp_resolve_ledger
+            _pp_resolve_ledger = _get_pp_resolve_ledger()
+            _pp_resolve_ledger.upsert(Insight(
+                id="preprocess_model_checks",
+                source_page="05_Preprocess", category="methodology", severity="info",
+                finding=finding,
+                implication="Review that preprocessing matches each model; adjust and rebuild if needed.",
+                relevant_pages=["06_Train_and_Compare"],
+            ))
+            _pp_resolve_ledger.upsert(Insight(
+                id="preprocess_summary",
+                source_page="05_Preprocess", category="methodology", severity="info",
+                finding=f"Pipelines built for {len(pipelines_by_model)} model(s): {', '.join(m.upper() for m in pipelines_by_model.keys())}.",
+                implication="Use Train & Compare to train models; preprocessing is applied per model.",
+                relevant_pages=["06_Train_and_Compare", "10_Report_Export"],
+                resolved=True,
+                resolved_by=f"Built {len(pipelines_by_model)} preprocessing pipeline(s)",
+                resolved_on_page="05_Preprocess",
+                resolution_details={"models": list(pipelines_by_model.keys())},
+            ))
+            # Resolve any missing data insights from EDA
+            for _miss_id in ["eda_missing_severe", "eda_missing_moderate"]:
+                if _pp_resolve_ledger.get(_miss_id) and not _pp_resolve_ledger.get(_miss_id).resolved:
+                    _pp_resolve_ledger.resolve(
+                        _miss_id,
+                        resolved_by="Addressed via preprocessing pipeline imputation",
+                        resolved_on_page="05_Preprocess",
+                        resolution_details={"handled_by": "preprocessing_pipeline"},
+                    )
         elapsed = time.perf_counter() - t0
         st.session_state.setdefault("last_timings", {})["Build Pipelines"] = round(elapsed, 2)
         
