@@ -70,6 +70,14 @@ def make_test_data():
     return df
 
 
+import pytest
+
+@pytest.fixture
+def r():
+    """Provide TestResults instance as a pytest fixture."""
+    return TestResults()
+
+
 class TestResults:
     def __init__(self):
         self.passed = 0
