@@ -212,9 +212,15 @@ def _auto_generate_insights():
             ))
 
     # Collinearity — cluster correlated features into groups instead of per-pair
+    # Filter to user's selected features only
+    _selected_features = set(data_config.feature_cols) if data_config and hasattr(data_config, 'feature_cols') and data_config.feature_cols else set()
     max_corr = signals.collinearity_summary.get("max_corr", 0)
     high_pairs = signals.collinearity_summary.get("high_corr_pairs", [])
     if high_pairs:
+        # Filter to only pairs where BOTH features are in the user's selected set
+        if _selected_features:
+            high_pairs = [(a, b, c) for a, b, c in high_pairs
+                          if a in _selected_features and b in _selected_features]
         # Build adjacency graph and find connected components
         from collections import defaultdict, deque
         adj = defaultdict(set)
@@ -306,8 +312,8 @@ def _auto_generate_insights():
                 finding=f"Target is skewed (skew={skew:.2f})",
                 implication="May affect loss function choice and prediction intervals",
                 affected_features=[target_col],
-                recommended_action="Consider log transform in Preprocessing",
-                relevant_pages=["05_Preprocess", "06_Train_and_Compare"],
+                recommended_action="Consider log-transforming the target before training (apply in Feature Engineering via custom transform), or use models robust to target skew (tree-based, Huber regression)",
+                relevant_pages=["03_Feature_Engineering", "06_Train_and_Compare"],
                 model_scope=ISSUE_MODEL_RELEVANCE["skewness"],  # linear, neural, distance
                 metadata={"skewness": float(skew)},
             ))

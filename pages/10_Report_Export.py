@@ -1354,6 +1354,8 @@ with st.expander("✅ TRIPOD Checklist", expanded=False):
     from ml.publication import TRIPODTracker, TRIPOD_ITEMS
 
     # TRIPOD auto-completion from ledger + workflow state
+    from utils.insight_ledger import get_ledger as _get_tripod_ledger
+    _report_ledger = _get_tripod_ledger()
     tracker = TRIPODTracker()
 
     # Auto-mark from ledger resolutions (covers: missing_data, predictor_handling, etc.)
