@@ -34,6 +34,9 @@ st.caption("Use this after the quick workflow when you need to show that your re
 render_breadcrumb("08_Sensitivity_Analysis")
 render_page_navigation("08_Sensitivity_Analysis")
 
+from utils.coaching_ui import render_page_coaching
+render_page_coaching("08_Sensitivity_Analysis")
+
 if st.session_state.get("workflow_mode", "quick") == "quick":
     st.info("""
     🧭 **Advanced workflow step** — Return here after the quick workflow when you need to demonstrate that your result is robust across seeds or feature perturbations.

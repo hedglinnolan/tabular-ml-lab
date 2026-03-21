@@ -43,6 +43,9 @@ st.caption("Use this when you need classical tests to support the story coming o
 render_breadcrumb("09_Hypothesis_Testing")
 render_page_navigation("09_Hypothesis_Testing")
 
+from utils.coaching_ui import render_page_coaching
+render_page_coaching("09_Hypothesis_Testing")
+
 if st.session_state.get("workflow_mode", "quick") == "quick":
     st.info("""
     🧭 **Advanced workflow step** — Return here after the quick workflow when a manuscript or reviewer needs targeted classical tests in addition to your ML result.

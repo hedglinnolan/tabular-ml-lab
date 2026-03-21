@@ -326,6 +326,10 @@ def add_trained_model(name: str, model: Any, results: Dict[str, Any]):
 
 def log_methodology(step: str, action: str, details: Optional[Dict[str, Any]] = None):
     """Log a methodology action for the final report.
+
+    Also writes a pre-resolved Insight to the unified ledger so that
+    Report Export, TRIPOD auto-completion, and manuscript narrative
+    pick up every methodology decision automatically.
     
     Args:
         step: Workflow step name (e.g., 'Feature Engineering', 'Feature Selection')
@@ -354,6 +358,98 @@ def log_methodology(step: str, action: str, details: Optional[Dict[str, Any]] = 
         for i in range(len(log) - 1, -1, -1):
             if log[i]['step'] == step:
                 log[i] = entry
+                # Also update the corresponding ledger entry
+                _log_to_ledger(step, action, details)
                 return
     # Additive steps (EDA, Statistical Validation, Data Cleaning) — always append
     log.append(entry)
+    _log_to_ledger(step, action, details)
+
+
+# Mapping from log_methodology step names to ledger fields
+_STEP_TO_PAGE = {
+    'Upload & Audit': '01_Upload_and_Audit',
+    'Data Cleaning': '01_Upload_and_Audit',
+    'EDA': '02_EDA',
+    'Feature Engineering': '03_Feature_Engineering',
+    'Feature Selection': '04_Feature_Selection',
+    'Feature Selection Applied': '04_Feature_Selection',
+    'Preprocessing': '05_Preprocess',
+    'Model Training': '06_Train_and_Compare',
+    'Explainability': '07_Explainability',
+    'Sensitivity Analysis': '08_Sensitivity_Analysis',
+    'Statistical Validation': '09_Hypothesis_Testing',
+}
+
+_STEP_TO_CATEGORY = {
+    'Upload & Audit': 'data_quality',
+    'Data Cleaning': 'data_quality',
+    'EDA': 'methodology',
+    'Feature Engineering': 'distribution',
+    'Feature Selection': 'methodology',
+    'Feature Selection Applied': 'methodology',
+    'Preprocessing': 'methodology',
+    'Model Training': 'model_selection',
+    'Explainability': 'explainability',
+    'Sensitivity Analysis': 'sensitivity',
+    'Statistical Validation': 'validation',
+}
+
+
+def _log_to_ledger(step: str, action: str, details: Optional[Dict[str, Any]] = None):
+    """Bridge: write a pre-resolved Insight entry for each methodology log call.
+
+    Enriches details with structured action_type when inferrable from the step,
+    so the narrative renderer can produce publication-quality prose.
+    """
+    try:
+        from utils.insight_ledger import Insight, get_ledger
+        from datetime import datetime
+
+        ledger = get_ledger()
+        page = _STEP_TO_PAGE.get(step, '02_EDA')
+        category = _STEP_TO_CATEGORY.get(step, 'methodology')
+
+        # Deterministic ID from step + action (slugified)
+        slug = action.lower().replace(' ', '_')[:40]
+        insight_id = f"method_{step.lower().replace(' ', '_')}_{slug}"
+
+        # Enrich details with structured schema fields when inferrable
+        enriched = dict(details) if details else {}
+        if "action_type" not in enriched:
+            _step_to_action_type = {
+                "Preprocessing": "preprocessing",
+                "Feature Engineering": "transform",
+                "Feature Selection": "feature_selection",
+                "Feature Selection Applied": "feature_selection",
+                "Model Training": "training",
+                "Upload & Audit": "data_setup",
+                "Data Cleaning": "data_cleaning",
+            }
+            inferred = _step_to_action_type.get(step)
+            if inferred:
+                enriched["action_type"] = inferred
+            # Infer method from details when possible
+            if "method" not in enriched:
+                if enriched.get("imputation"):
+                    enriched["method"] = enriched["imputation"]
+                elif enriched.get("scaling"):
+                    enriched["method"] = enriched["scaling"]
+
+        ledger.upsert(Insight(
+            id=insight_id,
+            source_page=page,
+            category=category,
+            severity="info",
+            finding=action,
+            implication="Logged methodology decision",
+            recommended_action="",
+            relevant_pages=["10_Report_Export"],
+            resolved=True,
+            resolved_by=action,
+            resolved_on_page=page,
+            resolution_details=enriched,
+            auto_generated=True,
+        ))
+    except Exception:
+        pass  # Never break methodology logging if ledger has issues

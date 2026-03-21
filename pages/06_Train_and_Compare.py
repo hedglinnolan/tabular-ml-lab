@@ -15,7 +15,7 @@ from utils.session_state import (
     TaskTypeDetection, CohortStructureDetection, log_methodology,
 )
 from utils.seed import set_global_seed, get_global_seed
-from utils.storyline import get_insights_by_category, render_breadcrumb, render_page_navigation
+from utils.storyline import render_breadcrumb, render_page_navigation
 from utils.theme import inject_custom_css, render_guidance, render_reviewer_concern, render_step_indicator, render_metric_row, render_sidebar_workflow
 from ml.splits import to_numpy_1d
 
@@ -398,71 +398,9 @@ if n_train < 50:
 elif n_train < 100:
     st.info(f"Training set has {n_train} samples. Some complex models may have limited performance.")
 
-# Model Selection Coach (top section) - cached for performance
-@st.cache_data
-def _compute_coach_recommendations(_df_hash, target_col, task_type, cohort_type, entity_id, eda_results_keys):
-    """Cached coach recommendations computation."""
-    from ml.model_coach import coach_recommendations
-    from ml.eda_recommender import compute_dataset_signals
-    
-    df = get_data()  # Get actual dataframe
-    signals = compute_dataset_signals(
-        df,
-        target_col,
-        task_type,
-        cohort_type,
-        entity_id,
-        outlier_method=st.session_state.get("eda_outlier_method", "iqr")
-    )
-    eda_results = st.session_state.get('eda_results')
-    return coach_recommendations(signals, eda_results, get_insights_by_category())
-
-# Key insights — prefer Insight Ledger, fallback to legacy
-_tc_used_ledger = False
-try:
-    from utils.insight_ledger import get_ledger as _get_tc_ledger
-    _tc_ledger = _get_tc_ledger()
-    if len(_tc_ledger) > 0:
-        _tc_used_ledger = True
-        # Show blocker warning if any
-        if _tc_ledger.has_blockers():
-            _tc_blockers = _tc_ledger.get_unresolved(severity="blocker")
-            st.error(f"🚨 **{len(_tc_blockers)} unresolved blocker(s) from EDA** — model results may not be defensible.")
-            for _b in _tc_blockers:
-                st.caption(f"  • {_b.finding}")
-
-        _tc_unresolved = _tc_ledger.get_unresolved()
-        _tc_resolved = _tc_ledger.get_resolved()
-        if _tc_unresolved or _tc_resolved:
-            with st.expander(f"📋 Insight summary ({len(_tc_unresolved)} unresolved, {len(_tc_resolved)} resolved)", expanded=bool(_tc_ledger.has_blockers())):
-                if _tc_unresolved:
-                    st.markdown("**Unresolved observations:**")
-                    for _ins in _tc_unresolved[:10]:
-                        _icon = {"blocker": "🚨", "warning": "⚠️", "info": "ℹ️", "opportunity": "💡"}.get(_ins.severity, "ℹ️")
-                        st.markdown(f"  {_icon} {_ins.finding}")
-                if _tc_resolved:
-                    st.markdown("**Resolved:**")
-                    for _ins in _tc_resolved[:5]:
-                        st.markdown(f"  ✅ ~~{_ins.finding}~~ → {_ins.resolved_by}")
-except ImportError:
-    pass
-
-if not _tc_used_ledger:
-    insights = get_insights_by_category()
-    eda_only = [i for i in insights if i.get('category') != 'preprocessing']
-    prep_only = [i for i in insights if i.get('category') == 'preprocessing']
-    if eda_only or prep_only:
-        with st.expander("Key insights after pre-processing", expanded=True):
-            if eda_only:
-                st.markdown("**From EDA**")
-                for insight in eda_only:
-                    st.markdown(f"• **{insight.get('category', 'General').title()}:** {insight['finding']}")
-                    st.caption(f"  → {insight['implication']}")
-            if prep_only:
-                st.markdown("**From preprocessing**")
-                for insight in prep_only:
-                    st.markdown(f"• {insight['finding']}")
-                    st.caption(f"  → {insight['implication']}")
+# Coaching companion (model-aware when models selected)
+from utils.coaching_ui import render_page_coaching
+render_page_coaching("06_Train_and_Compare")
 
 # Model selection and configuration
 st.header("Model Configuration")
@@ -646,16 +584,8 @@ for group_name in sorted_groups:
 
 st.session_state.model_config = model_config
 
-# Pre-training coach tips
-coach_output = st.session_state.get('coach_output')
-with st.expander("Pre-training Coach Tips", expanded=False):
-    if coach_output and hasattr(coach_output, 'preprocessing_recommendations') and coach_output.preprocessing_recommendations:
-        st.markdown("**Preprocessing checklist (from Coach):**")
-        for prep in coach_output.preprocessing_recommendations[:5]:
-            st.markdown(f"- **{prep.step_name}** ({prep.priority}): {prep.rationale}")
-        st.caption("Configure these in the Preprocessing page before building the pipeline.")
-    else:
-        st.info("Run EDA and check the Model Selection Coach for preprocessing recommendations.")
+# Pre-training reminder
+with st.expander("Pre-training Tips", expanded=False):
     st.markdown("**Tip:** Ensure your preprocessing pipeline matches your selected models. Linear models and neural nets require scaling; tree models do not.")
 
 # Check Optuna availability
@@ -1082,6 +1012,30 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 'hyperparameter_optimization': use_optimization
             }
         )
+
+        # Resolve EDA insights that are addressed by completing training
+        from utils.insight_ledger import get_ledger as _get_tc_ledger
+        _tc_ledger = _get_tc_ledger()
+        _trained_names = list(trained_models.keys())
+        for _resolve_id, _resolve_msg, _resolve_details in [
+            ("eda_class_imbalance",
+             f"Training completed with models: {', '.join(_trained_names)}. Evaluate metrics beyond accuracy.",
+             {"action_type": "training", "method": "model_comparison",
+              "models_trained": _trained_names,
+              "result": {"best_model": best_model_name, "best_metric": best_metric_value}}),
+            ("eda_target_skew",
+             f"Training completed with models: {', '.join(_trained_names)}. Review residual distributions.",
+             {"action_type": "acknowledgment", "method": "accepted_risk",
+              "models_trained": _trained_names}),
+        ]:
+            _ins = _tc_ledger.get(_resolve_id)
+            if _ins and not _ins.resolved:
+                _tc_ledger.resolve(
+                    _resolve_id,
+                    resolved_by=_resolve_msg,
+                    resolved_on_page="06_Train_and_Compare",
+                    resolution_details=_resolve_details,
+                )
 
 # Training section with two buttons
 st.markdown("---")

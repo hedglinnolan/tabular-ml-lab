@@ -53,6 +53,10 @@ st.markdown("""
 render_breadcrumb("07_Explainability")
 render_page_navigation("07_Explainability")
 
+# ── Coaching companion ──
+from utils.coaching_ui import render_page_coaching
+render_page_coaching("07_Explainability")
+
 # ── Feature Engineering Reminder ────────────────────────────────
 # Check if feature engineering was applied
 if st.session_state.get('feature_engineering_applied'):
