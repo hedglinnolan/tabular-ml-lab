@@ -122,13 +122,9 @@ if _log_engineered or _power_engineered or _pca_engineered:
     The preprocessing pipeline below will **auto-exclude** these from redundant transforms.
     """)
 
-# Get profile, insights, EDA results for recommendations
+# Get profile and EDA results for recommendations
 profile = st.session_state.get('dataset_profile')
-coach_output = st.session_state.get('coach_output')
-insights = get_insights_by_category()
 eda_results = st.session_state.get('eda_results', {})
-# Safety check: ensure insights is a list of dicts, not strings
-relevant_insights = [i for i in insights if isinstance(i, dict) and i.get('category') in ['feature_relationships', 'data_quality']]
 
 # EDA-based recommendation cues (for display next to options)
 _eda_outliers = bool(profile and profile.features_with_outliers)
@@ -137,17 +133,14 @@ _eda_high_pn = bool(profile and getattr(profile, 'p_n_ratio', 0) > 0.3)
 _eda_collinearity = any('collinearity' in str(k).lower() or 'multicollinearity' in str(k).lower() for k in (eda_results or {}))
 
 # Show unresolved insights relevant to preprocessing
-try:
-    from utils.insight_ledger import get_ledger as _get_pp_ledger
-    _pp_ledger = _get_pp_ledger()
-    _pp_insights = _pp_ledger.get_unresolved(page="05_Preprocess")
-    if _pp_insights:
-        with st.expander(f"💡 {len(_pp_insights)} EDA insight(s) relevant to Preprocessing", expanded=True):
-            for _ins in _pp_insights:
-                _icon = {"blocker": "🚨", "warning": "⚠️", "info": "ℹ️", "opportunity": "💡"}.get(_ins.severity, "ℹ️")
-                st.markdown(f"{_icon} **{_ins.finding}** → {_ins.recommended_action}")
-except ImportError:
-    pass
+from utils.insight_ledger import get_ledger as _get_pp_ledger
+_pp_ledger = _get_pp_ledger()
+_pp_insights = _pp_ledger.get_unresolved(page="05_Preprocess")
+if _pp_insights:
+    with st.expander(f"💡 {len(_pp_insights)} EDA insight(s) relevant to Preprocessing", expanded=True):
+        for _ins in _pp_insights:
+            _icon = {"blocker": "🚨", "warning": "⚠️", "info": "ℹ️", "opportunity": "💡"}.get(_ins.severity, "ℹ️")
+            st.markdown(f"{_icon} **{_ins.finding}** → {_ins.recommended_action}")
 
 # ============================================================================
 # 1. MODEL SELECTION FIRST

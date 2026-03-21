@@ -15,7 +15,7 @@ from utils.session_state import (
     TaskTypeDetection, CohortStructureDetection, log_methodology,
 )
 from utils.seed import set_global_seed, get_global_seed
-from utils.storyline import get_insights_by_category, render_breadcrumb, render_page_navigation
+from utils.storyline import render_breadcrumb, render_page_navigation
 from utils.theme import inject_custom_css, render_guidance, render_reviewer_concern, render_step_indicator, render_metric_row, render_sidebar_workflow
 from ml.splits import to_numpy_1d
 
@@ -398,25 +398,6 @@ if n_train < 50:
 elif n_train < 100:
     st.info(f"Training set has {n_train} samples. Some complex models may have limited performance.")
 
-# Model Selection Coach (top section) - cached for performance
-@st.cache_data
-def _compute_coach_recommendations(_df_hash, target_col, task_type, cohort_type, entity_id, eda_results_keys):
-    """Cached coach recommendations computation."""
-    from ml.model_coach import coach_recommendations
-    from ml.eda_recommender import compute_dataset_signals
-    
-    df = get_data()  # Get actual dataframe
-    signals = compute_dataset_signals(
-        df,
-        target_col,
-        task_type,
-        cohort_type,
-        entity_id,
-        outlier_method=st.session_state.get("eda_outlier_method", "iqr")
-    )
-    eda_results = st.session_state.get('eda_results')
-    return coach_recommendations(signals, eda_results, get_insights_by_category())
-
 # Key insights from the unified ledger
 from utils.insight_ledger import get_ledger as _get_tc_ledger
 _tc_ledger = _get_tc_ledger()
@@ -628,16 +609,17 @@ for group_name in sorted_groups:
 
 st.session_state.model_config = model_config
 
-# Pre-training coach tips
-coach_output = st.session_state.get('coach_output')
+# Pre-training coach tips from ledger
 with st.expander("Pre-training Coach Tips", expanded=False):
-    if coach_output and hasattr(coach_output, 'preprocessing_recommendations') and coach_output.preprocessing_recommendations:
-        st.markdown("**Preprocessing checklist (from Coach):**")
-        for prep in coach_output.preprocessing_recommendations[:5]:
-            st.markdown(f"- **{prep.step_name}** ({prep.priority}): {prep.rationale}")
-        st.caption("Configure these in the Preprocessing page before building the pipeline.")
+    _tc_coaching = _tc_ledger.get_unresolved(page="06_Train_and_Compare")
+    if _tc_coaching:
+        for _tip in _tc_coaching[:5]:
+            _icon = {"blocker": "🚨", "warning": "⚠️", "info": "ℹ️", "opportunity": "💡"}.get(_tip.severity, "ℹ️")
+            st.markdown(f"{_icon} **{_tip.finding}**")
+            if _tip.recommended_action:
+                st.caption(f"→ {_tip.recommended_action}")
     else:
-        st.info("Run EDA and check the Model Selection Coach for preprocessing recommendations.")
+        st.info("No specific coaching notes. Run EDA to generate data-driven recommendations.")
     st.markdown("**Tip:** Ensure your preprocessing pipeline matches your selected models. Linear models and neural nets require scaling; tree models do not.")
 
 # Check Optuna availability

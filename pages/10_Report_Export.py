@@ -19,7 +19,7 @@ from utils.session_state import (
     DataConfig, SplitConfig, ModelConfig
 )
 from ml.pipeline import get_pipeline_recipe
-from utils.storyline import get_insights_by_category, render_breadcrumb, render_page_navigation
+from utils.storyline import render_breadcrumb, render_page_navigation
 from ml.model_registry import get_registry
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,7 @@ trained_models = st.session_state.get('trained_models', {})
 model_results = st.session_state.get('model_results', {})
 data_audit = st.session_state.get('data_audit')
 profile = st.session_state.get('dataset_profile')
-coach_output = st.session_state.get('coach_output')
+# coach_output removed — now derived from unified ledger
 
 if not data_config:
     st.warning("Please configure your data in Upload & Audit first")
@@ -287,7 +287,7 @@ def build_export_context() -> Dict[str, Any]:
         'model_results': model_results,
         'data_audit': data_audit,
         'profile': profile,
-        'coach_output': coach_output,
+        'coach_output': None,  # deprecated — use unified ledger
         'pipeline': pipeline,
         'pipelines_by_model': pipelines_by_model,
         'configs_by_model': configs_by_model,
@@ -588,7 +588,7 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     trained_models = export_ctx['trained_models']
     model_results = export_ctx['model_results']
     profile = export_ctx['profile']
-    coach_output = export_ctx['coach_output']
+    # coach_output deprecated — using unified ledger
     pipeline = export_ctx['pipeline']
     pipelines_by_model = export_ctx['pipelines_by_model']
     configs_by_model = export_ctx['configs_by_model']
@@ -1081,19 +1081,19 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
             report_lines.append("---")
             report_lines.append("")
 
-    # Recommendations
-    if coach_output:
-        report_lines.append("## Model Selection Coach Insights")
+    # Data sufficiency narrative from profile (if available)
+    if profile and hasattr(profile, 'sufficiency_narrative') and profile.sufficiency_narrative:
+        report_lines.append("## Data Assessment")
         report_lines.append("")
-        report_lines.append(f"> {coach_output.data_sufficiency_narrative}")
+        report_lines.append(f"> {profile.sufficiency_narrative}")
         report_lines.append("")
-        
-        if coach_output.warnings_summary:
-            report_lines.append("**Warnings:**")
-            for warning in coach_output.warnings_summary[:3]:
-                report_lines.append(f"- {warning}")
+        # Warnings from ledger
+        _report_warnings = _report_ledger.get_unresolved(severity="warning")
+        if _report_warnings:
+            report_lines.append("**Open warnings:**")
+            for _w in _report_warnings[:5]:
+                report_lines.append(f"- {_w.finding}")
             report_lines.append("")
-        
         report_lines.append("---")
         report_lines.append("")
     
@@ -1943,5 +1943,5 @@ with st.expander("Advanced / State Debug", expanded=False):
     st.write(f"• Features: {len(data_config.feature_cols) if data_config else 0}")
     st.write(f"• Trained models: {len(trained_models)}")
     st.write(f"• Dataset profile: {'Available' if profile else 'Not computed'}")
-    st.write(f"• Coach output: {'Available' if coach_output else 'Not computed'}")
+    st.write(f"• Insight ledger: {len(_report_ledger)} entries ({_report_ledger.summary()['resolved']} resolved)")
     st.write(f"• Git info: {get_git_info()}")
