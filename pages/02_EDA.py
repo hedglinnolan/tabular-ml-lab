@@ -1491,11 +1491,6 @@ with st.expander("📄 Table 1 — Publication Summary", expanded=False):
 
 sync_backward_compat(ledger, df)
 
-# Also compute feature_engineering_hints from raw data (preserves numeric_features list)
-_fe_hints = ledger.to_feature_engineering_hints()
-_fe_hints["numeric_features"] = list(df.select_dtypes(include=[np.number]).columns)
-st.session_state["feature_engineering_hints"] = _fe_hints
-
 
 # ============================================================================
 # FOOTER
