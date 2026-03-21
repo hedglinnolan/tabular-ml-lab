@@ -179,7 +179,7 @@ def render_progress_indicator(current_page: str):
     st.sidebar.caption(f"{len(completed)}/{len(PHASES)} phases complete ({progress_pct:.0f}%)")
 
 
-def add_insight(insight_id: str, finding: str, implication: str, category: str = "general"):
+def add_insight(insight_id: str, finding: str, implication: str, category: str = "general"):  # DEPRECATED — use InsightLedger
     """Add an EDA insight to session state."""
     if 'eda_insights' not in st.session_state:
         st.session_state.eda_insights = []
@@ -197,7 +197,7 @@ def add_insight(insight_id: str, finding: str, implication: str, category: str =
         st.session_state.eda_insights.append(insight)
 
 
-def get_insights_by_category(category: Optional[str] = None) -> List[Dict]:
+def get_insights_by_category(category: Optional[str] = None) -> List[Dict]:  # DEPRECATED — use InsightLedger
     """Get EDA insights, optionally filtered by category."""
     insights = st.session_state.get('eda_insights', [])
     if category:

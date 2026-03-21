@@ -496,12 +496,17 @@ class InsightLedger:
         """
         narratives = {}
 
+        seen_ids = set()  # Prevent duplicate entries across phases
         for phase_name, phase_pages in WORKFLOW_PHASES.items():
             resolved_in_phase = []
             for i in self.get_resolved():
-                if (i.resolved_on_page in phase_pages
-                        or i.source_page in phase_pages):
+                if i.id in seen_ids:
+                    continue
+                # Prefer resolved_on_page (where the action happened)
+                primary_page = i.resolved_on_page or i.source_page
+                if primary_page in phase_pages:
                     resolved_in_phase.append(i)
+                    seen_ids.add(i.id)
 
             if not resolved_in_phase:
                 continue
