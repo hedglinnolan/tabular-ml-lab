@@ -336,7 +336,7 @@ def _interpretability_guidance(
         bullets.append("**Balanced** is a reasonable default. Use **high** when you need simple, explainable pipelines; **performance** when accuracy matters most.")
     return bullets[:4]
 
-_guidance = _interpretability_guidance(profile, insights, eda_results or {}, selected_models, registry_prep)
+_guidance = _interpretability_guidance(profile, [], eda_results or {}, selected_models, registry_prep)
 if _guidance:
     st.caption("**Interpretability guidance:**")
     for _g in _guidance:
