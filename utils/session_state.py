@@ -397,7 +397,11 @@ _STEP_TO_CATEGORY = {
 
 
 def _log_to_ledger(step: str, action: str, details: Optional[Dict[str, Any]] = None):
-    """Bridge: write a pre-resolved Insight entry for each methodology log call."""
+    """Bridge: write a pre-resolved Insight entry for each methodology log call.
+
+    Enriches details with structured action_type when inferrable from the step,
+    so the narrative renderer can produce publication-quality prose.
+    """
     try:
         from utils.insight_ledger import Insight, get_ledger
         from datetime import datetime
@@ -409,6 +413,28 @@ def _log_to_ledger(step: str, action: str, details: Optional[Dict[str, Any]] = N
         # Deterministic ID from step + action (slugified)
         slug = action.lower().replace(' ', '_')[:40]
         insight_id = f"method_{step.lower().replace(' ', '_')}_{slug}"
+
+        # Enrich details with structured schema fields when inferrable
+        enriched = dict(details) if details else {}
+        if "action_type" not in enriched:
+            _step_to_action_type = {
+                "Preprocessing": "preprocessing",
+                "Feature Engineering": "transform",
+                "Feature Selection": "feature_selection",
+                "Feature Selection Applied": "feature_selection",
+                "Model Training": "training",
+                "Upload & Audit": "data_setup",
+                "Data Cleaning": "data_cleaning",
+            }
+            inferred = _step_to_action_type.get(step)
+            if inferred:
+                enriched["action_type"] = inferred
+            # Infer method from details when possible
+            if "method" not in enriched:
+                if enriched.get("imputation"):
+                    enriched["method"] = enriched["imputation"]
+                elif enriched.get("scaling"):
+                    enriched["method"] = enriched["scaling"]
 
         ledger.upsert(Insight(
             id=insight_id,
@@ -422,7 +448,7 @@ def _log_to_ledger(step: str, action: str, details: Optional[Dict[str, Any]] = N
             resolved=True,
             resolved_by=action,
             resolved_on_page=page,
-            resolution_details=details or {},
+            resolution_details=enriched,
             auto_generated=True,
         ))
     except Exception:

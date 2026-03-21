@@ -883,6 +883,27 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                 implication="Review that preprocessing matches each model; adjust and rebuild if needed.",
                 relevant_pages=["06_Train_and_Compare"],
             ))
+            # Build structured per-model provenance for the ledger
+            _per_model_provenance = {}
+            for _mk, _mc in configs_by_model.items():
+                _prov = {
+                    "imputation": _mc.get("numeric_imputation", "median"),
+                    "scaling": _mc.get("numeric_scaling", "standard"),
+                    "encoding": _mc.get("categorical_encoding", "onehot"),
+                    "outlier_treatment": _mc.get("numeric_outlier_treatment", "none"),
+                }
+                _op = _mc.get("numeric_outlier_params", {})
+                if _op:
+                    _prov["outlier_params"] = _op
+                _pt = _mc.get("numeric_power_transform", "none")
+                if _pt != "none":
+                    _prov["power_transform"] = _pt
+                if _mc.get("numeric_log_transform"):
+                    _prov["log_transform"] = True
+                if _mc.get("numeric_missing_indicators"):
+                    _prov["missing_indicators"] = True
+                _per_model_provenance[_mk] = _prov
+
             _pp_resolve_ledger.upsert(Insight(
                 id="preprocess_summary",
                 source_page="05_Preprocess", category="methodology", severity="info",
@@ -892,14 +913,29 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                 resolved=True,
                 resolved_by=f"Built {len(pipelines_by_model)} preprocessing pipeline(s)",
                 resolved_on_page="05_Preprocess",
-                resolution_details={"models": list(pipelines_by_model.keys())},
+                resolution_details={
+                    "action_type": "preprocessing",
+                    "method": "per_model_pipeline",
+                    "models_trained": list(pipelines_by_model.keys()),
+                    "per_model_config": _per_model_provenance,
+                },
             ))
             # Resolve EDA insights addressed by building pipelines
-            for _resolve_id, _resolve_msg in [
-                ("eda_missing_severe", "Addressed via preprocessing pipeline imputation"),
-                ("eda_missing_moderate", "Addressed via preprocessing pipeline imputation"),
-                ("eda_sufficiency_insufficient", "User proceeded with preprocessing despite insufficient data"),
-                ("eda_sufficiency_borderline", "User proceeded with preprocessing despite borderline sufficiency"),
+            for _resolve_id, _resolve_msg, _resolve_details in [
+                ("eda_missing_severe", "Addressed via preprocessing pipeline imputation", {
+                    "action_type": "imputation", "method": _imp_method,
+                    "scope": "all models" if len(configs_by_model) == 1 else f"{len(configs_by_model)} model pipelines",
+                }),
+                ("eda_missing_moderate", "Addressed via preprocessing pipeline imputation", {
+                    "action_type": "imputation", "method": _imp_method,
+                    "scope": "all models" if len(configs_by_model) == 1 else f"{len(configs_by_model)} model pipelines",
+                }),
+                ("eda_sufficiency_insufficient", "User proceeded with preprocessing despite insufficient data", {
+                    "action_type": "acknowledgment", "method": "accepted_risk",
+                }),
+                ("eda_sufficiency_borderline", "User proceeded with preprocessing despite borderline sufficiency", {
+                    "action_type": "acknowledgment", "method": "accepted_risk",
+                }),
             ]:
                 _ins = _pp_resolve_ledger.get(_resolve_id)
                 if _ins and not _ins.resolved:
@@ -907,7 +943,7 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                         _resolve_id,
                         resolved_by=_resolve_msg,
                         resolved_on_page="05_Preprocess",
-                        resolution_details={"handled_by": "preprocessing_pipeline"},
+                        resolution_details=_resolve_details,
                     )
         elapsed = time.perf_counter() - t0
         st.session_state.setdefault("last_timings", {})["Build Pipelines"] = round(elapsed, 2)

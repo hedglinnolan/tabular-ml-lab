@@ -356,7 +356,26 @@ def get_pipeline_recipe(pipeline: Pipeline, plausibility_mode: Optional[str] = N
                     elif step_name == 'log':
                         step_parts.append("Log transform")
                     elif step_name == 'outlier':
-                        step_parts.append("Outlier capping")
+                        # Extract actual params from the fitted transformer
+                        outlier_desc = "Outlier capping"
+                        if hasattr(step_transformer, 'method'):
+                            method = step_transformer.method
+                            if method == 'percentile' and hasattr(step_transformer, 'lower_percentile'):
+                                lo = getattr(step_transformer, 'lower_percentile', '?')
+                                hi = getattr(step_transformer, 'upper_percentile', '?')
+                                outlier_desc = f"Percentile clip ({lo}th–{hi}th)"
+                            elif method == 'iqr':
+                                mult = getattr(step_transformer, 'iqr_multiplier', getattr(step_transformer, 'multiplier', 1.5))
+                                outlier_desc = f"IQR capping (×{mult})"
+                            elif method == 'zscore':
+                                thresh = getattr(step_transformer, 'threshold', 3)
+                                outlier_desc = f"Z-score filter (|z| > {thresh})"
+                            elif method == 'mad':
+                                thresh = getattr(step_transformer, 'mad_threshold', getattr(step_transformer, 'n_mad', 3))
+                                outlier_desc = f"MAD capping ({thresh}× MAD)"
+                            else:
+                                outlier_desc = f"Outlier treatment ({method})"
+                        step_parts.append(outlier_desc)
                     elif step_name == 'scaler':
                         if isinstance(step_transformer, StandardScaler):
                             step_parts.append("Standard scaling")

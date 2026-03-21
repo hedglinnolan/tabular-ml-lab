@@ -542,9 +542,10 @@ if use_transforms:
                                 resolved_by=f"Applied transforms ({', '.join(transform_options)}) to all skewed features",
                                 resolved_on_page="03_Feature_Engineering",
                                 resolution_details={
-                                    "transforms": transform_options,
-                                    "features": list(selected_features),
-                                    "new_columns": new_cols,
+                                    "action_type": "transform",
+                                    "method": ", ".join(transform_options) if len(transform_options) > 1 else transform_options[0] if transform_options else "transform",
+                                    "columns_affected": list(selected_features),
+                                    "result": {"new_columns_created": len(new_cols), "columns": new_cols[:10]},
                                 },
                             )
                     

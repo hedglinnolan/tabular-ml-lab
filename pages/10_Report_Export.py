@@ -780,6 +780,26 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     if pipelines_by_model:
         report_lines.append("## Preprocessing (per model)")
         report_lines.append("")
+
+        # Ledger-sourced provenance narrative (why these preprocessing choices)
+        from utils.insight_ledger import format_resolution_detail
+        _preprocess_provenance = _report_ledger.get_resolved(page="05_Preprocess")
+        if _preprocess_provenance:
+            report_lines.append("**Rationale:**")
+            report_lines.append("")
+            for _prov_insight in _preprocess_provenance:
+                if _prov_insight.resolution_details.get("action_type"):
+                    prose = format_resolution_detail(
+                        _prov_insight.resolution_details, model_scope=_prov_insight.model_scope
+                    )
+                    if _prov_insight.finding and not _prov_insight.finding.startswith("Pipelines built"):
+                        report_lines.append(f"- {_prov_insight.finding} → {prose}")
+                    elif prose:
+                        report_lines.append(f"- {prose}")
+                elif _prov_insight.resolved_by and _prov_insight.finding:
+                    report_lines.append(f"- {_prov_insight.finding} → {_prov_insight.resolved_by}")
+            report_lines.append("")
+
         for mk, pl in pipelines_by_model.items():
             report_lines.append(f"### {mk.upper()}")
             report_lines.append("")
@@ -1162,6 +1182,15 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
         strength_items.append("Model-agnostic explainability via SHAP analysis")
     if perm_imp:
         strength_items.append("Permutation importance for feature contribution assessment")
+    # Ledger-sourced strengths: resolved issues = methodological rigor
+    _resolved_count = _report_ledger.summary()["resolved"]
+    if _resolved_count > 0:
+        strength_items.append(
+            f"Systematic data quality audit: {_resolved_count} observation(s) "
+            f"identified and addressed with documented provenance"
+        )
+    if pipelines_by_model and len(pipelines_by_model) > 1:
+        strength_items.append("Per-model preprocessing pipelines tailored to each model family's assumptions")
     
     if strength_items:
         report_lines.append("**Strengths:**")
@@ -1172,7 +1201,20 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
         report_lines.append("**Strengths:** [PLACEHOLDER: Discuss methodological strengths]")
     report_lines.append("")
     
-    report_lines.append("**Limitations:** [PLACEHOLDER: Discuss study limitations, data constraints, generalizability, etc.]")
+    # Auto-fill limitations from unresolved ledger insights
+    _unresolved_for_limitations = _report_ledger.get_unresolved()
+    limitation_items = []
+    for _ui in _unresolved_for_limitations:
+        if _ui.severity in ("blocker", "warning"):
+            limitation_items.append(f"{_ui.finding}: {_ui.implication}")
+    
+    if limitation_items:
+        report_lines.append("**Limitations:**")
+        for item in limitation_items:
+            report_lines.append(f"- {item}")
+        report_lines.append("- [PLACEHOLDER: Add study-specific limitations]")
+    else:
+        report_lines.append("**Limitations:** [PLACEHOLDER: Discuss study limitations, data constraints, generalizability, etc.]")
     report_lines.append("")
     
     # Conclusion
@@ -1299,6 +1341,18 @@ with st.expander("📄 Auto-Generated Methods Section", expanded=False):
             best_model=best_model,
         )
         methods_text = _build_methods_section_for_export(manuscript_context)
+
+        # Append ledger-sourced provenance narrative
+        _ledger_narratives = _report_ledger.to_manuscript_narrative()
+        if _ledger_narratives:
+            methods_text += "\n\n### Data Quality and Preprocessing Rationale\n\n"
+            methods_text += (
+                "The following observations were identified during exploratory analysis "
+                "and addressed during the modeling workflow:\n\n"
+            )
+            for _phase, _narrative in _ledger_narratives.items():
+                methods_text += f"**{_phase}:** {_narrative}\n\n"
+
         st.session_state["methods_section"] = methods_text
         st.session_state["manuscript_export_context"] = manuscript_context
 

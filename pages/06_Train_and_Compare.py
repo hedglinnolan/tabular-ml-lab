@@ -1017,9 +1017,16 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
         from utils.insight_ledger import get_ledger as _get_tc_ledger
         _tc_ledger = _get_tc_ledger()
         _trained_names = list(trained_models.keys())
-        for _resolve_id, _resolve_msg in [
-            ("eda_class_imbalance", f"Training completed with models: {', '.join(_trained_names)}. Evaluate metrics beyond accuracy."),
-            ("eda_target_skew", f"Training completed with models: {', '.join(_trained_names)}. Review residual distributions."),
+        for _resolve_id, _resolve_msg, _resolve_details in [
+            ("eda_class_imbalance",
+             f"Training completed with models: {', '.join(_trained_names)}. Evaluate metrics beyond accuracy.",
+             {"action_type": "training", "method": "model_comparison",
+              "models_trained": _trained_names,
+              "result": {"best_model": best_model_name, "best_metric": best_metric_value}}),
+            ("eda_target_skew",
+             f"Training completed with models: {', '.join(_trained_names)}. Review residual distributions.",
+             {"action_type": "acknowledgment", "method": "accepted_risk",
+              "models_trained": _trained_names}),
         ]:
             _ins = _tc_ledger.get(_resolve_id)
             if _ins and not _ins.resolved:
@@ -1027,7 +1034,7 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                     _resolve_id,
                     resolved_by=_resolve_msg,
                     resolved_on_page="06_Train_and_Compare",
-                    resolution_details={"models_trained": _trained_names, "best_model": best_model_name},
+                    resolution_details=_resolve_details,
                 )
 
 # Training section with two buttons

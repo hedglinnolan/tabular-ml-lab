@@ -106,6 +106,203 @@ ISSUE_MODEL_RELEVANCE = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Resolution Details Schema — structured provenance for report generation
+# ---------------------------------------------------------------------------
+# Every resolution_details dict should include these standard fields when
+# applicable. The narrative renderer uses these to produce publication prose.
+# Freeform keys are still allowed for backward compat.
+
+RESOLUTION_SCHEMA_FIELDS = {
+    # What action was taken
+    "action_type": "str — e.g., imputation, scaling, outlier_treatment, transform, feature_selection, encoding, training",
+    "method": "str — specific technique: median, log1p, yeo_johnson, percentile_clip, standard, robust, onehot, etc.",
+    "params": "dict — method-specific parameters: {lower: 4, upper: 96}, {alpha: 0.01}, {n_components: 5}",
+    # What it was applied to
+    "scope": "str — pipeline scope: 'all models', 'Ridge pipeline', 'Ridge, MLP pipelines'",
+    "columns_affected": "list[str] — which columns/features were affected",
+    "n_columns_affected": "int — count when listing all columns is unwieldy",
+    # What happened as a result
+    "result": "dict — outcome metrics: {rows_clipped: 47, pct_affected: '6.1%'}, {n_features_selected: 12}",
+    # Context
+    "models_trained": "list[str] — which models this applies to (for per-model pipeline provenance)",
+    "triggered_by": "str — insight ID that prompted this action",
+}
+
+
+def format_resolution_detail(detail: Dict[str, Any], model_scope: Optional[List[str]] = None) -> str:
+    """Render a resolution_details dict into publication-quality prose.
+
+    Handles both structured (schema-conformant) and legacy (freeform) dicts.
+
+    Examples:
+        {"action_type": "outlier_treatment", "method": "percentile_clip",
+         "params": {"lower": 4, "upper": 96}, "scope": "Ridge pipeline",
+         "columns_affected": ["BMI", "Insulin"], "result": {"rows_clipped": 47}}
+        → "Outliers were treated via percentile clipping (4th–96th percentile)
+           on BMI and Insulin in the Ridge pipeline (47 rows clipped)."
+    """
+    if not detail:
+        return ""
+
+    action_type = detail.get("action_type", "")
+    method = detail.get("method", "")
+    params = detail.get("params", {})
+    scope = detail.get("scope", "")
+    columns = detail.get("columns_affected", [])
+    n_cols = detail.get("n_columns_affected", len(columns) if columns else 0)
+    result = detail.get("result", {})
+
+    # --- Structured rendering by action_type ---
+    if action_type:
+        parts = []
+
+        # Method description with params
+        method_str = _format_method(action_type, method, params)
+        if method_str:
+            parts.append(method_str)
+
+        # Columns
+        if columns and len(columns) <= 5:
+            parts.append(f"on {_join_list(columns)}")
+        elif n_cols:
+            parts.append(f"on {n_cols} features")
+
+        # Scope
+        if scope and scope != "all models":
+            parts.append(f"in the {scope}")
+
+        # Result
+        result_str = _format_result(result)
+        if result_str:
+            parts.append(f"({result_str})")
+
+        # Model scope
+        if model_scope:
+            scope_names = [FAMILY_DISPLAY_NAMES.get(f, f) for f in model_scope]
+            parts.append(f"[applicable to {_join_list(scope_names)}]")
+
+        return " ".join(parts)
+
+    # --- Legacy fallback: format freeform dict as key=value ---
+    legacy_parts = []
+    for k, v in detail.items():
+        if k in ("finding", "category", "handled_by"):
+            continue  # skip meta fields
+        if isinstance(v, list) and v:
+            legacy_parts.append(f"{k}: {', '.join(str(x) for x in v[:8])}")
+        elif isinstance(v, dict) and v:
+            inner = ", ".join(f"{ik}={iv}" for ik, iv in list(v.items())[:5])
+            legacy_parts.append(f"{k}: {inner}")
+        elif v is not None and v != "":
+            legacy_parts.append(f"{k}: {v}")
+    return "; ".join(legacy_parts) if legacy_parts else ""
+
+
+def _format_method(action_type: str, method: str, params: Dict) -> str:
+    """Format a method + params into readable prose."""
+    # Specific formatting by action type
+    templates = {
+        ("outlier_treatment", "percentile_clip"): lambda p: (
+            f"Outliers were treated via percentile clipping "
+            f"({p.get('lower', '?')}th–{p.get('upper', '?')}th percentile)"
+        ),
+        ("outlier_treatment", "iqr"): lambda p: (
+            f"Outliers were capped using the IQR method "
+            f"(multiplier: {p.get('multiplier', p.get('iqr_multiplier', 1.5))})"
+        ),
+        ("outlier_treatment", "zscore"): lambda p: (
+            f"Outliers were removed using z-score threshold "
+            f"(|z| > {p.get('threshold', 3)})"
+        ),
+        ("imputation", "median"): lambda _: "Missing values were imputed with column medians",
+        ("imputation", "mean"): lambda _: "Missing values were imputed with column means",
+        ("imputation", "knn"): lambda p: (
+            f"Missing values were imputed using k-nearest neighbors "
+            f"(k={p.get('n_neighbors', p.get('k', 5))})"
+        ),
+        ("imputation", "most_frequent"): lambda _: "Missing categorical values were imputed with mode",
+        ("scaling", "standard"): lambda _: "Features were standardized (zero mean, unit variance)",
+        ("scaling", "robust"): lambda _: "Features were scaled using robust scaling (median/IQR)",
+        ("transform", "log1p"): lambda _: "Log(1+x) transform was applied",
+        ("transform", "yeo_johnson"): lambda _: "Yeo-Johnson power transform was applied",
+        ("transform", "box_cox"): lambda _: "Box-Cox power transform was applied",
+        ("encoding", "onehot"): lambda _: "Categorical features were one-hot encoded",
+        ("encoding", "ordinal"): lambda _: "Categorical features were ordinal encoded",
+        ("feature_selection", "consensus"): lambda p: (
+            f"Features were selected by consensus across methods "
+            f"(threshold: {p.get('threshold', '?')})"
+        ),
+        ("feature_selection", "manual"): lambda _: "Features were manually selected",
+        ("dimensionality_reduction", "pca"): lambda p: (
+            f"PCA was applied (n_components={p.get('n_components', '?')})"
+        ),
+        ("preprocessing", "per_model_pipeline"): lambda p: (
+            f"Per-model preprocessing pipelines were configured for "
+            f"{len(p.get('models_trained', []))} model(s)"
+            if p.get("models_trained")
+            else "Preprocessing pipelines were configured"
+        ),
+        ("training", "model_comparison"): lambda p: (
+            f"{len(p.get('models_trained', []))} models were trained and compared"
+            + (f"; best: {p['result']['best_model'].upper()}" if p.get("result", {}).get("best_model") else "")
+            if p.get("models_trained") else "Models were trained"
+        ),
+        ("acknowledgment", "accepted_risk"): lambda _: (
+            "Acknowledged and accepted as a study limitation"
+        ),
+        ("data_setup", None): lambda _: "Dataset configured for analysis",
+        ("data_cleaning", None): lambda _: "Data cleaning operations applied",
+    }
+
+    key = (action_type, method)
+    if key in templates:
+        return templates[key](params)
+
+    # Try action_type with None method (for data_setup, data_cleaning, etc.)
+    key_none = (action_type, None)
+    if key_none in templates:
+        return templates[key_none](params)
+
+    # Generic fallback
+    if method and method != "none":
+        param_str = ""
+        if params:
+            param_str = " (" + ", ".join(f"{k}={v}" for k, v in params.items()) + ")"
+        action_label = action_type.replace("_", " ") if action_type else "Processing"
+        return f"{action_label.capitalize()} via {method}{param_str}"
+
+    if action_type:
+        return action_type.replace("_", " ").capitalize()
+
+    return ""
+
+
+def _format_result(result: Dict) -> str:
+    """Format result dict into a parenthetical summary."""
+    if not result:
+        return ""
+    parts = []
+    for k, v in result.items():
+        label = k.replace("_", " ")
+        if isinstance(v, float):
+            parts.append(f"{label}: {v:.1%}" if v < 1 else f"{label}: {v:.2f}")
+        else:
+            parts.append(f"{label}: {v}")
+    return "; ".join(parts)
+
+
+def _join_list(items: list, conjunction: str = "and") -> str:
+    """Join list items with Oxford comma."""
+    if len(items) == 0:
+        return ""
+    if len(items) == 1:
+        return str(items[0])
+    if len(items) == 2:
+        return f"{items[0]} {conjunction} {items[1]}"
+    return ", ".join(str(i) for i in items[:-1]) + f", {conjunction} {items[-1]}"
+
+
 def models_to_families(model_keys: List[str]) -> List[str]:
     """Convert a list of model keys to unique family names."""
     return list(dict.fromkeys(
@@ -637,9 +834,15 @@ class InsightLedger:
             lines.append("")
             lines.append("Addressed observations:")
             for i in resolved:
-                lines.append(
-                    f"  - {i.finding} → {i.resolved_by} ({i.resolved_on_page})"
-                )
+                if i.resolution_details.get("action_type"):
+                    detail_prose = format_resolution_detail(
+                        i.resolution_details, model_scope=i.model_scope
+                    )
+                    lines.append(f"  - {i.finding} → {detail_prose}")
+                else:
+                    lines.append(
+                        f"  - {i.finding} → {i.resolved_by} ({i.resolved_on_page})"
+                    )
 
         if unresolved:
             lines.append("")
@@ -676,31 +879,37 @@ class InsightLedger:
 
             sentences = []
             for i in resolved_in_phase:
-                detail_str = ""
-                if i.resolution_details:
-                    # Build detail string from structured metadata
-                    parts = []
-                    for k, v in i.resolution_details.items():
-                        if k in ("method", "strategy", "approach"):
-                            continue  # already in resolved_by
-                        if isinstance(v, list):
-                            parts.append(f"{k}: {', '.join(str(x) for x in v)}")
-                        else:
-                            parts.append(f"{k}={v}")
-                    if parts:
-                        detail_str = f" ({', '.join(parts)})"
+                # Use structured renderer if resolution_details has action_type
+                if i.resolution_details.get("action_type"):
+                    detail_prose = format_resolution_detail(
+                        i.resolution_details, model_scope=i.model_scope
+                    )
+                    sentences.append(f"{i.finding}. {detail_prose}.")
+                else:
+                    # Legacy fallback — resolved_by + freeform details
+                    detail_str = ""
+                    if i.resolution_details:
+                        parts = []
+                        for k, v in i.resolution_details.items():
+                            if k in ("method", "strategy", "approach", "finding", "category"):
+                                continue
+                            if isinstance(v, list):
+                                parts.append(f"{k}: {', '.join(str(x) for x in v)}")
+                            else:
+                                parts.append(f"{k}={v}")
+                        if parts:
+                            detail_str = f" ({', '.join(parts)})"
 
-                # Add model-scope context if specified
-                scope_str = ""
-                if i.model_scope:
-                    scope_names = [
-                        FAMILY_DISPLAY_NAMES.get(f, f) for f in i.model_scope
-                    ]
-                    scope_str = f" [applicable to {', '.join(scope_names)}]"
+                    scope_str = ""
+                    if i.model_scope:
+                        scope_names = [
+                            FAMILY_DISPLAY_NAMES.get(f, f) for f in i.model_scope
+                        ]
+                        scope_str = f" [applicable to {', '.join(scope_names)}]"
 
-                sentences.append(
-                    f"{i.finding}. {i.resolved_by}{detail_str}.{scope_str}"
-                )
+                    sentences.append(
+                        f"{i.finding}. {i.resolved_by}{detail_str}.{scope_str}"
+                    )
 
             narratives[phase_name] = " ".join(sentences)
 
