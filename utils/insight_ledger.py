@@ -157,8 +157,8 @@ def format_resolution_detail(detail: Dict[str, Any], model_scope: Optional[List[
     if action_type:
         parts = []
 
-        # Method description with params
-        method_str = _format_method(action_type, method, params)
+        # Method description with params (pass full detail for templates that need top-level keys)
+        method_str = _format_method(action_type, method, params, full_detail=detail)
         if method_str:
             parts.append(method_str)
 
@@ -199,8 +199,20 @@ def format_resolution_detail(detail: Dict[str, Any], model_scope: Optional[List[
     return "; ".join(legacy_parts) if legacy_parts else ""
 
 
-def _format_method(action_type: str, method: str, params: Dict) -> str:
-    """Format a method + params into readable prose."""
+def _format_method(action_type: str, method: str, params: Dict, full_detail: Optional[Dict] = None) -> str:
+    """Format a method + params into readable prose.
+
+    Args:
+        action_type: The type of action (e.g., "outlier_treatment")
+        method: The specific method (e.g., "percentile_clip")
+        params: The params sub-dict (method-specific parameters)
+        full_detail: The complete resolution_details dict — used by templates
+            that need top-level keys like models_trained, result, etc.
+    """
+    # Merge params with full_detail for template access — params takes precedence
+    merged = dict(full_detail or {})
+    merged.update(params)
+
     # Specific formatting by action type
     templates = {
         ("outlier_treatment", "percentile_clip"): lambda p: (
@@ -257,12 +269,12 @@ def _format_method(action_type: str, method: str, params: Dict) -> str:
 
     key = (action_type, method)
     if key in templates:
-        return templates[key](params)
+        return templates[key](merged)
 
     # Try action_type with None method (for data_setup, data_cleaning, etc.)
     key_none = (action_type, None)
     if key_none in templates:
-        return templates[key_none](params)
+        return templates[key_none](merged)
 
     # Generic fallback
     if method and method != "none":
@@ -502,7 +514,12 @@ class InsightLedger:
         return True
 
     def upsert(self, insight: Insight) -> bool:
-        """Add or update insight by id. Returns True if newly added."""
+        """Add or update insight by id. Returns True if newly added.
+
+        Preserves existing non-default content fields when the new insight
+        doesn't specify them (e.g., affected_features, model_scope, metadata).
+        Always preserves resolution state if already resolved.
+        """
         for idx, existing in enumerate(self._insights):
             if existing.id == insight.id:
                 # Preserve resolution state if already resolved
@@ -512,6 +529,17 @@ class InsightLedger:
                     insight.resolved_on_page = existing.resolved_on_page
                     insight.resolved_at = existing.resolved_at
                     insight.resolution_details = existing.resolution_details
+                # Preserve non-empty content fields when new value is default/empty
+                if not insight.affected_features and existing.affected_features:
+                    insight.affected_features = existing.affected_features
+                if not insight.model_scope and existing.model_scope:
+                    insight.model_scope = existing.model_scope
+                if not insight.metadata and existing.metadata:
+                    insight.metadata = existing.metadata
+                if not insight.tripod_keys and existing.tripod_keys:
+                    insight.tripod_keys = existing.tripod_keys
+                if not insight.relevant_pages and existing.relevant_pages:
+                    insight.relevant_pages = existing.relevant_pages
                 self._insights[idx] = insight
                 return False
         self._insights.append(insight)
@@ -544,6 +572,11 @@ class InsightLedger:
                 if resolution_details:
                     i.resolution_details = resolution_details
                 return True
+        import logging
+        logging.getLogger(__name__).warning(
+            f"InsightLedger.resolve: insight_id='{insight_id}' not found. "
+            f"Check for typos in the resolution wiring."
+        )
         return False
 
     def remove(self, insight_id: str) -> bool:
