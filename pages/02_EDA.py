@@ -375,6 +375,8 @@ def _auto_generate_insights():
             implication="You can lean into interpretable models (GLM, GAM) where coefficient interpretation is meaningful, rather than defaulting to black-box approaches",
             recommended_action="Consider GLM or GAM baselines in Train & Compare",
             relevant_pages=["06_Train_and_Compare"],
+            resolved=True, resolved_by="Positive signal — no action needed",
+            resolved_on_page="02_EDA", auto_generated=True,
         ))
 
     # Strong target signal opportunity
@@ -394,6 +396,8 @@ def _auto_generate_insights():
                     recommended_action="Run GLM baseline first in Train & Compare",
                     relevant_pages=["06_Train_and_Compare"],
                     metadata={"max_target_correlation": float(top_corr)},
+                    resolved=True, resolved_by="Positive signal — no action needed",
+                    resolved_on_page="02_EDA", auto_generated=True,
                 ))
 
     # Non-linear relationship opportunity
@@ -414,6 +418,8 @@ def _auto_generate_insights():
                         recommended_action="Include tree-based models in Train & Compare",
                         relevant_pages=["06_Train_and_Compare"],
                         metadata={"spearman_pearson_gap": float(avg_gap)},
+                        resolved=True, resolved_by="Positive signal — no action needed",
+                        resolved_on_page="02_EDA", auto_generated=True,
                     ))
 
     # High n/p ratio opportunity
@@ -427,6 +433,8 @@ def _auto_generate_insights():
             recommended_action="Consider full model suite in Train & Compare",
             relevant_pages=["06_Train_and_Compare"],
             metadata={"n_p_ratio": float(n_p_ratio)},
+            resolved=True, resolved_by="Positive signal — no action needed",
+            resolved_on_page="02_EDA", auto_generated=True,
         ))
 
     # Classification: balanced classes opportunity
@@ -440,6 +448,8 @@ def _auto_generate_insights():
                 implication="Accuracy is a valid metric. No need for class weighting or oversampling.",
                 recommended_action="Standard metrics will be reliable in Train & Compare",
                 relevant_pages=["06_Train_and_Compare"],
+                resolved=True, resolved_by="Positive signal — no action needed",
+                resolved_on_page="02_EDA", auto_generated=True,
             ))
 
 
@@ -1057,6 +1067,8 @@ if regime.show_macro_shape and numeric_features:
                 relevant_pages=["04_Feature_Selection", "05_Preprocess"],
                 model_scope=ISSUE_MODEL_RELEVANCE["high_dimensionality"],  # linear, distance, margin
                 metadata={"n_components_90": n_90, "n_features": len(numeric_features)},
+                resolved=True, resolved_by="Positive signal — no action needed",
+                resolved_on_page="02_EDA", auto_generated=True,
             ))
     else:
         st.warning(pca_result["error"])
@@ -1125,6 +1137,8 @@ if regime.show_macro_shape and numeric_features:
                         implication="Data has non-trivial topological structure that linear models cannot capture",
                         recommended_action="Consider TDA features in Feature Engineering",
                         relevant_pages=["03_Feature_Engineering"],
+                        resolved=True, resolved_by="Positive signal — no action needed",
+                        resolved_on_page="02_EDA", auto_generated=True,
                     ))
             else:
                 st.warning(tda_result["error"])

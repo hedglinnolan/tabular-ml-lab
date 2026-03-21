@@ -894,12 +894,18 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                 resolved_on_page="05_Preprocess",
                 resolution_details={"models": list(pipelines_by_model.keys())},
             ))
-            # Resolve any missing data insights from EDA
-            for _miss_id in ["eda_missing_severe", "eda_missing_moderate"]:
-                if _pp_resolve_ledger.get(_miss_id) and not _pp_resolve_ledger.get(_miss_id).resolved:
+            # Resolve EDA insights addressed by building pipelines
+            for _resolve_id, _resolve_msg in [
+                ("eda_missing_severe", "Addressed via preprocessing pipeline imputation"),
+                ("eda_missing_moderate", "Addressed via preprocessing pipeline imputation"),
+                ("eda_sufficiency_insufficient", "User proceeded with preprocessing despite insufficient data"),
+                ("eda_sufficiency_borderline", "User proceeded with preprocessing despite borderline sufficiency"),
+            ]:
+                _ins = _pp_resolve_ledger.get(_resolve_id)
+                if _ins and not _ins.resolved:
                     _pp_resolve_ledger.resolve(
-                        _miss_id,
-                        resolved_by="Addressed via preprocessing pipeline imputation",
+                        _resolve_id,
+                        resolved_by=_resolve_msg,
                         resolved_on_page="05_Preprocess",
                         resolution_details={"handled_by": "preprocessing_pipeline"},
                     )

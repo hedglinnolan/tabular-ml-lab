@@ -1013,6 +1013,23 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
             }
         )
 
+        # Resolve EDA insights that are addressed by completing training
+        from utils.insight_ledger import get_ledger as _get_tc_ledger
+        _tc_ledger = _get_tc_ledger()
+        _trained_names = list(trained_models.keys())
+        for _resolve_id, _resolve_msg in [
+            ("eda_class_imbalance", f"Training completed with models: {', '.join(_trained_names)}. Evaluate metrics beyond accuracy."),
+            ("eda_target_skew", f"Training completed with models: {', '.join(_trained_names)}. Review residual distributions."),
+        ]:
+            _ins = _tc_ledger.get(_resolve_id)
+            if _ins and not _ins.resolved:
+                _tc_ledger.resolve(
+                    _resolve_id,
+                    resolved_by=_resolve_msg,
+                    resolved_on_page="06_Train_and_Compare",
+                    resolution_details={"models_trained": _trained_names, "best_model": best_model_name},
+                )
+
 # Training section with two buttons
 st.markdown("---")
 st.header("Train Models")
