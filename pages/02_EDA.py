@@ -36,7 +36,7 @@ from utils.theme import (
     render_step_indicator, render_sidebar_workflow
 )
 from utils.table_export import table
-from utils.insight_ledger import Insight, get_ledger, sync_backward_compat
+from utils.insight_ledger import Insight, get_ledger
 from ml.regime import detect_regime
 from ml.eda_recommender import compute_dataset_signals, recommend_eda, DatasetSignals, EDARecommendation
 from ml import eda_actions
@@ -431,7 +431,6 @@ def _auto_generate_insights():
 
 
 _auto_generate_insights()
-sync_backward_compat(ledger, df)
 
 
 # ============================================================================
@@ -1489,7 +1488,6 @@ with st.expander("📄 Table 1 — Publication Summary", expanded=False):
 # SYNC BACKWARD COMPAT + STORE HINTS FOR DOWNSTREAM PAGES
 # ============================================================================
 
-sync_backward_compat(ledger, df)
 
 
 # ============================================================================

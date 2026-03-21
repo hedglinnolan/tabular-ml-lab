@@ -558,54 +558,6 @@ class InsightLedger:
                 })
         return sorted(events, key=lambda e: e["timestamp"])
 
-    # == Backward compatibility (remove after full migration) ===============
-
-    def to_eda_insights(self) -> List[Dict[str, Any]]:
-        """Backward compat: produce the old eda_insights[] format."""
-        return [
-            {
-                "id": i.id,
-                "finding": i.finding,
-                "implication": i.implication,
-                "category": i.category,
-            }
-            for i in self._insights
-        ]
-
-    def to_feature_engineering_hints(self) -> Dict[str, Any]:
-        """Backward compat: produce the old feature_engineering_hints{} format."""
-        skewed = []
-        high_corr = []
-        has_missing = False
-
-        for i in self._insights:
-            if "skew" in i.id or (
-                i.category == "distribution" and "skew" in i.finding.lower()
-            ):
-                skew_val = i.metadata.get("skewness", 0)
-                for feat in i.affected_features:
-                    skewed.append({"name": feat, "skewness": skew_val})
-
-            if i.category == "relationship" and "corr" in i.id:
-                corr_val = i.metadata.get("correlation", 0)
-                feats = i.affected_features
-                if len(feats) >= 2:
-                    high_corr.append({
-                        "feature1": feats[0],
-                        "feature2": feats[1],
-                        "correlation": corr_val,
-                    })
-
-            if i.category == "data_quality" and "missing" in i.finding.lower():
-                has_missing = True
-
-        return {
-            "skewed_features": skewed,
-            "high_corr_pairs": high_corr,
-            "has_missing": has_missing,
-            "numeric_features": [],  # caller must fill from df
-        }
-
     # == Serialization =====================================================
 
     def to_list(self) -> List[Dict[str, Any]]:
@@ -674,29 +626,4 @@ def get_ledger() -> InsightLedger:
     return ledger
 
 
-def sync_backward_compat(ledger: InsightLedger, df=None):
-    """Update legacy session-state keys from ledger.
 
-    Call this after ledger mutations so pages that haven't migrated yet
-    still see consistent data. Remove once all pages read ledger directly.
-    """
-    # eda_insights (used by Report Export, Train & Compare)
-    st.session_state["eda_insights"] = ledger.to_eda_insights()
-
-    # feature_engineering_hints (used by Feature Engineering)
-    hints = ledger.to_feature_engineering_hints()
-    if df is not None:
-        import numpy as np
-        hints["numeric_features"] = list(
-            df.select_dtypes(include=[np.number]).columns
-        )
-    st.session_state["feature_engineering_hints"] = hints
-
-    # methodology_log — bridge from ledger resolutions
-    existing_log = st.session_state.get("methodology_log", [])
-    ledger_log = ledger.get_methodology_log()
-    # Merge: keep existing entries not from ledger, add ledger entries
-    ledger_actions = {e["action"] for e in ledger_log}
-    merged = [e for e in existing_log if e.get("action") not in ledger_actions]
-    merged.extend(ledger_log)
-    st.session_state["methodology_log"] = merged
