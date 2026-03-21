@@ -51,6 +51,73 @@ import streamlit as st
 
 SEVERITY_ORDER = {"blocker": 0, "warning": 1, "info": 2, "opportunity": 3}
 
+# ---------------------------------------------------------------------------
+# Model families — used for model_scope on insights
+# ---------------------------------------------------------------------------
+
+MODEL_FAMILY_LINEAR = "linear"       # ridge, lasso, elasticnet, logreg, glm, huber
+MODEL_FAMILY_TREE = "tree"           # rf, extratrees, histgb, xgb, lgbm
+MODEL_FAMILY_NEURAL = "neural"       # nn (PyTorch MLP)
+MODEL_FAMILY_DISTANCE = "distance"   # knn_reg, knn_clf
+MODEL_FAMILY_MARGIN = "margin"       # svm (SVR/SVC)
+MODEL_FAMILY_PROBABILISTIC = "prob"  # naive_bayes, lda
+
+MODEL_FAMILIES = (
+    MODEL_FAMILY_LINEAR, MODEL_FAMILY_TREE, MODEL_FAMILY_NEURAL,
+    MODEL_FAMILY_DISTANCE, MODEL_FAMILY_MARGIN, MODEL_FAMILY_PROBABILISTIC,
+)
+
+# Map individual model keys → family
+MODEL_TO_FAMILY = {
+    "ridge": MODEL_FAMILY_LINEAR, "lasso": MODEL_FAMILY_LINEAR,
+    "elasticnet": MODEL_FAMILY_LINEAR, "logreg": MODEL_FAMILY_LINEAR,
+    "glm": MODEL_FAMILY_LINEAR, "huber": MODEL_FAMILY_LINEAR,
+    "rf": MODEL_FAMILY_TREE, "extratrees_reg": MODEL_FAMILY_TREE,
+    "extratrees_clf": MODEL_FAMILY_TREE, "histgb_reg": MODEL_FAMILY_TREE,
+    "histgb_clf": MODEL_FAMILY_TREE,
+    "nn": MODEL_FAMILY_NEURAL,
+    "knn_reg": MODEL_FAMILY_DISTANCE, "knn_clf": MODEL_FAMILY_DISTANCE,
+    "svm": MODEL_FAMILY_MARGIN,
+    "naive_bayes": MODEL_FAMILY_PROBABILISTIC, "lda": MODEL_FAMILY_PROBABILISTIC,
+}
+
+# Human-readable family names for coaching UI
+FAMILY_DISPLAY_NAMES = {
+    MODEL_FAMILY_LINEAR: "Linear Models",
+    MODEL_FAMILY_TREE: "Tree-Based Models",
+    MODEL_FAMILY_NEURAL: "Neural Networks",
+    MODEL_FAMILY_DISTANCE: "Distance-Based Models",
+    MODEL_FAMILY_MARGIN: "Margin-Based Models",
+    MODEL_FAMILY_PROBABILISTIC: "Probabilistic Models",
+}
+
+# Which families are affected by common data issues?
+# Empty list = applies to all families
+ISSUE_MODEL_RELEVANCE = {
+    "skewness": [MODEL_FAMILY_LINEAR, MODEL_FAMILY_NEURAL, MODEL_FAMILY_DISTANCE],
+    "outliers": [MODEL_FAMILY_LINEAR, MODEL_FAMILY_NEURAL, MODEL_FAMILY_DISTANCE],
+    "collinearity": [MODEL_FAMILY_LINEAR],
+    "missing_data": [],       # all models affected
+    "class_imbalance": [],    # all models affected
+    "high_dimensionality": [MODEL_FAMILY_LINEAR, MODEL_FAMILY_DISTANCE, MODEL_FAMILY_MARGIN],
+    "low_sample_size": [MODEL_FAMILY_NEURAL],  # most affected
+    "non_normality": [MODEL_FAMILY_LINEAR, MODEL_FAMILY_PROBABILISTIC],
+    "feature_scale": [MODEL_FAMILY_LINEAR, MODEL_FAMILY_NEURAL, MODEL_FAMILY_DISTANCE, MODEL_FAMILY_MARGIN],
+}
+
+
+def models_to_families(model_keys: List[str]) -> List[str]:
+    """Convert a list of model keys to unique family names."""
+    return list(dict.fromkeys(
+        MODEL_TO_FAMILY.get(k, MODEL_FAMILY_LINEAR) for k in model_keys
+    ))
+
+
+def families_display(families: List[str]) -> str:
+    """Human-readable string of family names."""
+    return ", ".join(FAMILY_DISPLAY_NAMES.get(f, f) for f in families)
+
+
 CATEGORIES = (
     "data_quality",    # missing data, duplicates, implausible values
     "distribution",    # skewness, outliers, target shape
@@ -125,6 +192,10 @@ class Insight:
         relevant_pages: Pages where this should surface as coaching
         affected_features: Columns this concerns
         tripod_keys: TRIPOD auto_keys this entry satisfies when resolved
+        model_scope: Which model families this insight applies to.
+            Empty list = applies to ALL families (e.g., missing data).
+            Non-empty = only relevant to listed families.
+            Values from MODEL_FAMILIES: "linear", "tree", "neural", etc.
         auto_generated: True if system-detected, False if user-created
 
         Resolution fields (populated when user acts):
@@ -151,6 +222,7 @@ class Insight:
     relevant_pages: List[str] = field(default_factory=list)
     affected_features: List[str] = field(default_factory=list)
     tripod_keys: List[str] = field(default_factory=list)
+    model_scope: List[str] = field(default_factory=list)  # empty = all families
     auto_generated: bool = True
     # Legacy field — kept for backward compat, mapped to relevant_pages[0]
     action_page: str = ""
@@ -189,6 +261,7 @@ class Insight:
             "relevant_pages": list(self.relevant_pages),
             "affected_features": list(self.affected_features),
             "tripod_keys": list(self.tripod_keys),
+            "model_scope": list(self.model_scope),
             "auto_generated": self.auto_generated,
             "action_page": self.action_page,
             "resolved": self.resolved,
@@ -309,12 +382,16 @@ class InsightLedger:
         category: Optional[str] = None,
         page: Optional[str] = None,
         source_page: Optional[str] = None,
+        model_families: Optional[List[str]] = None,
     ) -> List[Insight]:
         """Get unresolved insights, optionally filtered.
 
         Args:
             page: Filter by relevant_pages (entries that should surface on this page)
             source_page: Filter by where the insight was created
+            model_families: Filter to insights relevant to these model families.
+                An insight matches if its model_scope is empty (applies to all)
+                or intersects with the provided families.
         """
         results = [i for i in self._insights if not i.resolved]
         if severity:
@@ -328,6 +405,12 @@ class InsightLedger:
             ]
         if source_page:
             results = [i for i in results if i.source_page == source_page]
+        if model_families:
+            results = [
+                i for i in results
+                if not i.model_scope  # empty = all families
+                or set(i.model_scope) & set(model_families)
+            ]
         return sorted(results, key=lambda i: SEVERITY_ORDER.get(i.severity, 99))
 
     def get_resolved(
@@ -360,6 +443,86 @@ class InsightLedger:
             or i.source_page == page
             or i.resolved_on_page == page
         ]
+
+    def get_for_models(
+        self,
+        model_keys: List[str],
+        page: Optional[str] = None,
+        unresolved_only: bool = True,
+    ) -> Dict[str, List[Insight]]:
+        """Get insights grouped by model family for coaching display.
+
+        Args:
+            model_keys: The user's selected model keys (e.g., ["ridge", "rf", "nn"])
+            page: Optional page filter
+            unresolved_only: If True, only return unresolved insights
+
+        Returns:
+            Dict mapping family display name → list of relevant insights.
+            Also includes "_universal" key for insights with empty model_scope.
+        """
+        families = models_to_families(model_keys)
+        all_insights = (
+            self.get_unresolved(page=page) if unresolved_only
+            else self.get_for_page(page) if page
+            else self._insights
+        )
+
+        result: Dict[str, List[Insight]] = {}
+        universal = []
+
+        for insight in all_insights:
+            if not insight.model_scope:
+                # Applies to all models
+                universal.append(insight)
+            else:
+                # Only add to families the user has selected
+                for family in families:
+                    if family in insight.model_scope:
+                        display = FAMILY_DISPLAY_NAMES.get(family, family)
+                        result.setdefault(display, []).append(insight)
+
+        if universal:
+            result["All Models"] = universal
+
+        return result
+
+    def coaching_summary_for_models(
+        self,
+        model_keys: List[str],
+        page: Optional[str] = None,
+    ) -> str:
+        """Generate a one-line coaching summary for the selected models.
+
+        e.g., "3 items for Linear Models, 1 for all models. Tree-Based Models: no issues."
+        """
+        grouped = self.get_for_models(model_keys, page=page, unresolved_only=True)
+        if not grouped:
+            return "No coaching notes for your selected models."
+
+        families = models_to_families(model_keys)
+        parts = []
+        for family in families:
+            display = FAMILY_DISPLAY_NAMES.get(family, family)
+            items = grouped.get(display, [])
+            if items:
+                parts.append(f"{len(items)} for {display}")
+
+        universal = grouped.get("All Models", [])
+        if universal:
+            parts.append(f"{len(universal)} for all models")
+
+        # Note families with no issues
+        clean_families = [
+            FAMILY_DISPLAY_NAMES.get(f, f)
+            for f in families
+            if FAMILY_DISPLAY_NAMES.get(f, f) not in grouped
+        ]
+        clean_str = ""
+        if clean_families:
+            clean_str = f" {', '.join(clean_families)}: no issues."
+
+        return f"{', '.join(parts)}.{clean_str}" if parts else "No coaching notes."
 
     def get_for_features(self, features: List[str]) -> List[Insight]:
         """Get insights affecting any of the specified features."""
@@ -527,8 +690,16 @@ class InsightLedger:
                     if parts:
                         detail_str = f" ({', '.join(parts)})"
 
+                # Add model-scope context if specified
+                scope_str = ""
+                if i.model_scope:
+                    scope_names = [
+                        FAMILY_DISPLAY_NAMES.get(f, f) for f in i.model_scope
+                    ]
+                    scope_str = f" [applicable to {', '.join(scope_names)}]"
+
                 sentences.append(
-                    f"{i.finding}. {i.resolved_by}{detail_str}."
+                    f"{i.finding}. {i.resolved_by}{detail_str}.{scope_str}"
                 )
 
             narratives[phase_name] = " ".join(sentences)

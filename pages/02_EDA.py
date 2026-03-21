@@ -36,7 +36,12 @@ from utils.theme import (
     render_step_indicator, render_sidebar_workflow
 )
 from utils.table_export import table
-from utils.insight_ledger import Insight, get_ledger
+from utils.insight_ledger import (
+    Insight, get_ledger,
+    MODEL_FAMILY_LINEAR, MODEL_FAMILY_TREE, MODEL_FAMILY_NEURAL,
+    MODEL_FAMILY_DISTANCE, MODEL_FAMILY_MARGIN, MODEL_FAMILY_PROBABILISTIC,
+    ISSUE_MODEL_RELEVANCE,
+)
 from ml.regime import detect_regime
 from ml.eda_recommender import compute_dataset_signals, recommend_eda, DatasetSignals, EDARecommendation
 from ml import eda_actions
@@ -180,6 +185,7 @@ def _auto_generate_insights():
             implication="Complex models will likely overfit. Prefer simple baselines.",
             recommended_action="Reduce features or gather more data",
             relevant_pages=["04_Feature_Selection", "06_Train_and_Compare", "10_Report_Export"],
+            model_scope=[MODEL_FAMILY_NEURAL],  # most affected by low sample size
         ))
     elif sufficiency == "borderline":
         ledger.upsert(Insight(
@@ -189,6 +195,7 @@ def _auto_generate_insights():
             implication="Prefer simpler models and tighter regularization.",
             recommended_action="Consider feature reduction before complex modeling",
             relevant_pages=["04_Feature_Selection", "06_Train_and_Compare"],
+            model_scope=[MODEL_FAMILY_NEURAL],  # most affected by low sample size
         ))
 
     # Leakage
@@ -255,6 +262,7 @@ def _auto_generate_insights():
                 affected_features=cluster_features,
                 recommended_action=f"Review in Feature Selection — consider dropping {n_feats - 1} of {n_feats}",
                 relevant_pages=["04_Feature_Selection", "05_Preprocess"],
+                model_scope=ISSUE_MODEL_RELEVANCE["collinearity"],  # linear only
                 metadata={"max_correlation": cluster_max, "cluster_size": n_feats},
             ))
 
@@ -300,10 +308,11 @@ def _auto_generate_insights():
                 affected_features=[target_col],
                 recommended_action="Consider log transform in Preprocessing",
                 relevant_pages=["05_Preprocess", "06_Train_and_Compare"],
+                model_scope=ISSUE_MODEL_RELEVANCE["skewness"],  # linear, neural, distance
                 metadata={"skewness": float(skew)},
             ))
 
-    # Class imbalance
+    # Class imbalance — affects all models
     if _has_target and task_type_final == "classification":
         imbalance = signals.target_stats.get("class_imbalance_ratio", 1.0)
         if imbalance and imbalance < 0.35:
@@ -315,6 +324,7 @@ def _auto_generate_insights():
                 affected_features=[target_col],
                 recommended_action="Use class weighting or stratified sampling",
                 relevant_pages=["05_Preprocess", "06_Train_and_Compare"],
+                # model_scope=[] → all models affected
                 metadata={"imbalance_ratio": float(imbalance)},
             ))
 
@@ -345,6 +355,7 @@ def _auto_generate_insights():
             affected_features=[c for c, _ in skewed_list],
             recommended_action="Consider transforms in Feature Engineering or Preprocessing",
             relevant_pages=["03_Feature_Engineering", "05_Preprocess"],
+            model_scope=ISSUE_MODEL_RELEVANCE["skewness"],  # linear, neural, distance
             metadata={"n_skewed": len(skewed_list), "features": {c: s for c, s in skewed_list}},
         ))
 
@@ -1042,6 +1053,7 @@ if regime.show_macro_shape and numeric_features:
                 implication="Dimensionality reduction (PCA) could simplify models with minimal information loss",
                 recommended_action="Consider PCA preprocessing or feature selection",
                 relevant_pages=["04_Feature_Selection", "05_Preprocess"],
+                model_scope=ISSUE_MODEL_RELEVANCE["high_dimensionality"],  # linear, distance, margin
                 metadata={"n_components_90": n_90, "n_features": len(numeric_features)},
             ))
     else:

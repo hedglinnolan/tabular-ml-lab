@@ -254,7 +254,7 @@ with col3:
 st.markdown("---")
 
 # ============================================================================
-# EDA-DRIVEN RECOMMENDATIONS (via Insight Ledger + backward compat)
+# EDA-DRIVEN RECOMMENDATIONS (custom rendering for FE context)
 # ============================================================================
 from utils.insight_ledger import get_ledger as _get_ledger
 _fe_ledger = _get_ledger()

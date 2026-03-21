@@ -398,34 +398,9 @@ if n_train < 50:
 elif n_train < 100:
     st.info(f"Training set has {n_train} samples. Some complex models may have limited performance.")
 
-# Key insights from the unified ledger
-from utils.insight_ledger import get_ledger as _get_tc_ledger
-_tc_ledger = _get_tc_ledger()
-
-if len(_tc_ledger) > 0:
-    # Show blocker warning if any
-    if _tc_ledger.has_blockers():
-        _tc_blockers = _tc_ledger.get_unresolved(severity="blocker")
-        st.error(f"🚨 **{len(_tc_blockers)} unresolved blocker(s)** — model results may not be defensible.")
-        for _b in _tc_blockers:
-            st.caption(f"  • {_b.finding}")
-
-    _tc_page_insights = _tc_ledger.get_for_page("06_Train_and_Compare")
-    _tc_unresolved = [i for i in _tc_page_insights if not i.resolved]
-    _tc_resolved = [i for i in _tc_page_insights if i.resolved]
-    if _tc_unresolved or _tc_resolved:
-        with st.expander(f"📋 Analysis insights ({len(_tc_unresolved)} open, {len(_tc_resolved)} resolved)", expanded=bool(_tc_ledger.has_blockers())):
-            if _tc_unresolved:
-                st.markdown("**Open observations:**")
-                for _ins in _tc_unresolved[:10]:
-                    _icon = {"blocker": "🚨", "warning": "⚠️", "info": "ℹ️", "opportunity": "💡"}.get(_ins.severity, "ℹ️")
-                    st.markdown(f"  {_icon} {_ins.finding}")
-                    if _ins.recommended_action:
-                        st.caption(f"    → {_ins.recommended_action}")
-            if _tc_resolved:
-                st.markdown("**Resolved:**")
-                for _ins in _tc_resolved[:5]:
-                    st.markdown(f"  ✅ ~~{_ins.finding}~~ → {_ins.resolved_by}")
+# Coaching companion (model-aware when models selected)
+from utils.coaching_ui import render_page_coaching
+render_page_coaching("06_Train_and_Compare")
 
 # Model selection and configuration
 st.header("Model Configuration")
@@ -609,17 +584,8 @@ for group_name in sorted_groups:
 
 st.session_state.model_config = model_config
 
-# Pre-training coach tips from ledger
-with st.expander("Pre-training Coach Tips", expanded=False):
-    _tc_coaching = _tc_ledger.get_unresolved(page="06_Train_and_Compare")
-    if _tc_coaching:
-        for _tip in _tc_coaching[:5]:
-            _icon = {"blocker": "🚨", "warning": "⚠️", "info": "ℹ️", "opportunity": "💡"}.get(_tip.severity, "ℹ️")
-            st.markdown(f"{_icon} **{_tip.finding}**")
-            if _tip.recommended_action:
-                st.caption(f"→ {_tip.recommended_action}")
-    else:
-        st.info("No specific coaching notes. Run EDA to generate data-driven recommendations.")
+# Pre-training reminder
+with st.expander("Pre-training Tips", expanded=False):
     st.markdown("**Tip:** Ensure your preprocessing pipeline matches your selected models. Linear models and neural nets require scaling; tree models do not.")
 
 # Check Optuna availability

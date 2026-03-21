@@ -48,21 +48,10 @@ if task_mode != 'prediction':
     st.stop()
 
 # ============================================================================
-# EDA INSIGHTS RELEVANT TO FEATURE SELECTION
+# COACHING COMPANION
 # ============================================================================
-try:
-    from utils.insight_ledger import get_ledger as _get_fs_ledger
-    _fs_ledger = _get_fs_ledger()
-    _fs_insights = _fs_ledger.get_unresolved(page="04_Feature_Selection")
-    if _fs_insights:
-        with st.expander(f"💡 {len(_fs_insights)} EDA insight(s) relevant to Feature Selection", expanded=True):
-            for _ins in _fs_insights:
-                _icon = {"blocker": "🚨", "warning": "⚠️", "info": "ℹ️", "opportunity": "💡"}.get(_ins.severity, "ℹ️")
-                _feats = ", ".join(_ins.affected_features) if _ins.affected_features else ""
-                st.markdown(f"{_icon} **{_ins.finding}**" + (f" ({_feats})" if _feats else ""))
-                st.caption(f"  → {_ins.recommended_action}")
-except ImportError:
-    pass
+from utils.coaching_ui import render_page_coaching
+render_page_coaching("04_Feature_Selection")
 
 # ============================================================================
 # WHY FEATURE SELECTION?
