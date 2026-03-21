@@ -132,4 +132,18 @@ Insight `model_scope` is the mechanism to close this gap. Each insight should kn
 
 ---
 
+## Earmarked Future Features
+
+### Target Variable Transformation (Preprocessing)
+The app currently supports power transforms (log1p, Yeo-Johnson) for *features* in Preprocessing, but has no UI for transforming the *target variable*. For regression tasks with skewed targets, this is a gap — the coach flags the problem but the user has no in-app way to fix it. The Preprocess page should offer target transforms (log1p, Yeo-Johnson, Box-Cox) with clear guidance: "Your target is right-skewed. Transforming it can improve linear model performance. Predictions will be automatically back-transformed." Must integrate with the per-model pipeline — tree models may not need it.
+
+### Theory Reference Guide
+The app applies statistical theory across every page (why collinearity hurts linear models, why skew affects distance-based methods, why class imbalance misleads accuracy) but never shows its work. Two reference layers are needed:
+1. **Model theory** — the mathematical assumptions underpinning each model family (linearity, independence, normality of residuals for linear; feature independence for Naive Bayes; smoothness for distance-based; etc.). Should be accessible from the model selector and anywhere models are compared.
+2. **Coaching rationale** — why the coach recommends what it recommends. Each insight type should link to a brief explanation: "We flag collinearity for linear models because correlated predictors inflate coefficient variance (VIF > 10 ⟹ unstable estimates). See: James et al., ISLR §3.3.3." This makes the app pedagogically useful and lets reviewers verify the tool's reasoning.
+
+Both should be structured as a browsable reference, not inline tooltips — something a student or reviewer can consult independently.
+
+---
+
 *This document is the commander's intent for the Tabular ML Lab. Any agent working on this codebase should read it before making changes. If a proposed change conflicts with these principles, raise it — don't silently violate them.*

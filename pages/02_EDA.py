@@ -150,12 +150,13 @@ st.session_state["dataset_profile"] = profile
 
 # Signals (cached)
 @st.cache_data
-def _compute_signals(_df, target, task_type, cohort_type, entity_id, outlier_method):
-    return compute_dataset_signals(_df, target, task_type, cohort_type, entity_id, outlier_method=outlier_method)
+def _compute_signals(_df, target, task_type, cohort_type, entity_id, outlier_method, _feature_cols=None):
+    return compute_dataset_signals(_df, target, task_type, cohort_type, entity_id, outlier_method=outlier_method, feature_cols=_feature_cols)
 
 try:
     signals = _compute_signals(
-        df, target_col, task_type_final, cohort_type_final, entity_id_final, outlier_method
+        df, target_col, task_type_final, cohort_type_final, entity_id_final, outlier_method,
+        _feature_cols=feature_cols,
     )
 except Exception as e:
     st.warning(f"Signal computation partially failed: {str(e)[:100]}")
@@ -212,15 +213,10 @@ def _auto_generate_insights():
             ))
 
     # Collinearity — cluster correlated features into groups instead of per-pair
-    # Filter to user's selected features only
-    _selected_features = set(data_config.feature_cols) if data_config and hasattr(data_config, 'feature_cols') and data_config.feature_cols else set()
+    # (high_corr_pairs already filtered to user's feature_cols at computation time)
     max_corr = signals.collinearity_summary.get("max_corr", 0)
     high_pairs = signals.collinearity_summary.get("high_corr_pairs", [])
     if high_pairs:
-        # Filter to only pairs where BOTH features are in the user's selected set
-        if _selected_features:
-            high_pairs = [(a, b, c) for a, b, c in high_pairs
-                          if a in _selected_features and b in _selected_features]
         # Build adjacency graph and find connected components
         from collections import defaultdict, deque
         adj = defaultdict(set)

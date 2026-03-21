@@ -61,7 +61,8 @@ def compute_dataset_signals(
     cohort_type_final: Optional[str],
     entity_id_final: Optional[str],
     sample_size: int = 5000,
-    outlier_method: str = "iqr"
+    outlier_method: str = "iqr",
+    feature_cols: Optional[List[str]] = None,
 ) -> DatasetSignals:
     """
     Compute dataset signals for EDA recommendations.
@@ -182,9 +183,13 @@ def compute_dataset_signals(
                 pass  # Skip leakage detection if correlation fails
     
     # Collinearity (sample if too many columns)
-    # Filter to truly numeric columns
+    # Filter to truly numeric columns within user's selected features
+    _corr_candidates = signals.numeric_cols
+    if feature_cols:
+        _feature_set = set(feature_cols)
+        _corr_candidates = [c for c in _corr_candidates if c in _feature_set]
     numeric_cols_for_corr = []
-    for col in signals.numeric_cols:
+    for col in _corr_candidates:
         try:
             pd.to_numeric(df[col], errors='raise')
             numeric_cols_for_corr.append(col)

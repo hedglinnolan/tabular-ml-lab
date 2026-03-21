@@ -28,6 +28,10 @@ init_session_state()
 
 from utils.theme import inject_custom_css, render_step_indicator, render_guidance, render_sidebar_workflow
 from utils.table_export import table
+from utils.insight_ledger import get_ledger as _get_report_ledger
+
+# Module-level ledger — used by generate_report(), TRIPOD section, and debug panel
+_report_ledger = _get_report_ledger()
 st.set_page_config(page_title="Report Export", page_icon="📄", layout="wide")
 inject_custom_css()
 render_sidebar_workflow(current_page="10_Report_Export")
@@ -735,8 +739,6 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     report_lines.append("")
     
     # Key observations and resolutions from the unified ledger
-    from utils.insight_ledger import get_ledger as _get_report_ledger
-    _report_ledger = _get_report_ledger()
     if len(_report_ledger) > 0:
         report_lines.append("## Key Observations and Resolutions")
         report_lines.append("")
@@ -1354,8 +1356,6 @@ with st.expander("✅ TRIPOD Checklist", expanded=False):
     from ml.publication import TRIPODTracker, TRIPOD_ITEMS
 
     # TRIPOD auto-completion from ledger + workflow state
-    from utils.insight_ledger import get_ledger as _get_tripod_ledger
-    _report_ledger = _get_tripod_ledger()
     tracker = TRIPODTracker()
 
     # Auto-mark from ledger resolutions (covers: missing_data, predictor_handling, etc.)
