@@ -734,45 +734,26 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     report_lines.append("---")
     report_lines.append("")
     
-    # Key insights after pre-processing — prefer Insight Ledger, fallback to legacy
-    _used_ledger = False
-    try:
-        from utils.insight_ledger import get_ledger as _get_report_ledger
-        _report_ledger = _get_report_ledger()
-        if len(_report_ledger) > 0:
-            _used_ledger = True
-            report_lines.append("## Key Observations and Resolutions")
-            report_lines.append("")
-            report_lines.append(_report_ledger.narrative_for_report())
-            report_lines.append("")
-            report_lines.append("---")
-            report_lines.append("")
-    except ImportError:
-        pass
+    # Key observations and resolutions from the unified ledger
+    from utils.insight_ledger import get_ledger as _get_report_ledger
+    _report_ledger = _get_report_ledger()
+    if len(_report_ledger) > 0:
+        report_lines.append("## Key Observations and Resolutions")
+        report_lines.append("")
+        report_lines.append(_report_ledger.narrative_for_report())
+        report_lines.append("")
 
-    if not _used_ledger:
-        insights = get_insights_by_category()
-        eda_insights = [i for i in insights if isinstance(i, dict) and i.get("category") != "preprocessing"]
-        prep_insights = [i for i in insights if isinstance(i, dict) and i.get("category") == "preprocessing"]
-        if eda_insights or prep_insights:
-            report_lines.append("## Key insights after pre-processing")
+        # Manuscript-ready narrative grouped by workflow phase
+        phase_narratives = _report_ledger.to_manuscript_narrative()
+        if phase_narratives:
+            report_lines.append("### Methods Narrative (by workflow phase)")
             report_lines.append("")
-            if eda_insights:
-                report_lines.append("### From EDA")
+            for phase_name, narrative in phase_narratives.items():
+                report_lines.append(f"**{phase_name}:** {narrative}")
                 report_lines.append("")
-                for insight in eda_insights:
-                    report_lines.append(f"**{insight.get('category', 'General').title()}:** {insight['finding']}")
-                    report_lines.append(f"→ {insight['implication']}")
-                    report_lines.append("")
-            if prep_insights:
-                report_lines.append("### From preprocessing")
-                report_lines.append("")
-                for insight in prep_insights:
-                    report_lines.append(f"- {insight['finding']}")
-                    report_lines.append(f"  → {insight['implication']}")
-                    report_lines.append("")
-            report_lines.append("---")
-            report_lines.append("")
+
+        report_lines.append("---")
+        report_lines.append("")
     
     # Split Strategy
     report_lines.append("## 🔀 Data Split Strategy")
@@ -1372,32 +1353,43 @@ with st.expander("✅ TRIPOD Checklist", expanded=False):
     """)
     from ml.publication import TRIPODTracker, TRIPOD_ITEMS
 
-    if "tripod_tracker" not in st.session_state:
-        tracker = TRIPODTracker()
-        # Auto-mark items we can detect
-        if data_config and data_config.target_col:
-            tracker.mark_complete("outcome_defined", f"Target: {data_config.target_col}", "Upload & Audit")
-        if data_config and data_config.feature_cols:
-            tracker.mark_complete("predictors_defined", f"{len(data_config.feature_cols)} features", "Upload & Audit")
-        if trained_models:
-            tracker.mark_complete("model_building", f"Models: {', '.join(trained_models.keys())}", "Train & Compare")
-        if model_results:
-            tracker.mark_complete("performance_measures", "Test set metrics computed", "Train & Compare")
-        if st.session_state.get("bootstrap_results"):
-            tracker.mark_complete("performance_ci", "Bootstrap CIs computed", "Train & Compare")
-        if st.session_state.get("table1_df") is not None:
-            tracker.mark_complete("table1", "Table 1 generated", "EDA")
-        prep_config = st.session_state.get('preprocessing_config', {})
-        if prep_config:
-            tracker.mark_complete("predictor_handling", "Preprocessing configured", "Preprocess")
-            if prep_config.get("numeric_imputation", "none") != "none":
-                tracker.mark_complete("missing_data", f"Imputation: {prep_config.get('numeric_imputation')}", "Preprocess")
-        st.session_state["tripod_tracker"] = tracker
+    # TRIPOD auto-completion from ledger + workflow state
+    tracker = TRIPODTracker()
 
-    tracker = st.session_state["tripod_tracker"]
+    # Auto-mark from ledger resolutions (covers: missing_data, predictor_handling, etc.)
+    _tripod_from_ledger = _report_ledger.get_tripod_status()
+    for auto_key, completed in _tripod_from_ledger.items():
+        if completed:
+            # Find a resolved insight with this tripod key for the note
+            note = ""
+            for _ins in _report_ledger.get_resolved():
+                if auto_key in _ins.tripod_keys:
+                    note = _ins.resolved_by
+                    break
+            tracker.mark_complete(auto_key, note or "Auto-detected from analysis", "Ledger")
+
+    # Auto-mark from workflow state (items not tracked by ledger)
+    if data_config and data_config.target_col:
+        tracker.mark_complete("outcome_defined", f"Target: {data_config.target_col}", "Upload & Audit")
+    if data_config and data_config.feature_cols:
+        tracker.mark_complete("predictors_defined", f"{len(data_config.feature_cols)} features", "Upload & Audit")
+    if trained_models:
+        tracker.mark_complete("model_building", f"Models: {', '.join(trained_models.keys())}", "Train & Compare")
+    if model_results:
+        tracker.mark_complete("performance_measures", "Test set metrics computed", "Train & Compare")
+    if st.session_state.get("bootstrap_results"):
+        tracker.mark_complete("performance_ci", "Bootstrap CIs computed", "Train & Compare")
+    if st.session_state.get("table1_df") is not None:
+        tracker.mark_complete("table1", "Table 1 generated", "EDA")
+    prep_config = st.session_state.get('preprocessing_config', {})
+    if prep_config:
+        tracker.mark_complete("predictor_handling", "Preprocessing configured", "Preprocess")
+        if prep_config.get("numeric_imputation", "none") != "none":
+            tracker.mark_complete("missing_data", f"Imputation: {prep_config.get('numeric_imputation')}", "Preprocess")
+
     done, total = tracker.get_progress()
     st.progress(done / total)
-    st.markdown(f"**{done}/{total} items addressed**")
+    st.markdown(f"**{done}/{total} items addressed** (auto-completed from your workflow)")
 
     checklist_df = tracker.get_checklist_df()
     table(checklist_df, use_container_width=True, hide_index=True)
