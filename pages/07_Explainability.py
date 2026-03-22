@@ -676,12 +676,16 @@ if perm_data or shap_data:
                         nar = narrative_permutation_importance(pd_info, model_name=name)
                         if nar:
                             st.markdown(f"**Interpretation:** {nar}")
-                        from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button
+                        from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
+                        from utils.insight_ledger import MODEL_TO_FAMILY
                         stats_summary = "; ".join(f"{r['Feature']}={r['Importance']:.4f}" for _, r in importance_df.head(5).iterrows())
+                        _bg_perm = gather_session_context()
+                        _bg_perm.pop("feature_names", None); _bg_perm.pop("sample_size", None); _bg_perm.pop("task_type", None)
                         ctx = build_llm_context("permutation_importance", stats_summary, model_name=name,
+                                                model_family=MODEL_TO_FAMILY.get(name, ""),
                                                 existing=nar or "", feature_names=_fn[:n],
                                                 sample_size=X_test.shape[0] if X_test is not None else None,
-                                                task_type=data_config.task_type if data_config else None)
+                                                task_type=data_config.task_type if data_config else None, **_bg_perm)
                         render_interpretation_with_llm_button(ctx, key=f"llm_perm_{name}", result_session_key=f"llm_result_perm_{name}")
                 else:
                     st.info("Permutation importance was not computed for this model.")
@@ -765,15 +769,18 @@ if perm_data or shap_data:
                                  key=f"shap_importance_{name}", use_container_width=True, hide_index=True)
 
                     from ml.plot_narrative import narrative_shap
-                    from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button
+                    from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
+                    from utils.insight_ledger import MODEL_TO_FAMILY
                     nar = narrative_shap(sv, fn_plot, model_name=name)
                     if nar:
                         st.markdown(f"**Interpretation:** {nar}")
                     top_idx = np.argsort(mean_abs)[::-1][:5]
                     stats_summary = "; ".join(f"{fn_plot[i]}={mean_abs[i]:.3f}" for i in top_idx if i < len(fn_plot))
-                    ctx = build_llm_context("SHAP", stats_summary, model_name=name, existing=nar or "",
-                                            feature_names=fn_plot, sample_size=X_ev.shape[0],
-                                            task_type=data_config.task_type if data_config else None)
+                    _bg_shap = gather_session_context()
+                    _bg_shap.pop("feature_names", None); _bg_shap.pop("sample_size", None); _bg_shap.pop("task_type", None)
+                    ctx = build_llm_context("SHAP", stats_summary, model_name=name, model_family=MODEL_TO_FAMILY.get(name, ""),
+                                            existing=nar or "", feature_names=fn_plot, sample_size=X_ev.shape[0],
+                                            task_type=data_config.task_type if data_config else None, **_bg_shap)
                     render_interpretation_with_llm_button(ctx, key=f"llm_shap_{name}", result_session_key=f"llm_result_shap_{name}")
                     
                     # Enhanced SHAP visualizations
@@ -965,11 +972,13 @@ if task_final == 'regression' and len(mr) >= 2:
                 nar = narrative_bland_altman(ba_stats, label_a=ma, label_b=mb)
                 if nar:
                     st.markdown(f"**Interpretation:** {nar}")
-                from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button
+                from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
                 stats_summary = f"mean_diff={ba_stats.get('mean_diff', 0):.4f}; width_loa={ba_stats.get('width_loa', 0):.4f}; pct_outside={ba_stats.get('pct_outside_loa', 0):.1%}"
+                _bg_ba = gather_session_context()
+                _bg_ba.pop("sample_size", None); _bg_ba.pop("task_type", None)
                 ctx = build_llm_context(
                     "bland_altman", stats_summary, where=f"Bland-Altman ({ma} vs {mb})", existing=nar or "",
-                    metrics=ba_stats, sample_size=len(pa), task_type=data_config.task_type if data_config else None,
+                    metrics=ba_stats, sample_size=len(pa), task_type=data_config.task_type if data_config else None, **_bg_ba,
                 )
                 render_interpretation_with_llm_button(ctx, key="llm_bland_altman_btn", result_session_key="llm_result_bland_altman")
             else:

@@ -48,23 +48,111 @@ def _infer_domain_hint(feature_names: Optional[List[str]] = None) -> str:
 # System prompt for interpretation
 # ============================================================================
 
-INTERPRETATION_SYSTEM_PROMPT = """You are a senior biostatistician and data scientist reviewing analysis results for a research publication. Your role is to provide interpretation that a scientist can use directly.
+INTERPRETATION_SYSTEM_PROMPT = """You are a senior biostatistician and data scientist reviewing analysis results for a research publication. Your role is to interpret the SPECIFIC analysis result presented to you.
+
+You will receive two types of context:
+- FOCAL ANALYSIS: The specific plot, table, or test result the researcher is looking at RIGHT NOW. This is what you interpret.
+- BACKGROUND: Dataset profile, prior findings, preprocessing decisions, and model context. Use this to make your interpretation more specific and grounded — but do NOT summarize or rehash the background. It exists so you can say "given your sample size of 847 and the collinearity you found earlier, this result suggests..." rather than generic advice.
 
 RULES:
-1. EXPLAIN what the results MEAN for this specific dataset — don't just restate numbers
-2. Give ACTIONABLE recommendations (what should the researcher do next?)
-3. Flag concerns a PEER REVIEWER would raise
-4. Be SPECIFIC — reference the actual values, features, and context provided
-5. If you see red flags (e.g., data leakage, overfitting, insufficient sample size), say so clearly
-6. Suggest what to CHECK or INVESTIGATE further
-7. Use clear, professional language suitable for a methods/results section discussion
-8. Keep it concise — 3-5 key points, not a wall of text
+1. Interpret the FOCAL analysis — what do these specific results mean?
+2. Be SPECIFIC — reference actual values, features, and context
+3. Flag concerns a PEER REVIEWER would raise about THIS result
+4. Give 1-2 ACTIONABLE next steps (what should the researcher do?)
+5. If background context reveals a red flag relevant to this result (e.g., the model was trained on a small sample, known collinearity affects these features), connect those dots
+6. Keep it concise — 3-5 key points, not a wall of text
 
 DO NOT:
-- Simply paraphrase or restate the statistical output
-- Give generic textbook explanations
-- Be vague ("the results look good") — be precise about WHY
-- Ignore potential problems to be polite"""
+- Summarize the background context or the full project state
+- Give generic textbook explanations of the method
+- Restate numbers the researcher can already see
+- Ignore problems to be polite"""
+
+
+# ============================================================================
+# Session context gatherer
+# ============================================================================
+
+def gather_session_context() -> Dict[str, Any]:
+    """Pull all available analysis context from Streamlit session state.
+
+    Returns a dict of kwargs suitable for passing to build_llm_context().
+    This is background context — the broad project state that helps the LLM
+    give specific interpretations of focal results.
+    """
+    import streamlit as st
+
+    ctx: Dict[str, Any] = {}
+
+    # Dataset profile
+    profile = st.session_state.get("dataset_profile")
+    if profile and isinstance(profile, dict):
+        ctx["dataset_profile"] = profile
+
+    # Task type and sample info from data_config
+    data_config = st.session_state.get("data_config")
+    if data_config:
+        if hasattr(data_config, "task_type") and data_config.task_type:
+            ctx["task_type"] = data_config.task_type
+        if hasattr(data_config, "feature_cols") and data_config.feature_cols:
+            ctx["feature_names"] = list(data_config.feature_cols)
+
+    # Sample size from working dataframe
+    df = st.session_state.get("working_df")
+    if df is not None and hasattr(df, "__len__"):
+        ctx["sample_size"] = len(df)
+
+    # Accumulated EDA findings
+    eda_results = st.session_state.get("eda_results", {})
+    findings: List[str] = []
+    if isinstance(eda_results, dict):
+        for _action_id, result in eda_results.items():
+            if isinstance(result, dict):
+                for f in result.get("findings", [])[:3]:
+                    if isinstance(f, str) and f not in findings:
+                        findings.append(f)
+    if findings:
+        ctx["eda_insights"] = findings[:12]
+
+    # Insight ledger — unresolved and resolved items
+    ledger = st.session_state.get("insight_ledger")
+    if ledger and hasattr(ledger, "get_unresolved"):
+        unresolved = ledger.get_unresolved()
+        if unresolved:
+            unresolved_strs = []
+            for ins in unresolved[:6]:
+                desc = getattr(ins, "finding", "") or getattr(ins, "description", "")
+                sev = getattr(ins, "severity", "")
+                if desc:
+                    prefix = f"[{sev.upper()}] " if sev else ""
+                    unresolved_strs.append(f"{prefix}{desc}")
+            if unresolved_strs:
+                existing = ctx.get("eda_insights", [])
+                ctx["eda_insights"] = existing + [f"[OPEN ISSUE] {s}" for s in unresolved_strs]
+
+        resolved = ledger.get_resolved()
+        if resolved:
+            resolved_strs = []
+            for ins in resolved[:6]:
+                finding = getattr(ins, "finding", "")
+                action = getattr(ins, "resolved_by", "")
+                if finding and action:
+                    resolved_strs.append(f"{finding} → {action}")
+            if resolved_strs:
+                existing = ctx.get("eda_insights", [])
+                ctx["eda_insights"] = existing + [f"[RESOLVED] {s}" for s in resolved_strs]
+
+    # Preprocessing config — extract from first model's pipeline as representative
+    pipelines = st.session_state.get("preprocessing_pipelines_by_model", {})
+    if isinstance(pipelines, dict) and pipelines:
+        first_key = next(iter(pipelines))
+        pipeline_data = pipelines[first_key]
+        if isinstance(pipeline_data, dict):
+            config = pipeline_data.get("config", pipeline_data)
+            if isinstance(config, dict):
+                ctx["preprocessing_config"] = config
+
+    return ctx
 
 
 # ============================================================================
@@ -172,30 +260,51 @@ def build_llm_context(
     preprocessing_config: Optional[Dict[str, Any]] = None,
     model_family: Optional[str] = None,
 ) -> str:
-    """Build rich context for the LLM with all available information.
+    """Build structured context for LLM interpretation.
 
-    Now includes dataset profile, accumulated EDA insights, preprocessing choices,
-    and model family context for much more specific interpretation.
+    Separates FOCAL context (the specific result to interpret) from BACKGROUND
+    context (project state that helps the LLM be specific). The LLM should
+    interpret the focal result, using background to ground its advice.
     """
     parts = []
 
-    # Header
-    parts.append(f"## Analysis: {plot_type}")
-    parts.append(f"Statistical results: {stats_summary}")
+    # ── FOCAL ANALYSIS (what the user is looking at right now) ──
+    parts.append("# FOCAL ANALYSIS — interpret THIS result")
+    parts.append(f"Analysis type: {plot_type}")
+    if where:
+        parts.append(f"Location: {where}")
+    parts.append(f"Results:\n{stats_summary}")
 
-    # Dataset context
-    context_parts = []
+    if model_name:
+        model_desc = model_name
+        if model_family:
+            model_desc += f" ({model_family} family)"
+        parts.append(f"Model: {model_desc}")
+
+    if metrics:
+        kv = "; ".join(f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}"
+                       for k, v in list(metrics.items())[:8])
+        parts.append(f"Performance metrics: {kv}")
+
+    if existing:
+        parts.append(f"Automated summary (do NOT repeat — add what it misses): {existing}")
+
+    # ── BACKGROUND (project state for grounding — do not summarize) ──
+    bg_parts = []
+
+    # Dataset basics
+    context_bits = []
     if task_type:
-        context_parts.append(f"Task: {task_type}")
+        context_bits.append(f"Task: {task_type}")
     if sample_size is not None:
-        context_parts.append(f"Sample size: n={sample_size:,}")
+        context_bits.append(f"n={sample_size:,}")
     domain = data_domain_hint or (_infer_domain_hint(feature_names) if feature_names else "")
     if domain:
-        context_parts.append(f"Domain: {domain}")
-    if context_parts:
-        parts.append("Context: " + " | ".join(context_parts))
+        context_bits.append(f"Domain: {domain}")
+    if context_bits:
+        bg_parts.append(" | ".join(context_bits))
 
-    # Dataset profile (if available)
+    # Dataset profile
     if dataset_profile:
         profile_parts = []
         for key in ("n_rows", "n_features", "n_numeric", "n_categorical",
@@ -204,23 +313,15 @@ def build_llm_context(
             if val is not None:
                 profile_parts.append(f"{key}={val}")
         if profile_parts:
-            parts.append("Dataset profile: " + ", ".join(profile_parts))
-
-    # Model info
-    if model_name:
-        parts.append(f"Model: {model_name}" + (f" ({model_family})" if model_family else ""))
-    if metrics:
-        kv = "; ".join(f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}"
-                       for k, v in list(metrics.items())[:8])
-        parts.append(f"Performance metrics: {kv}")
+            bg_parts.append("Dataset: " + ", ".join(profile_parts))
 
     # Features
     if feature_names:
         if len(feature_names) <= 12:
-            parts.append(f"Features ({len(feature_names)}): {', '.join(str(x) for x in feature_names)}")
+            bg_parts.append(f"Features ({len(feature_names)}): {', '.join(str(x) for x in feature_names)}")
         else:
             feats = ", ".join(str(x) for x in feature_names[:10])
-            parts.append(f"Features ({len(feature_names)}): {feats}, … (+{len(feature_names)-10} more)")
+            bg_parts.append(f"Features ({len(feature_names)}): {feats}, … (+{len(feature_names)-10} more)")
 
     # Preprocessing
     if preprocessing_config:
@@ -231,15 +332,15 @@ def build_llm_context(
             if val is not None and val != "none" and val is not False:
                 prep_parts.append(f"{key}={val}")
         if prep_parts:
-            parts.append("Preprocessing: " + ", ".join(prep_parts))
+            bg_parts.append("Preprocessing: " + ", ".join(prep_parts))
 
-    # Accumulated EDA insights
+    # Prior findings + insight ledger state
     if eda_insights:
-        parts.append("Prior EDA findings:\n" + "\n".join(f"  - {i}" for i in eda_insights[:8]))
+        bg_parts.append("Prior findings & decisions:\n" + "\n".join(f"  - {i}" for i in eda_insights[:15]))
 
-    # Existing interpretation (as background only)
-    if existing:
-        parts.append(f"Existing automated summary (use as background, do NOT paraphrase): {existing}")
+    if bg_parts:
+        parts.append("\n# BACKGROUND — use to ground your interpretation, do NOT summarize")
+        parts.extend(bg_parts)
 
     return "\n".join(parts)
 
@@ -466,16 +567,6 @@ def render_interpretation_with_llm_button(
         user_txt = (st.session_state.get(user_ctx_key) or "").strip()
         if user_txt:
             ctx += f"\n\nResearcher's specific question/focus: {user_txt}"
-
-        # Gather additional context from session state
-        eda_insights = []
-        insights_list = st.session_state.get("insights", [])
-        if isinstance(insights_list, list):
-            for ins in insights_list[:10]:
-                if isinstance(ins, dict) and "finding" in ins:
-                    eda_insights.append(ins["finding"])
-        if eda_insights:
-            ctx += "\n\nPrior findings from this analysis session:\n" + "\n".join(f"- {i}" for i in eda_insights)
 
         # Call LLM
         model = ""

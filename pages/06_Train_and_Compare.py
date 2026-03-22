@@ -1610,6 +1610,10 @@ Poor performance may be due to:
                 _feats = _fn_by_model.get(name) or (data_config.feature_cols if data_config else [])
                 _n_test = len(results.get("y_test", []))
                 _task = data_config.task_type if data_config else None
+                from utils.llm_ui import gather_session_context
+                from utils.insight_ledger import MODEL_TO_FAMILY
+                _bg = gather_session_context()
+                _model_family = MODEL_TO_FAMILY.get(name, "")
 
                 fitted_prep = st.session_state.get("fitted_preprocessing_pipelines", {}).get(name)
                 if fitted_prep is not None:
@@ -1637,7 +1641,8 @@ Poor performance may be due to:
                     h = results["history"]
                     tl, vl = h.get("train_loss", []), h.get("val_loss", h.get("train_loss", []))
                     stats_summary = f"train_loss={tl[-1]:.4f}; val_loss={vl[-1]:.4f}" if tl else ""
-                    ctx = build_llm_context("learning_curves", stats_summary, model_name=name, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task)
+                    _bg_lc = {k: v for k, v in _bg.items() if k not in ("feature_names", "sample_size", "task_type")}
+                    ctx = build_llm_context("learning_curves", stats_summary, model_name=name, model_family=_model_family, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task, **_bg_lc)
                     render_interpretation_with_llm_button(ctx, key=f"llm_lc_{name}", result_session_key=f"llm_result_lc_{name}")
 
                 if data_config.task_type == "regression":
@@ -1656,7 +1661,8 @@ Poor performance may be due to:
                     if nar:
                         st.markdown(f"**Interpretation:** {nar}")
                     stats_summary = f"corr={pva_stats.get('correlation', 0):.3f}; mean_err={pva_stats.get('mean_error', 0):.4f}"
-                    ctx = build_llm_context("pred_vs_actual", stats_summary, model_name=name, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task)
+                    _bg_pva = {k: v for k, v in _bg.items() if k not in ("feature_names", "sample_size", "task_type")}
+                    ctx = build_llm_context("pred_vs_actual", stats_summary, model_name=name, model_family=_model_family, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task, **_bg_pva)
                     render_interpretation_with_llm_button(ctx, key=f"llm_pva_{name}", result_session_key=f"llm_result_pva_{name}")
 
                     st.subheader("Residuals")
@@ -1675,7 +1681,8 @@ Poor performance may be due to:
                         res_basic = analyze_residuals(results["y_test"], results["y_test_pred"])
                         st.caption(f"Mean residual: {res_basic['mean_residual']:.4f} | Std: {res_basic['std_residual']:.4f}")
                     stats_summary = f"skew={resid_stats.get('skew', 0):.3f}; iqr={resid_stats.get('iqr', 0):.4f}; rvp={resid_stats.get('residual_vs_predicted_corr', 0):.3f}"
-                    ctx = build_llm_context("residuals", stats_summary, model_name=name, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task)
+                    _bg_res = {k: v for k, v in _bg.items() if k not in ("feature_names", "sample_size", "task_type")}
+                    ctx = build_llm_context("residuals", stats_summary, model_name=name, model_family=_model_family, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task, **_bg_res)
                     render_interpretation_with_llm_button(ctx, key=f"llm_resid_{name}", result_session_key=f"llm_result_resid_{name}")
                 else:
                     st.subheader("Classification Performance")
@@ -1736,5 +1743,6 @@ Poor performance may be due to:
                         st.markdown(f"**Interpretation:** {nar}")
                     per = cm_stats.get("per_class", [])[:3]
                     stats_summary = "; ".join(f"{p.get('label','?')}: P={p.get('precision',0):.2f} R={p.get('recall',0):.2f}" for p in per) if per else ""
-                    ctx = build_llm_context("confusion_matrix", stats_summary, model_name=name, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task)
+                    _bg_cm = {k: v for k, v in _bg.items() if k not in ("feature_names", "sample_size", "task_type")}
+                    ctx = build_llm_context("confusion_matrix", stats_summary, model_name=name, model_family=_model_family, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task, **_bg_cm)
                     render_interpretation_with_llm_button(ctx, key=f"llm_cm_{name}", result_session_key=f"llm_result_cm_{name}")
