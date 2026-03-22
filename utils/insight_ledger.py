@@ -81,6 +81,33 @@ MODEL_TO_FAMILY = {
     "naive_bayes": MODEL_FAMILY_PROBABILISTIC, "lda": MODEL_FAMILY_PROBABILISTIC,
 }
 
+# Human-readable model names for reports and narrative
+MODEL_DISPLAY_NAMES = {
+    "ridge": "Ridge Regression",
+    "lasso": "LASSO",
+    "elasticnet": "Elastic Net",
+    "logreg": "Logistic Regression",
+    "glm": "Generalized Linear Model",
+    "huber": "Huber Regression",
+    "rf": "Random Forest",
+    "extratrees_reg": "Extra Trees (Regressor)",
+    "extratrees_clf": "Extra Trees (Classifier)",
+    "histgb_reg": "Histogram Gradient Boosting (Regressor)",
+    "histgb_clf": "Histogram Gradient Boosting (Classifier)",
+    "nn": "Neural Network (MLP)",
+    "knn_reg": "k-Nearest Neighbors (Regressor)",
+    "knn_clf": "k-Nearest Neighbors (Classifier)",
+    "svm": "Support Vector Machine",
+    "naive_bayes": "Naïve Bayes",
+    "lda": "Linear Discriminant Analysis",
+}
+
+
+def model_display_name(key: str) -> str:
+    """Human-readable name for a model key. Falls back to UPPER if unknown."""
+    return MODEL_DISPLAY_NAMES.get(key.lower(), key.upper())
+
+
 # Human-readable family names for coaching UI
 FAMILY_DISPLAY_NAMES = {
     MODEL_FAMILY_LINEAR: "Linear Models",
@@ -850,10 +877,38 @@ class InsightLedger:
 
     # == Report generation ==================================================
 
+    def _is_narrative_worthy(self, insight: Insight) -> bool:
+        """Check if an insight should appear in publication narratives.
+
+        Excludes:
+        - audit_only entries (EDA activity logs like "Generated Table 1")
+        - bridge entries that are just activity records with no provenance value
+          (identified by implication="Logged methodology decision" AND no
+          meaningful resolution_details beyond action_type)
+        """
+        # Explicit audit-only flag
+        if insight.metadata.get("audit_only"):
+            return False
+        # Bridge entries that just record "I clicked a button" without
+        # meaningful structured provenance (no columns_affected, no params, etc.)
+        if (insight.implication == "Logged methodology decision"
+                and insight.auto_generated):
+            details = insight.resolution_details
+            # Keep if it has substantive structured details
+            has_substance = any(
+                details.get(k) for k in (
+                    "columns_affected", "params", "per_model_config",
+                    "result", "models_trained", "scope",
+                )
+            )
+            if not has_substance:
+                return False
+        return True
+
     def narrative_for_report(self) -> str:
         """Generate a concise methods-section narrative."""
         s = self.summary()
-        resolved = self.get_resolved()
+        resolved = [i for i in self.get_resolved() if self._is_narrative_worthy(i)]
         unresolved = self.get_unresolved()
 
         lines = []
@@ -900,6 +955,9 @@ class InsightLedger:
             resolved_in_phase = []
             for i in self.get_resolved():
                 if i.id in seen_ids:
+                    continue
+                if not self._is_narrative_worthy(i):
+                    seen_ids.add(i.id)  # Mark as seen so it doesn't appear elsewhere
                     continue
                 # Prefer resolved_on_page (where the action happened)
                 primary_page = i.resolved_on_page or i.source_page
