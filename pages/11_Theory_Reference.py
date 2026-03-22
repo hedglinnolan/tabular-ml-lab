@@ -969,6 +969,37 @@ noise, and a direction with low variance might contain the signal.
 than global variance. It excels at visualization and can capture manifold structure
 that PCA misses, but its components are even less interpretable than PCA's.
 """)
+        section("Topological Data Analysis (TDA)")
+        st.markdown(f"""
+TDA is an advanced feature engineering technique that captures the *shape* and
+*structure* of your data using concepts from algebraic topology — specifically,
+**persistent homology**. {cite("Carlsson, 2009")}
+
+The intuition: imagine your data points as stars in the sky. Now imagine drawing
+a growing circle around each point. As the circles expand:
+- First, individual points are isolated (0-dimensional features).
+- At some radius, circles begin to overlap, forming *connected components* — clusters.
+- At larger radii, circles enclose empty regions, forming *loops* (1-dimensional holes).
+- Eventually, everything merges into a single blob.
+
+Persistent homology tracks when these topological features (components, loops, voids)
+*appear* and *disappear* as the radius grows. Features that persist over a wide
+range of radii represent genuine structure; features that appear and vanish quickly
+are noise. This birth-death information is summarized in a **persistence diagram**,
+from which numerical features are extracted: persistence entropy, amplitude statistics,
+and Betti numbers at various scales.
+
+**When TDA adds value:** Datasets where the spatial *arrangement* of points carries
+signal beyond what individual feature values capture. Examples include protein
+structure data, sensor networks, and datasets with complex nonlinear manifold
+structure. {cite("Otter et al., 2017")}
+
+**When to avoid:** TDA features are computationally expensive (the Vietoris-Rips
+complex scales poorly beyond a few thousand points) and nearly impossible to
+interpret in domain terms. For publication, using TDA features requires substantial
+justification and typically a supplementary methods section. If simpler features
+achieve comparable performance, prefer them.
+""", unsafe_allow_html=True)
         app_connection(
             "The <strong>Feature Engineering</strong> page offers all of these transforms: "
             "polynomial features (degree 2–3), mathematical transforms (log, sqrt, square, "
@@ -1001,6 +1032,8 @@ matters most (competition, screening), the orange and red techniques may be wort
 
         references([
             "James, G., Witten, D., Hastie, T., & Tibshirani, R. (2021). *An Introduction to Statistical Learning* (2nd ed.), §7.1, §12.2. Springer.",
+            "Carlsson, G. (2009). Topology and data. *Bulletin of the American Mathematical Society*, 46(2), 255–308.",
+            "Otter, N., Porter, M.A., Tillmann, U., Grindrod, P., & Harrington, H.A. (2017). A roadmap for the computation of persistent homology. *EPJ Data Science*, 6(1), 17.",
         ])
 
     # ── Encoding Categoricals ────────────────────────────────────────────────
@@ -1155,29 +1188,101 @@ and with cross-validation at each step, the total cost is O(p · k) model fits
 might look fine at step 3, but feature A might be critical in combination with feature
 B that's removed at step 7. Once A is removed, it never comes back.
 """)
+        section("Univariate Screening (Filter Method)")
+        st.markdown(f"""
+Univariate screening is the simplest and fastest approach: test each feature
+*individually* against the target variable and keep those with statistically
+significant associations.
+
+For regression tasks, the app uses the **Pearson correlation coefficient** between
+each feature and the target. For classification, it uses **Spearman's rank correlation**,
+which captures monotone (not just linear) relationships. Each test produces a
+p-value measuring the strength of evidence against the null hypothesis that
+there is no association.
+
+The critical challenge with univariate screening is the **multiple testing problem**.
+When you test 100 features at α = 0.05, you expect about 5 false positives even
+when no features are truly associated. The app applies the **Benjamini-Hochberg
+(BH) procedure** to control the False Discovery Rate (FDR): {cite("Benjamini & Hochberg, 1995")}
+""", unsafe_allow_html=True)
+        st.latex(r"""
+        \text{FDR} = \mathbb{E}\left[\frac{\text{false positives}}{\text{total positives}}\right] \leq \alpha
+        """)
+        st.markdown("""
+The BH procedure works by ranking the p-values from smallest to largest, then
+finding the largest rank *k* where *p_(k) ≤ (k/m) · α* (with *m* being the total
+number of tests). All features with rank ≤ *k* are selected. This is less
+conservative than the Bonferroni correction (which divides α by the number of
+tests) but still controls the expected proportion of false discoveries.
+
+**Limitation:** Univariate screening tests each feature in isolation. It will miss
+features that are only predictive *in combination* (e.g., an interaction between
+age and sex where neither alone predicts the outcome). It can also retain redundant
+features that carry the same signal.
+""")
+        section("Stability Selection (Bootstrap Method)")
+        st.markdown(f"""
+Stability selection addresses a fundamental question: *how confident should we be
+that a feature's selection isn't an accident of this particular sample?*
+{cite("Meinshausen & Bühlmann, 2010")}
+
+The algorithm is elegantly simple:
+
+1. Repeatedly draw random subsamples (typically 50% of the data, 100 times).
+2. Run LASSO on each subsample.
+3. For each feature, compute the **selection probability** — the fraction of
+   subsamples in which it was selected (had a non-zero coefficient).
+4. Keep features whose selection probability exceeds a threshold (default: 60%).
+
+A feature selected in 90 out of 100 subsamples is almost certainly carrying real
+signal. A feature selected in 15 out of 100 may have been an artifact of
+a particular data split.
+""", unsafe_allow_html=True)
+        st.latex(r"""
+        \hat{\Pi}_j = \frac{1}{B} \sum_{b=1}^{B} \mathbf{1}\left[|\hat{\beta}_j^{(b)}| > 0\right]
+        """)
+        st.markdown("""
+Here *Π̂_j* is the selection probability for feature *j*, *B* is the number of
+bootstrap subsamples, and *β̂_j^(b)* is the LASSO coefficient for feature *j*
+in subsample *b*. The indicator function counts how many times LASSO selected
+this feature across all subsamples.
+
+Stability selection provides *error control guarantees*: the expected number of
+falsely selected features is bounded, regardless of the distribution of the data
+or the number of features. This makes it particularly valuable in high-dimensional
+settings where other methods may be unreliable.
+
+**Tradeoff:** Stability selection is computationally expensive (B × LASSO fits) and
+can be conservative — it tends to select fewer features than other methods, favoring
+precision over recall.
+""")
         section("Consensus Approach")
         st.markdown("""
-Because each selection method has different blind spots, the app runs both LASSO path
-and RFE-CV by default and reports the **consensus** — features selected by both
-methods. Features in the consensus set have survived two fundamentally different
-selection criteria: the geometric sparsity of L1 regularization and the greedy
-importance ranking of RFE. This provides stronger evidence of genuine signal
-than either method alone.
+Because each selection method has different blind spots, the app runs multiple
+methods and reports the **consensus** — features selected across methods. A feature
+that survives LASSO's geometric sparsity, RFE's greedy importance ranking,
+univariate statistical testing, *and* stability selection's bootstrap resampling
+has passed four fundamentally different filters. This provides much stronger
+evidence of genuine signal than any single method alone.
 
-The app also shows features selected by only one method, which may warrant manual
-review — they might represent real signal that one method missed, or noise that one
-method incorrectly retained.
+The app shows which features were selected by all methods, most methods, or only
+one method. Features in the consensus core are high-confidence selections. Features
+selected by only one method may warrant manual review — they might represent real
+signal that other methods missed, or noise that one method incorrectly retained.
 """)
         app_connection(
-            "The <strong>Feature Selection</strong> page runs LASSO path and RFE-CV, shows "
-            "individual and consensus results, and allows manual override. The coaching "
-            "layer warns when the consensus set is very small (potential signal loss) or "
-            "very large (potential noise retention)."
+            "The <strong>Feature Selection</strong> page runs up to four methods: LASSO path, "
+            "RFE-CV, univariate screening (FDR-corrected), and stability selection. It shows "
+            "individual and consensus results with manual override. The coaching layer warns "
+            "when the consensus set is very small (potential signal loss) or very large "
+            "(potential noise retention)."
         )
 
         references([
             "James, G., Witten, D., Hastie, T., & Tibshirani, R. (2021). *An Introduction to Statistical Learning* (2nd ed.), §6.1, §6.2. Springer.",
             "Tibshirani, R. (1996). Regression shrinkage and selection via the lasso. *Journal of the Royal Statistical Society, Series B*, 58(1), 267–288.",
+            "Benjamini, Y. & Hochberg, Y. (1995). Controlling the false discovery rate: A practical and powerful approach to multiple testing. *Journal of the Royal Statistical Society, Series B*, 57(1), 289–300.",
+            "Meinshausen, N. & Bühlmann, P. (2010). Stability selection. *Journal of the Royal Statistical Society, Series B*, 72(4), 417–473.",
             "Guyon, I. & Elisseeff, A. (2003). An introduction to variable and feature selection. *Journal of Machine Learning Research*, 3, 1157–1182.",
         ])
 
