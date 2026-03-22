@@ -93,6 +93,7 @@ INTERPRETATION_SYSTEM_PROMPT = """You interpret statistical analysis results in 
 - Do NOT summarize the background context
 - Do NOT restate numbers the researcher can already see
 - Do NOT start with "Great question" or "Certainly" or "Based on the analysis"
+- Do NOT use LaTeX notation ($R^2$, $\alpha$, etc.) — use plain text (R², α, β, μ, σ, χ², p) or Unicode symbols
 """
 
 # Analysis-type-specific hints injected into the system prompt
@@ -802,10 +803,22 @@ def render_interpretation_with_llm_button(
                 placeholder="E.g., 'Is this good enough for a JAMA submission?' or 'What about the outliers in BMI?'",
                 label_visibility="collapsed",
             )
-            if st.button("🔄 Re-analyze", key=reanalyze_key):
-                ctx = context or ""
+            if st.button("🔄 Ask", key=reanalyze_key):
                 user_txt = (st.session_state.get(user_ctx_key) or "").strip()
                 if user_txt:
-                    ctx += f"\n\nResearcher's follow-up question: {user_txt}"
-                st.session_state.pop(sk, None)
-                _run_llm_call(ctx, plot_type, sk)
+                    # Build follow-up context that includes the previous analysis
+                    followup_ctx = (
+                        f"# PREVIOUS AI ANALYSIS (already provided to the researcher)\n"
+                        f"{res}\n\n"
+                        f"# RESEARCHER'S FOLLOW-UP QUESTION\n"
+                        f"{user_txt}\n\n"
+                        f"Answer the follow-up question directly. Do NOT repeat your previous analysis. "
+                        f"Build on it — add new insight, correct if needed, or go deeper on the specific question asked."
+                    )
+                    # Store follow-up separately so it appends rather than replaces
+                    followup_sk = f"{sk}_followup"
+                    _run_llm_call(followup_ctx, plot_type, followup_sk)
+                    followup_res = st.session_state.get(followup_sk)
+                    if followup_res and followup_res not in ("__error__", "__no_key__"):
+                        # Append follow-up to the main result
+                        st.session_state[sk] = res + f"\n\n---\n\n**Follow-up — {user_txt}**\n\n{followup_res}"
