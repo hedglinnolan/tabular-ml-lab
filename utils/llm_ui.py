@@ -457,9 +457,14 @@ def _call_llm(
 def _call_ollama(context: str, system_prompt: str, model: str, url: str) -> Optional[str]:
     """Call Ollama API using the chat endpoint.
 
-    Uses /api/chat (not /api/generate) to properly handle thinking models
-    like Qwen3.5 that separate thinking tokens from response content.
-    num_predict is set high (4096) to accommodate thinking overhead.
+    Strategy for thinking models (Qwen3.5):
+    1. First try WITH thinking enabled (num_predict=3000, 75s timeout)
+       - Thinking produces better quality but is slower
+       - If content is returned, use it
+       - If only thinking is returned (budget exhausted), extract from thinking
+    2. If that times out, retry WITHOUT thinking (num_predict=2048, 30s timeout)
+       - Still good quality thanks to structured system prompt
+       - Fast fallback ensures the user always gets a response
     """
     import requests
     try:
@@ -472,40 +477,57 @@ def _call_ollama(context: str, system_prompt: str, model: str, url: str) -> Opti
             import time
             time.sleep(3)
 
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": context},
+        ]
+
+        # Attempt 1: thinking enabled, moderate budget
+        try:
+            resp = requests.post(
+                f"{url}/api/chat",
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "stream": False,
+                    "options": {"temperature": 0.3, "num_predict": 3000},
+                },
+                timeout=75,
+            )
+            if resp.ok:
+                data = resp.json()
+                message = data.get("message", {})
+                content = (message.get("content") or "").strip()
+                if content:
+                    return content
+                # Thinking but no content — extract from thinking tail
+                thinking = (message.get("thinking") or "").strip()
+                if thinking:
+                    logger.info(f"Ollama thinking-only response ({len(thinking)} chars) — extracting")
+                    fallback = thinking[-1000:].strip()
+                    last_break = fallback.rfind("\n\n")
+                    if last_break > 100:
+                        fallback = fallback[last_break:].strip()
+                    if fallback:
+                        return fallback
+        except requests.exceptions.Timeout:
+            logger.info("Ollama thinking attempt timed out at 75s — falling back to no-think mode")
+
+        # Attempt 2: thinking disabled, fast fallback
         resp = requests.post(
             f"{url}/api/chat",
             json={
                 "model": model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": context},
-                ],
+                "messages": messages,
                 "stream": False,
                 "think": False,
                 "options": {"temperature": 0.3, "num_predict": 2048},
             },
-            timeout=60,
+            timeout=30,
         )
         if resp.ok:
             data = resp.json()
-            # Chat API returns message.content; thinking models also have message.thinking
-            message = data.get("message", {})
-            content = (message.get("content") or "").strip()
-            if content:
-                return content
-            # Fallback: if model exhausted num_predict on thinking with no content,
-            # extract the last substantive paragraph from thinking as the response
-            thinking = (message.get("thinking") or "").strip()
-            if thinking and not content:
-                logger.warning(f"Ollama model {model} returned thinking ({len(thinking)} chars) but no content — extracting from thinking")
-                # Take the last ~800 chars of thinking as a reasonable summary
-                # The model's final thinking steps tend to be the most distilled
-                fallback = thinking[-800:].strip()
-                # Find a clean paragraph break
-                last_break = fallback.rfind("\n\n")
-                if last_break > 100:
-                    fallback = fallback[last_break:].strip()
-                return fallback if fallback else None
+            content = (data.get("message", {}).get("content") or "").strip()
             return content or None
         else:
             logger.warning(f"Ollama error: {resp.status_code}")
@@ -692,7 +714,7 @@ def render_interpretation_with_llm_button(
                 st.session_state[sk] = "__no_key__"
 
         if st.session_state.get(sk) != "__no_key__":
-            with st.spinner(f"🔬 Interpreting... ({model})"):
+            with st.spinner(f"🧠 Analyzing... ({model}, up to ~60s)"):
                 sys_prompt = _build_system_prompt(plot_type) if plot_type else INTERPRETATION_SYSTEM_PROMPT
                 result = _call_llm(
                     ctx, sys_prompt,
