@@ -763,6 +763,68 @@ The practical implications:""")
 - **Neural networks** are highly susceptible in the small-n regime: they have the capacity to memorize the training set, and without sufficient data, they will.
 """)
 
+        section("Class Imbalance")
+        st.markdown("""
+Class imbalance occurs when one class is much more prevalent than the other. A
+dataset with 95% negative cases and 5% positive cases is severely imbalanced —
+and this creates problems beyond just needing more data.
+
+**Why imbalance is a problem:** Most algorithms optimize overall accuracy, which
+means they can achieve excellent performance by simply predicting the majority
+class for every observation. A model that predicts "healthy" for everyone in a
+95/5 dataset achieves 95% accuracy while being completely useless for its
+intended purpose (detecting disease).
+
+**How imbalance affects different models:**
+- **Linear models** (logistic regression) are relatively robust to imbalance because
+  they optimize the likelihood, not accuracy. But the default threshold of 0.5
+  may need adjustment.
+- **Tree-based models** can be biased toward the majority class when using Gini
+  impurity, since splits that keep the majority class pure are "rewarded."
+- **KNN** is heavily affected: the neighborhood of a minority-class point is
+  often dominated by majority-class neighbors.
+- **Neural networks** will converge to predicting the majority class unless the
+  loss function is weighted or the data is resampled.
+
+**Metrics under imbalance:** As discussed in Chapter 5, accuracy is misleading.
+AUROC, AUPRC, precision, recall, and F1 are more informative. The app reports
+all of these, and the coaching layer flags datasets with class imbalance ratios
+below 0.35 as requiring careful metric selection.
+""")
+
+        section("Data Quality Basics: Duplicates, Constants, and Cardinality")
+        st.markdown("""
+Before any statistical analysis, several basic data quality checks are essential:
+
+**Duplicate rows** are exact copies of other observations. They inflate sample
+size artificially, reduce the effective diversity of the dataset, and can bias
+any model that sees the same observation twice. Common causes: data entry errors,
+merging datasets without deduplication, or row-level replication in relational joins.
+
+**Constant features** (zero variance) have the same value for every observation.
+They carry no information and should be removed — they cannot predict anything,
+and some algorithms (e.g., standardization) will produce NaN or division-by-zero
+errors on them.
+
+**Near-constant features** have almost zero variance (e.g., 99.5% of values are
+the same). They carry minimal information and can destabilize some algorithms.
+
+**Cardinality analysis** examines how many unique values each feature has. This
+helps identify:
+- **ID columns** (cardinality = n) that should never be used as features.
+- **Binary features** (cardinality = 2) that may need special encoding.
+- **High-cardinality categoricals** (many unique values) that will explode the
+  feature space under one-hot encoding.
+""")
+
+        app_connection(
+            "The <strong>Upload & Audit</strong> page automatically checks for duplicate "
+            "rows, constant features, and cardinality. The <strong>EDA</strong> page "
+            "detects class imbalance and adjusts the coaching recommendations based on "
+            "the imbalance ratio. Duplicate counts and cardinality tables are shown "
+            "in the audit summary."
+        )
+
         section("When You Don't Have Enough Data")
         st.markdown("""
 If your sample size is genuinely small (n < 100, or EPV < 10), the honest options are:
@@ -2088,11 +2150,53 @@ all other values into a tiny portion of the [0, 1] range.
 | Probabilistic | **Depends** | LDA estimates covariance; NB estimates per-feature variance |
 """)
 
+        section("Outlier Treatment in Preprocessing")
+        st.markdown("""
+Beyond scaling, the preprocessing pipeline can explicitly treat outliers through
+clipping — capping extreme values at a threshold rather than removing observations.
+
+**Percentile clipping** caps values at a specified percentile (e.g., the 1st and
+99th percentiles). Values below the 1st percentile are set to the 1st percentile
+value; values above the 99th are capped similarly. This preserves the observation
+while limiting the outlier's magnitude.
+
+**IQR-based clipping** uses the interquartile range fences (Q1 − 1.5·IQR and
+Q3 + 1.5·IQR) as thresholds, consistent with the outlier detection method used
+in the EDA page.
+
+The choice between clipping and robust scaling depends on the downstream model:
+for linear models, robust scaling often suffices (it reduces the outlier's
+influence without altering the value). For neural networks, clipping may be
+preferable because it limits the input range explicitly, preventing extreme
+activations.
+""")
+
+        section("Interpretability Mode")
+        st.markdown("""
+The preprocessing page offers three interpretability levels that control which
+transforms are available:
+
+- **High** — Only simple, explainable transforms. No PCA, no K-means binning, no
+  log/power transforms. Pipelines are transparent and easy to describe in a
+  methods section.
+- **Balanced** — The recommended default. Allows most transforms but limits
+  complexity.
+- **Performance** — All transforms available, including PCA dimensionality
+  reduction and aggressive feature transformations. Maximizes potential accuracy
+  but may produce pipelines that are difficult to explain.
+
+This is a design choice, not a mathematical one. The interpretability mode reflects
+the tradeoff discussed in Chapter 2: every preprocessing step sits on a spectrum
+from transparent to opaque, and the right position depends on your audience and
+publication venue.
+""")
+
         app_connection(
             "The app auto-selects the appropriate scaling method per model: standard "
             "scaling for linear/neural/distance/margin models, no scaling for trees, "
-            "and robust scaling when the EDA detected outliers. You can override any of "
-            "these in the per-model configuration panels."
+            "and robust scaling when the EDA detected outliers. The interpretability "
+            "mode slider controls which transforms are available across all models. "
+            "You can override individual settings in the per-model configuration panels."
         )
 
         references([
@@ -2241,6 +2345,7 @@ def render_evaluation():
         "Calibration",
         "SHAP & Feature Importance",
         "Partial Dependence",
+        "Subgroup Analysis",
     ])
 
     # ── Classification Metrics ───────────────────────────────────────────────
@@ -2468,11 +2573,34 @@ Cross-validation is used for:
 - **Estimating generalization error:** How well will this approach work on new data?
 """)
 
+        section("Hyperparameter Tuning")
+        st.markdown("""
+Most models have **hyperparameters** — settings that are not learned from the data
+but must be chosen before training. Examples include the regularization strength λ
+in Ridge regression, the number of neighbors *k* in KNN, the learning rate and
+number of hidden layers in a neural network, and the maximum tree depth in a
+random forest.
+
+**Why hyperparameters can't be tuned on training performance:** A model with more
+flexibility (deeper trees, more neurons, weaker regularization) will always fit the
+training data better. Tuning on training performance selects the most overfit model.
+Cross-validation provides an honest estimate of out-of-sample performance for each
+setting.
+
+**Bayesian optimization (Optuna):** Rather than exhaustively trying all combinations
+(grid search) or randomly sampling (random search), Bayesian optimization builds a
+probabilistic model of the relationship between hyperparameter settings and
+performance, then intelligently chooses the next settings to try based on where
+improvement is most likely. This finds good hyperparameters with far fewer trials
+than grid or random search.
+""")
+
         app_connection(
             "The <strong>Train & Compare</strong> page runs stratified k-fold CV (default "
             "k = 5) for every trained model and reports mean ± standard deviation of the "
-            "primary metric across folds. This provides a more reliable comparison "
-            "than test-set metrics alone."
+            "primary metric across folds. Hyperparameter tuning via Optuna (Bayesian "
+            "optimization) is available for models with tunable parameters, using CV "
+            "performance as the objective."
         )
 
         references([
@@ -2680,6 +2808,66 @@ out the opposing effects, creating a false impression of unimportance.
             "Goldstein, A., Kapelner, A., Bleich, J., & Pitkin, E. (2015). Peeking inside the black box: Visualizing statistical learning with plots of individual conditional expectation. *Journal of Computational and Graphical Statistics*, 24(1), 44–65.",
         ])
 
+    # ── Subgroup Analysis ────────────────────────────────────────────────────
+    with tabs[6]:
+        st.markdown("""
+A model that performs well *on average* may perform poorly for specific subgroups
+of the population. Subgroup analysis stratifies performance by a categorical
+variable (e.g., sex, age group, site) to detect disparities that aggregate metrics
+hide.
+""")
+
+        section("Why Subgroup Analysis Matters")
+        st.markdown("""
+Consider a model with overall AUROC of 0.88. This looks strong — but what if
+AUROC = 0.92 for males and AUROC = 0.71 for females? The aggregate metric conceals
+a serious performance disparity that has implications for both clinical utility
+and fairness.
+
+Subgroup analysis is increasingly expected by reviewers, especially for:
+- **Clinical prediction models** — must demonstrate equitable performance across
+  demographics (sex, race, age groups).
+- **Multi-site studies** — performance may vary by site due to different patient
+  populations, measurement protocols, or data quality.
+- **Rare subgroups** — the model may have learned patterns for common groups
+  while effectively ignoring rare ones.
+""")
+
+        section("Forest Plots for Subgroup Comparison")
+        st.markdown("""
+A **forest plot** displays the primary metric (with confidence intervals) for each
+subgroup as horizontal bars, with a vertical reference line at the overall metric
+value. This makes it immediately visible which subgroups fall below the overall
+performance and whether the confidence intervals are wide (few observations in
+that subgroup) or narrow.
+
+Reading a forest plot:
+- Subgroups whose CI includes the overall reference line are consistent with
+  overall performance.
+- Subgroups whose CI lies entirely below the reference line have significantly
+  worse performance.
+- Wide CIs indicate small subgroup size — the estimate is unreliable.
+""")
+
+        section("Limitations")
+        st.markdown("""
+Subgroup analysis is exploratory, not confirmatory. With many subgroups, some will
+show poor performance by chance alone (the multiple testing problem applies here
+too). Findings from subgroup analysis should be treated as hypotheses to
+investigate further, not as definitive conclusions.
+
+Additionally, subgroup analysis requires sufficient observations per subgroup.
+A subgroup with n = 10 will have such wide confidence intervals that the
+performance estimate is nearly meaningless.
+""")
+
+        app_connection(
+            "The <strong>Explainability</strong> page runs subgroup analysis by stratifying "
+            "test set performance across any categorical variable with ≤ 10 unique values. "
+            "It generates a forest plot showing metric point estimates and 95% CIs per "
+            "subgroup, making performance disparities visually obvious."
+        )
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Chapter 6: Statistical Testing
@@ -2697,6 +2885,7 @@ def render_statistical_testing():
         "Hypothesis Testing Fundamentals",
         "Correlation Tests",
         "Group Comparisons",
+        "Categorical Association",
         "Normality Testing",
         "Paired Comparisons",
         "Table 1",
@@ -2889,8 +3078,74 @@ Like Mann-Whitney, it makes no distributional assumptions.
             "p-value, and effect size."
         )
 
-    # ── Normality Testing ────────────────────────────────────────────────────
+    # ── Categorical Association ─────────────────────────────────────────────
     with tabs[3]:
+        st.markdown("""
+When both variables are categorical (e.g., treatment group vs. outcome category),
+correlation and t-tests are inappropriate. Instead, we test whether the distribution
+of one variable depends on the level of the other.
+""")
+
+        section("Chi-Squared Test of Independence")
+        st.markdown("""
+The chi-squared test compares the *observed* counts in a contingency table to the
+counts you would *expect* if the two variables were independent:
+""")
+        st.latex(r"""
+        \chi^2 = \sum_{i=1}^{r} \sum_{j=1}^{c} \frac{(O_{ij} - E_{ij})^2}{E_{ij}}
+        \quad \text{where} \quad E_{ij} = \frac{(\text{row } i \text{ total}) \times (\text{col } j \text{ total})}{n}
+        """)
+        st.markdown("""
+Each cell in the contingency table contributes to the statistic: the squared
+difference between observed count *O_ij* and expected count *E_ij*, divided by the
+expected count. If the variables are truly independent, observed and expected counts
+should be close, and χ² will be small. Large χ² values (with a correspondingly
+small p-value) indicate that the variables are associated.
+
+**Assumptions:**
+- Observations are independent.
+- Expected counts should be ≥ 5 in each cell (a rough guideline). When this is
+  violated, the χ² approximation becomes unreliable.
+""")
+
+        section("Fisher's Exact Test")
+        st.markdown("""
+For 2×2 contingency tables with small expected counts (any cell < 5), **Fisher's
+exact test** computes the *exact* probability of observing the table (or one more
+extreme) under the null hypothesis of independence, using the hypergeometric
+distribution. Unlike the chi-squared test, it makes no large-sample approximation
+and is valid for any sample size.
+
+Fisher's exact test is computationally intensive for larger tables, so it is
+typically reserved for 2×2 tables. For larger tables with small expected counts,
+alternatives include combining sparse categories or using simulation-based
+methods.
+""")
+
+        section("Effect Size: Cramér's V")
+        st.latex(r"""
+        V = \sqrt{\frac{\chi^2}{n \cdot (\min(r, c) - 1)}}
+        """)
+        st.markdown("""
+Cramér's V normalizes the chi-squared statistic to a value between 0 and 1,
+where 0 indicates no association and 1 indicates perfect association. The
+normalization by min(r, c) − 1 (where r and c are the number of rows and columns)
+accounts for the fact that larger tables can produce larger χ² values simply due
+to having more cells.
+
+Guidelines for interpreting V: 0.1 = small, 0.3 = medium, 0.5 = large (though
+these depend on the table dimensions and the specific field).
+""")
+
+        app_connection(
+            "The <strong>Hypothesis Testing</strong> page offers chi-squared and Fisher's "
+            "exact tests for categorical variable pairs. It displays the contingency "
+            "table, test statistic, p-value, and Cramér's V. Results can be exported "
+            "to Table 1."
+        )
+
+    # ── Normality Testing ────────────────────────────────────────────────────
+    with tabs[4]:
         st.markdown("""
 Normality tests evaluate whether a variable's distribution is consistent with
 a Gaussian distribution. They are used to determine whether parametric tests
@@ -2933,7 +3188,7 @@ heavily skewed, use non-parametric alternatives.
         )
 
     # ── Paired Comparisons ───────────────────────────────────────────────────
-    with tabs[4]:
+    with tabs[5]:
         st.markdown("""
 Paired comparisons are used when measurements come in natural pairs — before/after
 treatment, left eye/right eye, or matched case-control designs.
@@ -2973,7 +3228,7 @@ skewed or have outliers.
         )
 
     # ── Table 1 ──────────────────────────────────────────────────────────────
-    with tabs[5]:
+    with tabs[6]:
         st.markdown("""
 Table 1 is the standard summary table in biomedical publications. It describes
 the study population — typically stratified by group (treatment vs. control,
@@ -3042,6 +3297,7 @@ def render_sensitivity():
 
     tabs = st.tabs([
         "Seed Sensitivity",
+        "Feature Dropout",
         "Bootstrap Stability",
         "Interpreting Stability",
     ])
@@ -3106,8 +3362,56 @@ the mean. The app uses these thresholds:
             "across seeds rather than a single-seed result."
         )
 
-    # ── Bootstrap Stability ──────────────────────────────────────────────────
+    # ── Feature Dropout ────────────────────────────────────────────────────
     with tabs[1]:
+        st.markdown("""
+Feature dropout analysis removes one feature at a time, retrains the model, and
+measures the change in performance. This provides a *causal* complement to
+SHAP and permutation importance, which are *observational*.
+""")
+
+        section("How Feature Dropout Differs from Permutation Importance")
+        st.markdown("""
+Permutation importance shuffles a feature's values and measures the effect on
+predictions *without retraining*. This is fast but has a limitation: the model
+was trained with that feature present, so its internal structure still "expects"
+it. Shuffling creates unrealistic data points (e.g., a 25-year-old with the
+income of a 60-year-old) that the model was never trained to handle.
+
+Feature dropout takes the stronger approach: it *removes* the feature entirely and
+*retrains from scratch*. This measures what the model would have learned *if the
+feature had never been available*. It is slower (one full retraining per feature)
+but answers a more informative question: "Does the model genuinely need this feature,
+or can it reconstruct the same information from other features?"
+""")
+
+        section("Interpreting Dropout Results")
+        st.markdown("""
+Three outcomes are possible when feature *j* is removed:
+
+- **Performance drops significantly:** Feature *j* carries unique signal that no
+  other feature can substitute for. It is genuinely important.
+- **Performance is unchanged:** Feature *j* is either redundant (its information is
+  captured by other features) or irrelevant (it was never useful). Either way, it
+  can safely be removed.
+- **Performance improves:** Feature *j* was actively hurting the model — likely adding
+  noise, introducing overfitting, or causing the model to learn a spurious
+  association. Removing it is beneficial.
+
+The last case is particularly valuable: it identifies features that look
+important by simpler metrics (they may have high permutation importance) but are
+actually harmful when the model can adapt without them.
+""")
+
+        app_connection(
+            "The <strong>Sensitivity Analysis</strong> page runs feature dropout for the "
+            "selected model across up to 30 features. It shows a bar chart of performance "
+            "change per feature, highlighting features whose removal improves performance. "
+            "This complements the SHAP analysis from the Explainability page."
+        )
+
+    # ── Bootstrap Stability ──────────────────────────────────────────────────
+    with tabs[2]:
         st.markdown(f"""
 The bootstrap is a resampling method that estimates the sampling distribution of
 a statistic by repeatedly sampling *with replacement* from the
@@ -3161,7 +3465,7 @@ than the other (acceleration).
         ])
 
     # ── Interpreting Stability ───────────────────────────────────────────────
-    with tabs[2]:
+    with tabs[3]:
         st.markdown("""
 Stability results require judgment to interpret. Not all instability is bad, and
 not all stability is good.
