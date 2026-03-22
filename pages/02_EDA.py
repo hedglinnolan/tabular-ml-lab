@@ -1387,6 +1387,7 @@ def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""
             render_interpretation_with_llm_button(
                 ctx, key=f"llm_{key_prefix}",
                 result_session_key=f"llm_result_{key_prefix}",
+                plot_type=action_id,
             )
 
 

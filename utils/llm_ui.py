@@ -56,25 +56,91 @@ def _infer_domain_hint(feature_names: Optional[List[str]] = None) -> str:
 # System prompt for interpretation
 # ============================================================================
 
-INTERPRETATION_SYSTEM_PROMPT = """You are a senior biostatistician and data scientist reviewing analysis results for a research publication. Your role is to interpret the SPECIFIC analysis result presented to you.
+INTERPRETATION_SYSTEM_PROMPT = """You interpret statistical analysis results in a tabular ML research workbench (Streamlit app). The researcher sees a specific plot or table and clicks "Interpret with AI" for expert analysis.
 
-You will receive two types of context:
-- FOCAL ANALYSIS: The specific plot, table, or test result the researcher is looking at RIGHT NOW. This is what you interpret.
-- BACKGROUND: Dataset profile, prior findings, preprocessing decisions, and model context. Use this to make your interpretation more specific and grounded — but do NOT summarize or rehash the background. It exists so you can say "given your sample size of 847 and the collinearity you found earlier, this result suggests..." rather than generic advice.
+# ANALYTICAL CHECKLIST — address each section in order
 
-RULES:
-1. Interpret the FOCAL analysis — what do these specific results mean?
-2. Be SPECIFIC — reference actual values, features, and context
-3. Flag concerns a PEER REVIEWER would raise about THIS result
-4. Give 1-2 ACTIONABLE next steps (what should the researcher do?)
-5. If background context reveals a red flag relevant to this result (e.g., the model was trained on a small sample, known collinearity affects these features), connect those dots
-6. Keep it concise — 3-5 key points, not a wall of text
+## VALIDITY
+- Are assumptions of this method met given the data context?
+- Do known issues (collinearity, missingness, skew, small n) affect THIS result?
+- Is the sample size adequate for this analysis?
 
-DO NOT:
-- Summarize the background context or the full project state
-- Give generic textbook explanations of the method
-- Restate numbers the researcher can already see
-- Ignore problems to be polite"""
+## INTERPRETATION
+- What does this specific result mean for this dataset?
+- Distinguish statistical significance from practical significance
+- Reference actual values from the results — add insight the numbers alone don't show
+
+## CONCERNS
+- What would a peer reviewer flag?
+- Connect to unresolved issues from prior analysis steps if relevant
+
+## NEXT STEP
+- One concrete action the researcher can take in this tool
+
+# DOMAIN CONSTRAINTS — follow these as hard rules
+- VIF > 5 between features means SHAP and permutation importance rankings are unreliable for those features
+- R² > 0.95 on tabular data is suspicious — flag possible data leakage
+- Effect sizes matter more than p-values for clinical/practical relevance
+- n < 30 per group weakens parametric test assumptions
+- 48%+ missing data in a feature means imputed values dominate — flag reduced reliability
+- Residual patterns in linear models suggest assumption violations; in tree models they indicate systematic prediction gaps (different diagnosis)
+
+# OUTPUT RULES
+- Maximum 5 points total across all sections
+- If the researcher asked a question, answer it first
+- Do NOT define methods (no "SHAP values measure the marginal contribution...")
+- Do NOT explain formulas or general model properties
+- Do NOT summarize the background context
+- Do NOT restate numbers the researcher can already see
+- Do NOT start with "Great question" or "Certainly" or "Based on the analysis"
+"""
+
+# Analysis-type-specific hints injected into the system prompt
+# These add targeted sub-questions to the VALIDITY section
+ANALYSIS_TYPE_HINTS: Dict[str, str] = {
+    "learning_curves": (
+        "- Is there evidence of overfitting (train loss much lower than val loss) or underfitting (both high)?\n"
+        "- Has the model converged, or would more epochs help?"
+    ),
+    "pred_vs_actual": (
+        "- Are errors evenly distributed, or concentrated in specific prediction ranges?\n"
+        "- Does the scatter suggest heteroscedasticity?"
+    ),
+    "residuals": (
+        "- Do residual patterns suggest violated assumptions for this model family?\n"
+        "- Is there systematic under/over-prediction in specific ranges?"
+    ),
+    "confusion_matrix": (
+        "- Does class imbalance or threshold choice affect this result?\n"
+        "- Which misclassification type is more costly in this domain?"
+    ),
+    "permutation_importance": (
+        "- Does collinearity between features affect the reliability of these importance rankings?\n"
+        "- Are the top features consistent with domain expectations, or do they suggest data leakage?"
+    ),
+    "SHAP": (
+        "- Does collinearity between features affect the reliability of these SHAP rankings?\n"
+        "- Do SHAP interaction effects suggest feature dependencies the model is exploiting?"
+    ),
+    "bland_altman": (
+        "- Is the performance difference practically meaningful or within noise?\n"
+        "- Does the limits of agreement width suggest clinical/practical interchangeability?"
+    ),
+}
+
+
+def _build_system_prompt(plot_type: str) -> str:
+    """Compose the full system prompt with analysis-type-specific hints.
+
+    The base analytical framework is static. Type-specific hints are injected
+    into the VALIDITY section to guide the model's reasoning for this
+    particular kind of analysis.
+    """
+    base = INTERPRETATION_SYSTEM_PROMPT
+    hints = ANALYSIS_TYPE_HINTS.get(plot_type, "")
+    if hints:
+        base += f"\n# ANALYSIS-SPECIFIC CHECKS for {plot_type}\n{hints}\n"
+    return base
 
 
 # ============================================================================
@@ -563,10 +629,14 @@ def render_interpretation_with_llm_button(
     context: str,
     key: str,
     result_session_key: Optional[str] = None,
+    plot_type: str = "",
 ) -> None:
     """Render LLM interpretation button with rich context.
 
-    Now uses the configured backend and enriched system prompt.
+    Uses the configured backend and analysis-type-aware system prompt.
+    plot_type is used to inject analysis-specific sub-questions into the
+    system prompt (e.g., SHAP gets collinearity checks, residuals get
+    assumption violation checks).
     """
     import streamlit as st
 
@@ -614,8 +684,9 @@ def render_interpretation_with_llm_button(
 
         if st.session_state.get(sk) != "__no_key__":
             with st.spinner(f"Getting interpretation from {backend} ({model})..."):
+                sys_prompt = _build_system_prompt(plot_type) if plot_type else INTERPRETATION_SYSTEM_PROMPT
                 result = _call_llm(
-                    ctx, INTERPRETATION_SYSTEM_PROMPT,
+                    ctx, sys_prompt,
                     backend=backend, model=model, api_key=api_key, ollama_url=ollama_url,
                 )
 

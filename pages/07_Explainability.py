@@ -686,7 +686,7 @@ if perm_data or shap_data:
                                                 existing=nar or "", feature_names=_fn[:n],
                                                 sample_size=X_test.shape[0] if X_test is not None else None,
                                                 task_type=data_config.task_type if data_config else None, **_bg_perm)
-                        render_interpretation_with_llm_button(ctx, key=f"llm_perm_{name}", result_session_key=f"llm_result_perm_{name}")
+                        render_interpretation_with_llm_button(ctx, key=f"llm_perm_{name}", result_session_key=f"llm_result_perm_{name}", plot_type="permutation_importance")
                 else:
                     st.info("Permutation importance was not computed for this model.")
 
@@ -781,7 +781,7 @@ if perm_data or shap_data:
                     ctx = build_llm_context("SHAP", stats_summary, model_name=name, model_family=MODEL_TO_FAMILY.get(name, ""),
                                             existing=nar or "", feature_names=fn_plot, sample_size=X_ev.shape[0],
                                             task_type=data_config.task_type if data_config else None, **_bg_shap)
-                    render_interpretation_with_llm_button(ctx, key=f"llm_shap_{name}", result_session_key=f"llm_result_shap_{name}")
+                    render_interpretation_with_llm_button(ctx, key=f"llm_shap_{name}", result_session_key=f"llm_result_shap_{name}", plot_type="SHAP")
                     
                     # Enhanced SHAP visualizations
                     st.markdown("---")
@@ -980,7 +980,7 @@ if task_final == 'regression' and len(mr) >= 2:
                     "bland_altman", stats_summary, where=f"Bland-Altman ({ma} vs {mb})", existing=nar or "",
                     metrics=ba_stats, sample_size=len(pa), task_type=data_config.task_type if data_config else None, **_bg_ba,
                 )
-                render_interpretation_with_llm_button(ctx, key="llm_bland_altman_btn", result_session_key="llm_result_bland_altman")
+                render_interpretation_with_llm_button(ctx, key="llm_bland_altman_btn", result_session_key="llm_result_bland_altman", plot_type="bland_altman")
             else:
                 st.warning("Prediction lengths differ; cannot compare.")
     else:

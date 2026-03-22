@@ -1643,7 +1643,7 @@ Poor performance may be due to:
                     stats_summary = f"train_loss={tl[-1]:.4f}; val_loss={vl[-1]:.4f}" if tl else ""
                     _bg_lc = {k: v for k, v in _bg.items() if k not in ("feature_names", "sample_size", "task_type")}
                     ctx = build_llm_context("learning_curves", stats_summary, model_name=name, model_family=_model_family, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task, **_bg_lc)
-                    render_interpretation_with_llm_button(ctx, key=f"llm_lc_{name}", result_session_key=f"llm_result_lc_{name}")
+                    render_interpretation_with_llm_button(ctx, key=f"llm_lc_{name}", result_session_key=f"llm_result_lc_{name}", plot_type="learning_curves")
 
                 if data_config.task_type == "regression":
                     st.subheader("Predictions vs Actual")
@@ -1663,7 +1663,7 @@ Poor performance may be due to:
                     stats_summary = f"corr={pva_stats.get('correlation', 0):.3f}; mean_err={pva_stats.get('mean_error', 0):.4f}"
                     _bg_pva = {k: v for k, v in _bg.items() if k not in ("feature_names", "sample_size", "task_type")}
                     ctx = build_llm_context("pred_vs_actual", stats_summary, model_name=name, model_family=_model_family, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task, **_bg_pva)
-                    render_interpretation_with_llm_button(ctx, key=f"llm_pva_{name}", result_session_key=f"llm_result_pva_{name}")
+                    render_interpretation_with_llm_button(ctx, key=f"llm_pva_{name}", result_session_key=f"llm_result_pva_{name}", plot_type="pred_vs_actual")
 
                     st.subheader("Residuals")
                     st.plotly_chart(
@@ -1683,7 +1683,7 @@ Poor performance may be due to:
                     stats_summary = f"skew={resid_stats.get('skew', 0):.3f}; iqr={resid_stats.get('iqr', 0):.4f}; rvp={resid_stats.get('residual_vs_predicted_corr', 0):.3f}"
                     _bg_res = {k: v for k, v in _bg.items() if k not in ("feature_names", "sample_size", "task_type")}
                     ctx = build_llm_context("residuals", stats_summary, model_name=name, model_family=_model_family, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task, **_bg_res)
-                    render_interpretation_with_llm_button(ctx, key=f"llm_resid_{name}", result_session_key=f"llm_result_resid_{name}")
+                    render_interpretation_with_llm_button(ctx, key=f"llm_resid_{name}", result_session_key=f"llm_result_resid_{name}", plot_type="residuals")
                 else:
                     st.subheader("Classification Performance")
                     from sklearn.metrics import confusion_matrix as sk_confusion_matrix, roc_curve, precision_recall_curve, auc
@@ -1745,4 +1745,4 @@ Poor performance may be due to:
                     stats_summary = "; ".join(f"{p.get('label','?')}: P={p.get('precision',0):.2f} R={p.get('recall',0):.2f}" for p in per) if per else ""
                     _bg_cm = {k: v for k, v in _bg.items() if k not in ("feature_names", "sample_size", "task_type")}
                     ctx = build_llm_context("confusion_matrix", stats_summary, model_name=name, model_family=_model_family, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task, **_bg_cm)
-                    render_interpretation_with_llm_button(ctx, key=f"llm_cm_{name}", result_session_key=f"llm_result_cm_{name}")
+                    render_interpretation_with_llm_button(ctx, key=f"llm_cm_{name}", result_session_key=f"llm_result_cm_{name}", plot_type="confusion_matrix")
