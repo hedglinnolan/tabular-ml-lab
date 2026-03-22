@@ -406,7 +406,7 @@ percentage change in x. However, it requires strictly positive values and can
 over-correct moderate skew.
 
 **Box-Cox transform:** A parametric family that includes the log as a special case. {cite("Box & Cox, 1964")}
-""")
+""", unsafe_allow_html=True)
             st.latex(r"""
             y^{(\lambda)} = \begin{cases}
             \dfrac{x^{\lambda} - 1}{\lambda} & \text{if } \lambda \neq 0 \\[8pt]
@@ -853,17 +853,402 @@ def render_feature_engineering():
         "Information Leakage",
     ])
 
+    # ── Transformations ──────────────────────────────────────────────────────
     with tabs[0]:
-        st.markdown("*Content will be populated in the next pass.*")
+        st.markdown("""
+Feature transformations reshape individual variables to better match the
+assumptions of downstream models. The goal is not to change the data's meaning
+but to present the same information in a form that specific algorithms can
+exploit more effectively.
+""")
+        section("Polynomial and Interaction Features")
+        st.markdown(f"""
+Linear models assume that the relationship between each feature and the response
+is a straight line. When the true relationship is curved — for example, the effect
+of age on medical costs accelerates after 50 — a linear model will systematically
+under-predict at the extremes and over-predict in the middle.
 
+Polynomial features address this by explicitly creating new columns that represent
+powers and products of the original features. For a feature *x*, a degree-2 expansion
+creates *x²*; for two features *x₁* and *x₂*, it also creates the interaction
+*x₁ · x₂*. The model can then learn curved and interactive effects while remaining
+linear *in the expanded feature space*. {cite("ISLR, §7.1")}
+""", unsafe_allow_html=True)
+        st.latex(r"""
+        \text{Degree-2 expansion of } (x_1, x_2): \quad x_1, \; x_2, \; x_1^2, \; x_2^2, \; x_1 x_2
+        """)
+        st.markdown("""
+The tradeoff is dimensionality: a degree-*d* expansion of *p* features creates
+on the order of *p^d* new features. With 20 original features, a degree-3 expansion
+produces over 1,500 columns — many of which are noise. This is why polynomial
+features should be used judiciously and paired with feature selection or regularization.
+
+**Tree-based models do not benefit from polynomial features.** Trees can already
+capture nonlinear effects and interactions through recursive partitioning. Adding
+polynomial terms to a Random Forest just adds noise without new information.
+""")
+        section("Mathematical Transforms")
+        st.markdown("""
+When the EDA page reveals that a feature is heavily skewed, a mathematical transform
+can compress the long tail and make the distribution more symmetric. The most common
+options and when each is appropriate:
+
+**Log transform** — log(x) or log(1 + x) for data with zeros. Best for right-skewed
+positive data where the spread increases with the level (e.g., income, medical costs,
+gene expression counts). A unit increase in log(x) corresponds to a *multiplicative*
+change in x, which is often more natural for this type of data.
+
+**Square root** — √x. A gentler compression than log, appropriate for count data
+(Poisson-distributed variables) where the variance is proportional to the mean.
+
+**Reciprocal** — 1/x. An aggressive compression that reverses the ordering. Rarely
+useful as a standalone transform but arises naturally in some domains (e.g., speed = 1/time).
+
+As discussed in the Data Quality chapter, tree-based models are invariant to monotone
+transforms, so these only benefit linear, neural, and distance-based models.
+""")
+        section("Ratio Features")
+        st.markdown("""
+Ratio features divide one variable by another to create a normalized quantity that
+often has more predictive signal than either variable alone. Classic examples include
+BMI (weight/height²), price-per-square-foot, and debt-to-income ratio.
+
+The intuition: ratios control for a confounding variable. Income alone and spending
+alone may both correlate with default risk, but spending-to-income ratio isolates the
+*overspending behavior* that actually predicts default.
+
+**Caution:** Ratios can create extreme values when the denominator is near zero. The
+app clips or warns when this occurs.
+""")
+        section("Binning")
+        st.markdown("""
+Binning (discretization) converts a continuous feature into categorical bins. This
+is useful when the relationship between the feature and response is step-like rather
+than smooth — for example, clinical thresholds (normal/pre-diabetic/diabetic based
+on HbA1c) that represent genuine regime changes.
+
+Three strategies are available:
+
+- **Equal-width binning** divides the range into bins of equal size. Simple but sensitive
+  to outliers (one extreme value can make most bins empty).
+- **Quantile binning** creates bins with approximately equal numbers of observations.
+  More robust, but boundaries may split natural clusters.
+- **K-means binning** uses 1-D clustering to find natural break points in the data.
+  Often the best choice when the distribution has multiple modes.
+
+**When NOT to bin:** Binning always destroys information — within each bin, all
+variation is lost. If the true relationship is smooth and monotone, binning will hurt
+model performance compared to using the raw (or transformed) continuous feature.
+""")
+        section("Dimensionality Reduction")
+        st.markdown(f"""
+When the feature space is very high-dimensional — either from raw data or after
+polynomial expansion — dimensionality reduction creates a smaller set of new
+features that capture most of the variance in the original space.
+
+**PCA (Principal Component Analysis)** finds orthogonal directions of maximum variance
+and projects the data onto the top *k* of them. {cite("ISLR, §12.2")}
+""", unsafe_allow_html=True)
+        st.latex(r"""
+        \mathbf{Z} = \mathbf{X} \mathbf{W}_k \quad \text{where } \mathbf{W}_k = [w_1, \ldots, w_k]
+        \text{ are the top } k \text{ eigenvectors of } \mathbf{X}^\top \mathbf{X}
+        """)
+        st.markdown("""
+Each principal component *z_j* is a linear combination of the original features,
+weighted by the corresponding eigenvector *w_j*. The first component captures the
+most variance, the second captures the most remaining variance orthogonal to the
+first, and so on. The key decision is how many components *k* to retain — typically
+chosen to explain 90–95% of total variance.
+
+**PCA limitations:** The components are linear combinations and may not be interpretable
+in domain terms. PCA is also purely unsupervised — it finds directions of maximum
+*variance*, not maximum *predictive power*. A direction with high variance might be
+noise, and a direction with low variance might contain the signal.
+
+**UMAP** is a nonlinear alternative that preserves local neighborhood structure rather
+than global variance. It excels at visualization and can capture manifold structure
+that PCA misses, but its components are even less interpretable than PCA's.
+""")
+        app_connection(
+            "The <strong>Feature Engineering</strong> page offers all of these transforms: "
+            "polynomial features (degree 2–3), mathematical transforms (log, sqrt, square, "
+            "reciprocal), ratio features, binning (equal-width, quantile, K-means), "
+            "PCA, UMAP, and even TDA (topological data analysis). Each has an explainability "
+            "impact rating to help you weigh the predictive benefit against interpretability cost."
+        )
+
+        with st.expander("Deep Dive: The Explainability-Performance Tradeoff"):
+            st.markdown(f"""
+Every feature engineering step sits on a spectrum from highly interpretable to
+highly opaque. The Feature Engineering page rates each technique:
+
+- 🟢 **Low impact** — Ratio features, mathematical transforms. "log(glucose)" is
+  still one column with a clear meaning.
+- 🟡 **Medium impact** — Polynomial features. "BMI² × Age" is harder to explain
+  in a methods section but still traceable.
+- 🔴 **High impact** — PCA, UMAP, TDA. The features are abstract constructions
+  with no direct domain interpretation.
+
+For publication, this tradeoff matters. A reviewer can evaluate "we log-transformed
+skewed features" easily. "We used the first 5 principal components" requires more
+justification. "We computed persistent homology on the Vietoris-Rips complex" may
+require an entire supplementary section. {cite("ISLR, §2.1.3")}
+
+The right choice depends on your audience and goals. If interpretability is paramount
+(clinical prediction models), stay in the green zone. If raw prediction accuracy
+matters most (competition, screening), the orange and red techniques may be worthwhile.
+""", unsafe_allow_html=True)
+
+        references([
+            "James, G., Witten, D., Hastie, T., & Tibshirani, R. (2021). *An Introduction to Statistical Learning* (2nd ed.), §7.1, §12.2. Springer.",
+        ])
+
+    # ── Encoding Categoricals ────────────────────────────────────────────────
     with tabs[1]:
-        st.markdown("*Content will be populated in the next pass.*")
+        st.markdown("""
+Most machine learning algorithms require numeric inputs. When your data contains
+categorical variables (sex, treatment group, hospital site), you must encode them
+as numbers — and how you do this is not a neutral choice. Different encoding
+strategies carry different assumptions and work better with different model families.
+""")
+        section("One-Hot Encoding")
+        st.markdown("""
+One-hot encoding creates a new binary column for each category level. A "color"
+feature with values {red, green, blue} becomes three columns: *is_red*, *is_green*,
+*is_blue*, each containing 0 or 1.
 
+**Advantages:** Makes no assumption about ordering or magnitude. Each category gets
+its own coefficient in a linear model, allowing the model to assign completely
+different effects to each level.
+
+**Disadvantages:** Creates *k* new columns for a feature with *k* levels. High-cardinality
+features (hospital ID with 200 levels) can explode the feature space, causing
+curse-of-dimensionality problems. Also introduces perfect multicollinearity — the
+dummy columns sum to 1 — which is why one level is typically dropped as the
+reference category.
+""")
+        section("Ordinal Encoding")
+        st.markdown("""
+Ordinal encoding assigns integers (0, 1, 2, ...) to categories. This is appropriate
+*only* when the categories have a natural order: education level (high school < bachelor's
+< master's < PhD), pain severity (none < mild < moderate < severe).
+
+The encoding implies that the distance between adjacent levels is equal (the
+difference between mild and moderate is the same as between moderate and severe),
+which may or may not be true. For linear models, this matters because the coefficient
+represents the effect of a one-unit increase in the encoded variable. For tree-based
+models, the exact distances don't matter — only the rank order is used for splits.
+
+**Never use ordinal encoding for nominal categories** (color, country, blood type).
+Assigning red = 0, green = 1, blue = 2 implies that green is "between" red and blue,
+which is meaningless.
+""")
+        section("Target Encoding")
+        st.markdown("""
+Target encoding replaces each category level with the mean of the target variable
+for that level. For a classification task, "Hospital A" might be encoded as 0.34
+(the proportion of positive outcomes at Hospital A).
+
+This is powerful for high-cardinality features where one-hot encoding would create
+too many columns. But it carries a serious risk: **data leakage**. The encoding uses
+the target variable, which means information about *y* is baked into the feature *x*.
+Without careful regularization, the model can overfit to the noise in the target
+means — especially for rare categories where the mean is estimated from very few
+observations.
+
+The standard mitigation is **leave-one-out target encoding with additive smoothing**:
+each observation's encoding uses the target mean computed *without* that observation,
+and rare categories are smoothed toward the global mean. Even with these safeguards,
+target encoding should be done inside cross-validation to prevent information leakage
+from the test set.
+""")
+        app_connection(
+            "The <strong>Feature Engineering</strong> page offers one-hot, ordinal, and target "
+            "encoding. It warns when one-hot encoding will create more than 20 columns "
+            "(suggesting ordinal or target encoding instead) and automatically handles the "
+            "reference category for dummy variables."
+        )
+
+        with st.expander("Deep Dive: The Dummy Variable Trap"):
+            st.markdown("""
+If a categorical feature with *k* levels is one-hot encoded into *k* dummy columns,
+those columns are perfectly collinear — they always sum to 1. Including all *k* in a
+linear model makes **XᵀX** singular (non-invertible), because any one column can be
+exactly predicted from the others.
+
+The standard solution: drop one level as the **reference category**. The remaining
+*k − 1* coefficients then represent the *difference* from the reference level. For
+example, if "treatment group" has levels {placebo, drug A, drug B} and placebo is the
+reference, the coefficients for drug A and drug B represent the *effect relative to
+placebo*.
+
+The choice of reference category doesn't affect predictions — only the
+interpretation of individual coefficients changes. Tree-based models are not affected
+by this issue, since they don't invert XᵀX.
+""")
+
+        references([
+            "James, G., Witten, D., Hastie, T., & Tibshirani, R. (2021). *An Introduction to Statistical Learning* (2nd ed.), §3.3.1. Springer.",
+            "Micci-Barreca, D. (2001). A preprocessing scheme for high-cardinality categorical attributes in classification and prediction problems. *ACM SIGKDD Explorations*, 3(1), 27–32.",
+        ])
+
+    # ── Selection Methods ────────────────────────────────────────────────────
     with tabs[2]:
-        st.markdown("*Content will be populated in the next pass.*")
+        st.markdown(f"""
+Feature selection removes irrelevant or redundant features before model training.
+The goal is to reduce noise, improve interpretability, and avoid overfitting —
+especially important when the number of features is large relative to sample
+size. {cite("ISLR, §6.1")}
 
+Three families of selection methods exist, each with different assumptions and
+computational costs.
+""", unsafe_allow_html=True)
+
+        section("LASSO Path (Embedded Method)")
+        st.markdown(f"""
+LASSO (Least Absolute Shrinkage and Selection Operator) performs feature selection
+as a byproduct of model fitting. It adds an L1 penalty to the regression loss:
+{cite("Tibshirani, 1996")}
+""", unsafe_allow_html=True)
+        st.latex(r"""
+        \hat{\beta}^{\text{lasso}} = \underset{\beta}{\arg\min} \left\{
+        \frac{1}{2n} \| \mathbf{y} - \mathbf{X}\beta \|_2^2 + \lambda \| \beta \|_1
+        \right\}
+        """)
+        st.markdown("""
+The key to LASSO's selection behavior is the geometry of the L1 penalty. The
+constraint region ‖β‖₁ ≤ t forms a *diamond* in coefficient space (a square in 2D,
+a cross-polytope in higher dimensions). The corners of this diamond lie on the
+coordinate axes — meaning they correspond to solutions where some coefficients are
+exactly zero. As the penalty strength λ increases, the constraint region shrinks,
+and the optimal solution is pushed toward these corners, zeroing out features one
+by one.
+
+The **LASSO path** traces this process: starting from λ = 0 (the full OLS solution)
+and increasing λ until all coefficients are zero. Features that survive to higher
+values of λ are the most important. The app uses cross-validation to select the
+optimal λ — the value that minimizes prediction error on held-out folds.
+
+**Limitation:** When features are correlated, LASSO tends to select one arbitrarily
+and zero the others. Elastic Net (L1 + L2 penalty) is more stable in this case,
+as the L2 component encourages correlated features to share the coefficient.
+""")
+        section("RFE-CV (Wrapper Method)")
+        st.markdown("""
+Recursive Feature Elimination with Cross-Validation (RFE-CV) is a greedy backward
+selection algorithm:
+
+1. Train a model on all features.
+2. Rank features by importance (e.g., absolute coefficient size for linear models,
+   impurity importance for trees).
+3. Remove the least important feature.
+4. Repeat steps 1–3, recording cross-validated performance at each step.
+5. Select the feature set that produced the best CV score.
+
+RFE-CV is **model-aware** — it uses the actual model's importance rankings, so the
+selected features are tailored to the model you'll use downstream. But it is
+computationally expensive: each elimination step requires retraining the model,
+and with cross-validation at each step, the total cost is O(p · k) model fits
+(p features × k CV folds).
+
+**Limitation:** Greedy elimination can miss feature interactions — removing feature A
+might look fine at step 3, but feature A might be critical in combination with feature
+B that's removed at step 7. Once A is removed, it never comes back.
+""")
+        section("Consensus Approach")
+        st.markdown("""
+Because each selection method has different blind spots, the app runs both LASSO path
+and RFE-CV by default and reports the **consensus** — features selected by both
+methods. Features in the consensus set have survived two fundamentally different
+selection criteria: the geometric sparsity of L1 regularization and the greedy
+importance ranking of RFE. This provides stronger evidence of genuine signal
+than either method alone.
+
+The app also shows features selected by only one method, which may warrant manual
+review — they might represent real signal that one method missed, or noise that one
+method incorrectly retained.
+""")
+        app_connection(
+            "The <strong>Feature Selection</strong> page runs LASSO path and RFE-CV, shows "
+            "individual and consensus results, and allows manual override. The coaching "
+            "layer warns when the consensus set is very small (potential signal loss) or "
+            "very large (potential noise retention)."
+        )
+
+        references([
+            "James, G., Witten, D., Hastie, T., & Tibshirani, R. (2021). *An Introduction to Statistical Learning* (2nd ed.), §6.1, §6.2. Springer.",
+            "Tibshirani, R. (1996). Regression shrinkage and selection via the lasso. *Journal of the Royal Statistical Society, Series B*, 58(1), 267–288.",
+            "Guyon, I. & Elisseeff, A. (2003). An introduction to variable and feature selection. *Journal of Machine Learning Research*, 3, 1157–1182.",
+        ])
+
+    # ── Information Leakage ──────────────────────────────────────────────────
     with tabs[3]:
-        st.markdown("*Content will be populated in the next pass.*")
+        st.markdown("""
+Information leakage occurs when information from the test set (or future data)
+contaminates the training process, producing performance estimates that are
+optimistically biased — sometimes drastically so. Feature selection is one of
+the most common sources of leakage in applied ML.
+""")
+        section("The Feature Selection Leakage Problem")
+        st.markdown("""
+Consider the following workflow, which is **wrong but extremely common**:
+
+1. Run feature selection on the entire dataset.
+2. Split into train and test sets.
+3. Train a model on the selected features.
+4. Evaluate on the test set.
+
+The problem: step 1 uses the test set. The feature selection algorithm "saw" the
+test observations when deciding which features to keep. Features were selected partly
+because they happened to correlate with the test set's target values, so the test
+performance is optimistically biased.
+
+The correct workflow wraps feature selection *inside* the cross-validation loop:
+
+1. Split into train and test sets.
+2. Run feature selection on the training set *only*.
+3. Train a model on the selected features.
+4. Evaluate on the test set using the same features selected in step 2.
+
+This means the feature set may differ across folds — and that's correct. It
+reflects the reality that different samples from the same population might lead
+to different feature selections, which is itself useful information about the
+stability of your features.
+""")
+        section("Other Sources of Leakage")
+        st.markdown("""
+Feature selection is just one entry point. Leakage can creep in through:
+
+- **Target encoding before splitting.** If category means are computed on the full
+  dataset, the encoding contains information about test-set targets.
+- **Imputation before splitting.** Computing the median for imputation on the full
+  dataset means the test set's values influence the imputed training values.
+- **Scaling before splitting.** Computing mean and standard deviation on the full
+  dataset means the scaler "knows" about the test distribution.
+
+The general principle: **any operation that is estimated from data must be fit on
+the training set and then applied (without re-fitting) to the test set.** This is
+why the Preprocess page builds a *pipeline* — a sequence of fit-then-transform
+steps that respects the train/test boundary.
+""")
+        takeaway(
+            "If your test performance is suspiciously close to your training performance, "
+            "leakage is the first hypothesis to investigate. A 2% gap between train and "
+            "test accuracy is normal. A 0.1% gap on a complex model is a red flag."
+        )
+
+        app_connection(
+            "The app's pipeline architecture is designed to prevent leakage: all preprocessing "
+            "steps (scaling, imputation, encoding) are fit on the training fold and applied to "
+            "the test fold within cross-validation. Feature selection is performed before the "
+            "train-test split as a practical compromise, but the coaching layer warns about this "
+            "and recommends the user verify stability across CV folds."
+        )
+
+        references([
+            "Hastie, T., Tibshirani, R., & Friedman, J. (2009). *The Elements of Statistical Learning* (2nd ed.), §7.10.2. Springer.",
+            "Kaufman, S., Rosset, S., Perlich, C., & Stitelman, O. (2012). Leakage in data mining: Formulation, detection, and avoidance. *ACM Transactions on Knowledge Discovery from Data*, 6(4), 1–21.",
+        ])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
