@@ -396,11 +396,27 @@ _STEP_TO_CATEGORY = {
 }
 
 
+
+# Steps that use a fixed ledger ID (last-wins, matching methodology_log REPLACE semantics)
+_REPLACE_STEP_IDS = {
+    'Upload & Audit', 'Feature Engineering', 'Feature Selection Applied',
+    'Preprocessing', 'Model Training', 'Explainability',
+}
+
+# Steps that are activity-only records (belong in audit trail, not narrative)
+# These still write to the ledger for provenance but are marked so the
+# narrative renderer can exclude them.
+_AUDIT_ONLY_STEPS = {'EDA'}
+
+
 def _log_to_ledger(step: str, action: str, details: Optional[Dict[str, Any]] = None):
     """Bridge: write a pre-resolved Insight entry for each methodology log call.
 
     Enriches details with structured action_type when inferrable from the step,
     so the narrative renderer can produce publication-quality prose.
+
+    For REPLACE steps (Upload & Audit, Preprocessing, etc.), uses a fixed ID
+    so repeated runs overwrite instead of accumulating duplicates.
     """
     try:
         from utils.insight_ledger import Insight, get_ledger
@@ -410,9 +426,12 @@ def _log_to_ledger(step: str, action: str, details: Optional[Dict[str, Any]] = N
         page = _STEP_TO_PAGE.get(step, '02_EDA')
         category = _STEP_TO_CATEGORY.get(step, 'methodology')
 
-        # Deterministic ID from step + action (slugified)
-        slug = action.lower().replace(' ', '_')[:40]
-        insight_id = f"method_{step.lower().replace(' ', '_')}_{slug}"
+        # Fixed ID for replace-steps; action-based slug for additive steps
+        if step in _REPLACE_STEP_IDS:
+            insight_id = f"method_{step.lower().replace(' ', '_').replace('&', 'and')}"
+        else:
+            slug = action.lower().replace(' ', '_')[:40]
+            insight_id = f"method_{step.lower().replace(' ', '_')}_{slug}"
 
         # Enrich details with structured schema fields when inferrable
         enriched = dict(details) if details else {}
@@ -436,6 +455,9 @@ def _log_to_ledger(step: str, action: str, details: Optional[Dict[str, Any]] = N
                 elif enriched.get("scaling"):
                     enriched["method"] = enriched["scaling"]
 
+        # Mark audit-only entries so narrative can exclude them
+        is_audit_only = step in _AUDIT_ONLY_STEPS
+
         ledger.upsert(Insight(
             id=insight_id,
             source_page=page,
@@ -450,6 +472,7 @@ def _log_to_ledger(step: str, action: str, details: Optional[Dict[str, Any]] = N
             resolved_on_page=page,
             resolution_details=enriched,
             auto_generated=True,
+            metadata={"audit_only": True} if is_audit_only else {},
         ))
     except Exception:
         pass  # Never break methodology logging if ledger has issues
