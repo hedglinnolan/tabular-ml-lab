@@ -192,6 +192,14 @@ def takeaway(text: str):
     st.markdown(f'<div class="key-takeaway">💡 <strong>Key takeaway:</strong> {text}</div>', unsafe_allow_html=True)
 
 
+def references(refs: list[str]):
+    """Render a references section at the bottom of a chapter or tab."""
+    st.markdown("---")
+    st.markdown(f'<div class="theory-section-head">References</div>', unsafe_allow_html=True)
+    for ref in refs:
+        st.markdown(f"- {ref}")
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Chapter 1: Data Quality & Assumptions
 # ══════════════════════════════════════════════════════════════════════════════
@@ -244,13 +252,25 @@ so the missing blood pressure values are systematically higher than the observed
 ones. MNAR is the most challenging scenario: no purely statistical remedy exists
 without modeling the missingness mechanism directly.
 """)
-
+        st.markdown("""
+These three mechanisms can be expressed formally. Let **R** denote a missingness
+indicator (0 = missing, 1 = observed), **Y_obs** denote the values we *can* see,
+and **Y_mis** denote the values we *cannot*. The question is: what does the
+probability of being missing depend on?
+""")
         formula(
             "P(R = 0 | Y_obs, Y_mis) = P(R = 0)&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&nbsp;← MCAR<br>"
             "P(R = 0 | Y_obs, Y_mis) = P(R = 0 | Y_obs)&emsp;&emsp;← MAR<br>"
-            "P(R = 0 | Y_obs, Y_mis) depends on Y_mis&emsp;&emsp;&nbsp;← MNAR<br><br>"
-            "where R is the missingness indicator (0 = missing, 1 = observed)"
+            "P(R = 0 | Y_obs, Y_mis) depends on Y_mis&emsp;&emsp;&nbsp;← MNAR"
         )
+        st.markdown("""
+Reading these from top to bottom: under MCAR, the left-hand side simplifies to a
+constant — nothing predicts missingness. Under MAR, the probability of being missing
+can depend on the data you *did* observe (Y_obs), but not on the value that's
+actually missing (Y_mis). Under MNAR, the missing value itself influences whether
+it's missing — and that's the scenario no imputation method can fully correct without
+explicitly modeling *why* data is missing.
+""")
 
         section("Why the Mechanism Matters for Imputation")
         st.markdown(f"""
@@ -300,6 +320,13 @@ patterns. A non-significant result does not confirm MCAR — it may simply refle
 insufficient power to detect departures.
 """, unsafe_allow_html=True)
 
+        references([
+            "Rubin, D.B. (1976). Inference and missing data. *Biometrika*, 63(3), 581–592.",
+            "van Buuren, S. (2018). *Flexible Imputation of Missing Data* (2nd ed.). CRC Press.",
+            "van Buuren, S. & Groothuis-Oudshoorn, K. (2011). mice: Multivariate Imputation by Chained Equations in R. *Journal of Statistical Software*, 45(3), 1–67.",
+            "Little, R.J.A. (1988). A test of missing completely at random for multivariate data with missing values. *Journal of the American Statistical Association*, 83(404), 1198–1202.",
+        ])
+
     # ── Distributional Shape ─────────────────────────────────────────────────
     with tabs[1]:
         st.markdown("""
@@ -311,13 +338,21 @@ models will perform well and which preprocessing steps are necessary.
         st.markdown(f"""
 Skewness measures the asymmetry of a distribution around its mean. A distribution
 with a long right tail (e.g., income, medical costs) has positive skew; a long left
-tail gives negative skew. The sample skewness is defined as:
+tail gives negative skew. The sample skewness is computed as:
 """)
         formula(
-            "γ₁ = (1/n) Σᵢ [(xᵢ - x̄) / s]³<br><br>"
-            "where x̄ is the sample mean, s is the sample standard deviation, and n is the sample size."
+            "γ₁ = (1/n) Σᵢ [(xᵢ − x̄) / s]³"
         )
         st.markdown(f"""
+Each observation is first standardized — centered by the mean x̄ and scaled by the
+standard deviation s — so the result is unitless and comparable across features.
+The cubing is what makes this measure sensitive to *asymmetry*: positive deviations
+cubed remain positive, negative deviations cubed remain negative. If the distribution
+is symmetric, these cancel out and γ₁ ≈ 0. If the right tail is longer, the large
+positive cubed terms dominate, giving γ₁ > 0. As a rough guide: |γ₁| < 0.5 is
+approximately symmetric, |γ₁| between 0.5 and 1 is moderately skewed, and
+|γ₁| > 1 is heavily skewed.
+
 **Why skewness matters — and for which models.** Skewness affects models
 differently depending on their mathematical assumptions: {cite("ISLR, §3.3")}
 
@@ -350,12 +385,17 @@ Kurtosis measures the heaviness of the tails relative to a normal distribution. 
 whether extreme values are more or less likely than a Gaussian would predict.
 """)
         formula(
-            "κ = (1/n) Σᵢ [(xᵢ - x̄) / s]⁴ − 3<br><br>"
-            "κ > 0: heavy tails (leptokurtic) — more extreme values than normal<br>"
-            "κ = 0: normal tails (mesokurtic)<br>"
-            "κ < 0: light tails (platykurtic) — fewer extreme values than normal"
+            "κ = (1/n) Σᵢ [(xᵢ − x̄) / s]⁴ − 3"
         )
         st.markdown("""
+The structure is similar to skewness, but the standardized deviations are raised to
+the *fourth* power instead of the third. This amplifies extreme values even more
+aggressively — an observation 3 standard deviations from the mean contributes
+81 times as much as one at 1 standard deviation (3⁴ = 81). The subtraction of 3
+re-centers the measure so that a normal distribution has excess kurtosis of zero;
+values above zero indicate heavier tails than normal (leptokurtic), and values below
+zero indicate lighter tails (platykurtic).
+
 High kurtosis is a warning sign for linear models and any method that uses
 squared error: a few extreme observations contribute disproportionately to the
 loss. It is also a signal that standard confidence intervals (which assume normality)
@@ -385,12 +425,17 @@ over-correct moderate skew.
 **Box-Cox transform:** A parametric family that includes the log as a special case. {cite("Box & Cox, 1964")}
 """)
             formula(
-                "y(λ) = (xᵝ − 1) / λ&emsp;&emsp;if λ ≠ 0<br>"
-                "y(λ) = log(x)&emsp;&emsp;&emsp;&emsp;if λ = 0<br><br>"
-                "The optimal λ is chosen by maximum likelihood. Common values:<br>"
-                "λ = 1: no transform &emsp; λ = 0.5: square root &emsp; λ = 0: log &emsp; λ = −1: reciprocal"
+                "y(λ) = (x^λ − 1) / λ&emsp;&emsp;if λ ≠ 0<br>"
+                "y(λ) = log(x)&emsp;&emsp;&emsp;&emsp;&nbsp;if λ = 0"
             )
             st.markdown(f"""
+The parameter λ controls *how aggressively* the transform compresses the upper tail.
+The key insight is that different values of λ recover familiar transforms: λ = 1 is
+no transform at all (just a shift), λ = 0.5 gives the square root, λ = 0 gives the
+natural log, and λ = −1 gives the reciprocal. The optimal λ is chosen by maximum
+likelihood — the value that makes the transformed data most closely resemble a normal
+distribution.
+
 **Yeo-Johnson transform:** Extends Box-Cox to handle zero and negative values by
 using a modified formula for non-positive inputs. {cite("Yeo & Johnson, 2000")}
 This is the most general-purpose option in the app, since it works regardless
@@ -400,6 +445,13 @@ of the feature's range.
 is unnecessary and may even hurt interpretability. Transformations change the scale
 of coefficients in linear models — be prepared to back-transform for interpretation.
 """, unsafe_allow_html=True)
+
+        references([
+            "James, G., Witten, D., Hastie, T., & Tibshirani, R. (2021). *An Introduction to Statistical Learning* (2nd ed.), §3.3. Springer.",
+            "Hastie, T., Tibshirani, R., & Friedman, J. (2009). *The Elements of Statistical Learning* (2nd ed.), §9.2. Springer.",
+            "Box, G.E.P. & Cox, D.R. (1964). An analysis of transformations. *Journal of the Royal Statistical Society, Series B*, 26(2), 211–252.",
+            "Yeo, I.-K. & Johnson, R.A. (2000). A new family of power transformations to improve normality or symmetry. *Biometrika*, 87(4), 954–959.",
+        ])
 
     # ── Outliers ─────────────────────────────────────────────────────────────
     with tabs[2]:
@@ -436,16 +488,40 @@ quadratically to the loss. This can shift the entire fitted line toward the
 outlier — a phenomenon called *leverage* when the outlier is extreme in the
 feature space, and *influence* when it substantially changes the fitted values.
 """)
+        st.markdown("""
+Two complementary diagnostics formalize this. **Leverage** measures how unusual an
+observation is in the feature space (how far it sits from the center of the data).
+**Cook's distance** combines leverage with residual size to measure the observation's
+overall *influence* on the fitted model.
+""")
         formula(
-            "<strong>Leverage:</strong>&emsp;hᵢᵢ = xᵢᵀ(XᵀX)⁻¹xᵢ<br><br>"
-            "The leverage hᵢᵢ measures how far observation i is from the center of<br>"
-            "the feature space. High leverage (hᵢᵢ > 2p/n, where p = number of features)<br>"
-            "means the observation has disproportionate pull on the regression surface.<br><br>"
-            "<strong>Cook's Distance:</strong>&emsp;Dᵢ = (ŷ - ŷ₍ᵢ₎)ᵀ(ŷ - ŷ₍ᵢ₎) / (p · MSE)<br><br>"
-            "Combines leverage and residual size into a single influence measure.<br>"
-            "Dᵢ > 1 is a common threshold for concerning influence. "
-            "Dᵢ > 4/n is a more sensitive threshold."
+            "Leverage:&emsp;&emsp;&emsp;hᵢᵢ = xᵢᵀ(XᵀX)⁻¹xᵢ"
         )
+        st.markdown("""
+Here, **xᵢ** is the feature vector for observation *i*, and **(XᵀX)⁻¹** is the
+inverse of the cross-product matrix of all features. The product xᵢᵀ(XᵀX)⁻¹xᵢ
+measures the Mahalanobis distance of observation *i* from the centroid of the
+feature space — essentially, how "unusual" this observation's feature values are
+relative to the rest of the data. Leverage values range from 1/n to 1; a common
+rule of thumb flags observations where hᵢᵢ > 2p/n (where p is the number of
+features) as high-leverage points.
+
+High leverage alone does not mean an observation is problematic — it may lie far
+from the center but still fall along the regression surface. The concern is when
+high leverage *combines* with a large residual:
+""")
+        formula(
+            "Cook's Distance:&emsp;Dᵢ = (ŷ − ŷ₍ᵢ₎)ᵀ(ŷ − ŷ₍ᵢ₎) / (p · MSE)"
+        )
+        st.markdown("""
+Cook's distance compares two sets of predictions: **ŷ**, the predictions from the
+full model, and **ŷ₍ᵢ₎**, the predictions from a model fit *without* observation *i*.
+The numerator measures how much all the predictions change when one observation is
+removed; the denominator normalizes by the number of features *p* and the mean
+squared error. A large Dᵢ means removing observation *i* substantially shifts the
+regression surface. Common thresholds: Dᵢ > 1 for clear concern, or
+Dᵢ > 4/n as a more sensitive screening criterion.
+""")
         st.markdown(f"""
 **Neural networks** are also affected, though through a different mechanism: extreme
 values create large gradients that can destabilize training, especially early in
@@ -481,15 +557,30 @@ linear for large ones, controlled by a threshold parameter ε:
 """)
             formula(
                 "L_ε(r) = r² / 2&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;if |r| ≤ ε<br>"
-                "L_ε(r) = ε|r| − ε² / 2&emsp;&emsp;&emsp;&emsp;if |r| > ε"
+                "L_ε(r) = ε · |r| − ε² / 2&emsp;&emsp;&emsp;if |r| > ε"
             )
             st.markdown(f"""
-This gives the efficiency of OLS for well-behaved observations while limiting the
-influence of outliers to a linear (rather than quadratic) contribution. The choice
-of ε controls the tradeoff: smaller ε → more robustness, less efficiency; ε = 1.345
-is the standard default, giving 95% asymptotic efficiency relative to OLS under
-normality. {cite("Huber, 1964")} {cite("Huber & Ronchetti, 2009")}
+The residual **r** is the difference between the observed and predicted value. When
+|r| is small (the observation is well-predicted), the loss is the familiar squared
+error r²/2 — the same as OLS. But when |r| exceeds the threshold ε, the loss
+switches to *linear* growth (ε·|r|) instead of quadratic (r²). This means an
+outlier with a residual of 10 contributes roughly 10× to the loss rather than 100×
+— dramatically reducing its pull on the fit.
+
+The threshold ε controls where the transition happens: smaller ε means more
+observations are treated as "outliers" and down-weighted, making the fit more robust
+but less statistically efficient on clean data. The standard default of ε = 1.345
+is calibrated to retain 95% of the efficiency of OLS when the data actually is
+normal — a carefully chosen compromise.
+{cite("Huber, 1964")} {cite("Huber & Ronchetti, 2009")}
 """, unsafe_allow_html=True)
+
+        references([
+            "Barnett, V. & Lewis, T. (1994). *Outliers in Statistical Data* (3rd ed.). Wiley.",
+            "Hastie, T., Tibshirani, R., & Friedman, J. (2009). *The Elements of Statistical Learning* (2nd ed.), §9.2. Springer.",
+            "Huber, P.J. (1964). Robust estimation of a location parameter. *The Annals of Mathematical Statistics*, 35(1), 73–101.",
+            "Huber, P.J. & Ronchetti, E.M. (2009). *Robust Statistics* (2nd ed.). Wiley.",
+        ])
 
     # ── Collinearity ─────────────────────────────────────────────────────────
     with tabs[3]:
@@ -513,12 +604,17 @@ inverting a nearly singular matrix amplifies small perturbations in the data int
 large changes in the estimated coefficients.
 """)
         formula(
-            "Var(β̂ⱼ) = σ² · (XᵀX)⁻¹ⱼⱼ = σ² / [Σᵢ(xᵢⱼ − x̄ⱼ)² · (1 − Rⱼ²)]<br><br>"
-            "where Rⱼ² is the R² from regressing feature j on all other features.<br>"
-            "As Rⱼ² → 1 (perfect collinearity), the variance → ∞."
+            "Var(β̂ⱼ) = σ² / [Σᵢ(xᵢⱼ − x̄ⱼ)² · (1 − Rⱼ²)]"
         )
         st.markdown("""
-This inflated variance means:
+Let's unpack this. The variance of the *j*-th coefficient estimate depends on three things:
+
+- **σ²** (numerator): the noise variance in the response. More noise → less precise estimates. You cannot control this.
+- **Σᵢ(xᵢⱼ − x̄ⱼ)²** (denominator): the total variation in feature *j*. More spread in the feature → more information → tighter estimates.
+- **(1 − Rⱼ²)** (denominator): this is the critical term. Rⱼ² is the R² you get from regressing feature *j* on *all the other features*. If feature *j* can be perfectly predicted from other features, Rⱼ² = 1, the denominator goes to zero, and the variance explodes to infinity. Even Rⱼ² = 0.9 inflates the variance by a factor of 10.
+
+This inflated variance means:""")
+        st.markdown("""
 - **Coefficients become unstable:** Small changes in the data produce wildly different estimates.
 - **Confidence intervals widen:** You lose the ability to determine which variables matter.
 - **Sign flips:** A coefficient may be positive in one sample and negative in another.
@@ -531,17 +627,22 @@ future data has the same collinearity structure). The problem is entirely about
 
         section("Detecting Collinearity: VIF")
         st.markdown("""
-The Variance Inflation Factor (VIF) quantifies how much the variance of a
-coefficient is inflated due to collinearity:
+The Variance Inflation Factor (VIF) isolates the collinearity term from the
+variance formula above, giving a clean multiplier that says "the variance of
+this coefficient is VIF times larger than it would be if this feature were
+completely uncorrelated with all others":
 """)
         formula(
-            "VIF(β̂ⱼ) = 1 / (1 − Rⱼ²)<br><br>"
-            "where Rⱼ² = R² from regressing feature j on all other features.<br><br>"
-            "VIF = 1 &nbsp;→ no collinearity<br>"
-            "VIF = 5 &nbsp;→ variance inflated 5x (Rⱼ² = 0.80)<br>"
-            "VIF = 10 → variance inflated 10x (Rⱼ² = 0.90) — common threshold for concern"
+            "VIF(β̂ⱼ) = 1 / (1 − Rⱼ²)"
         )
         st.markdown("""
+The interpretation is direct. If Rⱼ² = 0 (feature *j* is uncorrelated with all
+others), VIF = 1 — no inflation. If Rⱼ² = 0.80 (feature *j* shares 80% of its
+variance with other features), VIF = 5 — the coefficient's variance is 5× larger
+than it needs to be. At Rⱼ² = 0.90, VIF = 10, the conventional threshold at which
+most textbooks recommend action. At Rⱼ² = 0.99, VIF = 100 — the coefficient
+estimate is essentially noise.
+
 A pairwise correlation matrix catches the simplest cases (two features with r > 0.9),
 but it misses **multicollinearity** — where a feature is predictable from a *combination*
 of other features without being highly correlated with any single one. VIF catches
@@ -576,22 +677,30 @@ to the collinear subspace.
 
         with st.expander("Deep Dive: Condition Number"):
             st.markdown(f"""
-For a more global measure of collinearity, the **condition number** of the design
-matrix X examines the ratio of the largest to smallest singular values:
+While VIF examines one feature at a time, the **condition number** of the design
+matrix gives a single global measure of how collinear the entire system is.
 """)
             formula(
-                "κ(X) = σ_max(X) / σ_min(X)<br><br>"
-                "κ < 30: &emsp;well-conditioned<br>"
-                "κ > 30: &emsp;moderate collinearity<br>"
-                "κ > 1000: ill-conditioned — coefficients are numerically unstable"
+                "κ(X) = σ_max(X) / σ_min(X)"
             )
             st.markdown(f"""
-The condition number captures the overall "health" of the design matrix in a single
-number. A high condition number means that the regression problem is ill-posed:
-small perturbations in y produce large changes in β̂. This is the matrix-algebra
-equivalent of the VIF story, expressed at the level of the entire system rather
-than individual variables. {cite("Belsley et al., 1980")}
+The singular values σ of the design matrix X describe how "stretched" the data is
+in each direction of the feature space. The largest singular value σ_max captures
+the direction of maximum spread; the smallest σ_min captures the direction of
+minimum spread. Their ratio — the condition number κ — tells you how elongated the
+data cloud is: a sphere has κ = 1; a pancake has κ >> 1.
+
+Why this matters: when κ is large, the matrix inversion in β̂ = (XᵀX)⁻¹Xᵀy
+amplifies numerical errors. A condition number of 1000 means that a 0.1% change in
+the data can produce up to a 100% change in the coefficients. Common thresholds:
+κ < 30 is well-conditioned, κ > 30 indicates moderate collinearity, and κ > 1000
+means coefficients are numerically unreliable. {cite("Belsley et al., 1980")}
 """, unsafe_allow_html=True)
+
+        references([
+            "James, G., Witten, D., Hastie, T., & Tibshirani, R. (2021). *An Introduction to Statistical Learning* (2nd ed.), §3.3.3, §6.2. Springer.",
+            "Belsley, D.A., Kuh, E., & Welsch, R.E. (1980). *Regression Diagnostics: Identifying Influential Data and Sources of Collinearity*. Wiley.",
+        ])
 
     # ── Sample Size ──────────────────────────────────────────────────────────
     with tabs[4]:
@@ -613,14 +722,20 @@ More recent simulation studies suggest this may be conservative for some setting
 and insufficient for others, but it remains a useful starting point.
 """, unsafe_allow_html=True)
         formula(
-            "EPV = n_events / p<br><br>"
-            "where n_events = number of minority-class observations (classification)<br>"
-            "&emsp;&emsp;&emsp;&emsp;or total sample size (regression)<br>"
-            "and p = number of predictor variables (including dummies for categoricals)<br><br>"
-            "EPV < 5: &nbsp;&nbsp;serious risk of overfitting and unstable estimates<br>"
-            "EPV 5-10: marginal — simplify the model or regularize heavily<br>"
-            "EPV > 20: generally comfortable for most linear methods"
+            "EPV = n_events / p"
         )
+        st.markdown("""
+The numerator **n_events** is the effective sample size: for classification, this is
+the count of the *minority class* (since the model's ability to learn the rare class
+is the binding constraint); for regression, it's the total sample size. The denominator
+**p** is the number of predictor variables, including any dummy variables created from
+categoricals. So a dataset with 200 positive cases and 15 features has EPV = 200/15 ≈ 13.
+
+The thresholds are approximate but well-tested through simulation: EPV < 5 carries
+serious risk of overfitting and numerically unstable coefficient estimates; EPV between
+5 and 10 is marginal territory where regularization becomes essential; EPV > 20 is
+generally comfortable for most linear methods.
+""")
 
         section("The Curse of Dimensionality")
         st.markdown(f"""
@@ -634,17 +749,23 @@ is typically close. In 100 dimensions, even with a million training points, the
 "nearest" neighbor may be very far away — because the volume of the feature space
 grows exponentially while the data points remain fixed.
 """, unsafe_allow_html=True)
+        st.markdown("""
+A concrete way to see this: suppose your data is uniformly distributed in a
+unit hypercube, and you want to find the "local neighborhood" that captures
+10% of the data. How wide does that neighborhood need to be along each dimension?
+""")
         formula(
-            "In p dimensions, to capture a fraction r of the data in a hypercube,<br>"
-            "the edge length must be r^(1/p).<br><br>"
-            "To capture 10% of data in 1D: edge = 0.10<br>"
-            "To capture 10% of data in 10D: edge = 0.10^(1/10) ≈ 0.79<br>"
-            "To capture 10% of data in 100D: edge = 0.10^(1/100) ≈ 0.977<br><br>"
-            "In high dimensions, the 'local' neighborhood covers nearly<br>"
-            "the entire range of every feature."
+            "edge length = r^(1/p)&emsp;&emsp;where r = fraction of data, p = dimensions"
         )
         st.markdown("""
-The practical implications:
+In 1 dimension, to capture 10% of the data you need an interval of width 0.10 —
+genuinely local. In 10 dimensions, you need each edge to span 0.10^(1/10) ≈ **0.79**
+of the full range. In 100 dimensions, each edge must span 0.10^(1/100) ≈ **0.977**
+of the full range. Your "local" neighborhood now covers almost the entire dataset
+in every direction — "local" has lost its meaning.
+
+The practical implications:""")
+        st.markdown("""
 - **KNN** degrades rapidly as p grows, because all points become approximately equidistant.
 - **SVM** with RBF kernels faces the same problem in the implicit feature space.
 - **Linear models** can handle high p if regularized (LASSO, Ridge), but need strong regularization.
@@ -681,16 +802,30 @@ Statistical power is the probability of detecting a true effect when it exists.
 The standard target is 80% power (β = 0.20), meaning a 1-in-5 chance of missing
 a real effect.
 
-Power depends on four quantities — fix any three and the fourth is determined:
+Power depends on four quantities — fix any three and the fourth is determined.
+For a two-sample t-test at 80% power and α = 0.05:
 """)
             formula(
-                "Power = f(effect size, sample size, significance level, test type)<br><br>"
-                "For a two-sample t-test: n ≈ 16σ² / δ²&emsp;(for 80% power, α = 0.05)<br>"
-                "where δ = true difference in means, σ = common standard deviation<br><br>"
-                "For logistic regression: n ≈ 10p / π_min<br>"
-                "where p = number of predictors, π_min = proportion of minority class"
+                "n ≈ 16σ² / δ²"
             )
             st.markdown(f"""
+Here **σ** is the common standard deviation of both groups and **δ** is the true
+difference in means you want to detect. The ratio δ/σ is the *effect size* — the
+signal relative to the noise. Notice that n scales with the *square* of the noise-to-signal
+ratio: to detect an effect half as large, you need four times as many observations.
+This is why underpowered studies are so common — small effects require surprisingly
+large samples.
+
+For logistic regression, a widely used approximation is:
+""")
+            formula(
+                "n ≈ 10p / π_min"
+            )
+            st.markdown(f"""
+where **p** is the number of predictors and **π_min** is the proportion of the
+minority class. This is essentially the EPV ≥ 10 rule rewritten as a sample
+size formula.
+
 The key insight: **power analysis should be done before data collection, not after.**
 A post-hoc power analysis on a non-significant result is circular — it will always
 show low power, because the observed effect size is small by definition.
@@ -700,6 +835,12 @@ If you're analyzing an existing dataset and suspect low power, the appropriate
 response is to report confidence intervals (which convey the uncertainty directly)
 rather than relying on a binary significant/non-significant decision.
 """, unsafe_allow_html=True)
+
+        references([
+            "James, G., Witten, D., Hastie, T., & Tibshirani, R. (2021). *An Introduction to Statistical Learning* (2nd ed.), §2.2.3. Springer.",
+            "Peduzzi, P., Concato, J., Kemper, E., Holford, T.R., & Feinstein, A.R. (1996). A simulation study of the number of events per variable in logistic regression analysis. *Journal of Clinical Epidemiology*, 49(12), 1373–1379.",
+            "Hoenig, J.M. & Heisey, D.M. (2001). The abuse of power: The pervasive fallacy of power calculations for data analysis. *The American Statistician*, 55(1), 19–24.",
+        ])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
