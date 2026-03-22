@@ -78,6 +78,74 @@ This design draws on six bodies of research. The key finding is that what works 
 
 ---
 
+## Agentic System Prompt Patterns (from Production Systems)
+
+Cross-referencing the academic research with patterns from 30+ production agent prompts (Cursor, Claude Code, Manus, v0, same.new, Bolt.new, ChatGPT, Cline, Augment, Windsurf — sourced from awesome-ai-system-prompts and system-prompts-and-models-of-ai-tools repos):
+
+### Patterns That Confirm the Research
+
+**1. Structure > Identity (confirming Zheng/Araujo)**
+
+The highest-performing agent prompts spend almost zero tokens on personality and almost all tokens on operational structure. Manus's prompt is a pure operational blueprint: `<agent_loop>`, `<planner_module>`, `<knowledge_module>` — not a single sentence about who Manus "is" as a person. Claude Code's sub-agent creation spec says: "Be specific rather than generic — avoid vague instructions. Include concrete examples when they would clarify behavior." The pattern is universal: **task structure beats identity framing**.
+
+The exception (Claude's "enjoys helping humans" persona) comes from Anthropic for a 200B+ parameter model. At 9B, this is dead weight.
+
+**2. XML/Markdown Section Tags (confirming hybrid prompting)**
+
+Every high-performing prompt uses structural tags to separate concerns:
+- Manus: `<system_capability>`, `<agent_loop>`, `<todo_rules>`
+- same.new: `<tool_calling>`, `<making_code_changes>`
+- Bolt.new: `<artifact_instructions>`, `<system_constraints>`
+
+This maps directly to the Frontiers paper's hybrid prompting finding — structure the prompt as explicit sections, not flowing prose. For our small model, this is especially important: Qwen3.5 at 9B will parse `# VALIDITY CHECK` as a distinct section better than it will parse a paragraph that implies a validity check.
+
+**3. Environment Context Injection (confirming contextual layering)**
+
+Cline injects `SYSTEM INFORMATION` (OS, shell, working directory). Manus injects `<system_capability>` (available tools, sandbox specs). Same.new injects OS version and IDE context. Every production agent tells the model *exactly what environment it's operating in*.
+
+For our app: this means the system prompt should tell Qwen3.5 that it's embedded in a Streamlit-based tabular ML workbench, what analysis pages exist, what the user can do next. Not as abstract knowledge — as operational context.
+
+**4. One-Step-at-a-Time (confirming thinking model approach)**
+
+Manus's `<agent_loop>` enforces "Choose only ONE tool call per iteration." Bolt.new says "Think HOLISTICALLY and COMPREHENSIVELY BEFORE creating an artifact." Same.new and Cline both mandate "Wait for execution results before proceeding."
+
+For our non-agentic (single-shot interpretation) use case, the analogue is: **address one analysis result at a time**, don't try to synthesize the whole session. This confirms our FOCAL vs BACKGROUND architecture — the model should deeply interpret one thing, not shallowly scan everything.
+
+### Novel Patterns Worth Adopting
+
+**5. Anti-Patterns as Instructions (from Claude Code, v0)**
+
+The most effective prompts don't just say what to do — they explicitly list what NOT to do, with specificity:
+- Claude Code: "DO NOT ADD ANY COMMENTS unless asked"
+- v0: "MUST NOT apologize or provide an explanation" when refusing
+- same.new: "NEVER refer to tool names when speaking to the USER"
+
+Our current "DO NOT" list is good but too generic ("Don't give textbook explanations"). Production prompts are surgical: "Do not define what SHAP values are. Do not explain the formula for R². Do not list general advantages of tree models."
+
+**6. Domain Constraint Anchoring (from v0)**
+
+v0's prompt embeds deep domain constraints: "ALWAYS uses icons from lucide-react", "uses Tailwind CSS for styling", "ONLY uses the AI SDK via 'ai' and '@ai-sdk'." These aren't preferences — they're hard constraints that eliminate a class of wrong answers.
+
+For our app: we should embed statistical domain constraints:
+- "Effect sizes matter more than p-values for clinical relevance"
+- "n < 30 per group invalidates t-test normality assumptions"
+- "VIF > 5 means SHAP/permutation importance rankings are unreliable"
+- "R² > 0.95 on tabular data is suspicious — check for data leakage"
+
+These are the kind of bright-line rules that a 9B model can follow mechanically even when it can't reason through the statistics deeply.
+
+**7. Quality Assurance Checkpoints (from Claude Code agent architect)**
+
+Claude Code's agent creation prompt includes: "Build in quality assurance and self-correction mechanisms." The best agents include verification steps — not just "do the task" but "verify the output meets criteria."
+
+For our interpretation prompt: add a brief self-check at the end: "Before responding, verify: (1) Did you reference specific values from the focal analysis? (2) Did you connect to at least one background finding? (3) Is your next step actionable within this tool?"
+
+**8. Conciseness as a Hard Rule (from Claude, ChatGPT)**
+
+Claude's prompt: "provides the shortest answer it can... avoiding tangential information." ChatGPT 4o: "ULTRA IMPORTANT: Do NOT be verbose." This is critical for our use case — a 9B model given freedom to write will produce fluff. Hard token budget or point count is more reliable than "be concise."
+
+---
+
 ## Design: The Analyst Profile
 
 Based on the research, the "profile" is **not a persona** — it's a **structured analytical framework** that tells Qwen3.5 exactly what to evaluate and how to structure its output. The model's thinking mode handles the reasoning; the prompt handles the structure.
@@ -105,49 +173,67 @@ Based on the research, the "profile" is **not a persona** — it's a **structure
 
 ### System Prompt: The Analytical Framework
 
-Derived from the Frontiers paper's four evaluation criteria, adapted for our app's context:
+Derived from the Frontiers paper's four evaluation criteria, production agent patterns, and domain constraint anchoring:
 
 ```
-You interpret statistical analysis results for a tabular ML research workbench.
+You interpret statistical analysis results in a tabular ML research workbench (Streamlit app). The researcher sees a specific plot or table and clicks "Interpret with AI" for expert analysis.
 
-ANALYTICAL CHECKLIST — evaluate each before responding:
+# ANALYTICAL CHECKLIST — address each section in order
 
-1. VALIDITY CHECK
-   - Are the statistical assumptions of this method met given the data?
-   - Does the sample size support this analysis?
-   - Are there known data issues (collinearity, missingness, skew) that affect this specific result?
+## VALIDITY
+- Are assumptions of this method met given the data context?
+- Do known issues (collinearity, missingness, skew, small n) affect THIS result?
+- Is the sample size adequate for this analysis?
 
-2. RESULT INTERPRETATION
-   - What does this result tell the researcher about their data/model?
-   - Distinguish statistical significance from practical significance
-   - Reference specific values — do not restate what is already displayed
+## INTERPRETATION
+- What does this specific result mean for this dataset?
+- Distinguish statistical significance from practical significance
+- Reference actual values from the results — add insight the numbers alone don't show
 
-3. CONCERNS
-   - What would a peer reviewer flag about this specific result?
-   - Are there methodological limitations the researcher should disclose?
-   - Connect to known issues from prior analysis steps if relevant
+## CONCERNS
+- What would a peer reviewer flag?
+- Connect to unresolved issues from prior analysis steps if relevant
 
-4. NEXT STEP
-   - One concrete, actionable recommendation
-   - Should reference something the researcher can do in this tool
+## NEXT STEP
+- One concrete action the researcher can take in this tool
 
-OUTPUT RULES:
-- 3-5 focused points, not a wall of text
-- Never summarize the background context
-- Never give textbook definitions of methods
-- If the researcher asked a specific question, answer it directly first
+# DOMAIN CONSTRAINTS — follow these as hard rules
+- VIF > 5 between features means SHAP and permutation importance rankings are unreliable for those features
+- R² > 0.95 on tabular data is suspicious — flag possible data leakage
+- Effect sizes matter more than p-values for clinical/practical relevance
+- n < 30 per group weakens parametric test assumptions
+- 48%+ missing data in a feature means imputed values dominate — flag reduced reliability
+- Residual patterns in linear models suggest assumption violations; in tree models they indicate systematic prediction gaps (different diagnosis)
+
+# OUTPUT RULES
+- Maximum 5 points total across all sections
+- If the researcher asked a question, answer it first
+- Do NOT define methods (no "SHAP values measure the marginal contribution...")
+- Do NOT explain formulas or general model properties
+- Do NOT summarize the background context
+- Do NOT restate numbers the researcher can already see
+- Do NOT start with "Great question" or "Certainly" or "Based on the analysis"
+
+# SELF-CHECK (internal, before responding)
+- Did I reference specific values from the focal analysis?
+- Did I connect to at least one background finding?
+- Is my next step something the researcher can do in this tool?
 ```
 
 ### What This Changes From Current
 
-| Aspect | Current | New |
-|---|---|---|
-| Identity framing | "You are a senior biostatistician and data scientist" | None — task structure only |
-| Analytical guidance | "Flag concerns a peer reviewer would raise" (vague) | Four-point checklist with specific sub-questions |
-| Output structure | "3-5 key points" | Implicit structure via checklist (validity → interpretation → concerns → next step) |
-| Redundant CoT | "EXPLAIN what results MEAN" (redundant with Qwen3.5 thinking) | Let thinking mode handle reasoning; prompt handles *what* to reason about |
-| Token budget | Spent on persona description + generic rules | Spent on analytical sub-questions that directly improve output |
-| Background handling | "Use to ground your interpretation" | "Are there known data issues that affect this specific result?" (active reference, not passive instruction) |
+| Aspect | Current | New | Source |
+|---|---|---|---|
+| Identity framing | "You are a senior biostatistician and data scientist" | None — task structure only | Zheng 2026, Araujo 2025 |
+| Analytical guidance | "Flag concerns a peer reviewer would raise" (vague) | Four-section checklist with specific sub-questions | Frontiers 2025 |
+| Output structure | "3-5 key points" | Ordered sections (validity → interpretation → concerns → next step) | Manus agent_loop pattern |
+| Anti-patterns | "Don't give generic explanations" (vague) | Specific bans: "Do NOT define methods", "Do NOT explain formulas" | v0, Claude Code |
+| Domain constraints | None | Hard rules: VIF>5, R²>0.95, effect sizes>p-values | v0 domain anchoring |
+| Self-verification | None | Three-point self-check before responding | Claude Code architect |
+| Conciseness | "Keep it concise" | "Maximum 5 points total" + banned opening phrases | Claude, ChatGPT |
+| Environment context | None | "tabular ML research workbench (Streamlit app)" | Cline, Manus, same.new |
+| Redundant CoT | "EXPLAIN what results MEAN" | Let thinking mode handle reasoning; prompt handles *what* to reason about | Qwen3 docs, Wharton CoT paper |
+| Background handling | "Use to ground your interpretation" | "Do known issues affect THIS result?" (active query, not passive instruction) | Frontiers hybrid prompting |
 
 ### Analysis-Type Variants
 
@@ -212,9 +298,16 @@ Minimum acceptable: average ≥ 3.0 across criteria. Target: ≥ 4.0.
 
 ## References
 
+### Academic Research
 1. Zheng et al. (2026). "When 'A Helpful Assistant' Is Not Really Helpful: Personas in System Prompts Do Not Improve Performances of Large Language Models." arXiv:2311.10054v3.
 2. Araujo et al. (2025). "Principled Personas: Defining and Measuring the Intended Effects of Persona Prompting on Task Performance." EMNLP 2025. arXiv:2508.19764.
 3. Frontiers in AI (2025). "Prompt engineering for accurate statistical reasoning with large language models in medical research." doi:10.3389/frai.2025.1658316.
 4. InsightLens (2025). "Augmenting LLM-Powered Data Analysis with Interactive Insight Management and Navigation." arXiv:2404.01644v2.
 5. Tang et al. (2025). "LLM/Agent-as-Data-Analyst: A Survey." arXiv:2509.23988v3.
 6. Wharton GenAI Labs (2025). "The Decreasing Value of Chain of Thought in Prompting." — CoT gains are marginal for reasoning models.
+
+### Production Agent Prompts (from open-source repos)
+7. awesome-ai-system-prompts (dontriskit/awesome-ai-system-prompts) — 8-principle analysis of 30+ production agent prompts. Patterns analyzed: Manus (explicit agent loop, modular tags), v0 (domain constraint anchoring, anti-pattern specificity), same.new (XML structure, tool etiquette), Claude Code (sub-agent architect, quality assurance checkpoints), Bolt.new (holistic pre-thinking), Cline (environment injection), ChatGPT 4.5 (conciseness as hard rule, inline schemas).
+8. system-prompts-and-models-of-ai-tools (x1xhlol) — 131K-star collection, 30,000+ lines of raw prompt content. Used for cross-referencing patterns across Cursor, Windsurf, Devin AI, Augment Code, and others.
+9. claude-code-system-prompts (Piebald-AI) — Claude Code's agent creation architect prompt: "Be specific rather than generic. Include concrete examples. Balance comprehensiveness with clarity. Build in quality assurance and self-correction mechanisms."
+10. BrightCoding (2026). "System Prompts for AI Agents: The Complete Guide." — Synthesis of 8 core principles from 20+ production agents, with performance metrics (Manus: 78% autonomous completion, same.new: 89% satisfaction, v0: 94% component generation success).
