@@ -58,20 +58,6 @@ st.markdown("""
     border: 1px solid #ddd6fe;
 }
 
-/* Formula block */
-.formula-block {
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 8px;
-    padding: 1rem 1.3rem;
-    margin: 0.8rem 0;
-    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-    font-size: 0.9rem;
-    color: #e2e8f0;
-    line-height: 1.7;
-    overflow-x: auto;
-}
-
 /* App connection callout — green accent on light bg */
 .app-callout {
     background: #f0fdf4;
@@ -172,11 +158,6 @@ def section(title: str):
     st.markdown(f'<div class="theory-section-head">{title}</div>', unsafe_allow_html=True)
 
 
-def formula(text: str):
-    """Render a formula/code block."""
-    st.markdown(f'<div class="formula-block">{text}</div>', unsafe_allow_html=True)
-
-
 def app_connection(text: str):
     """Render a callout linking theory to the app."""
     st.markdown(f'<div class="app-callout">🔬 <strong>In the app:</strong> {text}</div>', unsafe_allow_html=True)
@@ -258,11 +239,13 @@ indicator (0 = missing, 1 = observed), **Y_obs** denote the values we *can* see,
 and **Y_mis** denote the values we *cannot*. The question is: what does the
 probability of being missing depend on?
 """)
-        formula(
-            "P(R = 0 | Y_obs, Y_mis) = P(R = 0)&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&nbsp;← MCAR<br>"
-            "P(R = 0 | Y_obs, Y_mis) = P(R = 0 | Y_obs)&emsp;&emsp;← MAR<br>"
-            "P(R = 0 | Y_obs, Y_mis) depends on Y_mis&emsp;&emsp;&nbsp;← MNAR"
-        )
+        st.latex(r"""
+        \begin{aligned}
+        \text{MCAR:} \quad & P(R = 0 \mid Y_{\text{obs}}, Y_{\text{mis}}) = P(R = 0) \\
+        \text{MAR:} \quad & P(R = 0 \mid Y_{\text{obs}}, Y_{\text{mis}}) = P(R = 0 \mid Y_{\text{obs}}) \\
+        \text{MNAR:} \quad & P(R = 0 \mid Y_{\text{obs}}, Y_{\text{mis}}) \text{ depends on } Y_{\text{mis}}
+        \end{aligned}
+        """)
         st.markdown("""
 Reading these from top to bottom: under MCAR, the left-hand side simplifies to a
 constant — nothing predicts missingness. Under MAR, the probability of being missing
@@ -340,9 +323,9 @@ Skewness measures the asymmetry of a distribution around its mean. A distributio
 with a long right tail (e.g., income, medical costs) has positive skew; a long left
 tail gives negative skew. The sample skewness is computed as:
 """)
-        formula(
-            "γ₁ = (1/n) Σᵢ [(xᵢ − x̄) / s]³"
-        )
+        st.latex(r"""
+        \gamma_1 = \frac{1}{n} \sum_{i=1}^{n} \left( \frac{x_i - \bar{x}}{s} \right)^3
+        """)
         st.markdown(f"""
 Each observation is first standardized — centered by the mean x̄ and scaled by the
 standard deviation s — so the result is unitless and comparable across features.
@@ -384,9 +367,9 @@ Kurtosis measures the heaviness of the tails relative to a normal distribution. 
 "excess kurtosis" (subtracting 3, the value for a normal distribution) tells you
 whether extreme values are more or less likely than a Gaussian would predict.
 """)
-        formula(
-            "κ = (1/n) Σᵢ [(xᵢ − x̄) / s]⁴ − 3"
-        )
+        st.latex(r"""
+        \kappa = \frac{1}{n} \sum_{i=1}^{n} \left( \frac{x_i - \bar{x}}{s} \right)^4 - 3
+        """)
         st.markdown("""
 The structure is similar to skewness, but the standardized deviations are raised to
 the *fourth* power instead of the third. This amplifies extreme values even more
@@ -424,10 +407,12 @@ over-correct moderate skew.
 
 **Box-Cox transform:** A parametric family that includes the log as a special case. {cite("Box & Cox, 1964")}
 """)
-            formula(
-                "y(λ) = (x^λ − 1) / λ&emsp;&emsp;if λ ≠ 0<br>"
-                "y(λ) = log(x)&emsp;&emsp;&emsp;&emsp;&nbsp;if λ = 0"
-            )
+            st.latex(r"""
+            y^{(\lambda)} = \begin{cases}
+            \dfrac{x^{\lambda} - 1}{\lambda} & \text{if } \lambda \neq 0 \\[8pt]
+            \log(x) & \text{if } \lambda = 0
+            \end{cases}
+            """)
             st.markdown(f"""
 The parameter λ controls *how aggressively* the transform compresses the upper tail.
 The key insight is that different values of λ recover familiar transforms: λ = 1 is
@@ -494,9 +479,9 @@ observation is in the feature space (how far it sits from the center of the data
 **Cook's distance** combines leverage with residual size to measure the observation's
 overall *influence* on the fitted model.
 """)
-        formula(
-            "Leverage:&emsp;&emsp;&emsp;hᵢᵢ = xᵢᵀ(XᵀX)⁻¹xᵢ"
-        )
+        st.latex(r"""
+        h_{ii} = \mathbf{x}_i^\top (\mathbf{X}^\top \mathbf{X})^{-1} \mathbf{x}_i
+        """)
         st.markdown("""
 Here, **xᵢ** is the feature vector for observation *i*, and **(XᵀX)⁻¹** is the
 inverse of the cross-product matrix of all features. The product xᵢᵀ(XᵀX)⁻¹xᵢ
@@ -510,9 +495,9 @@ High leverage alone does not mean an observation is problematic — it may lie f
 from the center but still fall along the regression surface. The concern is when
 high leverage *combines* with a large residual:
 """)
-        formula(
-            "Cook's Distance:&emsp;Dᵢ = (ŷ − ŷ₍ᵢ₎)ᵀ(ŷ − ŷ₍ᵢ₎) / (p · MSE)"
-        )
+        st.latex(r"""
+        D_i = \frac{(\hat{\mathbf{y}} - \hat{\mathbf{y}}_{(i)})^\top (\hat{\mathbf{y}} - \hat{\mathbf{y}}_{(i)})}{p \cdot \text{MSE}}
+        """)
         st.markdown("""
 Cook's distance compares two sets of predictions: **ŷ**, the predictions from the
 full model, and **ŷ₍ᵢ₎**, the predictions from a model fit *without* observation *i*.
@@ -555,10 +540,12 @@ dominate the fit.
 **Huber regression** uses a loss function that is quadratic for small residuals and
 linear for large ones, controlled by a threshold parameter ε:
 """)
-            formula(
-                "L_ε(r) = r² / 2&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;if |r| ≤ ε<br>"
-                "L_ε(r) = ε · |r| − ε² / 2&emsp;&emsp;&emsp;if |r| > ε"
-            )
+            st.latex(r"""
+            L_\varepsilon(r) = \begin{cases}
+            \dfrac{r^2}{2} & \text{if } |r| \leq \varepsilon \\[8pt]
+            \varepsilon \, |r| - \dfrac{\varepsilon^2}{2} & \text{if } |r| > \varepsilon
+            \end{cases}
+            """)
             st.markdown(f"""
 The residual **r** is the difference between the observed and predicted value. When
 |r| is small (the observation is well-predicted), the loss is the familiar squared
@@ -603,9 +590,9 @@ The OLS estimator **β̂ = (XᵀX)⁻¹Xᵀy** involves inverting this matrix, a
 inverting a nearly singular matrix amplifies small perturbations in the data into
 large changes in the estimated coefficients.
 """)
-        formula(
-            "Var(β̂ⱼ) = σ² / [Σᵢ(xᵢⱼ − x̄ⱼ)² · (1 − Rⱼ²)]"
-        )
+        st.latex(r"""
+        \text{Var}(\hat{\beta}_j) = \frac{\sigma^2}{\sum_{i=1}^{n}(x_{ij} - \bar{x}_j)^2 \;\cdot\; (1 - R_j^2)}
+        """)
         st.markdown("""
 Let's unpack this. The variance of the *j*-th coefficient estimate depends on three things:
 
@@ -632,9 +619,9 @@ variance formula above, giving a clean multiplier that says "the variance of
 this coefficient is VIF times larger than it would be if this feature were
 completely uncorrelated with all others":
 """)
-        formula(
-            "VIF(β̂ⱼ) = 1 / (1 − Rⱼ²)"
-        )
+        st.latex(r"""
+        \text{VIF}(\hat{\beta}_j) = \frac{1}{1 - R_j^2}
+        """)
         st.markdown("""
 The interpretation is direct. If Rⱼ² = 0 (feature *j* is uncorrelated with all
 others), VIF = 1 — no inflation. If Rⱼ² = 0.80 (feature *j* shares 80% of its
@@ -680,9 +667,9 @@ to the collinear subspace.
 While VIF examines one feature at a time, the **condition number** of the design
 matrix gives a single global measure of how collinear the entire system is.
 """)
-            formula(
-                "κ(X) = σ_max(X) / σ_min(X)"
-            )
+            st.latex(r"""
+            \kappa(\mathbf{X}) = \frac{\sigma_{\max}(\mathbf{X})}{\sigma_{\min}(\mathbf{X})}
+            """)
             st.markdown(f"""
 The singular values σ of the design matrix X describe how "stretched" the data is
 in each direction of the feature space. The largest singular value σ_max captures
@@ -721,9 +708,9 @@ regression to produce stable coefficient estimates. {cite("Peduzzi et al., 1996"
 More recent simulation studies suggest this may be conservative for some settings
 and insufficient for others, but it remains a useful starting point.
 """, unsafe_allow_html=True)
-        formula(
-            "EPV = n_events / p"
-        )
+        st.latex(r"""
+        \text{EPV} = \frac{n_{\text{events}}}{p}
+        """)
         st.markdown("""
 The numerator **n_events** is the effective sample size: for classification, this is
 the count of the *minority class* (since the model's ability to learn the rare class
@@ -754,10 +741,13 @@ A concrete way to see this: suppose your data is uniformly distributed in a
 unit hypercube, and you want to find the "local neighborhood" that captures
 10% of the data. How wide does that neighborhood need to be along each dimension?
 """)
-        formula(
-            "edge length = r^(1/p)&emsp;&emsp;where r = fraction of data, p = dimensions"
-        )
+        st.latex(r"""
+        \ell = r^{1/p}
+        """)
         st.markdown("""
+Here *ℓ* is the edge length of the hypercube neighborhood, *r* is the fraction
+of data you want to capture, and *p* is the number of dimensions.
+
 In 1 dimension, to capture 10% of the data you need an interval of width 0.10 —
 genuinely local. In 10 dimensions, you need each edge to span 0.10^(1/10) ≈ **0.79**
 of the full range. In 100 dimensions, each edge must span 0.10^(1/100) ≈ **0.977**
@@ -805,9 +795,9 @@ a real effect.
 Power depends on four quantities — fix any three and the fourth is determined.
 For a two-sample t-test at 80% power and α = 0.05:
 """)
-            formula(
-                "n ≈ 16σ² / δ²"
-            )
+            st.latex(r"""
+            n \approx \frac{16 \, \sigma^2}{\delta^2}
+            """)
             st.markdown(f"""
 Here **σ** is the common standard deviation of both groups and **δ** is the true
 difference in means you want to detect. The ratio δ/σ is the *effect size* — the
@@ -818,9 +808,9 @@ large samples.
 
 For logistic regression, a widely used approximation is:
 """)
-            formula(
-                "n ≈ 10p / π_min"
-            )
+            st.latex(r"""
+            n \approx \frac{10 \, p}{\pi_{\min}}
+            """)
             st.markdown(f"""
 where **p** is the number of predictors and **π_min** is the proportion of the
 minority class. This is essentially the EPV ≥ 10 rule rewritten as a sample
