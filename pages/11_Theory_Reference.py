@@ -1498,14 +1498,20 @@ OLS; as λ → ∞, all coefficients approach zero.
         \left\{ \|\mathbf{y} - \mathbf{X}\boldsymbol{\beta}\|_2^2 + \lambda \|\boldsymbol{\beta}\|_1 \right\}
         """)
         st.markdown("""
-**LASSO** uses the L1 norm instead. The diamond-shaped constraint region has corners
-on the coordinate axes, which means the solution often lies at a corner — where
-some coefficients are exactly zero. This makes LASSO a simultaneous estimator and
-feature selector.
+**LASSO** uses the L1 norm (the sum of absolute values ‖β‖₁ = Σ|β_j|) instead of
+the L2 norm. The constraint region is now a diamond in coefficient space, and the
+corners of a diamond lie on the coordinate axes — where some coefficients are
+exactly zero. As the penalty λ increases, the solution moves toward these corners,
+zeroing out coefficients one by one. This makes LASSO a simultaneous estimator and
+feature selector: it automatically identifies which features to keep and which to
+discard.
 
-**Elastic Net** combines both penalties: α·‖β‖₁ + (1−α)·‖β‖₂², blending LASSO's
-sparsity with Ridge's stability for correlated features. This is often the best
-default for real-world data where you don't know the correlation structure in advance.
+**Elastic Net** combines both penalties: α·‖β‖₁ + (1−α)·‖β‖₂², where α controls
+the mix between L1 (sparsity) and L2 (stability). When α = 1, it reduces to LASSO;
+when α = 0, to Ridge. Elastic Net is often the best default for real-world data
+because it handles correlated features better than pure LASSO — instead of
+arbitrarily selecting one from a group of correlated features, it tends to keep
+the group together and shrink their coefficients jointly.
 """)
 
         section("Logistic Regression")
@@ -1519,11 +1525,26 @@ to the interval (0, 1):
         = \frac{1}{1 + e^{-\mathbf{x}^\top \boldsymbol{\beta}}}
         """)
         st.markdown("""
-The output is interpreted as a probability. Coefficients are estimated by maximum
-likelihood rather than least squares. Each coefficient β_j represents the change
-in the *log-odds* of the positive class for a one-unit increase in x_j. The
-exponentiated coefficient exp(β_j) gives the **odds ratio** — a quantity that
-clinicians and epidemiologists work with directly.
+The sigmoid function σ(z) = 1/(1 + e^(−z)) takes the linear combination
+**x**ᵀ**β** (which can range from −∞ to +∞) and squashes it into the interval (0, 1),
+producing a valid probability. When **x**ᵀ**β** is large and positive, σ is close to 1;
+when large and negative, σ is close to 0; when zero, σ = 0.5.
+
+Coefficients are estimated by maximum likelihood rather than least squares. Each
+coefficient β_j represents the change in the *log-odds* of the positive class for
+a one-unit increase in x_j. The log-odds (or logit) is:
+""")
+        st.latex(r"""
+        \log \frac{P(Y=1 \mid \mathbf{x})}{1 - P(Y=1 \mid \mathbf{x})} = \mathbf{x}^\top \boldsymbol{\beta}
+        """)
+        st.markdown("""
+This shows why logistic regression is "linear" — the log-odds is a linear function
+of the features, even though the probability itself is nonlinear. The exponentiated
+coefficient exp(β_j) gives the **odds ratio**: the factor by which the odds multiply
+for a one-unit increase in x_j. An odds ratio of 1.5 means the odds of the positive
+class are 50% higher for each additional unit of x_j. Clinicians and epidemiologists
+work with odds ratios directly because they are interpretable and comparable across
+studies.
 """)
 
         section("Generalized Linear Models (GLM) and Huber Regression")
@@ -1643,10 +1664,13 @@ At each step, the algorithm:
         F_m(\mathbf{x}) = F_{m-1}(\mathbf{x}) + \eta \cdot h_m(\mathbf{x})
         """)
         st.markdown("""
-Here *F_m* is the ensemble after *m* trees, *h_m* is the new tree fit to the
-residuals, and *η* is the learning rate (typically 0.01–0.3). Smaller learning rates
-require more trees but generally produce better results — they take smaller,
-more careful steps toward the optimum.
+Reading this equation: *F_{m-1}*(**x**) is the current prediction from the ensemble
+of the first *m − 1* trees. The new tree *h_m*(**x**) is fit to the *residuals*
+(errors) of *F_{m-1}* — it specifically targets what the ensemble is getting wrong.
+Adding η · *h_m*(**x**) corrects a fraction of the remaining error. The learning
+rate *η* (typically 0.01–0.3) controls the fraction: smaller η means the correction
+is more cautious, which requires more trees but generally produces better results
+because the ensemble avoids over-correcting to any single tree's biases.
 
 **Histogram Gradient Boosting** (the variant in the app) discretizes continuous
 features into 256 bins before training, dramatically speeding up split finding
@@ -1878,11 +1902,17 @@ largest margin:
         \text{subject to} \quad y_i(\mathbf{w}^\top \mathbf{x}_i + b) \geq 1 \;\; \forall \, i
         """)
         st.markdown("""
-The margin is 2/‖**w**‖ — the distance between the two parallel hyperplanes defined
-by **w**ᵀ**x** + b = +1 and **w**ᵀ**x** + b = −1. The observations that lie exactly
-on these boundaries are the **support vectors** — they alone determine the decision
-boundary. All other training points could be moved or removed without changing
-the model, which is a form of built-in robustness.
+The vector **w** defines the direction perpendicular to the separating hyperplane,
+and *b* is the offset. The constraint y_i(**w**ᵀ**x**_i + b) ≥ 1 ensures that
+every observation is on the correct side of the margin — *y_i* is +1 or −1
+(the class label), so the product is positive when the prediction and label agree.
+The margin width is 2/‖**w**‖ — maximizing it means finding the **w** with the
+smallest norm that still correctly classifies all points.
+
+The observations that lie exactly on the margin boundaries (**w**ᵀ**x** + b = ±1)
+are the **support vectors** — they alone determine the decision boundary. All other
+training points could be moved or removed without changing the model, which is a
+form of built-in robustness.
 
 For data that is *not* linearly separable, the **soft margin** formulation allows
 some violations by introducing slack variables ξ_i and a penalty parameter *C*
@@ -1905,10 +1935,14 @@ in the higher-dimensional space directly.
         \quad \text{(RBF kernel)}
         """)
         st.markdown("""
-The RBF (Radial Basis Function) kernel maps data into an *infinite*-dimensional
-space. The parameter γ controls how quickly the kernel decays with distance:
-large γ means each training point has only local influence (low bias, high variance);
-small γ means each point influences a wide region (high bias, low variance).
+The RBF (Radial Basis Function) kernel computes a similarity score between two
+observations **x** and **x'** based on the squared Euclidean distance between them
+(‖**x** − **x'**‖²). When two points are close (small distance), the kernel value
+is near 1 (high similarity); when far apart (large distance), it decays toward 0.
+The parameter γ controls how quickly this decay happens: large γ means the kernel
+is narrow and each training point has only local influence (low bias, high variance);
+small γ means the kernel is wide and each point influences a broad region
+(high bias, low variance).
 
 **Why scaling matters for SVMs:** The kernel computes distances between data points.
 Just like KNN, unscaled features with large ranges will dominate the distance
@@ -1982,11 +2016,18 @@ covariance matrix** across all classes.
         (\mathbf{x} - \boldsymbol{\mu}_k)\right)
         """)
         st.markdown("""
-Here **μ_k** is the mean of class *k* and **Σ** is the shared covariance matrix.
-The key consequence of the shared covariance assumption is that the decision boundaries
-between classes are *linear* (hyperplanes) — hence the name "Linear" Discriminant
-Analysis. Each class has its own center (mean vector), but the shape of the
-distribution around each center is the same.
+This is the multivariate normal (Gaussian) density function. The term
+(**x** − **μ_k**) measures how far observation **x** is from the center of class *k*.
+The covariance matrix **Σ** describes the shape and spread of the class distribution —
+it accounts for both the variance of each feature and the correlations between
+features. The expression (**x** − **μ_k**)ᵀ**Σ**⁻¹(**x** − **μ_k**) is the
+**Mahalanobis distance**: a distance metric that accounts for correlations and
+scales, measuring how "unusual" **x** is relative to class *k*'s distribution.
+
+The key consequence of assuming all classes share the *same* **Σ** is that the
+decision boundaries between classes are *linear* (hyperplanes) — hence the name
+"Linear" Discriminant Analysis. Each class has its own center (mean vector), but
+the spread and orientation of the distribution around each center is the same.
 
 LDA is closely related to logistic regression: both produce linear decision
 boundaries for classification. The difference is philosophical — LDA is generative
@@ -2649,10 +2690,13 @@ but poorly calibrated model will still have a mediocre Brier score.
         \text{ECE} = \sum_{m=1}^{M} \frac{|B_m|}{n} \left| \bar{p}_m - \bar{y}_m \right|
         """)
         st.markdown("""
-ECE divides predictions into *M* bins, then computes the weighted average of the
-absolute difference between mean predicted probability (*p̄_m*) and actual positive
-rate (*ȳ_m*) in each bin. The weight |B_m|/n is the proportion of observations in
-bin *m*. ECE = 0 means perfect calibration.
+ECE divides predictions into *M* bins (e.g., 10 bins: 0–10%, 10–20%, ..., 90–100%).
+Within each bin, it compares the average predicted probability (*p̄_m*) to the actual
+positive rate (*ȳ_m*). For example, if observations in the "70–80%" bin have an
+average prediction of 0.75 but only 0.60 are actually positive, the bin's calibration
+error is |0.75 − 0.60| = 0.15. The weight |B_m|/n is the proportion of observations
+in bin *m*, so bins with more observations contribute more. ECE = 0 means perfect
+calibration; values above 0.05 typically warrant investigation.
 """)
 
         section("Calibration for Regression")
@@ -2725,9 +2769,16 @@ contribution of that feature across all possible orderings of features:
         """)
         st.markdown("""
 This formula considers every possible subset *S* of features that *doesn't* include
-feature *j*. For each subset, it computes how much the prediction changes when
-feature *j* is added: f(S ∪ {j}) − f(S). These contributions are then averaged,
-weighted by the number of orderings that produce each subset.
+feature *j*. For each subset, it computes the **marginal contribution** — how much
+the prediction changes when feature *j* is added: f(S ∪ {j}) − f(S). If the model
+already has features A, B, C (set *S*) and predicts 0.7, and adding feature *j*
+changes the prediction to 0.8, the marginal contribution is 0.1 for that subset.
+
+The weighting factor |S|!(p − |S| − 1)!/p! ensures that each *ordering* of features
+counts equally. There are p! total orderings; |S|!(p − |S| − 1)! of them place
+exactly the features in *S* before feature *j*. The Shapley value is the average
+marginal contribution across all orderings — ensuring that the result is fair
+regardless of the order in which features are "added" to the model.
 
 The key properties that make SHAP values uniquely principled:
 - **Local accuracy:** The SHAP values for a single prediction sum to the difference
@@ -2965,6 +3016,13 @@ running many tests (as in feature selection).
             "(how confident are we that it's not zero?)."
         )
 
+        app_connection(
+            "The <strong>Hypothesis Testing</strong> page applies these fundamentals "
+            "throughout: every test reports a p-value alongside effect sizes, and the "
+            "EDA page uses Benjamini-Hochberg FDR correction when running multiple "
+            "univariate tests during feature selection."
+        )
+
         references([
             "Wasserstein, R.L. & Lazar, N.A. (2016). The ASA statement on p-values: Context, process, and purpose. *The American Statistician*, 70(2), 129–133.",
             "Benjamini, Y. & Hochberg, Y. (1995). Controlling the false discovery rate. *Journal of the Royal Statistical Society, Series B*, 57(1), 289–300.",
@@ -2984,9 +3042,16 @@ assumptions and appropriate use cases.
         {\sqrt{\sum_{i=1}^{n}(x_i - \bar{x})^2} \sqrt{\sum_{i=1}^{n}(y_i - \bar{y})^2}}
         """)
         st.markdown("""
-Pearson's *r* measures the strength of the *linear* relationship between two
-variables. It ranges from −1 (perfect negative linear relationship) through 0
-(no linear relationship) to +1 (perfect positive linear relationship).
+The numerator is the **covariance** — the sum of products of deviations from each
+variable's mean. When both variables tend to be above their means together (or
+below together), the products are positive and *r* is positive. When one tends to
+be above while the other is below, the products are negative and *r* is negative.
+The denominator normalizes by the standard deviations of both variables, ensuring
+*r* always falls between −1 and +1 regardless of the units of measurement.
+
+Pearson's *r* captures only *linear* relationships. It ranges from −1 (perfect
+negative linear relationship) through 0 (no linear relationship) to +1 (perfect
+positive linear relationship).
 
 **Assumptions:** Both variables are approximately normally distributed, the
 relationship is linear, and there are no extreme outliers. If the relationship
@@ -3037,8 +3102,12 @@ depends on whether the normality assumption holds.
         t = \frac{\bar{x}_1 - \bar{x}_2}{\sqrt{\frac{s_1^2}{n_1} + \frac{s_2^2}{n_2}}}
         """)
         st.markdown("""
-The test statistic measures how many standard errors the observed difference is
-from zero. Under H₀ (equal means), *t* follows a t-distribution with degrees of
+The numerator (x̄₁ − x̄₂) is the observed difference in group means — the "signal."
+The denominator is the **standard error** of that difference, combining the variance
+within each group (s₁² and s₂²) and the sample sizes (n₁ and n₂). The ratio
+tells you how many standard errors the observed difference is from zero. A large
+|t| means the difference is unlikely to have arisen by chance if the true means
+were equal. Under H₀ (equal means), *t* follows a t-distribution with degrees of
 freedom estimated by the Welch-Satterthwaite approximation.
 
 **Assumptions:** Independent observations, approximately normal distributions within
@@ -3061,10 +3130,16 @@ between-group variance to the within-group variance:
         {\sum_{k}\sum_{i} (x_{ik} - \bar{x}_k)^2 / (n - K)}
         """)
         st.markdown("""
-The F-statistic is the ratio of between-group variability to within-group variability.
-A large F means the group means are more spread out than you'd expect from the
-within-group noise alone. A significant result tells you that *at least one* group
-differs — but not *which* groups differ (that requires post-hoc tests).
+The numerator (MS_between) measures how much the group means (x̄_k) deviate from
+the overall mean (x̄), weighted by group size n_k and divided by K − 1 (the number
+of groups minus one). The denominator (MS_within) measures how much individual
+observations deviate from their own group's mean, divided by n − K. The F-statistic
+is their ratio: if the groups truly have the same mean, both numerator and
+denominator estimate the same variance, and F ≈ 1. A large F means the group
+means are more spread out than you'd expect from the within-group noise alone.
+
+A significant result tells you that *at least one* group differs — but not *which*
+groups differ (that requires post-hoc tests like Tukey's HSD).
 
 **Kruskal-Wallis test** is the non-parametric alternative to ANOVA, based on ranks.
 Like Mann-Whitney, it makes no distributional assumptions.
@@ -3203,6 +3278,11 @@ testing whether the mean difference is zero:
         t = \frac{\bar{d}}{s_d / \sqrt{n}} \quad \text{where} \quad d_i = x_{i,\text{after}} - x_{i,\text{before}}
         """)
         st.markdown("""
+Each pair yields a difference d_i (after minus before). The test statistic is the
+mean of these differences (d̄) divided by their standard error (s_d/√n, where s_d
+is the standard deviation of the differences). Essentially, it reduces a two-sample
+problem to a one-sample test on the differences.
+
 By working with differences, the test controls for all between-subject variability.
 This makes it much more powerful than an unpaired test when the pairing structure
 is real — a treatment effect of 2 points might be undetectable with an unpaired
@@ -3508,6 +3588,13 @@ credible range:
 - If feature importance is unstable, report the *consensus* features (those
   consistently in the top ranks) rather than a single ranking.
 """)
+
+        app_connection(
+            "The <strong>Sensitivity Analysis</strong> page provides all the raw material "
+            "for these reporting patterns: seed sensitivity results with CV percentages, "
+            "feature dropout impact charts, and the <strong>Train & Compare</strong> page "
+            "provides bootstrap CIs for every metric."
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
