@@ -483,7 +483,7 @@ def _call_ollama(context: str, system_prompt: str, model: str, url: str) -> Opti
                 "stream": False,
                 "options": {"temperature": 0.3, "num_predict": 4096},
             },
-            timeout=120,
+            timeout=180,
         )
         if resp.ok:
             data = resp.json()
@@ -683,7 +683,7 @@ def render_interpretation_with_llm_button(
                 st.session_state[sk] = "__no_key__"
 
         if st.session_state.get(sk) != "__no_key__":
-            with st.spinner(f"Getting interpretation from {backend} ({model})..."):
+            with st.spinner(f"🧠 Thinking... ({model} — this can take 60-90 seconds)"):
                 sys_prompt = _build_system_prompt(plot_type) if plot_type else INTERPRETATION_SYSTEM_PROMPT
                 result = _call_llm(
                     ctx, sys_prompt,
