@@ -481,7 +481,7 @@ def _call_ollama(context: str, system_prompt: str, model: str, url: str) -> Opti
                     {"role": "user", "content": context},
                 ],
                 "stream": False,
-                "options": {"temperature": 0.3, "num_predict": 4096},
+                "options": {"temperature": 0.3, "num_predict": 8192},
             },
             timeout=180,
         )
@@ -492,11 +492,19 @@ def _call_ollama(context: str, system_prompt: str, model: str, url: str) -> Opti
             content = (message.get("content") or "").strip()
             if content:
                 return content
-            # Fallback: some models put everything in thinking with no content
-            # This shouldn't happen with enough num_predict, but handle gracefully
+            # Fallback: if model exhausted num_predict on thinking with no content,
+            # extract the last substantive paragraph from thinking as the response
             thinking = (message.get("thinking") or "").strip()
             if thinking and not content:
-                logger.warning(f"Ollama model {model} returned thinking but no content — may need higher num_predict")
+                logger.warning(f"Ollama model {model} returned thinking ({len(thinking)} chars) but no content — extracting from thinking")
+                # Take the last ~800 chars of thinking as a reasonable summary
+                # The model's final thinking steps tend to be the most distilled
+                fallback = thinking[-800:].strip()
+                # Find a clean paragraph break
+                last_break = fallback.rfind("\n\n")
+                if last_break > 100:
+                    fallback = fallback[last_break:].strip()
+                return fallback if fallback else None
             return content or None
         else:
             logger.warning(f"Ollama error: {resp.status_code}")
