@@ -1637,7 +1637,7 @@ Poor performance may be due to:
                     from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button
                     nar = narrative_learning_curves(results["history"])
                     if nar:
-                        st.markdown(f"**Interpretation:** {nar}")
+                        st.markdown(f"**Summary:** {nar}")
                     h = results["history"]
                     tl, vl = h.get("train_loss", []), h.get("val_loss", h.get("train_loss", []))
                     stats_summary = f"train_loss={tl[-1]:.4f}; val_loss={vl[-1]:.4f}" if tl else ""
@@ -1659,7 +1659,7 @@ Poor performance may be due to:
                     pva_stats = analyze_pred_vs_actual(results["y_test"], results["y_test_pred"])
                     nar = narrative_pred_vs_actual(pva_stats, model_name=name)
                     if nar:
-                        st.markdown(f"**Interpretation:** {nar}")
+                        st.markdown(f"**Summary:** {nar}")
                     stats_summary = f"corr={pva_stats.get('correlation', 0):.3f}; mean_err={pva_stats.get('mean_error', 0):.4f}"
                     _bg_pva = {k: v for k, v in _bg.items() if k not in ("feature_names", "sample_size", "task_type")}
                     ctx = build_llm_context("pred_vs_actual", stats_summary, model_name=name, model_family=_model_family, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task, **_bg_pva)
@@ -1676,7 +1676,7 @@ Poor performance may be due to:
                     resid_stats = analyze_residuals_extended(results["y_test"], results["y_test_pred"])
                     nar = narrative_residuals(resid_stats, model_name=name)
                     if nar:
-                        st.markdown(f"**Interpretation:** {nar}")
+                        st.markdown(f"**Summary:** {nar}")
                     else:
                         res_basic = analyze_residuals(results["y_test"], results["y_test_pred"])
                         st.caption(f"Mean residual: {res_basic['mean_residual']:.4f} | Std: {res_basic['std_residual']:.4f}")
@@ -1718,6 +1718,15 @@ Poor performance may be due to:
                             fig_pr.add_shape(type="line", x0=0, x1=1, y0=baseline, y1=baseline, line=dict(dash="dash", color="gray"))
                             fig_pr.update_layout(template="plotly_white")
                             st.plotly_chart(fig_pr, use_container_width=True, key=f"diag_pr_{name}")
+
+                            # LLM interpretation for ROC + PR (combined)
+                            _bg_roc = {k: v for k, v in _bg.items() if k not in ("feature_names", "sample_size", "task_type")}
+                            _class_balance = f"class balance: {np.mean(y_true == unique_classes[1]):.1%} positive" if len(unique_classes) == 2 else ""
+                            roc_pr_summary = f"ROC AUC={roc_auc:.3f}; PR AUC={pr_auc:.3f}; {_class_balance}"
+                            ctx_roc = build_llm_context("roc_curve", roc_pr_summary, model_name=name, model_family=_model_family,
+                                                         metrics=results.get("metrics"), feature_names=_feats,
+                                                         sample_size=_n_test, task_type=_task, **_bg_roc)
+                            render_interpretation_with_llm_button(ctx_roc, key=f"llm_roc_{name}", result_session_key=f"llm_result_roc_{name}", plot_type="roc_curve")
                         else:
                             # Multiclass: per-class ROC curves
                             from sklearn.preprocessing import label_binarize
@@ -1740,7 +1749,7 @@ Poor performance may be due to:
                     cm_stats = analyze_confusion_matrix(results["y_test"], results["y_test_pred"])
                     nar = narrative_confusion_matrix(cm_stats, model_name=name)
                     if nar:
-                        st.markdown(f"**Interpretation:** {nar}")
+                        st.markdown(f"**Summary:** {nar}")
                     per = cm_stats.get("per_class", [])[:3]
                     stats_summary = "; ".join(f"{p.get('label','?')}: P={p.get('precision',0):.2f} R={p.get('recall',0):.2f}" for p in per) if per else ""
                     _bg_cm = {k: v for k, v in _bg.items() if k not in ("feature_names", "sample_size", "task_type")}

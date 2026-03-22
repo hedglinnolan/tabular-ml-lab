@@ -1374,7 +1374,7 @@ def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""
                 table(fig_data, use_container_width=True, key=f"tbl_{key_prefix}_{idx}")
 
         if interp:
-            st.markdown(f"**Interpretation:** {interp}")
+            st.markdown(f"**Summary:** {interp}")
             stats_summary = build_eda_full_results_context(result, action_id)
             bg = gather_session_context()
             ctx = build_llm_context(

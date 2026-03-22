@@ -675,7 +675,7 @@ if perm_data or shap_data:
                         from ml.plot_narrative import narrative_permutation_importance
                         nar = narrative_permutation_importance(pd_info, model_name=name)
                         if nar:
-                            st.markdown(f"**Interpretation:** {nar}")
+                            st.markdown(f"**Summary:** {nar}")
                         from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
                         from utils.insight_ledger import MODEL_TO_FAMILY
                         stats_summary = "; ".join(f"{r['Feature']}={r['Importance']:.4f}" for _, r in importance_df.head(5).iterrows())
@@ -773,7 +773,7 @@ if perm_data or shap_data:
                     from utils.insight_ledger import MODEL_TO_FAMILY
                     nar = narrative_shap(sv, fn_plot, model_name=name)
                     if nar:
-                        st.markdown(f"**Interpretation:** {nar}")
+                        st.markdown(f"**Summary:** {nar}")
                     top_idx = np.argsort(mean_abs)[::-1][:5]
                     stats_summary = "; ".join(f"{fn_plot[i]}={mean_abs[i]:.3f}" for i in top_idx if i < len(fn_plot))
                     _bg_shap = gather_session_context()
@@ -971,7 +971,7 @@ if task_final == 'regression' and len(mr) >= 2:
                 ba_stats = analyze_bland_altman(pa, pb)
                 nar = narrative_bland_altman(ba_stats, label_a=ma, label_b=mb)
                 if nar:
-                    st.markdown(f"**Interpretation:** {nar}")
+                    st.markdown(f"**Summary:** {nar}")
                 from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
                 stats_summary = f"mean_diff={ba_stats.get('mean_diff', 0):.4f}; width_loa={ba_stats.get('width_loa', 0):.4f}; pct_outside={ba_stats.get('pct_outside_loa', 0):.1%}"
                 _bg_ba = gather_session_context()

@@ -126,6 +126,46 @@ ANALYSIS_TYPE_HINTS: Dict[str, str] = {
         "- Is the performance difference practically meaningful or within noise?\n"
         "- Does the limits of agreement width suggest clinical/practical interchangeability?"
     ),
+    "roc_curve": (
+        "- Is this AUC sufficient for the clinical/practical context?\n"
+        "- Does the curve shape suggest the model performs differently at different thresholds?"
+    ),
+    "pr_curve": (
+        "- Does the PR curve reveal class imbalance issues that ROC masks?\n"
+        "- Is precision maintained at practically useful recall levels?"
+    ),
+    "correlation": (
+        "- Is the correlation coefficient practically meaningful, not just statistically significant?\n"
+        "- Could confounders or non-linear relationships affect this result?"
+    ),
+    "two_group_comparison": (
+        "- Is the effect size meaningful regardless of p-value?\n"
+        "- Were assumptions (normality, equal variance) checked before this test?"
+    ),
+    "multi_group_comparison": (
+        "- If significant, which specific group differences drive the result?\n"
+        "- Is the effect size (eta-squared, omega-squared) practically meaningful?"
+    ),
+    "chi_squared": (
+        "- Are expected cell counts adequate (>5) for chi-squared validity?\n"
+        "- Does Cramér's V indicate a practically meaningful association?"
+    ),
+    "seed_sensitivity": (
+        "- How much variance is attributable to random initialization vs genuine model instability?\n"
+        "- Is the coefficient of variation acceptable for the intended application?"
+    ),
+    "bootstrap_ci": (
+        "- Is the confidence interval width acceptable for practical decision-making?\n"
+        "- Does the interval cross any clinically or practically meaningful thresholds?"
+    ),
+    "feature_dropout": (
+        "- Which features cause the largest performance drops when removed?\n"
+        "- Does removing a feature improve performance (suggesting noise or collinearity)?"
+    ),
+    "feature_selection": (
+        "- Why did selection methods agree or disagree on specific features?\n"
+        "- Are there domain-relevant features that were excluded that shouldn't have been?"
+    ),
 }
 
 
@@ -656,88 +696,80 @@ def render_llm_settings_sidebar():
             )
 
 
+def _run_llm_call(context: str, plot_type: str, sk: str) -> None:
+    """Execute LLM call and store result in session state."""
+    import streamlit as st
+
+    backend = st.session_state.get("llm_backend", "ollama")
+    model = ""
+    api_key = ""
+    ollama_url = "http://localhost:11434"
+
+    if backend == "ollama":
+        model = st.session_state.get("ollama_model", DEFAULT_OLLAMA_MODEL)
+    elif backend == "openai":
+        model = st.session_state.get("openai_model", DEFAULT_OPENAI_MODEL)
+        api_key = st.session_state.get("openai_api_key", "")
+        if not api_key:
+            st.session_state[sk] = "__no_key__"
+            return
+    elif backend == "anthropic":
+        model = st.session_state.get("anthropic_model", DEFAULT_ANTHROPIC_MODEL)
+        api_key = st.session_state.get("anthropic_api_key", "")
+        if not api_key:
+            st.session_state[sk] = "__no_key__"
+            return
+
+    with st.spinner(f"🧠 Analyzing... ({model}, up to ~60s)"):
+        sys_prompt = _build_system_prompt(plot_type) if plot_type else INTERPRETATION_SYSTEM_PROMPT
+        result = _call_llm(
+            context, sys_prompt,
+            backend=backend, model=model, api_key=api_key, ollama_url=ollama_url,
+        )
+
+    if result:
+        st.session_state[sk] = result
+    else:
+        st.session_state[sk] = "__error__"
+        logger.error(f"LLM call returned None: backend={backend}, model={model}")
+
+
 def render_interpretation_with_llm_button(
     context: str,
     key: str,
     result_session_key: Optional[str] = None,
     plot_type: str = "",
 ) -> None:
-    """Render LLM interpretation button with rich context.
+    """Render LLM deep analysis button and styled result callout.
 
-    Uses the configured backend and analysis-type-aware system prompt.
-    plot_type is used to inject analysis-specific sub-questions into the
-    system prompt (e.g., SHAP gets collinearity checks, residuals get
-    assumption violation checks).
+    UX flow:
+    1. Button: "🧠 Deep Analysis" — clean, no pre-click clutter
+    2. On click: LLM call, result appears in styled callout box
+    3. Inside callout: follow-up text area + re-analyze button
+       (only shown after first result, not before)
     """
     import streamlit as st
 
     sk = result_session_key or f"llm_result_{key}"
     user_ctx_key = f"{key}_user_context"
+    reanalyze_key = f"{key}_reanalyze"
 
-    # Get backend config
-    backend = st.session_state.get("llm_backend", "ollama")
-
-    with st.expander("💬 Add context for the AI (optional)", expanded=False):
-        st.caption(
-            "Tell the AI what to focus on — e.g., clinical implications, "
-            "concerns about sample size, specific features of interest."
-        )
-        st.text_area(
-            "Your context",
-            key=user_ctx_key,
-            placeholder="E.g., 'Focus on whether these results are strong enough for a JAMA submission' or 'I'm worried about the outliers in BMI'",
-            label_visibility="collapsed",
-        )
-
-    if st.button("🔬 Interpret with AI", key=key, help="Get expert-level interpretation of these results"):
-        ctx = context or ""
-        user_txt = (st.session_state.get(user_ctx_key) or "").strip()
-        if user_txt:
-            ctx += f"\n\nResearcher's specific question/focus: {user_txt}"
-
-        # Call LLM
-        model = ""
-        api_key = ""
-        ollama_url = "http://localhost:11434"
-
-        if backend == "ollama":
-            model = st.session_state.get("ollama_model", DEFAULT_OLLAMA_MODEL)
-        elif backend == "openai":
-            model = st.session_state.get("openai_model", DEFAULT_OPENAI_MODEL)
-            api_key = st.session_state.get("openai_api_key", "")
-            if not api_key:
-                st.session_state[sk] = "__no_key__"
-        elif backend == "anthropic":
-            model = st.session_state.get("anthropic_model", DEFAULT_ANTHROPIC_MODEL)
-            api_key = st.session_state.get("anthropic_api_key", "")
-            if not api_key:
-                st.session_state[sk] = "__no_key__"
-
-        if st.session_state.get(sk) != "__no_key__":
-            with st.spinner(f"🧠 Analyzing... ({model}, up to ~60s)"):
-                sys_prompt = _build_system_prompt(plot_type) if plot_type else INTERPRETATION_SYSTEM_PROMPT
-                result = _call_llm(
-                    ctx, sys_prompt,
-                    backend=backend, model=model, api_key=api_key, ollama_url=ollama_url,
-                )
-
-            if result:
-                st.session_state[sk] = result
-            else:
-                st.session_state[sk] = "__error__"
-                logger.error(f"LLM call returned None: backend={backend}, model={model}")
-            # No st.rerun() — result is in session state and displays below
-            # Avoids resetting tab/expander position on the page
-
-    # Display result
+    # Show button only if no result yet
     res = st.session_state.get(sk)
+    if not res:
+        if st.button("🧠 Deep Analysis", key=key, help="Get expert-level AI interpretation of these results"):
+            _run_llm_call(context, plot_type, sk)
+            res = st.session_state.get(sk)
+
+    # Display result in styled callout
     if res == "__no_key__":
+        backend = st.session_state.get("llm_backend", "ollama")
         st.warning(f"Please configure your {backend.title()} API key in the sidebar (🤖 LLM Settings).")
     elif res == "__unavailable__":
         st.caption(
             "To use this feature: (1) Install Ollama from [ollama.ai](https://ollama.ai). "
             "(2) Run `ollama serve` in a terminal. "
-            "(3) Pull a model: `ollama pull llama3.2`."
+            "(3) Pull a model: `ollama pull qwen3.5:9b`."
         )
     elif res == "__error__":
         st.warning(
@@ -746,5 +778,34 @@ def render_interpretation_with_llm_button(
             f"model={st.session_state.get('ollama_model', DEFAULT_OLLAMA_MODEL)}. "
             f"Verify Ollama is running: `curl http://localhost:11434/api/tags`"
         )
+        # Allow retry
+        if st.button("🔄 Retry", key=f"{key}_retry"):
+            st.session_state.pop(sk, None)
+            _run_llm_call(context, plot_type, sk)
+            res = st.session_state.get(sk)
     elif res:
-        st.markdown(f"**🔬 AI Interpretation:**\n\n{res}")
+        # Styled callout box with indigo left border
+        st.markdown(
+            f'<div style="border-left: 3px solid #6366f1; padding: 12px 16px; '
+            f'background: rgba(99, 102, 241, 0.04); border-radius: 4px; '
+            f'margin: 8px 0 12px 0;">'
+            f'<strong style="color: #6366f1;">🧠 AI Analysis</strong>'
+            f'<div style="margin-top: 8px;">{res}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+        # Follow-up area (inside the result context, not before it)
+        with st.expander("💬 Ask a follow-up", expanded=False):
+            st.text_area(
+                "Follow-up question",
+                key=user_ctx_key,
+                placeholder="E.g., 'Is this good enough for a JAMA submission?' or 'What about the outliers in BMI?'",
+                label_visibility="collapsed",
+            )
+            if st.button("🔄 Re-analyze", key=reanalyze_key):
+                ctx = context or ""
+                user_txt = (st.session_state.get(user_ctx_key) or "").strip()
+                if user_txt:
+                    ctx += f"\n\nResearcher's follow-up question: {user_txt}"
+                st.session_state.pop(sk, None)
+                _run_llm_call(ctx, plot_type, sk)

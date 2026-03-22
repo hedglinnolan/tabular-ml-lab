@@ -366,6 +366,24 @@ if results:
         matrix_df = pd.DataFrame(matrix_data).sort_values("Count", ascending=False)
         table(matrix_df, key="consensus_matrix", use_container_width=True, hide_index=True)
 
+        # LLM interpretation for feature selection consensus
+        from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
+        _bg_fs = gather_session_context()
+        _methods_used = ", ".join(r.method for r in results)
+        _consensus_str = ", ".join(consensus[:10])
+        _n_total = len(numeric_features)
+        _fs_summary = (f"methods: {_methods_used}; consensus_features ({len(consensus)}/{_n_total}): {_consensus_str}"
+                       + (f", +{len(consensus)-10} more" if len(consensus) > 10 else ""))
+        ctx_fs = build_llm_context(
+            "feature_selection", _fs_summary,
+            where="Feature selection consensus",
+            sample_size=_bg_fs.pop("sample_size", None),
+            task_type=_bg_fs.pop("task_type", None),
+            feature_names=_bg_fs.pop("feature_names", numeric_features),
+            **_bg_fs,
+        )
+        render_interpretation_with_llm_button(ctx_fs, key="llm_feat_sel", result_session_key="llm_result_feat_sel", plot_type="feature_selection")
+
         # Apply to data config
         st.markdown("---")
         if st.button("📋 Use consensus features for modeling", type="primary"):
