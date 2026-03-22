@@ -21,28 +21,25 @@ render_sidebar_workflow(current_page="11_Theory")
 # ── Local styles ─────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-/* Chapter intro card — matches .info-card gradient from main theme */
+/* Chapter intro card — gradient card, white text on purple/blue */
 .theory-intro {
-    background: linear-gradient(135deg, rgba(102, 126, 234, 0.85) 0%, rgba(118, 75, 162, 0.85) 100%);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255,255,255,0.18);
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.9) 0%, rgba(118, 75, 162, 0.9) 100%);
     border-radius: 10px;
     padding: 1.3rem 1.5rem;
     margin-bottom: 1.5rem;
-    color: rgba(255,255,255,0.92);
+    color: #fff;
     font-size: 0.95rem;
     line-height: 1.65;
-    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.15);
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);
 }
-.theory-intro strong { color: #fff; }
-.theory-intro em { color: rgba(255,255,255,0.85); }
+.theory-intro strong { color: #fff; font-weight: 700; }
+.theory-intro em { color: rgba(255,255,255,0.9); }
 
 /* Section heading inside chapters */
 .theory-section-head {
-    font-size: 1.08rem;
+    font-size: 1.1rem;
     font-weight: 700;
-    color: #e2e8f0;
+    color: #1e293b;
     margin: 1.6rem 0 0.6rem 0;
     letter-spacing: -0.01em;
 }
@@ -50,61 +47,56 @@ st.markdown("""
 /* Citation badge */
 .cite {
     display: inline-block;
-    background: linear-gradient(135deg, rgba(102,126,234,0.25), rgba(118,75,162,0.2));
-    color: #c4b5fd;
+    background: #ede9fe;
+    color: #5b21b6;
     font-size: 0.78rem;
-    padding: 0.18rem 0.6rem;
+    padding: 0.15rem 0.55rem;
     border-radius: 4px;
     margin-left: 0.3rem;
     vertical-align: middle;
-    font-weight: 500;
-    border: 1px solid rgba(102,126,234,0.2);
+    font-weight: 600;
+    border: 1px solid #ddd6fe;
 }
 
 /* Formula block */
 .formula-block {
-    background: rgba(15, 23, 42, 0.7);
-    border: 1px solid rgba(102,126,234,0.25);
+    background: #1e293b;
+    border: 1px solid #334155;
     border-radius: 8px;
     padding: 1rem 1.3rem;
     margin: 0.8rem 0;
     font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-    font-size: 0.92rem;
+    font-size: 0.9rem;
     color: #e2e8f0;
     line-height: 1.7;
     overflow-x: auto;
-    box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
 }
 
-/* App connection callout — green accent, glass style */
+/* App connection callout — green accent on light bg */
 .app-callout {
-    background: linear-gradient(135deg, rgba(34,197,94,0.12), rgba(16,185,129,0.08));
-    border-left: 3px solid #22c55e;
+    background: #f0fdf4;
+    border-left: 3px solid #16a34a;
     border-radius: 0 8px 8px 0;
     padding: 0.9rem 1.2rem;
     margin: 1rem 0;
     font-size: 0.9rem;
-    color: #d1fae5;
+    color: #14532d;
     line-height: 1.55;
-    border: 1px solid rgba(34,197,94,0.15);
-    border-left: 3px solid #22c55e;
 }
-.app-callout strong { color: #ecfdf5; }
+.app-callout strong { color: #052e16; }
 
-/* Key takeaway box — amber accent */
+/* Key takeaway box — amber accent on light bg */
 .key-takeaway {
-    background: linear-gradient(135deg, rgba(251,191,36,0.12), rgba(245,158,11,0.08));
-    border-left: 3px solid #fbbf24;
+    background: #fffbeb;
+    border-left: 3px solid #d97706;
     border-radius: 0 8px 8px 0;
     padding: 0.9rem 1.2rem;
     margin: 1rem 0;
     font-size: 0.9rem;
-    color: #fef3c7;
+    color: #713f12;
     line-height: 1.55;
-    border: 1px solid rgba(251,191,36,0.12);
-    border-left: 3px solid #fbbf24;
 }
-.key-takeaway strong { color: #fffbeb; }
+.key-takeaway strong { color: #451a03; }
 
 /* Page hero */
 .theory-hero {
@@ -114,13 +106,13 @@ st.markdown("""
 .theory-hero h1 {
     font-size: 1.8rem;
     font-weight: 800;
-    background: linear-gradient(135deg, #667eea 0%, #a78bfa 100%);
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     margin-bottom: 0.3rem;
 }
 .theory-hero .subtitle {
-    color: #94a3b8;
+    color: #475569;
     font-size: 0.95rem;
     max-width: 640px;
     margin: 0 auto;
@@ -959,7 +951,7 @@ CHAPTER_RENDERERS[chapter]()
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #64748b; font-size: 0.82rem; padding: 0.5rem 0 1rem 0;">
-    This reference is part of <strong style="color: #94a3b8;">Tabular ML Lab</strong>.
+    This reference is part of <strong style="color: #334155;">Tabular ML Lab</strong>.
     Content is written for researchers and reviewers — if something is unclear or
     incomplete, that's a bug worth reporting.
 </div>
