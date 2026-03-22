@@ -15,6 +15,14 @@ _MAX_TABLE_ROWS = 20
 _MAX_TABLE_CHARS = 2000
 
 # ============================================================================
+# Default model configuration — single source of truth
+# ============================================================================
+
+DEFAULT_OLLAMA_MODEL = "qwen3.5:9b"
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
+
+# ============================================================================
 # Domain detection
 # ============================================================================
 
@@ -370,11 +378,11 @@ def _call_llm(
     Returns the response text or None on error.
     """
     if backend == "ollama":
-        return _call_ollama(context, system_prompt, model or "qwen3.5:9b", ollama_url)
+        return _call_ollama(context, system_prompt, model or DEFAULT_OLLAMA_MODEL, ollama_url)
     elif backend == "openai":
-        return _call_openai(context, system_prompt, model or "gpt-4o-mini", api_key)
+        return _call_openai(context, system_prompt, model or DEFAULT_OPENAI_MODEL, api_key)
     elif backend == "anthropic":
-        return _call_anthropic(context, system_prompt, model or "claude-sonnet-4-20250514", api_key)
+        return _call_anthropic(context, system_prompt, model or DEFAULT_ANTHROPIC_MODEL, api_key)
     else:
         logger.warning(f"Unknown LLM backend: {backend}")
         return None
@@ -520,7 +528,7 @@ def render_llm_settings_sidebar():
         if backend == "ollama":
             st.text_input(
                 "Ollama model",
-                value=st.session_state.get("ollama_model", "qwen3.5:9b"),
+                value=st.session_state.get("ollama_model", DEFAULT_OLLAMA_MODEL),
                 key="ollama_model",
                 help="Model name (e.g., qwen3.5:9b, llama3.1:8b, gemma2)",
             )
@@ -534,7 +542,7 @@ def render_llm_settings_sidebar():
             )
             st.text_input(
                 "Model",
-                value=st.session_state.get("openai_model", "gpt-4o-mini"),
+                value=st.session_state.get("openai_model", DEFAULT_OPENAI_MODEL),
                 key="openai_model",
             )
         elif backend == "anthropic":
@@ -546,7 +554,7 @@ def render_llm_settings_sidebar():
             )
             st.text_input(
                 "Model",
-                value=st.session_state.get("anthropic_model", "claude-sonnet-4-20250514"),
+                value=st.session_state.get("anthropic_model", DEFAULT_ANTHROPIC_MODEL),
                 key="anthropic_model",
             )
 
@@ -592,14 +600,14 @@ def render_interpretation_with_llm_button(
         ollama_url = "http://localhost:11434"
 
         if backend == "ollama":
-            model = st.session_state.get("ollama_model", "qwen3.5:9b")
+            model = st.session_state.get("ollama_model", DEFAULT_OLLAMA_MODEL)
         elif backend == "openai":
-            model = st.session_state.get("openai_model", "gpt-4o-mini")
+            model = st.session_state.get("openai_model", DEFAULT_OPENAI_MODEL)
             api_key = st.session_state.get("openai_api_key", "")
             if not api_key:
                 st.session_state[sk] = "__no_key__"
         elif backend == "anthropic":
-            model = st.session_state.get("anthropic_model", "claude-sonnet-4-20250514")
+            model = st.session_state.get("anthropic_model", DEFAULT_ANTHROPIC_MODEL)
             api_key = st.session_state.get("anthropic_api_key", "")
             if not api_key:
                 st.session_state[sk] = "__no_key__"
@@ -633,7 +641,7 @@ def render_interpretation_with_llm_button(
         st.warning(
             f"Could not get interpretation. Check sidebar LLM Settings. "
             f"Current: backend={st.session_state.get('llm_backend', 'ollama')}, "
-            f"model={st.session_state.get('ollama_model', 'qwen3.5:9b')}. "
+            f"model={st.session_state.get('ollama_model', DEFAULT_OLLAMA_MODEL)}. "
             f"Verify Ollama is running: `curl http://localhost:11434/api/tags`"
         )
     elif res:
