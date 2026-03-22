@@ -370,7 +370,7 @@ def _call_llm(
     Returns the response text or None on error.
     """
     if backend == "ollama":
-        return _call_ollama(context, system_prompt, model or "llama3.1:8b", ollama_url)
+        return _call_ollama(context, system_prompt, model or "qwen3.5:9b", ollama_url)
     elif backend == "openai":
         return _call_openai(context, system_prompt, model or "gpt-4o-mini", api_key)
     elif backend == "anthropic":
@@ -381,7 +381,12 @@ def _call_llm(
 
 
 def _call_ollama(context: str, system_prompt: str, model: str, url: str) -> Optional[str]:
-    """Call Ollama API."""
+    """Call Ollama API using the chat endpoint.
+
+    Uses /api/chat (not /api/generate) to properly handle thinking models
+    like Qwen3.5 that separate thinking tokens from response content.
+    num_predict is set high (4096) to accommodate thinking overhead.
+    """
     import requests
     try:
         # Ensure running
@@ -394,18 +399,31 @@ def _call_ollama(context: str, system_prompt: str, model: str, url: str) -> Opti
             time.sleep(3)
 
         resp = requests.post(
-            f"{url}/api/generate",
+            f"{url}/api/chat",
             json={
                 "model": model,
-                "prompt": context,
-                "system": system_prompt,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": context},
+                ],
                 "stream": False,
-                "options": {"temperature": 0.3, "num_predict": 800},
+                "options": {"temperature": 0.3, "num_predict": 4096},
             },
-            timeout=60,
+            timeout=120,
         )
         if resp.ok:
-            return resp.json().get("response", "").strip()
+            data = resp.json()
+            # Chat API returns message.content; thinking models also have message.thinking
+            message = data.get("message", {})
+            content = (message.get("content") or "").strip()
+            if content:
+                return content
+            # Fallback: some models put everything in thinking with no content
+            # This shouldn't happen with enough num_predict, but handle gracefully
+            thinking = (message.get("thinking") or "").strip()
+            if thinking and not content:
+                logger.warning(f"Ollama model {model} returned thinking but no content — may need higher num_predict")
+            return content or None
         else:
             logger.warning(f"Ollama error: {resp.status_code}")
             return None
@@ -502,9 +520,9 @@ def render_llm_settings_sidebar():
         if backend == "ollama":
             st.text_input(
                 "Ollama model",
-                value=st.session_state.get("ollama_model", "llama3.1:8b"),
+                value=st.session_state.get("ollama_model", "qwen3.5:9b"),
                 key="ollama_model",
-                help="Model name (e.g., llama3.1:8b, mistral, gemma2)",
+                help="Model name (e.g., qwen3.5:9b, llama3.1:8b, gemma2)",
             )
             st.caption("Ollama is running locally on this server — no API key needed.")
         elif backend == "openai":
@@ -574,7 +592,7 @@ def render_interpretation_with_llm_button(
         ollama_url = "http://localhost:11434"
 
         if backend == "ollama":
-            model = st.session_state.get("ollama_model", "llama3.1:8b")
+            model = st.session_state.get("ollama_model", "qwen3.5:9b")
         elif backend == "openai":
             model = st.session_state.get("openai_model", "gpt-4o-mini")
             api_key = st.session_state.get("openai_api_key", "")
@@ -615,7 +633,7 @@ def render_interpretation_with_llm_button(
         st.warning(
             f"Could not get interpretation. Check sidebar LLM Settings. "
             f"Current: backend={st.session_state.get('llm_backend', 'ollama')}, "
-            f"model={st.session_state.get('ollama_model', 'llama3.1:8b')}. "
+            f"model={st.session_state.get('ollama_model', 'qwen3.5:9b')}. "
             f"Verify Ollama is running: `curl http://localhost:11434/api/tags`"
         )
     elif res:
