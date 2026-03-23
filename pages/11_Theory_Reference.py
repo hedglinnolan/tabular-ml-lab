@@ -1672,10 +1672,35 @@ rate *η* (typically 0.01–0.3) controls the fraction: smaller η means the cor
 is more cautious, which requires more trees but generally produces better results
 because the ensemble avoids over-correcting to any single tree's biases.
 
-**Histogram Gradient Boosting** (the variant in the app) discretizes continuous
-features into 256 bins before training, dramatically speeding up split finding
-while producing virtually identical results. This is the approach used by LightGBM
-and scikit-learn's HistGradientBoosting.
+**Histogram Gradient Boosting** discretizes continuous features into 256 bins
+before training, dramatically speeding up split finding while producing virtually
+identical results. Scikit-learn's HistGradientBoosting, XGBoost (with
+`tree_method='hist'`), and LightGBM all use this approach.
+
+**XGBoost** extends the standard gradient boosting objective with explicit L1
+(*reg_alpha*) and L2 (*reg_lambda*) penalties on leaf weights, column subsampling
+(*colsample_bytree*), and row subsampling (*subsample*). These regularization
+knobs make it less prone to overfitting on noisy tabular data and are a large
+part of why it dominated Kaggle competitions through the late 2010s.
+
+**LightGBM** replaces the conventional *level-wise* (breadth-first) tree growth
+strategy with *leaf-wise* (best-first) growth: at each step it splits the leaf
+with the largest loss reduction, regardless of depth. This produces deeper,
+more asymmetric trees that often converge faster than XGBoost on the same number
+of iterations. LightGBM also introduces:
+
+- **GOSS (Gradient-based One-Side Sampling):** retains instances with large
+  gradients (where the model is most wrong) and randomly samples instances with
+  small gradients, reducing data volume without discarding the most informative
+  examples.
+- **EFB (Exclusive Feature Bundling):** bundles mutually exclusive sparse
+  features (features that rarely take non-zero values simultaneously) into a
+  single feature, cutting the effective feature count and speeding up split
+  finding.
+
+Both XGBoost and LightGBM handle missing values natively (learning which
+branch to send NaN observations down) and support early stopping when a
+validation set is provided.
 """)
 
         section("Feature Importance in Trees")
@@ -1693,10 +1718,12 @@ prediction rather than just for node purity.
 """)
 
         app_connection(
-            "The app offers Random Forest, Extra Trees, and Histogram Gradient Boosting "
-            "in both regression and classification variants. The coaching layer does "
-            "not recommend scaling or skewness correction for tree models, and uses "
-            "permutation importance rather than Gini importance for explainability."
+            "The app offers Random Forest, Extra Trees, Histogram Gradient Boosting, "
+            "XGBoost, and LightGBM in both regression and classification variants. "
+            "None of these models require feature scaling or one-hot encoding — the "
+            "coaching layer skips those preprocessing steps automatically. TreeSHAP "
+            "is used for explainability (fast exact Shapley values for tree models), "
+            "and permutation importance is used rather than Gini importance."
         )
 
         references([

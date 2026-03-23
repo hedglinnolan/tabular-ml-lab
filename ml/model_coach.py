@@ -391,6 +391,62 @@ def _get_model_info() -> Dict[str, Dict[str, Any]]:
             'good_for_high_dim': True,
             'robust_to_outliers': False,
         },
+
+        # XGBoost
+        'xgb_reg': {
+            'name': 'XGBoost',
+            'group': 'Boosting',
+            'training_time': TrainingTimeTier.MEDIUM,
+            'interpretability': 'low',
+            'requires_scaling': False,
+            'requires_encoding': False,
+            'handles_missing': True,
+            'min_samples': 100,
+            'min_epv': 15,
+            'good_for_high_dim': False,
+            'robust_to_outliers': True,
+        },
+        'xgb_clf': {
+            'name': 'XGBoost',
+            'group': 'Boosting',
+            'training_time': TrainingTimeTier.MEDIUM,
+            'interpretability': 'low',
+            'requires_scaling': False,
+            'requires_encoding': False,
+            'handles_missing': True,
+            'min_samples': 100,
+            'min_epv': 15,
+            'good_for_high_dim': False,
+            'robust_to_outliers': True,
+        },
+
+        # LightGBM
+        'lgbm_reg': {
+            'name': 'LightGBM',
+            'group': 'Boosting',
+            'training_time': TrainingTimeTier.MEDIUM,
+            'interpretability': 'low',
+            'requires_scaling': False,
+            'requires_encoding': False,
+            'handles_missing': True,
+            'min_samples': 100,
+            'min_epv': 15,
+            'good_for_high_dim': False,
+            'robust_to_outliers': True,
+        },
+        'lgbm_clf': {
+            'name': 'LightGBM',
+            'group': 'Boosting',
+            'training_time': TrainingTimeTier.MEDIUM,
+            'interpretability': 'low',
+            'requires_scaling': False,
+            'requires_encoding': False,
+            'handles_missing': True,
+            'min_samples': 100,
+            'min_epv': 15,
+            'good_for_high_dim': False,
+            'robust_to_outliers': True,
+        },
     }
 
 
@@ -526,8 +582,18 @@ def _get_plain_language_summary(model_key: str, info: Dict, profile: Any) -> str
                    f"Simple but can be slow with large datasets. Works best with fewer features.",
         'knn_clf': f"k-Nearest Neighbors predicts based on similar samples in your training data. "
                    f"Simple but can be slow with large datasets. Works best with fewer features.",
+
+        'xgb_reg': f"XGBoost is the most widely-used gradient boosting library. With {n:,} samples, "
+                   f"it will train quickly and often achieves top accuracy on tabular data.",
+        'xgb_clf': f"XGBoost is the most widely-used gradient boosting library. With {n:,} samples, "
+                   f"it will train quickly and often achieves top accuracy on tabular data.",
+
+        'lgbm_reg': f"LightGBM grows trees leaf-wise instead of level-wise, making it faster than "
+                    f"XGBoost on large datasets while achieving similar accuracy.",
+        'lgbm_clf': f"LightGBM grows trees leaf-wise instead of level-wise, making it faster than "
+                    f"XGBoost on large datasets while achieving similar accuracy.",
     }
-    
+
     return summaries.get(model_key, f"{info['name']} is a {info['group'].lower()} model.")
 
 
@@ -544,6 +610,10 @@ def _get_when_to_use(model_key: str, info: Dict) -> str:
         'nn': "When you have lots of data and expect highly nonlinear patterns",
         'knn_reg': "As a simple, non-parametric baseline",
         'knn_clf': "As a simple, non-parametric baseline",
+        'xgb_reg': "When you want best-in-class accuracy with built-in L1/L2 regularization",
+        'xgb_clf': "When you want best-in-class accuracy with built-in L1/L2 regularization",
+        'lgbm_reg': "When training speed matters or your dataset is large (>50k rows)",
+        'lgbm_clf': "When training speed matters or your dataset is large (>50k rows)",
     }
     return guidance.get(model_key, "When the data characteristics match this model's strengths")
 
@@ -561,6 +631,10 @@ def _get_when_to_avoid(model_key: str, info: Dict) -> str:
         'nn': "When you have limited data or need to explain individual predictions",
         'knn_reg': "With high-dimensional data or when prediction speed matters",
         'knn_clf': "With high-dimensional data or when prediction speed matters",
+        'xgb_reg': "When interpretability is required or dataset is very small (<100 samples)",
+        'xgb_clf': "When interpretability is required or dataset is very small (<100 samples)",
+        'lgbm_reg': "When you have very few samples or need interpretable coefficients",
+        'lgbm_clf': "When you have very few samples or need interpretable coefficients",
     }
     return guidance.get(model_key, "When data is limited or interpretability is critical")
 
@@ -586,10 +660,12 @@ def compute_model_recommendations(profile: Any) -> CoachOutput:
     
     # Filter models by task type
     if task_type == 'regression':
-        valid_models = ['glm', 'ridge', 'lasso', 'elasticnet', 'huber', 'rf', 
-                       'extratrees_reg', 'histgb_reg', 'knn_reg', 'svr', 'nn']
+        valid_models = ['glm', 'ridge', 'lasso', 'elasticnet', 'huber', 'rf',
+                       'extratrees_reg', 'histgb_reg', 'xgb_reg', 'lgbm_reg',
+                       'knn_reg', 'svr', 'nn']
     else:
         valid_models = ['glm', 'logreg', 'rf', 'extratrees_clf', 'histgb_clf',
+                       'xgb_clf', 'lgbm_clf',
                        'knn_clf', 'svc', 'gaussian_nb', 'lda', 'nn']
     
     recommended = []
@@ -1026,9 +1102,13 @@ def coach_recommendations(
     
     # Boosting
     if n_rows >= 100:
+        if task_type == 'regression':
+            boosting_models = ['histgb_reg', 'xgb_reg', 'lgbm_reg']
+        else:
+            boosting_models = ['histgb_clf', 'xgb_clf', 'lgbm_clf']
         recommendations.append(CoachRecommendation(
             group='Boosting',
-            recommended_models=['histgb_reg' if task_type == 'regression' else 'histgb_clf'],
+            recommended_models=boosting_models,
             why=[
                 "Often achieves the best predictive accuracy",
                 "Handles missing values and mixed feature types"

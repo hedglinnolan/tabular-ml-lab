@@ -197,6 +197,10 @@ for group_name in sorted(model_groups_prep.keys()):
                 "gaussian_nb": "Assumes feature independence. Very fast.",
                 "lda": "Maximizes class separability. Linear boundaries.",
                 "nn": "Multi-layer perceptron. Flexible, needs tuning.",
+                "xgb_reg": "XGBoost gradient boosting. Industry standard.",
+                "xgb_clf": "XGBoost gradient boosting. Industry standard.",
+                "lgbm_reg": "LightGBM. Fast leaf-wise gradient boosting.",
+                "lgbm_clf": "LightGBM. Fast leaf-wise gradient boosting.",
             }
             desc = _desc_map.get(model_key, notes_text)
             # Card is a toggle button — clicking it selects/deselects the model
@@ -314,7 +318,7 @@ def _interpretability_guidance(
     has_collinearity = any("collinearity" in str(k).lower() or "multicollinearity" in str(k).lower() for k in (eda_results or {}))
     has_outliers = bool(profile and profile.features_with_outliers)
     linear = [m for m in selected if m in ["ridge", "lasso", "elasticnet", "glm", "logreg"]]
-    trees = [m for m in selected if m in ["rf", "extratrees_reg", "extratrees_clf", "histgb_reg", "histgb_clf"]]
+    trees = [m for m in selected if m in ["rf", "extratrees_reg", "extratrees_clf", "histgb_reg", "histgb_clf", "xgb_reg", "xgb_clf", "lgbm_reg", "lgbm_clf"]]
     nn_only = selected and all(m == "nn" for m in selected)
     if pn > 0.3 and linear:
         bullets.append(f"High feature-to-sample ratio ({pn:.2f}) and linear models → **performance** can help accuracy; **high** keeps pipelines simple for stakeholders.")
