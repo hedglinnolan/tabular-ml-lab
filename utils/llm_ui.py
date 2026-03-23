@@ -785,13 +785,34 @@ def render_interpretation_with_llm_button(
             _run_llm_call(context, plot_type, sk)
             res = st.session_state.get(sk)
     elif res:
-        # Styled callout box with indigo left border
+        # Styled callout — convert markdown to HTML so it renders inside the styled div
+        import re
+
+        def _md_to_html(text: str) -> str:
+            """Minimal markdown to HTML for LLM output."""
+            # Bold
+            text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+            # Italic
+            text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
+            # Horizontal rule
+            text = text.replace('\n---\n', '<hr style="margin: 12px 0; border-color: #e2e8f0;">')
+            # Numbered items on new lines
+            text = re.sub(r'\n(\d+\.)', r'<br><br>\1', text)
+            # Bullet points
+            text = re.sub(r'\n- ', r'<br>• ', text)
+            # Double newlines to paragraph breaks
+            text = text.replace('\n\n', '<br><br>')
+            # Single newlines to line breaks
+            text = text.replace('\n', '<br>')
+            return text
+
+        html_res = _md_to_html(res)
         st.markdown(
             f'<div style="border-left: 3px solid #6366f1; padding: 12px 16px; '
             f'background: rgba(99, 102, 241, 0.04); border-radius: 4px; '
             f'margin: 8px 0 12px 0;">'
             f'<strong style="color: #6366f1;">🧠 AI Analysis</strong>'
-            f'<div style="margin-top: 8px;">{res}</div></div>',
+            f'<div style="margin-top: 8px; line-height: 1.6;">{html_res}</div></div>',
             unsafe_allow_html=True,
         )
 
@@ -815,10 +836,9 @@ def render_interpretation_with_llm_button(
                         f"Answer the follow-up question directly. Do NOT repeat your previous analysis. "
                         f"Build on it — add new insight, correct if needed, or go deeper on the specific question asked."
                     )
-                    # Store follow-up separately so it appends rather than replaces
                     followup_sk = f"{sk}_followup"
                     _run_llm_call(followup_ctx, plot_type, followup_sk)
                     followup_res = st.session_state.get(followup_sk)
                     if followup_res and followup_res not in ("__error__", "__no_key__"):
-                        # Append follow-up to the main result
                         st.session_state[sk] = res + f"\n\n---\n\n**Follow-up — {user_txt}**\n\n{followup_res}"
+                    st.rerun()
