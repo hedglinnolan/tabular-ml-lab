@@ -16,6 +16,8 @@ from models.nn_whuber import NNWeightedHuberWrapper
 from models.glm import GLMWrapper
 from models.huber_glm import HuberGLMWrapper
 from models.rf import RFWrapper
+from xgboost import XGBRegressor, XGBClassifier
+from lightgbm import LGBMRegressor, LGBMClassifier
 
 
 @dataclass
@@ -133,6 +135,39 @@ def _create_huber(task_type: str, random_state: int):
 def _create_rf(task_type: str, random_state: int):
     """Factory for Random Forest."""
     return RFWrapper(n_estimators=100, max_depth=None, min_samples_leaf=1, task_type=task_type)
+
+
+def _create_xgb_reg(task_type: str, random_state: int):
+    """Factory for XGBoost Regressor."""
+    return XGBRegressor(
+        n_estimators=100, max_depth=3, learning_rate=0.1,
+        random_state=random_state, verbosity=0, tree_method='hist'
+    )
+
+
+def _create_xgb_clf(task_type: str, random_state: int):
+    """Factory for XGBoost Classifier."""
+    return XGBClassifier(
+        n_estimators=100, max_depth=3, learning_rate=0.1,
+        random_state=random_state, verbosity=0, tree_method='hist',
+        eval_metric='logloss'
+    )
+
+
+def _create_lgbm_reg(task_type: str, random_state: int):
+    """Factory for LightGBM Regressor."""
+    return LGBMRegressor(
+        n_estimators=100, max_depth=-1, learning_rate=0.1,
+        random_state=random_state, verbosity=-1
+    )
+
+
+def _create_lgbm_clf(task_type: str, random_state: int):
+    """Factory for LightGBM Classifier."""
+    return LGBMClassifier(
+        n_estimators=100, max_depth=-1, learning_rate=0.1,
+        random_state=random_state, verbosity=-1
+    )
 
 
 def get_registry() -> Dict[str, ModelSpec]:
@@ -561,4 +596,126 @@ def get_registry() -> Dict[str, ModelSpec]:
         )
     )
     
+    # XGBoost
+    registry['xgb_reg'] = ModelSpec(
+        key='xgb_reg',
+        name='XGBoost (Regression)',
+        group='Boosting',
+        factory=_create_xgb_reg,
+        default_params={'n_estimators': 100, 'max_depth': 3, 'learning_rate': 0.1,
+                        'subsample': 1.0, 'colsample_bytree': 1.0, 'reg_alpha': 0.0, 'reg_lambda': 1.0},
+        hyperparam_schema={
+            'n_estimators': {'type': 'int', 'min': 10, 'max': 1000, 'default': 100, 'help': 'Number of boosting rounds'},
+            'max_depth': {'type': 'int', 'min': 1, 'max': 20, 'default': 3, 'help': 'Max depth of trees'},
+            'learning_rate': {'type': 'float', 'min': 0.01, 'max': 1.0, 'default': 0.1, 'log': True, 'help': 'Learning rate'},
+            'subsample': {'type': 'float', 'min': 0.5, 'max': 1.0, 'default': 1.0, 'help': 'Row subsampling ratio'},
+            'colsample_bytree': {'type': 'float', 'min': 0.5, 'max': 1.0, 'default': 1.0, 'help': 'Column subsampling ratio'},
+            'reg_alpha': {'type': 'float', 'min': 0.0, 'max': 10.0, 'default': 0.0, 'help': 'L1 regularization'},
+            'reg_lambda': {'type': 'float', 'min': 0.0, 'max': 10.0, 'default': 1.0, 'help': 'L2 regularization'},
+        },
+        capabilities=ModelCapabilities(
+            supports_regression=True,
+            supports_classification=False,
+            supports_predict_proba=False,
+            supports_partial_dependence=True,
+            supports_shap='tree',
+            requires_scaled_numeric=False,
+            recommended_for_high_dim=False,
+            interpretability_tier="low",
+            notes=['Industry-standard gradient boosting', 'Regularization built-in', 'Handles missing values natively']
+        )
+    )
+
+    registry['xgb_clf'] = ModelSpec(
+        key='xgb_clf',
+        name='XGBoost (Classification)',
+        group='Boosting',
+        factory=_create_xgb_clf,
+        default_params={'n_estimators': 100, 'max_depth': 3, 'learning_rate': 0.1,
+                        'subsample': 1.0, 'colsample_bytree': 1.0, 'reg_alpha': 0.0, 'reg_lambda': 1.0},
+        hyperparam_schema={
+            'n_estimators': {'type': 'int', 'min': 10, 'max': 1000, 'default': 100, 'help': 'Number of boosting rounds'},
+            'max_depth': {'type': 'int', 'min': 1, 'max': 20, 'default': 3, 'help': 'Max depth of trees'},
+            'learning_rate': {'type': 'float', 'min': 0.01, 'max': 1.0, 'default': 0.1, 'log': True, 'help': 'Learning rate'},
+            'subsample': {'type': 'float', 'min': 0.5, 'max': 1.0, 'default': 1.0, 'help': 'Row subsampling ratio'},
+            'colsample_bytree': {'type': 'float', 'min': 0.5, 'max': 1.0, 'default': 1.0, 'help': 'Column subsampling ratio'},
+            'reg_alpha': {'type': 'float', 'min': 0.0, 'max': 10.0, 'default': 0.0, 'help': 'L1 regularization'},
+            'reg_lambda': {'type': 'float', 'min': 0.0, 'max': 10.0, 'default': 1.0, 'help': 'L2 regularization'},
+        },
+        capabilities=ModelCapabilities(
+            supports_regression=False,
+            supports_classification=True,
+            supports_predict_proba=True,
+            supports_partial_dependence=True,
+            supports_shap='tree',
+            requires_scaled_numeric=False,
+            recommended_for_high_dim=False,
+            interpretability_tier="low",
+            notes=['Industry-standard gradient boosting', 'Regularization built-in', 'Handles missing values natively']
+        )
+    )
+
+    # LightGBM
+    registry['lgbm_reg'] = ModelSpec(
+        key='lgbm_reg',
+        name='LightGBM (Regression)',
+        group='Boosting',
+        factory=_create_lgbm_reg,
+        default_params={'n_estimators': 100, 'max_depth': -1, 'learning_rate': 0.1,
+                        'num_leaves': 31, 'subsample': 1.0, 'colsample_bytree': 1.0,
+                        'reg_alpha': 0.0, 'reg_lambda': 0.0},
+        hyperparam_schema={
+            'n_estimators': {'type': 'int', 'min': 10, 'max': 1000, 'default': 100, 'help': 'Number of boosting rounds'},
+            'max_depth': {'type': 'int', 'min': -1, 'max': 50, 'default': -1, 'help': 'Max depth (-1=unlimited)'},
+            'learning_rate': {'type': 'float', 'min': 0.01, 'max': 1.0, 'default': 0.1, 'log': True, 'help': 'Learning rate'},
+            'num_leaves': {'type': 'int', 'min': 8, 'max': 256, 'default': 31, 'help': 'Max number of leaves per tree'},
+            'subsample': {'type': 'float', 'min': 0.5, 'max': 1.0, 'default': 1.0, 'help': 'Row subsampling ratio'},
+            'colsample_bytree': {'type': 'float', 'min': 0.5, 'max': 1.0, 'default': 1.0, 'help': 'Column subsampling ratio'},
+            'reg_alpha': {'type': 'float', 'min': 0.0, 'max': 10.0, 'default': 0.0, 'help': 'L1 regularization'},
+            'reg_lambda': {'type': 'float', 'min': 0.0, 'max': 10.0, 'default': 0.0, 'help': 'L2 regularization'},
+        },
+        capabilities=ModelCapabilities(
+            supports_regression=True,
+            supports_classification=False,
+            supports_predict_proba=False,
+            supports_partial_dependence=True,
+            supports_shap='tree',
+            requires_scaled_numeric=False,
+            recommended_for_high_dim=False,
+            interpretability_tier="low",
+            notes=['Leaf-wise tree growth (faster)', 'Handles categoricals natively', 'Lower memory usage than XGBoost']
+        )
+    )
+
+    registry['lgbm_clf'] = ModelSpec(
+        key='lgbm_clf',
+        name='LightGBM (Classification)',
+        group='Boosting',
+        factory=_create_lgbm_clf,
+        default_params={'n_estimators': 100, 'max_depth': -1, 'learning_rate': 0.1,
+                        'num_leaves': 31, 'subsample': 1.0, 'colsample_bytree': 1.0,
+                        'reg_alpha': 0.0, 'reg_lambda': 0.0},
+        hyperparam_schema={
+            'n_estimators': {'type': 'int', 'min': 10, 'max': 1000, 'default': 100, 'help': 'Number of boosting rounds'},
+            'max_depth': {'type': 'int', 'min': -1, 'max': 50, 'default': -1, 'help': 'Max depth (-1=unlimited)'},
+            'learning_rate': {'type': 'float', 'min': 0.01, 'max': 1.0, 'default': 0.1, 'log': True, 'help': 'Learning rate'},
+            'num_leaves': {'type': 'int', 'min': 8, 'max': 256, 'default': 31, 'help': 'Max number of leaves per tree'},
+            'subsample': {'type': 'float', 'min': 0.5, 'max': 1.0, 'default': 1.0, 'help': 'Row subsampling ratio'},
+            'colsample_bytree': {'type': 'float', 'min': 0.5, 'max': 1.0, 'default': 1.0, 'help': 'Column subsampling ratio'},
+            'reg_alpha': {'type': 'float', 'min': 0.0, 'max': 10.0, 'default': 0.0, 'help': 'L1 regularization'},
+            'reg_lambda': {'type': 'float', 'min': 0.0, 'max': 10.0, 'default': 0.0, 'help': 'L2 regularization'},
+        },
+        capabilities=ModelCapabilities(
+            supports_regression=False,
+            supports_classification=True,
+            supports_predict_proba=True,
+            supports_partial_dependence=True,
+            supports_shap='tree',
+            requires_scaled_numeric=False,
+            recommended_for_high_dim=False,
+            interpretability_tier="low",
+            notes=['Leaf-wise tree growth (faster)', 'Handles categoricals natively', 'Lower memory usage than XGBoost']
+        )
+    )
+
     return registry
