@@ -858,6 +858,8 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                         min_samples_leaf=params.get('min_samples_leaf', model_config.rf_min_samples_leaf),
                         task_type=task_type_final
                     )
+                    if st.session_state.get('use_class_weight', False) and task_type_final == 'classification':
+                        model.model.class_weight = 'balanced'
                     results = model.fit(X_train_model, y_train, X_val_model, y_val)
                 
                 elif model_name == 'glm':
@@ -907,11 +909,21 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                                     pass  # Keep original value if conversion fails
                             setattr(estimator, param_name, param_value)
                     
+                    # Apply class weighting if enabled
+                    use_class_weight = st.session_state.get('use_class_weight', False)
+                    if use_class_weight and task_type_final == 'classification':
+                        if spec.capabilities.supports_class_weight and hasattr(estimator, 'class_weight'):
+                            estimator.class_weight = 'balanced'
+
                     # Wrap in generic wrapper
                     model = RegistryModelWrapper(estimator, spec.name)
-                    
-                    # Fit model
-                    results = model.fit(X_train_model, y_train, X_val_model, y_val)
+
+                    # Fit model (pass sample_weight for XGBoost)
+                    fit_kwargs = {}
+                    if use_class_weight and task_type_final == 'classification' and spec.capabilities.supports_sample_weight_balancing:
+                        from sklearn.utils.class_weight import compute_sample_weight
+                        fit_kwargs['sample_weight'] = compute_sample_weight('balanced', y_train)
+                    results = model.fit(X_train_model, y_train, X_val_model, y_val, **fit_kwargs)
                 
                 # Evaluate on test set
                 y_test_pred = model.predict(X_test_model)
@@ -1009,7 +1021,8 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 'best_metric_value': best_metric_value,
                 'use_cv': st.session_state.get('use_cv', False),
                 'cv_folds': st.session_state.get('cv_folds', 5) if st.session_state.get('use_cv', False) else None,
-                'hyperparameter_optimization': use_optimization
+                'hyperparameter_optimization': use_optimization,
+                'class_weight_balanced': st.session_state.get('use_class_weight', False),
             }
         )
 
@@ -1036,6 +1049,43 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                     resolved_on_page="06_Train_and_Compare",
                     resolution_details=_resolve_details,
                 )
+
+# Class imbalance handling toggle
+if task_type_final == 'classification':
+    profile = st.session_state.get('dataset_profile')
+    if profile and profile.target_profile and profile.target_profile.is_imbalanced:
+        st.markdown("---")
+        st.subheader("⚖️ Class Imbalance Handling")
+        severity = profile.target_profile.imbalance_severity
+        ratio = profile.target_profile.class_balance_ratio
+
+        st.warning(f"""
+        **{severity.title()} class imbalance detected** (ratio: {ratio:.1f}:1).
+        Without correction, models will favor the majority class. Enable class weighting
+        to give minority classes proportionally higher importance during training.
+        """)
+
+        use_class_weight = st.toggle(
+            "Enable class weighting (recommended)",
+            value=True,
+            key="use_class_weight",
+            help="Sets class_weight='balanced' for supported models. Unsupported models (kNN, Naive Bayes, LDA, Neural Net) are unaffected."
+        )
+
+        if use_class_weight:
+            affected = [m for m in models_to_train if registry.get(m) and registry[m].capabilities.supports_class_weight]
+            xgb_affected = [m for m in models_to_train if registry.get(m) and registry[m].capabilities.supports_sample_weight_balancing]
+            unaffected = [m for m in models_to_train if m not in affected and m not in xgb_affected]
+
+            if affected or xgb_affected:
+                all_affected = affected + xgb_affected
+                st.caption(f"✅ Will apply to: {', '.join(m.upper() for m in all_affected)}")
+            if unaffected:
+                st.caption(f"⚠️ Not supported by: {', '.join(m.upper() for m in unaffected)} (these models will train without class weighting)")
+
+        st.session_state['use_class_weight'] = use_class_weight
+    else:
+        st.session_state['use_class_weight'] = False
 
 # Training section with two buttons
 st.markdown("---")

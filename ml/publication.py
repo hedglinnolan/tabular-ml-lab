@@ -950,7 +950,21 @@ def generate_methods_section(
             sections.append(
                 f"The following models were developed and compared: {models_str}."
             )
-    
+
+    # Class weighting narration
+    _class_weight_used = False
+    if 'Model Training' in logged_steps:
+        for entry in logged_steps['Model Training']:
+            if entry.get('details', {}).get('class_weight_balanced'):
+                _class_weight_used = True
+                break
+
+    if _class_weight_used:
+        sections.append(
+            " To address class imbalance, class_weight='balanced' was applied to supported classifiers, "
+            "weighting each class inversely proportional to its frequency in the training data."
+        )
+
     # Add hyperparameter details if available
     if model_hyperparameters:
         hp_details = []

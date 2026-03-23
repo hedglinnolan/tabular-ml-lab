@@ -965,8 +965,10 @@ def _generate_preprocessing_recommendations(profile: Any) -> List[PreprocessingR
             affected_model_families=["All classification models"],
             plain_language_explanation="When one class is much rarer than others, models tend to ignore it. "
                                       "The minority class is often the one you care most about!",
-            how_to_implement="Use class_weight='balanced' in model training. "
-                            "Consider SMOTE for synthetic oversampling (with caution). "
+            how_to_implement="Enable the class weighting toggle on the Train page. This sets "
+                            "class_weight='balanced' for supported models (Logistic Regression, "
+                            "Random Forest, ExtraTrees, HistGradientBoosting, SVM, LightGBM). "
+                            "XGBoost uses computed sample weights for the same effect. "
                             "Focus on F1/PR-AUC metrics, not accuracy."
         ))
     
