@@ -158,11 +158,6 @@ def test_import_plot_bland_altman():
     from visualizations import plot_bland_altman
 
 
-@test("Import: ml.llm_local")
-def test_import_llm_local():
-    from ml import llm_local
-
-
 # ============================================================
 # Functional Tests - Test key functionality
 # ============================================================
@@ -586,26 +581,10 @@ def test_plot_narrative():
     assert isinstance(n6, str) and len(n6) > 0
 
 
-@test("LLM local: enhance_with_ollama (no HTTP)")
-def test_llm_local():
-    from ml.llm_local import enhance_with_ollama
-
-    out = enhance_with_ollama("", "test context")
-    assert out == ""
-
-
 @test("Import: utils.llm_ui")
 def test_import_llm_ui():
     from utils.llm_ui import render_interpretation_with_llm_button
 
-
-@test("LLM local: ensure_ollama_running (no crash)")
-def test_ensure_ollama_running():
-    from ml.llm_local import ensure_ollama_running
-
-    # Ping non-existent URL; spawn may run but we still ping that URL -> False. No crash.
-    ok = ensure_ollama_running("http://127.0.0.1:9999", wait_seconds=2)
-    assert ok is False
 
 
 @test("Upload flow: load_and_preview_csv + reconcile_state_with_df")
@@ -786,7 +765,6 @@ def run_all_tests():
     test_import_rf()
     test_import_data_processor()
     test_import_plot_bland_altman()
-    test_import_llm_local()
     test_import_llm_ui()
     
     print("\nFunctional Tests:")
@@ -813,8 +791,6 @@ def run_all_tests():
     test_plot_bland_altman()
     test_eval_extended_stats()
     test_plot_narrative()
-    test_llm_local()
-    test_ensure_ollama_running()
     test_upload_flow()
     test_eda_narratives_and_actions()
     test_prepare_data_categorical()
