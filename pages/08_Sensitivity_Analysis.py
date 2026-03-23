@@ -34,6 +34,9 @@ st.caption("Use this after the quick workflow when you need to show that your re
 render_breadcrumb("08_Sensitivity_Analysis")
 render_page_navigation("08_Sensitivity_Analysis")
 
+from utils.coaching_ui import render_page_coaching
+render_page_coaching("08_Sensitivity_Analysis")
+
 if st.session_state.get("workflow_mode", "quick") == "quick":
     st.info("""
     🧭 **Advanced workflow step** — Return here after the quick workflow when you need to demonstrate that your result is robust across seeds or feature perturbations.
@@ -283,6 +286,24 @@ if "sensitivity_seed_results" in st.session_state:
 **Best practice:** Always report results across multiple seeds (5-10 runs), never cherry-pick best seed.
 """)
 
+            # LLM interpretation for seed sensitivity
+            from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
+            _bg_seed = gather_session_context()
+            _seed_summary = (f"metric={metric_col}; mean={metric_mean:.4f}; std={np.std(metric_values):.4f}; "
+                             f"range={metric_range:.4f}; cv={np.std(metric_values)/abs(metric_mean)*100:.1f}%; "
+                             f"n_seeds={len(metric_values)}; stability={stability}; "
+                             f"model={selected_model}")
+            ctx_seed = build_llm_context(
+                "seed_sensitivity", _seed_summary,
+                model_name=selected_model,
+                where="Seed sensitivity analysis",
+                sample_size=_bg_seed.pop("sample_size", None),
+                task_type=_bg_seed.pop("task_type", task_type),
+                feature_names=_bg_seed.pop("feature_names", feature_names),
+                **_bg_seed,
+            )
+            render_interpretation_with_llm_button(ctx_seed, key="llm_seed_sens", result_session_key="llm_result_seed_sens", plot_type="seed_sensitivity")
+
 st.markdown("---")
 
 # ── 2. Feature Dropout ───────────────────────────────────────────────
@@ -393,6 +414,25 @@ if st.button("▶️ Run Feature Dropout", type="primary", key="run_dropout"):
 
         with st.expander("Full dropout results"):
             table(df_dropout[["feature", "score_without", "impact"]], key="feature_dropout", use_container_width=True)
+
+        # LLM interpretation for feature dropout
+        from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
+        _bg_drop = gather_session_context()
+        _top_impact = "; ".join(f"{r['feature']}={r['impact']:.4f}" for _, r in df_dropout.head(5).iterrows())
+        _noisy_str = "; ".join(f"{r['feature']}={r['impact']:.4f}" for _, r in df_dropout[df_dropout['impact'] < -0.001].iterrows()) if not df_dropout[df_dropout['impact'] < -0.001].empty else "none"
+        _drop_summary = (f"baseline_{primary_metric}={baseline_score:.4f}; "
+                         f"top_impacts: {_top_impact}; noisy_features: {_noisy_str}; "
+                         f"n_features_tested={len(df_dropout)}; model={selected_model}")
+        ctx_drop = build_llm_context(
+            "feature_dropout", _drop_summary,
+            model_name=selected_model,
+            where="Feature dropout analysis",
+            sample_size=_bg_drop.pop("sample_size", None),
+            task_type=_bg_drop.pop("task_type", task_type),
+            feature_names=_bg_drop.pop("feature_names", feature_names),
+            **_bg_drop,
+        )
+        render_interpretation_with_llm_button(ctx_drop, key="llm_feat_drop", result_session_key="llm_result_feat_drop", plot_type="feature_dropout")
 
 elif "sensitivity_dropout_results" in st.session_state:
     df_dropout = st.session_state["sensitivity_dropout_results"]

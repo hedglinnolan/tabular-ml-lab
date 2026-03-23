@@ -19,7 +19,7 @@ from utils.session_state import (
     DataConfig, SplitConfig, ModelConfig
 )
 from ml.pipeline import get_pipeline_recipe
-from utils.storyline import get_insights_by_category, render_breadcrumb, render_page_navigation
+from utils.storyline import render_breadcrumb, render_page_navigation
 from ml.model_registry import get_registry
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,10 @@ init_session_state()
 
 from utils.theme import inject_custom_css, render_step_indicator, render_guidance, render_sidebar_workflow
 from utils.table_export import table
+from utils.insight_ledger import get_ledger as _get_report_ledger
+
+# Module-level ledger — used by generate_report(), TRIPOD section, and debug panel
+_report_ledger = _get_report_ledger()
 st.set_page_config(page_title="Report Export", page_icon="📄", layout="wide")
 inject_custom_css()
 render_sidebar_workflow(current_page="10_Report_Export")
@@ -78,7 +82,7 @@ trained_models = st.session_state.get('trained_models', {})
 model_results = st.session_state.get('model_results', {})
 data_audit = st.session_state.get('data_audit')
 profile = st.session_state.get('dataset_profile')
-coach_output = st.session_state.get('coach_output')
+# coach_output removed — now derived from unified ledger
 
 if not data_config:
     st.warning("Please configure your data in Upload & Audit first")
@@ -287,7 +291,7 @@ def build_export_context() -> Dict[str, Any]:
         'model_results': model_results,
         'data_audit': data_audit,
         'profile': profile,
-        'coach_output': coach_output,
+        'coach_output': None,  # deprecated — use unified ledger
         'pipeline': pipeline,
         'pipelines_by_model': pipelines_by_model,
         'configs_by_model': configs_by_model,
@@ -588,7 +592,7 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     trained_models = export_ctx['trained_models']
     model_results = export_ctx['model_results']
     profile = export_ctx['profile']
-    coach_output = export_ctx['coach_output']
+    # coach_output deprecated — using unified ledger
     pipeline = export_ctx['pipeline']
     pipelines_by_model = export_ctx['pipelines_by_model']
     configs_by_model = export_ctx['configs_by_model']
@@ -734,45 +738,24 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     report_lines.append("---")
     report_lines.append("")
     
-    # Key insights after pre-processing — prefer Insight Ledger, fallback to legacy
-    _used_ledger = False
-    try:
-        from utils.insight_ledger import get_ledger as _get_report_ledger
-        _report_ledger = _get_report_ledger()
-        if len(_report_ledger) > 0:
-            _used_ledger = True
-            report_lines.append("## Key Observations and Resolutions")
-            report_lines.append("")
-            report_lines.append(_report_ledger.narrative_for_report())
-            report_lines.append("")
-            report_lines.append("---")
-            report_lines.append("")
-    except ImportError:
-        pass
+    # Key observations and resolutions from the unified ledger
+    if len(_report_ledger) > 0:
+        report_lines.append("## Key Observations and Resolutions")
+        report_lines.append("")
+        report_lines.append(_report_ledger.narrative_for_report())
+        report_lines.append("")
 
-    if not _used_ledger:
-        insights = get_insights_by_category()
-        eda_insights = [i for i in insights if isinstance(i, dict) and i.get("category") != "preprocessing"]
-        prep_insights = [i for i in insights if isinstance(i, dict) and i.get("category") == "preprocessing"]
-        if eda_insights or prep_insights:
-            report_lines.append("## Key insights after pre-processing")
+        # Manuscript-ready narrative grouped by workflow phase
+        phase_narratives = _report_ledger.to_manuscript_narrative()
+        if phase_narratives:
+            report_lines.append("### Methods Narrative (by workflow phase)")
             report_lines.append("")
-            if eda_insights:
-                report_lines.append("### From EDA")
+            for phase_name, narrative in phase_narratives.items():
+                report_lines.append(f"**{phase_name}:** {narrative}")
                 report_lines.append("")
-                for insight in eda_insights:
-                    report_lines.append(f"**{insight.get('category', 'General').title()}:** {insight['finding']}")
-                    report_lines.append(f"→ {insight['implication']}")
-                    report_lines.append("")
-            if prep_insights:
-                report_lines.append("### From preprocessing")
-                report_lines.append("")
-                for insight in prep_insights:
-                    report_lines.append(f"- {insight['finding']}")
-                    report_lines.append(f"  → {insight['implication']}")
-                    report_lines.append("")
-            report_lines.append("---")
-            report_lines.append("")
+
+        report_lines.append("---")
+        report_lines.append("")
     
     # Split Strategy
     report_lines.append("## 🔀 Data Split Strategy")
@@ -797,6 +780,26 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     if pipelines_by_model:
         report_lines.append("## Preprocessing (per model)")
         report_lines.append("")
+
+        # Ledger-sourced provenance narrative (why these preprocessing choices)
+        from utils.insight_ledger import format_resolution_detail
+        _preprocess_provenance = _report_ledger.get_resolved(page="05_Preprocess")
+        if _preprocess_provenance:
+            report_lines.append("**Rationale:**")
+            report_lines.append("")
+            for _prov_insight in _preprocess_provenance:
+                if _prov_insight.resolution_details.get("action_type"):
+                    prose = format_resolution_detail(
+                        _prov_insight.resolution_details, model_scope=_prov_insight.model_scope
+                    )
+                    if _prov_insight.finding and not _prov_insight.finding.startswith("Pipelines built"):
+                        report_lines.append(f"- {_prov_insight.finding} → {prose}")
+                    elif prose:
+                        report_lines.append(f"- {prose}")
+                elif _prov_insight.resolved_by and _prov_insight.finding:
+                    report_lines.append(f"- {_prov_insight.finding} → {_prov_insight.resolved_by}")
+            report_lines.append("")
+
         for mk, pl in pipelines_by_model.items():
             report_lines.append(f"### {mk.upper()}")
             report_lines.append("")
@@ -1100,19 +1103,19 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
             report_lines.append("---")
             report_lines.append("")
 
-    # Recommendations
-    if coach_output:
-        report_lines.append("## Model Selection Coach Insights")
+    # Data sufficiency narrative from profile (if available)
+    if profile and hasattr(profile, 'sufficiency_narrative') and profile.sufficiency_narrative:
+        report_lines.append("## Data Assessment")
         report_lines.append("")
-        report_lines.append(f"> {coach_output.data_sufficiency_narrative}")
+        report_lines.append(f"> {profile.sufficiency_narrative}")
         report_lines.append("")
-        
-        if coach_output.warnings_summary:
-            report_lines.append("**Warnings:**")
-            for warning in coach_output.warnings_summary[:3]:
-                report_lines.append(f"- {warning}")
+        # Warnings from ledger
+        _report_warnings = _report_ledger.get_unresolved(severity="warning")
+        if _report_warnings:
+            report_lines.append("**Open warnings:**")
+            for _w in _report_warnings[:5]:
+                report_lines.append(f"- {_w.finding}")
             report_lines.append("")
-        
         report_lines.append("---")
         report_lines.append("")
     
@@ -1179,6 +1182,15 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
         strength_items.append("Model-agnostic explainability via SHAP analysis")
     if perm_imp:
         strength_items.append("Permutation importance for feature contribution assessment")
+    # Ledger-sourced strengths: resolved issues = methodological rigor
+    _resolved_count = _report_ledger.summary()["resolved"]
+    if _resolved_count > 0:
+        strength_items.append(
+            f"Systematic data quality audit: {_resolved_count} observation(s) "
+            f"identified and addressed with documented provenance"
+        )
+    if pipelines_by_model and len(pipelines_by_model) > 1:
+        strength_items.append("Per-model preprocessing pipelines tailored to each model family's assumptions")
     
     if strength_items:
         report_lines.append("**Strengths:**")
@@ -1189,7 +1201,20 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
         report_lines.append("**Strengths:** [PLACEHOLDER: Discuss methodological strengths]")
     report_lines.append("")
     
-    report_lines.append("**Limitations:** [PLACEHOLDER: Discuss study limitations, data constraints, generalizability, etc.]")
+    # Auto-fill limitations from unresolved ledger insights
+    _unresolved_for_limitations = _report_ledger.get_unresolved()
+    limitation_items = []
+    for _ui in _unresolved_for_limitations:
+        if _ui.severity in ("blocker", "warning"):
+            limitation_items.append(f"{_ui.finding}: {_ui.implication}")
+    
+    if limitation_items:
+        report_lines.append("**Limitations:**")
+        for item in limitation_items:
+            report_lines.append(f"- {item}")
+        report_lines.append("- [PLACEHOLDER: Add study-specific limitations]")
+    else:
+        report_lines.append("**Limitations:** [PLACEHOLDER: Discuss study limitations, data constraints, generalizability, etc.]")
     report_lines.append("")
     
     # Conclusion
@@ -1316,6 +1341,18 @@ with st.expander("📄 Auto-Generated Methods Section", expanded=False):
             best_model=best_model,
         )
         methods_text = _build_methods_section_for_export(manuscript_context)
+
+        # Append ledger-sourced provenance narrative
+        _ledger_narratives = _report_ledger.to_manuscript_narrative()
+        if _ledger_narratives:
+            methods_text += "\n\n### Data Quality and Preprocessing Rationale\n\n"
+            methods_text += (
+                "The following observations were identified during exploratory analysis "
+                "and addressed during the modeling workflow:\n\n"
+            )
+            for _phase, _narrative in _ledger_narratives.items():
+                methods_text += f"**{_phase}:** {_narrative}\n\n"
+
         st.session_state["methods_section"] = methods_text
         st.session_state["manuscript_export_context"] = manuscript_context
 
@@ -1372,32 +1409,43 @@ with st.expander("✅ TRIPOD Checklist", expanded=False):
     """)
     from ml.publication import TRIPODTracker, TRIPOD_ITEMS
 
-    if "tripod_tracker" not in st.session_state:
-        tracker = TRIPODTracker()
-        # Auto-mark items we can detect
-        if data_config and data_config.target_col:
-            tracker.mark_complete("outcome_defined", f"Target: {data_config.target_col}", "Upload & Audit")
-        if data_config and data_config.feature_cols:
-            tracker.mark_complete("predictors_defined", f"{len(data_config.feature_cols)} features", "Upload & Audit")
-        if trained_models:
-            tracker.mark_complete("model_building", f"Models: {', '.join(trained_models.keys())}", "Train & Compare")
-        if model_results:
-            tracker.mark_complete("performance_measures", "Test set metrics computed", "Train & Compare")
-        if st.session_state.get("bootstrap_results"):
-            tracker.mark_complete("performance_ci", "Bootstrap CIs computed", "Train & Compare")
-        if st.session_state.get("table1_df") is not None:
-            tracker.mark_complete("table1", "Table 1 generated", "EDA")
-        prep_config = st.session_state.get('preprocessing_config', {})
-        if prep_config:
-            tracker.mark_complete("predictor_handling", "Preprocessing configured", "Preprocess")
-            if prep_config.get("numeric_imputation", "none") != "none":
-                tracker.mark_complete("missing_data", f"Imputation: {prep_config.get('numeric_imputation')}", "Preprocess")
-        st.session_state["tripod_tracker"] = tracker
+    # TRIPOD auto-completion from ledger + workflow state
+    tracker = TRIPODTracker()
 
-    tracker = st.session_state["tripod_tracker"]
+    # Auto-mark from ledger resolutions (covers: missing_data, predictor_handling, etc.)
+    _tripod_from_ledger = _report_ledger.get_tripod_status()
+    for auto_key, completed in _tripod_from_ledger.items():
+        if completed:
+            # Find a resolved insight with this tripod key for the note
+            note = ""
+            for _ins in _report_ledger.get_resolved():
+                if auto_key in _ins.tripod_keys:
+                    note = _ins.resolved_by
+                    break
+            tracker.mark_complete(auto_key, note or "Auto-detected from analysis", "Ledger")
+
+    # Auto-mark from workflow state (items not tracked by ledger)
+    if data_config and data_config.target_col:
+        tracker.mark_complete("outcome_defined", f"Target: {data_config.target_col}", "Upload & Audit")
+    if data_config and data_config.feature_cols:
+        tracker.mark_complete("predictors_defined", f"{len(data_config.feature_cols)} features", "Upload & Audit")
+    if trained_models:
+        tracker.mark_complete("model_building", f"Models: {', '.join(trained_models.keys())}", "Train & Compare")
+    if model_results:
+        tracker.mark_complete("performance_measures", "Test set metrics computed", "Train & Compare")
+    if st.session_state.get("bootstrap_results"):
+        tracker.mark_complete("performance_ci", "Bootstrap CIs computed", "Train & Compare")
+    if st.session_state.get("table1_df") is not None:
+        tracker.mark_complete("table1", "Table 1 generated", "EDA")
+    prep_config = st.session_state.get('preprocessing_config', {})
+    if prep_config:
+        tracker.mark_complete("predictor_handling", "Preprocessing configured", "Preprocess")
+        if prep_config.get("numeric_imputation", "none") != "none":
+            tracker.mark_complete("missing_data", f"Imputation: {prep_config.get('numeric_imputation')}", "Preprocess")
+
     done, total = tracker.get_progress()
     st.progress(done / total)
-    st.markdown(f"**{done}/{total} items addressed**")
+    st.markdown(f"**{done}/{total} items addressed** (auto-completed from your workflow)")
 
     checklist_df = tracker.get_checklist_df()
     table(checklist_df, use_container_width=True, hide_index=True)
@@ -1951,5 +1999,5 @@ with st.expander("Advanced / State Debug", expanded=False):
     st.write(f"• Features: {len(data_config.feature_cols) if data_config else 0}")
     st.write(f"• Trained models: {len(trained_models)}")
     st.write(f"• Dataset profile: {'Available' if profile else 'Not computed'}")
-    st.write(f"• Coach output: {'Available' if coach_output else 'Not computed'}")
+    st.write(f"• Insight ledger: {len(_report_ledger)} entries ({_report_ledger.summary()['resolved']} resolved)")
     st.write(f"• Git info: {get_git_info()}")

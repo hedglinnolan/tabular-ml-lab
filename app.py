@@ -317,6 +317,30 @@ with st.expander("❓ Frequently Asked Questions", expanded=False):
     A: The statistical methods used (bootstrap CIs, calibration, SHAP) are standard in the field. However, **you are responsible** for ensuring your analysis is scientifically sound and appropriate for your research question.
     """)
 
+# Theory Reference callout
+st.markdown("---")
+st.markdown("""
+<div style="
+    background: linear-gradient(135deg, rgba(102,126,234,0.9), rgba(118,75,162,0.9));
+    border-radius: 10px;
+    padding: 1.4rem 1.6rem;
+    margin: 1rem 0;
+    text-align: center;
+    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);
+">
+    <div style="font-size: 1.6rem; margin-bottom: 0.4rem;">📖</div>
+    <div style="font-size: 1.05rem; font-weight: 700; color: #fff; margin-bottom: 0.4rem;">
+        Want to understand why the app makes a recommendation?
+    </div>
+    <div style="font-size: 0.9rem; color: rgba(255,255,255,0.88); line-height: 1.55; max-width: 560px; margin: 0 auto;">
+        The <strong style="color: #fff;">Theory Reference</strong> explains the statistical
+        reasoning behind every coaching prompt, preprocessing choice, and model assumption — from
+        missing data mechanisms to SHAP values to TRIPOD reporting standards.
+        Open it from the sidebar anytime.
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
 # Footer
 st.markdown("---")
 st.caption("""

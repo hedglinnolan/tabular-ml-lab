@@ -16,6 +16,14 @@ _MAX_TABLE_ROWS = 20
 _MAX_TABLE_CHARS = 2000
 
 # ============================================================================
+# Default model configuration — single source of truth
+# ============================================================================
+
+DEFAULT_OLLAMA_MODEL = "qwen3.5:9b"
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
+
+# ============================================================================
 # Domain detection
 # ============================================================================
 
@@ -49,23 +57,218 @@ def _infer_domain_hint(feature_names: Optional[List[str]] = None) -> str:
 # System prompt for interpretation
 # ============================================================================
 
-INTERPRETATION_SYSTEM_PROMPT = """You are a senior biostatistician and data scientist reviewing analysis results for a research publication. Your role is to provide interpretation that a scientist can use directly.
+INTERPRETATION_SYSTEM_PROMPT = """You interpret statistical analysis results in a tabular ML research workbench (Streamlit app). The researcher sees a specific plot or table and clicks "Interpret with AI" for expert analysis.
 
-RULES:
-1. EXPLAIN what the results MEAN for this specific dataset — don't just restate numbers
-2. Give ACTIONABLE recommendations (what should the researcher do next?)
-3. Flag concerns a PEER REVIEWER would raise
-4. Be SPECIFIC — reference the actual values, features, and context provided
-5. If you see red flags (e.g., data leakage, overfitting, insufficient sample size), say so clearly
-6. Suggest what to CHECK or INVESTIGATE further
-7. Use clear, professional language suitable for a methods/results section discussion
-8. Keep it concise — 3-5 key points, not a wall of text
+# ANALYTICAL CHECKLIST — address each section in order
 
-DO NOT:
-- Simply paraphrase or restate the statistical output
-- Give generic textbook explanations
-- Be vague ("the results look good") — be precise about WHY
-- Ignore potential problems to be polite"""
+## VALIDITY
+- Are assumptions of this method met given the data context?
+- Do known issues (collinearity, missingness, skew, small n) affect THIS result?
+- Is the sample size adequate for this analysis?
+
+## INTERPRETATION
+- What does this specific result mean for this dataset?
+- Distinguish statistical significance from practical significance
+- Reference actual values from the results — add insight the numbers alone don't show
+
+## CONCERNS
+- What would a peer reviewer flag?
+- Connect to unresolved issues from prior analysis steps if relevant
+
+## NEXT STEP
+- One concrete action the researcher can take in this tool
+
+# DOMAIN CONSTRAINTS — follow these as hard rules
+- VIF > 5 between features means SHAP and permutation importance rankings are unreliable for those features
+- R² > 0.95 on tabular data is suspicious — flag possible data leakage
+- Effect sizes matter more than p-values for clinical/practical relevance
+- n < 30 per group weakens parametric test assumptions
+- 48%+ missing data in a feature means imputed values dominate — flag reduced reliability
+- Residual patterns in linear models suggest assumption violations; in tree models they indicate systematic prediction gaps (different diagnosis)
+
+# OUTPUT RULES
+- Maximum 5 points total across all sections
+- If the researcher asked a question, answer it first
+- Do NOT define methods (no "SHAP values measure the marginal contribution...")
+- Do NOT explain formulas or general model properties
+- Do NOT summarize the background context
+- Do NOT restate numbers the researcher can already see
+- Do NOT start with "Great question" or "Certainly" or "Based on the analysis"
+- Do NOT use LaTeX notation ($R^2$, $\alpha$, etc.) — use plain text (R², α, β, μ, σ, χ², p) or Unicode symbols
+"""
+
+# Analysis-type-specific hints injected into the system prompt
+# These add targeted sub-questions to the VALIDITY section
+ANALYSIS_TYPE_HINTS: Dict[str, str] = {
+    "learning_curves": (
+        "- Is there evidence of overfitting (train loss much lower than val loss) or underfitting (both high)?\n"
+        "- Has the model converged, or would more epochs help?"
+    ),
+    "pred_vs_actual": (
+        "- Are errors evenly distributed, or concentrated in specific prediction ranges?\n"
+        "- Does the scatter suggest heteroscedasticity?"
+    ),
+    "residuals": (
+        "- Do residual patterns suggest violated assumptions for this model family?\n"
+        "- Is there systematic under/over-prediction in specific ranges?"
+    ),
+    "confusion_matrix": (
+        "- Does class imbalance or threshold choice affect this result?\n"
+        "- Which misclassification type is more costly in this domain?"
+    ),
+    "permutation_importance": (
+        "- Does collinearity between features affect the reliability of these importance rankings?\n"
+        "- Are the top features consistent with domain expectations, or do they suggest data leakage?"
+    ),
+    "SHAP": (
+        "- Does collinearity between features affect the reliability of these SHAP rankings?\n"
+        "- Do SHAP interaction effects suggest feature dependencies the model is exploiting?"
+    ),
+    "bland_altman": (
+        "- Is the performance difference practically meaningful or within noise?\n"
+        "- Does the limits of agreement width suggest clinical/practical interchangeability?"
+    ),
+    "roc_curve": (
+        "- Is this AUC sufficient for the clinical/practical context?\n"
+        "- Does the curve shape suggest the model performs differently at different thresholds?"
+    ),
+    "pr_curve": (
+        "- Does the PR curve reveal class imbalance issues that ROC masks?\n"
+        "- Is precision maintained at practically useful recall levels?"
+    ),
+    "correlation": (
+        "- Is the correlation coefficient practically meaningful, not just statistically significant?\n"
+        "- Could confounders or non-linear relationships affect this result?"
+    ),
+    "two_group_comparison": (
+        "- Is the effect size meaningful regardless of p-value?\n"
+        "- Were assumptions (normality, equal variance) checked before this test?"
+    ),
+    "multi_group_comparison": (
+        "- If significant, which specific group differences drive the result?\n"
+        "- Is the effect size (eta-squared, omega-squared) practically meaningful?"
+    ),
+    "chi_squared": (
+        "- Are expected cell counts adequate (>5) for chi-squared validity?\n"
+        "- Does Cramér's V indicate a practically meaningful association?"
+    ),
+    "seed_sensitivity": (
+        "- How much variance is attributable to random initialization vs genuine model instability?\n"
+        "- Is the coefficient of variation acceptable for the intended application?"
+    ),
+    "bootstrap_ci": (
+        "- Is the confidence interval width acceptable for practical decision-making?\n"
+        "- Does the interval cross any clinically or practically meaningful thresholds?"
+    ),
+    "feature_dropout": (
+        "- Which features cause the largest performance drops when removed?\n"
+        "- Does removing a feature improve performance (suggesting noise or collinearity)?"
+    ),
+    "feature_selection": (
+        "- Why did selection methods agree or disagree on specific features?\n"
+        "- Are there domain-relevant features that were excluded that shouldn't have been?"
+    ),
+}
+
+
+def _build_system_prompt(plot_type: str) -> str:
+    """Compose the full system prompt with analysis-type-specific hints.
+
+    The base analytical framework is static. Type-specific hints are injected
+    into the VALIDITY section to guide the model's reasoning for this
+    particular kind of analysis.
+    """
+    base = INTERPRETATION_SYSTEM_PROMPT
+    hints = ANALYSIS_TYPE_HINTS.get(plot_type, "")
+    if hints:
+        base += f"\n# ANALYSIS-SPECIFIC CHECKS for {plot_type}\n{hints}\n"
+    return base
+
+
+# ============================================================================
+# Session context gatherer
+# ============================================================================
+
+def gather_session_context() -> Dict[str, Any]:
+    """Pull all available analysis context from Streamlit session state.
+
+    Returns a dict of kwargs suitable for passing to build_llm_context().
+    This is background context — the broad project state that helps the LLM
+    give specific interpretations of focal results.
+    """
+    import streamlit as st
+
+    ctx: Dict[str, Any] = {}
+
+    # Dataset profile
+    profile = st.session_state.get("dataset_profile")
+    if profile and isinstance(profile, dict):
+        ctx["dataset_profile"] = profile
+
+    # Task type and sample info from data_config
+    data_config = st.session_state.get("data_config")
+    if data_config:
+        if hasattr(data_config, "task_type") and data_config.task_type:
+            ctx["task_type"] = data_config.task_type
+        if hasattr(data_config, "feature_cols") and data_config.feature_cols:
+            ctx["feature_names"] = list(data_config.feature_cols)
+
+    # Sample size from working dataframe
+    df = st.session_state.get("working_df")
+    if df is not None and hasattr(df, "__len__"):
+        ctx["sample_size"] = len(df)
+
+    # Accumulated EDA findings
+    eda_results = st.session_state.get("eda_results", {})
+    findings: List[str] = []
+    if isinstance(eda_results, dict):
+        for _action_id, result in eda_results.items():
+            if isinstance(result, dict):
+                for f in result.get("findings", [])[:3]:
+                    if isinstance(f, str) and f not in findings:
+                        findings.append(f)
+    if findings:
+        ctx["eda_insights"] = findings[:12]
+
+    # Insight ledger — unresolved and resolved items
+    ledger = st.session_state.get("insight_ledger")
+    if ledger and hasattr(ledger, "get_unresolved"):
+        unresolved = ledger.get_unresolved()
+        if unresolved:
+            unresolved_strs = []
+            for ins in unresolved[:6]:
+                desc = getattr(ins, "finding", "") or getattr(ins, "description", "")
+                sev = getattr(ins, "severity", "")
+                if desc:
+                    prefix = f"[{sev.upper()}] " if sev else ""
+                    unresolved_strs.append(f"{prefix}{desc}")
+            if unresolved_strs:
+                existing = ctx.get("eda_insights", [])
+                ctx["eda_insights"] = existing + [f"[OPEN ISSUE] {s}" for s in unresolved_strs]
+
+        resolved = ledger.get_resolved()
+        if resolved:
+            resolved_strs = []
+            for ins in resolved[:6]:
+                finding = getattr(ins, "finding", "")
+                action = getattr(ins, "resolved_by", "")
+                if finding and action:
+                    resolved_strs.append(f"{finding} → {action}")
+            if resolved_strs:
+                existing = ctx.get("eda_insights", [])
+                ctx["eda_insights"] = existing + [f"[RESOLVED] {s}" for s in resolved_strs]
+
+    # Preprocessing config — extract from first model's pipeline as representative
+    pipelines = st.session_state.get("preprocessing_pipelines_by_model", {})
+    if isinstance(pipelines, dict) and pipelines:
+        first_key = next(iter(pipelines))
+        pipeline_data = pipelines[first_key]
+        if isinstance(pipeline_data, dict):
+            config = pipeline_data.get("config", pipeline_data)
+            if isinstance(config, dict):
+                ctx["preprocessing_config"] = config
+
+    return ctx
 
 
 # ============================================================================
@@ -173,30 +376,51 @@ def build_llm_context(
     preprocessing_config: Optional[Dict[str, Any]] = None,
     model_family: Optional[str] = None,
 ) -> str:
-    """Build rich context for the LLM with all available information.
+    """Build structured context for LLM interpretation.
 
-    Now includes dataset profile, accumulated EDA insights, preprocessing choices,
-    and model family context for much more specific interpretation.
+    Separates FOCAL context (the specific result to interpret) from BACKGROUND
+    context (project state that helps the LLM be specific). The LLM should
+    interpret the focal result, using background to ground its advice.
     """
     parts = []
 
-    # Header
-    parts.append(f"## Analysis: {plot_type}")
-    parts.append(f"Statistical results: {stats_summary}")
+    # ── FOCAL ANALYSIS (what the user is looking at right now) ──
+    parts.append("# FOCAL ANALYSIS — interpret THIS result")
+    parts.append(f"Analysis type: {plot_type}")
+    if where:
+        parts.append(f"Location: {where}")
+    parts.append(f"Results:\n{stats_summary}")
 
-    # Dataset context
-    context_parts = []
+    if model_name:
+        model_desc = model_name
+        if model_family:
+            model_desc += f" ({model_family} family)"
+        parts.append(f"Model: {model_desc}")
+
+    if metrics:
+        kv = "; ".join(f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}"
+                       for k, v in list(metrics.items())[:8])
+        parts.append(f"Performance metrics: {kv}")
+
+    if existing:
+        parts.append(f"Automated summary (do NOT repeat — add what it misses): {existing}")
+
+    # ── BACKGROUND (project state for grounding — do not summarize) ──
+    bg_parts = []
+
+    # Dataset basics
+    context_bits = []
     if task_type:
-        context_parts.append(f"Task: {task_type}")
+        context_bits.append(f"Task: {task_type}")
     if sample_size is not None:
-        context_parts.append(f"Sample size: n={sample_size:,}")
+        context_bits.append(f"n={sample_size:,}")
     domain = data_domain_hint or (_infer_domain_hint(feature_names) if feature_names else "")
     if domain:
-        context_parts.append(f"Domain: {domain}")
-    if context_parts:
-        parts.append("Context: " + " | ".join(context_parts))
+        context_bits.append(f"Domain: {domain}")
+    if context_bits:
+        bg_parts.append(" | ".join(context_bits))
 
-    # Dataset profile (if available)
+    # Dataset profile
     if dataset_profile:
         profile_parts = []
         for key in ("n_rows", "n_features", "n_numeric", "n_categorical",
@@ -205,23 +429,15 @@ def build_llm_context(
             if val is not None:
                 profile_parts.append(f"{key}={val}")
         if profile_parts:
-            parts.append("Dataset profile: " + ", ".join(profile_parts))
-
-    # Model info
-    if model_name:
-        parts.append(f"Model: {model_name}" + (f" ({model_family})" if model_family else ""))
-    if metrics:
-        kv = "; ".join(f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}"
-                       for k, v in list(metrics.items())[:8])
-        parts.append(f"Performance metrics: {kv}")
+            bg_parts.append("Dataset: " + ", ".join(profile_parts))
 
     # Features
     if feature_names:
         if len(feature_names) <= 12:
-            parts.append(f"Features ({len(feature_names)}): {', '.join(str(x) for x in feature_names)}")
+            bg_parts.append(f"Features ({len(feature_names)}): {', '.join(str(x) for x in feature_names)}")
         else:
             feats = ", ".join(str(x) for x in feature_names[:10])
-            parts.append(f"Features ({len(feature_names)}): {feats}, … (+{len(feature_names)-10} more)")
+            bg_parts.append(f"Features ({len(feature_names)}): {feats}, … (+{len(feature_names)-10} more)")
 
     # Preprocessing
     if preprocessing_config:
@@ -232,15 +448,15 @@ def build_llm_context(
             if val is not None and val != "none" and val is not False:
                 prep_parts.append(f"{key}={val}")
         if prep_parts:
-            parts.append("Preprocessing: " + ", ".join(prep_parts))
+            bg_parts.append("Preprocessing: " + ", ".join(prep_parts))
 
-    # Accumulated EDA insights
+    # Prior findings + insight ledger state
     if eda_insights:
-        parts.append("Prior EDA findings:\n" + "\n".join(f"  - {i}" for i in eda_insights[:8]))
+        bg_parts.append("Prior findings & decisions:\n" + "\n".join(f"  - {i}" for i in eda_insights[:15]))
 
-    # Existing interpretation (as background only)
-    if existing:
-        parts.append(f"Existing automated summary (use as background, do NOT paraphrase): {existing}")
+    if bg_parts:
+        parts.append("\n# BACKGROUND — use to ground your interpretation, do NOT summarize")
+        parts.extend(bg_parts)
 
     return "\n".join(parts)
 
@@ -273,9 +489,11 @@ def _call_llm(
         vllm_url = os.getenv("VLLM_URL", "http://localhost:8000")
         return _call_vllm(context, system_prompt, model or os.getenv("VLLM_MODEL", ""), vllm_url)
     elif backend == "ollama":
-        return _call_ollama(context, system_prompt, model or "llama3.1:8b", ollama_url)
+        return _call_ollama(context, system_prompt, model or DEFAULT_OLLAMA_MODEL, ollama_url)
     elif backend == "openai":
-        return _call_openai(context, system_prompt, model or "gpt-4o-mini", api_key)
+        return _call_openai(context, system_prompt, model or DEFAULT_OPENAI_MODEL, api_key)
+    elif backend == "anthropic":
+        return _call_anthropic(context, system_prompt, model or DEFAULT_ANTHROPIC_MODEL, api_key)
     else:
         logger.warning(f"Unknown LLM backend: {backend}")
         return None
@@ -314,7 +532,17 @@ def _call_vllm(context: str, system_prompt: str, model: str, url: str) -> Option
 
 
 def _call_ollama(context: str, system_prompt: str, model: str, url: str) -> Optional[str]:
-    """Call Ollama API."""
+    """Call Ollama API using the chat endpoint.
+
+    Strategy for thinking models (Qwen3.5):
+    1. First try WITH thinking enabled (num_predict=3000, 75s timeout)
+       - Thinking produces better quality but is slower
+       - If content is returned, use it
+       - If only thinking is returned (budget exhausted), extract from thinking
+    2. If that times out, retry WITHOUT thinking (num_predict=2048, 30s timeout)
+       - Still good quality thanks to structured system prompt
+       - Fast fallback ensures the user always gets a response
+    """
     import requests
     try:
         # Ensure running
@@ -326,19 +554,58 @@ def _call_ollama(context: str, system_prompt: str, model: str, url: str) -> Opti
             import time
             time.sleep(3)
 
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": context},
+        ]
+
+        # Attempt 1: thinking enabled, moderate budget
+        try:
+            resp = requests.post(
+                f"{url}/api/chat",
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "stream": False,
+                    "options": {"temperature": 0.3, "num_predict": 3000},
+                },
+                timeout=75,
+            )
+            if resp.ok:
+                data = resp.json()
+                message = data.get("message", {})
+                content = (message.get("content") or "").strip()
+                if content:
+                    return content
+                # Thinking but no content — extract from thinking tail
+                thinking = (message.get("thinking") or "").strip()
+                if thinking:
+                    logger.info(f"Ollama thinking-only response ({len(thinking)} chars) — extracting")
+                    fallback = thinking[-1000:].strip()
+                    last_break = fallback.rfind("\n\n")
+                    if last_break > 100:
+                        fallback = fallback[last_break:].strip()
+                    if fallback:
+                        return fallback
+        except requests.exceptions.Timeout:
+            logger.info("Ollama thinking attempt timed out at 75s — falling back to no-think mode")
+
+        # Attempt 2: thinking disabled, fast fallback
         resp = requests.post(
-            f"{url}/api/generate",
+            f"{url}/api/chat",
             json={
                 "model": model,
-                "prompt": context,
-                "system": system_prompt,
+                "messages": messages,
                 "stream": False,
-                "options": {"temperature": 0.3, "num_predict": 800},
+                "think": False,
+                "options": {"temperature": 0.3, "num_predict": 2048},
             },
-            timeout=60,
+            timeout=30,
         )
         if resp.ok:
-            return resp.json().get("response", "").strip()
+            data = resp.json()
+            content = (data.get("message", {}).get("content") or "").strip()
+            return content or None
         else:
             logger.warning(f"Ollama error: {resp.status_code}")
             return None
@@ -434,9 +701,9 @@ def render_llm_settings_sidebar():
         elif backend == "ollama":
             st.text_input(
                 "Ollama model",
-                value=st.session_state.get("ollama_model", "llama3.1:8b"),
+                value=st.session_state.get("ollama_model", DEFAULT_OLLAMA_MODEL),
                 key="ollama_model",
-                help="Model name (e.g., llama3.1:8b, mistral, gemma2)",
+                help="Model name (e.g., qwen3.5:9b, llama3.1:8b, gemma2)",
             )
             st.caption("Connected to institutional Ollama backend — no API key needed.")
         elif backend == "openai":
@@ -448,103 +715,165 @@ def render_llm_settings_sidebar():
             )
             st.text_input(
                 "Model",
-                value=st.session_state.get("openai_model", "gpt-4o-mini"),
+                value=st.session_state.get("openai_model", DEFAULT_OPENAI_MODEL),
                 key="openai_model",
             )
+        elif backend == "anthropic":
+            st.text_input(
+                "Anthropic API Key",
+                value=st.session_state.get("anthropic_api_key", ""),
+                key="anthropic_api_key",
+                type="password",
+            )
+            st.text_input(
+                "Model",
+                value=st.session_state.get("anthropic_model", DEFAULT_ANTHROPIC_MODEL),
+                key="anthropic_model",
+            )
+
+
+def _run_llm_call(context: str, plot_type: str, sk: str) -> None:
+    """Execute LLM call and store result in session state."""
+    import streamlit as st
+
+    backend = st.session_state.get("llm_backend", "ollama")
+    model = ""
+    api_key = ""
+    ollama_url = "http://localhost:11434"
+
+    if backend == "ollama":
+        model = st.session_state.get("ollama_model", DEFAULT_OLLAMA_MODEL)
+    elif backend == "openai":
+        model = st.session_state.get("openai_model", DEFAULT_OPENAI_MODEL)
+        api_key = st.session_state.get("openai_api_key", "")
+        if not api_key:
+            st.session_state[sk] = "__no_key__"
+            return
+    elif backend == "anthropic":
+        model = st.session_state.get("anthropic_model", DEFAULT_ANTHROPIC_MODEL)
+        api_key = st.session_state.get("anthropic_api_key", "")
+        if not api_key:
+            st.session_state[sk] = "__no_key__"
+            return
+
+    with st.spinner(f"🧠 Analyzing... ({model}, up to ~60s)"):
+        sys_prompt = _build_system_prompt(plot_type) if plot_type else INTERPRETATION_SYSTEM_PROMPT
+        result = _call_llm(
+            context, sys_prompt,
+            backend=backend, model=model, api_key=api_key, ollama_url=ollama_url,
+        )
+
+    if result:
+        st.session_state[sk] = result
+    else:
+        st.session_state[sk] = "__error__"
+        logger.error(f"LLM call returned None: backend={backend}, model={model}")
 
 
 def render_interpretation_with_llm_button(
     context: str,
     key: str,
     result_session_key: Optional[str] = None,
+    plot_type: str = "",
 ) -> None:
-    """Render LLM interpretation button with rich context.
+    """Render LLM deep analysis button and styled result callout.
 
-    Now uses the configured backend and enriched system prompt.
+    UX flow:
+    1. Button: "🧠 Deep Analysis" — clean, no pre-click clutter
+    2. On click: LLM call, result appears in styled callout box
+    3. Inside callout: follow-up text area + re-analyze button
+       (only shown after first result, not before)
     """
     import streamlit as st
 
     sk = result_session_key or f"llm_result_{key}"
     user_ctx_key = f"{key}_user_context"
+    reanalyze_key = f"{key}_reanalyze"
 
-    # Get backend config
-    backend = st.session_state.get("llm_backend", "ollama")
-
-    with st.expander("💬 Add context for the AI (optional)", expanded=False):
-        st.caption(
-            "Tell the AI what to focus on — e.g., clinical implications, "
-            "concerns about sample size, specific features of interest."
-        )
-        st.text_area(
-            "Your context",
-            key=user_ctx_key,
-            placeholder="E.g., 'Focus on whether these results are strong enough for a JAMA submission' or 'I'm worried about the outliers in BMI'",
-            label_visibility="collapsed",
-        )
-
-    if st.button("🔬 Interpret with AI", key=key, help="Get expert-level interpretation of these results"):
-        ctx = context or ""
-        user_txt = (st.session_state.get(user_ctx_key) or "").strip()
-        if user_txt:
-            ctx += f"\n\nResearcher's specific question/focus: {user_txt}"
-
-        # Gather additional context from session state
-        eda_insights = []
-        insights_list = st.session_state.get("insights", [])
-        if isinstance(insights_list, list):
-            for ins in insights_list[:10]:
-                if isinstance(ins, dict) and "finding" in ins:
-                    eda_insights.append(ins["finding"])
-        if eda_insights:
-            ctx += "\n\nPrior findings from this analysis session:\n" + "\n".join(f"- {i}" for i in eda_insights)
-
-        # Call LLM
-        import os
-        model = ""
-        api_key = ""
-        ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
-
-        if backend == "vllm":
-            model = st.session_state.get("vllm_model", "") or os.getenv("VLLM_MODEL", "")
-        elif backend == "ollama":
-            model = st.session_state.get("ollama_model", "llama3.1:8b")
-        elif backend == "openai":
-            model = st.session_state.get("openai_model", "gpt-4o-mini")
-            api_key = st.session_state.get("openai_api_key", "")
-            if not api_key:
-                st.session_state[sk] = "__no_key__"
-
-        if st.session_state.get(sk) != "__no_key__":
-            with st.spinner(f"Getting interpretation from {backend} ({model})..."):
-                result = _call_llm(
-                    ctx, INTERPRETATION_SYSTEM_PROMPT,
-                    backend=backend, model=model, api_key=api_key, ollama_url=ollama_url,
-                )
-
-            if result:
-                st.session_state[sk] = result
-            else:
-                st.session_state[sk] = "__error__"
-                logger.error(f"LLM call returned None: backend={backend}, model={model}")
-            # No st.rerun() — result is in session state and displays below
-            # Avoids resetting tab/expander position on the page
-
-    # Display result
+    # Show button only if no result yet
     res = st.session_state.get(sk)
+    if not res:
+        if st.button("🧠 Deep Analysis", key=key, help="Get expert-level AI interpretation of these results"):
+            _run_llm_call(context, plot_type, sk)
+            res = st.session_state.get(sk)
+
+    # Display result in styled callout
     if res == "__no_key__":
+        backend = st.session_state.get("llm_backend", "ollama")
         st.warning(f"Please configure your {backend.title()} API key in the sidebar (🤖 LLM Settings).")
     elif res == "__unavailable__":
         st.caption(
             "To use this feature: (1) Install Ollama from [ollama.ai](https://ollama.ai). "
             "(2) Run `ollama serve` in a terminal. "
-            "(3) Pull a model: `ollama pull llama3.2`."
+            "(3) Pull a model: `ollama pull qwen3.5:9b`."
         )
     elif res == "__error__":
         st.warning(
             f"Could not get interpretation. Check sidebar LLM Settings. "
             f"Current: backend={st.session_state.get('llm_backend', 'ollama')}, "
-            f"model={st.session_state.get('ollama_model', 'llama3.1:8b')}. "
+            f"model={st.session_state.get('ollama_model', DEFAULT_OLLAMA_MODEL)}. "
             f"Verify Ollama is running: `curl http://localhost:11434/api/tags`"
         )
+        # Allow retry
+        if st.button("🔄 Retry", key=f"{key}_retry"):
+            st.session_state.pop(sk, None)
+            _run_llm_call(context, plot_type, sk)
+            res = st.session_state.get(sk)
     elif res:
-        st.markdown(f"**🔬 AI Interpretation:**\n\n{res}")
+        # Styled callout — convert markdown to HTML so it renders inside the styled div
+        import re
+
+        def _md_to_html(text: str) -> str:
+            """Minimal markdown to HTML for LLM output."""
+            # Bold
+            text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+            # Italic
+            text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
+            # Horizontal rule
+            text = text.replace('\n---\n', '<hr style="margin: 12px 0; border-color: #e2e8f0;">')
+            # Numbered items on new lines
+            text = re.sub(r'\n(\d+\.)', r'<br><br>\1', text)
+            # Bullet points
+            text = re.sub(r'\n- ', r'<br>• ', text)
+            # Double newlines to paragraph breaks
+            text = text.replace('\n\n', '<br><br>')
+            # Single newlines to line breaks
+            text = text.replace('\n', '<br>')
+            return text
+
+        html_res = _md_to_html(res)
+        st.markdown(
+            f'<div style="border-left: 3px solid #6366f1; padding: 12px 16px; '
+            f'background: rgba(99, 102, 241, 0.04); border-radius: 4px; '
+            f'margin: 8px 0 12px 0;">'
+            f'<strong style="color: #6366f1;">🧠 AI Analysis</strong>'
+            f'<div style="margin-top: 8px; line-height: 1.6;">{html_res}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+        # Follow-up area (inside the result context, not before it)
+        with st.expander("💬 Ask a follow-up", expanded=False):
+            st.text_area(
+                "Follow-up question",
+                key=user_ctx_key,
+                placeholder="E.g., 'Is this good enough for a JAMA submission?' or 'What about the outliers in BMI?'",
+                label_visibility="collapsed",
+            )
+            if st.button("🔄 Ask", key=reanalyze_key):
+                user_txt = (st.session_state.get(user_ctx_key) or "").strip()
+                if user_txt:
+                    # Build follow-up context that includes the previous analysis
+                    followup_ctx = (
+                        f"# PREVIOUS AI ANALYSIS (already provided to the researcher)\n"
+                        f"{res}\n\n"
+                        f"# RESEARCHER'S FOLLOW-UP QUESTION\n"
+                        f"{user_txt}\n\n"
+                        f"Answer the follow-up question directly. Do NOT repeat your previous analysis. "
+                        f"Build on it — add new insight, correct if needed, or go deeper on the specific question asked."
+                    )
+                    followup_sk = f"{sk}_followup"
+                    _run_llm_call(followup_ctx, plot_type, followup_sk)
+                    followup_res = st.session_state.get(followup_sk)
+                    if followup_res and followup_res not in ("__error__", "__no_key__"):
+                        st.session_state[sk] = res + f"\n\n---\n\n**Follow-up — {user_txt}**\n\n{followup_res}"
+                    st.rerun()

@@ -807,6 +807,26 @@ def render_sidebar_workflow(current_page: str = ""):
         st.progress(completed_count / len(all_items))
         st.caption(f"{completed_count}/{len(all_items)} steps complete")
 
+        # Theory Reference link — separated from workflow steps
+        st.markdown("<div style='margin-top: 0.8rem;'></div>", unsafe_allow_html=True)
+        is_theory = current_page.startswith("11_Theory")
+        if is_theory:
+            st.markdown(
+                '<div class="sidebar-step" style="background: rgba(102,126,234,0.12); '
+                'border-radius: 6px; padding: 0.3rem 0.5rem; margin: 0.1rem -0.5rem;">'
+                '<span class="sidebar-dot" style="background: var(--accent, #667eea); '
+                'box-shadow: 0 0 8px rgba(102,126,234,0.5);"></span>'
+                '<span style="color: #e2e8f0; font-weight: 600;">📖 Theory Reference</span></div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                '<div class="sidebar-step sidebar-step-pending">'
+                '<span class="sidebar-dot sidebar-dot-pending"></span>'
+                '📖 Theory Reference</div>',
+                unsafe_allow_html=True,
+            )
+
         # Session save/load controls
         render_session_controls()
 

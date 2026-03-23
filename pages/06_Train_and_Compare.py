@@ -15,7 +15,7 @@ from utils.session_state import (
     TaskTypeDetection, CohortStructureDetection, log_methodology,
 )
 from utils.seed import set_global_seed, get_global_seed
-from utils.storyline import get_insights_by_category, render_breadcrumb, render_page_navigation
+from utils.storyline import render_breadcrumb, render_page_navigation
 from utils.theme import inject_custom_css, render_guidance, render_reviewer_concern, render_step_indicator, render_metric_row, render_sidebar_workflow
 from utils.compute_config import get_limit
 from ml.splits import to_numpy_1d
@@ -399,71 +399,9 @@ if n_train < 50:
 elif n_train < 100:
     st.info(f"Training set has {n_train} samples. Some complex models may have limited performance.")
 
-# Model Selection Coach (top section) - cached for performance
-@st.cache_data
-def _compute_coach_recommendations(_df_hash, target_col, task_type, cohort_type, entity_id, eda_results_keys):
-    """Cached coach recommendations computation."""
-    from ml.model_coach import coach_recommendations
-    from ml.eda_recommender import compute_dataset_signals
-    
-    df = get_data()  # Get actual dataframe
-    signals = compute_dataset_signals(
-        df,
-        target_col,
-        task_type,
-        cohort_type,
-        entity_id,
-        outlier_method=st.session_state.get("eda_outlier_method", "iqr")
-    )
-    eda_results = st.session_state.get('eda_results')
-    return coach_recommendations(signals, eda_results, get_insights_by_category())
-
-# Key insights — prefer Insight Ledger, fallback to legacy
-_tc_used_ledger = False
-try:
-    from utils.insight_ledger import get_ledger as _get_tc_ledger
-    _tc_ledger = _get_tc_ledger()
-    if len(_tc_ledger) > 0:
-        _tc_used_ledger = True
-        # Show blocker warning if any
-        if _tc_ledger.has_blockers():
-            _tc_blockers = _tc_ledger.get_unresolved(severity="blocker")
-            st.error(f"🚨 **{len(_tc_blockers)} unresolved blocker(s) from EDA** — model results may not be defensible.")
-            for _b in _tc_blockers:
-                st.caption(f"  • {_b.finding}")
-
-        _tc_unresolved = _tc_ledger.get_unresolved()
-        _tc_resolved = _tc_ledger.get_resolved()
-        if _tc_unresolved or _tc_resolved:
-            with st.expander(f"📋 Insight summary ({len(_tc_unresolved)} unresolved, {len(_tc_resolved)} resolved)", expanded=bool(_tc_ledger.has_blockers())):
-                if _tc_unresolved:
-                    st.markdown("**Unresolved observations:**")
-                    for _ins in _tc_unresolved[:10]:
-                        _icon = {"blocker": "🚨", "warning": "⚠️", "info": "ℹ️", "opportunity": "💡"}.get(_ins.severity, "ℹ️")
-                        st.markdown(f"  {_icon} {_ins.finding}")
-                if _tc_resolved:
-                    st.markdown("**Resolved:**")
-                    for _ins in _tc_resolved[:5]:
-                        st.markdown(f"  ✅ ~~{_ins.finding}~~ → {_ins.resolved_by}")
-except ImportError:
-    pass
-
-if not _tc_used_ledger:
-    insights = get_insights_by_category()
-    eda_only = [i for i in insights if i.get('category') != 'preprocessing']
-    prep_only = [i for i in insights if i.get('category') == 'preprocessing']
-    if eda_only or prep_only:
-        with st.expander("Key insights after pre-processing", expanded=True):
-            if eda_only:
-                st.markdown("**From EDA**")
-                for insight in eda_only:
-                    st.markdown(f"• **{insight.get('category', 'General').title()}:** {insight['finding']}")
-                    st.caption(f"  → {insight['implication']}")
-            if prep_only:
-                st.markdown("**From preprocessing**")
-                for insight in prep_only:
-                    st.markdown(f"• {insight['finding']}")
-                    st.caption(f"  → {insight['implication']}")
+# Coaching companion (model-aware when models selected)
+from utils.coaching_ui import render_page_coaching
+render_page_coaching("06_Train_and_Compare")
 
 # Model selection and configuration
 st.header("Model Configuration")
@@ -647,16 +585,8 @@ for group_name in sorted_groups:
 
 st.session_state.model_config = model_config
 
-# Pre-training coach tips
-coach_output = st.session_state.get('coach_output')
-with st.expander("Pre-training Coach Tips", expanded=False):
-    if coach_output and hasattr(coach_output, 'preprocessing_recommendations') and coach_output.preprocessing_recommendations:
-        st.markdown("**Preprocessing checklist (from Coach):**")
-        for prep in coach_output.preprocessing_recommendations[:5]:
-            st.markdown(f"- **{prep.step_name}** ({prep.priority}): {prep.rationale}")
-        st.caption("Configure these in the Preprocessing page before building the pipeline.")
-    else:
-        st.info("Run EDA and check the Model Selection Coach for preprocessing recommendations.")
+# Pre-training reminder
+with st.expander("Pre-training Tips", expanded=False):
     st.markdown("**Tip:** Ensure your preprocessing pipeline matches your selected models. Linear models and neural nets require scaling; tree models do not.")
 
 # Check Optuna availability
@@ -1086,6 +1016,30 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 'hyperparameter_optimization': use_optimization
             }
         )
+
+        # Resolve EDA insights that are addressed by completing training
+        from utils.insight_ledger import get_ledger as _get_tc_ledger
+        _tc_ledger = _get_tc_ledger()
+        _trained_names = list(trained_models.keys())
+        for _resolve_id, _resolve_msg, _resolve_details in [
+            ("eda_class_imbalance",
+             f"Training completed with models: {', '.join(_trained_names)}. Evaluate metrics beyond accuracy.",
+             {"action_type": "training", "method": "model_comparison",
+              "models_trained": _trained_names,
+              "result": {"best_model": best_model_name, "best_metric": best_metric_value}}),
+            ("eda_target_skew",
+             f"Training completed with models: {', '.join(_trained_names)}. Review residual distributions.",
+             {"action_type": "acknowledgment", "method": "accepted_risk",
+              "models_trained": _trained_names}),
+        ]:
+            _ins = _tc_ledger.get(_resolve_id)
+            if _ins and not _ins.resolved:
+                _tc_ledger.resolve(
+                    _resolve_id,
+                    resolved_by=_resolve_msg,
+                    resolved_on_page="06_Train_and_Compare",
+                    resolution_details=_resolve_details,
+                )
 
 # Training section with two buttons
 st.markdown("---")
@@ -1660,6 +1614,10 @@ Poor performance may be due to:
                 _feats = _fn_by_model.get(name) or (data_config.feature_cols if data_config else [])
                 _n_test = len(results.get("y_test", []))
                 _task = data_config.task_type if data_config else None
+                from utils.llm_ui import gather_session_context
+                from utils.insight_ledger import MODEL_TO_FAMILY
+                _bg = gather_session_context()
+                _model_family = MODEL_TO_FAMILY.get(name, "")
 
                 fitted_prep = st.session_state.get("fitted_preprocessing_pipelines", {}).get(name)
                 if fitted_prep is not None:
@@ -1683,12 +1641,13 @@ Poor performance may be due to:
                     from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button
                     nar = narrative_learning_curves(results["history"])
                     if nar:
-                        st.markdown(f"**Interpretation:** {nar}")
+                        st.markdown(f"**Summary:** {nar}")
                     h = results["history"]
                     tl, vl = h.get("train_loss", []), h.get("val_loss", h.get("train_loss", []))
                     stats_summary = f"train_loss={tl[-1]:.4f}; val_loss={vl[-1]:.4f}" if tl else ""
-                    ctx = build_llm_context("learning_curves", stats_summary, model_name=name, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task)
-                    render_interpretation_with_llm_button(ctx, key=f"llm_lc_{name}", result_session_key=f"llm_result_lc_{name}")
+                    _bg_lc = {k: v for k, v in _bg.items() if k not in ("feature_names", "sample_size", "task_type")}
+                    ctx = build_llm_context("learning_curves", stats_summary, model_name=name, model_family=_model_family, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task, **_bg_lc)
+                    render_interpretation_with_llm_button(ctx, key=f"llm_lc_{name}", result_session_key=f"llm_result_lc_{name}", plot_type="learning_curves")
 
                 if data_config.task_type == "regression":
                     st.subheader("Predictions vs Actual")
@@ -1704,10 +1663,11 @@ Poor performance may be due to:
                     pva_stats = analyze_pred_vs_actual(results["y_test"], results["y_test_pred"])
                     nar = narrative_pred_vs_actual(pva_stats, model_name=name)
                     if nar:
-                        st.markdown(f"**Interpretation:** {nar}")
+                        st.markdown(f"**Summary:** {nar}")
                     stats_summary = f"corr={pva_stats.get('correlation', 0):.3f}; mean_err={pva_stats.get('mean_error', 0):.4f}"
-                    ctx = build_llm_context("pred_vs_actual", stats_summary, model_name=name, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task)
-                    render_interpretation_with_llm_button(ctx, key=f"llm_pva_{name}", result_session_key=f"llm_result_pva_{name}")
+                    _bg_pva = {k: v for k, v in _bg.items() if k not in ("feature_names", "sample_size", "task_type")}
+                    ctx = build_llm_context("pred_vs_actual", stats_summary, model_name=name, model_family=_model_family, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task, **_bg_pva)
+                    render_interpretation_with_llm_button(ctx, key=f"llm_pva_{name}", result_session_key=f"llm_result_pva_{name}", plot_type="pred_vs_actual")
 
                     st.subheader("Residuals")
                     st.plotly_chart(
@@ -1720,13 +1680,14 @@ Poor performance may be due to:
                     resid_stats = analyze_residuals_extended(results["y_test"], results["y_test_pred"])
                     nar = narrative_residuals(resid_stats, model_name=name)
                     if nar:
-                        st.markdown(f"**Interpretation:** {nar}")
+                        st.markdown(f"**Summary:** {nar}")
                     else:
                         res_basic = analyze_residuals(results["y_test"], results["y_test_pred"])
                         st.caption(f"Mean residual: {res_basic['mean_residual']:.4f} | Std: {res_basic['std_residual']:.4f}")
                     stats_summary = f"skew={resid_stats.get('skew', 0):.3f}; iqr={resid_stats.get('iqr', 0):.4f}; rvp={resid_stats.get('residual_vs_predicted_corr', 0):.3f}"
-                    ctx = build_llm_context("residuals", stats_summary, model_name=name, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task)
-                    render_interpretation_with_llm_button(ctx, key=f"llm_resid_{name}", result_session_key=f"llm_result_resid_{name}")
+                    _bg_res = {k: v for k, v in _bg.items() if k not in ("feature_names", "sample_size", "task_type")}
+                    ctx = build_llm_context("residuals", stats_summary, model_name=name, model_family=_model_family, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task, **_bg_res)
+                    render_interpretation_with_llm_button(ctx, key=f"llm_resid_{name}", result_session_key=f"llm_result_resid_{name}", plot_type="residuals")
                 else:
                     st.subheader("Classification Performance")
                     from sklearn.metrics import confusion_matrix as sk_confusion_matrix, roc_curve, precision_recall_curve, auc
@@ -1761,6 +1722,15 @@ Poor performance may be due to:
                             fig_pr.add_shape(type="line", x0=0, x1=1, y0=baseline, y1=baseline, line=dict(dash="dash", color="gray"))
                             fig_pr.update_layout(template="plotly_white")
                             st.plotly_chart(fig_pr, use_container_width=True, key=f"diag_pr_{name}")
+
+                            # LLM interpretation for ROC + PR (combined)
+                            _bg_roc = {k: v for k, v in _bg.items() if k not in ("feature_names", "sample_size", "task_type")}
+                            _class_balance = f"class balance: {np.mean(y_true == unique_classes[1]):.1%} positive" if len(unique_classes) == 2 else ""
+                            roc_pr_summary = f"ROC AUC={roc_auc:.3f}; PR AUC={pr_auc:.3f}; {_class_balance}"
+                            ctx_roc = build_llm_context("roc_curve", roc_pr_summary, model_name=name, model_family=_model_family,
+                                                         metrics=results.get("metrics"), feature_names=_feats,
+                                                         sample_size=_n_test, task_type=_task, **_bg_roc)
+                            render_interpretation_with_llm_button(ctx_roc, key=f"llm_roc_{name}", result_session_key=f"llm_result_roc_{name}", plot_type="roc_curve")
                         else:
                             # Multiclass: per-class ROC curves
                             from sklearn.preprocessing import label_binarize
@@ -1783,8 +1753,9 @@ Poor performance may be due to:
                     cm_stats = analyze_confusion_matrix(results["y_test"], results["y_test_pred"])
                     nar = narrative_confusion_matrix(cm_stats, model_name=name)
                     if nar:
-                        st.markdown(f"**Interpretation:** {nar}")
+                        st.markdown(f"**Summary:** {nar}")
                     per = cm_stats.get("per_class", [])[:3]
                     stats_summary = "; ".join(f"{p.get('label','?')}: P={p.get('precision',0):.2f} R={p.get('recall',0):.2f}" for p in per) if per else ""
-                    ctx = build_llm_context("confusion_matrix", stats_summary, model_name=name, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task)
-                    render_interpretation_with_llm_button(ctx, key=f"llm_cm_{name}", result_session_key=f"llm_result_cm_{name}")
+                    _bg_cm = {k: v for k, v in _bg.items() if k not in ("feature_names", "sample_size", "task_type")}
+                    ctx = build_llm_context("confusion_matrix", stats_summary, model_name=name, model_family=_model_family, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task, **_bg_cm)
+                    render_interpretation_with_llm_button(ctx, key=f"llm_cm_{name}", result_session_key=f"llm_result_cm_{name}", plot_type="confusion_matrix")

@@ -14,7 +14,7 @@ from utils.session_state import (
     init_session_state, get_data, DataConfig, set_preprocessing_pipeline, set_preprocessing_pipelines,
     TaskTypeDetection, log_methodology,
 )
-from utils.storyline import get_insights_by_category, add_insight, render_breadcrumb, render_page_navigation
+from utils.storyline import render_breadcrumb, render_page_navigation
 from ml.pipeline import (
     build_preprocessing_pipeline,
     get_pipeline_recipe,
@@ -122,13 +122,9 @@ if _log_engineered or _power_engineered or _pca_engineered:
     The preprocessing pipeline below will **auto-exclude** these from redundant transforms.
     """)
 
-# Get profile, insights, EDA results for recommendations
+# Get profile and EDA results for recommendations
 profile = st.session_state.get('dataset_profile')
-coach_output = st.session_state.get('coach_output')
-insights = get_insights_by_category()
 eda_results = st.session_state.get('eda_results', {})
-# Safety check: ensure insights is a list of dicts, not strings
-relevant_insights = [i for i in insights if isinstance(i, dict) and i.get('category') in ['feature_relationships', 'data_quality']]
 
 # EDA-based recommendation cues (for display next to options)
 _eda_outliers = bool(profile and profile.features_with_outliers)
@@ -136,18 +132,9 @@ _eda_missing = bool(profile and profile.n_features_with_missing > 0)
 _eda_high_pn = bool(profile and getattr(profile, 'p_n_ratio', 0) > 0.3)
 _eda_collinearity = any('collinearity' in str(k).lower() or 'multicollinearity' in str(k).lower() for k in (eda_results or {}))
 
-# Show unresolved insights relevant to preprocessing
-try:
-    from utils.insight_ledger import get_ledger as _get_pp_ledger
-    _pp_ledger = _get_pp_ledger()
-    _pp_insights = _pp_ledger.get_unresolved(action_page="05_Preprocess")
-    if _pp_insights:
-        with st.expander(f"💡 {len(_pp_insights)} EDA insight(s) relevant to Preprocessing", expanded=True):
-            for _ins in _pp_insights:
-                _icon = {"blocker": "🚨", "warning": "⚠️", "info": "ℹ️", "opportunity": "💡"}.get(_ins.severity, "ℹ️")
-                st.markdown(f"{_icon} **{_ins.finding}** → {_ins.recommended_action}")
-except ImportError:
-    pass
+# Coaching companion
+from utils.coaching_ui import render_page_coaching
+render_page_coaching("05_Preprocess")
 
 # ============================================================================
 # 1. MODEL SELECTION FIRST
@@ -343,7 +330,7 @@ def _interpretability_guidance(
         bullets.append("**Balanced** is a reasonable default. Use **high** when you need simple, explainable pipelines; **performance** when accuracy matters most.")
     return bullets[:4]
 
-_guidance = _interpretability_guidance(profile, insights, eda_results or {}, selected_models, registry_prep)
+_guidance = _interpretability_guidance(profile, [], eda_results or {}, selected_models, registry_prep)
 if _guidance:
     st.caption("**Interpretability guidance:**")
     for _g in _guidance:
@@ -887,18 +874,77 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
             finding = " ".join(model_check_bullets[:5])
             if len(model_check_bullets) > 5:
                 finding += " …"
-            add_insight(
-                "preprocessing_model_checks",
-                finding,
-                "Review that preprocessing matches each model; adjust and rebuild if needed.",
-                category="preprocessing",
-            )
-            add_insight(
-                "preprocessing_summary",
-                f"Pipelines built for {len(pipelines_by_model)} model(s): {', '.join(m.upper() for m in pipelines_by_model.keys())}.",
-                "Use Train & Compare to train models; preprocessing is applied per model.",
-                category="preprocessing",
-            )
+            from utils.insight_ledger import Insight, get_ledger as _get_pp_resolve_ledger
+            _pp_resolve_ledger = _get_pp_resolve_ledger()
+            _pp_resolve_ledger.upsert(Insight(
+                id="preprocess_model_checks",
+                source_page="05_Preprocess", category="methodology", severity="info",
+                finding=finding,
+                implication="Review that preprocessing matches each model; adjust and rebuild if needed.",
+                relevant_pages=["06_Train_and_Compare"],
+            ))
+            # Build structured per-model provenance for the ledger
+            _per_model_provenance = {}
+            for _mk, _mc in configs_by_model.items():
+                _prov = {
+                    "imputation": _mc.get("numeric_imputation", "median"),
+                    "scaling": _mc.get("numeric_scaling", "standard"),
+                    "encoding": _mc.get("categorical_encoding", "onehot"),
+                    "outlier_treatment": _mc.get("numeric_outlier_treatment", "none"),
+                }
+                _op = _mc.get("numeric_outlier_params", {})
+                if _op:
+                    _prov["outlier_params"] = _op
+                _pt = _mc.get("numeric_power_transform", "none")
+                if _pt != "none":
+                    _prov["power_transform"] = _pt
+                if _mc.get("numeric_log_transform"):
+                    _prov["log_transform"] = True
+                if _mc.get("numeric_missing_indicators"):
+                    _prov["missing_indicators"] = True
+                _per_model_provenance[_mk] = _prov
+
+            _pp_resolve_ledger.upsert(Insight(
+                id="preprocess_summary",
+                source_page="05_Preprocess", category="methodology", severity="info",
+                finding=f"Pipelines built for {len(pipelines_by_model)} model(s): {', '.join(m.upper() for m in pipelines_by_model.keys())}.",
+                implication="Use Train & Compare to train models; preprocessing is applied per model.",
+                relevant_pages=["06_Train_and_Compare", "10_Report_Export"],
+                resolved=True,
+                resolved_by=f"Built {len(pipelines_by_model)} preprocessing pipeline(s)",
+                resolved_on_page="05_Preprocess",
+                resolution_details={
+                    "action_type": "preprocessing",
+                    "method": "per_model_pipeline",
+                    "models_trained": list(pipelines_by_model.keys()),
+                    "per_model_config": _per_model_provenance,
+                },
+            ))
+            # Resolve EDA insights addressed by building pipelines
+            for _resolve_id, _resolve_msg, _resolve_details in [
+                ("eda_missing_severe", "Addressed via preprocessing pipeline imputation", {
+                    "action_type": "imputation", "method": _imp_method,
+                    "scope": "all models" if len(configs_by_model) == 1 else f"{len(configs_by_model)} model pipelines",
+                }),
+                ("eda_missing_moderate", "Addressed via preprocessing pipeline imputation", {
+                    "action_type": "imputation", "method": _imp_method,
+                    "scope": "all models" if len(configs_by_model) == 1 else f"{len(configs_by_model)} model pipelines",
+                }),
+                ("eda_sufficiency_insufficient", "User proceeded with preprocessing despite insufficient data", {
+                    "action_type": "acknowledgment", "method": "accepted_risk",
+                }),
+                ("eda_sufficiency_borderline", "User proceeded with preprocessing despite borderline sufficiency", {
+                    "action_type": "acknowledgment", "method": "accepted_risk",
+                }),
+            ]:
+                _ins = _pp_resolve_ledger.get(_resolve_id)
+                if _ins and not _ins.resolved:
+                    _pp_resolve_ledger.resolve(
+                        _resolve_id,
+                        resolved_by=_resolve_msg,
+                        resolved_on_page="05_Preprocess",
+                        resolution_details=_resolve_details,
+                    )
         elapsed = time.perf_counter() - t0
         st.session_state.setdefault("last_timings", {})["Build Pipelines"] = round(elapsed, 2)
         

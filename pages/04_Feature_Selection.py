@@ -48,21 +48,10 @@ if task_mode != 'prediction':
     st.stop()
 
 # ============================================================================
-# EDA INSIGHTS RELEVANT TO FEATURE SELECTION
+# COACHING COMPANION
 # ============================================================================
-try:
-    from utils.insight_ledger import get_ledger as _get_fs_ledger
-    _fs_ledger = _get_fs_ledger()
-    _fs_insights = _fs_ledger.get_unresolved(action_page="04_Feature_Selection")
-    if _fs_insights:
-        with st.expander(f"💡 {len(_fs_insights)} EDA insight(s) relevant to Feature Selection", expanded=True):
-            for _ins in _fs_insights:
-                _icon = {"blocker": "🚨", "warning": "⚠️", "info": "ℹ️", "opportunity": "💡"}.get(_ins.severity, "ℹ️")
-                _feats = ", ".join(_ins.affected_features) if _ins.affected_features else ""
-                st.markdown(f"{_icon} **{_ins.finding}**" + (f" ({_feats})" if _feats else ""))
-                st.caption(f"  → {_ins.recommended_action}")
-except ImportError:
-    pass
+from utils.coaching_ui import render_page_coaching
+render_page_coaching("04_Feature_Selection")
 
 # ============================================================================
 # WHY FEATURE SELECTION?
@@ -376,6 +365,24 @@ if results:
 
         matrix_df = pd.DataFrame(matrix_data).sort_values("Count", ascending=False)
         table(matrix_df, key="consensus_matrix", use_container_width=True, hide_index=True)
+
+        # LLM interpretation for feature selection consensus
+        from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
+        _bg_fs = gather_session_context()
+        _methods_used = ", ".join(r.method for r in results)
+        _consensus_str = ", ".join(consensus[:10])
+        _n_total = len(numeric_features)
+        _fs_summary = (f"methods: {_methods_used}; consensus_features ({len(consensus)}/{_n_total}): {_consensus_str}"
+                       + (f", +{len(consensus)-10} more" if len(consensus) > 10 else ""))
+        ctx_fs = build_llm_context(
+            "feature_selection", _fs_summary,
+            where="Feature selection consensus",
+            sample_size=_bg_fs.pop("sample_size", None),
+            task_type=_bg_fs.pop("task_type", None),
+            feature_names=_bg_fs.pop("feature_names", numeric_features),
+            **_bg_fs,
+        )
+        render_interpretation_with_llm_button(ctx_fs, key="llm_feat_sel", result_session_key="llm_result_feat_sel", plot_type="feature_selection")
 
         # Apply to data config
         st.markdown("---")
