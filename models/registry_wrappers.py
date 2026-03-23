@@ -29,7 +29,11 @@ class RegistryModelWrapper(BaseModelWrapper):
             y_val: Optional[np.ndarray] = None,
             **kwargs) -> Dict[str, Any]:
         """Train the model."""
-        self.model.fit(X_train, y_train)
+        sample_weight = kwargs.get('sample_weight', None)
+        if sample_weight is not None:
+            self.model.fit(X_train, y_train, sample_weight=sample_weight)
+        else:
+            self.model.fit(X_train, y_train)
         self.is_fitted = True
         
         # Calculate validation metrics if available

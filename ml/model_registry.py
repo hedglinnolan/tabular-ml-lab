@@ -32,6 +32,8 @@ class ModelCapabilities:
     recommended_for_high_dim: bool
     interpretability_tier: Literal["high", "medium", "low"] = "medium"
     notes: list[str] = field(default_factory=list)
+    supports_class_weight: bool = False
+    supports_sample_weight_balancing: bool = False
 
 
 @dataclass
@@ -263,7 +265,8 @@ def get_registry() -> Dict[str, ModelSpec]:
             requires_scaled_numeric=True,
             recommended_for_high_dim=True,
             interpretability_tier="high",
-            notes=['Interpretable coefficients', 'Good baseline for classification']
+            notes=['Interpretable coefficients', 'Good baseline for classification'],
+            supports_class_weight=True
         )
     )
     
@@ -355,7 +358,8 @@ def get_registry() -> Dict[str, ModelSpec]:
             supports_shap='tree',
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
-            notes=['More random splits than RF', 'Robust to outliers', 'Handles missing values']
+            notes=['More random splits than RF', 'Robust to outliers', 'Handles missing values'],
+            supports_class_weight=True
         )
     )
     
@@ -402,7 +406,8 @@ def get_registry() -> Dict[str, ModelSpec]:
             supports_shap='tree',
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
-            notes=['Fast gradient boosting', 'Handles missing values', 'Good for large datasets']
+            notes=['Fast gradient boosting', 'Handles missing values', 'Good for large datasets'],
+            supports_class_weight=True
         )
     )
     
@@ -449,7 +454,8 @@ def get_registry() -> Dict[str, ModelSpec]:
             supports_shap='kernel',
             requires_scaled_numeric=True,
             recommended_for_high_dim=False,
-            notes=['Advanced model', 'Slow for large datasets', 'Requires careful tuning']
+            notes=['Advanced model', 'Slow for large datasets', 'Requires careful tuning'],
+            supports_class_weight=True
         )
     )
     
@@ -592,7 +598,8 @@ def get_registry() -> Dict[str, ModelSpec]:
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
             interpretability_tier="medium",
-            notes=['Robust ensemble', 'Handles missing values', 'Feature importance available']
+            notes=['Robust ensemble', 'Handles missing values', 'Feature importance available'],
+            supports_class_weight=True
         )
     )
     
@@ -651,7 +658,8 @@ def get_registry() -> Dict[str, ModelSpec]:
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
             interpretability_tier="low",
-            notes=['Industry-standard gradient boosting', 'Regularization built-in', 'Handles missing values natively']
+            notes=['Industry-standard gradient boosting', 'Regularization built-in', 'Handles missing values natively'],
+            supports_sample_weight_balancing=True
         )
     )
 
@@ -714,7 +722,8 @@ def get_registry() -> Dict[str, ModelSpec]:
             requires_scaled_numeric=False,
             recommended_for_high_dim=False,
             interpretability_tier="low",
-            notes=['Leaf-wise tree growth (faster)', 'Handles categoricals natively', 'Lower memory usage than XGBoost']
+            notes=['Leaf-wise tree growth (faster)', 'Handles categoricals natively', 'Lower memory usage than XGBoost'],
+            supports_class_weight=True
         )
     )
 
