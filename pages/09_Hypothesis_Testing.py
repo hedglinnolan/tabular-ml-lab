@@ -346,7 +346,7 @@ if test_type == "Correlation (two numeric variables)":
         
         if is_significant:
             st.success(f"""
-            **Interpretation:**
+            **Summary:**
             - {results['method']} correlation: **r = {results['r']:.4f}**
             - This indicates a **{strength} {direction}** relationship
             - **Statistically significant** (p = {results['p']:.4f} < α = {alpha_level})
@@ -355,7 +355,7 @@ if test_type == "Correlation (two numeric variables)":
             """)
         else:
             st.warning(f"""
-            **Interpretation:**
+            **Summary:**
             - {results['method']} correlation: **r = {results['r']:.4f}**
             - This indicates a **{strength} {direction}** relationship
             - **Not statistically significant** (p = {results['p']:.4f} ≥ α = {alpha_level})
@@ -398,6 +398,23 @@ if test_type == "Correlation (two numeric variables)":
             bgcolor="white"
         )
         st.plotly_chart(fig, width="stretch")
+
+        # LLM interpretation for correlation
+        from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
+        _bg_corr = gather_session_context()
+        _corr_summary = (f"method={results['method']}; r={results['r']:.4f}; p={results['p']:.4f}; "
+                         f"r_squared={results['r_squared']:.4f}; n={results['n']}; "
+                         f"alpha={alpha_level}; significant={'yes' if is_significant else 'no'}; "
+                         f"strength={strength}; direction={direction}")
+        ctx_corr = build_llm_context(
+            "correlation", _corr_summary,
+            where=f"Correlation: {results['var1']} vs {results['var2']}",
+            sample_size=_bg_corr.pop("sample_size", results['n']),
+            task_type=_bg_corr.pop("task_type", None),
+            feature_names=_bg_corr.pop("feature_names", None),
+            **_bg_corr,
+        )
+        render_interpretation_with_llm_button(ctx_corr, key="llm_corr", result_session_key="llm_result_corr", plot_type="correlation")
 
 elif test_type == "Two-sample comparison (numeric variable, two groups)":
     st.subheader("Two-Sample Comparison")
@@ -480,7 +497,7 @@ elif test_type == "Two-sample comparison (numeric variable, two groups)":
             st.metric("p-value", f"{results['p']:.4f}")
         
         st.info(f"""
-        **Interpretation:**
+        **Summary:**
         - Test: **{results['test_name']}**
         - Mean difference: **{results['group1_mean'] - results['group2_mean']:.4f}**
         - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < 0.05 else 'not statistically significant'} at α=0.05)
@@ -512,6 +529,24 @@ elif test_type == "Two-sample comparison (numeric variable, two groups)":
         })
         fig = px.box(plot_df, x=group_var, y=numeric_var, title=f"Distribution: {numeric_var} by {group_var}")
         st.plotly_chart(fig, width="stretch")
+
+        # LLM interpretation for two-sample comparison
+        from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
+        _bg_ts = gather_session_context()
+        _mean_diff = results['group1_mean'] - results['group2_mean']
+        _ts_summary = (f"test={results['test_name']}; stat={results['stat']:.4f}; p={results['p']:.4f}; "
+                       f"mean_{results['group1']}={results['group1_mean']:.4f}; "
+                       f"mean_{results['group2']}={results['group2_mean']:.4f}; "
+                       f"mean_diff={_mean_diff:.4f}; n1={results.get('n1', '?')}; n2={results.get('n2', '?')}")
+        ctx_ts = build_llm_context(
+            "two_group_comparison", _ts_summary,
+            where=f"Two-sample: {results.get('numeric_var', '')} by {results['group1']} vs {results['group2']}",
+            sample_size=_bg_ts.pop("sample_size", None),
+            task_type=_bg_ts.pop("task_type", None),
+            feature_names=_bg_ts.pop("feature_names", None),
+            **_bg_ts,
+        )
+        render_interpretation_with_llm_button(ctx_ts, key="llm_twosamp", result_session_key="llm_result_twosamp", plot_type="two_group_comparison")
 
 elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
     st.subheader("Multi-Group Comparison")
@@ -598,7 +633,7 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
         table(means_df, key="group_means", width="stretch", hide_index=True)
         
         st.info(f"""
-        **Interpretation:**
+        **Summary:**
         - Test: **{results['test_name']}**
         - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < 0.05 else 'not statistically significant'} at α=0.05)
         - This {'suggests' if results['p'] < 0.05 else 'does not suggest'} a significant difference among groups
@@ -623,6 +658,22 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
         plot_df = df[[numeric_var, group_var]].dropna()
         fig = px.box(plot_df, x=group_var, y=numeric_var, title=f"Distribution: {numeric_var} by {group_var}")
         st.plotly_chart(fig, width="stretch")
+
+        # LLM interpretation for multi-group comparison
+        from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
+        _bg_mg = gather_session_context()
+        _group_means_str = "; ".join(f"{g}={m:.4f}" for g, m in results.get('group_means', {}).items())
+        _mg_summary = (f"test={results['test_name']}; stat={results['stat']:.4f}; p={results['p']:.4f}; "
+                       f"n_groups={len(results.get('group_means', {}))}; group_means: {_group_means_str}")
+        ctx_mg = build_llm_context(
+            "multi_group_comparison", _mg_summary,
+            where=f"Multi-group: {results.get('numeric_var', '')} by {group_var}",
+            sample_size=_bg_mg.pop("sample_size", None),
+            task_type=_bg_mg.pop("task_type", None),
+            feature_names=_bg_mg.pop("feature_names", None),
+            **_bg_mg,
+        )
+        render_interpretation_with_llm_button(ctx_mg, key="llm_multigrp", result_session_key="llm_result_multigrp", plot_type="multi_group_comparison")
 
 elif test_type == "Categorical association (two categorical variables)":
     st.subheader("Categorical Association Test")
@@ -688,7 +739,7 @@ elif test_type == "Categorical association (two categorical variables)":
             st.metric("p-value", f"{results['p']:.4f}")
         
         st.info(f"""
-        **Interpretation:**
+        **Summary:**
         - Test: **{results['test_name']}**
         - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < 0.05 else 'not statistically significant'} at α=0.05)
         - This {'suggests' if results['p'] < 0.05 else 'does not suggest'} an association between {var1} and {var2}
@@ -717,6 +768,22 @@ elif test_type == "Categorical association (two categorical variables)":
             labels=dict(x=var2, y=var1, color="Count")
         )
         st.plotly_chart(fig, width="stretch")
+
+        # LLM interpretation for chi-squared
+        from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
+        _bg_chi = gather_session_context()
+        _chi_summary = (f"test={results['test_name']}; chi2={results['stat']:.4f}; p={results['p']:.4f}; "
+                        f"df={results.get('dof', '?')}; cramers_v={results.get('cramers_v', 'N/A')}; "
+                        f"min_expected_count={results.get('min_expected', 'N/A')}")
+        ctx_chi = build_llm_context(
+            "chi_squared", _chi_summary,
+            where=f"Chi-squared: {results.get('var1', '')} vs {results.get('var2', '')}",
+            sample_size=_bg_chi.pop("sample_size", None),
+            task_type=_bg_chi.pop("task_type", None),
+            feature_names=_bg_chi.pop("feature_names", None),
+            **_bg_chi,
+        )
+        render_interpretation_with_llm_button(ctx_chi, key="llm_chi2", result_session_key="llm_result_chi2", plot_type="chi_squared")
 
 elif test_type == "Normality test (one numeric variable)":
     st.subheader("Normality Test")
@@ -773,7 +840,7 @@ elif test_type == "Normality test (one numeric variable)":
         
         is_normal = results['p'] >= 0.05
         st.info(f"""
-        **Interpretation:**
+        **Summary:**
         - Test: **{results['test_name']}**
         - p-value: **{results['p']:.4f}**
         - The data appears to be {'normally distributed' if is_normal else 'NOT normally distributed'} (p {'≥' if is_normal else '<'} 0.05)
@@ -862,7 +929,7 @@ elif test_type == "Paired comparison (numeric variable, before/after)":
             st.metric("p-value", f"{results['p']:.4f}")
         
         st.info(f"""
-        **Interpretation:**
+        **Summary:**
         - Test: **{results['test_name']}**
         - Mean difference: **{results['mean_diff']:.4f}**
         - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < 0.05 else 'not statistically significant'} at α=0.05)

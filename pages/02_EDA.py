@@ -1330,7 +1330,7 @@ if "eda_results" not in st.session_state:
 
 def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""):
     """Run an EDA action and display results with optional LLM interpretation."""
-    from utils.llm_ui import build_llm_context, build_eda_full_results_context, render_interpretation_with_llm_button
+    from utils.llm_ui import build_llm_context, build_eda_full_results_context, render_interpretation_with_llm_button, gather_session_context
 
     key_prefix = f"{tab_key}_{action_id}" if tab_key else action_id
     if st.button(f"Run {title}", key=f"run_{key_prefix}", type="primary"):
@@ -1374,17 +1374,20 @@ def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""
                 table(fig_data, use_container_width=True, key=f"tbl_{key_prefix}_{idx}")
 
         if interp:
-            st.markdown(f"**Interpretation:** {interp}")
+            st.markdown(f"**Summary:** {interp}")
             stats_summary = build_eda_full_results_context(result, action_id)
+            bg = gather_session_context()
             ctx = build_llm_context(
                 action_id, stats_summary, existing=interp,
-                feature_names=feature_cols,
-                sample_size=len(df),
-                task_type=task_type_final,
+                feature_names=bg.pop("feature_names", feature_cols),
+                sample_size=bg.pop("sample_size", len(df)),
+                task_type=bg.pop("task_type", task_type_final),
+                **bg,
             )
             render_interpretation_with_llm_button(
                 ctx, key=f"llm_{key_prefix}",
                 result_session_key=f"llm_result_{key_prefix}",
+                plot_type=action_id,
             )
 
 
