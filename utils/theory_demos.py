@@ -464,6 +464,139 @@ def demo_bootstrap(page_context: str = "ref", expanded: bool = False, wrapped: b
 
 
 # Registry for programmatic access
+def demo_regularization(page_context: str = "ref", expanded: bool = False, wrapped: bool = True) -> None:
+    """Interactive Ridge vs LASSO demo."""
+    if wrapped:
+        _expander = st.expander("📖 Interactive: Ridge shrinks, LASSO selects", expanded=expanded)
+    else:
+        from contextlib import nullcontext
+        _expander = nullcontext()
+    with _expander:
+        c1, c2 = st.columns(2)
+        with c1:
+            corr = st.slider("Feature correlation", 0.0, 0.99, 0.8, 0.05, key=f"{page_context}_demo_reg_corr")
+        with c2:
+            alpha = st.slider("Regularization α", 0.01, 5.0, 0.5, 0.1, key=f"{page_context}_demo_reg_alpha")
+
+        rng = np.random.default_rng(33)
+        n = 60
+        X = rng.multivariate_normal([0, 0], [[1, corr], [corr, 1]], n)
+        y = 3.0 * X[:, 0] + 3.0 * X[:, 1] + rng.normal(0, 1, n)
+        Xa = np.column_stack([np.ones(n), X])
+        # OLS
+        b_ols = np.linalg.lstsq(Xa, y, rcond=None)[0][1:]
+        # Ridge
+        I = np.eye(3); I[0, 0] = 0
+        b_ridge = np.linalg.solve(Xa.T @ Xa + alpha * n * I, Xa.T @ y)[1:]
+        # LASSO (coordinate descent, simple)
+        from sklearn.linear_model import Lasso
+        lasso = Lasso(alpha=alpha, max_iter=2000, fit_intercept=True)
+        lasso.fit(X, y)
+        b_lasso = lasso.coef_
+
+        fig = go.Figure()
+        for i, (name, coefs, color) in enumerate([
+            ("OLS", b_ols, "#94a3b8"), ("Ridge", b_ridge, "#2563eb"), ("LASSO", b_lasso, "#dc2626")
+        ]):
+            fig.add_trace(go.Bar(name=name, x=["β₁", "β₂"], y=coefs, marker_color=color,
+                text=[f"{c:.2f}" for c in coefs], textposition="outside"))
+        fig.add_hline(y=3.0, line_dash="dash", line_color="#16a34a", annotation_text="True (3.0)")
+        fig.update_layout(barmode="group", height=280, yaxis_title="Coefficient",
+            margin=dict(t=30, b=30, l=50, r=20), template="plotly_white",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_reg_chart")
+        st.markdown(
+            "**Train your eye:** Ridge shrinks both toward zero but keeps both. "
+            "LASSO drives one to exactly zero — it selects. At high correlation, OLS estimates are unstable; regularization stabilizes them."
+        )
+
+
+def demo_cross_validation(page_context: str = "ref", expanded: bool = False, wrapped: bool = True) -> None:
+    """Interactive k-fold CV variation demo."""
+    if wrapped:
+        _expander = st.expander("📖 Interactive: See fold-to-fold variation in cross-validation", expanded=expanded)
+    else:
+        from contextlib import nullcontext
+        _expander = nullcontext()
+    with _expander:
+        c1, c2 = st.columns(2)
+        with c1:
+            k = st.slider("Number of folds", 2, 15, 5, key=f"{page_context}_demo_cv_k")
+        with c2:
+            noise = st.slider("Noise level", 0.5, 5.0, 1.5, 0.5, key=f"{page_context}_demo_cv_noise")
+
+        rng = np.random.default_rng(22)
+        n = 80
+        X = rng.standard_normal((n, 2))
+        y = 2 * X[:, 0] - 1.5 * X[:, 1] + rng.normal(0, noise, n)
+
+        fold_scores = []
+        indices = np.arange(n)
+        rng.shuffle(indices)
+        fold_size = n // k
+        for f in range(k):
+            val_idx = indices[f * fold_size:(f + 1) * fold_size]
+            tr_idx = np.setdiff1d(indices, val_idx)
+            Xtr = np.column_stack([np.ones(len(tr_idx)), X[tr_idx]])
+            Xval = np.column_stack([np.ones(len(val_idx)), X[val_idx]])
+            beta = np.linalg.lstsq(Xtr, y[tr_idx], rcond=None)[0]
+            pred = Xval @ beta
+            ss_res = np.sum((y[val_idx] - pred) ** 2)
+            ss_tot = np.sum((y[val_idx] - np.mean(y[val_idx])) ** 2)
+            fold_scores.append(max(-1, 1 - ss_res / max(ss_tot, 1e-10)))
+
+        spread = max(fold_scores) - min(fold_scores)
+        fig = go.Figure()
+        fig.add_trace(go.Bar(x=[f"Fold {i+1}" for i in range(k)], y=fold_scores,
+            marker_color=["rgba(220,38,38,0.7)" if s == min(fold_scores) or s == max(fold_scores) else "rgba(99,102,241,0.7)" for s in fold_scores]))
+        fig.add_hline(y=np.mean(fold_scores), line_dash="dash", line_color="#16a34a",
+            annotation_text=f"Mean = {np.mean(fold_scores):.3f}")
+        fig.update_layout(
+            title=f"{k}-fold CV — spread = {spread:.3f}",
+            yaxis_title="R²", height=280, margin=dict(t=50, b=30, l=50, r=20), template="plotly_white")
+        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_cv_chart")
+        st.markdown(
+            "**Train your eye:** More folds → less variation per fold but more computation. "
+            "High noise → wide fold spread. Report mean ± SD, not just the mean."
+        )
+
+
+def demo_transforms(page_context: str = "ref", expanded: bool = False, wrapped: bool = True) -> None:
+    """Interactive power transform demo (log, sqrt, Box-Cox)."""
+    if wrapped:
+        _expander = st.expander("📖 Interactive: See how transforms normalize a distribution", expanded=expanded)
+    else:
+        from contextlib import nullcontext
+        _expander = nullcontext()
+    with _expander:
+        lam = st.slider("Box-Cox λ (0 = log, 0.5 = sqrt, 1 = identity)",
+            0.0, 2.0, 0.0, 0.1, key=f"{page_context}_demo_transform_lambda")
+
+        rng = np.random.default_rng(42)
+        raw = rng.exponential(scale=2.0, size=500)
+        if lam == 0:
+            transformed = np.log(raw)
+            label = "log(x)"
+        else:
+            transformed = (raw ** lam - 1) / lam
+            label = f"(x^{lam:.1f} - 1) / {lam:.1f}"
+
+        from scipy.stats import skew as calc_skew
+        skew_before = calc_skew(raw)
+        skew_after = calc_skew(transformed)
+
+        fig = make_subplots(rows=1, cols=2, subplot_titles=[
+            f"Original (γ₁={skew_before:.2f})", f"Transformed: {label} (γ₁={skew_after:.2f})"])
+        fig.add_trace(go.Histogram(x=raw, nbinsx=30, marker_color="rgba(220,38,38,0.6)"), row=1, col=1)
+        fig.add_trace(go.Histogram(x=transformed, nbinsx=30, marker_color="rgba(22,163,74,0.6)"), row=1, col=2)
+        fig.update_layout(height=260, margin=dict(t=40, b=30, l=40, r=20), template="plotly_white", showlegend=False)
+        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_transform_chart")
+        st.markdown(
+            "**Train your eye:** λ=0 (log) aggressively compresses the right tail. "
+            "λ=1 is identity (no change). Slide to find the λ that makes skewness ≈ 0."
+        )
+
+
 DEMO_REGISTRY = {
     "skewness": demo_skewness,
     "collinearity": demo_collinearity,
@@ -475,6 +608,9 @@ DEMO_REGISTRY = {
     "outliers": demo_outliers,
     "bias_variance": demo_bias_variance,
     "bootstrap": demo_bootstrap,
+    "regularization": demo_regularization,
+    "cross_validation": demo_cross_validation,
+    "transforms": demo_transforms,
 }
 
 
