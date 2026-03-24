@@ -405,17 +405,17 @@ if _profile:
             if _coach_output.recommended_models:
                 st.markdown("**✅ Recommended**")
                 for rec in _coach_output.recommended_models:
-                    st.markdown(f"- **{rec.name}** — {rec.plain_language_summary}")
+                    st.markdown(f"- **{rec.model_name}** — {rec.plain_language_summary}")
 
             if _coach_output.worth_trying_models:
                 st.markdown("**🔄 Worth trying**")
                 for rec in _coach_output.worth_trying_models:
-                    st.markdown(f"- **{rec.name}** — {rec.plain_language_summary}")
+                    st.markdown(f"- **{rec.model_name}** — {rec.plain_language_summary}")
 
             if _coach_output.not_recommended_models:
                 with st.expander("❌ Not recommended for this dataset", expanded=False):
                     for rec in _coach_output.not_recommended_models:
-                        st.caption(f"**{rec.name}** — {rec.plain_language_summary}")
+                        st.caption(f"**{rec.model_name}** — {rec.plain_language_summary}")
     except Exception as _coach_err:
         import logging
         logging.getLogger(__name__).debug(f"Model coach error: {_coach_err}")

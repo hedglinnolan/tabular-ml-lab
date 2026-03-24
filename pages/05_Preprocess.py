@@ -136,6 +136,40 @@ _eda_collinearity = any('collinearity' in str(k).lower() or 'multicollinearity' 
 from utils.coaching_ui import render_page_coaching
 render_page_coaching("05_Preprocess")
 
+# ── Model Coach: data-aware recommendations ─────────────────────
+_profile = st.session_state.get("dataset_profile")
+if _profile:
+    try:
+        from ml.model_coach import compute_model_recommendations
+        _coach_output = compute_model_recommendations(_profile)
+
+        with st.expander("🧠 Model Selection Coach — what fits your data?", expanded=True):
+            st.caption(_coach_output.dataset_summary)
+
+            if _coach_output.recommended_models:
+                st.markdown("**✅ Recommended**")
+                for rec in _coach_output.recommended_models:
+                    _prereqs = []
+                    if rec.requires_scaling:
+                        _prereqs.append("needs scaling")
+                    if not rec.handles_missing:
+                        _prereqs.append("needs imputation")
+                    _prereq_str = f" · _Preprocessing: {', '.join(_prereqs)}_" if _prereqs else ""
+                    st.markdown(f"- **{rec.model_name}** — {rec.plain_language_summary}{_prereq_str}")
+
+            if _coach_output.worth_trying_models:
+                st.markdown("**🔄 Worth trying**")
+                for rec in _coach_output.worth_trying_models:
+                    st.markdown(f"- **{rec.model_name}** — {rec.plain_language_summary}")
+
+            if _coach_output.not_recommended_models:
+                with st.expander("❌ Not recommended for this dataset", expanded=False):
+                    for rec in _coach_output.not_recommended_models:
+                        st.caption(f"**{rec.model_name}** — {rec.plain_language_summary}")
+    except Exception as _coach_err:
+        import logging
+        logging.getLogger(__name__).debug(f"Model coach error: {_coach_err}")
+
 # ============================================================================
 # 1. MODEL SELECTION FIRST
 # ============================================================================
