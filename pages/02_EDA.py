@@ -1275,45 +1275,7 @@ else:
                     st.caption(f"→ {ins.implication}")
 
 # Reviewer risks
-reviewer_risks = []
-if summary["blockers"] > 0:
-    reviewer_risks.append("Unresolved blockers will undermine any downstream results.")
-if signals.leakage_candidate_cols:
-    reviewer_risks.append("Leakage candidates must be addressed before reporting performance.")
-max_corr = signals.collinearity_summary.get("max_corr", 0)
-if max_corr > 0.95:
-    reviewer_risks.append("Near-perfect collinearity makes coefficient interpretation unreliable.")
-
-if reviewer_risks:
-    with st.expander("Reviewer-facing risks"):
-        for risk in reviewer_risks:
-            render_reviewer_concern(risk)
-
-# Downstream plan
-with st.expander("Recommended next steps"):
-    if summary["blockers"] > 0:
-        st.markdown("**Do first:** Resolve blockers before proceeding to modeling.")
-
-    # Build a contextual plan from what the ledger found
-    _next_steps = []
-    if ledger.get_unresolved(page="04_Feature_Selection"):
-        n_fs = len(ledger.get_unresolved(page="04_Feature_Selection"))
-        _next_steps.append(f"**Feature Selection:** {n_fs} insight(s) to address (collinearity, leakage, dimensionality)")
-    if ledger.get_unresolved(page="03_Feature_Engineering"):
-        n_fe = len(ledger.get_unresolved(page="03_Feature_Engineering"))
-        _next_steps.append(f"**Feature Engineering:** {n_fe} insight(s) to address (skewness, transforms)")
-    if ledger.get_unresolved(page="05_Preprocess"):
-        n_pp = len(ledger.get_unresolved(page="05_Preprocess"))
-        _next_steps.append(f"**Preprocessing:** {n_pp} insight(s) to address (missing data, scaling)")
-    if ledger.get_unresolved(page="06_Train_and_Compare"):
-        n_tc = len(ledger.get_unresolved(page="06_Train_and_Compare"))
-        _next_steps.append(f"**Train & Compare:** {n_tc} coaching note(s) for model selection")
-
-    if _next_steps:
-        for step in _next_steps:
-            st.markdown(f"- {step}")
-    elif not summary["blockers"]:
-        st.markdown("- **Feature Selection → Preprocessing → Train & Compare** is a solid next path.")
+# Reviewer risks and next steps removed — coaching layer on each downstream page handles this
 
 
 # ============================================================================
