@@ -597,6 +597,125 @@ def demo_transforms(page_context: str = "ref", expanded: bool = False, wrapped: 
         )
 
 
+def demo_leakage(page_context: str = "ref", expanded: bool = False, wrapped: bool = True) -> None:
+    """Interactive information leakage demo."""
+    if wrapped:
+        _expander = st.expander("📖 Interactive: See what leakage does to your performance", expanded=expanded)
+    else:
+        from contextlib import nullcontext
+        _expander = nullcontext()
+    with _expander:
+        n_leak = st.slider("Leaked features (out of 5 total)", 0, 4, 2, key=f"{page_context}_demo_leak_features")
+
+        rng = np.random.default_rng(99)
+        n = 100
+        X = rng.standard_normal((n, 5))
+        y = (X[:, 0] + rng.normal(0, 1, n) > 0).astype(float)
+
+        # Add leakage: make some features correlated with target
+        for i in range(n_leak):
+            X[:, i + 1] = y * 2 + rng.normal(0, 0.3, n)
+
+        # Train/test split
+        split = 70
+        Xtr, Xte = X[:split], X[split:]
+        ytr, yte = y[:split], y[split:]
+        # Logistic-ish: just use linear + threshold
+        Xtr_a = np.column_stack([np.ones(split), Xtr])
+        Xte_a = np.column_stack([np.ones(n - split), Xte])
+        beta = np.linalg.lstsq(Xtr_a, ytr, rcond=None)[0]
+        pred_train = (Xtr_a @ beta > 0.5).astype(float)
+        pred_test = (Xte_a @ beta > 0.5).astype(float)
+        acc_train = np.mean(pred_train == ytr) * 100
+        acc_test = np.mean(pred_test == yte) * 100
+
+        fig = go.Figure()
+        fig.add_trace(go.Bar(x=["Train Accuracy", "Test Accuracy"], y=[acc_train, acc_test],
+            marker_color=["#2563eb", "#dc2626"],
+            text=[f"{acc_train:.0f}%", f"{acc_test:.0f}%"], textposition="outside"))
+        fig.update_layout(
+            title=f"{n_leak} leaked features — {'suspicious!' if acc_test > 90 and n_leak > 0 else 'clean' if n_leak == 0 else 'check this'}",
+            yaxis_title="%", yaxis_range=[0, 110], height=260,
+            margin=dict(t=50, b=30, l=50, r=20), template="plotly_white")
+        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_leak_chart")
+        st.markdown(
+            "**Train your eye:** With 0 leaked features, accuracy is modest. Add leakage and test accuracy jumps suspiciously. "
+            "R² > 0.95 on tabular data is a red flag — investigate before celebrating."
+        )
+
+
+def demo_high_dimensionality(page_context: str = "ref", expanded: bool = False, wrapped: bool = True) -> None:
+    """Interactive curse of dimensionality demo."""
+    if wrapped:
+        _expander = st.expander("📖 Interactive: Watch neighborhoods become global", expanded=expanded)
+    else:
+        from contextlib import nullcontext
+        _expander = nullcontext()
+    with _expander:
+        dims = st.slider("Number of dimensions", 1, 50, 2, key=f"{page_context}_demo_curse_dim")
+
+        rng = np.random.default_rng(11)
+        n_pts = 200
+        X = rng.standard_normal((n_pts, dims))
+        from scipy.spatial.distance import pdist
+        dists = pdist(X)
+        ratio = np.max(dists) / max(np.min(dists), 1e-10)
+        mean_nn = np.mean([np.sort(np.sqrt(np.sum((X - X[i]) ** 2, axis=1)))[1] for i in range(min(50, n_pts))])
+
+        fig = go.Figure()
+        fig.add_trace(go.Histogram(x=dists, nbinsx=40,
+            marker_color="rgba(99,102,241,0.7)", marker_line=dict(color="rgba(99,102,241,1)", width=1)))
+        fig.update_layout(
+            title=f"d={dims}: max/min distance ratio = {ratio:.1f}, mean NN dist = {mean_nn:.2f}",
+            xaxis_title="Pairwise distance", yaxis_title="Count", height=260,
+            margin=dict(t=50, b=40, l=50, r=20), template="plotly_white")
+        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_curse_chart")
+        st.markdown(
+            "**Train your eye:** As dimensions grow, all distances converge — the histogram narrows. "
+            "'Nearest neighbor' becomes meaningless when the nearest and farthest points are nearly equidistant."
+        )
+
+
+def demo_scaling(page_context: str = "ref", expanded: bool = False, wrapped: bool = True) -> None:
+    """Interactive feature scaling impact demo."""
+    if wrapped:
+        _expander = st.expander("📖 Interactive: See how scaling changes distance-based models", expanded=expanded)
+    else:
+        from contextlib import nullcontext
+        _expander = nullcontext()
+    with _expander:
+        scale_ratio = st.slider("Scale ratio (Feature B / Feature A)", 1, 100, 50, key=f"{page_context}_demo_scale_ratio")
+
+        rng = np.random.default_rng(44)
+        n = 40
+        a = rng.normal(5, 1, n)
+        b = rng.normal(500, scale_ratio, n)
+        labels = (a > 5).astype(int)
+
+        # Unscaled distances dominated by B
+        d_unscaled = np.sqrt((a[0] - a[1])**2 + (b[0] - b[1])**2)
+        d_a_only = abs(a[0] - a[1])
+        frac_b = 1 - (d_a_only**2 / max(d_unscaled**2, 1e-10))
+
+        fig = make_subplots(rows=1, cols=2, subplot_titles=["Unscaled", "Standard-scaled"])
+        fig.add_trace(go.Scatter(x=a, y=b, mode="markers",
+            marker=dict(color=labels, colorscale=["#2563eb", "#dc2626"], size=8), showlegend=False), row=1, col=1)
+        a_s = (a - np.mean(a)) / max(np.std(a), 1e-10)
+        b_s = (b - np.mean(b)) / max(np.std(b), 1e-10)
+        fig.add_trace(go.Scatter(x=a_s, y=b_s, mode="markers",
+            marker=dict(color=labels, colorscale=["#2563eb", "#dc2626"], size=8), showlegend=False), row=1, col=2)
+        fig.update_xaxes(title_text="Feature A", row=1, col=1)
+        fig.update_yaxes(title_text="Feature B", row=1, col=1)
+        fig.update_xaxes(title_text="Feature A (scaled)", row=1, col=2)
+        fig.update_yaxes(title_text="Feature B (scaled)", row=1, col=2)
+        fig.update_layout(height=280, margin=dict(t=40, b=30, l=40, r=20), template="plotly_white")
+        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_scale_chart")
+        st.markdown(
+            f"**Train your eye:** Unscaled, Feature B dominates distance ({frac_b:.0%} of variance). "
+            "After scaling, both features contribute equally. KNN, SVM, and neural nets need this; trees don't."
+        )
+
+
 DEMO_REGISTRY = {
     "skewness": demo_skewness,
     "collinearity": demo_collinearity,
@@ -611,6 +730,9 @@ DEMO_REGISTRY = {
     "regularization": demo_regularization,
     "cross_validation": demo_cross_validation,
     "transforms": demo_transforms,
+    "leakage": demo_leakage,
+    "high_dimensionality": demo_high_dimensionality,
+    "scaling": demo_scaling,
 }
 
 
