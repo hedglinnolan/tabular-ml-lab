@@ -1176,3 +1176,172 @@ def _merge_recommendations_by_group(recommendations: List[CoachRecommendation]) 
             existing.priority = min(existing.priority, rec.priority)
     
     return list(group_map.values())
+
+
+# ============================================================================
+# TOP PICKS: Role-based model selection (replaces bucket-based for UI)
+# ============================================================================
+
+@dataclass
+class TopPick:
+    """A single model recommendation with a role label."""
+    role: str           # "Start here", "Try next", "Alternative"
+    model_key: str
+    model_name: str
+    group: str
+    why: str            # One sentence: why THIS model for THIS data
+    preprocessing: str  # What preprocessing it needs
+    requires_scaling: bool
+    handles_missing: bool
+
+
+def select_top_picks(profile: Any) -> Tuple[List[TopPick], List[Tuple[str, str]]]:
+    """Select 2-3 models based on dataset characteristics.
+
+    Returns:
+        (picks, skip_list) where skip_list is [(model_name, reason), ...]
+    """
+    from ml.dataset_profile import DataSufficiencyLevel
+
+    n = profile.n_rows
+    p = profile.n_features
+    task_type = profile.target_profile.task_type if profile.target_profile else "regression"
+    has_outliers = len(profile.features_with_outliers) > 0
+    has_collinearity = any(
+        hasattr(profile, "collinearity_summary") and profile.collinearity_summary
+    ) if hasattr(profile, "collinearity_summary") else False
+    has_skew = bool(getattr(profile, "highly_skewed_features", []))
+    is_high_dim = profile.p_n_ratio > 0.3
+    is_wide = profile.p_n_ratio > 1.0
+    has_missing = profile.n_features_with_missing > 0
+    n_p_ratio = n / max(p, 1)
+    epv = profile.events_per_variable
+
+    model_info = _get_model_info()
+    picks: List[TopPick] = []
+    skip_list: List[Tuple[str, str]] = []
+
+    # --- 1. BEST LINEAR MODEL ---
+    if task_type == "regression":
+        if has_outliers:
+            linear_key, linear_name = "huber", "Huber Regression"
+            linear_why = "Robust to the outliers EDA detected. Interpretable coefficients."
+        elif is_high_dim or has_collinearity:
+            linear_key, linear_name = "ridge", "Ridge Regression"
+            linear_why = "Regularization stabilizes coefficients given your collinearity/dimensionality."
+        elif is_wide:
+            linear_key, linear_name = "lasso", "Lasso Regression"
+            linear_why = "L1 penalty selects relevant features when you have more features than samples."
+        else:
+            linear_key, linear_name = "ridge", "Ridge Regression"
+            linear_why = "Stable, interpretable baseline. Regularization costs nothing and prevents overfitting."
+    else:  # classification
+        linear_key, linear_name = "logreg", "Logistic Regression"
+        if has_collinearity or is_high_dim:
+            linear_why = "Regularized logistic regression handles collinearity. Coefficients are interpretable as log-odds."
+        else:
+            linear_why = "Standard interpretable baseline. Probability outputs are well-calibrated."
+
+    if linear_key in model_info:
+        info = model_info[linear_key]
+        # Always offer a linear model — even small datasets benefit from a baseline
+        if True:
+            pp_parts = []
+            if info["requires_scaling"]:
+                pp_parts.append("scale")
+            if has_missing and not info["handles_missing"]:
+                pp_parts.append("impute")
+            if has_skew:
+                pp_parts.append("transform skewed features")
+            picks.append(TopPick(
+                role="Start here", model_key=linear_key, model_name=linear_name,
+                group="Linear", why=linear_why,
+                preprocessing=", ".join(pp_parts) if pp_parts else "minimal",
+                requires_scaling=info["requires_scaling"],
+                handles_missing=info["handles_missing"],
+            ))
+
+    # --- 2. BEST TREE/ENSEMBLE MODEL ---
+    if n >= 100 and not is_wide:
+        if task_type == "regression":
+            tree_key = "histgb_reg"
+        else:
+            tree_key = "histgb_clf"
+        tree_name = "Histogram Gradient Boosting"
+        tree_why = "Best-in-class on tabular data. Handles skewness, outliers, and missing values natively."
+    elif n >= 50:
+        if task_type == "regression":
+            tree_key = "rf"
+        else:
+            tree_key = "rf"
+        tree_name = "Random Forest"
+        tree_why = "Robust ensemble that handles outliers and nonlinearity. Fewer hyperparameters than boosting."
+    else:
+        tree_key = None
+        tree_name = None
+
+    if tree_key and tree_key in model_info:
+        info = model_info[tree_key]
+        pp_parts = []
+        if has_missing and not info["handles_missing"]:
+            pp_parts.append("impute")
+        # Trees generally need minimal preprocessing
+        picks.append(TopPick(
+            role="Try next", model_key=tree_key, model_name=tree_name,
+            group="Trees/Boosting", why=tree_why,
+            preprocessing=", ".join(pp_parts) if pp_parts else "minimal — encode categoricals only",
+            requires_scaling=False, handles_missing=info["handles_missing"],
+        ))
+
+    # --- 3. WILDCARD (adds something the other two don't) ---
+    wildcard_key = None
+    if n >= 500 and p <= 30 and task_type == "classification":
+        wildcard_key = "gaussian_nb"
+        wildcard_name = "Gaussian Naive Bayes"
+        wildcard_why = "Extremely fast. Different inductive bias than linear/tree — good for calibration comparison."
+    elif n >= 1000 and p >= 5:
+        wildcard_key = "nn"
+        wildcard_name = "Neural Network"
+        wildcard_why = f"With {n:,} samples you have enough data to justify the complexity. Can capture interactions trees might miss."
+    elif n >= 100 and p <= 20 and not is_high_dim:
+        if task_type == "regression":
+            wildcard_key = "elasticnet"
+            wildcard_name = "ElasticNet"
+            wildcard_why = "Combines L1 feature selection with L2 stability. Useful if some of your features are noise."
+        else:
+            wildcard_key = "lda"
+            wildcard_name = "Linear Discriminant Analysis"
+            wildcard_why = "Models class distributions directly. Different perspective than logistic regression."
+
+    if wildcard_key and wildcard_key in model_info:
+        info = model_info[wildcard_key]
+        if n >= info["min_samples"]:
+            pp_parts = []
+            if info["requires_scaling"]:
+                pp_parts.append("scale")
+            if has_missing and not info["handles_missing"]:
+                pp_parts.append("impute")
+            picks.append(TopPick(
+                role="Alternative", model_key=wildcard_key, model_name=wildcard_name,
+                group=info.get("group", "Other"), why=wildcard_why,
+                preprocessing=", ".join(pp_parts) if pp_parts else "minimal",
+                requires_scaling=info["requires_scaling"],
+                handles_missing=info["handles_missing"],
+            ))
+
+    # --- SKIP LIST ---
+    _picked_keys = {p.model_key for p in picks}
+    if n < 500:
+        skip_list.append(("Neural Network", "too few samples — needs 500+"))
+    if n >= 500 and "nn" not in _picked_keys:
+        pass  # NN is viable, just not picked
+    if is_high_dim:
+        skip_list.append(("KNN", "distances become meaningless in high dimensions"))
+    elif p > 20:
+        skip_list.append(("KNN", "adds little over tree models at this dimensionality"))
+    if n > 1000:
+        skip_list.append(("SVM", "slow to train and hard to interpret at this scale"))
+    elif not is_high_dim:
+        skip_list.append(("SVM", "adds complexity without clear benefit for this data shape"))
+
+    return picks, skip_list

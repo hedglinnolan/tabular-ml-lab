@@ -138,61 +138,26 @@ render_page_coaching("05_Preprocess")
 
 # ── Model Coach: data-aware recommendations ─────────────────────
 _profile = st.session_state.get("dataset_profile")
-_coach_output = None
-_coach_top_picks = []  # (model_key, rec) tuples for auto-selection
+_coach_picks = []
 if _profile:
     try:
-        from ml.model_coach import compute_model_recommendations
-        _coach_output = compute_model_recommendations(_profile)
+        from ml.model_coach import select_top_picks
+        _coach_picks, _coach_skips = select_top_picks(_profile)
 
-        # Select top picks: best from each major family, max 3
-        _seen_groups = set()
-        _roles = ["Start here", "Try next", "Alternative"]
-        for rec in _coach_output.recommended_models:
-            if rec.group in _seen_groups:
-                continue
-            _seen_groups.add(rec.group)
-            _coach_top_picks.append(rec)
-            if len(_coach_top_picks) >= 3:
-                break
-        # Fill from worth_trying if needed
-        if len(_coach_top_picks) < 3:
-            for rec in _coach_output.worth_trying_models:
-                if rec.group not in _seen_groups:
-                    _seen_groups.add(rec.group)
-                    _coach_top_picks.append(rec)
-                    if len(_coach_top_picks) >= 3:
-                        break
+        if _coach_picks:
+            with st.container(border=True):
+                st.markdown("#### 🧠 Model Coach")
+                for pick in _coach_picks:
+                    st.markdown(f"**{pick.role}** · **{pick.model_name}** — {pick.why} · _Prep: {pick.preprocessing}_")
+                if _coach_skips:
+                    skip_strs = [f"{name} ({reason})" for name, reason in _coach_skips[:4]]
+                    st.caption(f"**Skip unless needed:** {'; '.join(skip_strs)}")
 
-        # Build skip list
-        _all_rec_keys = {r.model_key for r in _coach_output.recommended_models + _coach_output.worth_trying_models}
-        _skip_models = [r for r in _coach_output.not_recommended_models]
-        # Also add recommended models not in top picks as implicit skips
-        _top_keys = {r.model_key for r in _coach_top_picks}
-
-        with st.container(border=True):
-            st.markdown("#### 🧠 Model Coach")
-            if _coach_top_picks:
-                for i, rec in enumerate(_coach_top_picks):
-                    role = _roles[i] if i < len(_roles) else ""
-                    _pp_notes = []
-                    if rec.requires_scaling:
-                        _pp_notes.append("scale")
-                    if not rec.handles_missing:
-                        _pp_notes.append("impute")
-                    _pp_str = ", ".join(_pp_notes) if _pp_notes else "minimal"
-                    st.markdown(f"**{role}** · **{rec.model_name}** — {rec.plain_language_summary} · _Prep: {_pp_str}_")
-
-            if _skip_models:
-                skip_names = [f"{r.model_name} ({r.when_to_avoid.split('.')[0].lower().strip()})" for r in _skip_models[:4]]
-                st.caption(f"**Skip unless needed:** {'; '.join(skip_names)}")
-
-        # Auto-select top picks in session state
-        if _coach_top_picks and not st.session_state.get("_coach_applied"):
-            for rec in _coach_top_picks:
-                _ck = f"train_model_{rec.model_key}"
-                st.session_state[_ck] = True
-            st.session_state["_coach_applied"] = True
+            # Auto-select picks in session state
+            if not st.session_state.get("_coach_applied"):
+                for pick in _coach_picks:
+                    st.session_state[f"train_model_{pick.model_key}"] = True
+                st.session_state["_coach_applied"] = True
 
     except Exception as _coach_err:
         import logging
