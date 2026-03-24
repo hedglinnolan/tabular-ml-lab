@@ -1361,18 +1361,8 @@ if constants_cols and len(constants_cols) < len(df.columns):
 # High-missing column drop removed from suggestions — feature selection handles this downstream
 if has_duplicates:
     suggested_actions.append(("Drop duplicate rows", [], lambda d: d.drop_duplicates()))
-if cols_with_missing:
-    def _impute_missing(d):
-        out = d.copy()
-        for col in out.columns:
-            if out[col].isnull().any():
-                if pd.api.types.is_numeric_dtype(out[col]):
-                    out[col] = out[col].fillna(out[col].median())
-                else:
-                    mode_val = out[col].mode()
-                    out[col] = out[col].fillna(mode_val.iloc[0] if len(mode_val) > 0 else "")
-        return out
-    suggested_actions.append(("Impute missing values (median/mode)", cols_with_missing, _impute_missing))
+# Missing data imputation removed from suggestions — Preprocessing handles this properly
+# with method selection, per-model pipelines, and MICE support
 
 if suggested_actions:
     with st.expander("Suggested Actions", expanded=True):

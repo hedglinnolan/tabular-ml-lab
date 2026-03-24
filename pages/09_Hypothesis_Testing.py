@@ -51,50 +51,21 @@ if st.session_state.get("workflow_mode", "quick") == "quick":
     🧭 **Advanced workflow step** — Return here after the quick workflow when a manuscript or reviewer needs targeted classical tests in addition to your ML result.
     """)
 
-st.markdown("""
-### Why Statistical Validation?
+with st.expander("📖 Why Statistical Validation?", expanded=False):
+    st.markdown("""
+Not required for every project. Use when you need classical statistics to complement ML results.
 
-This page is **not required for every project**. Use it when you need classical statistics to complement the result you already built through EDA, training, and explainability.
-
-Reviewers may still ask:
-
-**"Did you test these findings statistically?"**
-
-This page helps you:
-1. ✅ **Add targeted confirmatory tests** for features or comparisons you care about
-2. ✅ **Populate Table 1** with custom p-values when the automatic outputs are not enough
-3. ✅ **Strengthen your paper's narrative** by pairing ML evidence with classical tests
-
-**ML vs Statistics:**
-- **ML:** "Glucose is an important predictor"
-- **Statistics:** "Glucose differs significantly between groups"
-
-Use both when they answer different parts of the reviewer's question.
+- **Add targeted confirmatory tests** for features or comparisons you care about
+- **Populate Table 1** with custom p-values when automatic outputs aren't enough
+- **ML says:** "Glucose is an important predictor" · **Statistics says:** "Glucose differs significantly between groups"
 """)
 
-st.markdown("---")
+with st.expander("📄 How this fits the workflow", expanded=False):
+    st.markdown("""
+1. Build a baseline result → 2. Explain & check interpretability → **3. Add targeted tests (this page)** → 4. Export
 
-st.markdown("""
-### 📄 How This Fits the End of the Workflow
-
-**Recommended sequence:**
-1. ✅ Build a baseline result
-2. ✅ Explain the model and check whether the result is interpretable
-3. **OPTIONAL NOW:** Add targeted statistical tests only if they strengthen the manuscript
-4. **NEXT:** Export one coherent package of methods, tables, and figures
-
-**About Table 1:**
-- EDA already generates automatic descriptive statistics and baseline p-values
-- This page is for **targeted additions**, not for repeating everything you already ran
-- Custom test results will be merged into the Export page
-
-**Use this page when:**
-- a reviewer will expect a familiar statistical test
-- you need a specific p-value or effect size in the manuscript
-- the ML result is strong, but you want a more classical supporting argument
+EDA already generates automatic descriptive statistics. This page is for **targeted additions**, not repeating what you already ran. Custom test results merge into the Export page.
 """)
-
-st.markdown("---")
 
 # Progress indicator
 
@@ -107,12 +78,7 @@ if task_mode not in ('hypothesis_testing', 'prediction'):
 
 # Show context-appropriate guidance
 if task_mode == 'prediction':
-    st.info("""
-    📊 **Using Statistical Validation in Prediction mode**
-    
-    You're here to validate your ML findings with classical statistics. 
-    This complements your model results — reviewers expect both.
-    """)
+    pass  # Coaching layer handles context
     # Cross-reference EDA to warn about duplicate tests
     eda_results = st.session_state.get('eda_results', {})
     if eda_results:
