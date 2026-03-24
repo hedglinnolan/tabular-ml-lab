@@ -65,70 +65,22 @@ render_breadcrumb("03_Feature_Engineering")
 render_page_navigation("03_Feature_Engineering")
 
 if st.session_state.get("workflow_mode", "quick") == "quick":
-    st.info("""
-    🧭 **Advanced workflow step** — Complete the quick workflow first, then return here only if baseline performance or domain knowledge suggests richer features are worth the extra complexity.
-    """)
+    st.info("🧭 **Advanced workflow step** — Complete the quick workflow first, then return here only if baseline performance suggests richer features are worth the complexity.")
 
-# Disambiguation: Feature Engineering vs Preprocessing
-st.info("""
-📌 **Feature Engineering vs. Preprocessing — Important Distinction:**
-
-**This page (Feature Engineering):** **ADDS** new features alongside your originals  
-**Preprocessing (page 5):** **TRANSFORMS** existing features in-place
-
-**Example:**
-- **Here:** `Glucose` → `Glucose` + `log_Glucose` (both available for model)
-- **Preprocessing:** `Glucose` → `log(Glucose)` (original replaced)
-
-→ Use Feature Engineering to **expand** the feature space  
-→ Use Preprocessing to **prepare** features for modeling (scaling, normalization, imputation)
-""")
-
-# ============================================================================
-# Introduction & Educational Content
-# ============================================================================
-
-st.markdown("""
-### What is Feature Engineering?
-
-**Feature engineering** is an advanced step where you create new features (columns) from your existing data to help some models find patterns more easily.
-Think of it as **translating your raw data into a language models may understand better**.
-
-**Default recommendation:** start with the quick workflow first. If your first-pass models are already strong and interpretable, you may not need this advanced workflow step at all.
-
-**Example:** You have `height` and `weight`. A model might struggle to learn obesity patterns directly. 
-But if you create `BMI = weight / height²`, the pattern becomes obvious.
-""")
-
-with st.expander("📚 Should I use Feature Engineering?", expanded=True):
+with st.expander("📚 When to use Feature Engineering", expanded=False):
     st.markdown("""
-    ### When to Use Feature Engineering ✅
-    
-    - Your **baseline workflow is underperforming** and you need another lever to improve signal
-    - You're using **linear models** (Ridge, Lasso, Logistic) that can't capture non-linearity on their own
-    - You have **domain knowledge** about useful combinations (e.g., ratios, products)
-    - Your data has **interactions** between features (Age × Gender affects outcomes differently)
-    - You're willing to **sacrifice some interpretability** for better accuracy
-    - You'll run **Feature Selection** afterward to remove redundant features
-    
-    ### When to SKIP This Page ❌
-    
-    - You're using **tree-based models** (Random Forest, XGBoost) that handle non-linearity naturally
-    - **Interpretability is critical** (clinical decisions, regulatory review)
-    - You have a **small dataset** (<100 samples) — feature engineering can cause overfitting
-    - Your features are **already well-engineered** (domain experts prepared the data)
-    
-    ### The Explainability Tradeoff ⚖️
-    
-    **Original features:** "BMI predicts diabetes with coefficient 0.8"  
-    **After polynomial engineering:** "BMI² × Age predicts diabetes..." ← **Harder to explain!**
-    
-    **After TDA:** "Topological persistence entropy of homology dimension 1..." ← **Very hard to explain!**
-    
-    ⚠️ **Peer Reviewer Concern:** "Why did you engineer these features?" Be ready to justify!
-    
-    💡 **Recommendation:** Start WITHOUT feature engineering. Only add it if models underperform.
-    """)
+**Feature Engineering ADDS new features** alongside originals (e.g., `Glucose` + `log_Glucose`).  
+**Preprocessing (page 5) TRANSFORMS** features in-place (e.g., `Glucose` → `log(Glucose)`).
+
+**Use this page when:**
+- Baseline models are underperforming and you need another lever
+- You're using linear models that can't capture non-linearity on their own
+- You have domain knowledge about useful combinations (e.g., BMI = weight / height²)
+
+**Skip if:** Tree-based models already perform well, interpretability is critical, or dataset is small (<100 samples).
+
+⚠️ **Tradeoff:** Engineered features are harder to explain to reviewers. Start without — add only if needed.
+""")
 
 # ============================================================================
 # Prerequisites & Setup
@@ -446,9 +398,7 @@ render_guidance("""
 **Scientific precedent:** Log transforms are standard in biology, economics, epidemiology.
 """)
 
-st.warning("""
-⚠️ **vs. Preprocessing:** Here, transforms create NEW columns (e.g., `log_Glucose`) alongside originals. In Preprocessing (page 5), transforms REPLACE features. Use this page to give models a choice between original and transformed.
-""")
+st.caption("ℹ️ Transforms here create NEW columns alongside originals. In Preprocessing, they REPLACE features.")
 
 use_transforms = st.checkbox(
     "☐ Apply Mathematical Transforms",

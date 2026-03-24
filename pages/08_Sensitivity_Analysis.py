@@ -38,21 +38,7 @@ from utils.coaching_ui import render_page_coaching
 render_page_coaching("08_Sensitivity_Analysis")
 
 if st.session_state.get("workflow_mode", "quick") == "quick":
-    st.info("""
-    🧭 **Advanced workflow step** — Return here after the quick workflow when you need to demonstrate that your result is robust across seeds or feature perturbations.
-    """)
-
-st.markdown("""
-### Why Sensitivity Analysis?
-
-Use it when a reviewer is likely to ask whether your result is robust or whether it depends on one lucky configuration.
-
-**This page tests:**
-1. **Random seed sensitivity** — Does performance vary across different train/test splits?
-2. **Feature dropout** — Which features are critical vs redundant?
-
-**For publication:** Report confidence intervals from multiple seeds, not just a single run.
-""")
+    st.info("🧭 **Advanced workflow step** — Return here after the quick workflow to demonstrate result robustness.")
 
 # ── Check prerequisites ──────────────────────────────────────────────
 data_config = st.session_state.get("data_config")

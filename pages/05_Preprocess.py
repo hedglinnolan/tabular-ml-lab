@@ -367,12 +367,7 @@ else:
             # ── 1. 🧹 Handle Missing Data ──
             st.markdown("#### 🧹 Handle Missing Data")
             st.caption("*Why it matters:* Most models cannot handle NaN values. How you fill gaps affects both accuracy and what your results mean — reviewers will scrutinize this.")
-            if _eda_missing:
-                _miss_pct = getattr(profile, 'missing_pct_overall', None)
-                _miss_msg = f"⚠️ EDA detected missing values" + (f" (~{_miss_pct:.1f}% overall)" if _miss_pct else "") + "."
-                if _miss_pct and _miss_pct > 5:
-                    _miss_msg += " With >5% missingness, consider **MICE** for publication-grade imputation."
-                st.warning(_miss_msg)
+            # Missing data warning removed — coaching layer handles this
             _c_miss1, _c_miss2 = st.columns(2)
             with _c_miss1:
                 _imp_options = ["median", "mean", "iterative (MICE)", "constant"]
@@ -432,8 +427,9 @@ else:
                 format_func=lambda x: {"standard": "Standard (z-score)", "robust": "Robust (median/IQR)", "minmax": "Min-Max [0,1]", "none": "None (raw values)"}[x],
             )
             st.caption(f"ℹ️ {_scale_help.get(_sel_scale, '')}")
+            # Contextual nudge: only show if user actively selected a suboptimal option
             if _eda_outliers and _sel_scale == "standard":
-                st.warning("⚠️ EDA found outliers — consider **Robust** scaling instead. Standard scaling uses mean/std which are distorted by outliers.")
+                st.caption("💡 EDA found outliers — Robust scaling may be more appropriate here.")
 
             _transform_options = ["none", "log1p", "yeo-johnson"]
             _transform_help = {
@@ -479,18 +475,16 @@ else:
                 )
                 st.caption(f"ℹ️ {_enc_help.get(_sel_enc, '')}")
                 if _high_card_feats and _sel_enc == "onehot":
-                    st.warning(f"⚠️ High-cardinality categoricals detected: **{', '.join(_high_card_feats[:3])}** ({df[_high_card_feats[0]].nunique()} levels). One-hot will create many sparse columns. Consider **Target Encoding**.")
+                    st.caption(f"💡 {', '.join(_high_card_feats[:3])} have {df[_high_card_feats[0]].nunique()}+ levels — Target Encoding avoids sparse columns.")
                 if _sel_enc == "ordinal":
-                    st.info("💡 Ordinal encoding assumes a meaningful order. If your categories are nominal (no order), use One-Hot or Target Encoding instead.")
+                    st.caption("💡 Ordinal encoding assumes a meaningful order. Use One-Hot or Target Encoding for nominal categories.")
             else:
                 st.session_state[f"preprocess_{_mk}_categorical_encoding"] = "onehot"
 
             # ── 4. ✂️ Handle Outliers ──
             st.markdown("#### ✂️ Handle Outliers")
             st.caption("*Why it matters:* Outliers can dominate loss functions (especially MSE) and distort scaling. Tree models are naturally robust; linear/neural models are not.")
-            if _eda_outliers:
-                _out_feats = profile.features_with_outliers if profile else []
-                st.warning(f"⚠️ EDA detected outliers in {len(_out_feats)} feature(s)" + (f": {', '.join(_out_feats[:5])}" if _out_feats else "") + ".")
+            # Outlier warning removed — coaching layer handles this
             _c_out1, _c_out2 = st.columns(2)
             with _c_out1:
                 if numeric_features:

@@ -105,16 +105,7 @@ if len(numeric_features) < 2:
 
 task_type = data_config.task_type or "regression"
 
-render_guidance(
-    "<strong>Why feature selection matters:</strong> Identifying the most informative predictors reduces overfitting, "
-    "improves interpretability, and gives peer reviewers confidence that your variable selection is robust. "
-    "Running multiple methods and checking <strong>consensus</strong> is best practice."
-)
-render_reviewer_concern(
-    "Reviewers often ask: 'How did you select your variables?' Having multiple methods agree gives you a defensible answer."
-)
-
-st.info(f"📊 **{len(numeric_features)} numeric features** available for selection · Target: `{target_col}` ({task_type})")
+st.caption(f"📊 {len(numeric_features)} numeric features available · Target: `{target_col}` ({task_type})")
 
 # Prepare data (drop missing target)
 mask = df[target_col].notna()
@@ -161,17 +152,7 @@ with st.expander("⚙️ Advanced Settings", expanded=False):
 n_features = len(numeric_features)
 n_samples = len(X)
 if n_features > 200:
-    st.warning(
-        f"⚠️ **Wide dataset detected:** {n_features} features × {n_samples} samples. "
-        f"Feature selection may take several minutes. "
-        f"{'**RFE is especially slow with this many features — consider disabling it.**' if n_features > 500 else ''}"
-    )
-    if n_features > n_samples:
-        st.info(
-            "💡 **p >> n scenario** (more features than samples). "
-            "LASSO and univariate screening are best suited here. "
-            "RFE and stability selection may be unreliable with so few samples."
-        )
+    st.caption(f"⚠️ {n_features} features × {n_samples} samples — selection may take a few minutes.{' Consider disabling RFE.' if n_features > 500 else ''}")
 
 if st.button("🔍 Run Feature Selection", type="primary"):
     import signal, functools

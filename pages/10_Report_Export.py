@@ -92,7 +92,7 @@ if not trained_models:
     st.warning("Please train models first")
     st.stop()
 
-st.info("💡 **Recommended export posture:** finish the recommended workflow first, then include advanced analyses only when they materially strengthen your manuscript.")
+# Export posture guidance removed — covered by coaching layer
 
 # Custom CSS for better report aesthetics
 st.markdown("""

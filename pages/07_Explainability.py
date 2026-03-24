@@ -89,26 +89,7 @@ if st.session_state.get('feature_engineering_applied'):
         
         st.markdown("---")
 
-st.markdown("""
-### Why Explainability?
-
-You've trained models and seen performance metrics. Now: **why did the model make those predictions, and do you trust them enough to write them up?**
-
-**Reviewers will ask:**
-- Which features drive predictions?
-- Are predictions calibrated (do probabilities match reality)?
-- Can you explain individual predictions?
-
-This page is the default finishing step before export. Use Statistical Validation afterward only if you need additional classical support for specific claims.
-""")
-
-# ── Prioritization Checklist ────────────────────────────────────
-st.markdown("---")
 st.markdown("### 📋 Explainability Checklist")
-
-st.markdown("""
-Use this checklist to prioritize your analysis time. For publication, focus on **Essential** first.
-""")
 
 # Three-tier priority system
 col1, col2, col3 = st.columns(3)
@@ -147,11 +128,6 @@ with col3:
     
     **Time:** ~15 minutes
     """)
-
-st.info("""
-**💡 Recommendation:** Run Essential analyses first. If models perform well, add Recommended. 
-Skip Advanced unless reviewers specifically request or you're investigating complex interactions.
-""")
 
 st.markdown("---")
 

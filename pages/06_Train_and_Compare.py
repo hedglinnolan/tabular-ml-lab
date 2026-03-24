@@ -385,18 +385,7 @@ y_test = st.session_state.y_test
 # Small sample size warning
 n_train = len(X_train)
 if n_train < 50:
-    st.warning(f"""
-    **Small sample size detected:** Training set has only {n_train} samples.
-    
-    Some models may have limitations:
-    - **KNN:** n_neighbors will be limited to {n_train - 1} max
-    - **Cross-validation:** May not be reliable with very small folds
-    - **Neural Networks:** May overfit easily
-    
-    Consider simpler models (Linear/Logistic Regression, Decision Trees) for small datasets.
-    """)
-elif n_train < 100:
-    st.info(f"Training set has {n_train} samples. Some complex models may have limited performance.")
+    st.caption(f"⚠️ Training set: {n_train} samples. KNN limited to {n_train - 1} neighbors max; neural nets may overfit. Simpler models recommended.")
 
 # Coaching companion (model-aware when models selected)
 from utils.coaching_ui import render_page_coaching

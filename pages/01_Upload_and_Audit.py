@@ -1358,8 +1358,7 @@ has_duplicates = audit_results.get('duplicates', 0) > 0
 suggested_actions = []
 if constants_cols and len(constants_cols) < len(df.columns):
     suggested_actions.append(("Drop constant columns", constants_cols, lambda d, cols=constants_cols: d.drop(columns=cols, errors='ignore')))
-if high_missing_cols and len(high_missing_cols) < len(df.columns):
-    suggested_actions.append(("Drop high-missing columns (>50%)", high_missing_cols, lambda d, cols=high_missing_cols: d.drop(columns=cols, errors='ignore')))
+# High-missing column drop removed from suggestions — feature selection handles this downstream
 if has_duplicates:
     suggested_actions.append(("Drop duplicate rows", [], lambda d: d.drop_duplicates()))
 if cols_with_missing:
