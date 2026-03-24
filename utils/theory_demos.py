@@ -343,6 +343,126 @@ def demo_seed_sensitivity(page_context: str = "ref", expanded: bool = False, wra
         )
 
 
+def demo_outliers(page_context: str = "ref", expanded: bool = False, wrapped: bool = True) -> None:
+    """Interactive demo: how one outlier pulls a regression line."""
+    if wrapped:
+        _expander = st.expander("📖 Interactive: See how one outlier pulls a regression line", expanded=expanded)
+    else:
+        from contextlib import nullcontext
+        _expander = nullcontext()
+    with _expander:
+        col1, col2 = st.columns(2)
+        with col1:
+            ox = st.slider("Outlier X position", 0.0, 10.0, 8.0, 0.5, key=f"{page_context}_demo_outlier_x")
+        with col2:
+            oy = st.slider("Outlier Y position", -5.0, 20.0, 15.0, 0.5, key=f"{page_context}_demo_outlier_y")
+
+        rng = np.random.default_rng(42)
+        x_clean = rng.uniform(0, 6, 25)
+        y_clean = 1.0 * x_clean + rng.normal(0, 0.8, 25)
+        x_all = np.append(x_clean, ox)
+        y_all = np.append(y_clean, oy)
+
+        # Fit with and without outlier
+        c_clean = np.polyfit(x_clean, y_clean, 1)
+        c_all = np.polyfit(x_all, y_all, 1)
+        xs = np.linspace(0, 10, 50)
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=x_clean, y=y_clean, mode="markers",
+            marker=dict(color="rgba(99,102,241,0.7)", size=7), name="Clean data"))
+        fig.add_trace(go.Scatter(x=[ox], y=[oy], mode="markers",
+            marker=dict(color="#dc2626", size=14, symbol="x"), name="Outlier"))
+        fig.add_trace(go.Scatter(x=xs, y=np.polyval(c_clean, xs), mode="lines",
+            line=dict(color="#16a34a", dash="dash"), name=f"Without outlier (slope={c_clean[0]:.2f})"))
+        fig.add_trace(go.Scatter(x=xs, y=np.polyval(c_all, xs), mode="lines",
+            line=dict(color="#dc2626"), name=f"With outlier (slope={c_all[0]:.2f})"))
+        fig.update_layout(height=300, margin=dict(t=30, b=30, l=50, r=20), template="plotly_white",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_outlier_chart")
+        st.markdown(
+            "**Train your eye:** Drag the outlier far from the cluster. The red line tilts toward it. "
+            "One point can dominate a linear model's coefficients. Robust methods (Huber, RANSAC) resist this."
+        )
+
+
+def demo_bias_variance(page_context: str = "ref", expanded: bool = False, wrapped: bool = True) -> None:
+    """Interactive bias-variance tradeoff via KNN k."""
+    if wrapped:
+        _expander = st.expander("📖 Interactive: The bias-variance tradeoff", expanded=expanded)
+    else:
+        from contextlib import nullcontext
+        _expander = nullcontext()
+    with _expander:
+        k_val = st.slider("k (number of neighbors)", 1, 30, 1, key=f"{page_context}_demo_bv_k")
+
+        rng = np.random.default_rng(7)
+        x = np.sort(rng.uniform(0, 10, 60))
+        y_true = np.sin(x)
+        y = y_true + rng.normal(0, 0.3, 60)
+
+        # KNN prediction
+        x_grid = np.linspace(0, 10, 200)
+        y_pred = np.array([np.mean(y[np.argsort(np.abs(x - xg))[:k_val]]) for xg in x_grid])
+
+        # Compute train MSE
+        y_train_pred = np.array([np.mean(y[np.argsort(np.abs(x - xi))[:k_val]]) for xi in x])
+        mse = np.mean((y - y_train_pred) ** 2)
+        label = "Overfitting" if k_val <= 3 else "Underfitting" if k_val >= 20 else "Balanced"
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=x, y=y, mode="markers",
+            marker=dict(color="rgba(99,102,241,0.5)", size=5), name="Data"))
+        fig.add_trace(go.Scatter(x=x_grid, y=np.sin(x_grid), mode="lines",
+            line=dict(color="#94a3b8", dash="dot"), name="True function"))
+        fig.add_trace(go.Scatter(x=x_grid, y=y_pred, mode="lines",
+            line=dict(color="#dc2626", width=2.5), name=f"KNN (k={k_val})"))
+        fig.update_layout(
+            title=f"k = {k_val} — MSE = {mse:.3f} ({label})",
+            height=300, margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_bv_chart")
+        st.markdown(
+            "**Train your eye:** k=1 traces every point (high variance, low bias). "
+            "k=30 is nearly flat (low variance, high bias). The sweet spot minimizes total error."
+        )
+
+
+def demo_bootstrap(page_context: str = "ref", expanded: bool = False, wrapped: bool = True) -> None:
+    """Interactive bootstrap confidence interval demo."""
+    if wrapped:
+        _expander = st.expander("📖 Interactive: Watch the bootstrap distribution build up", expanded=expanded)
+    else:
+        from contextlib import nullcontext
+        _expander = nullcontext()
+    with _expander:
+        n_boot = st.slider("Number of bootstrap samples", 10, 500, 100, 10, key=f"{page_context}_demo_boot_B")
+
+        rng = np.random.default_rng(55)
+        data = rng.exponential(scale=2.0, size=30)
+        true_mean = np.mean(data)
+
+        boot_means = [np.mean(rng.choice(data, size=len(data), replace=True)) for _ in range(n_boot)]
+        ci_lo, ci_hi = np.percentile(boot_means, [2.5, 97.5])
+
+        fig = go.Figure()
+        fig.add_trace(go.Histogram(x=boot_means, nbinsx=30,
+            marker_color="rgba(99,102,241,0.7)", marker_line=dict(color="rgba(99,102,241,1)", width=1)))
+        fig.add_vline(x=true_mean, line_dash="dash", line_color="#dc2626",
+            annotation_text=f"Sample mean: {true_mean:.2f}")
+        fig.add_vrect(x0=ci_lo, x1=ci_hi, fillcolor="rgba(22,163,74,0.15)", line_width=0,
+            annotation_text=f"95% CI: [{ci_lo:.2f}, {ci_hi:.2f}]", annotation_position="top left")
+        fig.update_layout(
+            title=f"Bootstrap distribution (B={n_boot})",
+            xaxis_title="Bootstrap mean", yaxis_title="Count", height=280,
+            margin=dict(t=50, b=40, l=50, r=20), template="plotly_white")
+        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_boot_chart")
+        st.markdown(
+            "**Train your eye:** More samples → smoother distribution → narrower CI. "
+            "B=100 is usually enough for means; B=500+ for percentiles or complex statistics."
+        )
+
+
 # Registry for programmatic access
 DEMO_REGISTRY = {
     "skewness": demo_skewness,
@@ -352,6 +472,9 @@ DEMO_REGISTRY = {
     "threshold_choice": demo_threshold,
     "shap": demo_shap,
     "seed_sensitivity": demo_seed_sensitivity,
+    "outliers": demo_outliers,
+    "bias_variance": demo_bias_variance,
+    "bootstrap": demo_bootstrap,
 }
 
 
