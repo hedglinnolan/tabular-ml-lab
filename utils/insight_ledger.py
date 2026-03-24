@@ -204,6 +204,18 @@ def format_resolution_detail(detail: Dict[str, Any], model_scope: Optional[List[
         if result_str:
             parts.append(f"({result_str})")
 
+        # Per-model detail (from model-scoped resolution tracking)
+        per_model = detail.get("per_model", {})
+        if per_model and len(per_model) > 1:
+            unique_vals = set(str(v) for v in per_model.values())
+            if len(unique_vals) == 1:
+                # All models got the same treatment — no need to list each
+                pass
+            else:
+                # Different models got different treatment — list each
+                per_model_parts = [f"{mk.upper()}: {v}" for mk, v in per_model.items()]
+                parts.append(f"({'; '.join(per_model_parts)})")
+
         # Model scope
         if model_scope:
             scope_names = [FAMILY_DISPLAY_NAMES.get(f, f) for f in model_scope]
