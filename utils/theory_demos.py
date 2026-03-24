@@ -716,6 +716,120 @@ def demo_scaling(page_context: str = "ref", expanded: bool = False, wrapped: boo
         )
 
 
+def demo_missing_data(page_context: str = "ref", expanded: bool = False, wrapped: bool = True) -> None:
+    """Interactive missing data mechanism demo."""
+    if wrapped:
+        _expander = st.expander("📖 Interactive: How missing data biases your results", expanded=expanded)
+    else:
+        from contextlib import nullcontext
+        _expander = nullcontext()
+    with _expander:
+        miss_pct = st.slider("% missing", 5, 60, 20, 5, key=f"{page_context}_demo_miss_pct")
+        mechanism = st.radio("Mechanism", ["MCAR (random)", "MNAR (high values disappear)"],
+            key=f"{page_context}_demo_miss_mech", horizontal=True)
+
+        rng = np.random.default_rng(77)
+        full = rng.normal(100, 15, 300)
+        n_miss = int(len(full) * miss_pct / 100)
+        if "MCAR" in mechanism:
+            mask = rng.choice(len(full), n_miss, replace=False)
+        else:
+            mask = np.argsort(full)[-n_miss:]  # remove highest values
+        observed = np.delete(full, mask)
+
+        fig = go.Figure()
+        fig.add_trace(go.Histogram(x=full, nbinsx=25, name="Full data",
+            marker_color="rgba(99,102,241,0.4)", marker_line=dict(color="rgba(99,102,241,0.8)", width=1)))
+        fig.add_trace(go.Histogram(x=observed, nbinsx=25, name="After missingness",
+            marker_color="rgba(220,38,38,0.6)", marker_line=dict(color="rgba(220,38,38,1)", width=1)))
+        fig.add_vline(x=np.mean(full), line_dash="dash", line_color="#2563eb",
+            annotation_text=f"True mean: {np.mean(full):.1f}")
+        fig.add_vline(x=np.mean(observed), line_dash="dash", line_color="#dc2626",
+            annotation_text=f"Observed mean: {np.mean(observed):.1f}")
+        fig.update_layout(barmode="overlay", height=280,
+            title=f"{miss_pct}% missing ({mechanism.split(' ')[0]}) — bias = {np.mean(observed) - np.mean(full):.1f}",
+            margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_miss_chart")
+        st.markdown(
+            "**Train your eye:** MCAR shifts the mean slightly (noise). MNAR chops the right tail — "
+            "the observed mean is systematically biased downward. Median imputation amplifies this."
+        )
+
+
+def demo_sample_size(page_context: str = "ref", expanded: bool = False, wrapped: bool = True) -> None:
+    """Interactive sample size vs estimate stability demo."""
+    if wrapped:
+        _expander = st.expander("📖 Interactive: Watch estimates stabilize with more data", expanded=expanded)
+    else:
+        from contextlib import nullcontext
+        _expander = nullcontext()
+    with _expander:
+        n_samp = st.slider("Sample size", 10, 500, 30, 10, key=f"{page_context}_demo_sample_n")
+
+        rng = np.random.default_rng(66)
+        true_corr = 0.5
+        X = rng.multivariate_normal([0, 0], [[1, true_corr], [true_corr, 1]], 500)
+
+        # Compute correlation estimate at different sample sizes via subsampling
+        n_reps = 30
+        estimates = [np.corrcoef(X[rng.choice(500, n_samp, replace=False)].T)[0, 1] for _ in range(n_reps)]
+
+        fig = go.Figure()
+        fig.add_trace(go.Box(y=estimates, boxpoints="all", jitter=0.3, pointpos=0,
+            marker_color="rgba(99,102,241,0.7)", name=f"n={n_samp}"))
+        fig.add_hline(y=true_corr, line_dash="dash", line_color="#16a34a",
+            annotation_text=f"True r = {true_corr}")
+        fig.update_layout(
+            title=f"Correlation estimates at n={n_samp} (SD={np.std(estimates):.3f})",
+            yaxis_title="Estimated r", height=280, yaxis_range=[-0.3, 1.0],
+            margin=dict(t=50, b=30, l=50, r=20), template="plotly_white")
+        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_sample_chart")
+        st.markdown(
+            "**Train your eye:** At n=10, estimates scatter wildly. At n=200+, they cluster tightly around truth. "
+            "Small samples can produce both inflated and deflated estimates — be cautious with effect sizes."
+        )
+
+
+def demo_pdp_ice(page_context: str = "ref", expanded: bool = False, wrapped: bool = True) -> None:
+    """Interactive PDP averaging hides interactions demo."""
+    if wrapped:
+        _expander = st.expander("📖 Interactive: How PDP averaging hides interaction effects", expanded=expanded)
+    else:
+        from contextlib import nullcontext
+        _expander = nullcontext()
+    with _expander:
+        interaction = st.slider("Interaction strength", 0.0, 3.0, 1.5, 0.3, key=f"{page_context}_demo_pdp_int")
+
+        rng = np.random.default_rng(88)
+        n = 100
+        x1 = rng.uniform(-3, 3, n)
+        x2 = rng.choice([0, 1], n)  # binary moderator
+
+        y = 2 * x1 + interaction * x1 * x2 + rng.normal(0, 0.5, n)
+        x1_grid = np.linspace(-3, 3, 50)
+        pdp = np.array([np.mean(2 * xg + interaction * xg * x2) for xg in x1_grid])
+        ice_0 = 2 * x1_grid
+        ice_1 = 2 * x1_grid + interaction * x1_grid
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=x1_grid, y=ice_0, mode="lines",
+            line=dict(color="#2563eb", width=1.5), name="Group 0 (ICE)"))
+        fig.add_trace(go.Scatter(x=x1_grid, y=ice_1, mode="lines",
+            line=dict(color="#dc2626", width=1.5), name="Group 1 (ICE)"))
+        fig.add_trace(go.Scatter(x=x1_grid, y=pdp, mode="lines",
+            line=dict(color="#000", width=3, dash="dash"), name="PDP (average)"))
+        fig.update_layout(height=280, xaxis_title="x₁", yaxis_title="Predicted y",
+            title=f"Interaction = {interaction:.1f} — PDP {'hides the split' if interaction > 0.5 else 'is accurate'}",
+            margin=dict(t=50, b=40, l=50, r=20), template="plotly_white",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_pdp_chart")
+        st.markdown(
+            "**Train your eye:** The black PDP line averages over both groups. When interaction is strong, "
+            "the two ICE lines diverge but the PDP splits the difference — hiding the real story. Always check ICE alongside PDP."
+        )
+
+
 DEMO_REGISTRY = {
     "skewness": demo_skewness,
     "collinearity": demo_collinearity,
@@ -733,6 +847,9 @@ DEMO_REGISTRY = {
     "leakage": demo_leakage,
     "high_dimensionality": demo_high_dimensionality,
     "scaling": demo_scaling,
+    "missing_data": demo_missing_data,
+    "sample_size": demo_sample_size,
+    "pdp_ice": demo_pdp_ice,
 }
 
 
