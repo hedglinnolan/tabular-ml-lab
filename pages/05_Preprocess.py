@@ -918,15 +918,32 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                     "per_model_config": _per_model_provenance,
                 },
             ))
+            # Build model-scoped resolution details
+            _imp_by_model = {mk: mc.get("numeric_imputation", "median") for mk, mc in configs_by_model.items()}
+            _unique_imps = set(_imp_by_model.values())
+            if len(_unique_imps) == 1:
+                _imp_scope_msg = f"All models: {_unique_imps.pop()}"
+            else:
+                _imp_scope_msg = "; ".join(f"{mk.upper()}: {m}" for mk, m in _imp_by_model.items())
+
+            _scale_by_model = {mk: mc.get("numeric_scaling", "standard") for mk, mc in configs_by_model.items()}
+            _unique_scales = set(_scale_by_model.values())
+            if len(_unique_scales) == 1:
+                _scale_scope_msg = f"All models: {_unique_scales.pop()}"
+            else:
+                _scale_scope_msg = "; ".join(f"{mk.upper()}: {m}" for mk, m in _scale_by_model.items())
+
             # Resolve EDA insights addressed by building pipelines
             for _resolve_id, _resolve_msg, _resolve_details in [
-                ("eda_missing_severe", "Addressed via preprocessing pipeline imputation", {
+                ("eda_missing_severe", f"Imputation configured ({_imp_scope_msg})", {
                     "action_type": "imputation", "method": _imp_method,
                     "scope": "all models" if len(configs_by_model) == 1 else f"{len(configs_by_model)} model pipelines",
+                    "per_model": _imp_by_model,
                 }),
-                ("eda_missing_moderate", "Addressed via preprocessing pipeline imputation", {
+                ("eda_missing_moderate", f"Imputation configured ({_imp_scope_msg})", {
                     "action_type": "imputation", "method": _imp_method,
                     "scope": "all models" if len(configs_by_model) == 1 else f"{len(configs_by_model)} model pipelines",
+                    "per_model": _imp_by_model,
                 }),
                 ("eda_sufficiency_insufficient", "User proceeded with preprocessing despite insufficient data", {
                     "action_type": "acknowledgment", "method": "accepted_risk",
@@ -943,6 +960,39 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                         resolved_on_page="05_Preprocess",
                         resolution_details=_resolve_details,
                     )
+
+            # Resolve skewness insights if transforms were applied
+            _transform_by_model = {mk: mc.get("numeric_power_transform", "none") for mk, mc in configs_by_model.items()}
+            _models_with_transform = {mk: t for mk, t in _transform_by_model.items() if t != "none"}
+            _models_without = [mk for mk, t in _transform_by_model.items() if t == "none"]
+            if _models_with_transform:
+                for _skew_id in ["eda_skew_individual", "eda_skew_batch", "eda_target_skew"]:
+                    _ins = _pp_resolve_ledger.get(_skew_id)
+                    if _ins and not _ins.resolved:
+                        if _models_without:
+                            _msg = (f"Transform applied: {'; '.join(f'{mk.upper()}: {t}' for mk, t in _models_with_transform.items())}. "
+                                    f"Raw features retained for: {', '.join(mk.upper() for mk in _models_without)}.")
+                        else:
+                            _msg = f"Transform applied across all models: {list(_models_with_transform.values())[0]}"
+                        _pp_resolve_ledger.resolve(_skew_id, resolved_by=_msg, resolved_on_page="05_Preprocess",
+                            resolution_details={"action_type": "power_transform", "per_model": _transform_by_model})
+
+            # Resolve outlier insights if treatment was applied
+            _outlier_by_model = {mk: mc.get("numeric_outlier_treatment", "none") for mk, mc in configs_by_model.items()}
+            _models_with_outlier = {mk: t for mk, t in _outlier_by_model.items() if t != "none"}
+            if _models_with_outlier:
+                for _out_id in ["eda_outliers"]:
+                    _ins = _pp_resolve_ledger.get(_out_id)
+                    if _ins and not _ins.resolved:
+                        _models_no_outlier = [mk for mk, t in _outlier_by_model.items() if t == "none"]
+                        if _models_no_outlier:
+                            _msg = (f"Outlier treatment: {'; '.join(f'{mk.upper()}: {t}' for mk, t in _models_with_outlier.items())}. "
+                                    f"No treatment for: {', '.join(mk.upper() for mk in _models_no_outlier)}.")
+                        else:
+                            _msg = f"Outlier treatment applied across all models: {list(_models_with_outlier.values())[0]}"
+                        _pp_resolve_ledger.resolve(_out_id, resolved_by=_msg, resolved_on_page="05_Preprocess",
+                            resolution_details={"action_type": "outlier_treatment", "per_model": _outlier_by_model})
+
         elapsed = time.perf_counter() - t0
         st.session_state.setdefault("last_timings", {})["Build Pipelines"] = round(elapsed, 2)
         
