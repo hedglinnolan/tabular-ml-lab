@@ -6,6 +6,9 @@ parallel content (e.g., model families), and expanders offer optional deep dives
 """
 
 import streamlit as st
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from utils.theme import inject_custom_css, render_sidebar_workflow
 
 # ── Page config ──────────────────────────────────────────────────────────────
@@ -84,6 +87,71 @@ st.markdown("""
 }
 .key-takeaway strong { color: #451a03; }
 
+/* Worked example card */
+.worked-example {
+    background: #eff6ff;
+    border-left: 3px solid #2563eb;
+    border-radius: 0 8px 8px 0;
+    padding: 0.95rem 1.2rem;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+    color: #1e3a8a;
+    line-height: 1.6;
+}
+.worked-example strong { color: #1e40af; }
+
+/* Visual guidance card */
+.visual-guide {
+    background: #ecfeff;
+    border-left: 3px solid #0891b2;
+    border-radius: 0 8px 8px 0;
+    padding: 0.95rem 1.2rem;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+    color: #164e63;
+    line-height: 1.6;
+}
+.visual-guide strong { color: #155e75; }
+
+/* Misconception / reviewer trap */
+.misconception-box {
+    background: #fef2f2;
+    border-left: 3px solid #dc2626;
+    border-radius: 0 8px 8px 0;
+    padding: 0.95rem 1.2rem;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+    color: #7f1d1d;
+    line-height: 1.6;
+}
+.misconception-box strong { color: #991b1b; }
+
+/* Self-check prompt */
+.self-check {
+    background: #f5f3ff;
+    border-left: 3px solid #7c3aed;
+    border-radius: 0 8px 8px 0;
+    padding: 0.95rem 1.2rem;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+    color: #4c1d95;
+    line-height: 1.6;
+}
+.self-check strong { color: #5b21b6; }
+
+/* Guidance card */
+.guidance-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.95rem 1.2rem;
+    margin: 0.5rem 0 1.2rem 0;
+    font-size: 0.88rem;
+    color: #334155;
+    line-height: 1.6;
+}
+.guidance-card strong { color: #1e293b; }
+
 /* Page hero */
 .theory-hero {
     text-align: center;
@@ -121,6 +189,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("---")
+
+st.markdown(
+    """
+<div class="guidance-card">
+<strong>How to use this page as a learner:</strong> move in this order — first read <em>why the concept matters</em>, then study the equation, then use the worked example and visual prompt to build intuition, and finally check yourself with the misconception and self-check boxes. The goal is not to memorize formulas, but to understand what the app is doing and why a reviewer would care.
+</div>
+""",
+    unsafe_allow_html=True,
+)
 
 # ── Chapter selector ─────────────────────────────────────────────────────────
 CHAPTERS = [
@@ -171,6 +248,26 @@ def cite(text: str):
 def takeaway(text: str):
     """Render a key takeaway box."""
     st.markdown(f'<div class="key-takeaway">💡 <strong>Key takeaway:</strong> {text}</div>', unsafe_allow_html=True)
+
+
+def worked_example(text: str):
+    """Render a worked example box."""
+    st.markdown(f'<div class="worked-example">🧮 <strong>Worked example:</strong> {text}</div>', unsafe_allow_html=True)
+
+
+def visual_guide(text: str):
+    """Render a visual attention prompt."""
+    st.markdown(f'<div class="visual-guide">👀 <strong>What to look for:</strong> {text}</div>', unsafe_allow_html=True)
+
+
+def misconception(text: str):
+    """Render a misconception / reviewer trap box."""
+    st.markdown(f'<div class="misconception-box">⚠️ <strong>Common misconception:</strong> {text}</div>', unsafe_allow_html=True)
+
+
+def self_check(text: str):
+    """Render a short self-explanation prompt."""
+    st.markdown(f'<div class="self-check">🧠 <strong>Self-check:</strong> {text}</div>', unsafe_allow_html=True)
 
 
 def references(refs: list[str]):
@@ -335,7 +432,59 @@ is symmetric, these cancel out and γ₁ ≈ 0. If the right tail is longer, the
 positive cubed terms dominate, giving γ₁ > 0. As a rough guide: |γ₁| < 0.5 is
 approximately symmetric, |γ₁| between 0.5 and 1 is moderately skewed, and
 |γ₁| > 1 is heavily skewed.
+""")
+        with st.expander("🧮 Interactive: See how skewness changes a distribution"):
+            skew_alpha = st.slider(
+                "Skewness intensity",
+                min_value=1.0, max_value=20.0, value=2.0, step=0.5,
+                key="theory_skew_alpha",
+                help="Slide right to increase right-skew. At low values the distribution is nearly symmetric.",
+            )
+            rng = np.random.default_rng(42)
+            # Higher slider value → smaller gamma shape → more skewed
+            skew_data = rng.gamma(shape=max(0.1, 5.0 / skew_alpha), scale=1.0, size=800)
 
+            from scipy.stats import skew as calc_skew
+            computed_skew = calc_skew(skew_data)
+
+            mean_val = np.mean(skew_data)
+            median_val = np.median(skew_data)
+
+            fig_skew = go.Figure()
+            fig_skew.add_trace(go.Histogram(
+                x=skew_data, nbinsx=40,
+                marker_color="rgba(99, 102, 241, 0.7)",
+                marker_line=dict(color="rgba(99, 102, 241, 1)", width=1),
+            ))
+            fig_skew.add_vline(x=mean_val, line_dash="dash", line_color="#dc2626",
+                               annotation_text=f"Mean: {mean_val:.2f}", annotation_position="top right")
+            fig_skew.add_vline(x=median_val, line_dash="dot", line_color="#16a34a",
+                               annotation_text=f"Median: {median_val:.2f}", annotation_position="top left")
+            label = "approximately symmetric" if abs(computed_skew) < 0.5 else "moderately skewed" if abs(computed_skew) < 1 else "heavily skewed"
+            fig_skew.update_layout(
+                title=f"γ₁ = {computed_skew:.2f} — {label}",
+                xaxis_title="Value", yaxis_title="Count",
+                height=320, margin=dict(t=50, b=40, l=50, r=30),
+                template="plotly_white",
+            )
+            st.plotly_chart(fig_skew, use_container_width=True)
+            st.markdown(
+                "**Train your eye:** Watch two things as you slide. "
+                "First, the **gap between the red mean and green median** — in a symmetric distribution they overlap; "
+                "as skew grows, the mean chases the tail while the median stays put. "
+                "Second, notice how a handful of extreme observations in the right tail **stretch the x-axis** — "
+                "these are the values that dominate squared-error loss in linear models and inflate distances in KNN."
+            )
+
+        misconception(
+            "A skewed feature is not automatically a problem for every model. For tree-based models, skewness often matters very little; for linear, neural, and distance-based models, it can materially affect optimization, coefficients, and distance calculations."
+        )
+
+        self_check(
+            "If you log-transform a heavily right-skewed feature, what phenomenon are you trying to reduce: the number of observations, the asymmetry of the tail, or the correlation with the target?"
+        )
+
+        st.markdown(f"""
 **Why skewness matters — and for which models.** Skewness affects models
 differently depending on their mathematical assumptions: {cite("ISLR, §3.3")}
 
@@ -376,8 +525,9 @@ the *fourth* power instead of the third. This amplifies extreme values even more
 aggressively — an observation 3 standard deviations from the mean contributes
 81 times as much as one at 1 standard deviation (3⁴ = 81). The subtraction of 3
 re-centers the measure so that a normal distribution has excess kurtosis of zero;
-values above zero indicate heavier tails than normal (leptokurtic), and values below
-zero indicate lighter tails (platykurtic).
+values above zero indicate **heavier tails than normal** (more extreme outliers than
+a bell curve would produce), and values below zero indicate **lighter tails**
+(observations are more tightly clustered, with fewer extremes).
 
 High kurtosis is a warning sign for linear models and any method that uses
 squared error: a few extreme observations contribute disproportionately to the
@@ -420,7 +570,47 @@ no transform at all (just a shift), λ = 0.5 gives the square root, λ = 0 gives
 natural log, and λ = −1 gives the reciprocal. The optimal λ is chosen by maximum
 likelihood — the value that makes the transformed data most closely resemble a normal
 distribution.
+""", unsafe_allow_html=True)
+            st.markdown("---")
+            st.markdown("**🧮 Interactive: Before / after transform**")
+            transform_lambda = st.slider(
+                "Box-Cox λ",
+                min_value=-1.0, max_value=1.0, value=0.0, step=0.1,
+                key="theory_transform_lambda",
+                help="λ = 1: no change. λ = 0.5: square root. λ = 0: log. λ < 0: reciprocal family.",
+            )
+            rng_t = np.random.default_rng(7)
+            raw_data = rng_t.exponential(scale=10.0, size=500) + 1  # right-skewed, strictly positive
+            if abs(transform_lambda) < 0.05:
+                transformed = np.log(raw_data)
+            else:
+                transformed = (np.power(raw_data, transform_lambda) - 1) / transform_lambda
 
+            from scipy.stats import skew as calc_skew_t
+            raw_skew = calc_skew_t(raw_data)
+            trans_skew = calc_skew_t(transformed)
+
+            fig_tf = make_subplots(rows=1, cols=2, subplot_titles=[
+                f"Raw (γ₁ = {raw_skew:.2f})",
+                f"Transformed, λ = {transform_lambda:.1f} (γ₁ = {trans_skew:.2f})",
+            ])
+            fig_tf.add_trace(go.Histogram(x=raw_data, nbinsx=35,
+                marker_color="rgba(220, 38, 38, 0.6)", marker_line=dict(color="rgba(220, 38, 38, 1)", width=1),
+                showlegend=False), row=1, col=1)
+            fig_tf.add_trace(go.Histogram(x=transformed, nbinsx=35,
+                marker_color="rgba(22, 163, 74, 0.6)", marker_line=dict(color="rgba(22, 163, 74, 1)", width=1),
+                showlegend=False), row=1, col=2)
+            fig_tf.update_layout(height=280, margin=dict(t=40, b=30, l=40, r=20), template="plotly_white")
+            st.plotly_chart(fig_tf, use_container_width=True)
+            st.markdown(
+                "**Train your eye:** Compare the two histograms as you move λ. "
+                "At λ = 1 they're identical (no transform). As λ drops toward 0, watch the right tail in the green plot **compress** "
+                "while the bulk of the data **fans out** — you're trading tail dominance for better resolution in the middle. "
+                "Go past 0 into negative λ: the distribution over-corrects into left skew. "
+                "The γ₁ values in each title track the change numerically."
+            )
+
+            st.markdown(f"""
 **Yeo-Johnson transform:** Extends Box-Cox to handle zero and negative values by
 using a modified formula for non-positive inputs. {cite("Yeo & Johnson, 2000")}
 This is the most general-purpose option in the app, since it works regardless
@@ -474,20 +664,23 @@ outlier — a phenomenon called *leverage* when the outlier is extreme in the
 feature space, and *influence* when it substantially changes the fitted values.
 """)
         st.markdown("""
-Two complementary diagnostics formalize this. **Leverage** measures how unusual an
-observation is in the feature space (how far it sits from the center of the data).
-**Cook's distance** combines leverage with residual size to measure the observation's
-overall *influence* on the fitted model.
+Two complementary diagnostics formalize this:
+
+- **Leverage** asks: *how unusual is this observation's combination of feature values?*
+  An observation sitting far from the center of the data has high leverage — it
+  has a long arm to pull the regression line toward itself.
+- **Cook's distance** asks: *if I remove this one observation and refit the model,
+  how much do the predictions change?* It combines leverage with residual size.
 """)
         st.latex(r"""
         h_{ii} = \mathbf{x}_i^\top (\mathbf{X}^\top \mathbf{X})^{-1} \mathbf{x}_i
         """)
         st.markdown("""
-Here, **xᵢ** is the feature vector for observation *i*, and **(XᵀX)⁻¹** is the
-inverse of the cross-product matrix of all features. The product xᵢᵀ(XᵀX)⁻¹xᵢ
-measures the Mahalanobis distance of observation *i* from the centroid of the
-feature space — essentially, how "unusual" this observation's feature values are
-relative to the rest of the data. Leverage values range from 1/n to 1; a common
+**In plain language:** the leverage formula measures how far observation *i* sits
+from the center of all the data, accounting for correlations between features.
+Think of it as: "if I drew a target at the center of the data cloud, how far
+from the bullseye is this observation?" The further out, the more influence it
+has on the fitted line. Leverage values range from 1/n to 1; a common
 rule of thumb flags observations where hᵢᵢ > 2p/n (where p is the number of
 features) as high-leverage points.
 
@@ -499,14 +692,72 @@ high leverage *combines* with a large residual:
         D_i = \frac{(\hat{\mathbf{y}} - \hat{\mathbf{y}}_{(i)})^\top (\hat{\mathbf{y}} - \hat{\mathbf{y}}_{(i)})}{p \cdot \text{MSE}}
         """)
         st.markdown("""
-Cook's distance compares two sets of predictions: **ŷ**, the predictions from the
-full model, and **ŷ₍ᵢ₎**, the predictions from a model fit *without* observation *i*.
-The numerator measures how much all the predictions change when one observation is
-removed; the denominator normalizes by the number of features *p* and the mean
-squared error. A large Dᵢ means removing observation *i* substantially shifts the
+**In plain language:** Cook's distance answers "if I delete this one observation
+and refit the model, how much do *all* the predictions move?" It compares two
+sets of predictions — the ones from the full model and the ones from a model fit
+without observation *i*. Large Cook's distance means removing that single observation
+materially changes the model's behavior for everyone else. A large Dᵢ means removing observation *i* substantially shifts the
 regression surface. Common thresholds: Dᵢ > 1 for clear concern, or
 Dᵢ > 4/n as a more sensitive screening criterion.
 """)
+
+        with st.expander("🧮 Interactive: See how one outlier pulls a regression line"):
+            out_x = st.slider(
+                "Outlier x-position",
+                min_value=-1.0, max_value=8.0, value=5.0, step=0.5,
+                key="theory_outlier_x",
+                help="Move the outlier further from the data center to increase its leverage.",
+            )
+            out_y = st.slider(
+                "Outlier y-position",
+                min_value=-10.0, max_value=20.0, value=15.0, step=1.0,
+                key="theory_outlier_y",
+                help="Move the outlier away from the trend to increase its residual.",
+            )
+            rng_out = np.random.default_rng(77)
+            x_clean = rng_out.uniform(0, 3, 40)
+            y_clean = 1.5 * x_clean + rng_out.normal(0, 0.8, 40)
+
+            # Fit without outlier
+            X_no = np.column_stack([np.ones(len(x_clean)), x_clean])
+            beta_no = np.linalg.lstsq(X_no, y_clean, rcond=None)[0]
+
+            # Fit with outlier
+            x_with = np.append(x_clean, out_x)
+            y_with = np.append(y_clean, out_y)
+            X_wi = np.column_stack([np.ones(len(x_with)), x_with])
+            beta_wi = np.linalg.lstsq(X_wi, y_with, rcond=None)[0]
+
+            xline = np.linspace(-1, 8, 100)
+
+            fig_out = go.Figure()
+            fig_out.add_trace(go.Scatter(x=x_clean, y=y_clean, mode="markers",
+                marker=dict(size=6, color="rgba(99, 102, 241, 0.6)"),
+                name="Clean data", showlegend=True))
+            fig_out.add_trace(go.Scatter(x=[out_x], y=[out_y], mode="markers",
+                marker=dict(size=12, color="#dc2626", symbol="x"),
+                name="Outlier", showlegend=True))
+            fig_out.add_trace(go.Scatter(x=xline, y=beta_no[0] + beta_no[1] * xline,
+                mode="lines", line=dict(color="#16a34a", width=2, dash="dash"),
+                name=f"Without outlier (slope={beta_no[1]:.2f})"))
+            fig_out.add_trace(go.Scatter(x=xline, y=beta_wi[0] + beta_wi[1] * xline,
+                mode="lines", line=dict(color="#dc2626", width=2),
+                name=f"With outlier (slope={beta_wi[1]:.2f})"))
+            fig_out.update_layout(
+                title="One observation can reshape the entire regression line",
+                xaxis_title="x", yaxis_title="y", height=340,
+                margin=dict(t=50, b=40, l=50, r=20), template="plotly_white",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            )
+            st.plotly_chart(fig_out, use_container_width=True)
+            st.markdown(
+                "**Train your eye:** The green dashed line is the fit without the outlier — it follows the data. "
+                "The red solid line includes the outlier. Move the outlier far right (high leverage) **and** far up (high residual): "
+                "watch the red line tilt dramatically. Now move the outlier far right but **on the trend** (y ≈ 7): "
+                "the red line barely moves, because high leverage alone is not dangerous — it takes leverage **plus** a large residual. "
+                "**In your own results:** if the EDA page flags outliers, check whether they have both high leverage and large residuals before deciding to clip."
+            )
+
         st.markdown(f"""
 **Neural networks** are also affected, though through a different mechanism: extreme
 values create large gradients that can destabilize training, especially early in
@@ -612,23 +863,87 @@ future data has the same collinearity structure). The problem is entirely about
 *interpretation* and *inference* on individual coefficients.
 """)
 
+        with st.expander("🧮 Interactive: Watch coefficients destabilize as correlation increases"):
+            corr_val = st.slider(
+                "Correlation between x₁ and x₂",
+                min_value=0.0, max_value=0.99, value=0.0, step=0.05,
+                key="theory_collinearity_corr",
+            )
+            rng_c = np.random.default_rng(12)
+            n_c = 80
+            # Generate correlated predictors
+            mean_c = [0, 0]
+            cov_c = [[1, corr_val], [corr_val, 1]]
+            X_c = rng_c.multivariate_normal(mean_c, cov_c, n_c)
+            # True coefficients: both contribute equally
+            y_c = 2.0 * X_c[:, 0] + 2.0 * X_c[:, 1] + rng_c.normal(0, 1, n_c)
+
+            # Fit OLS multiple times with slight data perturbations to show instability
+            coefs_x1, coefs_x2 = [], []
+            for seed in range(30):
+                rng_boot = np.random.default_rng(seed + 100)
+                idx = rng_boot.choice(n_c, size=n_c, replace=True)
+                Xb = X_c[idx]
+                yb = y_c[idx]
+                # OLS: beta = (X'X)^-1 X'y
+                Xb_aug = np.column_stack([np.ones(n_c), Xb])
+                try:
+                    beta = np.linalg.lstsq(Xb_aug, yb, rcond=None)[0]
+                    coefs_x1.append(beta[1])
+                    coefs_x2.append(beta[2])
+                except Exception:
+                    pass
+
+            fig_coll = go.Figure()
+            fig_coll.add_trace(go.Box(y=coefs_x1, name="β₁ (x₁)", marker_color="rgba(99, 102, 241, 0.7)",
+                                       boxpoints="all", jitter=0.3, pointpos=-1.5))
+            fig_coll.add_trace(go.Box(y=coefs_x2, name="β₂ (x₂)", marker_color="rgba(234, 88, 12, 0.7)",
+                                       boxpoints="all", jitter=0.3, pointpos=-1.5))
+            fig_coll.add_hline(y=2.0, line_dash="dash", line_color="#16a34a",
+                               annotation_text="True value (2.0)")
+            fig_coll.update_layout(
+                title=f"Coefficient estimates across 30 bootstrap samples (r = {corr_val:.2f}, VIF = {1/(1-corr_val**2):.1f})",
+                yaxis_title="Estimated coefficient", height=340,
+                margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
+            )
+            st.plotly_chart(fig_coll, use_container_width=True)
+            st.markdown(
+                "**Train your eye:** Start at r = 0 and look at the box plots — tight, centered on the green dashed truth line. "
+                "Now slide slowly toward r = 0.9. Watch the boxes **stretch vertically** and individual dots scatter far from 2.0. "
+                "Look for the telltale pattern: when β₁ is unusually high, β₂ tends to be unusually low (and vice versa). "
+                "The model is robbing Peter to pay Paul because it can't tell the two variables apart. "
+                "The VIF in the title tracks the variance inflation factor — at r = 0.95 it exceeds 10, the conventional red line."
+            )
+
+        misconception(
+            "Collinearity is not mainly a prediction problem. A model can predict well and still have coefficient estimates that are too unstable to interpret scientifically."
+        )
+
+        self_check(
+            "If removing one of two highly correlated predictors barely changes predictions but radically changes the coefficient table, what does that tell you about the real problem collinearity causes?"
+        )
+
         section("Detecting Collinearity: VIF")
         st.markdown("""
-The Variance Inflation Factor (VIF) isolates the collinearity term from the
-variance formula above, giving a clean multiplier that says "the variance of
-this coefficient is VIF times larger than it would be if this feature were
-completely uncorrelated with all others":
+The Variance Inflation Factor (VIF) answers a simple question: *can the other
+features in the model predict this feature?* For each feature *j*, VIF runs a
+regression of feature *j* against all other features and measures how well they
+explain it:
 """)
         st.latex(r"""
         \text{VIF}(\hat{\beta}_j) = \frac{1}{1 - R_j^2}
         """)
         st.markdown("""
-The interpretation is direct. If Rⱼ² = 0 (feature *j* is uncorrelated with all
-others), VIF = 1 — no inflation. If Rⱼ² = 0.80 (feature *j* shares 80% of its
-variance with other features), VIF = 5 — the coefficient's variance is 5× larger
-than it needs to be. At Rⱼ² = 0.90, VIF = 10, the conventional threshold at which
-most textbooks recommend action. At Rⱼ² = 0.99, VIF = 100 — the coefficient
-estimate is essentially noise.
+**In plain language:** Rⱼ² is just the R² from predicting feature *j* using all
+the other features. If the other features can almost perfectly predict feature *j*
+(Rⱼ² close to 1), then feature *j* is redundant — and any coefficient the model
+assigns to it is unreliable because it can't tell *j*'s contribution apart from
+the others.
+
+**Reading the number:** VIF = 1 means feature *j* carries unique information. VIF = 5
+means 80% of its variation is shared with other features — the coefficient's
+uncertainty is 5× larger than necessary. VIF = 10 (Rⱼ² = 0.90) is the conventional
+red line. VIF = 100 means the coefficient estimate is essentially noise.
 
 A pairwise correlation matrix catches the simplest cases (two features with r > 0.9),
 but it misses **multicollinearity** — where a feature is predictable from a *combination*
@@ -653,6 +968,73 @@ not destabilized.
 may be slower or less stable because the loss surface has flat directions corresponding
 to the collinear subspace.
 """, unsafe_allow_html=True)
+
+        with st.expander("🧮 Interactive: Ridge shrinks, LASSO selects — see the difference"):
+            reg_corr = st.slider(
+                "Correlation between x₁ and x₂",
+                min_value=0.0, max_value=0.99, value=0.90, step=0.05,
+                key="theory_reg_corr",
+            )
+            reg_alpha = st.slider(
+                "Regularization strength (λ)",
+                min_value=0.01, max_value=10.0, value=1.0, step=0.2,
+                key="theory_reg_alpha",
+            )
+            rng_r = np.random.default_rng(42)
+            n_r = 100
+            cov_r = [[1, reg_corr], [reg_corr, 1]]
+            X_r = rng_r.multivariate_normal([0, 0], cov_r, n_r)
+            y_r = 2.0 * X_r[:, 0] + 2.0 * X_r[:, 1] + rng_r.normal(0, 1, n_r)
+
+            # Ridge: closed-form β = (X'X + λI)^-1 X'y
+            XtX = X_r.T @ X_r
+            Xty = X_r.T @ y_r
+            beta_ridge = np.linalg.solve(XtX + reg_alpha * np.eye(2), Xty)
+
+            # LASSO: coordinate descent (simple implementation for 2 features)
+            beta_lasso = np.array([0.0, 0.0])
+            for _ in range(200):
+                for j in range(2):
+                    r_j = y_r - X_r @ beta_lasso + X_r[:, j] * beta_lasso[j]
+                    rho = X_r[:, j] @ r_j
+                    z = np.sum(X_r[:, j] ** 2)
+                    beta_lasso[j] = np.sign(rho) * max(abs(rho) - reg_alpha * n_r, 0) / z
+
+            fig_reg = go.Figure()
+            methods = ["Ridge", "LASSO"]
+            for idx, (betas, color, name) in enumerate([
+                (beta_ridge, "rgba(99, 102, 241, 0.8)", "Ridge"),
+                (beta_lasso, "rgba(234, 88, 12, 0.8)", "LASSO"),
+            ]):
+                fig_reg.add_trace(go.Bar(
+                    x=["β₁", "β₂"], y=betas, name=name,
+                    marker_color=color,
+                    text=[f"{b:.3f}" for b in betas], textposition="outside",
+                ))
+            fig_reg.add_hline(y=2.0, line_dash="dash", line_color="#16a34a",
+                              annotation_text="True value (2.0)")
+            fig_reg.update_layout(
+                barmode="group",
+                title=f"Estimated coefficients (r = {reg_corr:.2f}, λ = {reg_alpha:.2f})",
+                yaxis_title="Coefficient estimate", height=300,
+                margin=dict(t=50, b=30, l=50, r=30), template="plotly_white",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            )
+            st.plotly_chart(fig_reg, use_container_width=True)
+            st.markdown(
+                "**Train your eye:** Start at high correlation (r = 0.90). Ridge (purple) pulls both coefficients toward each other — "
+                "neither gets the full credit, but neither is zeroed out. LASSO (orange) makes a harsher choice: it tends to keep one and drop the other entirely. "
+                "Now increase λ: both methods shrink harder, but Ridge shrinks smoothly while LASSO snaps coefficients to zero. "
+                "**The lesson:** neither method discovers which variable is 'truly important' — that's your scientific judgment, not a statistical output."
+            )
+
+        misconception(
+            "Regularization does not 'discover the truth' about which correlated variable is biologically fundamental. It stabilizes estimation or performs pragmatic selection; domain interpretation still requires caution."
+        )
+
+        self_check(
+            "If two features are nearly interchangeable, why might Ridge keep both while LASSO drops one? What educational lesson does that teach about shrinkage versus selection?"
+        )
 
         app_connection(
             "The <strong>EDA</strong> page computes pairwise correlations and flags highly "
@@ -763,6 +1145,58 @@ The practical implications:""")
 - **Neural networks** are highly susceptible in the small-n regime: they have the capacity to memorize the training set, and without sufficient data, they will.
 """)
 
+        with st.expander("🧮 Interactive: Watch 'local' neighborhoods become global"):
+            dim_p = st.slider(
+                "Number of dimensions (p)",
+                min_value=1, max_value=100, value=2, step=1,
+                key="theory_curse_dim",
+                help="The number of features in the space. Watch how quickly locality breaks down.",
+            )
+            fractions = [0.01, 0.05, 0.10, 0.25]
+            edge_lengths = [f ** (1.0 / dim_p) for f in fractions]
+
+            fig_curse = go.Figure()
+            colors_curse = ["#dc2626", "#f59e0b", "#16a34a", "#2563eb"]
+            for frac, edge, color in zip(fractions, edge_lengths, colors_curse):
+                fig_curse.add_trace(go.Scatter(
+                    x=[f"{frac*100:.0f}%"], y=[edge * 100],
+                    mode="markers+text",
+                    marker=dict(size=16, color=color),
+                    text=[f"{edge*100:.1f}%"], textposition="top center",
+                    name=f"Capture {frac*100:.0f}% of data",
+                    showlegend=True,
+                ))
+
+            # Also show the curve across dimensions for 10% capture
+            dims_range = np.arange(1, 101)
+            edge_10pct = 0.10 ** (1.0 / dims_range) * 100
+
+            fig_curse2 = go.Figure()
+            fig_curse2.add_trace(go.Scatter(
+                x=dims_range, y=edge_10pct, mode="lines",
+                line=dict(color="#dc2626", width=2.5),
+                name="Edge length to capture 10% of data",
+            ))
+            fig_curse2.add_hline(y=90, line_dash="dot", line_color="#94a3b8",
+                                annotation_text="90% of range — 'local' is meaningless")
+            fig_curse2.add_vline(x=dim_p, line_dash="dash", line_color="#2563eb",
+                                annotation_text=f"p = {dim_p}")
+            fig_curse2.update_layout(
+                title=f"At p = {dim_p}: you need {0.10 ** (1.0/dim_p) * 100:.1f}% of each axis to capture 10% of the data",
+                xaxis_title="Number of dimensions (p)",
+                yaxis_title="Neighborhood edge length (% of range)",
+                yaxis_range=[0, 105], height=320,
+                margin=dict(t=50, b=40, l=60, r=20), template="plotly_white",
+            )
+            st.plotly_chart(fig_curse2, use_container_width=True)
+            st.markdown(
+                "**Train your eye:** At p = 1 or 2, the neighborhood edge is small — you're genuinely looking at local data. "
+                "Slide p to 20: the edge length jumps above 89%, meaning your 'local' neighborhood covers almost the entire dataset along every axis. "
+                "By p = 50 it's over 95%. The blue dashed line tracks your current dimension. "
+                "**The lesson:** in high dimensions, KNN's 'nearest neighbors' are not meaningfully close. "
+                "This is why the app recommends feature selection or PCA before distance-based methods when p is large."
+            )
+
         section("Class Imbalance")
         st.markdown("""
 Class imbalance occurs when one class is much more prevalent than the other. A
@@ -791,6 +1225,67 @@ AUROC, AUPRC, precision, recall, and F1 are more informative. The app reports
 all of these, and the coaching layer flags datasets with class imbalance ratios
 below 0.35 as requiring careful metric selection.
 """)
+
+        with st.expander("🧮 Interactive: Why accuracy lies under class imbalance"):
+            imb_pct = st.slider(
+                "Positive class prevalence (%)",
+                min_value=1, max_value=50, value=5, step=1,
+                key="theory_imbalance_pct",
+            )
+            n_total = 200
+            n_pos = max(1, int(n_total * imb_pct / 100))
+            n_neg = n_total - n_pos
+
+            # "Always predict majority" baseline
+            acc_majority = n_neg / n_total * 100
+            recall_majority = 0.0
+            f1_majority = 0.0
+
+            # A mediocre model that catches ~60% of positives
+            tp = int(n_pos * 0.6)
+            fp = int(n_neg * 0.08)
+            fn = n_pos - tp
+            tn = n_neg - fp
+            acc_model = (tp + tn) / n_total * 100
+            prec_model = tp / max(tp + fp, 1) * 100
+            recall_model = tp / max(tp + fn, 1) * 100
+            f1_model = 2 * (prec_model * recall_model) / max(prec_model + recall_model, 0.01)
+
+            fig_imb = go.Figure()
+            metrics = ["Accuracy", "Recall", "Precision", "F1"]
+            fig_imb.add_trace(go.Bar(
+                name="Always predict negative",
+                x=metrics, y=[acc_majority, recall_majority, 0, f1_majority],
+                marker_color="rgba(220, 38, 38, 0.7)",
+            ))
+            fig_imb.add_trace(go.Bar(
+                name="Mediocre model (60% recall)",
+                x=metrics, y=[acc_model, recall_model, prec_model, f1_model],
+                marker_color="rgba(22, 163, 74, 0.7)",
+            ))
+            fig_imb.update_layout(
+                barmode="group", height=300,
+                yaxis_title="Metric value (%)", yaxis_range=[0, 105],
+                title=f"n = {n_total}, positive class = {imb_pct}% ({n_pos} cases)",
+                margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            )
+            st.plotly_chart(fig_imb, use_container_width=True)
+            st.markdown(
+                "**Train your eye:** Start at 5% prevalence and compare the two bars on Accuracy — they're almost the same height. "
+                "That's the trap: a model that does *nothing* useful scores nearly as well as one that actually finds cases. "
+                "Now look at Recall: the red bar is zero (it catches no one), while the green bar shows real detection. "
+                "Slide toward 50% and watch accuracy become a fair metric again as the classes balance. "
+                "**The lesson:** in your own results, if accuracy is high but prevalence is low, don't trust accuracy alone."
+            )
+
+        misconception(
+            "Class imbalance does not mean the dataset is unusable. It means your training objective, threshold choice, and evaluation metrics need to reflect the asymmetry of the problem."
+        )
+
+        self_check(
+            "If your model has 96% accuracy on a 95/5 dataset, what question should you ask next before trusting it?"
+        )
 
         section("Data Quality Basics: Duplicates, Constants, and Cardinality")
         st.markdown("""
@@ -1398,6 +1893,71 @@ the training set and then applied (without re-fitting) to the test set.** This i
 why the Preprocess page builds a *pipeline* — a sequence of fit-then-transform
 steps that respects the train/test boundary.
 """)
+        with st.expander("🧮 Interactive: See what leakage does to your performance estimate"):
+            leak_n = 200
+            leak_p = st.slider(
+                "Number of noise features (no real signal)",
+                min_value=5, max_value=100, value=20, step=5,
+                key="theory_leak_features",
+                help="More features = more chances for spurious correlations to leak through.",
+            )
+            rng_leak = np.random.default_rng(44)
+            X_leak = rng_leak.standard_normal((leak_n, leak_p))
+            y_leak = rng_leak.choice([0, 1], size=leak_n)  # pure noise target
+
+            # WRONG: select features on full data, then split
+            from scipy.stats import pearsonr
+            corrs = [abs(pearsonr(X_leak[:, j], y_leak)[0]) for j in range(leak_p)]
+            top_k = min(5, leak_p)
+            top_features = np.argsort(corrs)[-top_k:]
+
+            split_idx = int(leak_n * 0.7)
+            X_tr_leak = X_leak[:split_idx, :][:, top_features]
+            y_tr_leak = y_leak[:split_idx]
+            X_te_leak = X_leak[split_idx:, :][:, top_features]
+            y_te_leak = y_leak[split_idx:]
+
+            # Simple logistic-ish: use sign of weighted sum
+            X_tr_aug_l = np.column_stack([np.ones(X_tr_leak.shape[0]), X_tr_leak])
+            X_te_aug_l = np.column_stack([np.ones(X_te_leak.shape[0]), X_te_leak])
+            beta_leak = np.linalg.lstsq(X_tr_aug_l, y_tr_leak, rcond=None)[0]
+            pred_leak = (X_te_aug_l @ beta_leak > 0.5).astype(int)
+            leaked_acc = np.mean(pred_leak == y_te_leak) * 100
+
+            # RIGHT: select features on training data only
+            corrs_honest = [abs(pearsonr(X_leak[:split_idx, j], y_leak[:split_idx])[0]) for j in range(leak_p)]
+            top_features_honest = np.argsort(corrs_honest)[-top_k:]
+            X_tr_h = X_leak[:split_idx, :][:, top_features_honest]
+            X_te_h = X_leak[split_idx:, :][:, top_features_honest]
+            X_tr_aug_h = np.column_stack([np.ones(X_tr_h.shape[0]), X_tr_h])
+            X_te_aug_h = np.column_stack([np.ones(X_te_h.shape[0]), X_te_h])
+            beta_h = np.linalg.lstsq(X_tr_aug_h, y_tr_leak, rcond=None)[0]
+            pred_h = (X_te_aug_h @ beta_h > 0.5).astype(int)
+            honest_acc = np.mean(pred_h == y_te_h) * 100
+
+            fig_leak = go.Figure()
+            fig_leak.add_trace(go.Bar(
+                x=["Leaked (select on all data)", "Honest (select on train only)", "Chance (50%)"],
+                y=[leaked_acc, honest_acc, 50],
+                marker_color=["#dc2626", "#16a34a", "#94a3b8"],
+                text=[f"{leaked_acc:.1f}%", f"{honest_acc:.1f}%", "50.0%"],
+                textposition="outside",
+            ))
+            fig_leak.update_layout(
+                title=f"Test accuracy on PURE NOISE data ({leak_p} features, top {top_k} selected)",
+                yaxis_title="Accuracy (%)", yaxis_range=[0, 85], height=300,
+                margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
+            )
+            st.plotly_chart(fig_leak, use_container_width=True)
+            st.markdown(
+                "**Train your eye:** The target is pure random noise — no real signal exists. Yet the red bar (leaked selection) "
+                f"shows {leaked_acc:.0f}% accuracy, well above the 50% chance level. Why? Because feature selection on the full dataset "
+                "found features that correlate with the test set by chance, then the model exploited those spurious correlations. "
+                "The green bar (honest selection) should hover near 50% — which is the truth. "
+                "Increase the number of noise features: more features = more chances for spurious correlations = worse leakage. "
+                "**In your own results:** if test accuracy seems too good to be true, check whether any step used test data."
+            )
+
         takeaway(
             "If your test performance is suspiciously close to your training performance, "
             "leakage is the first hypothesis to investigate. A 2% gap between train and "
@@ -1429,6 +1989,101 @@ def render_model_families():
         "understanding <em>why</em> the app recommends different preprocessing "
         "for different models — and why a choice that helps one model can hurt another."
     )
+
+    with st.expander("🧮 Interactive: See how different model families fit the same data"):
+        model_noise = st.slider(
+            "Noise level",
+            min_value=0.3, max_value=2.5, value=1.0, step=0.2,
+            key="theory_family_noise",
+            help="Higher noise makes the classification harder — watch how each model responds.",
+        )
+        model_choice = st.selectbox(
+            "Model family",
+            ["Linear (Logistic Regression)", "Tree (Decision Stump)", "KNN (k=3)", "KNN (k=15)"],
+            key="theory_family_model",
+        )
+
+        rng_fam = np.random.default_rng(19)
+        n_fam = 120
+        # Two-class data with a slightly nonlinear boundary
+        x1 = rng_fam.uniform(-3, 3, n_fam)
+        x2 = rng_fam.uniform(-3, 3, n_fam)
+        # True boundary: x2 > 0.5*sin(x1)
+        true_label = (x2 > 0.5 * np.sin(x1 * 1.5)).astype(int)
+        # Add noise by flipping some labels
+        flip_mask = rng_fam.random(n_fam) < (model_noise * 0.15)
+        labels_fam = np.where(flip_mask, 1 - true_label, true_label)
+
+        # Create prediction grid
+        gx = np.linspace(-3, 3, 60)
+        gy = np.linspace(-3, 3, 60)
+        gxx, gyy = np.meshgrid(gx, gy)
+        grid_pts = np.column_stack([gxx.ravel(), gyy.ravel()])
+
+        X_fam = np.column_stack([x1, x2])
+
+        if model_choice.startswith("Linear"):
+            # Logistic regression via simple OLS on labels (good enough for demo)
+            X_aug_fam = np.column_stack([np.ones(n_fam), X_fam])
+            beta_fam = np.linalg.lstsq(X_aug_fam, labels_fam, rcond=None)[0]
+            grid_pred = (np.column_stack([np.ones(len(grid_pts)), grid_pts]) @ beta_fam > 0.5).astype(int)
+        elif model_choice.startswith("Tree"):
+            # Simple decision stump: best single-axis split
+            best_score, best_feat, best_thr = -1, 0, 0
+            for feat in [0, 1]:
+                for thr in np.linspace(-3, 3, 50):
+                    pred_tmp = (X_fam[:, feat] > thr).astype(int)
+                    score_tmp = np.mean(pred_tmp == labels_fam)
+                    if score_tmp > best_score:
+                        best_score, best_feat, best_thr = score_tmp, feat, thr
+                    score_flip = np.mean((1 - pred_tmp) == labels_fam)
+                    if score_flip > best_score:
+                        best_score, best_feat, best_thr = score_flip, feat, thr
+            pred_train = (X_fam[:, best_feat] > best_thr).astype(int)
+            if np.mean(pred_train == labels_fam) < np.mean((1-pred_train) == labels_fam):
+                grid_pred = (grid_pts[:, best_feat] <= best_thr).astype(int)
+            else:
+                grid_pred = (grid_pts[:, best_feat] > best_thr).astype(int)
+        else:
+            # KNN
+            knn_k = 3 if "k=3" in model_choice else 15
+            from scipy.spatial.distance import cdist
+            dists_grid = cdist(grid_pts, X_fam)
+            nn_indices = np.argsort(dists_grid, axis=1)[:, :knn_k]
+            grid_pred = np.array([np.round(np.mean(labels_fam[nn_indices[i]])) for i in range(len(grid_pts))]).astype(int)
+
+        grid_pred_2d = grid_pred.reshape(gxx.shape)
+
+        fig_fam = go.Figure()
+        fig_fam.add_trace(go.Heatmap(
+            x=gx, y=gy, z=grid_pred_2d,
+            colorscale=[[0, "rgba(37, 99, 235, 0.15)"], [1, "rgba(220, 38, 38, 0.15)"]],
+            showscale=False,
+        ))
+        # Data points
+        for cls, color, name in [(0, "#2563eb", "Class 0"), (1, "#dc2626", "Class 1")]:
+            mask = labels_fam == cls
+            fig_fam.add_trace(go.Scatter(
+                x=x1[mask], y=x2[mask], mode="markers",
+                marker=dict(size=5, color=color, line=dict(width=0.5, color="white")),
+                name=name,
+            ))
+        fig_fam.update_layout(
+            title=f"{model_choice} — decision regions",
+            xaxis_title="Feature 1", yaxis_title="Feature 2",
+            height=380, margin=dict(t=50, b=40, l=50, r=20), template="plotly_white",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        )
+        st.plotly_chart(fig_fam, use_container_width=True)
+        st.markdown(
+            "**Train your eye:** The true boundary is a gentle curve. "
+            "**Linear** draws a straight line — it can't capture the curve, but it's stable and interpretable. "
+            "**Tree (stump)** cuts the space with one axis-aligned split — simple but rigid. "
+            "**KNN (k=3)** follows the data closely, including the noise — watch how the boundary becomes jagged. "
+            "**KNN (k=15)** smooths out, approaching a more stable (but less flexible) boundary. "
+            "Increase the noise: linear and KNN(k=15) degrade gracefully; KNN(k=3) degrades fastest because it fits noise. "
+            "**The lesson:** model choice is about matching the family's flexibility to the complexity of the real pattern in your data."
+        )
 
     tabs = st.tabs([
         "Linear",
@@ -1868,6 +2523,66 @@ Here 𝒩_k(**x**) is the set of *k* indices of training observations closest to
 - **Large k (e.g., k = n):** The prediction is the global average — a horizontal line.
   High bias, zero variance. Underfits completely.
 """)
+
+        with st.expander("🧮 Interactive: The bias-variance tradeoff — watch underfitting become overfitting"):
+            bv_k = st.slider(
+                "Number of neighbors (k)",
+                min_value=1, max_value=50, value=5, step=1,
+                key="theory_bv_k",
+                help="k = 1 memorizes noise; k = n predicts the global mean. Find the sweet spot.",
+            )
+            rng_bv = np.random.default_rng(31)
+            n_bv = 80
+            x_bv = rng_bv.uniform(0, 6, n_bv)
+            # True function: a smooth curve
+            y_true_bv = np.sin(x_bv) * 2 + 0.3 * x_bv
+            y_bv = y_true_bv + rng_bv.normal(0, 0.8, n_bv)
+
+            # KNN predictions on a grid
+            x_grid = np.linspace(0, 6, 200)
+            y_knn = np.zeros_like(x_grid)
+            for gi, xg in enumerate(x_grid):
+                dists = np.abs(x_bv - xg)
+                nn_idx = np.argsort(dists)[:bv_k]
+                y_knn[gi] = np.mean(y_bv[nn_idx])
+
+            # True function on grid
+            y_true_grid = np.sin(x_grid) * 2 + 0.3 * x_grid
+
+            # Compute train error and a rough proxy for test error
+            y_train_pred = np.zeros(n_bv)
+            for ti in range(n_bv):
+                dists_t = np.abs(x_bv - x_bv[ti])
+                nn_idx_t = np.argsort(dists_t)[:bv_k]
+                y_train_pred[ti] = np.mean(y_bv[nn_idx_t])
+            train_mse = np.mean((y_bv - y_train_pred) ** 2)
+            truth_mse = np.mean((y_knn - y_true_grid) ** 2)
+
+            fig_bv = go.Figure()
+            fig_bv.add_trace(go.Scatter(x=x_bv, y=y_bv, mode="markers",
+                marker=dict(size=5, color="rgba(99, 102, 241, 0.5)"),
+                name="Training data"))
+            fig_bv.add_trace(go.Scatter(x=x_grid, y=y_true_grid, mode="lines",
+                line=dict(color="#16a34a", width=2, dash="dash"),
+                name="True function"))
+            fig_bv.add_trace(go.Scatter(x=x_grid, y=y_knn, mode="lines",
+                line=dict(color="#dc2626", width=2),
+                name=f"KNN fit (k={bv_k})"))
+            fig_bv.update_layout(
+                title=f"k = {bv_k} — Train MSE: {train_mse:.3f}, Deviation from truth: {truth_mse:.3f}",
+                xaxis_title="x", yaxis_title="y", height=340,
+                margin=dict(t=50, b=40, l=50, r=20), template="plotly_white",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            )
+            st.plotly_chart(fig_bv, use_container_width=True)
+            st.markdown(
+                "**Train your eye:** At k = 1, the red line jumps through every data point — it memorizes the noise (overfitting). "
+                "The train MSE is nearly zero, but the line deviates wildly from the green truth. "
+                "At k = 50, the red line flattens — it misses the curve entirely (underfitting). "
+                "Somewhere around k = 5–15, the red line tracks the green curve without chasing noise. "
+                "**This is the bias-variance tradeoff:** too flexible and you fit noise; too rigid and you miss signal. "
+                "Every model in this app has an equivalent knob — tree depth, regularization strength, number of hidden neurons."
+            )
 
         section("Why Distance Metrics Matter")
         st.markdown("""
@@ -2511,6 +3226,56 @@ AUPRC is the preferred metric when:
   focusing on the positive-end of the prediction spectrum.
 """)
 
+        with st.expander("🧮 Interactive: See how the decision threshold trades precision for recall"):
+            threshold = st.slider(
+                "Classification threshold",
+                min_value=0.05, max_value=0.95, value=0.50, step=0.05,
+                key="theory_threshold",
+                help="Predictions above this threshold are classified as positive.",
+            )
+            # Generate toy predictions: 200 obs, 30 positive
+            rng_thr = np.random.default_rng(88)
+            n_pos_t, n_neg_t = 30, 170
+            scores_pos = rng_thr.beta(5, 2, n_pos_t)  # higher scores
+            scores_neg = rng_thr.beta(2, 5, n_neg_t)  # lower scores
+            scores_all = np.concatenate([scores_pos, scores_neg])
+            labels_all = np.concatenate([np.ones(n_pos_t), np.zeros(n_neg_t)])
+
+            preds = (scores_all >= threshold).astype(int)
+            tp_t = int(np.sum((preds == 1) & (labels_all == 1)))
+            fp_t = int(np.sum((preds == 1) & (labels_all == 0)))
+            fn_t = int(np.sum((preds == 0) & (labels_all == 1)))
+            tn_t = int(np.sum((preds == 0) & (labels_all == 0)))
+
+            prec_t = tp_t / max(tp_t + fp_t, 1) * 100
+            rec_t = tp_t / max(tp_t + fn_t, 1) * 100
+            f1_t = 2 * (prec_t * rec_t) / max(prec_t + rec_t, 0.01)
+            acc_t = (tp_t + tn_t) / (n_pos_t + n_neg_t) * 100
+
+            fig_thr = go.Figure()
+            fig_thr.add_trace(go.Bar(
+                x=["Precision", "Recall", "F1", "Accuracy"],
+                y=[prec_t, rec_t, f1_t, acc_t],
+                marker_color=["#2563eb", "#dc2626", "#7c3aed", "#64748b"],
+                text=[f"{v:.0f}%" for v in [prec_t, rec_t, f1_t, acc_t]],
+                textposition="outside",
+            ))
+            fig_thr.update_layout(
+                title=f"Threshold = {threshold:.2f} — TP={tp_t}, FP={fp_t}, FN={fn_t}, TN={tn_t}",
+                yaxis_title="Metric (%)", yaxis_range=[0, 110], height=300,
+                margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
+            )
+            st.plotly_chart(fig_thr, use_container_width=True)
+            st.markdown(
+                "**Train your eye:** Start at threshold = 0.50 and note the balance between precision and recall. "
+                "Now slide left toward 0.10: recall (red) climbs toward 100% because you're catching almost everyone — "
+                "but precision (blue) drops because you're also flagging many healthy people. "
+                "Slide right toward 0.90: precision climbs (you only flag cases you're very sure about) "
+                "but recall drops (you miss many true positives). "
+                "**The lesson:** the threshold is a policy decision, not a statistical one. "
+                "A cancer screening model wants low thresholds (catch everyone); a surgical decision model wants high thresholds (be sure)."
+            )
+
         app_connection(
             "The <strong>Train & Compare</strong> page reports accuracy, precision, "
             "recall, F1, AUROC, and AUPRC for every trained classification model, with "
@@ -2617,6 +3382,61 @@ held-out fold for evaluation. The final metric is the average across all *k* fol
 - **k = 5 or 10** strikes a balance, and empirical studies show it gives the best
   tradeoff between bias and variance of the performance estimate.
 """)
+
+        with st.expander("🧮 Interactive: See fold-to-fold variation in cross-validation"):
+            cv_k = st.slider("Number of folds (k)", min_value=2, max_value=20, value=5, step=1, key="theory_cv_k",
+                             help="k = 2 uses half the data for training; k = n is leave-one-out.")
+            cv_noise = st.slider("Dataset noise level", min_value=0.5, max_value=5.0, value=1.5, step=0.5, key="theory_cv_noise",
+                                 help="Higher noise → weaker signal → more fold-to-fold variability.")
+            rng_cv = np.random.default_rng(21)
+            n_cv = 120
+            X_cv = rng_cv.standard_normal((n_cv, 3))
+            y_cv = 1.5 * X_cv[:, 0] - 0.8 * X_cv[:, 1] + rng_cv.normal(0, cv_noise, n_cv)
+
+            # Simulate k-fold CV with simple linear regression R²
+            fold_ids = np.arange(n_cv) % cv_k
+            rng_cv.shuffle(fold_ids)
+            fold_scores = []
+            for f in range(cv_k):
+                mask = fold_ids == f
+                X_tr, y_tr = X_cv[~mask], y_cv[~mask]
+                X_te, y_te = X_cv[mask], y_cv[mask]
+                # OLS fit
+                X_tr_aug = np.column_stack([np.ones(X_tr.shape[0]), X_tr])
+                X_te_aug = np.column_stack([np.ones(X_te.shape[0]), X_te])
+                beta_cv = np.linalg.lstsq(X_tr_aug, y_tr, rcond=None)[0]
+                y_pred = X_te_aug @ beta_cv
+                ss_res = np.sum((y_te - y_pred) ** 2)
+                ss_tot = np.sum((y_te - np.mean(y_te)) ** 2)
+                r2 = 1 - ss_res / max(ss_tot, 1e-10)
+                fold_scores.append(r2)
+
+            fig_cv = go.Figure()
+            colors = ["rgba(99, 102, 241, 0.7)"] * cv_k
+            fig_cv.add_trace(go.Bar(x=[f"Fold {i+1}" for i in range(cv_k)], y=fold_scores, marker_color=colors))
+            fig_cv.add_hline(y=np.mean(fold_scores), line_dash="dash", line_color="#dc2626",
+                             annotation_text=f"Mean R² = {np.mean(fold_scores):.3f} ± {np.std(fold_scores):.3f}")
+            fig_cv.update_layout(
+                title=f"{cv_k}-fold CV: R² per fold",
+                yaxis_title="R²", height=300,
+                margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
+            )
+            st.plotly_chart(fig_cv, use_container_width=True)
+            st.markdown(
+                "**Train your eye:** At low noise, the bars are nearly uniform — the model works consistently regardless of which fold is held out. "
+                "Now crank the noise to 4 or 5: some folds score well, others score poorly or even go negative. "
+                "That spread *is* the uncertainty in your performance estimate. "
+                "A mean R² of 0.40 ± 0.25 tells a very different scientific story than 0.40 ± 0.03. "
+                "**In your own results:** if the red dashed line (mean) looks good but individual bars scatter wildly, the result is fragile."
+            )
+
+        misconception(
+            "Cross-validation does not give you five independent proofs that the model works. It gives repeated estimates of how the same modeling procedure behaves under different held-out partitions of the same dataset."
+        )
+
+        self_check(
+            "If one model has mean AUROC 0.84 ± 0.09 and another has 0.82 ± 0.02, which one would you feel more comfortable writing up as stable — and why?"
+        )
 
         section("Stratified k-Fold")
         st.markdown("""
@@ -2726,6 +3546,64 @@ in bin *m*, so bins with more observations contribute more. ECE = 0 means perfec
 calibration; values above 0.05 typically warrant investigation.
 """)
 
+        with st.expander("🧮 Interactive: See what miscalibration looks like"):
+            miscal = st.slider(
+                "Miscalibration direction and strength",
+                min_value=-0.3, max_value=0.3, value=0.15, step=0.05,
+                key="theory_calibration_miscal",
+                help="Positive = overconfident (predicts higher than reality). Negative = underconfident. Zero = perfect.",
+            )
+            # Generate 10 bins of predicted probabilities
+            bin_centers = np.linspace(0.05, 0.95, 10)
+            # Actual rates: if miscal > 0, model is overconfident (predicted > actual)
+            actual_rates = np.clip(bin_centers - miscal * np.sin(np.pi * bin_centers), 0.01, 0.99)
+
+            fig_cal = go.Figure()
+            # Perfect calibration diagonal
+            fig_cal.add_trace(go.Scatter(
+                x=[0, 1], y=[0, 1], mode="lines", line=dict(dash="dash", color="#94a3b8"),
+                name="Perfect calibration", showlegend=True,
+            ))
+            # Model calibration curve
+            fig_cal.add_trace(go.Scatter(
+                x=bin_centers, y=actual_rates, mode="lines+markers",
+                line=dict(color="#dc2626", width=2.5), marker=dict(size=8),
+                name="Model calibration",
+            ))
+            # Shade the gap
+            fig_cal.add_trace(go.Scatter(
+                x=np.concatenate([bin_centers, bin_centers[::-1]]),
+                y=np.concatenate([actual_rates, bin_centers[::-1]]),
+                fill="toself", fillcolor="rgba(220, 38, 38, 0.1)",
+                line=dict(color="rgba(0,0,0,0)"), showlegend=False,
+            ))
+            ece_val = np.mean(np.abs(bin_centers - actual_rates))
+            fig_cal.update_layout(
+                title=f"Reliability Diagram — ECE = {ece_val:.3f}",
+                xaxis_title="Mean predicted probability",
+                yaxis_title="Observed positive rate",
+                xaxis_range=[0, 1], yaxis_range=[0, 1],
+                height=340, margin=dict(t=50, b=40, l=50, r=20),
+                template="plotly_white",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            )
+            st.plotly_chart(fig_cal, use_container_width=True)
+            st.markdown(
+                "**Train your eye:** The dashed diagonal is the honesty line — where every probability statement is exactly right. "
+                "At positive miscalibration, the red curve bows **below** it: the model says '80% risk' but reality is closer to 65%. "
+                "Notice the shaded gap is widest in the middle bins — miscalibration often concentrates where the model is most 'confident.' "
+                "Slide to 0 and watch the curve snap onto the diagonal. Slide negative to see the opposite failure: underconfidence. "
+                "**In your own results:** if the calibration curve in Train & Compare bows away from the diagonal, the predicted probabilities need recalibration before clinical use."
+            )
+
+        misconception(
+            "A high AUROC does not guarantee well-calibrated probabilities. A model can rank cases correctly while still reporting probabilities that are systematically too high or too low."
+        )
+
+        self_check(
+            "If two models have similar AUROC but one has a much better calibration curve, which one would you trust more for risk communication or decision thresholds — and why?"
+        )
+
         section("Calibration for Regression")
         st.markdown("""
 For regression models, calibration takes a different form: a calibration slope and
@@ -2820,6 +3698,53 @@ Different SHAP algorithms exploit model structure for speed:
 - **KernelSHAP** is model-agnostic but slower (used for neural networks, SVMs, KNN).
 """)
 
+        with st.expander("🧮 Interactive: How SHAP values decompose a single prediction"):
+            st.markdown("Adjust feature values to see how each one pushes the prediction up or down from the baseline.")
+            shap_glucose = st.slider("Glucose level", 70, 200, 140, key="theory_shap_glucose")
+            shap_bmi = st.slider("BMI", 18.0, 45.0, 28.0, step=0.5, key="theory_shap_bmi")
+            shap_age = st.slider("Age", 20, 80, 50, key="theory_shap_age")
+
+            # Toy linear attribution (simulates SHAP for educational purposes)
+            baseline = 0.30
+            contrib_glucose = (shap_glucose - 120) * 0.002
+            contrib_bmi = (shap_bmi - 25) * 0.008
+            contrib_age = (shap_age - 45) * 0.003
+            prediction = baseline + contrib_glucose + contrib_bmi + contrib_age
+            prediction = np.clip(prediction, 0.01, 0.99)
+
+            features = ["Glucose", "BMI", "Age"]
+            contributions = [contrib_glucose, contrib_bmi, contrib_age]
+            colors_shap = ["#dc2626" if c > 0 else "#2563eb" for c in contributions]
+
+            fig_shap = go.Figure()
+            fig_shap.add_trace(go.Bar(
+                y=features, x=contributions, orientation="h",
+                marker_color=colors_shap,
+                text=[f"{c:+.3f}" for c in contributions], textposition="outside",
+            ))
+            fig_shap.add_vline(x=0, line_color="#94a3b8")
+            fig_shap.update_layout(
+                title=f"Baseline: {baseline:.2f} → Prediction: {prediction:.3f}  (sum of contributions: {sum(contributions):+.3f})",
+                xaxis_title="SHAP contribution to prediction",
+                height=260, margin=dict(t=50, b=30, l=80, r=60), template="plotly_white",
+            )
+            st.plotly_chart(fig_shap, use_container_width=True)
+            st.markdown(
+                "**Train your eye:** Move the glucose slider to 180 and watch its red bar extend right — it's pushing the prediction up. "
+                "Now drop BMI to 20 and watch its bar turn blue and extend left — it's pulling the prediction down. "
+                "Check the title: the contributions always sum exactly to the gap between baseline and prediction. "
+                "That's the SHAP guarantee. **In your own results:** if a feature's SHAP bar is consistently large and red across many patients, "
+                "the model is relying heavily on it — but that tells you about the model's behavior, not about causation."
+            )
+
+        misconception(
+            "SHAP explains how the model used a feature, not whether the feature causes the outcome. Strong SHAP importance can reflect correlation, proxy effects, or dataset artifacts."
+        )
+
+        self_check(
+            "If glucose has the largest SHAP values in a diabetes model, what can you conclude confidently — and what causal claim must you still avoid making?"
+        )
+
         app_connection(
             "The <strong>Explainability</strong> page computes both permutation importance "
             "and SHAP values for every trained model. It generates SHAP summary plots "
@@ -2873,6 +3798,68 @@ the ICE lines go in opposite directions, the feature has a strong effect — but
 it works differently for different subgroups of the data. The average (PDP) washes
 out the opposing effects, creating a false impression of unimportance.
 """)
+
+        with st.expander("🧮 Interactive: How PDP averaging hides interaction effects"):
+            interaction_strength = st.slider(
+                "Interaction strength (0 = no interaction, 1 = strong interaction)",
+                min_value=0.0, max_value=1.0, value=0.7, step=0.1,
+                key="theory_pdp_interaction",
+            )
+            rng_pdp = np.random.default_rng(55)
+            n_pdp = 100
+            # x1 is the feature of interest; x2 is a binary grouping variable
+            x1 = np.linspace(-3, 3, 50)
+            group = rng_pdp.choice([0, 1], size=n_pdp)
+
+            # For group 0: x1 has positive effect; group 1: negative effect (interaction)
+            ice_lines = []
+            for i in range(n_pdp):
+                if group[i] == 0:
+                    effect = (1 - interaction_strength * 0.5) + interaction_strength * 1.0
+                    ice = effect * x1 + rng_pdp.normal(0, 0.3)
+                else:
+                    effect = (1 - interaction_strength * 0.5) - interaction_strength * 1.0
+                    ice = effect * x1 + rng_pdp.normal(0, 0.3)
+                ice_lines.append(ice)
+
+            ice_array = np.array(ice_lines)
+            pdp_mean = np.mean(ice_array, axis=0)
+
+            fig_pdp = go.Figure()
+            # ICE lines (thin, semi-transparent)
+            for i in range(min(n_pdp, 40)):
+                color = "rgba(220, 38, 38, 0.15)" if group[i] == 0 else "rgba(37, 99, 235, 0.15)"
+                fig_pdp.add_trace(go.Scatter(
+                    x=x1, y=ice_lines[i], mode="lines", line=dict(width=1, color=color),
+                    showlegend=False,
+                ))
+            # PDP (thick black)
+            fig_pdp.add_trace(go.Scatter(
+                x=x1, y=pdp_mean, mode="lines", line=dict(width=3, color="#111827"),
+                name="PDP (average)",
+            ))
+            fig_pdp.update_layout(
+                title="PDP (black) vs ICE lines (red = group A, blue = group B)",
+                xaxis_title="Feature value (x₁)", yaxis_title="Predicted outcome",
+                height=340, margin=dict(t=50, b=40, l=50, r=20), template="plotly_white",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            )
+            st.plotly_chart(fig_pdp, use_container_width=True)
+            st.markdown(
+                "**Train your eye:** At high interaction strength, the red and blue ICE lines slope in **opposite directions** — "
+                "the feature matters a lot, but differently for the two groups. Now look at the thick black PDP: it's nearly flat. "
+                "That flat line is a lie — the average of opposing effects cancels to zero. "
+                "Slide interaction to 0: now all ICE lines agree and the PDP faithfully represents the real effect. "
+                "**In your own results:** whenever a PDP looks flat for a feature you expected to matter, overlay ICE lines before concluding it's unimportant."
+            )
+
+        misconception(
+            "A flat PDP does not prove a feature is irrelevant. It may indicate that the feature's effect depends on other variables — the average hides the interaction."
+        )
+
+        self_check(
+            "If the PDP for a feature is flat but ICE lines diverge sharply, what does that tell you about the feature's relationship with the outcome — and what should you investigate next?"
+        )
 
         app_connection(
             "The <strong>Explainability</strong> page generates PDP for the top features "
@@ -2938,6 +3925,53 @@ Additionally, subgroup analysis requires sufficient observations per subgroup.
 A subgroup with n = 10 will have such wide confidence intervals that the
 performance estimate is nearly meaningless.
 """)
+
+        with st.expander("🧮 Interactive: See how aggregate metrics hide subgroup disparities"):
+            disparity = st.slider(
+                "Performance disparity between subgroups",
+                min_value=0.0, max_value=0.25, value=0.12, step=0.02,
+                key="theory_subgroup_disparity",
+            )
+            subgroups = ["Males (n=120)", "Females (n=110)", "Age < 50 (n=80)", "Age ≥ 50 (n=150)", "Site A (n=90)", "Site B (n=70)"]
+            # Base performance with disparity applied to some subgroups
+            base_perf = 0.85
+            rng_sg = np.random.default_rng(33)
+            offsets = np.array([disparity * 0.5, -disparity, disparity * 0.3, -disparity * 0.4, 0.0, -disparity * 0.7])
+            perfs = base_perf + offsets
+            ci_widths = np.array([0.04, 0.05, 0.06, 0.035, 0.05, 0.07])  # wider for smaller groups
+
+            fig_sg = go.Figure()
+            colors_sg = ["#16a34a" if p >= base_perf - 0.01 else "#dc2626" for p in perfs]
+            for i, (sg, p, ci_w) in enumerate(zip(subgroups, perfs, ci_widths)):
+                fig_sg.add_trace(go.Scatter(
+                    x=[p], y=[sg], mode="markers",
+                    marker=dict(size=10, color=colors_sg[i]),
+                    error_x=dict(type="constant", value=ci_w, color=colors_sg[i]),
+                    showlegend=False,
+                ))
+            fig_sg.add_vline(x=base_perf, line_dash="dash", line_color="#6366f1",
+                             annotation_text=f"Overall: {base_perf:.2f}")
+            fig_sg.update_layout(
+                title=f"Subgroup performance (forest plot) — overall AUROC = {base_perf:.2f}",
+                xaxis_title="AUROC", xaxis_range=[0.5, 1.0],
+                height=320, margin=dict(t=50, b=40, l=140, r=20), template="plotly_white",
+            )
+            st.plotly_chart(fig_sg, use_container_width=True)
+            st.markdown(
+                "**Train your eye:** Look at the purple dashed line — that's the aggregate AUROC the paper would report. "
+                "Now look at the red dots: some subgroups fall well below that line. Increase the disparity slider and watch 'Females' and 'Site B' "
+                "drop further from the reference. Notice that Site B also has a **wide CI** — that's not reassurance, it's ignorance (small n). "
+                "**In your own results:** if any subgroup's CI lies entirely below the overall line, you have a disparity worth disclosing. "
+                "If the CI is wide, you have a subgroup you can't yet evaluate — which is also worth disclosing."
+            )
+
+        misconception(
+            "Finding that one subgroup performs worse does not necessarily mean the model is biased. It may reflect genuinely different data quality, different signal structure, or insufficient representation in the training set."
+        )
+
+        self_check(
+            "If a subgroup has only 15 observations and its CI is very wide, should you report that the model 'fails' for that group — or is the honest conclusion that you simply don't have enough evidence?"
+        )
 
         app_connection(
             "The <strong>Explainability</strong> page runs subgroup analysis by stratifying "
@@ -3462,6 +4496,60 @@ the mean. The app uses these thresholds:
   as a single number without the variation range.
 """)
 
+        with st.expander("🧮 Interactive: See how seed choice affects reported performance"):
+            seed_noise = st.slider(
+                "Signal-to-noise ratio (lower = noisier, more seed-sensitive)",
+                min_value=0.5, max_value=5.0, value=1.5, step=0.5, key="theory_seed_snr",
+            )
+            seed_n = 60
+            n_seeds = 10
+            seed_scores = []
+            for s in range(n_seeds):
+                rng_s = np.random.default_rng(s * 7 + 3)
+                X_s = rng_s.standard_normal((seed_n, 2))
+                y_s = seed_noise * X_s[:, 0] + rng_s.normal(0, 1, seed_n)
+                # Random 70/30 split
+                idx_s = rng_s.permutation(seed_n)
+                split = int(seed_n * 0.7)
+                X_tr_s, y_tr_s = X_s[idx_s[:split]], y_s[idx_s[:split]]
+                X_te_s, y_te_s = X_s[idx_s[split:]], y_s[idx_s[split:]]
+                X_tr_aug_s = np.column_stack([np.ones(X_tr_s.shape[0]), X_tr_s])
+                X_te_aug_s = np.column_stack([np.ones(X_te_s.shape[0]), X_te_s])
+                beta_s = np.linalg.lstsq(X_tr_aug_s, y_tr_s, rcond=None)[0]
+                y_pred_s = X_te_aug_s @ beta_s
+                ss_res_s = np.sum((y_te_s - y_pred_s) ** 2)
+                ss_tot_s = np.sum((y_te_s - np.mean(y_te_s)) ** 2)
+                seed_scores.append(1 - ss_res_s / max(ss_tot_s, 1e-10))
+
+            cv_pct = np.std(seed_scores) / max(abs(np.mean(seed_scores)), 1e-10) * 100
+            stability = "Highly robust" if cv_pct < 2 else "Acceptable" if cv_pct < 5 else "Concerning" if cv_pct < 10 else "Unstable"
+            bar_colors = ["rgba(220, 38, 38, 0.7)" if s == min(seed_scores) or s == max(seed_scores) else "rgba(99, 102, 241, 0.7)" for s in seed_scores]
+
+            fig_seed = go.Figure()
+            fig_seed.add_trace(go.Bar(x=[f"Seed {i}" for i in range(n_seeds)], y=seed_scores, marker_color=bar_colors))
+            fig_seed.add_hline(y=np.mean(seed_scores), line_dash="dash", line_color="#16a34a",
+                               annotation_text=f"Mean = {np.mean(seed_scores):.3f}")
+            fig_seed.update_layout(
+                title=f"R² across {n_seeds} seeds — CV = {cv_pct:.1f}% ({stability})",
+                yaxis_title="R²", height=300,
+                margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
+            )
+            st.plotly_chart(fig_seed, use_container_width=True)
+            st.markdown(
+                "**Train your eye:** The red bars are the best and worst seeds — they define the range of results you might have reported. "
+                "Slide the signal-to-noise ratio down: the bars spread apart, the CV% climbs, and the stability label shifts from 'Robust' toward 'Unstable.' "
+                "**The key question:** would you feel comfortable putting the best red bar in a paper? "
+                "If the worst red bar would tell a different story, you should report the mean ± SD across seeds, not a single run."
+            )
+
+        misconception(
+            "A single lucky seed is not evidence of a reliable model. If results move substantially when the split changes, the uncertainty belongs in the scientific story."
+        )
+
+        self_check(
+            "If a model looks excellent under one seed but mediocre under several others, what should you report: the best run, the average behavior, or both — and why?"
+        )
+
         app_connection(
             "The <strong>Sensitivity Analysis</strong> page displays a bar chart of "
             "performance across seeds, the CV percentage with a color-coded stability "
@@ -3558,6 +4646,58 @@ The adjustment accounts for the fact that the bootstrap distribution may not be
 centered on the true parameter (bias correction) and may be wider in one direction
 than the other (acceleration).
 """)
+
+        with st.expander("🧮 Interactive: Watch the bootstrap distribution build up"):
+            boot_B = st.slider(
+                "Number of bootstrap resamples (B)",
+                min_value=20, max_value=1000, value=200, step=20, key="theory_boot_B",
+            )
+            rng_b = np.random.default_rng(99)
+            # Toy dataset: skewed metric to show asymmetric CI
+            sample_data = rng_b.exponential(scale=5.0, size=40)
+
+            boot_means = []
+            for b in range(boot_B):
+                resample = rng_b.choice(sample_data, size=len(sample_data), replace=True)
+                boot_means.append(np.mean(resample))
+
+            ci_lo, ci_hi = np.percentile(boot_means, [2.5, 97.5])
+            obs_mean = np.mean(sample_data)
+
+            fig_boot = go.Figure()
+            fig_boot.add_trace(go.Histogram(
+                x=boot_means, nbinsx=min(40, boot_B // 5),
+                marker_color="rgba(99, 102, 241, 0.6)",
+                marker_line=dict(color="rgba(99, 102, 241, 1)", width=1),
+            ))
+            fig_boot.add_vline(x=obs_mean, line_dash="dash", line_color="#dc2626",
+                               annotation_text=f"Observed mean: {obs_mean:.2f}")
+            fig_boot.add_vline(x=ci_lo, line_dash="dot", line_color="#16a34a",
+                               annotation_text=f"2.5%: {ci_lo:.2f}")
+            fig_boot.add_vline(x=ci_hi, line_dash="dot", line_color="#16a34a",
+                               annotation_text=f"97.5%: {ci_hi:.2f}")
+            fig_boot.update_layout(
+                title=f"Bootstrap distribution of the mean (B = {boot_B})",
+                xaxis_title="Bootstrap mean", yaxis_title="Count",
+                height=300, margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
+            )
+            st.plotly_chart(fig_boot, use_container_width=True)
+            st.markdown(
+                f"**Train your eye:** The green dotted lines mark the 95% CI: [{ci_lo:.2f}, {ci_hi:.2f}]. "
+                "Start at B = 20: the histogram is choppy and the CI boundaries jump around. "
+                "Slide B up to 500+: the shape stabilizes, the CI tightens, and you can see the slight **right skew** in the distribution. "
+                "That asymmetry means the upper and lower CI bounds are not equidistant from the mean — "
+                "this is exactly why BCa correction exists. "
+                "**In your own results:** if bootstrap CIs for two models overlap substantially, the difference between them is not reliable."
+            )
+
+        misconception(
+            "A 95% bootstrap confidence interval does not mean there is a 95% probability that the true value lies inside this one realized interval. It means the interval-generating procedure is designed to capture the true value about 95% of the time over repeated samples."
+        )
+
+        self_check(
+            "If two models differ by 0.01 in AUROC but their bootstrap confidence intervals overlap heavily, how strong is the evidence that one model is truly better?"
+        )
 
         app_connection(
             "The <strong>Train & Compare</strong> page computes BCa bootstrap 95% CIs "

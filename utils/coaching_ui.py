@@ -11,6 +11,7 @@ from utils.insight_ledger import (
     MODEL_TO_FAMILY, FAMILY_DISPLAY_NAMES, models_to_families,
     SEVERITY_ORDER,
 )
+from utils.theory_anchors import infer_theory_anchor, render_theory_link
 
 
 SEVERITY_ICONS = {
@@ -90,10 +91,10 @@ def render_page_coaching(
     label = f"📋 Coaching ({', '.join(label_parts)})"
 
     if compact:
-        _render_insights_body(non_blockers, resolved, selected_models, show_model_grouping)
+        _render_insights_body(non_blockers, resolved, selected_models, show_model_grouping, page_id=page_id)
     else:
         with st.expander(label, expanded=bool(non_blockers)):
-            _render_insights_body(non_blockers, resolved, selected_models, show_model_grouping)
+            _render_insights_body(non_blockers, resolved, selected_models, show_model_grouping, page_id=page_id)
 
 
 def _render_insights_body(
@@ -101,13 +102,17 @@ def _render_insights_body(
     resolved: List[Insight],
     selected_models: List[str],
     show_model_grouping: bool,
+    page_id: str = "page",
 ) -> None:
     """Render the insights content — called inside or outside an expander."""
+    # Track which theory demos have been shown to avoid duplicates
+    shown_demos: set = set()
+
     if unresolved:
         if show_model_grouping and selected_models:
-            _render_model_grouped(unresolved, selected_models)
+            _render_model_grouped(unresolved, selected_models, page_id=page_id, shown_demos=shown_demos)
         else:
-            _render_flat(unresolved)
+            _render_flat(unresolved, page_id=page_id, shown_demos=shown_demos)
 
     if resolved:
         st.markdown("---")
@@ -118,7 +123,7 @@ def _render_insights_body(
             st.caption(f"... and {len(resolved) - 5} more")
 
 
-def _render_model_grouped(insights: List[Insight], selected_models: List[str]) -> None:
+def _render_model_grouped(insights: List[Insight], selected_models: List[str], page_id: str = "page", shown_demos: set = None) -> None:
     """Render insights grouped by model family."""
     families = models_to_families(selected_models)
     universal = []
@@ -148,10 +153,7 @@ def _render_model_grouped(insights: List[Insight], selected_models: List[str]) -
         if items:
             st.markdown(f"**{family_display}** ({len(items)} item{'s' if len(items) > 1 else ''})")
             for ins in items:
-                icon = SEVERITY_ICONS.get(ins.severity, "ℹ️")
-                st.markdown(f"  {icon} {ins.finding}")
-                if ins.recommended_action:
-                    st.caption(f"    → {ins.recommended_action}")
+                _render_single_insight(ins, page_context=page_id, shown_demos=shown_demos)
         else:
             st.markdown(f"**{family_display}** — ✅ no issues")
 
@@ -159,24 +161,43 @@ def _render_model_grouped(insights: List[Insight], selected_models: List[str]) -
     if universal:
         st.markdown(f"**All Models** ({len(universal)} item{'s' if len(universal) > 1 else ''})")
         for ins in universal:
-            icon = SEVERITY_ICONS.get(ins.severity, "ℹ️")
-            st.markdown(f"  {icon} {ins.finding}")
-            if ins.recommended_action:
-                st.caption(f"    → {ins.recommended_action}")
+            _render_single_insight(ins, page_context=page_id, shown_demos=shown_demos)
 
 
-def _render_flat(insights: List[Insight]) -> None:
+def _render_single_insight(ins: Insight, page_context: str = "coaching", shown_demos: set = None) -> None:
+    """Render one insight with its theory link and inline demo if available.
+
+    Args:
+        shown_demos: Set of anchor keys already shown on this page.
+            If the anchor was already shown, skip the demo (avoid duplicates).
+    """
+    if shown_demos is None:
+        shown_demos = set()
+
+    icon = SEVERITY_ICONS.get(ins.severity, "ℹ️")
+    scope_hint = ""
+    if ins.model_scope:
+        scope_names = [FAMILY_DISPLAY_NAMES.get(f, f) for f in ins.model_scope]
+        scope_hint = f" _{', '.join(scope_names)}_"
+    st.markdown(f"  {icon} {ins.finding}{scope_hint}")
+    if ins.recommended_action:
+        st.caption(f"    → {ins.recommended_action}")
+
+    # Theory link — only show demo on first occurrence of each anchor
+    anchor_key = infer_theory_anchor(ins)
+    if anchor_key:
+        if anchor_key not in shown_demos:
+            shown_demos.add(anchor_key)
+            ctx = f"{page_context}_{anchor_key}"
+            render_theory_link(anchor_key, compact=False, page_context=ctx)
+        # For subsequent insights with the same anchor, no demo — just a quiet note
+        # (the user already has the demo above)
+
+
+def _render_flat(insights: List[Insight], page_id: str = "page", shown_demos: set = None) -> None:
     """Render insights as a flat list (no models selected yet)."""
     for ins in insights:
-        icon = SEVERITY_ICONS.get(ins.severity, "ℹ️")
-        # Add model scope hint if available
-        scope_hint = ""
-        if ins.model_scope:
-            scope_names = [FAMILY_DISPLAY_NAMES.get(f, f) for f in ins.model_scope]
-            scope_hint = f" _{', '.join(scope_names)}_"
-        st.markdown(f"{icon} {ins.finding}{scope_hint}")
-        if ins.recommended_action:
-            st.caption(f"  → {ins.recommended_action}")
+        _render_single_insight(ins, page_context=page_id, shown_demos=shown_demos)
 
 
 def render_coaching_summary_badge(page_id: str) -> None:

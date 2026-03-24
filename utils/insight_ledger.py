@@ -460,6 +460,10 @@ class Insight:
     tripod_keys: List[str] = field(default_factory=list)
     model_scope: List[str] = field(default_factory=list)  # empty = all families
     auto_generated: bool = True
+    # Theory Reference anchor key (e.g., "skewness", "collinearity")
+    # If set, coaching UI will show an inline theory explanation.
+    # If not set, the coaching UI will attempt to infer one from the insight content.
+    theory_anchor: str = ""
     # Legacy field — kept for backward compat, mapped to relevant_pages[0]
     action_page: str = ""
 
@@ -499,6 +503,7 @@ class Insight:
             "tripod_keys": list(self.tripod_keys),
             "model_scope": list(self.model_scope),
             "auto_generated": self.auto_generated,
+            "theory_anchor": self.theory_anchor,
             "action_page": self.action_page,
             "resolved": self.resolved,
             "resolved_by": self.resolved_by,
