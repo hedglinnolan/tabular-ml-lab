@@ -391,6 +391,38 @@ if n_train < 50:
 from utils.coaching_ui import render_page_coaching
 render_page_coaching("06_Train_and_Compare")
 
+# ── Model Coach: data-aware recommendations ─────────────────────
+# Show coach recommendations if we have a dataset profile
+_profile = st.session_state.get("dataset_profile")
+if _profile:
+    try:
+        from ml.model_coach import compute_model_recommendations, RecommendationBucket
+        _coach_output = compute_model_recommendations(_profile)
+
+        with st.expander("🧠 Model Selection Coach — what fits your data?", expanded=True):
+            st.caption(_coach_output.dataset_summary)
+
+            if _coach_output.recommended_models:
+                st.markdown("**✅ Recommended**")
+                for rec in _coach_output.recommended_models:
+                    st.markdown(f"- **{rec.name}** — {rec.plain_language_summary}")
+
+            if _coach_output.worth_trying_models:
+                st.markdown("**🔄 Worth trying**")
+                for rec in _coach_output.worth_trying_models:
+                    st.markdown(f"- **{rec.name}** — {rec.plain_language_summary}")
+
+            if _coach_output.not_recommended_models:
+                with st.expander("❌ Not recommended for this dataset", expanded=False):
+                    for rec in _coach_output.not_recommended_models:
+                        st.caption(f"**{rec.name}** — {rec.plain_language_summary}")
+    except Exception as _coach_err:
+        import logging
+        logging.getLogger(__name__).debug(f"Model coach error: {_coach_err}")
+        # Coach is advisory — don't break the page if it fails
+
+st.markdown("---")
+
 # Model selection and configuration
 st.header("Model Configuration")
 _prep_pipes = st.session_state.get("preprocessing_pipelines_by_model") or {}
