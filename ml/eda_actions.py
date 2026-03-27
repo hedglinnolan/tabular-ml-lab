@@ -1080,7 +1080,7 @@ def feature_scaling_check(
     signals: Any,
     session_state: Any
 ) -> Dict[str, Any]:
-    """Min, max, std per feature."""
+    """Min, max, std, range, and outlier summary per feature with scaling recommendation."""
     findings = []
     warnings = []
     figures = []
@@ -1088,13 +1088,92 @@ def feature_scaling_check(
     if not numeric:
         return {'findings': ["No numeric features"], 'warnings': [], 'figures': [], 'stats': {}}
 
+    capped = numeric[:20]
     rows = []
-    for f in numeric[:20]:
+    ranges = []
+    features_with_outliers = []
+    for f in capped:
         s = df[f].dropna()
-        rows.append({"Feature": f, "Min": f"{s.min():.4f}", "Max": f"{s.max():.4f}", "Std": f"{s.std():.4f}"})
+        fmin, fmax, fstd = s.min(), s.max(), s.std()
+        frange = fmax - fmin
+        q1, q3 = s.quantile(0.25), s.quantile(0.75)
+        iqr = q3 - q1
+        has_outliers = bool((s > q3 + 1.5 * iqr).any() or (s < q1 - 1.5 * iqr).any())
+        if has_outliers:
+            features_with_outliers.append(f)
+        ranges.append(frange)
+        rows.append({
+            "Feature": f,
+            "Min": f"{fmin:.4f}",
+            "Max": f"{fmax:.4f}",
+            "Std": f"{fstd:.4f}",
+            "Range": f"{frange:.4f}",
+            "Outliers (IQR)": "Yes" if has_outliers else "No",
+        })
     figures.append(('table', pd.DataFrame(rows)))
-    findings.append(f"Scaling summary for {min(len(numeric), 20)} features.")
-    return {'findings': findings, 'warnings': warnings, 'figures': figures, 'stats': {}}
+
+    # Range ratio and warning
+    positive_ranges = [r for r in ranges if r > 0]
+    if len(positive_ranges) >= 2:
+        max_range = max(positive_ranges)
+        min_range = min(positive_ranges)
+        range_ratio = max_range / min_range
+        if range_ratio > 100:
+            warnings.append(
+                f"Feature range ratio is {range_ratio:.1f}x (max range / min range). "
+                "Large differences in scale can hurt linear models, SVM, KNN, and neural networks. "
+                "Consider scaling your features."
+            )
+    else:
+        range_ratio = None
+
+    # Horizontal bar chart of feature ranges (log scale)
+    if ranges:
+        chart_features = capped[:len(ranges)]
+        fig = go.Figure(go.Bar(
+            x=ranges,
+            y=chart_features,
+            orientation='h',
+            marker_color='steelblue',
+        ))
+        fig.update_layout(
+            title="Feature Ranges (log scale)",
+            xaxis_title="Range (max − min)",
+            yaxis_title="Feature",
+            xaxis_type="log",
+            height=max(300, 28 * len(chart_features)),
+            margin=dict(l=160, r=20, t=40, b=40),
+        )
+        figures.append(('plotly', fig))
+
+    # Recommendation
+    if features_with_outliers:
+        scaler_rec = "RobustScaler (outliers detected in: " + ", ".join(features_with_outliers[:5])
+        if len(features_with_outliers) > 5:
+            scaler_rec += f" +{len(features_with_outliers) - 5} more"
+        scaler_rec += ")"
+    else:
+        scaler_rec = "StandardScaler (no significant outliers detected)"
+
+    ratio_str = f"{range_ratio:.1f}x" if range_ratio is not None else "N/A"
+    findings.append(
+        f"Range ratio is {ratio_str}. "
+        f"Recommended scaler: {scaler_rec}. "
+        "Scaling recommended for: linear models, SVM, KNN, neural networks. "
+        "Not needed for: tree-based models."
+    )
+    findings.append(f"Scaling summary for {len(capped)} of {len(numeric)} numeric features.")
+
+    return {
+        'findings': findings,
+        'warnings': warnings,
+        'figures': figures,
+        'stats': {
+            'range_ratio': range_ratio,
+            'features_with_outliers': features_with_outliers,
+            'n_numeric': len(numeric),
+        },
+    }
 
 
 def quick_probe_baselines(
