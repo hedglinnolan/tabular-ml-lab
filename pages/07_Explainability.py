@@ -120,13 +120,14 @@ with col2:
 with col3:
     st.markdown("""
     **🔬 Advanced** (optional)
-    - [ ] Individual conditional expectation (ICE)
-    - [ ] LIME explanations
-    - [ ] Interaction plots
+    Consider if reviewers request individual-level explanations:
+    - **ICE plots** — individual PDP curves per sample
+    - **LIME** — local linear explanations
+    - **Interaction plots** — pairwise SHAP interactions
     
-    **Why:** Deep dive for specific questions. Overkill for most papers.
+    **Why:** Deep dive for specific questions. Overkill for most papers. These are not yet built into this app — use the Python packages directly if needed.
     
-    **Time:** ~15 minutes
+    **Time:** Varies
     """)
 
 st.markdown("---")
@@ -477,6 +478,8 @@ if run_button:
                     'feature_names': fn_shap,
                     'class_label': class_label,
                     'all_shap_values': shap_values,  # keep for class switching
+                    'kernel_capped': shap_support == 'kernel',
+                    'n_eval_samples': len(X_ev),
                 }
                 shap_time = time.perf_counter() - shap_start
                 if shap_time > 10:
@@ -679,6 +682,15 @@ if perm_data or shap_data:
                     X_ev = np.asarray(s['X_eval'])
                     fn = s['feature_names']
                     cl = s.get('class_label')
+
+                    if s.get('kernel_capped'):
+                        _n_eval = s.get('n_eval_samples', len(X_ev))
+                        _n_test = len(st.session_state.get('y_test', []))
+                        st.caption(
+                            f"ℹ️ SHAP values computed on {_n_eval} of {_n_test} test samples "
+                            f"(KernelExplainer is computationally expensive). For full coverage, "
+                            f"use tree-based or linear models which have fast exact SHAP methods."
+                        )
 
                     # Ensure 2D
                     if sv.ndim == 3:
