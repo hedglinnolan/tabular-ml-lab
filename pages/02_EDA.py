@@ -1290,6 +1290,19 @@ if "eda_results" not in st.session_state:
     st.session_state.eda_results = {}
 
 
+ACTION_NEXT_STEPS = {
+    'multicollinearity_vif': '→ **Next:** Go to Feature Selection to use LASSO/RFE to resolve collinearity, or apply Ridge/ElasticNet regularization in training.',
+    'missingness_scan': '→ **Next:** Configure imputation strategy in Preprocess. Consider whether missingness is informative (MNAR) before choosing a method.',
+    'data_sufficiency_check': '→ **Next:** Consider reducing features via Feature Selection, or use simpler models (Ridge, LASSO) that handle high dimensionality better.',
+    'influence_diagnostics': '→ **Next:** Review flagged high-influence points. Consider target trimming on the Train page, or use robust regression (Huber).',
+    'leakage_scan': '→ **Next:** Remove suspected leakage columns in Upload & Audit before proceeding to modeling.',
+    'target_profile': '→ **Next:** Apply target transformation (Log, Yeo-Johnson, Box-Cox) on the Train & Compare page.',
+    'feature_scaling_check': '→ **Next:** Configure scaling in Preprocess. StandardScaler for normal features, RobustScaler if outliers are present.',
+    'linearity_scatter': '→ **Next:** If non-linear patterns are visible, consider tree-based models or polynomial features in Feature Engineering.',
+    'plausibility_check': '→ **Next:** Review flagged implausible values. Apply target trimming or filter rows in Upload & Audit.',
+}
+
+
 def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""):
     """Run an EDA action and display results with optional LLM interpretation."""
     from utils.llm_ui import build_llm_context, build_eda_full_results_context, render_interpretation_with_llm_button, gather_session_context
@@ -1351,6 +1364,9 @@ def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""
                 result_session_key=f"llm_result_{key_prefix}",
                 plot_type=action_id,
             )
+        next_step = ACTION_NEXT_STEPS.get(action_id)
+        if next_step:
+            st.markdown(next_step)
 
 
 _recommendations = []
