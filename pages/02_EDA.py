@@ -1286,6 +1286,11 @@ st.markdown("---")
 st.header("Deep Dive Diagnostics")
 st.caption("Specialized analyses organized by intent. Run what's relevant, skip what isn't.")
 
+from ml.physiology_reference import load_reference_bundle, match_variable_key
+_ref_bundle = load_reference_bundle()
+_nhanes_ref = _ref_bundle.get("nhanes", {}) if _ref_bundle else {}
+_has_physio_matches = any(match_variable_key(f, _nhanes_ref) for f in feature_cols) if _nhanes_ref else False
+
 if "eda_results" not in st.session_state:
     st.session_state.eda_results = {}
 
@@ -1386,7 +1391,10 @@ with tab_readiness:
 
 with tab_quality:
     st.caption("Validate data integrity and detect problems.")
-    _run_and_show("plausibility_check", "Physiologic Plausibility", "plausibility_check", "quality")
+    if _has_physio_matches:
+        _run_and_show("plausibility_check", "Physiologic Plausibility", "plausibility_check", "quality")
+    else:
+        st.caption("Physiologic plausibility checks require biomedical variables with known reference ranges.")
     st.markdown("---")
     _run_and_show("leakage_scan", "Leakage Detection", "leakage_scan", "quality")
     st.markdown("---")
