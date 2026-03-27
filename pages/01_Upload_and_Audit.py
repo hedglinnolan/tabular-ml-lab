@@ -1577,7 +1577,29 @@ if task_mode == "prediction":
             task_type=task_type_final
         )
         st.session_state.data_config = data_config
-        
+
+        import hashlib
+        _new_hash = hashlib.md5(','.join(sorted(data_config.feature_cols)).encode()).hexdigest()[:8]
+        _old_hash = st.session_state.get('_data_config_features_hash', '')
+        if _new_hash != _old_hash:
+            st.session_state['_data_config_features_hash'] = _new_hash
+            for key in [
+                'preprocessing_pipeline', 'preprocessing_config',
+                'preprocessing_pipelines_by_model', 'preprocessing_config_by_model',
+                'trained_models', 'model_results', 'fitted_estimators',
+                'fitted_preprocessing_pipelines', 'feature_names_by_model',
+                'X_train', 'X_val', 'X_test', 'y_train', 'y_val', 'y_test',
+                'train_indices', 'val_indices', 'test_indices',
+                'permutation_importance', 'partial_dependence', 'shap_results',
+                'sensitivity_seed_results', 'report_data',
+                'feature_selection_results', 'consensus_features',
+                'split_config', 'target_transformer',
+                'y_train_original', 'y_val_original', 'y_test_original',
+            ]:
+                st.session_state.pop(key, None)
+            if _old_hash:  # Only warn if this isn't the first save
+                st.info('Feature configuration changed — downstream preprocessing, splits, and models have been reset.')
+
         # Log methodology
         log_methodology(
             step='Upload & Audit',

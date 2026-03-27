@@ -1044,11 +1044,11 @@ render_guidance(
 )
 
 with st.expander("Run Subgroup Analysis", expanded=False):
-    _df_sub = get_data()
-    if _df_sub is not None and st.session_state.get('trained_models'):
-        from data_processor import get_categorical_columns
-        cat_cols = get_categorical_columns(_df_sub)
-        subgroup_options = [c for c in cat_cols if c != data_config.target_col and _df_sub[c].nunique() <= 10]
+    df_raw = get_data()
+    test_indices = st.session_state.get('test_indices')
+    if df_raw is not None and st.session_state.get('trained_models'):
+        available_cat_cols = [c for c in df_raw.columns if df_raw[c].dtype in ('object', 'category') or df_raw[c].nunique() <= 20]
+        subgroup_options = [c for c in available_cat_cols if c != data_config.target_col]
 
         if subgroup_options:
             subgroup_var = st.selectbox("Stratify by", subgroup_options, key="subgroup_var")
@@ -1060,24 +1060,28 @@ with st.expander("Run Subgroup Analysis", expanded=False):
                     y_test_sub = np.array(results["y_test"])
                     y_pred_sub = np.array(results["y_test_pred"])
 
-                    X_test_local = st.session_state.get("X_test")
-                    if X_test_local is not None and subgroup_var in X_test_local.columns:
-                        subgroup_labels = X_test_local[subgroup_var].values
-
-                        st.subheader(f"{name.upper()}")
-                        sub_df = subgroup_analysis(
-                            y_test_sub, y_pred_sub, subgroup_labels,
-                            task_type=data_config.task_type or "regression",
-                            n_bootstrap=200,
-                        )
-                        table(sub_df[["Subgroup", "N", sub_df.columns[2], "95% CI"]], key=f"subgroup_{name}", use_container_width=True, hide_index=True)
-
-                        fig = plot_forest_subgroups(sub_df, metric_name=sub_df.columns[2])
-                        st.plotly_chart(fig, use_container_width=True, key=f"forest_{name}")
+                    if test_indices is not None:
+                        subgroup_labels = df_raw.iloc[test_indices][subgroup_var].values
                     else:
-                        st.warning(f"Subgroup variable `{subgroup_var}` not found in test data.")
+                        X_test_local = st.session_state.get("X_test")
+                        if X_test_local is not None and subgroup_var in X_test_local.columns:
+                            subgroup_labels = X_test_local[subgroup_var].values
+                        else:
+                            st.warning(f"Subgroup variable `{subgroup_var}` not found in test data.")
+                            continue
+
+                    st.subheader(f"{name.upper()}")
+                    sub_df = subgroup_analysis(
+                        y_test_sub, y_pred_sub, subgroup_labels,
+                        task_type=data_config.task_type or "regression",
+                        n_bootstrap=200,
+                    )
+                    table(sub_df[["Subgroup", "N", sub_df.columns[2], "95% CI"]], key=f"subgroup_{name}", use_container_width=True, hide_index=True)
+
+                    fig = plot_forest_subgroups(sub_df, metric_name=sub_df.columns[2])
+                    st.plotly_chart(fig, use_container_width=True, key=f"forest_{name}")
         else:
-            st.info("No suitable categorical variables found for subgroup analysis (need ≤10 unique values).")
+            st.info("No suitable categorical variables found for subgroup analysis (need ≤20 unique values).")
     else:
         st.info("Train models first to run subgroup analysis.")
 
