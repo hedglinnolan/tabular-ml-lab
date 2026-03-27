@@ -369,6 +369,45 @@ if use_poly:
             except Exception as e:
                 st.error(f"❌ Error: {e}")
 
+# ---- Custom Interactions ----
+st.markdown('#### Custom Interactions')
+st.caption('Select specific feature pairs for domain-driven interactions. More surgical than generating all polynomial combinations.')
+
+if len(numeric_features) >= 1:
+    _ci_col1, _ci_col2, _ci_col3 = st.columns(3)
+    with _ci_col1:
+        _feat_a = st.selectbox('Feature A', numeric_features, key='ci_feat_a')
+    with _ci_col2:
+        _feat_b = st.selectbox('Feature B', numeric_features, key='ci_feat_b')
+    with _ci_col3:
+        _ci_op = st.selectbox('Operation', ['Multiply (A × B)', 'Divide (A / B)', 'Square (A²)'], key='ci_op')
+
+    if st.button('Add Interaction', key='ci_add_btn'):
+        if _ci_op == 'Square (A²)':
+            _new_col_name = f'{_feat_a}_squared'
+            _new_values = X_engineered[_feat_a] ** 2
+        elif _ci_op == 'Multiply (A × B)':
+            _new_col_name = f'{_feat_a}_x_{_feat_b}'
+            _new_values = X_engineered[_feat_a] * X_engineered[_feat_b]
+        else:  # Divide
+            _new_col_name = f'{_feat_a}_div_{_feat_b}'
+            _den = X_engineered[_feat_b]
+            _new_values = np.where(_den != 0, X_engineered[_feat_a] / _den, np.nan)
+            _new_values = pd.Series(_new_values, index=X_engineered.index)
+
+        if _new_col_name in X_engineered.columns:
+            st.warning(f'⚠️ Feature `{_new_col_name}` already exists. Skipping to avoid duplicates.')
+        else:
+            X_engineered[_new_col_name] = _new_values
+            engineered_features.append(_new_col_name)
+            engineering_log.append(f'Custom interaction ({_ci_op}): {_new_col_name}')
+            st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
+            st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
+            st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+            st.rerun()
+else:
+    st.info('No numeric features available for custom interactions.')
+
 # ============================================================================
 # Section 2: Domain-Specific Mathematical Transforms
 # ============================================================================
@@ -1033,9 +1072,27 @@ if new_features > 0:
         for log_entry in engineering_log:
             st.write(f"- {log_entry}")
     
-    with st.expander("📋 View All New Feature Names"):
-        st.write(engineered_features)
-    
+    if engineered_features:
+        st.markdown('### Engineered Features')
+        _features_to_remove = []
+        for i, feat in enumerate(engineered_features):
+            col_feat, col_btn = st.columns([4, 1])
+            with col_feat:
+                st.markdown(f'`{feat}`')
+            with col_btn:
+                if st.button('❌', key=f'remove_fe_{i}', help=f'Remove {feat}'):
+                    _features_to_remove.append(feat)
+
+        if _features_to_remove:
+            for feat in _features_to_remove:
+                if feat in X_engineered.columns:
+                    X_engineered = X_engineered.drop(columns=[feat])
+                if feat in engineered_features:
+                    engineered_features.remove(feat)
+            st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
+            st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
+            st.rerun()
+
     # Check if already saved
     already_saved = st.session_state.get('feature_engineering_applied', False)
     
@@ -1058,6 +1115,26 @@ if new_features > 0:
         **Explainability reminder:** Be prepared to justify feature engineering choices to peer reviewers!
         """)
         
+        # Preview correlations with target
+        if engineered_features:
+            with st.expander('📊 Preview: Top features by correlation with target', expanded=False):
+                _preview_corrs = []
+                for feat in engineered_features:
+                    if feat in X_engineered.columns:
+                        try:
+                            corr = abs(X_engineered[feat].corr(y))
+                            if not np.isnan(corr):
+                                _preview_corrs.append((feat, corr))
+                        except:
+                            pass
+                _preview_corrs.sort(key=lambda x: x[1], reverse=True)
+                if _preview_corrs:
+                    _preview_df = pd.DataFrame(_preview_corrs[:10], columns=['Feature', '|Correlation with target|'])
+                    st.dataframe(_preview_df, use_container_width=True, hide_index=True)
+                    st.caption('Higher correlation suggests the feature may be predictive. Use Feature Selection (next page) for rigorous evaluation.')
+                else:
+                    st.caption('Could not compute correlations for engineered features.')
+
         # Save button (only show if not already saved)
         # Warn about downstream invalidation
         _has_downstream = any([
