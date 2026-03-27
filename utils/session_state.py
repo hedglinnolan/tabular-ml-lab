@@ -75,6 +75,9 @@ class SplitConfig:
     stratify: bool = False  # For classification
     use_time_split: bool = False  # Use datetime_col for splitting
     datetime_col: Optional[str] = None  # Column to use for time-based splitting
+    target_trim_enabled: bool = False  # Remove rows where target is outside quantile range (regression only)
+    target_trim_lower: float = 0.0  # Lower quantile threshold (0.0–0.5)
+    target_trim_upper: float = 1.0  # Upper quantile threshold (0.5–1.0)
 
 
 @dataclass

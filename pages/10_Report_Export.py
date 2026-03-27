@@ -173,7 +173,10 @@ def generate_metadata() -> Dict[str, Any]:
             'val_size': split_config.val_size,
             'test_size': split_config.test_size,
             'stratify': split_config.stratify,
-            'use_time_split': split_config.use_time_split
+            'use_time_split': split_config.use_time_split,
+            'target_trim_enabled': getattr(split_config, 'target_trim_enabled', False),
+            'target_trim_lower': getattr(split_config, 'target_trim_lower', 0.0),
+            'target_trim_upper': getattr(split_config, 'target_trim_upper', 1.0),
         },
         'preprocessing': st.session_state.get('preprocessing_config', {}),
         'models_trained': list(trained_models.keys())

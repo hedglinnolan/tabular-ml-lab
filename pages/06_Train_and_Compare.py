@@ -209,6 +209,50 @@ split_config = SplitConfig(
     use_time_split=use_time_split,
     datetime_col=data_config.datetime_col if use_time_split else None
 )
+
+# Target trimming — regression only, runs before the split
+if task_type_final == 'regression':
+    trim_enabled_default = getattr(st.session_state.get('split_config'), 'target_trim_enabled', False)
+    trim_enabled = st.checkbox(
+        "Enable target trimming before split",
+        value=trim_enabled_default,
+        key="train_target_trim_enabled",
+        help="Removes entire rows where the target falls outside a quantile range. "
+             "Applied before splitting so train and test share the same population. "
+             "Distinct from feature clipping (Preprocess page), which caps values without removing rows.",
+    )
+    if trim_enabled:
+        trim_col1, trim_col2 = st.columns(2)
+        trim_lower_default = getattr(st.session_state.get('split_config'), 'target_trim_lower', 0.0)
+        trim_upper_default = getattr(st.session_state.get('split_config'), 'target_trim_upper', 1.0)
+        with trim_col1:
+            trim_lower = st.number_input(
+                "Lower quantile",
+                min_value=0.0, max_value=0.49, value=float(trim_lower_default) if trim_lower_default > 0.0 else 0.05,
+                step=0.01, format="%.2f",
+                key="train_target_trim_lower",
+                help="Rows where the target is below this quantile are removed. Common preset: 0.05.",
+            )
+        with trim_col2:
+            trim_upper = st.number_input(
+                "Upper quantile",
+                min_value=0.51, max_value=1.0, value=float(trim_upper_default) if trim_upper_default < 1.0 else 0.95,
+                step=0.01, format="%.2f",
+                key="train_target_trim_upper",
+                help="Rows where the target is above this quantile are removed. Common preset: 0.95.",
+            )
+        st.caption(
+            f"Rows with target outside the [{trim_lower:.2f}, {trim_upper:.2f}] quantile range will be "
+            f"**removed** (not capped). This reduces sample size and redefines the prediction population."
+        )
+        split_config.target_trim_enabled = True
+        split_config.target_trim_lower = trim_lower
+        split_config.target_trim_upper = trim_upper
+    else:
+        split_config.target_trim_enabled = False
+        split_config.target_trim_lower = 0.0
+        split_config.target_trim_upper = 1.0
+
 st.session_state.split_config = split_config
 
 # Cross-validation option - read from session_state
@@ -242,8 +286,43 @@ if st.button("Prepare Splits", type="primary"):
         X = X[mask].reset_index(drop=True)
         y = y[mask].reset_index(drop=True)
         original_indices = np.where(mask)[0]
+        n_after_notna = len(X)
+
+        # Target trimming (regression only, before split)
+        if task_type_final == 'regression' and split_config.target_trim_enabled:
+            q_lo = float(y.quantile(split_config.target_trim_lower))
+            q_hi = float(y.quantile(split_config.target_trim_upper))
+            trim_mask = (y >= q_lo) & (y <= q_hi)
+            n_trimmed_rows = int((~trim_mask).sum())
+            X = X[trim_mask].reset_index(drop=True)
+            y = y[trim_mask].reset_index(drop=True)
+            original_indices = original_indices[trim_mask.values]
+            st.info(
+                f"Target trimming: removed **{n_trimmed_rows}** rows "
+                f"(quantiles [{split_config.target_trim_lower:.2f}, {split_config.target_trim_upper:.2f}] "
+                f"→ target range [{q_lo:.3g}, {q_hi:.3g}]). "
+                f"N: {n_after_notna} → {len(X)}"
+            )
+            log_methodology(
+                step='Model Training',
+                action=(
+                    f"Target trimmed before split: {n_trimmed_rows} rows removed "
+                    f"(quantiles [{split_config.target_trim_lower:.2f}, {split_config.target_trim_upper:.2f}])"
+                ),
+                details={
+                    'target_trim_enabled': True,
+                    'target_trim_lower': split_config.target_trim_lower,
+                    'target_trim_upper': split_config.target_trim_upper,
+                    'trim_threshold_lower': q_lo,
+                    'trim_threshold_upper': q_hi,
+                    'n_before_trim': n_after_notna,
+                    'n_after_trim': len(X),
+                    'rows_removed': n_trimmed_rows,
+                },
+            )
+
         indices = np.arange(len(X))
-        
+
         if len(X) < 2:
             st.error("Not enough samples after removing missing target values. Need at least 2 rows for train/test split.")
             st.stop()
