@@ -517,6 +517,22 @@ if st.button("Prepare Splits", type="primary"):
             st.session_state.test_indices = original_indices[idx_test].tolist()
         
         st.success(f"Splits prepared: Train={len(X_train)}, Val={len(X_val)}, Test={len(X_test)}")
+        # Guardrails for small evaluation sets
+        if len(X_test) < 5:
+            st.error(
+                f"⛔ **Test set too small** ({len(X_test)} samples). "
+                f"Metrics will be unreliable. Increase your dataset size or adjust split ratios."
+            )
+        elif len(X_test) < 20:
+            st.warning(
+                f"⚠️ **Small test set** ({len(X_test)} samples). "
+                f"Performance metrics may have high variance. Consider a larger test proportion or using cross-validation."
+            )
+        if len(X_val) < 10:
+            st.warning(
+                f"⚠️ **Small validation set** ({len(X_val)} samples). "
+                f"Early stopping and validation-based decisions may be unreliable."
+            )
     except Exception as e:
         st.error(f"Error preparing splits: {e}")
         logger.exception(e)
