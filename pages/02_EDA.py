@@ -1295,6 +1295,19 @@ if "eda_results" not in st.session_state:
     st.session_state.eda_results = {}
 
 
+ACTION_NEXT_STEPS = {
+    'multicollinearity_vif': '→ **Next:** Go to Feature Selection to use LASSO/RFE to resolve collinearity, or apply Ridge/ElasticNet regularization in training.',
+    'missingness_scan': '→ **Next:** Configure imputation strategy in Preprocess. Consider whether missingness is informative (MNAR) before choosing a method.',
+    'data_sufficiency_check': '→ **Next:** Consider reducing features via Feature Selection, or use simpler models (Ridge, LASSO) that handle high dimensionality better.',
+    'influence_diagnostics': '→ **Next:** Review flagged high-influence points. Consider target trimming on the Train page, or use robust regression (Huber).',
+    'leakage_scan': '→ **Next:** Remove suspected leakage columns in Upload & Audit before proceeding to modeling.',
+    'target_profile': '→ **Next:** Apply target transformation (Log, Yeo-Johnson, Box-Cox) on the Train & Compare page.',
+    'feature_scaling_check': '→ **Next:** Configure scaling in Preprocess. StandardScaler for normal features, RobustScaler if outliers are present.',
+    'linearity_scatter': '→ **Next:** If non-linear patterns are visible, consider tree-based models or polynomial features in Feature Engineering.',
+    'plausibility_check': '→ **Next:** Review flagged implausible values. Apply target trimming or filter rows in Upload & Audit.',
+}
+
+
 def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""):
     """Run an EDA action and display results with optional LLM interpretation."""
     from utils.llm_ui import build_llm_context, build_eda_full_results_context, render_interpretation_with_llm_button, gather_session_context
@@ -1356,7 +1369,42 @@ def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""
                 result_session_key=f"llm_result_{key_prefix}",
                 plot_type=action_id,
             )
+        next_step = ACTION_NEXT_STEPS.get(action_id)
+        if next_step:
+            st.markdown(next_step)
 
+
+_recommendations = []
+if signals.high_missing_cols:
+    _recommendations.append(('missingness_scan', 'Missingness Deep Dive', f'{len(signals.high_missing_cols)} columns have >20% missing data'))
+if signals.collinearity_summary.get('high_pairs'):
+    _recommendations.append(('multicollinearity_vif', 'VIF (Multicollinearity)', f'High correlation detected between feature pairs'))
+if signals.target_stats.get('skew') and abs(signals.target_stats['skew']) > 1.5:
+    _recommendations.append(('target_profile', 'Target Profile', f'Target is skewed (skew={signals.target_stats["skew"]:.1f})'))
+if hasattr(signals, 'leakage_flags') and signals.leakage_flags:
+    _recommendations.append(('leakage_scan', 'Leakage Detection', f'{len(signals.leakage_flags)} potential leakage flags'))
+n_p_ratio = len(df) / max(1, len(feature_cols))
+if n_p_ratio < 20:
+    _recommendations.append(('data_sufficiency_check', 'Data Sufficiency', f'n/p ratio is {n_p_ratio:.1f} (< 20)'))
+
+_recommendations = [(aid, title, reason) for aid, title, reason in _recommendations if aid not in st.session_state.get('eda_results', {})]
+
+if _recommendations:
+    st.markdown('#### 🎯 Recommended for Your Data')
+    for aid, title, reason in _recommendations[:3]:
+        col_rec_1, col_rec_2 = st.columns([3, 1])
+        with col_rec_1:
+            st.markdown(f'**{title}** — {reason}')
+        with col_rec_2:
+            if st.button(f'Run', key=f'rec_run_{aid}', type='primary'):
+                action_func = getattr(eda_actions, aid, None)
+                if action_func:
+                    with st.spinner(f'Running {title}...'):
+                        result = action_func(df, target_col, feature_cols, signals, st.session_state)
+                        st.session_state.eda_results[aid] = result
+                        log_methodology(step='EDA', action=f'Ran {title}', details={'analysis': aid})
+                        st.rerun()
+    st.markdown('---')
 
 tab_readiness, tab_quality, tab_advanced = st.tabs(
     ["Model Readiness", "Feature Quality", "Advanced"]
