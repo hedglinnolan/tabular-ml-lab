@@ -1353,6 +1353,38 @@ def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""
             )
 
 
+_recommendations = []
+if signals.high_missing_cols:
+    _recommendations.append(('missingness_scan', 'Missingness Deep Dive', f'{len(signals.high_missing_cols)} columns have >20% missing data'))
+if signals.collinearity_summary.get('high_pairs'):
+    _recommendations.append(('multicollinearity_vif', 'VIF (Multicollinearity)', f'High correlation detected between feature pairs'))
+if signals.target_stats.get('skew') and abs(signals.target_stats['skew']) > 1.5:
+    _recommendations.append(('target_profile', 'Target Profile', f'Target is skewed (skew={signals.target_stats["skew"]:.1f})'))
+if hasattr(signals, 'leakage_flags') and signals.leakage_flags:
+    _recommendations.append(('leakage_scan', 'Leakage Detection', f'{len(signals.leakage_flags)} potential leakage flags'))
+n_p_ratio = len(df) / max(1, len(feature_cols))
+if n_p_ratio < 20:
+    _recommendations.append(('data_sufficiency_check', 'Data Sufficiency', f'n/p ratio is {n_p_ratio:.1f} (< 20)'))
+
+_recommendations = [(aid, title, reason) for aid, title, reason in _recommendations if aid not in st.session_state.get('eda_results', {})]
+
+if _recommendations:
+    st.markdown('#### 🎯 Recommended for Your Data')
+    for aid, title, reason in _recommendations[:3]:
+        col_rec_1, col_rec_2 = st.columns([3, 1])
+        with col_rec_1:
+            st.markdown(f'**{title}** — {reason}')
+        with col_rec_2:
+            if st.button(f'Run', key=f'rec_run_{aid}', type='primary'):
+                action_func = getattr(eda_actions, aid, None)
+                if action_func:
+                    with st.spinner(f'Running {title}...'):
+                        result = action_func(df, target_col, feature_cols, signals, st.session_state)
+                        st.session_state.eda_results[aid] = result
+                        log_methodology(step='EDA', action=f'Ran {title}', details={'analysis': aid})
+                        st.rerun()
+    st.markdown('---')
+
 tab_readiness, tab_quality, tab_advanced = st.tabs(
     ["Model Readiness", "Feature Quality", "Advanced"]
 )
