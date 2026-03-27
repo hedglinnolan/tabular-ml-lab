@@ -141,14 +141,8 @@ st.markdown("""
 
 
 def get_git_info() -> Dict[str, str]:
-    """Get git commit hash and branch if available."""
-    try:
-        import subprocess
-        commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'], stderr=subprocess.DEVNULL).decode().strip()[:8]
-        branch = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], stderr=subprocess.DEVNULL).decode().strip()
-        return {'commit': commit_hash, 'branch': branch}
-    except:
-        return {'commit': 'unknown', 'branch': 'unknown'}
+    """Get app version info for export metadata. Excludes branch name to avoid leaking deployment details."""
+    return {'app_version': '1.0.0', 'commit': 'n/a'}
 
 
 def generate_metadata() -> Dict[str, Any]:
