@@ -308,8 +308,8 @@ def _auto_generate_insights():
                 finding=f"Target is skewed (skew={skew:.2f})",
                 implication="May affect loss function choice and prediction intervals",
                 affected_features=[target_col],
-                recommended_action="Consider log-transforming the target before training (apply in Feature Engineering via custom transform), or use models robust to target skew (tree-based, Huber regression)",
-                relevant_pages=["03_Feature_Engineering", "06_Train_and_Compare"],
+                recommended_action="Apply a target transformation on the Train & Compare page (Log, Yeo-Johnson, or Box-Cox). Predictions are automatically back-transformed and metrics reported on the original scale. Tree-based models and Huber regression are also robust to target skew.",
+                relevant_pages=["06_Train_and_Compare"],
                 model_scope=ISSUE_MODEL_RELEVANCE["skewness"],  # linear, neural, distance
                 metadata={"skewness": float(skew)},
             ))
