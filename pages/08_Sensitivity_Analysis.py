@@ -63,9 +63,16 @@ feature_names = list(X_train.columns) if hasattr(X_train, "columns") else [f"fea
 
 # ── Model selector ───────────────────────────────────────────────────
 model_keys = list(trained_models.keys())
+# Filter NN from seed sensitivity (PyTorch can't be sklearn-cloned)
+_seed_compatible = [k for k in model_keys if k != 'nn']
+if not _seed_compatible:
+    st.warning("No models compatible with seed sensitivity analysis. Neural networks require sklearn-compatible cloning.")
+    st.stop()
+if 'nn' in model_keys and 'nn' not in _seed_compatible:
+    st.caption("ℹ️ Neural Network excluded from sensitivity analysis (PyTorch models cannot be cloned for re-seeding).")
 selected_model = st.selectbox(
     "Select model to analyze",
-    model_keys,
+    _seed_compatible,
     format_func=lambda k: k.upper(),
     help="Choose the model whose robustness you want to test.",
 )
