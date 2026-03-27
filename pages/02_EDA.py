@@ -1359,6 +1359,12 @@ tab_readiness, tab_quality, tab_advanced = st.tabs(
 
 with tab_readiness:
     st.caption("Check assumptions for linear and parametric models.")
+    st.info(
+        "💡 These diagnostics fit a **simple OLS regression as a quick proxy** to check linear modeling "
+        "assumptions. This is standard EDA practice — the OLS here is a diagnostic tool, not your final "
+        "model. Results help you decide whether linear models are appropriate and identify influential "
+        "observations before committing to a full training run."
+    )
     _run_and_show("linearity_scatter", "Linearity Check", "linearity_scatter", "readiness")
     st.markdown("---")
     _run_and_show("residual_analysis", "Residual Analysis", "residual_analysis", "readiness")
