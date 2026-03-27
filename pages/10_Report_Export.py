@@ -177,6 +177,7 @@ def generate_metadata() -> Dict[str, Any]:
             'target_trim_enabled': getattr(split_config, 'target_trim_enabled', False),
             'target_trim_lower': getattr(split_config, 'target_trim_lower', 0.0),
             'target_trim_upper': getattr(split_config, 'target_trim_upper', 1.0),
+            'target_transform': getattr(split_config, 'target_transform', 'none'),
         },
         'preprocessing': st.session_state.get('preprocessing_config', {}),
         'models_trained': list(trained_models.keys())

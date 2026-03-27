@@ -78,6 +78,7 @@ class SplitConfig:
     target_trim_enabled: bool = False  # Remove rows where target is outside quantile range (regression only)
     target_trim_lower: float = 0.0  # Lower quantile threshold (0.0–0.5)
     target_trim_upper: float = 1.0  # Upper quantile threshold (0.5–1.0)
+    target_transform: str = 'none'  # 'none', 'log1p', 'yeo-johnson', 'box-cox'
 
 
 @dataclass

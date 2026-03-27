@@ -130,11 +130,21 @@ if st.button("▶️ Run Seed Sensitivity", type="primary", key="run_seed"):
             cloned.fit(X_tr, y_train)
             preds = cloned.predict(X_te)
 
+            # Back-transform predictions if a target transformer was used
+            _seed_transformer = st.session_state.get('target_transformer')
+            _y_test_seed = y_test
+            if task_type == "regression" and _seed_transformer is not None:
+                if _seed_transformer == 'log1p':
+                    preds = np.expm1(preds)
+                else:
+                    preds = _seed_transformer.inverse_transform(preds.reshape(-1, 1)).ravel()
+                _y_test_seed = st.session_state.get('y_test_original', y_test)
+
             metrics = {}
             if task_type == "regression":
-                metrics["rmse"] = np.sqrt(mean_squared_error(y_test, preds))
-                metrics["mae"] = mean_absolute_error(y_test, preds)
-                metrics["r2"] = r2_score(y_test, preds)
+                metrics["rmse"] = np.sqrt(mean_squared_error(_y_test_seed, preds))
+                metrics["mae"] = mean_absolute_error(_y_test_seed, preds)
+                metrics["r2"] = r2_score(_y_test_seed, preds)
             else:
                 metrics["accuracy"] = accuracy_score(y_test, preds)
                 try:
@@ -323,8 +333,16 @@ if st.button("▶️ Run Feature Dropout", type="primary", key="run_dropout"):
         X_te_base = X_te_base.toarray()
 
     preds_base = model_obj.predict(X_te_base)
+    _dropout_transformer = st.session_state.get('target_transformer')
+    _y_test_dropout = y_test
+    if task_type == "regression" and _dropout_transformer is not None:
+        if _dropout_transformer == 'log1p':
+            preds_base = np.expm1(preds_base)
+        else:
+            preds_base = _dropout_transformer.inverse_transform(preds_base.reshape(-1, 1)).ravel()
+        _y_test_dropout = st.session_state.get('y_test_original', y_test)
     if task_type == "regression":
-        baseline_score = np.sqrt(mean_squared_error(y_test, preds_base))
+        baseline_score = np.sqrt(mean_squared_error(_y_test_dropout, preds_base))
     else:
         baseline_score = accuracy_score(y_test, preds_base)
 
@@ -353,8 +371,14 @@ if st.button("▶️ Run Feature Dropout", type="primary", key="run_dropout"):
             cloned.fit(X_tr_vals, y_train)
             preds_drop = cloned.predict(X_te_vals)
 
+            if task_type == "regression" and _dropout_transformer is not None:
+                if _dropout_transformer == 'log1p':
+                    preds_drop = np.expm1(preds_drop)
+                else:
+                    preds_drop = _dropout_transformer.inverse_transform(preds_drop.reshape(-1, 1)).ravel()
+
             if task_type == "regression":
-                drop_score = np.sqrt(mean_squared_error(y_test, preds_drop))
+                drop_score = np.sqrt(mean_squared_error(_y_test_dropout, preds_drop))
                 impact = drop_score - baseline_score  # positive = worse without feature
             else:
                 drop_score = accuracy_score(y_test, preds_drop)

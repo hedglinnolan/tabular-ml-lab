@@ -253,6 +253,29 @@ if task_type_final == 'regression':
         split_config.target_trim_lower = 0.0
         split_config.target_trim_upper = 1.0
 
+    # Target variable transformation — regression only
+    _transform_options = ['none', 'log1p', 'yeo-johnson', 'box-cox']
+    _transform_labels = {'none': 'None', 'log1p': 'Log (log1p)', 'yeo-johnson': 'Yeo-Johnson', 'box-cox': 'Box-Cox'}
+    _transform_default = getattr(st.session_state.get('split_config'), 'target_transform', 'none')
+    _transform_idx = _transform_options.index(_transform_default) if _transform_default in _transform_options else 0
+    target_transform_sel = st.selectbox(
+        "Target variable transformation",
+        options=_transform_options,
+        index=_transform_idx,
+        format_func=lambda x: _transform_labels[x],
+        key="train_target_transform",
+        help=(
+            "Transforms the target variable before training. Predictions are automatically "
+            "back-transformed before evaluation. All metrics are reported on the original scale."
+        ),
+    )
+    if target_transform_sel == 'box-cox':
+        st.caption(
+            "⚠️ Box-Cox requires strictly positive target values (y > 0). "
+            "An error will be shown at training time if this is violated."
+        )
+    split_config.target_transform = target_transform_sel
+
 st.session_state.split_config = split_config
 
 # Cross-validation option - read from session_state
@@ -429,7 +452,56 @@ if st.button("Prepare Splits", type="primary"):
         
         # Use the same feature list we used above for X
         feature_names = list(feature_cols)
-        set_splits(X_train, X_val, X_test, to_numpy_1d(y_train), to_numpy_1d(y_val), to_numpy_1d(y_test), feature_names)
+
+        # Target transformation (regression only, applied after split, stored in session_state)
+        _target_transform = getattr(split_config, 'target_transform', 'none')
+        _y_train_np = to_numpy_1d(y_train)
+        _y_val_np = to_numpy_1d(y_val)
+        _y_test_np = to_numpy_1d(y_test)
+
+        if task_type_final == 'regression' and _target_transform != 'none':
+            if _target_transform == 'log1p':
+                if np.any(_y_train_np <= -1):
+                    st.error("Log (log1p) transform requires all target values > -1. Check your data.")
+                    st.stop()
+                y_train_t = np.log1p(_y_train_np)
+                y_val_t = np.log1p(_y_val_np)
+                y_test_t = np.log1p(_y_test_np)
+                transformer_obj = 'log1p'
+            else:
+                from sklearn.preprocessing import PowerTransformer
+                if _target_transform == 'box-cox' and np.any(_y_train_np <= 0):
+                    st.error(
+                        "Box-Cox transform requires all target values > 0. "
+                        "Your training set contains non-positive values. "
+                        "Use Yeo-Johnson or a different transform."
+                    )
+                    st.stop()
+                pt = PowerTransformer(method=_target_transform, standardize=False)
+                pt.fit(_y_train_np.reshape(-1, 1))
+                y_train_t = pt.transform(_y_train_np.reshape(-1, 1)).ravel()
+                y_val_t = pt.transform(_y_val_np.reshape(-1, 1)).ravel()
+                y_test_t = pt.transform(_y_test_np.reshape(-1, 1)).ravel()
+                transformer_obj = pt
+
+            st.session_state['target_transformer'] = transformer_obj
+            st.session_state['y_train_original'] = _y_train_np
+            st.session_state['y_val_original'] = _y_val_np
+            st.session_state['y_test_original'] = _y_test_np
+            set_splits(X_train, X_val, X_test, y_train_t, y_val_t, y_test_t, feature_names)
+            log_methodology(
+                step='Model Training',
+                action=f'Target variable transformed using {_target_transform}',
+                details={'target_transform': _target_transform},
+            )
+        else:
+            # No transform: clear any stale transformer state from a previous run
+            st.session_state.pop('target_transformer', None)
+            st.session_state.pop('y_train_original', None)
+            st.session_state.pop('y_val_original', None)
+            st.session_state.pop('y_test_original', None)
+            set_splits(X_train, X_val, X_test, _y_train_np, _y_val_np, _y_test_np, feature_names)
+
         elapsed = time.perf_counter() - t0
         st.session_state.setdefault("last_timings", {})["Prepare Splits"] = round(elapsed, 2)
 
@@ -460,6 +532,24 @@ X_test = st.session_state.X_test
 y_train = st.session_state.y_train
 y_val = st.session_state.y_val
 y_test = st.session_state.y_test
+
+# Info banner when a target transform is active
+_active_transformer = st.session_state.get('target_transformer')
+if _active_transformer is not None:
+    _transform_display = {
+        'log1p': 'Log (log1p)',
+        'yeo-johnson': 'Yeo-Johnson',
+        'box-cox': 'Box-Cox',
+    }
+    _tname = _transform_display.get(
+        _active_transformer if isinstance(_active_transformer, str) else getattr(_active_transformer, 'method', ''),
+        'Power transform',
+    )
+    st.info(
+        f"**Target transform active: {_tname}.** "
+        "Models train on the transformed target. All metrics below are reported on the "
+        "original (back-transformed) scale."
+    )
 
 # Small sample size warning
 n_train = len(X_train)
@@ -995,9 +1085,23 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 
                 # Evaluate on test set
                 y_test_pred = model.predict(X_test_model)
-                
+
+                # Back-transform predictions if a target transformer is active (regression only)
+                _bt_transformer = st.session_state.get('target_transformer')
+                if task_type_final == 'regression' and _bt_transformer is not None:
+                    if _bt_transformer == 'log1p':
+                        y_test_pred = np.expm1(y_test_pred)
+                    else:
+                        y_test_pred = _bt_transformer.inverse_transform(
+                            y_test_pred.reshape(-1, 1)
+                        ).ravel()
+                    # Use original-scale y_test for metric computation
+                    y_test_eval = st.session_state.get('y_test_original', y_test)
+                else:
+                    y_test_eval = y_test
+
                 if task_type_final == 'regression':
-                    test_metrics = calculate_regression_metrics(y_test, y_test_pred)
+                    test_metrics = calculate_regression_metrics(y_test_eval, y_test_pred)
                 else:
                     y_test_proba = model.predict_proba(X_test_model) if model.supports_proba() else None
                     test_metrics = calculate_classification_metrics(y_test, y_test_pred, y_test_proba)
@@ -1006,8 +1110,27 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 cv_results = None
                 if use_cv and model_name != 'nn':
                     try:
+                        _cv_estimator = model.get_model()
+                        _cv_y_train = y_train
+                        _cv_transformer = st.session_state.get('target_transformer')
+                        if task_type_final == 'regression' and _cv_transformer is not None:
+                            from sklearn.compose import TransformedTargetRegressor
+                            from sklearn.base import clone as _sklearn_clone
+                            _y_train_orig = st.session_state.get('y_train_original', y_train)
+                            if _cv_transformer == 'log1p':
+                                _cv_estimator = TransformedTargetRegressor(
+                                    regressor=_sklearn_clone(_cv_estimator),
+                                    func=np.log1p,
+                                    inverse_func=np.expm1,
+                                )
+                            else:
+                                _cv_estimator = TransformedTargetRegressor(
+                                    regressor=_sklearn_clone(_cv_estimator),
+                                    transformer=_sklearn_clone(_cv_transformer),
+                                )
+                            _cv_y_train = _y_train_orig
                         cv_results = perform_cross_validation(
-                            model.get_model(), X_train_model, y_train,
+                            _cv_estimator, X_train_model, _cv_y_train,
                             cv_folds=cv_folds, task_type=data_config.task_type
                         )
                     except Exception as cv_error:
@@ -1016,12 +1139,12 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 elif use_cv and model_name == 'nn':
                     st.info("Cross-validation skipped for Neural Network (PyTorch models use their own validation loop during training)")
                 
-                # Store results
+                # Store results (y_test and y_test_pred are always on original scale)
                 model_results = {
                     'metrics': test_metrics,
                     'history': results.get('history', {}),
                     'y_test_pred': y_test_pred,
-                    'y_test': y_test,
+                    'y_test': y_test_eval,
                     'y_test_proba': y_test_proba if data_config.task_type == 'classification' else None,
                     'cv_results': cv_results
                 }
