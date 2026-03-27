@@ -1049,6 +1049,28 @@ def generate_methods_section(
         f"test ({n_test:,}, {n_test/n_total*100:.0f}%) sets."
     )
     sections.append(split_desc)
+
+    # Target trimming
+    _trim_enabled = split_config.get('target_trim_enabled', False) if isinstance(split_config, dict) else getattr(split_config, 'target_trim_enabled', False)
+    if _trim_enabled:
+        _trim_lo = split_config.get('target_trim_lower', 0.0) if isinstance(split_config, dict) else getattr(split_config, 'target_trim_lower', 0.0)
+        _trim_hi = split_config.get('target_trim_upper', 1.0) if isinstance(split_config, dict) else getattr(split_config, 'target_trim_upper', 1.0)
+        sections.append(
+            f" Prior to splitting, target variable values below the {_trim_lo*100:.0f}th percentile "
+            f"and above the {_trim_hi*100:.0f}th percentile were excluded to reduce the influence "
+            f"of extreme outliers on model training."
+        )
+
+    # Target transformation
+    _target_transform = split_config.get('target_transform', 'none') if isinstance(split_config, dict) else getattr(split_config, 'target_transform', 'none')
+    if _target_transform and _target_transform != 'none':
+        _transform_names = {'log1p': 'log(1+x)', 'yeo-johnson': 'Yeo-Johnson', 'box-cox': 'Box-Cox'}
+        _tname = _transform_names.get(_target_transform, _target_transform)
+        sections.append(
+            f" The target variable was transformed using the {_tname} power transformation "
+            f"prior to model training. All reported performance metrics reflect predictions "
+            f"back-transformed to the original scale."
+        )
     
     # Check for CV from logged data or parameters
     cv_to_use = None
