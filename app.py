@@ -286,7 +286,7 @@ with st.expander("❓ Frequently Asked Questions", expanded=False):
     A: No. This is a point-and-click web app — no coding required.
     
     **Q: Is my data private?**  
-    A: Yes. All data processing happens in your browser session. Nothing is uploaded to external servers (unless you enable optional AI features that use external APIs).
+    A: All data processing happens on the server running this application. No data is sent to third-party services (unless you enable optional AI features that use external APIs). If you are running this locally, your data never leaves your machine. On a shared or university server, your data is processed on that server — check with your administrator about data handling policies.
     
     **Q: How long does a complete workflow take?**  
     A: 30-60 minutes for a full analysis. You can save and resume at any point.
