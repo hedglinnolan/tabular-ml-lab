@@ -929,6 +929,21 @@ elif test_type == "Paired comparison (numeric variable, before/after)":
         fig = px.box(plot_df, x='Time', y='Value', title=f"Comparison: {results['var_before']} vs {results['var_after']}")
         st.plotly_chart(fig, width="stretch")
 
+# Family-wise error rate warning
+_custom_tests = st.session_state.get('custom_table1_tests', [])
+if len(_custom_tests) > 1:
+    _n = len(_custom_tests)
+    _fwer = 1 - (1 - 0.05) ** _n
+    _bonf = 0.05 / _n
+    st.markdown("---")
+    st.warning(
+        f"⚠️ **Multiple comparisons:** You have run **{_n} tests** in this session. "
+        f"Without correction, the probability of at least one false positive is approximately "
+        f"**{_fwer:.0%}** (family-wise error rate). "
+        f"Consider Bonferroni-adjusted α = 0.05/{_n} = **{_bonf:.4f}** when interpreting results, "
+        f"or use FDR correction if you have many planned comparisons."
+    )
+
 # Export results
 if st.session_state.get('hypothesis_test_results'):
     st.markdown("---")
