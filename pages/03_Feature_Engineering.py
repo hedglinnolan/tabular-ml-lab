@@ -1059,6 +1059,18 @@ if new_features > 0:
         """)
         
         # Save button (only show if not already saved)
+        # Warn about downstream invalidation
+        _has_downstream = any([
+            st.session_state.get('preprocessing_pipeline'),
+            st.session_state.get('trained_models'),
+            st.session_state.get('X_train') is not None,
+        ])
+        if _has_downstream:
+            st.warning(
+                "⚠️ **Saving will reset downstream work.** Your preprocessing pipelines, "
+                "data splits, trained models, and explainability results will be cleared. "
+                "You will need to re-run those steps."
+            )
         if st.button("💾 Save Engineered Features & Proceed", type="primary", key="save_btn"):
             df_engineered = pd.concat([X_engineered, y], axis=1)
             
