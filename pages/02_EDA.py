@@ -865,7 +865,7 @@ else:
 if _has_target:
     st.subheader("Features vs Target")
 
-    target_features = list(numeric_features)
+    target_features = [f for f in numeric_features if f != target_col]
     # Sort by absolute correlation with target (cached)
     if target_features and task_type_final == "regression":
         @st.cache_data
