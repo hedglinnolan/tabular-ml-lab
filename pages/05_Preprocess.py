@@ -62,6 +62,14 @@ After selecting your features, you need to prepare them for machine learning.
 This step creates **per-model pipelines** that will transform your data correctly during training.
 """)
 
+st.info(
+    "🔒 **Execution order:** The settings you configure here are **not applied yet.** "
+    "They are saved as a pipeline recipe and applied *after* your data is split on the "
+    "next page (Train & Compare). Preprocessing is fit on training data only, then "
+    "applied to validation and test sets — this prevents data leakage. "
+    "You are configuring *what* to do; the split determines *on which data* it happens."
+)
+
 # Progress indicator
 
 df = get_data()
