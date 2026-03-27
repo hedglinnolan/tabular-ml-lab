@@ -105,7 +105,17 @@ if len(numeric_features) < 2:
 
 task_type = data_config.task_type or "regression"
 
+categorical_excluded = [f for f in all_features if f not in numeric_features]
 st.caption(f"📊 {len(numeric_features)} numeric features available · Target: `{target_col}` ({task_type})")
+
+if categorical_excluded:
+    st.info(
+        f"ℹ️ **{len(categorical_excluded)} non-numeric feature(s)** "
+        f"({', '.join(categorical_excluded[:5])}"
+        f"{'...' if len(categorical_excluded) > 5 else ''}) "
+        f"are excluded from ranking — selection methods require numeric inputs. "
+        f"These features are retained in your dataset and can still be used for modeling."
+    )
 
 # Prepare data (drop missing target)
 mask = df[target_col].notna()
@@ -113,9 +123,21 @@ X = df.loc[mask, numeric_features].values
 y = df.loc[mask, target_col].values
 
 # Handle NaN in features (simple imputation for feature selection)
+# Note: This temporary imputation does not affect the modeling pipeline
 from sklearn.impute import SimpleImputer
 imputer = SimpleImputer(strategy='median')
 X = imputer.fit_transform(X)
+
+# Disclose imputation
+_high_missing = [f for f in numeric_features if df[f].isna().mean() > 0.2]
+if _high_missing:
+    st.caption(
+        f"⚠️ Missing values temporarily filled with column medians for selection. "
+        f"Features with >20% missing: {', '.join(_high_missing[:5])}. "
+        f"Results may be affected — preprocessing handles imputation separately during training."
+    )
+else:
+    st.caption("Missing values temporarily filled with column medians for selection (does not affect modeling data).")
 
 # ============================================================================
 # Method selection
