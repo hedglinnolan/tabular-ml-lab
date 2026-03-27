@@ -1367,13 +1367,22 @@ with tab_readiness:
     )
     _run_and_show("linearity_scatter", "Linearity Check", "linearity_scatter", "readiness")
     st.markdown("---")
-    _run_and_show("residual_analysis", "Residual Analysis", "residual_analysis", "readiness")
+    if task_type_final == 'regression':
+        _run_and_show("residual_analysis", "Residual Analysis", "residual_analysis", "readiness")
+    else:
+        st.caption("Regression only — not applicable for classification tasks.")
     st.markdown("---")
-    _run_and_show("normality_residuals", "Normality of Residuals", "normality_residuals", "readiness")
+    if task_type_final == 'regression':
+        _run_and_show("normality_residuals", "Normality of Residuals", "normality_residuals", "readiness")
+    else:
+        st.caption("Regression only — not applicable for classification tasks.")
     st.markdown("---")
     _run_and_show("multicollinearity_vif", "VIF (Multicollinearity)", "multicollinearity_vif", "readiness")
     st.markdown("---")
-    _run_and_show("influence_diagnostics", "Influence Diagnostics", "influence_diagnostics", "readiness")
+    if task_type_final == 'regression':
+        _run_and_show("influence_diagnostics", "Influence Diagnostics", "influence_diagnostics", "readiness")
+    else:
+        st.caption("Regression only — not applicable for classification tasks.")
 
 with tab_quality:
     st.caption("Validate data integrity and detect problems.")
@@ -1391,7 +1400,10 @@ with tab_advanced:
     st.caption("Interaction effects, dose-response, and quick baselines.")
     _run_and_show("interaction_analysis", "Interaction Detection", "interaction_analysis", "advanced")
     st.markdown("---")
-    _run_and_show("dose_response_trends", "Dose-Response Trends", "dose_response_trends", "advanced")
+    if task_type_final == 'regression':
+        _run_and_show("dose_response_trends", "Dose-Response Trends", "dose_response_trends", "advanced")
+    else:
+        st.caption("Regression only — not applicable for classification tasks.")
     st.markdown("---")
     _run_and_show("outlier_influence", "Outlier Influence", "outlier_influence", "advanced")
     st.markdown("---")
