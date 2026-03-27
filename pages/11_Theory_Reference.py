@@ -813,6 +813,179 @@ normal — a carefully chosen compromise.
 {cite("Huber, 1964")} {cite("Huber & Ronchetti, 2009")}
 """, unsafe_allow_html=True)
 
+        with st.expander("Deep Dive: Clipping vs Trimming — Two Different Responses to Outliers"):
+            section("The Core Distinction")
+            st.markdown(f"""
+**Clipping** (Winsorization) and **trimming** look similar — both cap the influence of
+extreme values — but they operate on different things, affect different quantities, and
+belong at different stages of the pipeline. Conflating them leads to data leakage or
+population-definition errors. {cite("Wilcox, 2012")}
+
+| | **Clipping (Winsorization)** | **Trimming** |
+|---|---|---|
+| **Operation** | Caps values at a quantile threshold | Removes entire rows |
+| **Effect on N** | Preserved | Reduced |
+| **Changes** | Distribution shape (compresses tails) | Population definition |
+| **Applied to** | Features (X) | Target (y) |
+| **When** | After train/test split | Before train/test split |
+""", unsafe_allow_html=True)
+
+            section("Clipping in Detail")
+            st.markdown("""
+**Clipping** replaces every value outside a percentile band with the boundary value:
+""")
+            st.latex(r"x_{\text{clip}} = \min\!\bigl(\max(x,\; q_p),\; q_{1-p}\bigr)")
+            st.markdown(f"""
+where $q_p$ is the *p*-th sample quantile. No rows are removed — the sample size is
+preserved — but the tails are *compressed*. A value of 1,200 clipped at the 99th
+percentile (say, 800) becomes 800; the row stays in the dataset.
+
+Because the clipping thresholds must be estimated from data, they must come from the
+**training set only** and then applied identically to validation and test sets. Computing
+thresholds from the whole dataset — or recomputing them on the test set — is a form
+of data leakage that makes test-set evaluation optimistic. {cite("Kaufman et al., 2012")}
+
+**When to clip:** measurement error or entry-error in a feature column where the
+row itself is still valid; or when a feature's extreme range destabilizes a
+linear/neural model but the observation is genuine.
+""", unsafe_allow_html=True)
+
+            section("Trimming in Detail")
+            st.markdown(f"""
+**Trimming** removes entire rows where the target falls outside a quantile range:
+""")
+            st.latex(r"\text{keep row } i \iff q_p \;\leq\; y_i \;\leq\; q_{1-p}")
+            st.markdown(f"""
+Sample size shrinks. More importantly, trimming *redefines the population*: the
+model you train and evaluate no longer represents all observations, only those
+within the chosen range. This is correct when the extreme rows represent a genuinely
+different process — equipment failure readings, out-of-range physiological values —
+that your model is not intended to predict.
+
+Because trimming changes which rows enter the split, it must happen **before** the
+train/test split. Trimming after splitting can give train and test sets different
+effective populations, making test-set metrics misleading. {cite("Hastie et al., ESL §2.9")}
+
+**When to trim:** target outliers from a different generating process; or when you
+have a clearly bounded prediction task and want to make that boundary explicit.
+""", unsafe_allow_html=True)
+
+            section("When to Use Which")
+            st.markdown(f"""
+The right tool depends on *why* the extreme values exist:
+
+- **Measurement error on a feature** — the value in that column is wrong, but the
+  row may otherwise be valid. → **Clip** the feature, keep the row.
+- **Target outlier from a different population** — the observation itself may not
+  belong to your prediction task. → **Trim** the row before splitting.
+- **Real but extreme feature value** (e.g., a billionaire in an income study) —
+  the observation is legitimate but distorts linear/neural models.
+  → **Clip** the feature, or switch to a robust model (Huber, tree-based).
+- **Moderate target skew, same population** — consider a target *transformation*
+  (log, Box-Cox) before reaching for trimming; transformations preserve all rows
+  and improve residual normality. {cite("Box & Cox, 1964")}
+""", unsafe_allow_html=True)
+
+            app_connection(
+                "The <strong>Preprocess</strong> page applies percentile or IQR-based "
+                "<strong>clipping to features (X)</strong> after the split — quantiles are "
+                "estimated on the training set only, preventing leakage. "
+                "The <strong>Train &amp; Compare</strong> page offers optional "
+                "<strong>target trimming before the split</strong> for regression tasks, "
+                "removing rows where the target falls outside a chosen quantile range."
+            )
+
+            section("Interactive Demo: Effect on a Skewed Distribution")
+            trim_q = st.slider(
+                "Quantile threshold (symmetric, e.g. 0.05 trims bottom 5% and top 5%)",
+                min_value=0.01, max_value=0.25, value=0.05, step=0.01,
+                key="theory_clip_trim_q",
+                help="Both clipping and trimming use this as the lower quantile; upper = 1 − lower.",
+            )
+            rng_ct = np.random.default_rng(42)
+            # Skewed distribution: lognormal + a few extreme values
+            base = rng_ct.lognormal(mean=1.5, sigma=0.8, size=400)
+            extra = rng_ct.uniform(20, 40, size=20)
+            raw = np.concatenate([base, extra])
+
+            q_lo = np.quantile(raw, trim_q)
+            q_hi = np.quantile(raw, 1 - trim_q)
+
+            # Clipped: cap at thresholds (same N)
+            clipped = np.clip(raw, q_lo, q_hi)
+
+            # Trimmed: remove rows outside thresholds (fewer N)
+            trimmed = raw[(raw >= q_lo) & (raw <= q_hi)]
+
+            n_raw = len(raw)
+            n_clipped = len(clipped)
+            n_trimmed = len(trimmed)
+            n_removed = n_raw - n_trimmed
+
+            fig_ct = make_subplots(
+                rows=1, cols=2,
+                subplot_titles=[
+                    f"Clipping — N stays {n_raw}",
+                    f"Trimming — N drops {n_raw} → {n_trimmed} (−{n_removed} rows)",
+                ],
+            )
+            bins = np.linspace(raw.min(), raw.max(), 50)
+
+            # Left: original vs clipped
+            raw_hist, edges = np.histogram(raw, bins=bins)
+            clipped_hist, _ = np.histogram(clipped, bins=bins)
+            bin_centers = (edges[:-1] + edges[1:]) / 2
+
+            fig_ct.add_trace(go.Bar(
+                x=bin_centers, y=raw_hist,
+                name="Original", marker_color="rgba(99,102,241,0.4)",
+                showlegend=True,
+            ), row=1, col=1)
+            fig_ct.add_trace(go.Bar(
+                x=bin_centers, y=clipped_hist,
+                name="Clipped", marker_color="rgba(234,88,12,0.7)",
+                showlegend=True,
+            ), row=1, col=1)
+
+            # Vertical lines at thresholds
+            for col_idx in (1, 2):
+                fig_ct.add_vline(x=q_lo, line_dash="dash", line_color="#16a34a",
+                                 annotation_text=f"q={trim_q:.2f}", row=1, col=col_idx)
+                fig_ct.add_vline(x=q_hi, line_dash="dash", line_color="#16a34a",
+                                 annotation_text=f"q={1-trim_q:.2f}", row=1, col=col_idx)
+
+            # Right: original vs trimmed
+            trimmed_hist, _ = np.histogram(trimmed, bins=bins)
+            fig_ct.add_trace(go.Bar(
+                x=bin_centers, y=raw_hist,
+                name="Original", marker_color="rgba(99,102,241,0.4)",
+                showlegend=False,
+            ), row=1, col=2)
+            fig_ct.add_trace(go.Bar(
+                x=bin_centers, y=trimmed_hist,
+                name="Trimmed", marker_color="rgba(220,38,38,0.7)",
+                showlegend=True,
+            ), row=1, col=2)
+
+            fig_ct.update_layout(
+                height=360,
+                barmode="overlay",
+                template="plotly_white",
+                margin=dict(t=60, b=40, l=50, r=20),
+                legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
+            )
+            fig_ct.update_xaxes(title_text="Value")
+            fig_ct.update_yaxes(title_text="Count")
+            st.plotly_chart(fig_ct, use_container_width=True)
+            st.markdown(
+                f"**What to notice:** With clipping (left), the bars at the tails don't disappear — "
+                f"their mass *piles up* at the threshold values (orange bars spike at the green lines). "
+                f"The distribution shape changes but N stays {n_raw}. "
+                f"With trimming (right), the bars outside the green lines simply vanish and N drops to {n_trimmed}. "
+                f"The interior of the distribution is unchanged, but you have {n_removed} fewer observations. "
+                f"**Move the slider** to a very small value (0.01) to see minimal effect, or toward 0.25 to see aggressive truncation."
+            )
+
         references([
             "Barnett, V. & Lewis, T. (1994). *Outliers in Statistical Data* (3rd ed.). Wiley.",
             "Hastie, T., Tibshirani, R., & Friedman, J. (2009). *The Elements of Statistical Learning* (2nd ed.), §9.2. Springer.",
