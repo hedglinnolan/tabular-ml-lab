@@ -153,7 +153,7 @@ def generate_metadata() -> Dict[str, Any]:
         'export_timestamp': datetime.now().isoformat(),
         'app_version': '1.0.0',  # You could read this from a version file
         'git_commit': git_info['commit'],
-        'git_branch': git_info['branch'],
+        'git_branch': git_info.get('branch', 'n/a'),
         'random_seed': st.session_state.get('random_seed', 42),
         'dataset': {
             'n_rows': len(df),
@@ -602,7 +602,7 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     report_lines.append("# Tabular ML Lab Report")
     report_lines.append("")
     report_lines.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    report_lines.append(f"**Git Commit:** {git_info['commit']} ({git_info['branch']})")
+    report_lines.append(f"**App Version:** {git_info.get('app_version', git_info.get('commit', 'unknown'))}")
     report_lines.append(f"**Random Seed:** {st.session_state.get('random_seed', 42)}")
     report_lines.append("")
     report_lines.append("---")
