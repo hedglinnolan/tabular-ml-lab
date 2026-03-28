@@ -50,8 +50,8 @@ def lasso_path_selection(
     if task_type == "regression":
         coefs = model.coef_
         optimal_alpha = model.alpha_
-        # Get the path
-        alphas, path_coefs, _ = lasso_path(X, y, alphas=n_alphas)
+        # Get the path — alphas must be array-like or None
+        alphas, path_coefs, _ = lasso_path(X, y, n_alphas=n_alphas)
     else:
         coefs = model.coef_.ravel() if model.coef_.ndim > 1 else model.coef_
         optimal_alpha = 1.0 / model.C_[0] if hasattr(model, 'C_') else 0.0
