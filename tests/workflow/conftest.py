@@ -91,6 +91,97 @@ def invalidation_state(invalidation_df):
     return state
 
 
+# ── Classification flow fixtures ─────────────────────────────────────
+
+def _build_imbalanced_classification_df(n=400, seed=42, imbalance_ratio=5):
+    """
+    Build a synthetic binary classification dataset with controllable imbalance.
+
+    Creates a dataset mimicking a medical screening scenario: most patients
+    are healthy (0), a minority have the condition (1). Features have
+    realistic correlations with the target.
+    """
+    import pandas as pd
+
+    np.random.seed(seed)
+
+    n_positive = n // (imbalance_ratio + 1)
+    n_negative = n - n_positive
+
+    # Negative class (majority)
+    neg = pd.DataFrame({
+        'age': np.random.normal(45, 12, n_negative).clip(18, 85),
+        'bmi': np.random.normal(25, 4, n_negative).clip(16, 45),
+        'blood_pressure': np.random.normal(115, 15, n_negative).clip(80, 180),
+        'cholesterol': np.random.normal(190, 35, n_negative).clip(100, 320),
+        'exercise_hours': np.random.exponential(4, n_negative).clip(0, 20),
+        'smoking': np.random.choice(['never', 'former', 'current'], n_negative, p=[0.6, 0.25, 0.15]),
+        'gender': np.random.choice(['male', 'female'], n_negative),
+        'condition': 0,
+    })
+
+    # Positive class (minority) — shifted distributions
+    pos = pd.DataFrame({
+        'age': np.random.normal(58, 10, n_positive).clip(25, 90),
+        'bmi': np.random.normal(30, 5, n_positive).clip(18, 50),
+        'blood_pressure': np.random.normal(135, 18, n_positive).clip(90, 200),
+        'cholesterol': np.random.normal(230, 40, n_positive).clip(120, 380),
+        'exercise_hours': np.random.exponential(2, n_positive).clip(0, 15),
+        'smoking': np.random.choice(['never', 'former', 'current'], n_positive, p=[0.3, 0.3, 0.4]),
+        'gender': np.random.choice(['male', 'female'], n_positive),
+        'condition': 1,
+    })
+
+    df = pd.concat([neg, pos], ignore_index=True).sample(frac=1, random_state=seed).reset_index(drop=True)
+
+    # Add missing values (realistic)
+    n_missing = int(n * 0.03)
+    for col in ['bmi', 'cholesterol', 'exercise_hours']:
+        idx = np.random.choice(n, n_missing, replace=False)
+        df.loc[idx, col] = np.nan
+
+    return df
+
+
+def _build_balanced_classification_df(n=200, seed=42):
+    """Balanced binary classification (50/50 split)."""
+    return _build_imbalanced_classification_df(n=n, seed=seed, imbalance_ratio=1)
+
+
+@pytest.fixture(scope="module")
+def classification_df():
+    """Imbalanced classification dataset (5:1 ratio)."""
+    return _build_imbalanced_classification_df(n=400, seed=42, imbalance_ratio=5)
+
+
+@pytest.fixture(scope="module")
+def balanced_classification_df():
+    """Balanced classification dataset."""
+    return _build_balanced_classification_df(n=200, seed=42)
+
+
+@pytest.fixture(scope="module")
+def classification_state(classification_df):
+    """Mutable session-state for classification pipeline, pre-populated with upload."""
+    state = {}
+    inject_uploaded_state(
+        state, classification_df,
+        target_col='condition', task_type='classification',
+    )
+    return state
+
+
+@pytest.fixture(scope="module")
+def balanced_classification_state(balanced_classification_df):
+    """Session-state for balanced classification (no imbalance handling needed)."""
+    state = {}
+    inject_uploaded_state(
+        state, balanced_classification_df,
+        target_col='condition', task_type='classification',
+    )
+    return state
+
+
 # ── Target-transform fixtures ───────────────────────────────────────
 
 def _build_skewed_target_df(n=300, seed=42):

@@ -1040,6 +1040,18 @@ def generate_methods_section(
                 sections.append(" Baseline models (majority class predictor and simple logistic regression) were automatically generated for comparison.")
     
     # Construct split description with strategy
+    # Auto-detect stratification from split_config if split_strategy not explicitly provided
+    if not split_strategy:
+        _stratify = split_config.get('stratify', False) if isinstance(split_config, dict) else getattr(split_config, 'stratify', False)
+        _use_time = split_config.get('use_time_split', False) if isinstance(split_config, dict) else getattr(split_config, 'use_time_split', False)
+        _use_group = split_config.get('use_group_split', False) if isinstance(split_config, dict) else getattr(split_config, 'use_group_split', False)
+        if _use_time:
+            split_strategy = "temporal"
+        elif _use_group:
+            split_strategy = "group-based"
+        elif _stratify:
+            split_strategy = "stratified random"
+
     split_desc = "Data were split"
     if split_strategy:
         split_desc += f" using {split_strategy} sampling"
