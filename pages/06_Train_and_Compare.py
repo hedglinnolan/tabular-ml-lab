@@ -1290,7 +1290,7 @@ if task_type_final == 'classification':
             if unaffected:
                 st.caption(f"⚠️ Not supported by: {', '.join(m.upper() for m in unaffected)} (these models will train without class weighting)")
 
-        st.session_state['use_class_weight'] = use_class_weight
+        # Toggle widget manages session_state['use_class_weight'] via its key param
     else:
         st.session_state['use_class_weight'] = False
 
