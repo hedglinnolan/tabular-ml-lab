@@ -133,4 +133,84 @@ Anyone can add a "generate report" button to PyCaret. Nobody can retroactively i
 
 ---
 
+---
+
+## Roadmap — GitHub Milestones
+
+### M1: Manuscript Foundation (by May 2026)
+*Fix the provenance pipeline so the methods section accurately reflects what happened.*
+
+| # | Issue | Type | Effort |
+|---|-------|------|--------|
+| 51 | 7 models missing from MODEL_TO_FAMILY mapping | Bug fix | 30 min |
+| 55 | Deprecation time bombs (use_container_width, utcnow) | Housekeeping | 1 hr |
+| 53 | Methods section doesn't list trained models or configs | **Critical gap** | 3-4 hrs |
+| 49 | Unify methodology_log and InsightLedger | **Architecture** | 8-10 hrs |
+| 56 | Insight lifecycle gaps (orphaned insights, training provenance) | Architecture | 4-6 hrs |
+
+**Execution order:** 51 → 55 → 53 → 49 → 56. Each unblocks the next. By the end, the methods section is trustworthy.
+
+### M2: Per-Model Provenance (by June 2026)
+*The flagship differentiator: different models get different preprocessing, and the manuscript says so.*
+
+| # | Issue | Type | Effort |
+|---|-------|------|--------|
+| 50 | Per-model pipeline provenance tracking | **Core differentiator** | 8-10 hrs |
+| 46 | Model-scoped coaching (per-family recommendations) | Differentiator | 6-8 hrs |
+| 52 | EDA recommendations → InsightLedger integration | Architecture | 3-4 hrs |
+| 60 | Reviewer-oriented coaching corpus with citations | Differentiator | 6-8 hrs |
+| 61 | End-to-end NarrativeEngine | **Architecture** | 12-16 hrs |
+
+**Execution order:** 50 → 52 → 46 → 61 → 60. #50 is the proof-of-concept. #61 is the capstone that replaces the stitched-together methods generation.
+
+### M3: TRIPOD+AI Compliance (by August 2026)
+*Real-time compliance tracking during the workflow. No other tool does this.*
+
+| # | Issue | Type | Effort |
+|---|-------|------|--------|
+| 57 | TRIPOD+AI real-time compliance tracker | **Core differentiator** | 10-12 hrs |
+| 59 | Manuscript consistency validator | Safety net | 6-8 hrs |
+| 54 | Consistency validation integration | Architecture | 4-6 hrs |
+| 48 | External validation workflow | TRIPOD requirement | 8-10 hrs |
+
+**Execution order:** 54 → 59 → 57 → 48. The validator (#54/#59) is the safety net; TRIPOD tracker (#57) builds on it; external validation (#48) is the final TRIPOD requirement.
+
+### M4: Frontier Models (by October 2026)
+*Position the app at the methodological frontier.*
+
+| # | Issue | Type | Effort |
+|---|-------|------|--------|
+| 58 | TabPFN 2.5 foundation model integration | Differentiator | 6-8 hrs |
+
+TabPFN is the perfect test of per-model provenance: it needs NO preprocessing while Ridge needs the full pipeline. If M2 is done correctly, TabPFN's methods section entry writes itself.
+
+---
+
+## Dependency Graph
+
+```
+M1: Foundation
+  #51 (family mapping) ──────────────────────────────────────→ done
+  #55 (deprecations) ────────────────────────────────────────→ done
+  #53 (models in methods) ───────────────────────────────────→ done
+  #49 (unify tracking) ─────→ #56 (lifecycle gaps) ─────────→ M1 complete
+                                    │
+M2: Per-Model Provenance            ↓
+  #50 (pipeline provenance) → #52 (EDA→ledger) → #46 (scoped coaching)
+                                                        │
+                                                        ↓
+                                    #61 (NarrativeEngine) → #60 (coaching corpus)
+                                            │                       │
+M3: TRIPOD+AI                               ↓                       ↓
+  #54 (consistency checks) → #59 (validator) → #57 (TRIPOD tracker) → M3 complete
+                                                        │
+                                                        ↓
+                                              #48 (external validation)
+
+M4: Frontier
+  #58 (TabPFN 2.5) ← requires M2 complete for provenance to work
+```
+
+---
+
 *This document should be revisited quarterly. The competitive landscape moves fast — TabPFN went from research curiosity to Nature publication to 2.5 release in 18 months. But the publication gap persists because it's a harder problem than performance optimization. That's our advantage.*
