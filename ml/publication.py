@@ -131,24 +131,34 @@ def _describe_outlier_handling(method: str, params: Optional[Dict[str, Any]] = N
 
 def generate_methods_from_log() -> Dict[str, List[Dict[str, Any]]]:
     """Extract methodology actions grouped by step from session state log.
-    
+
+    Reads from InsightLedger first (primary), falling back to the legacy
+    methodology_log session-state list during migration.
+
     Returns:
         Dictionary mapping step name to list of log entries for that step.
     """
     try:
-        import streamlit as st
-        log = st.session_state.get('methodology_log', [])
-    except ImportError:
-        # Not in Streamlit context
-        return {}
-    
+        from utils.insight_ledger import get_ledger
+        ledger = get_ledger()
+        log = ledger.get_methodology_log()
+        if not log:
+            # Fallback to old format during migration
+            import streamlit as st
+            log = st.session_state.get('methodology_log', [])
+    except (ImportError, Exception):
+        try:
+            import streamlit as st
+            log = st.session_state.get('methodology_log', [])
+        except ImportError:
+            return {}
+
     steps = {}
     for entry in log:
         step = entry.get('step', 'Unknown')
         if step not in steps:
             steps[step] = []
         steps[step].append(entry)
-    
     return steps
 
 
@@ -329,6 +339,7 @@ def generate_methods_section(
     hyperparameter_optimization: bool = False,
     split_strategy: Optional[str] = None,
     missing_data_summary: Optional[Dict] = None,
+    ledger_narratives: Optional[Dict[str, str]] = None,
 ) -> str:
     """Generate a draft methods section for a publication.
 
@@ -1452,6 +1463,15 @@ def generate_methods_section(
                     "readers should consider the increased risk of Type I error "
                     "when interpreting individual p-values.\n\n"
                 )
+
+    if ledger_narratives:
+        sections.append('\n\n### Data Quality and Preprocessing Rationale\n')
+        sections.append(
+            'The following observations were identified during exploratory analysis '
+            'and addressed during the modeling workflow:\n'
+        )
+        for phase, narrative in ledger_narratives.items():
+            sections.append(f'**{phase}:** {narrative}\n')
 
     return "\n".join(sections)
 

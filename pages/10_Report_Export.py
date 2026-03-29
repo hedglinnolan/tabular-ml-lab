@@ -479,8 +479,8 @@ def _build_methods_section_for_export(
     
     # Check methodology log for hyperparameter_optimization
     hyperparameter_optimization = False
-    methodology_log = st.session_state.get('methodology_log', [])
-    for entry in methodology_log:
+    _hp_log = _report_ledger.get_methodology_log() or st.session_state.get('methodology_log', [])
+    for entry in _hp_log:
         if entry.get('step') == 'Model Training':
             details = entry.get('details', {})
             if details.get('hyperparameter_optimization'):
@@ -554,6 +554,7 @@ def _build_methods_section_for_export(
         except Exception:
             pass
 
+    _ledger_narratives = _report_ledger.to_manuscript_narrative() or None
     return generate_methods_section(
         data_config={},
         preprocessing_config=prep_config,
@@ -578,6 +579,7 @@ def _build_methods_section_for_export(
         hyperparameter_optimization=hyperparameter_optimization,
         split_strategy=split_strategy,
         missing_data_summary=missing_data_summary,
+        ledger_narratives=_ledger_narratives,
     )
 
 
@@ -1340,17 +1342,6 @@ with st.expander("📄 Auto-Generated Methods Section", expanded=False):
         )
         methods_text = _build_methods_section_for_export(manuscript_context)
 
-        # Append ledger-sourced provenance narrative
-        _ledger_narratives = _report_ledger.to_manuscript_narrative()
-        if _ledger_narratives:
-            methods_text += "\n\n### Data Quality and Preprocessing Rationale\n\n"
-            methods_text += (
-                "The following observations were identified during exploratory analysis "
-                "and addressed during the modeling workflow:\n\n"
-            )
-            for _phase, _narrative in _ledger_narratives.items():
-                methods_text += f"**{_phase}:** {_narrative}\n\n"
-
         st.session_state["methods_section"] = methods_text
         st.session_state["manuscript_export_context"] = manuscript_context
 
@@ -1618,8 +1609,8 @@ with st.expander("📝 LaTeX Manuscript Template", expanded=False):
 
         # FIX 4: Build statistical validation summary from methodology log
         stat_validation_summary = []
-        methodology_log = st.session_state.get('methodology_log', [])
-        for entry in methodology_log:
+        _sv_log = _report_ledger.get_methodology_log() or st.session_state.get('methodology_log', [])
+        for entry in _sv_log:
             if entry.get('step') == 'Statistical Validation':
                 details = entry.get('details', {})
                 action = entry.get('action', '')
