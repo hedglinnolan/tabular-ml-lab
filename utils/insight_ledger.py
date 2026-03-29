@@ -495,6 +495,11 @@ class Insight:
     resolved_at: Optional[str] = None
     resolution_details: Dict[str, Any] = field(default_factory=dict)
 
+    # Acknowledgment (user reviewed and accepted without action)
+    acknowledged: bool = False
+    acknowledged_by: str = ""
+    acknowledged_at: Optional[str] = None
+
     # Timestamps
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
@@ -531,6 +536,9 @@ class Insight:
             "resolved_on_page": self.resolved_on_page,
             "resolved_at": self.resolved_at,
             "resolution_details": dict(self.resolution_details),
+            "acknowledged": self.acknowledged,
+            "acknowledged_by": self.acknowledged_by,
+            "acknowledged_at": self.acknowledged_at,
             "created_at": self.created_at,
             "metadata": dict(self.metadata),
         }
@@ -631,6 +639,64 @@ class InsightLedger:
             f"Check for typos in the resolution wiring."
         )
         return False
+
+    def acknowledge(
+        self,
+        insight_id: str,
+        acknowledged_by: str,
+    ) -> bool:
+        """Mark an insight as acknowledged (reviewed and accepted without action).
+
+        Acknowledged insights represent deliberate choices: the user saw the
+        observation, considered it, and proceeded without modification. This is
+        distinct from unresolved (never seen) and resolved (action taken).
+
+        Returns True if found and acknowledged.
+        """
+        for i in self._insights:
+            if i.id == insight_id:
+                if not i.resolved:  # Don't downgrade a resolution to acknowledgment
+                    i.acknowledged = True
+                    i.acknowledged_by = acknowledged_by
+                    i.acknowledged_at = datetime.now().isoformat()
+                return True
+        return False
+
+    def auto_acknowledge_gate(
+        self,
+        gate_name: str,
+        source_pages: Optional[List[str]] = None,
+    ) -> int:
+        """Auto-acknowledge unresolved insights at a workflow gate.
+
+        Called when the user proceeds past a major workflow stage (e.g.,
+        building preprocessing pipelines, starting training). Insights that
+        were created but neither resolved nor acknowledged are marked as
+        acknowledged — the user implicitly accepted them by proceeding.
+
+        Args:
+            gate_name: Human-readable gate description (e.g., "Proceeded to preprocessing")
+            source_pages: If provided, only acknowledge insights from these source pages.
+                         If None, acknowledges all unresolved insights.
+
+        Returns:
+            Number of insights acknowledged.
+        """
+        count = 0
+        for i in self._insights:
+            if i.resolved or i.acknowledged:
+                continue
+            if source_pages and i.source_page not in source_pages:
+                continue
+            i.acknowledged = True
+            i.acknowledged_by = gate_name
+            i.acknowledged_at = datetime.now().isoformat()
+            count += 1
+        return count
+
+    def get_acknowledged(self) -> List[Insight]:
+        """Return acknowledged-but-not-resolved insights."""
+        return [i for i in self._insights if i.acknowledged and not i.resolved]
 
     def remove(self, insight_id: str) -> bool:
         """Remove an insight entirely. Returns True if found."""
@@ -973,37 +1039,57 @@ class InsightLedger:
 
         Returns dict of {phase_name: narrative_text} for direct insertion
         into the LaTeX methods section.
+
+        Includes three types of insights:
+        1. Resolved: actions taken (e.g., "Skewness addressed via Yeo-Johnson transform")
+        2. Acknowledged: reviewed and accepted (e.g., "Small sample size noted; regularization applied")
+        3. Positive observations: dataset strengths (e.g., "Balanced class distributions observed")
         """
         narratives = {}
 
         seen_ids = set()  # Prevent duplicate entries across phases
         for phase_name, phase_pages in WORKFLOW_PHASES.items():
             resolved_in_phase = []
+            acknowledged_in_phase = []
+            strengths_in_phase = []
+
+            # Collect resolved insights (actions taken)
             for i in self.get_resolved():
                 if i.id in seen_ids:
                     continue
                 if not self._is_narrative_worthy(i):
-                    seen_ids.add(i.id)  # Mark as seen so it doesn't appear elsewhere
+                    seen_ids.add(i.id)
                     continue
-                # Prefer resolved_on_page (where the action happened)
                 primary_page = i.resolved_on_page or i.source_page
                 if primary_page in phase_pages:
                     resolved_in_phase.append(i)
                     seen_ids.add(i.id)
 
-            if not resolved_in_phase:
+            # Collect acknowledged insights (reviewed and accepted)
+            for i in self.get_acknowledged():
+                if i.id in seen_ids:
+                    continue
+                if i.source_page in phase_pages:
+                    # Separate strengths (opportunity/positive) from limitations
+                    if i.id.startswith("eda_opportunity_") or i.severity == "info":
+                        strengths_in_phase.append(i)
+                    else:
+                        acknowledged_in_phase.append(i)
+                    seen_ids.add(i.id)
+
+            if not resolved_in_phase and not acknowledged_in_phase and not strengths_in_phase:
                 continue
 
             sentences = []
+
+            # Render resolved insights (actions taken)
             for i in resolved_in_phase:
-                # Use structured renderer if resolution_details has action_type
                 if i.resolution_details.get("action_type"):
                     detail_prose = format_resolution_detail(
                         i.resolution_details, model_scope=i.model_scope
                     )
                     sentences.append(f"{i.finding}. {detail_prose}.")
                 else:
-                    # Legacy fallback — resolved_by + freeform details
                     detail_str = ""
                     if i.resolution_details:
                         parts = []
@@ -1026,6 +1112,37 @@ class InsightLedger:
 
                     sentences.append(
                         f"{i.finding}. {i.resolved_by}{detail_str}.{scope_str}"
+                    )
+
+            # Render acknowledged limitations
+            if acknowledged_in_phase:
+                limitations = []
+                for i in acknowledged_in_phase:
+                    if i.acknowledged_by:
+                        limitations.append(f"{i.finding} ({i.acknowledged_by})")
+                    else:
+                        limitations.append(i.finding)
+                if len(limitations) == 1:
+                    sentences.append(
+                        f"The following limitation was noted and accepted: {limitations[0]}."
+                    )
+                else:
+                    items = "; ".join(limitations)
+                    sentences.append(
+                        f"The following limitations were noted and accepted: {items}."
+                    )
+
+            # Render strengths (positive observations)
+            if strengths_in_phase:
+                strength_findings = [i.finding for i in strengths_in_phase]
+                if len(strength_findings) == 1:
+                    sentences.append(
+                        f"Dataset characteristics favorable to the analysis: {strength_findings[0]}."
+                    )
+                else:
+                    items = "; ".join(strength_findings)
+                    sentences.append(
+                        f"Dataset characteristics favorable to the analysis included: {items}."
                     )
 
             narratives[phase_name] = " ".join(sentences)

@@ -1067,6 +1067,17 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
         except Exception:
             pass  # Provenance recording should never break the workflow
 
+        # Auto-acknowledge unresolved EDA insights at the preprocessing gate.
+        # The user has reviewed their data, configured pipelines, and proceeded —
+        # any unresolved EDA observations are implicitly accepted.
+        try:
+            _pp_resolve_ledger.auto_acknowledge_gate(
+                gate_name="Proceeded to preprocessing",
+                source_pages=["02_EDA"],
+            )
+        except Exception:
+            pass
+
         st.success("Preprocessing pipelines built successfully. Expand each model below to view recipe and transformed data.")
         
     except Exception as e:
