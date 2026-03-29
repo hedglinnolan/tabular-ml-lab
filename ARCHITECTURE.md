@@ -129,6 +129,23 @@ Insight `model_scope` is the mechanism to close this gap. Each insight should kn
 | Navigation/presentation | `utils/storyline.py` (breadcrumbs), `utils/theme.py` |
 | Dataset profile | `ml/dataset_profile.py` (pure computation, feeds insight producers) |
 | Regime detection | `ml/regime.py` (adaptive layout based on dataset shape) |
+| Workflow provenance | `utils/workflow_provenance.py` (structured pipeline record) |
+
+---
+
+## Provenance Architecture
+
+The app has two complementary provenance systems:
+
+### InsightLedger (coaching lifecycle)
+Handles observe → recommend → resolve. EDA detects "BMI is skewed," coaching recommends a transform, the user acts, and the resolution is recorded. This drives the coaching UI and narrative generation.
+
+### WorkflowProvenance (pipeline record)
+Captures what actually happened at each workflow stage — structured, typed, incrementally built. Each page writes its section via `record_*()` methods as the user acts. Consumers (NarrativeEngine, TRIPOD checker, consistency validator, Report Export) read the whole structure via `get_methods_context()`.
+
+**Why two systems?** They serve different purposes. The InsightLedger tracks *recommendations and decisions* (coaching). WorkflowProvenance tracks *configurations and actions* (provenance). A coaching insight says "BMI is skewed → we recommend log transform for linear models." The provenance record says "Ridge pipeline: Yeo-Johnson power transform applied; RF pipeline: no transform." Both are needed for a complete manuscript — the InsightLedger explains *why*, the provenance records *what*.
+
+**Migration path:** Report Export currently reads from ~100 scattered session_state keys. As the provenance layer matures, these reads migrate to `get_methods_context()`. The old reads remain as fallbacks during transition.
 
 ---
 
