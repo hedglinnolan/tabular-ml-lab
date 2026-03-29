@@ -519,3 +519,57 @@ def test_generate_latex_report_fallback_methods_use_frozen_feature_names():
 
     assert 'The following 2 predictor variables were included: f1, f2.' in latex
     assert 'live1' not in latex
+
+
+def test_generate_methods_from_log_reads_from_ledger():
+    """generate_methods_from_log reads InsightLedger when it has entries."""
+    import streamlit as st
+    from ml.publication import generate_methods_from_log
+    from utils.session_state import log_methodology
+
+    saved_ledger = st.session_state.get('insight_ledger', None)
+    saved_log = st.session_state.get('methodology_log', None)
+    try:
+        # Reset both systems so the ledger is the only source
+        from utils.insight_ledger import InsightLedger
+        st.session_state['insight_ledger'] = InsightLedger()
+        st.session_state['methodology_log'] = []
+
+        log_methodology('Model Training', 'Trained Ridge', {'model': 'ridge', 'hyperparameter_optimization': True})
+
+        result = generate_methods_from_log()
+        assert 'Model Training' in result
+        entries = result['Model Training']
+        assert len(entries) >= 1
+        assert entries[0].get('step') == 'Model Training'
+    finally:
+        if saved_ledger is None:
+            st.session_state.pop('insight_ledger', None)
+        else:
+            st.session_state['insight_ledger'] = saved_ledger
+        if saved_log is None:
+            st.session_state.pop('methodology_log', None)
+        else:
+            st.session_state['methodology_log'] = saved_log
+
+
+def test_generate_methods_section_accepts_ledger_narratives():
+    """generate_methods_section integrates ledger_narratives when provided."""
+    text = generate_methods_section(
+        data_config={},
+        preprocessing_config={'numeric_scaling': 'standard'},
+        model_configs={'ridge': {}},
+        split_config={},
+        n_total=200,
+        n_train=140,
+        n_val=30,
+        n_test=30,
+        feature_names=['age', 'bmi'],
+        target_name='outcome',
+        task_type='regression',
+        metrics_used=['RMSE'],
+        ledger_narratives={'EDA': 'Skewed features were log-transformed.'},
+    )
+    assert 'Data Quality and Preprocessing Rationale' in text
+    assert 'EDA' in text
+    assert 'Skewed features were log-transformed.' in text

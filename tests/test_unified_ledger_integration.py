@@ -333,6 +333,12 @@ def test_methodology_bridge(r: TestResults):
     mlog = st.session_state.get("methodology_log", [])
     r.assert_true(len(mlog) >= 4, f"methodology_log populated ({len(mlog)} entries)")
 
+    # ledger's get_methodology_log returns equivalent data
+    ledger_mlog = ledger.get_methodology_log()
+    r.assert_true(len(ledger_mlog) >= 4, f"ledger.get_methodology_log() has equivalent entries ({len(ledger_mlog)} entries)")
+    ledger_steps = {e.get("step") for e in ledger_mlog}
+    r.assert_true("Model Training" in ledger_steps, "ledger_mlog contains Model Training step")
+
 
 def test_narrative_generation(r: TestResults):
     """Test manuscript narrative and report generation."""
