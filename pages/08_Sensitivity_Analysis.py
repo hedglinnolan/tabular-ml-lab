@@ -185,6 +185,21 @@ if st.button("▶️ Run Seed Sensitivity", type="primary", key="run_seed"):
             'n_seeds': n_seeds,
             'metric': primary_metric
         })
+        try:
+            from utils.workflow_provenance import get_provenance
+            _cv_pct = None
+            _df_seeds = st.session_state.get("sensitivity_seed_results")
+            if _df_seeds is not None and primary_metric in _df_seeds.columns:
+                import numpy as np
+                _vals = _df_seeds[primary_metric].dropna()
+                if len(_vals) > 0 and _vals.mean() != 0:
+                    _cv_pct = float(_vals.std() / abs(_vals.mean()) * 100)
+            get_provenance().record_sensitivity(
+                seed_stability=True,
+                seed_stability_cv=_cv_pct,
+            )
+        except Exception:
+            pass  # Provenance recording should never break the workflow
 
         # Display
         valid = df_seeds[primary_metric].dropna()
@@ -412,6 +427,16 @@ if st.button("▶️ Run Feature Dropout", type="primary", key="run_dropout"):
             'n_features_tested': len(features_to_test),
             'metric': primary_metric
         })
+        try:
+            from utils.workflow_provenance import get_provenance
+            _prov = get_provenance()
+            get_provenance().record_sensitivity(
+                seed_stability=_prov.sensitivity.seed_stability if _prov.sensitivity else False,
+                seed_stability_cv=_prov.sensitivity.seed_stability_cv if _prov.sensitivity else None,
+                feature_dropout=True,
+            )
+        except Exception:
+            pass  # Provenance recording should never break the workflow
 
         st.metric(f"Baseline {primary_metric}", f"{baseline_score:.4f}")
 

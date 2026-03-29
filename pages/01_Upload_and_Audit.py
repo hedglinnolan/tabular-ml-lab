@@ -1384,6 +1384,20 @@ if suggested_actions:
                             'cols_before': df.shape[1],
                             'cols_after': new_df.shape[1]
                         })
+                        try:
+                            from utils.workflow_provenance import get_provenance
+                            get_provenance().record_cleaning(
+                                action=label,
+                                rows_before=df.shape[0],
+                                rows_after=new_df.shape[0],
+                                details={
+                                    'affected_columns': cols if cols else 'all',
+                                    'rows_before': df.shape[0],
+                                    'rows_after': new_df.shape[0],
+                                },
+                            )
+                        except Exception:
+                            pass  # Provenance recording should never break the workflow
                         st.success(f"Applied: {label}. New shape: {new_df.shape[0]:,} rows × {new_df.shape[1]} columns")
                         st.rerun()
                 except Exception as e:
@@ -1613,7 +1627,18 @@ if task_mode == "prediction":
                 'data_source': st.session_state.get('data_source', 'unknown'),
             }
         )
-        
+        try:
+            from utils.workflow_provenance import get_provenance
+            get_provenance().record_upload(
+                target_col=target_col,
+                task_type=task_type_final,
+                feature_cols=selected_features,
+                n_samples=len(df),
+                data_source=st.session_state.get('data_source', 'unknown'),
+            )
+        except Exception:
+            pass  # Provenance recording should never break the workflow
+
         st.success(f"✅ Configuration saved: **{task_type_final.title()}** task with **{len(selected_features)}** features")
         
         # Next steps

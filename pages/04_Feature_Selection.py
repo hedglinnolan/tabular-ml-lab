@@ -272,6 +272,17 @@ if st.button("🔍 Run Feature Selection", type="primary"):
             'consensus_threshold': consensus_threshold,
         }
     )
+    try:
+        from utils.workflow_provenance import get_provenance
+        get_provenance().record_feature_selection(
+            method='consensus',
+            n_before=len(numeric_features),
+            n_after=len(consensus),
+            features_kept=list(consensus),
+            consensus_methods=list(methods_to_run),
+        )
+    except Exception:
+        pass  # Provenance recording should never break the workflow
 
     st.success(f"Feature selection complete! {len(results)} methods run.")
 
@@ -404,6 +415,20 @@ if results:
                 'features': consensus,
                 'consensus_threshold': consensus_threshold_logged,
             })
+            try:
+                from utils.workflow_provenance import get_provenance
+                _prov = get_provenance()
+                _n_before = _prov.feature_selection.n_features_before if _prov.feature_selection else 0
+                _methods = _prov.feature_selection.consensus_methods if _prov.feature_selection else []
+                _prov.record_feature_selection(
+                    method='consensus',
+                    n_before=_n_before,
+                    n_after=len(consensus),
+                    features_kept=list(consensus),
+                    consensus_methods=_methods,
+                )
+            except Exception:
+                pass  # Provenance recording should never break the workflow
             st.success(f"Updated feature set to {len(consensus)} consensus features. Proceed to Preprocessing.")
     else:
         st.warning("No consensus features found. Try lowering the threshold or running more methods.")
@@ -425,4 +450,16 @@ if results:
                 'n_features_selected': len(manual_selection),
                 'features': manual_selection
             })
+            try:
+                from utils.workflow_provenance import get_provenance
+                _prov = get_provenance()
+                _n_before = _prov.feature_selection.n_features_before if _prov.feature_selection else 0
+                _prov.record_feature_selection(
+                    method='manual',
+                    n_before=_n_before,
+                    n_after=len(manual_selection),
+                    features_kept=list(manual_selection),
+                )
+            except Exception:
+                pass  # Provenance recording should never break the workflow
             st.success(f"Updated feature set to {len(manual_selection)} features.")

@@ -1321,6 +1321,11 @@ def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""
                     result = action_func(df, target_col, feature_cols, signals, st.session_state)
                     st.session_state.eda_results[action_id] = result
                     log_methodology(step="EDA", action=f"Ran {title}", details={"analysis": run_action})
+                    try:
+                        from utils.workflow_provenance import get_provenance
+                        get_provenance().record_eda_analysis(title)
+                    except Exception:
+                        pass  # Provenance recording should never break the workflow
                     st.rerun()
             else:
                 st.error(f"Action '{run_action}' not found")
@@ -1403,6 +1408,11 @@ if _recommendations:
                         result = action_func(df, target_col, feature_cols, signals, st.session_state)
                         st.session_state.eda_results[aid] = result
                         log_methodology(step='EDA', action=f'Ran {title}', details={'analysis': aid})
+                        try:
+                            from utils.workflow_provenance import get_provenance
+                            get_provenance().record_eda_analysis(title)
+                        except Exception:
+                            pass  # Provenance recording should never break the workflow
                         st.rerun()
     st.markdown('---')
 
@@ -1531,6 +1541,11 @@ with st.expander("📄 Table 1 — Publication Summary", expanded=False):
             "n_continuous": len(t1_continuous),
             "n_categorical": len(t1_categorical),
         })
+        try:
+            from utils.workflow_provenance import get_provenance
+            get_provenance().record_table1()
+        except Exception:
+            pass  # Provenance recording should never break the workflow
 
     if st.session_state.get("table1_df") is not None:
         table1_df = st.session_state["table1_df"]
