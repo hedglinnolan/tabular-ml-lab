@@ -641,15 +641,15 @@ if perm_data or shap_data:
                             coloraxis_showscale=False,
                             margin=dict(l=10, r=10, t=40, b=10),
                         )
-                        st.plotly_chart(fig, use_container_width=True, key=f"perm_chart_{name}")
+                        st.plotly_chart(fig, key=f"perm_chart_{name}")
 
                         with st.expander("Full rankings table"):
                             # Show appropriate columns based on whether Source was added
                             if 'Source' in importance_df.columns:
                                 table(importance_df[['Feature', 'Importance', 'Std', 'Source']], 
-                                     key=f"perm_importance_{name}", use_container_width=True, hide_index=True)
+                                     key=f"perm_importance_{name}", hide_index=True)
                             else:
-                                table(importance_df, key=f"perm_importance_{name}", use_container_width=True, hide_index=True)
+                                table(importance_df, key=f"perm_importance_{name}", hide_index=True)
 
                         from ml.plot_narrative import narrative_permutation_importance
                         nar = narrative_permutation_importance(pd_info, model_name=name)
@@ -745,16 +745,16 @@ if perm_data or shap_data:
                     fig2.update_layout(yaxis={'categoryorder': 'total ascending'}, height=350,
                                        showlegend=False, coloraxis_showscale=False,
                                        margin=dict(l=10, r=10, t=40, b=10))
-                    st.plotly_chart(fig2, use_container_width=True, key=f"shap_bar_{name}")
+                    st.plotly_chart(fig2, key=f"shap_bar_{name}")
                     
                     # Show full SHAP table with source column
                     with st.expander("Full SHAP rankings table"):
                         if 'Source' in shap_df.columns:
                             table(shap_df[['Feature', 'Mean |SHAP|', 'Source']], 
-                                 key=f"shap_importance_{name}", use_container_width=True, hide_index=True)
+                                 key=f"shap_importance_{name}", hide_index=True)
                         else:
                             table(shap_df[['Feature', 'Mean |SHAP|']], 
-                                 key=f"shap_importance_{name}", use_container_width=True, hide_index=True)
+                                 key=f"shap_importance_{name}", hide_index=True)
 
                     from ml.plot_narrative import narrative_shap
                     from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
@@ -875,7 +875,7 @@ if perm_data or shap_data:
                             fig.update_layout(title=f"PDP: {fname}", xaxis_title=fname,
                                               yaxis_title="Partial Dependence",
                                               height=300, margin=dict(l=10, r=10, t=40, b=10))
-                            st.plotly_chart(fig, use_container_width=True, key=f"pdp_{name}_{fidx}")
+                            st.plotly_chart(fig, key=f"pdp_{name}_{fidx}")
                 else:
                     st.info("Partial dependence not available. Model may not support it, or permutation importance wasn't computed.")
 
@@ -914,7 +914,7 @@ if perm_data and len(perm_data) > 1:
         fig.add_trace(go.Bar(name=col, x=comp_df.index[:top_cross], y=comp_df[col][:top_cross]))
     fig.update_layout(barmode='group', title=f"Top {top_cross} Features Across Models",
                       height=400, margin=dict(l=10, r=10, t=40, b=10))
-    st.plotly_chart(fig, use_container_width=True, key="cross_model_importance")
+    st.plotly_chart(fig, key="cross_model_importance")
 
     # Consensus features
     render_guidance(
@@ -955,7 +955,7 @@ if task_final == 'regression' and len(mr) >= 2:
             pb = np.asarray(mr[mb]['y_test_pred']).ravel()
             if len(pa) == len(pb):
                 fig_ba = plot_bland_altman(pa, pb, title=f"Bland–Altman: {ma.upper()} vs {mb.upper()}", label_a=ma, label_b=mb)
-                st.plotly_chart(fig_ba, use_container_width=True, key=f"bland_altman_{ma}_{mb}")
+                st.plotly_chart(fig_ba, key=f"bland_altman_{ma}_{mb}")
                 ba_stats = analyze_bland_altman(pa, pb)
                 nar = narrative_bland_altman(ba_stats, label_a=ma, label_b=mb)
                 if nar:
@@ -1076,10 +1076,10 @@ with st.expander("Run Subgroup Analysis", expanded=False):
                         task_type=data_config.task_type or "regression",
                         n_bootstrap=200,
                     )
-                    table(sub_df[["Subgroup", "N", sub_df.columns[2], "95% CI"]], key=f"subgroup_{name}", use_container_width=True, hide_index=True)
+                    table(sub_df[["Subgroup", "N", sub_df.columns[2], "95% CI"]], key=f"subgroup_{name}", hide_index=True)
 
                     fig = plot_forest_subgroups(sub_df, metric_name=sub_df.columns[2])
-                    st.plotly_chart(fig, use_container_width=True, key=f"forest_{name}")
+                    st.plotly_chart(fig, key=f"forest_{name}")
         else:
             st.info("No suitable categorical variables found for subgroup analysis (need ≤20 unique values).")
     else:

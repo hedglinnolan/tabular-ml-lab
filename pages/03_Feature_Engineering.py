@@ -1130,7 +1130,7 @@ if new_features > 0:
                 _preview_corrs.sort(key=lambda x: x[1], reverse=True)
                 if _preview_corrs:
                     _preview_df = pd.DataFrame(_preview_corrs[:10], columns=['Feature', '|Correlation with target|'])
-                    st.dataframe(_preview_df, use_container_width=True, hide_index=True)
+                    st.dataframe(_preview_df, hide_index=True)
                     st.caption('Higher correlation suggests the feature may be predictive. Use Feature Selection (next page) for rigorous evaluation.')
                 else:
                     st.caption('Could not compute correlations for engineered features.')

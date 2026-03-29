@@ -533,7 +533,7 @@ with st.expander("🔍 Column Inspector", expanded=False):
                 showlegend=False, margin=dict(l=0, r=0, t=10, b=0),
                 xaxis_title="", yaxis_title="",
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig)
 
             desc = col_data.describe()
             d1, d2, d3, d4 = st.columns(4)
@@ -549,7 +549,7 @@ with st.expander("🔍 Column Inspector", expanded=False):
                 showlegend=False, margin=dict(l=0, r=0, t=10, b=0),
                 xaxis_title="", yaxis_title="Count",
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig)
 
         # Show insights for this column
         col_insights = ledger.get_for_features([inspect_col])
@@ -575,7 +575,7 @@ if _has_target:
     with tc1:
         fig_hist = px.histogram(df, x=target_col, nbins=30, title=f"Distribution of {target_col}")
         fig_hist.update_layout(template="plotly_white", height=350)
-        st.plotly_chart(fig_hist, use_container_width=True)
+        st.plotly_chart(fig_hist)
     with tc2:
         if task_type_final == "classification":
             class_counts = df[target_col].value_counts().sort_index()
@@ -585,14 +585,14 @@ if _has_target:
                 labels={"x": "Class", "y": "Count"},
             )
             fig_bar.update_layout(template="plotly_white", height=350)
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_bar)
             imbalance = class_counts.min() / class_counts.max()
             if imbalance < 0.35:
                 st.caption(f"⚠️ Class imbalance: {imbalance:.2f} ratio. Stratified sampling recommended.")
         else:
             fig_box = px.box(df, y=target_col, title=f"Box Plot of {target_col}")
             fig_box.update_layout(template="plotly_white", height=350)
-            st.plotly_chart(fig_box, use_container_width=True)
+            st.plotly_chart(fig_box)
             skew = signals.target_stats.get("skew")
             if skew and abs(skew) > 1.5:
                 st.caption(f"ℹ️ Skew = {skew:.2f} — log transform may help.")
@@ -610,14 +610,14 @@ if regime.distribution_mode == "summary":
         summary_df = df[numeric_features].describe().T
         summary_df["skew"] = df[numeric_features].skew()
         summary_df["missing_%"] = df[numeric_features].isnull().mean() * 100
-        table(summary_df.round(3), use_container_width=True)
+        table(summary_df.round(3))
 
         # Distribution-of-distributions: skew histogram
         skews = df[numeric_features].skew().dropna()
         if len(skews) > 1:
             fig_skew = px.histogram(skews, nbins=20, title="Distribution of Feature Skewness")
             fig_skew.update_layout(template="plotly_white", height=250, xaxis_title="Skewness", yaxis_title="Count")
-            st.plotly_chart(fig_skew, use_container_width=True)
+            st.plotly_chart(fig_skew)
 else:
     # Gallery mode: paginated 3×3 grid
     filter_options = ["All Features"]
@@ -673,7 +673,7 @@ else:
                         margin=dict(l=10, r=10, t=35, b=10),
                         showlegend=False,
                     )
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig)
 
                     # Inline coaching annotation
                     if pd.api.types.is_numeric_dtype(df[feat]):
@@ -737,7 +737,7 @@ if numeric_features and regime.row_regime != "tiny":
             height=max(300, len(outlier_data) * 22 + 80),
             yaxis=dict(autorange="reversed"),
         )
-        st.plotly_chart(fig_outlier, use_container_width=True)
+        st.plotly_chart(fig_outlier)
         st.caption(f"Primary method for downstream: **{outlier_method.upper()}**. Change in sidebar settings.")
 elif not numeric_features:
     st.info("No numeric features for outlier analysis.")
@@ -759,7 +759,7 @@ if total_missing > 0:
         labels={"x": "Missing %", "y": "Column"},
     )
     fig_missing.update_layout(template="plotly_white", height=max(250, len(missing_cols) * 25 + 60))
-    st.plotly_chart(fig_missing, use_container_width=True)
+    st.plotly_chart(fig_missing)
 
     # Co-missingness pattern matrix (if meaningful)
     n_high_missing = sum(1 for v in missing_cols.values if v > 0.05)
@@ -782,7 +782,7 @@ if total_missing > 0:
                 height=max(250, len(missing_matrix.columns) * 20 + 60),
                 xaxis_title="Sample index",
             )
-            st.plotly_chart(fig_pattern, use_container_width=True)
+            st.plotly_chart(fig_pattern)
 
 
 # ============================================================================
@@ -817,7 +817,7 @@ if len(numeric_features) >= 2:
             aspect="auto",
         )
         fig_corr.update_layout(template="plotly_white", height=max(400, len(numeric_features) * 18 + 100))
-        st.plotly_chart(fig_corr, use_container_width=True)
+        st.plotly_chart(fig_corr)
 
         # List pairs above threshold (numpy-based)
         corr_vals = corr_matrix.values
@@ -917,7 +917,7 @@ if _has_target:
                         margin=dict(l=10, r=10, t=35, b=10),
                         showlegend=False,
                     )
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig)
 
 # -- Feature Explorer (interactive scatter) --------------------------------
 st.subheader("Feature Explorer")
@@ -949,7 +949,7 @@ if len(feature_cols) >= 2:
         title=f"{feat_x} vs {feat_y}",
     )
     fig_explorer.update_layout(template="plotly_white", height=450)
-    st.plotly_chart(fig_explorer, use_container_width=True)
+    st.plotly_chart(fig_explorer)
 
     # Show correlation for this pair
     if pd.api.types.is_numeric_dtype(df[feat_x]) and pd.api.types.is_numeric_dtype(df[feat_y]):
@@ -1046,7 +1046,7 @@ if regime.show_macro_shape and numeric_features:
     pca_result = compute_pca(df_numeric)
     if "error" not in pca_result:
         fig_scree = plot_scree(pca_result)
-        st.plotly_chart(fig_scree, use_container_width=True)
+        st.plotly_chart(fig_scree)
         n_90 = pca_result["n_components_90"]
         total_var = pca_result["total_variance_explained"]
         n_used = len(pca_result["feature_names"])
@@ -1079,7 +1079,7 @@ if regime.show_macro_shape and numeric_features:
 
         if selected_view == "PCA Biplot" and "error" not in pca_result:
             fig_biplot = plot_pca_biplot(pca_result, color_vals, color_label)
-            st.plotly_chart(fig_biplot, use_container_width=True)
+            st.plotly_chart(fig_biplot)
             st.caption("Arrows show feature loadings — longer arrows have more influence on this projection. "
                       "This view preserves global variance structure but hides non-linear patterns.")
 
@@ -1098,7 +1098,7 @@ if regime.show_macro_shape and numeric_features:
                 else:
                     umap_colors = None
                 fig_umap = plot_umap(umap_result, umap_colors, color_label)
-                st.plotly_chart(fig_umap, use_container_width=True)
+                st.plotly_chart(fig_umap)
                 st.caption("UMAP preserves local neighborhood structure — nearby points are genuinely similar. "
                           "Cluster sizes and inter-cluster distances are NOT meaningful.")
             else:
@@ -1111,10 +1111,10 @@ if regime.show_macro_shape and numeric_features:
                 diag_tab, barcode_tab = st.tabs(["Diagram", "Barcode"])
                 with diag_tab:
                     fig_diag = plot_persistence_diagram(tda_result)
-                    st.plotly_chart(fig_diag, use_container_width=True)
+                    st.plotly_chart(fig_diag)
                 with barcode_tab:
                     fig_barcode = plot_persistence_barcode(tda_result)
-                    st.plotly_chart(fig_barcode, use_container_width=True)
+                    st.plotly_chart(fig_barcode)
 
                 # Summary
                 for dim, info in tda_result["features_by_dim"].items():
@@ -1149,7 +1149,7 @@ if regime.show_macro_shape and numeric_features:
             if "error" not in mapper_result:
                 mapper_colors = color_vals[:len(df_numeric)] if color_vals is not None else None
                 fig_mapper = plot_mapper(mapper_result, mapper_colors, color_label)
-                st.plotly_chart(fig_mapper, use_container_width=True)
+                st.plotly_chart(fig_mapper)
                 st.caption(
                     f"Mapper approximates the data manifold as a graph ({mapper_result['n_nodes']} nodes, "
                     f"{mapper_result['n_edges']} edges). Branching reveals subpopulations; "
@@ -1349,9 +1349,9 @@ def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""
 
         for idx, (fig_type, fig_data) in enumerate(result.get("figures", [])):
             if fig_type == "plotly":
-                st.plotly_chart(fig_data, use_container_width=True, key=f"fig_{key_prefix}_{idx}")
+                st.plotly_chart(fig_data, key=f"fig_{key_prefix}_{idx}")
             elif fig_type == "table":
-                table(fig_data, use_container_width=True, key=f"tbl_{key_prefix}_{idx}")
+                table(fig_data, key=f"tbl_{key_prefix}_{idx}")
 
         if interp:
             st.markdown(f"**Summary:** {interp}")
