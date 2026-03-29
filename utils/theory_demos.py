@@ -55,7 +55,7 @@ def demo_skewness(page_context: str = "ref", expanded: bool = False, wrapped: bo
             height=300, margin=dict(t=50, b=40, l=50, r=30),
             template="plotly_white",
         )
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_skew_chart")
+        st.plotly_chart(fig, key=f"{page_context}_skew_chart")
         st.markdown(
             "**Train your eye:** Watch the **gap between mean (red) and median (green)** — "
             "as skew grows, the mean chases the tail. Linear and distance-based models are "
@@ -105,7 +105,7 @@ def demo_collinearity(page_context: str = "ref", expanded: bool = False, wrapped
             yaxis_title="Estimated coefficient", height=320,
             margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
         )
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_collin_chart")
+        st.plotly_chart(fig, key=f"{page_context}_collin_chart")
         st.markdown(
             "**Train your eye:** At r = 0, estimates cluster around truth. "
             "Slide to r > 0.9: they scatter wildly. The model can't tell the variables apart. "
@@ -153,7 +153,7 @@ def demo_class_imbalance(page_context: str = "ref", expanded: bool = False, wrap
             margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         )
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_imbal_chart")
+        st.plotly_chart(fig, key=f"{page_context}_imbal_chart")
         st.markdown(
             "**Train your eye:** At low prevalence, 'always predict negative' scores near-perfect accuracy "
             "with zero recall. Slide toward 50% to see accuracy become meaningful again."
@@ -195,7 +195,7 @@ def demo_calibration(page_context: str = "ref", expanded: bool = False, wrapped:
             margin=dict(t=50, b=40, l=50, r=20), template="plotly_white",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         )
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_calib_chart")
+        st.plotly_chart(fig, key=f"{page_context}_calib_chart")
         st.markdown(
             "**Train your eye:** Below the diagonal = overconfident. Above = underconfident. "
             "Slide to 0 for perfect calibration. ECE > 0.05 warrants recalibration."
@@ -243,7 +243,7 @@ def demo_threshold(page_context: str = "ref", expanded: bool = False, wrapped: b
             yaxis_title="%", yaxis_range=[0, 110], height=280,
             margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
         )
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_thresh_chart")
+        st.plotly_chart(fig, key=f"{page_context}_thresh_chart")
         st.markdown(
             "**Train your eye:** Low threshold → high recall, low precision (catch everyone, many false alarms). "
             "High threshold → high precision, low recall (only flag sure cases, miss many). "
@@ -284,7 +284,7 @@ def demo_shap(page_context: str = "ref", expanded: bool = False, wrapped: bool =
             xaxis_title="SHAP contribution", height=240,
             margin=dict(t=50, b=30, l=80, r=60), template="plotly_white",
         )
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_shap_chart")
+        st.plotly_chart(fig, key=f"{page_context}_shap_chart")
         st.markdown(
             "**Train your eye:** Red bars push risk up; blue push it down. "
             "Contributions always sum to the gap between baseline and prediction. "
@@ -336,7 +336,7 @@ def demo_seed_sensitivity(page_context: str = "ref", expanded: bool = False, wra
             yaxis_title="R²", height=280,
             margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
         )
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_seed_chart")
+        st.plotly_chart(fig, key=f"{page_context}_seed_chart")
         st.markdown(
             "**Train your eye:** Red bars = best and worst seeds. If they tell different stories, "
             "report mean ± SD, not a single run."
@@ -379,7 +379,7 @@ def demo_outliers(page_context: str = "ref", expanded: bool = False, wrapped: bo
             line=dict(color="#dc2626"), name=f"With outlier (slope={c_all[0]:.2f})"))
         fig.update_layout(height=300, margin=dict(t=30, b=30, l=50, r=20), template="plotly_white",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_outlier_chart")
+        st.plotly_chart(fig, key=f"{page_context}_outlier_chart")
         st.markdown(
             "**Train your eye:** Drag the outlier far from the cluster. The red line tilts toward it. "
             "One point can dominate a linear model's coefficients. Robust methods (Huber, RANSAC) resist this."
@@ -421,7 +421,7 @@ def demo_bias_variance(page_context: str = "ref", expanded: bool = False, wrappe
             title=f"k = {k_val} — MSE = {mse:.3f} ({label})",
             height=300, margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_bv_chart")
+        st.plotly_chart(fig, key=f"{page_context}_bv_chart")
         st.markdown(
             "**Train your eye:** k=1 traces every point (high variance, low bias). "
             "k=30 is nearly flat (low variance, high bias). The sweet spot minimizes total error."
@@ -456,7 +456,7 @@ def demo_bootstrap(page_context: str = "ref", expanded: bool = False, wrapped: b
             title=f"Bootstrap distribution (B={n_boot})",
             xaxis_title="Bootstrap mean", yaxis_title="Count", height=280,
             margin=dict(t=50, b=40, l=50, r=20), template="plotly_white")
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_boot_chart")
+        st.plotly_chart(fig, key=f"{page_context}_boot_chart")
         st.markdown(
             "**Train your eye:** More samples → smoother distribution → narrower CI. "
             "B=100 is usually enough for means; B=500+ for percentiles or complex statistics."
@@ -504,7 +504,7 @@ def demo_regularization(page_context: str = "ref", expanded: bool = False, wrapp
         fig.update_layout(barmode="group", height=280, yaxis_title="Coefficient",
             margin=dict(t=30, b=30, l=50, r=20), template="plotly_white",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_reg_chart")
+        st.plotly_chart(fig, key=f"{page_context}_reg_chart")
         st.markdown(
             "**Train your eye:** Ridge shrinks both toward zero but keeps both. "
             "LASSO drives one to exactly zero — it selects. At high correlation, OLS estimates are unstable; regularization stabilizes them."
@@ -554,7 +554,7 @@ def demo_cross_validation(page_context: str = "ref", expanded: bool = False, wra
         fig.update_layout(
             title=f"{k}-fold CV — spread = {spread:.3f}",
             yaxis_title="R²", height=280, margin=dict(t=50, b=30, l=50, r=20), template="plotly_white")
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_cv_chart")
+        st.plotly_chart(fig, key=f"{page_context}_cv_chart")
         st.markdown(
             "**Train your eye:** More folds → less variation per fold but more computation. "
             "High noise → wide fold spread. Report mean ± SD, not just the mean."
@@ -590,7 +590,7 @@ def demo_transforms(page_context: str = "ref", expanded: bool = False, wrapped: 
         fig.add_trace(go.Histogram(x=raw, nbinsx=30, marker_color="rgba(220,38,38,0.6)"), row=1, col=1)
         fig.add_trace(go.Histogram(x=transformed, nbinsx=30, marker_color="rgba(22,163,74,0.6)"), row=1, col=2)
         fig.update_layout(height=260, margin=dict(t=40, b=30, l=40, r=20), template="plotly_white", showlegend=False)
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_transform_chart")
+        st.plotly_chart(fig, key=f"{page_context}_transform_chart")
         st.markdown(
             "**Train your eye:** λ=0 (log) aggressively compresses the right tail. "
             "λ=1 is identity (no change). Slide to find the λ that makes skewness ≈ 0."
@@ -637,7 +637,7 @@ def demo_leakage(page_context: str = "ref", expanded: bool = False, wrapped: boo
             title=f"{n_leak} leaked features — {'suspicious!' if acc_test > 90 and n_leak > 0 else 'clean' if n_leak == 0 else 'check this'}",
             yaxis_title="%", yaxis_range=[0, 110], height=260,
             margin=dict(t=50, b=30, l=50, r=20), template="plotly_white")
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_leak_chart")
+        st.plotly_chart(fig, key=f"{page_context}_leak_chart")
         st.markdown(
             "**Train your eye:** With 0 leaked features, accuracy is modest. Add leakage and test accuracy jumps suspiciously. "
             "R² > 0.95 on tabular data is a red flag — investigate before celebrating."
@@ -669,7 +669,7 @@ def demo_high_dimensionality(page_context: str = "ref", expanded: bool = False, 
             title=f"d={dims}: max/min distance ratio = {ratio:.1f}, mean NN dist = {mean_nn:.2f}",
             xaxis_title="Pairwise distance", yaxis_title="Count", height=260,
             margin=dict(t=50, b=40, l=50, r=20), template="plotly_white")
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_curse_chart")
+        st.plotly_chart(fig, key=f"{page_context}_curse_chart")
         st.markdown(
             "**Train your eye:** As dimensions grow, all distances converge — the histogram narrows. "
             "'Nearest neighbor' becomes meaningless when the nearest and farthest points are nearly equidistant."
@@ -709,7 +709,7 @@ def demo_scaling(page_context: str = "ref", expanded: bool = False, wrapped: boo
         fig.update_xaxes(title_text="Feature A (scaled)", row=1, col=2)
         fig.update_yaxes(title_text="Feature B (scaled)", row=1, col=2)
         fig.update_layout(height=280, margin=dict(t=40, b=30, l=40, r=20), template="plotly_white")
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_scale_chart")
+        st.plotly_chart(fig, key=f"{page_context}_scale_chart")
         st.markdown(
             f"**Train your eye:** Unscaled, Feature B dominates distance ({frac_b:.0%} of variance). "
             "After scaling, both features contribute equally. KNN, SVM, and neural nets need this; trees don't."
@@ -750,7 +750,7 @@ def demo_missing_data(page_context: str = "ref", expanded: bool = False, wrapped
             title=f"{miss_pct}% missing ({mechanism.split(' ')[0]}) — bias = {np.mean(observed) - np.mean(full):.1f}",
             margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_miss_chart")
+        st.plotly_chart(fig, key=f"{page_context}_miss_chart")
         st.markdown(
             "**Train your eye:** MCAR shifts the mean slightly (noise). MNAR chops the right tail — "
             "the observed mean is systematically biased downward. Median imputation amplifies this."
@@ -784,7 +784,7 @@ def demo_sample_size(page_context: str = "ref", expanded: bool = False, wrapped:
             title=f"Correlation estimates at n={n_samp} (SD={np.std(estimates):.3f})",
             yaxis_title="Estimated r", height=280, yaxis_range=[-0.3, 1.0],
             margin=dict(t=50, b=30, l=50, r=20), template="plotly_white")
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_sample_chart")
+        st.plotly_chart(fig, key=f"{page_context}_sample_chart")
         st.markdown(
             "**Train your eye:** At n=10, estimates scatter wildly. At n=200+, they cluster tightly around truth. "
             "Small samples can produce both inflated and deflated estimates — be cautious with effect sizes."
@@ -823,7 +823,7 @@ def demo_pdp_ice(page_context: str = "ref", expanded: bool = False, wrapped: boo
             title=f"Interaction = {interaction:.1f} — PDP {'hides the split' if interaction > 0.5 else 'is accurate'}",
             margin=dict(t=50, b=40, l=50, r=20), template="plotly_white",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-        st.plotly_chart(fig, use_container_width=True, key=f"{page_context}_pdp_chart")
+        st.plotly_chart(fig, key=f"{page_context}_pdp_chart")
         st.markdown(
             "**Train your eye:** The black PDP line averages over both groups. When interaction is strong, "
             "the two ICE lines diverge but the PDP splits the difference — hiding the real story. Always check ICE alongside PDP."

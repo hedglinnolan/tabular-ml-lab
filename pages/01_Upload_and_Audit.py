@@ -1410,7 +1410,7 @@ with _card_cols[0]:
     _pred_bg = "#f0f2ff" if _pred_selected else "#ffffff"
     _pred_check = "<div style='color:#667eea; font-weight:600; margin-top:4px;'>✓ Selected</div>" if _pred_selected else "<div style='margin-top:4px;'>&nbsp;</div>"
     st.markdown(f"<div style='border:2px solid {_pred_border}; border-radius:12px; padding:20px; background:{_pred_bg}; text-align:center; margin-bottom:8px;'><div style='font-size:2em;'>📊</div><div style='font-weight:600; font-size:1.1em;'>Prediction</div><div style='color:#64748b; font-size:0.85em;'>Build &amp; compare ML models</div>{_pred_check}</div>", unsafe_allow_html=True)
-    if st.button("Select Prediction", key="btn_prediction", type="primary" if _pred_selected else "secondary", use_container_width=True):
+    if st.button("Select Prediction", key="btn_prediction", type="primary" if _pred_selected else "secondary"):
         st.session_state.task_mode = 'prediction'
         st.rerun()
 
@@ -1420,7 +1420,7 @@ with _card_cols[1]:
     _hyp_bg = "#f0f2ff" if _hyp_selected else "#ffffff"
     _hyp_check = "<div style='color:#667eea; font-weight:600; margin-top:4px;'>✓ Selected</div>" if _hyp_selected else "<div style='margin-top:4px;'>&nbsp;</div>"
     st.markdown(f"<div style='border:2px solid {_hyp_border}; border-radius:12px; padding:20px; background:{_hyp_bg}; text-align:center; margin-bottom:8px;'><div style='font-size:2em;'>🔬</div><div style='font-weight:600; font-size:1.1em;'>Hypothesis Testing</div><div style='color:#64748b; font-size:0.85em;'>Statistical tests without ML</div>{_hyp_check}</div>", unsafe_allow_html=True)
-    if st.button("Select Hypothesis Testing", key="btn_hypothesis", type="primary" if _hyp_selected else "secondary", use_container_width=True):
+    if st.button("Select Hypothesis Testing", key="btn_hypothesis", type="primary" if _hyp_selected else "secondary"):
         st.session_state.task_mode = 'hypothesis_testing'
         st.rerun()
 

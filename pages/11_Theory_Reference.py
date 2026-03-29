@@ -467,7 +467,7 @@ approximately symmetric, |γ₁| between 0.5 and 1 is moderately skewed, and
                 height=320, margin=dict(t=50, b=40, l=50, r=30),
                 template="plotly_white",
             )
-            st.plotly_chart(fig_skew, use_container_width=True)
+            st.plotly_chart(fig_skew)
             st.markdown(
                 "**Train your eye:** Watch two things as you slide. "
                 "First, the **gap between the red mean and green median** — in a symmetric distribution they overlap; "
@@ -601,7 +601,7 @@ distribution.
                 marker_color="rgba(22, 163, 74, 0.6)", marker_line=dict(color="rgba(22, 163, 74, 1)", width=1),
                 showlegend=False), row=1, col=2)
             fig_tf.update_layout(height=280, margin=dict(t=40, b=30, l=40, r=20), template="plotly_white")
-            st.plotly_chart(fig_tf, use_container_width=True)
+            st.plotly_chart(fig_tf)
             st.markdown(
                 "**Train your eye:** Compare the two histograms as you move λ. "
                 "At λ = 1 they're identical (no transform). As λ drops toward 0, watch the right tail in the green plot **compress** "
@@ -749,7 +749,7 @@ Dᵢ > 4/n as a more sensitive screening criterion.
                 margin=dict(t=50, b=40, l=50, r=20), template="plotly_white",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             )
-            st.plotly_chart(fig_out, use_container_width=True)
+            st.plotly_chart(fig_out)
             st.markdown(
                 "**Train your eye:** The green dashed line is the fit without the outlier — it follows the data. "
                 "The red solid line includes the outlier. Move the outlier far right (high leverage) **and** far up (high residual): "
@@ -976,7 +976,7 @@ The right tool depends on *why* the extreme values exist:
             )
             fig_ct.update_xaxes(title_text="Value")
             fig_ct.update_yaxes(title_text="Count")
-            st.plotly_chart(fig_ct, use_container_width=True)
+            st.plotly_chart(fig_ct)
             st.markdown(
                 f"**What to notice:** With clipping (left), the bars at the tails don't disappear — "
                 f"their mass *piles up* at the threshold values (orange bars spike at the green lines). "
@@ -1079,7 +1079,7 @@ future data has the same collinearity structure). The problem is entirely about
                 yaxis_title="Estimated coefficient", height=340,
                 margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
             )
-            st.plotly_chart(fig_coll, use_container_width=True)
+            st.plotly_chart(fig_coll)
             st.markdown(
                 "**Train your eye:** Start at r = 0 and look at the box plots — tight, centered on the green dashed truth line. "
                 "Now slide slowly toward r = 0.9. Watch the boxes **stretch vertically** and individual dots scatter far from 2.0. "
@@ -1193,7 +1193,7 @@ to the collinear subspace.
                 margin=dict(t=50, b=30, l=50, r=30), template="plotly_white",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             )
-            st.plotly_chart(fig_reg, use_container_width=True)
+            st.plotly_chart(fig_reg)
             st.markdown(
                 "**Train your eye:** Start at high correlation (r = 0.90). Ridge (purple) pulls both coefficients toward each other — "
                 "neither gets the full credit, but neither is zeroed out. LASSO (orange) makes a harsher choice: it tends to keep one and drop the other entirely. "
@@ -1361,7 +1361,7 @@ The practical implications:""")
                 yaxis_range=[0, 105], height=320,
                 margin=dict(t=50, b=40, l=60, r=20), template="plotly_white",
             )
-            st.plotly_chart(fig_curse2, use_container_width=True)
+            st.plotly_chart(fig_curse2)
             st.markdown(
                 "**Train your eye:** At p = 1 or 2, the neighborhood edge is small — you're genuinely looking at local data. "
                 "Slide p to 20: the edge length jumps above 89%, meaning your 'local' neighborhood covers almost the entire dataset along every axis. "
@@ -1443,7 +1443,7 @@ below 0.35 as requiring careful metric selection.
                 margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             )
-            st.plotly_chart(fig_imb, use_container_width=True)
+            st.plotly_chart(fig_imb)
             st.markdown(
                 "**Train your eye:** Start at 5% prevalence and compare the two bars on Accuracy — they're almost the same height. "
                 "That's the trap: a model that does *nothing* useful scores nearly as well as one that actually finds cases. "
@@ -2121,7 +2121,7 @@ steps that respects the train/test boundary.
                 yaxis_title="Accuracy (%)", yaxis_range=[0, 85], height=300,
                 margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
             )
-            st.plotly_chart(fig_leak, use_container_width=True)
+            st.plotly_chart(fig_leak)
             st.markdown(
                 "**Train your eye:** The target is pure random noise — no real signal exists. Yet the red bar (leaked selection) "
                 f"shows {leaked_acc:.0f}% accuracy, well above the 50% chance level. Why? Because feature selection on the full dataset "
@@ -2247,7 +2247,7 @@ def render_model_families():
             height=380, margin=dict(t=50, b=40, l=50, r=20), template="plotly_white",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         )
-        st.plotly_chart(fig_fam, use_container_width=True)
+        st.plotly_chart(fig_fam)
         st.markdown(
             "**Train your eye:** The true boundary is a gentle curve. "
             "**Linear** draws a straight line — it can't capture the curve, but it's stable and interpretable. "
@@ -2747,7 +2747,7 @@ Here 𝒩_k(**x**) is the set of *k* indices of training observations closest to
                 margin=dict(t=50, b=40, l=50, r=20), template="plotly_white",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             )
-            st.plotly_chart(fig_bv, use_container_width=True)
+            st.plotly_chart(fig_bv)
             st.markdown(
                 "**Train your eye:** At k = 1, the red line jumps through every data point — it memorizes the noise (overfitting). "
                 "The train MSE is nearly zero, but the line deviates wildly from the green truth. "
@@ -3438,7 +3438,7 @@ AUPRC is the preferred metric when:
                 yaxis_title="Metric (%)", yaxis_range=[0, 110], height=300,
                 margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
             )
-            st.plotly_chart(fig_thr, use_container_width=True)
+            st.plotly_chart(fig_thr)
             st.markdown(
                 "**Train your eye:** Start at threshold = 0.50 and note the balance between precision and recall. "
                 "Now slide left toward 0.10: recall (red) climbs toward 100% because you're catching almost everyone — "
@@ -3594,7 +3594,7 @@ held-out fold for evaluation. The final metric is the average across all *k* fol
                 yaxis_title="R²", height=300,
                 margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
             )
-            st.plotly_chart(fig_cv, use_container_width=True)
+            st.plotly_chart(fig_cv)
             st.markdown(
                 "**Train your eye:** At low noise, the bars are nearly uniform — the model works consistently regardless of which fold is held out. "
                 "Now crank the noise to 4 or 5: some folds score well, others score poorly or even go negative. "
@@ -3760,7 +3760,7 @@ calibration; values above 0.05 typically warrant investigation.
                 template="plotly_white",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             )
-            st.plotly_chart(fig_cal, use_container_width=True)
+            st.plotly_chart(fig_cal)
             st.markdown(
                 "**Train your eye:** The dashed diagonal is the honesty line — where every probability statement is exactly right. "
                 "At positive miscalibration, the red curve bows **below** it: the model says '80% risk' but reality is closer to 65%. "
@@ -3901,7 +3901,7 @@ Different SHAP algorithms exploit model structure for speed:
                 xaxis_title="SHAP contribution to prediction",
                 height=260, margin=dict(t=50, b=30, l=80, r=60), template="plotly_white",
             )
-            st.plotly_chart(fig_shap, use_container_width=True)
+            st.plotly_chart(fig_shap)
             st.markdown(
                 "**Train your eye:** Move the glucose slider to 180 and watch its red bar extend right — it's pushing the prediction up. "
                 "Now drop BMI to 20 and watch its bar turn blue and extend left — it's pulling the prediction down. "
@@ -4017,7 +4017,7 @@ out the opposing effects, creating a false impression of unimportance.
                 height=340, margin=dict(t=50, b=40, l=50, r=20), template="plotly_white",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             )
-            st.plotly_chart(fig_pdp, use_container_width=True)
+            st.plotly_chart(fig_pdp)
             st.markdown(
                 "**Train your eye:** At high interaction strength, the red and blue ICE lines slope in **opposite directions** — "
                 "the feature matters a lot, but differently for the two groups. Now look at the thick black PDP: it's nearly flat. "
@@ -4129,7 +4129,7 @@ performance estimate is nearly meaningless.
                 xaxis_title="AUROC", xaxis_range=[0.5, 1.0],
                 height=320, margin=dict(t=50, b=40, l=140, r=20), template="plotly_white",
             )
-            st.plotly_chart(fig_sg, use_container_width=True)
+            st.plotly_chart(fig_sg)
             st.markdown(
                 "**Train your eye:** Look at the purple dashed line — that's the aggregate AUROC the paper would report. "
                 "Now look at the red dots: some subgroups fall well below that line. Increase the disparity slider and watch 'Females' and 'Site B' "
@@ -4707,7 +4707,7 @@ the mean. The app uses these thresholds:
                 yaxis_title="R²", height=300,
                 margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
             )
-            st.plotly_chart(fig_seed, use_container_width=True)
+            st.plotly_chart(fig_seed)
             st.markdown(
                 "**Train your eye:** The red bars are the best and worst seeds — they define the range of results you might have reported. "
                 "Slide the signal-to-noise ratio down: the bars spread apart, the CV% climbs, and the stability label shifts from 'Robust' toward 'Unstable.' "
@@ -4854,7 +4854,7 @@ than the other (acceleration).
                 xaxis_title="Bootstrap mean", yaxis_title="Count",
                 height=300, margin=dict(t=50, b=30, l=50, r=20), template="plotly_white",
             )
-            st.plotly_chart(fig_boot, use_container_width=True)
+            st.plotly_chart(fig_boot)
             st.markdown(
                 f"**Train your eye:** The green dotted lines mark the 95% CI: [{ci_lo:.2f}, {ci_hi:.2f}]. "
                 "Start at B = 20: the histogram is choppy and the CI boundaries jump around. "

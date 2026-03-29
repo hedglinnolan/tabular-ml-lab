@@ -325,7 +325,7 @@ def render_export_readiness_audit(export_ctx: Dict[str, Any]) -> None:
 
     st.subheader('Export Readiness Audit')
     st.caption('This audit freezes the current session state so the export reflects what is actually available, what can be recomputed, and what is still missing.')
-    table(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    table(pd.DataFrame(rows), hide_index=True)
 
     present = sum(1 for info in export_ctx['readiness'].values() if info['status'] == 'present')
     inferred = sum(1 for info in export_ctx['readiness'].values() if info['status'] == 'inferred')
@@ -1446,7 +1446,7 @@ with st.expander("✅ TRIPOD Checklist", expanded=False):
     st.markdown(f"**{done}/{total} items addressed** (auto-completed from your workflow)")
 
     checklist_df = tracker.get_checklist_df()
-    table(checklist_df, use_container_width=True, hide_index=True)
+    table(checklist_df, hide_index=True)
 
     st.download_button(
         "📥 Download TRIPOD Checklist",
@@ -1486,7 +1486,7 @@ if st.session_state.get("table1_df") is not None:
                 
                 table1_display = pd.concat([table1_display, new_row], ignore_index=True)
         
-        table(table1_display, use_container_width=True, hide_index=True)
+        table(table1_display, hide_index=True)
         
         # Export buttons
         col_t1_exp1, col_t1_exp2 = st.columns(2)

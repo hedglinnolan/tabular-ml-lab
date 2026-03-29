@@ -295,7 +295,7 @@ if results:
             ])
             # Use method name in key to avoid duplicates in loop
             safe_method = result.method.replace(" ", "_").replace("-", "_").lower()
-            table(scores_df, key=f"feature_scores_{safe_method}", use_container_width=True, hide_index=True)
+            table(scores_df, key=f"feature_scores_{safe_method}", hide_index=True)
 
             # LASSO-specific: coefficient path plot
             if result.method == "LASSO" and "path_coefs" in result.details and result.details.get("alphas"):
@@ -320,7 +320,7 @@ if results:
                         yaxis_title="Coefficient",
                         height=400,
                     )
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig)
                 except Exception as e:
                     st.caption(f"Could not render LASSO path plot: {e}")
 
@@ -342,7 +342,7 @@ if results:
                         annotation_text=f"Threshold ({stability_threshold})",
                     )
                     fig.update_layout(height=400)
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig)
                 except Exception:
                     pass
 
@@ -367,7 +367,7 @@ if results:
             matrix_data.append(row)
 
         matrix_df = pd.DataFrame(matrix_data).sort_values("Count", ascending=False)
-        table(matrix_df, key="consensus_matrix", use_container_width=True, hide_index=True)
+        table(matrix_df, key="consensus_matrix", hide_index=True)
 
         # LLM interpretation for feature selection consensus
         from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context

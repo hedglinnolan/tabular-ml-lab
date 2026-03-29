@@ -1554,7 +1554,7 @@ if st.session_state.get('trained_models'):
                                 y_proba_pos = y_proba_local[:, 1] if y_proba_local.shape[1] == 2 else y_proba_local[:, -1]
                                 cal = calibration_classification(np.array(results["y_test"]), y_proba_pos, model_name=name.upper())
                                 fig_cal = plot_calibration_curve(cal)
-                                st.plotly_chart(fig_cal, use_container_width=True, key=f"cal_{name}")
+                                st.plotly_chart(fig_cal, key=f"cal_{name}")
                                 st.caption(f"Brier Score: {cal.brier_score:.4f} | ECE: {cal.ece:.4f} | MCE: {cal.mce:.4f}")
                         except Exception as e:
                             st.caption(f"Could not compute calibration for {name}: {e}")
@@ -1964,7 +1964,7 @@ Poor performance may be due to:
                                               title=f"ROC Curve (AUC = {roc_auc:.3f})")
                             fig_roc.add_shape(type="line", x0=0, x1=1, y0=0, y1=1, line=dict(dash="dash", color="gray"))
                             fig_roc.update_layout(template="plotly_white")
-                            st.plotly_chart(fig_roc, use_container_width=True, key=f"diag_roc_{name}")
+                            st.plotly_chart(fig_roc, key=f"diag_roc_{name}")
 
                             # Precision-Recall curve
                             prec, rec, _ = precision_recall_curve(y_true, proba_pos)
@@ -1974,7 +1974,7 @@ Poor performance may be due to:
                             baseline = np.mean(y_true == unique_classes[1]) if len(unique_classes) == 2 else 0.5
                             fig_pr.add_shape(type="line", x0=0, x1=1, y0=baseline, y1=baseline, line=dict(dash="dash", color="gray"))
                             fig_pr.update_layout(template="plotly_white")
-                            st.plotly_chart(fig_pr, use_container_width=True, key=f"diag_pr_{name}")
+                            st.plotly_chart(fig_pr, key=f"diag_pr_{name}")
 
                             # LLM interpretation for ROC + PR (combined)
                             _bg_roc = {k: v for k, v in _bg.items() if k not in ("feature_names", "sample_size", "task_type")}
@@ -1995,14 +1995,14 @@ Poor performance may be due to:
                                 fig_roc.add_trace(go.Scatter(x=fpr_i, y=tpr_i, mode='lines', name=f"Class {cls} (AUC={auc_i:.3f})"))
                             fig_roc.add_shape(type="line", x0=0, x1=1, y0=0, y1=1, line=dict(dash="dash", color="gray"))
                             fig_roc.update_layout(title="ROC Curves (One-vs-Rest)", xaxis_title="FPR", yaxis_title="TPR", template="plotly_white")
-                            st.plotly_chart(fig_roc, use_container_width=True, key=f"diag_roc_{name}")
+                            st.plotly_chart(fig_roc, key=f"diag_roc_{name}")
                     elif not model.supports_proba():
                         st.caption("This model does not support probability predictions — ROC/PR curves unavailable.")
 
                     # Confusion Matrix
                     cm = sk_confusion_matrix(results["y_test"], results["y_test_pred"])
                     fig_cm = px.imshow(cm, text_auto=True, aspect="auto", title="Confusion Matrix", labels=dict(x="Predicted", y="Actual"), color_continuous_scale="Blues")
-                    st.plotly_chart(fig_cm, use_container_width=True, key=f"diag_cm_{name}")
+                    st.plotly_chart(fig_cm, key=f"diag_cm_{name}")
                     cm_stats = analyze_confusion_matrix(results["y_test"], results["y_test_pred"])
                     nar = narrative_confusion_matrix(cm_stats, model_name=name)
                     if nar:

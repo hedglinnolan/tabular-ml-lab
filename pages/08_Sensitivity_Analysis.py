@@ -207,7 +207,7 @@ if st.button("▶️ Run Seed Sensitivity", type="primary", key="run_seed"):
 
             st.bar_chart(df_seeds.set_index("seed")[[primary_metric]])
             with st.expander("Full results table"):
-                table(df_seeds, key="seed_sensitivity", use_container_width=True)
+                table(df_seeds, key="seed_sensitivity")
 
 # Show cached results if they exist
 elif "sensitivity_seed_results" in st.session_state:
@@ -430,7 +430,7 @@ if st.button("▶️ Run Feature Dropout", type="primary", key="run_dropout"):
                 st.markdown(f"- `{row['feature']}`: removing it improved {primary_metric} by {abs(row['impact']):.4f}")
 
         with st.expander("Full dropout results"):
-            table(df_dropout[["feature", "score_without", "impact"]], key="feature_dropout", use_container_width=True)
+            table(df_dropout[["feature", "score_without", "impact"]], key="feature_dropout")
 
         # LLM interpretation for feature dropout
         from utils.llm_ui import build_llm_context, render_interpretation_with_llm_button, gather_session_context
