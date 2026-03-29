@@ -1295,6 +1295,68 @@ if "eda_results" not in st.session_state:
     st.session_state.eda_results = {}
 
 
+# Map recommendation panel action IDs to the ledger insight IDs they address.
+# When a user runs a recommended analysis, the corresponding insight should be
+# updated with the structured findings — closing the observation → analysis → action chain.
+_ACTION_TO_INSIGHT_MAP = {
+    "multicollinearity_vif": {"prefix": "eda_corr_cluster_", "category": "collinearity"},
+    "leakage_scan": {"prefix": "eda_leakage_", "category": "leakage"},
+    "missingness_scan": {"prefix": "eda_missing_", "category": "missing_data"},
+    "target_profile": {"exact": ["eda_target_skew"], "category": "target"},
+    "data_sufficiency_check": {"exact": ["eda_sufficiency_insufficient", "eda_sufficiency_borderline"], "category": "sufficiency"},
+}
+
+
+def _resolve_insights_from_eda_result(action_id: str, result: dict, title: str) -> None:
+    """Resolve or enrich ledger insights based on recommendation panel analysis results.
+
+    This bridges the gap where EDA analyses stored results in eda_results
+    but never fed structured findings back into the InsightLedger.
+    """
+    try:
+        mapping = _ACTION_TO_INSIGHT_MAP.get(action_id)
+        if not mapping:
+            return
+
+        findings = result.get("findings", [])
+        warnings = result.get("warnings", [])
+        stats = result.get("stats", {})
+
+        resolution_details = {
+            "action_type": "diagnostic_analysis",
+            "method": action_id,
+            "findings": findings,
+            "warnings": warnings,
+        }
+        if stats:
+            resolution_details["stats"] = stats
+
+        resolved_msg = f"Diagnostic analysis performed: {title}"
+        if findings:
+            resolved_msg = f"{title}: {findings[0]}"
+
+        # Find matching insights by exact ID or prefix
+        exact_ids = mapping.get("exact", [])
+        prefix = mapping.get("prefix", "")
+
+        for insight in ledger.insights:
+            if insight.resolved:
+                continue
+            match = (
+                insight.id in exact_ids
+                or (prefix and insight.id.startswith(prefix))
+            )
+            if match:
+                ledger.resolve(
+                    insight.id,
+                    resolved_by=resolved_msg,
+                    resolved_on_page="02_EDA",
+                    resolution_details=resolution_details,
+                )
+    except Exception:
+        pass  # Never break the workflow
+
+
 ACTION_NEXT_STEPS = {
     'multicollinearity_vif': '→ **Next:** Go to Feature Selection to use LASSO/RFE to resolve collinearity, or apply Ridge/ElasticNet regularization in training.',
     'missingness_scan': '→ **Next:** Configure imputation strategy in Preprocess. Consider whether missingness is informative (MNAR) before choosing a method.',
@@ -1321,6 +1383,7 @@ def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""
                     result = action_func(df, target_col, feature_cols, signals, st.session_state)
                     st.session_state.eda_results[action_id] = result
                     log_methodology(step="EDA", action=f"Ran {title}", details={"analysis": run_action})
+                    _resolve_insights_from_eda_result(action_id, result, title)
                     try:
                         from utils.workflow_provenance import get_provenance
                         get_provenance().record_eda_analysis(title)
@@ -1408,6 +1471,7 @@ if _recommendations:
                         result = action_func(df, target_col, feature_cols, signals, st.session_state)
                         st.session_state.eda_results[aid] = result
                         log_methodology(step='EDA', action=f'Ran {title}', details={'analysis': aid})
+                        _resolve_insights_from_eda_result(aid, result, title)
                         try:
                             from utils.workflow_provenance import get_provenance
                             get_provenance().record_eda_analysis(title)
