@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 
 
-def table(df: pd.DataFrame, hide_index=True, **kwargs):
+def table(df: pd.DataFrame, use_container_width=True, hide_index=True, **kwargs):
     """
     Render a table with downloadable export (TSV format with headers).
     

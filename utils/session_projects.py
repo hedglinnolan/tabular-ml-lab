@@ -7,7 +7,7 @@ Each browser session is fully isolated. Data does not persist across page refres
 import streamlit as st
 import pandas as pd
 from typing import Optional, Dict, List, Any, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 
@@ -33,7 +33,7 @@ class SessionProjectManager:
     def create_project(self, name: str, description: str = "") -> int:
         projects = _projects()
         pid = _next_id("project")
-        now = datetime.now(datetime.UTC).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         # Deactivate others
         for p in projects.values():
             p["active"] = False
@@ -105,10 +105,10 @@ class SessionProjectManager:
             "shape_cols": shape_cols,
             "columns": columns,
             "column_types": column_types,
-            "upload_timestamp": datetime.now(datetime.UTC).isoformat(),
+            "upload_timestamp": datetime.now(timezone.utc).isoformat(),
             "is_transposed": is_transposed,
         }
-        project["updated_at"] = datetime.now(datetime.UTC).isoformat()
+        project["updated_at"] = datetime.now(timezone.utc).isoformat()
         return did
 
     def get_dataset(self, dataset_id: int) -> Optional[Dict[str, Any]]:
@@ -160,7 +160,7 @@ class SessionProjectManager:
             "result_shape_rows": result_shape[0],
             "result_shape_cols": result_shape[1],
             "result_columns": result_columns,
-            "created_at": datetime.now(datetime.UTC).isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "is_working_table": set_as_working,
         }
         return mid
