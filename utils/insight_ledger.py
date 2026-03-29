@@ -77,8 +77,11 @@ MODEL_TO_FAMILY = {
     "histgb_clf": MODEL_FAMILY_TREE,
     "nn": MODEL_FAMILY_NEURAL,
     "knn_reg": MODEL_FAMILY_DISTANCE, "knn_clf": MODEL_FAMILY_DISTANCE,
-    "svm": MODEL_FAMILY_MARGIN,
+    "svr": MODEL_FAMILY_MARGIN, "svc": MODEL_FAMILY_MARGIN,
     "naive_bayes": MODEL_FAMILY_PROBABILISTIC, "lda": MODEL_FAMILY_PROBABILISTIC,
+    "gaussian_nb": MODEL_FAMILY_PROBABILISTIC,
+    "xgb_reg": MODEL_FAMILY_TREE, "xgb_clf": MODEL_FAMILY_TREE,
+    "lgbm_reg": MODEL_FAMILY_TREE, "lgbm_clf": MODEL_FAMILY_TREE,
 }
 
 # Human-readable model names for reports and narrative
@@ -97,9 +100,15 @@ MODEL_DISPLAY_NAMES = {
     "nn": "Neural Network (MLP)",
     "knn_reg": "k-Nearest Neighbors (Regressor)",
     "knn_clf": "k-Nearest Neighbors (Classifier)",
-    "svm": "Support Vector Machine",
+    "svr": "Support Vector Regressor",
+    "svc": "Support Vector Classifier",
     "naive_bayes": "Naïve Bayes",
+    "gaussian_nb": "Gaussian Naïve Bayes",
     "lda": "Linear Discriminant Analysis",
+    "xgb_reg": "XGBoost (Regressor)",
+    "xgb_clf": "XGBoost (Classifier)",
+    "lgbm_reg": "LightGBM (Regressor)",
+    "lgbm_clf": "LightGBM (Classifier)",
 }
 
 
