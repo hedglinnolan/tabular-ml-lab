@@ -553,6 +553,25 @@ def test_generate_methods_from_log_reads_from_ledger():
             st.session_state['methodology_log'] = saved_log
 
 
+def test_methods_section_lists_model_names():
+    text = generate_methods_section(
+        data_config={},
+        preprocessing_config={},
+        model_configs={'ridge': {}, 'rf': {}, 'histgb_reg': {}},
+        split_config={},
+        n_total=200,
+        n_train=140,
+        n_val=30,
+        n_test=30,
+        feature_names=['feat1', 'feat2'],
+        target_name='outcome',
+        task_type='regression',
+        metrics_used=['RMSE', 'R2'],
+    )
+    assert 'RIDGE' in text or 'Ridge' in text
+    assert 'RF' in text or 'Random Forest' in text or 'rf' in text.lower()
+
+
 def test_generate_methods_section_accepts_ledger_narratives():
     """generate_methods_section integrates ledger_narratives when provided."""
     text = generate_methods_section(

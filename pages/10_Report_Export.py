@@ -556,10 +556,11 @@ def _build_methods_section_for_export(
 
     _ledger_narratives = _report_ledger.to_manuscript_narrative() or None
     return generate_methods_section(
-        data_config={},
+        data_config={'feature_cols': list(data_config.feature_cols) if data_config else [], 'target_col': data_config.target_col if data_config else ''},
         preprocessing_config=prep_config,
         model_configs={name: {} for name in selected_for_report},
-        split_config={},
+        split_config=split_config if split_config else {},
+        cv_folds=st.session_state.get('cv_folds', 5) if st.session_state.get('use_cv', False) else None,
         n_total=len(df),
         n_train=train_n,
         n_val=val_n,
