@@ -1195,7 +1195,18 @@ if new_features > 0:
                     'feature_count': len(engineered_features)
                 }
             )
-            
+            try:
+                from utils.workflow_provenance import get_provenance
+                _n_before = len(st.session_state.get('data_config').feature_cols) if st.session_state.get('data_config') else 0
+                get_provenance().record_feature_engineering(
+                    transforms=list(engineering_log) if isinstance(engineering_log, list) else list(engineering_log.keys()) if isinstance(engineering_log, dict) else [],
+                    n_created=len(engineered_features),
+                    n_before=_n_before,
+                    n_after=_n_before + len(engineered_features),
+                )
+            except Exception:
+                pass  # Provenance recording should never break the workflow
+
             st.success(f"✅ Saved engineered dataset! ({len(engineered_features)} new features)")
             st.balloons()
             st.info("""

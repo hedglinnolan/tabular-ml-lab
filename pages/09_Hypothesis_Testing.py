@@ -274,8 +274,18 @@ if test_type == "Correlation (two numeric variables)":
                 'p_value': p,
                 'r': r
             })
+            try:
+                from utils.workflow_provenance import get_provenance
+                get_provenance().record_statistical_test(
+                    test_name=test_name,
+                    variable=f"{var1} ~ {var2}",
+                    statistic=float(r) if r is not None else None,
+                    p_value=float(p) if p is not None else None,
+                )
+            except Exception:
+                pass  # Provenance recording should never break the workflow
             st.rerun()
-    
+
     # Display results
     if st.session_state.get('hypothesis_test_results') and st.session_state.hypothesis_test_results.get('test_type') == 'correlation':
         results = st.session_state.hypothesis_test_results
@@ -445,8 +455,18 @@ elif test_type == "Two-sample comparison (numeric variable, two groups)":
                 'groups': [str(group1_name), str(group2_name)],
                 'p_value': p
             })
+            try:
+                from utils.workflow_provenance import get_provenance
+                get_provenance().record_statistical_test(
+                    test_name=test_name,
+                    variable=f"{numeric_var} by {group_var}",
+                    statistic=float(stat) if stat is not None else None,
+                    p_value=float(p) if p is not None else None,
+                )
+            except Exception:
+                pass  # Provenance recording should never break the workflow
             st.rerun()
-    
+
     # Display results
     if st.session_state.get('hypothesis_test_results') and st.session_state.hypothesis_test_results.get('test_type') == 'two_sample':
         results = st.session_state.hypothesis_test_results
@@ -578,8 +598,18 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
                 'n_groups': len(unique_groups),
                 'p_value': p
             })
+            try:
+                from utils.workflow_provenance import get_provenance
+                get_provenance().record_statistical_test(
+                    test_name=test_name,
+                    variable=f"{numeric_var} by {group_var}",
+                    statistic=float(stat) if stat is not None else None,
+                    p_value=float(p) if p is not None else None,
+                )
+            except Exception:
+                pass  # Provenance recording should never break the workflow
             st.rerun()
-    
+
     # Display results
     if st.session_state.get('hypothesis_test_results') and st.session_state.hypothesis_test_results.get('test_type') == 'multi_group':
         results = st.session_state.hypothesis_test_results
@@ -686,8 +716,18 @@ elif test_type == "Categorical association (two categorical variables)":
                 'var2': var2,
                 'p_value': p
             })
+            try:
+                from utils.workflow_provenance import get_provenance
+                get_provenance().record_statistical_test(
+                    test_name=test_name,
+                    variable=f"{var1} ~ {var2}",
+                    statistic=float(stat) if stat is not None else None,
+                    p_value=float(p) if p is not None else None,
+                )
+            except Exception:
+                pass  # Provenance recording should never break the workflow
             st.rerun()
-    
+
     # Display results
     if st.session_state.get('hypothesis_test_results') and st.session_state.hypothesis_test_results.get('test_type') == 'categorical_assoc':
         results = st.session_state.hypothesis_test_results
@@ -787,8 +827,18 @@ elif test_type == "Normality test (one numeric variable)":
                 'p_value': p,
                 'n': len(data)
             })
+            try:
+                from utils.workflow_provenance import get_provenance
+                get_provenance().record_statistical_test(
+                    test_name=test_name,
+                    variable=numeric_var,
+                    statistic=float(stat) if stat is not None else None,
+                    p_value=float(p) if p is not None else None,
+                )
+            except Exception:
+                pass  # Provenance recording should never break the workflow
             st.rerun()
-    
+
     # Display results
     if st.session_state.get('hypothesis_test_results') and st.session_state.hypothesis_test_results.get('test_type') == 'normality':
         results = st.session_state.hypothesis_test_results
@@ -877,8 +927,18 @@ elif test_type == "Paired comparison (numeric variable, before/after)":
                 'n_pairs': len(paired_df),
                 'p_value': p
             })
+            try:
+                from utils.workflow_provenance import get_provenance
+                get_provenance().record_statistical_test(
+                    test_name=test_name,
+                    variable=f"{var_before} vs {var_after}",
+                    statistic=float(stat) if stat is not None else None,
+                    p_value=float(p) if p is not None else None,
+                )
+            except Exception:
+                pass  # Provenance recording should never break the workflow
             st.rerun()
-    
+
     # Display results
     if st.session_state.get('hypothesis_test_results') and st.session_state.hypothesis_test_results.get('test_type') == 'paired':
         results = st.session_state.hypothesis_test_results

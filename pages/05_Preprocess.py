@@ -1058,6 +1058,14 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                 'models_configured': list(configs_by_model.keys())
             }
         )
+        try:
+            from utils.workflow_provenance import get_provenance
+            get_provenance().record_preprocessing(
+                configs_by_model=configs_by_model,
+                imputation_method=_imp_method,
+            )
+        except Exception:
+            pass  # Provenance recording should never break the workflow
 
         st.success("Preprocessing pipelines built successfully. Expand each model below to view recipe and transformed data.")
         

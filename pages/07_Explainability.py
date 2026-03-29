@@ -580,6 +580,14 @@ if run_button:
         action=f"Ran {', '.join(analyses_run)} on {len(model_selection)} models",
         details={'analyses': analyses_run, 'models': list(model_selection)}
     )
+    try:
+        from utils.workflow_provenance import get_provenance
+        get_provenance().record_explainability(
+            methods=analyses_run,
+            models=list(model_selection),
+        )
+    except Exception:
+        pass  # Provenance recording should never break the workflow
 
     st.success(f"✅ Explainability analysis complete ({elapsed:.1f}s)")
 

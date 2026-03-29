@@ -1232,6 +1232,23 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 'class_weight_balanced': st.session_state.get('use_class_weight', False),
             }
         )
+        try:
+            from utils.workflow_provenance import get_provenance
+            _task_type = st.session_state.get('task_type', '')
+            _selection_metric = 'RMSE' if _task_type == 'regression' else 'Accuracy'
+            _model_results_local = st.session_state.get('model_results', {})
+            get_provenance().record_training(
+                models_trained=list(trained_models.keys()),
+                primary_model=best_model_name or '',
+                selection_criteria=f'validation {_selection_metric}',
+                use_cv=st.session_state.get('use_cv', False),
+                cv_folds=st.session_state.get('cv_folds', 5) if st.session_state.get('use_cv', False) else None,
+                use_hyperopt=use_optimization,
+                class_weight_balanced=st.session_state.get('use_class_weight', False),
+                metrics_by_model={name: res.get('metrics', {}) for name, res in _model_results_local.items()} if _model_results_local else {},
+            )
+        except Exception:
+            pass  # Provenance recording should never break the workflow
 
         # Resolve EDA insights that are addressed by completing training
         from utils.insight_ledger import get_ledger as _get_tc_ledger
