@@ -1274,6 +1274,15 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                     resolution_details=_resolve_details,
                 )
 
+        # Auto-acknowledge any remaining unresolved insights at the training gate.
+        # Training completion means the user has made all upstream decisions.
+        try:
+            _tc_ledger.auto_acknowledge_gate(
+                gate_name="Training completed",
+            )
+        except Exception:
+            pass
+
 # Class imbalance handling toggle
 if task_type_final == 'classification':
     profile = st.session_state.get('dataset_profile')
