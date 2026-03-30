@@ -389,7 +389,29 @@ def _build_manuscript_context(
 def _build_methods_section_for_export(
     manuscript_context: Dict[str, Any],
 ) -> str:
-    """Build the current methods/results draft directly from workflow state."""
+    """Build the current methods/results draft directly from workflow state.
+
+    Uses NarrativeEngine (provenance-driven) as the primary path.
+    Falls back to generate_methods_section() when provenance is empty.
+    """
+    # --- Primary path: NarrativeEngine ---
+    try:
+        from utils.workflow_provenance import get_provenance
+        from ml.narrative_engine import NarrativeEngine
+
+        prov = get_provenance()
+        completeness = prov.get_completeness()
+        if any(completeness.values()):
+            engine = NarrativeEngine(prov, _report_ledger)
+            draft = engine.generate()
+            return draft.to_markdown()
+    except Exception as _ne_err:
+        logger.warning(
+            "NarrativeEngine failed — falling back to generate_methods_section: %s",
+            _ne_err,
+        )
+
+    # --- Fallback: old session-state-based path ---
     from ml.publication import generate_methods_section
 
     train_n = len(st.session_state.get('X_train', []))

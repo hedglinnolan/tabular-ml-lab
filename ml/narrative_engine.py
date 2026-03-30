@@ -98,6 +98,40 @@ class ManuscriptDraft:
 
 
 # ---------------------------------------------------------------------------
+# Human-readable name mappings
+# ---------------------------------------------------------------------------
+
+_MODEL_NAMES: dict = {
+    "histgb_reg": "Histogram-based Gradient Boosting (Regression)",
+    "histgb_clf": "Histogram-based Gradient Boosting (Classification)",
+    "nn": "Neural Network (MLP)",
+    "huber": "Huber Regression",
+    "ridge": "Ridge Regression",
+    "lasso": "Lasso Regression",
+    "elasticnet": "Elastic Net",
+    "rf": "Random Forest",
+    "xgb": "XGBoost (Gradient Boosting)",
+    "lgbm": "LightGBM",
+    "svm": "Support Vector Machine",
+    "knn": "K-Nearest Neighbors",
+    "logistic": "Logistic Regression",
+    "dt": "Decision Tree",
+}
+
+_METRIC_NAMES: dict = {
+    "RMSE": "root mean squared error (RMSE)",
+    "MAE": "mean absolute error (MAE)",
+    "R2": "coefficient of determination (R²)",
+    "MedianAE": "median absolute error (MedAE)",
+    "Accuracy": "accuracy",
+    "F1": "F1 score",
+    "AUC": "area under the ROC curve (AUC)",
+    "Precision": "precision",
+    "Recall": "recall",
+}
+
+
+# ---------------------------------------------------------------------------
 # Scale/encoding label maps
 # ---------------------------------------------------------------------------
 
@@ -191,7 +225,28 @@ class NarrativeEngine:
         n_test = self.ctx.get("n_test", 0)
         seed = self.ctx.get("random_seed", 42)
 
+        # Target trimming — mention BEFORE the split description
+        split_prov = self.prov.split
+        if split_prov and split_prov.target_trim_enabled:
+            lo_pct = round(split_prov.target_trim_lower * 100)
+            hi_pct = round((1.0 - split_prov.target_trim_upper) * 100)
+            if lo_pct > 0 or hi_pct > 0:
+                trim_parts = []
+                if lo_pct > 0:
+                    trim_parts.append(f"lower {lo_pct}%")
+                if hi_pct > 0:
+                    trim_parts.append(f"upper {hi_pct}%")
+                parts.append(
+                    f"Extreme target values were removed prior to splitting "
+                    f"(trimmed {' and '.join(trim_parts)} of the target distribution)."
+                )
+            else:
+                parts.append(
+                    "Target variable trimming was applied prior to splitting."
+                )
+
         if n_train and n_test:
+            # Recompute percentages from actual n values (not stored pct fields)
             total = n_train + n_val + n_test
             train_pct = round(n_train / total * 100)
             val_pct = round(n_val / total * 100) if n_val else 0
@@ -291,12 +346,30 @@ class NarrativeEngine:
         if not methods:
             return ""
 
+        # Include feature-level missing data counts if available from provenance
+        n_missing_features = self.ctx.get("n_features_with_missing", 0)
+        n_total_features = self.ctx.get("n_features_original", 0) or len(
+            self.ctx.get("feature_cols", [])
+        )
+        missing_pct_str = ""
+        if n_missing_features and n_total_features:
+            pct = round(n_missing_features / n_total_features * 100)
+            missing_pct_str = (
+                f" {n_missing_features} of {n_total_features} features "
+                f"({pct}%) contained missing values."
+            )
+        elif n_missing_features:
+            missing_pct_str = f" {n_missing_features} features contained missing values."
+
         if len(methods) == 1:
             method = next(iter(methods))
-            return f"Missing values were handled using {method} imputation."
+            return f"Missing values were handled using {method} imputation.{missing_pct_str}"
         else:
             method_list = ", ".join(sorted(methods))
-            return f"Missing values were handled using model-specific imputation strategies: {method_list}."
+            return (
+                f"Missing values were handled using model-specific imputation strategies: "
+                f"{method_list}.{missing_pct_str}"
+            )
 
     def _gen_data_preprocessing(self) -> str:
         """Data preprocessing: per-model pipeline description.
@@ -330,11 +403,12 @@ class NarrativeEngine:
             )
             for model_key, cfg in pp.items():
                 sents = self._describe_preprocessing(cfg)
+                model_label = self._model_name(model_key)
                 if sents:
-                    parts.append(f"**{model_key.upper()}**: {'; '.join(sents)}.")
+                    parts.append(f"**{model_label}**: {'; '.join(sents)}.")
                 else:
                     parts.append(
-                        f"**{model_key.upper()}**: default preprocessing (no additional transformations)."
+                        f"**{model_label}**: default preprocessing (no additional transformations)."
                     )
 
         return " ".join(parts)
@@ -347,7 +421,7 @@ class NarrativeEngine:
         if not models:
             return ""
 
-        models_str = ", ".join(m.upper() for m in models)
+        models_str = ", ".join(self._model_name(m) for m in models)
         parts.append(
             f"The following model candidates were trained and compared: {models_str}."
         )
@@ -383,7 +457,7 @@ class NarrativeEngine:
                     continue
                 param_strs = [f"{k}={self._fmt_param(v)}" for k, v in params.items()]
                 if param_strs:
-                    hp_parts.append(f"{model_name.upper()} ({', '.join(param_strs)})")
+                    hp_parts.append(f"{self._model_name(model_name)} ({', '.join(param_strs)})")
             if hp_parts:
                 parts.append(
                     f"Key hyperparameters: {'; '.join(hp_parts)}."
@@ -394,8 +468,13 @@ class NarrativeEngine:
         criteria = self.ctx.get("selection_criteria", "")
         if primary:
             parts.append(
-                f"The primary model was selected as {primary.upper()}"
-                f"{f' based on {criteria}' if criteria else ''}."
+                f"{self._model_name(primary)} was selected as the primary model"
+                f"{f', based on {criteria}' if criteria else ''}."
+            )
+        elif models:
+            parts.append(
+                "The model demonstrating the best performance on the primary evaluation "
+                "metric was selected for reporting."
             )
 
         return " ".join(parts)
@@ -413,11 +492,12 @@ class NarrativeEngine:
             if not model_metrics:
                 continue
             metric_strs = [
-                f"{k}={self._fmt_param(v)}" for k, v in model_metrics.items()
+                f"{self._metric_name(k)}={self._fmt_param(v)}"
+                for k, v in model_metrics.items()
                 if isinstance(v, (int, float))
             ]
             if metric_strs:
-                parts.append(f"**{model_name.upper()}**: {', '.join(metric_strs)}.")
+                parts.append(f"**{self._model_name(model_name)}**: {', '.join(metric_strs)}.")
 
         return " ".join(parts)
 
@@ -539,6 +619,14 @@ class NarrativeEngine:
                 sents.append("PCA dimensionality reduction applied")
 
         return sents
+
+    def _model_name(self, key: str) -> str:
+        """Return human-readable model name, falling back to uppercased key."""
+        return _MODEL_NAMES.get(key, key.upper())
+
+    def _metric_name(self, key: str) -> str:
+        """Return human-readable metric name, falling back to the key itself."""
+        return _METRIC_NAMES.get(key, key)
 
     def _fmt_param(self, v: Any) -> str:
         """Format a parameter value for publication."""

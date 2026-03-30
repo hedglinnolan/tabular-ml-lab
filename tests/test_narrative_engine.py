@@ -153,10 +153,10 @@ class TestNarrativeEngineGeneration:
         engine = NarrativeEngine(full_provenance)
         draft = engine.generate()
 
-        # Should mention per-model differences
-        assert "RIDGE" in draft.data_preprocessing
-        assert "RF" in draft.data_preprocessing
-        assert "HISTGB_REG" in draft.data_preprocessing
+        # Should mention per-model differences using human-readable names
+        assert "Ridge Regression" in draft.data_preprocessing
+        assert "Random Forest" in draft.data_preprocessing
+        assert "Histogram-based Gradient Boosting" in draft.data_preprocessing
 
         # Ridge gets scaling + transform
         assert "z-score" in draft.data_preprocessing.lower() or "standardization" in draft.data_preprocessing.lower()
@@ -176,25 +176,26 @@ class TestNarrativeEngineGeneration:
         draft = engine.generate()
 
         assert "All models shared" in draft.data_preprocessing
-        assert "RIDGE" not in draft.data_preprocessing
+        assert "Ridge Regression" not in draft.data_preprocessing
 
     def test_model_development(self, full_provenance):
         engine = NarrativeEngine(full_provenance)
         draft = engine.generate()
 
-        assert "RIDGE" in draft.model_development
-        assert "RF" in draft.model_development
-        assert "HISTGB_REG" in draft.model_development
+        assert "Ridge Regression" in draft.model_development
+        assert "Random Forest" in draft.model_development
+        assert "Histogram-based Gradient Boosting" in draft.model_development
         assert "5-fold" in draft.model_development
-        assert "RF" in draft.model_development  # primary model
+        assert "Random Forest" in draft.model_development  # primary model
 
     def test_model_evaluation_metrics(self, full_provenance):
         engine = NarrativeEngine(full_provenance)
         draft = engine.generate()
 
-        assert "RMSE" in draft.model_evaluation
-        assert "R2" in draft.model_evaluation
-        assert "10.1" in draft.model_evaluation  # RF RMSE
+        assert "RMSE" in draft.model_evaluation  # spelled out as "root mean squared error (RMSE)"
+        assert "R²" in draft.model_evaluation    # spelled out as "coefficient of determination (R²)"
+        assert "10.1" in draft.model_evaluation  # RF RMSE value
+        assert "Random Forest" in draft.model_evaluation  # human-readable model name
 
     def test_sensitivity_analysis(self, full_provenance):
         engine = NarrativeEngine(full_provenance)
@@ -288,7 +289,7 @@ class TestEdgeCases:
         draft = engine.generate()
 
         assert draft.data_observations == ""
-        assert "RIDGE" in draft.model_development
+        assert "Ridge Regression" in draft.model_development
 
     def test_single_model_no_cv(self):
         """Single model without CV should still produce valid narrative."""
@@ -307,7 +308,7 @@ class TestEdgeCases:
         engine = NarrativeEngine(prov)
         draft = engine.generate()
 
-        assert "RIDGE" in draft.model_development
+        assert "Ridge Regression" in draft.model_development
         assert "cross-validation" not in draft.model_development.lower()
         assert "All models shared" in draft.data_preprocessing
         assert "alpha=0.5" in draft.model_development
