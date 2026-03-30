@@ -51,7 +51,10 @@ def lasso_path_selection(
         coefs = model.coef_
         optimal_alpha = model.alpha_
         # Get the path — alphas must be array-like or None
-        alphas, path_coefs, _ = lasso_path(X, y, n_alphas=n_alphas)
+        alpha_max = np.abs(X.T @ y).max() / (2.0 * X.shape[0])
+        eps = 1e-3
+        alphas_grid = np.logspace(np.log10(alpha_max), np.log10(alpha_max * eps), n_alphas)
+        alphas, path_coefs, _ = lasso_path(X, y, alphas=alphas_grid)
     else:
         coefs = model.coef_.ravel() if model.coef_.ndim > 1 else model.coef_
         optimal_alpha = 1.0 / model.C_[0] if hasattr(model, 'C_') else 0.0
