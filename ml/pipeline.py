@@ -211,6 +211,8 @@ def build_preprocessing_pipeline(
             def log_transform(X):
                 return np.log1p(np.maximum(X, 0))  # log1p handles zeros
             numeric_steps.append(('log', FunctionTransformer(log_transform)))
+        if numeric_power_transform in ('yeo-johnson', 'log1p') or numeric_log_transform:
+            numeric_steps.append(('power_nan_guard', SimpleImputer(strategy='median')))
 
         # Outlier treatment
         if numeric_outlier_treatment and numeric_outlier_treatment != 'none':

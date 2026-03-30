@@ -85,7 +85,7 @@ def weighted_huber_loss(y_pred: torch.Tensor, y_true: torch.Tensor,
     return (w * huber_loss).mean()
 
 
-class SklearnCompatibleNNRegressor(BaseEstimator, RegressorMixin):
+class SklearnCompatibleNNRegressor(RegressorMixin, BaseEstimator):
     """Sklearn-compatible wrapper for PyTorch NN model (regression)."""
     
     def __init__(self, wrapper_instance=None):
@@ -143,7 +143,7 @@ class SklearnCompatibleNNRegressor(BaseEstimator, RegressorMixin):
         return self
 
 
-class SklearnCompatibleNNClassifier(BaseEstimator, ClassifierMixin):
+class SklearnCompatibleNNClassifier(ClassifierMixin, BaseEstimator):
     """Sklearn-compatible wrapper for PyTorch NN model (classification)."""
     
     def __init__(self, wrapper_instance=None):
