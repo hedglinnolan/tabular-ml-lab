@@ -37,7 +37,7 @@ def lasso_path_selection(
     """
     if task_type == "regression":
         from sklearn.linear_model import LassoCV, lasso_path
-        model = LassoCV(cv=cv_folds, alphas=n_alphas, random_state=random_state, max_iter=10000)
+        model = LassoCV(cv=cv_folds, n_alphas=n_alphas, random_state=random_state, max_iter=10000)
     else:
         from sklearn.linear_model import LogisticRegressionCV
         model = LogisticRegressionCV(
