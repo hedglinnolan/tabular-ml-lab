@@ -126,6 +126,20 @@ class ManuscriptDraft:
         
         return "\n".join(lines)
 
+    @staticmethod
+    def _md_to_latex(text: str) -> str:
+        """Convert markdown formatting to LaTeX equivalents."""
+        import re
+        # Bold **text** → \textbf{text}
+        text = re.sub(r'\*\*(.+?)\*\*', r'\\textbf{\1}', text)
+        # Italic *text* → \textit{text}  (single asterisk, not inside bold)
+        text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'\\textit{\1}', text)
+        # Escape special LaTeX chars that might appear in prose (but not our own commands)
+        text = text.replace('²', '$^2$')
+        text = text.replace('×', '$\\times$')
+        text = text.replace('–', '--')
+        return text
+
     def to_latex(self) -> str:
         """Render as LaTeX subsections."""
         import re
@@ -140,9 +154,8 @@ class ManuscriptDraft:
             lines.append("")
             # Strip markdown headers from content (##, ###, etc.)
             content_cleaned = re.sub(r'^#+\s+.*$', '', content, flags=re.MULTILINE)
-            # Clean up resulting multiple blank lines
             content_cleaned = re.sub(r'\n\n\n+', '\n\n', content_cleaned).strip()
-            lines.append(content_cleaned)
+            lines.append(self._md_to_latex(content_cleaned))
             lines.append("")
         
         if self.warnings:
@@ -156,15 +169,25 @@ class ManuscriptDraft:
             lines.append("\\section{Results}\n")
             content_cleaned = re.sub(r'^#+\s+.*$', '', self.results, flags=re.MULTILINE)
             content_cleaned = re.sub(r'\n\n\n+', '\n\n', content_cleaned).strip()
-            lines.append(content_cleaned)
+            lines.append(self._md_to_latex(content_cleaned))
             lines.append("")
         
         # Discussion section (top-level)
         if self.discussion.strip():
             lines.append("\\section{Discussion}\n")
-            content_cleaned = re.sub(r'^#+\s+.*$', '', self.discussion, flags=re.MULTILINE)
+            # Convert ### headings to \subsection instead of stripping
+            content_cleaned = self.discussion
+            content_cleaned = re.sub(
+                r'^###\s+(.+)$',
+                lambda m: f"\\subsection{{{m.group(1).replace('&', chr(92) + '&')}}}",
+                content_cleaned, flags=re.MULTILINE
+            )
+            content_cleaned = re.sub(r'^##\s+(.+)$',
+                lambda m: f"\\subsection{{{m.group(1)}}}",
+                content_cleaned, flags=re.MULTILINE
+            )
             content_cleaned = re.sub(r'\n\n\n+', '\n\n', content_cleaned).strip()
-            lines.append(content_cleaned)
+            lines.append(self._md_to_latex(content_cleaned))
             lines.append("")
         
         return "\n".join(lines)
