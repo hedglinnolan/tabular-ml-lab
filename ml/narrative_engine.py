@@ -250,6 +250,8 @@ class NarrativeEngine:
         self.prov = provenance
         self.ledger = ledger
         self.ctx = provenance.get_methods_context()
+        # Normalize metric keys to title-case (e.g. "rmse" → "RMSE", "r2" → "R2")
+        self._normalize_metrics()
 
     def generate(self) -> ManuscriptDraft:
         """Generate a complete manuscript draft from provenance + ledger."""
@@ -810,8 +812,10 @@ class NarrativeEngine:
         # Note if complex models didn't beat simple ones (this is a finding, not a failure)
         if len(models) >= 2 and metrics:
             # Check if simple models (linear, logistic) are competitive with complex ones (RF, XGB, NN)
-            simple_models = [m for m in models if m in ("ridge", "lasso", "elasticnet", "logistic")]
-            complex_models = [m for m in models if m in ("rf", "xgb", "lgbm", "histgb_reg", "histgb_clf", "nn")]
+            simple_keys = {"ridge", "lasso", "elasticnet", "logistic"}
+            complex_keys = {"rf", "random_forest", "xgb", "lgbm", "histgb_reg", "histgb_clf", "nn"}
+            simple_models = [m for m in models if m.lower() in simple_keys]
+            complex_models = [m for m in models if m.lower() in complex_keys]
             
             if simple_models and complex_models:
                 if task_type == "regression":
@@ -1009,9 +1013,44 @@ class NarrativeEngine:
 
         return sents
 
+    # ------------------------------------------------------------------
+    # Normalization helpers
+    # ------------------------------------------------------------------
+    _METRIC_KEY_MAP = {
+        "rmse": "RMSE", "mae": "MAE", "r2": "R2", "medianae": "MedianAE",
+        "accuracy": "Accuracy", "f1": "F1", "auc": "AUC",
+        "precision": "Precision", "recall": "Recall",
+    }
+
+    def _normalize_metrics(self) -> None:
+        """Normalize metric dict keys to canonical casing."""
+        raw = self.ctx.get("metrics_by_model")
+        if not raw:
+            return
+        normalized: dict = {}
+        for model, mdict in raw.items():
+            norm: dict = {}
+            for k, v in mdict.items():
+                canonical = self._METRIC_KEY_MAP.get(k.lower(), k)
+                # Also handle CI keys like "rmse_ci_lower" → "RMSE_ci_lower"
+                if "_ci_" in k.lower():
+                    base = k.split("_ci_")[0]
+                    suffix = "_ci_" + k.split("_ci_")[1]
+                    canonical = self._METRIC_KEY_MAP.get(base.lower(), base) + suffix
+                norm[canonical] = v
+            normalized[model] = norm
+        self.ctx["metrics_by_model"] = normalized
+
     def _model_name(self, key: str) -> str:
-        """Return human-readable model name, falling back to uppercased key."""
-        return _MODEL_NAMES.get(key, key.upper())
+        """Return human-readable model name, falling back to title-cased key."""
+        # Try exact match, then lowercase, then uppercase
+        if key in _MODEL_NAMES:
+            return _MODEL_NAMES[key]
+        lk = key.lower()
+        if lk in _MODEL_NAMES:
+            return _MODEL_NAMES[lk]
+        # Fallback: replace underscores, title-case
+        return key.replace("_", " ").title()
 
     def _metric_name(self, key: str) -> str:
         """Return human-readable metric name, falling back to the key itself."""
