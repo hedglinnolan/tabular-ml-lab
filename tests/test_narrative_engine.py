@@ -188,6 +188,23 @@ class TestNarrativeEngineGeneration:
         assert "5-fold" in draft.model_development
         assert "Random Forest" in draft.model_development  # primary model
 
+    def test_hyperparameters_in_model_development(self, full_provenance):
+        """#81: Hyperparameters should be described in human-readable prose."""
+        engine = NarrativeEngine(full_provenance)
+        draft = engine.generate()
+
+        # Ridge should mention alpha and L2 regularization
+        assert "alpha=1" in draft.model_development or "alpha=1.0" in draft.model_development
+        assert "L2" in draft.model_development
+
+        # Random Forest should mention number of trees and depth
+        assert "100 trees" in draft.model_development
+        assert "unrestricted depth" in draft.model_development or "max depth" in draft.model_development
+
+        # HistGB should mention learning rate and iterations
+        assert "learning rate" in draft.model_development.lower()
+        assert "100 boosting iterations" in draft.model_development
+
     def test_model_evaluation_metrics(self, full_provenance):
         engine = NarrativeEngine(full_provenance)
         draft = engine.generate()
@@ -196,6 +213,43 @@ class TestNarrativeEngineGeneration:
         assert "R²" in draft.model_evaluation    # spelled out as "coefficient of determination (R²)"
         assert "10.1" in draft.model_evaluation  # RF RMSE value
         assert "Random Forest" in draft.model_evaluation  # human-readable model name
+
+    def test_confidence_intervals_in_evaluation(self):
+        """#83: Confidence intervals should be included when available."""
+        prov = WorkflowProvenance()
+        prov.record_upload("glucose", "regression", ["age", "bmi"], 500)
+        prov.record_training(
+            models_trained=["ridge", "rf"],
+            primary_model="rf",
+            metrics_by_model={
+                "ridge": {
+                    "RMSE": 12.34,
+                    "RMSE_ci_lower": 11.95,
+                    "RMSE_ci_upper": 12.73,
+                    "R2": 0.72,
+                    "R2_ci_lower": 0.68,
+                    "R2_ci_upper": 0.76,
+                },
+                "rf": {
+                    "RMSE": 10.12,
+                    "R2": 0.85,
+                    # No CIs for RF
+                },
+            },
+        )
+
+        engine = NarrativeEngine(prov)
+        draft = engine.generate()
+
+        # Ridge should show CIs
+        assert "12.34" in draft.model_evaluation
+        assert "95% CI" in draft.model_evaluation
+        assert "11.95" in draft.model_evaluation or "12.0" in draft.model_evaluation  # formatted
+        assert "12.73" in draft.model_evaluation or "12.7" in draft.model_evaluation
+
+        # RF should show metrics without CIs
+        assert "10.12" in draft.model_evaluation or "10.1" in draft.model_evaluation
+        assert "0.85" in draft.model_evaluation
 
     def test_sensitivity_analysis(self, full_provenance):
         engine = NarrativeEngine(full_provenance)
@@ -261,6 +315,113 @@ class TestManuscriptDraft:
 
         assert len(draft.warnings) > 0
         assert any("[PLACEHOLDER]" in w for w in draft.warnings)
+
+
+class TestResultsAndDiscussion:
+    """Tests for #82: Results and Discussion sections."""
+
+    def test_results_section_generated(self, full_provenance):
+        """Results section should report best model and metrics."""
+        engine = NarrativeEngine(full_provenance)
+        draft = engine.generate()
+
+        assert draft.results != ""
+        assert "Random Forest" in draft.results  # best model
+        assert "R²" in draft.results or "R2" in draft.results
+        assert "10.1" in draft.results  # RF RMSE
+        assert "0.85" in draft.results  # RF R2
+
+    def test_results_comparative_performance(self, full_provenance):
+        """Results should compare all models."""
+        engine = NarrativeEngine(full_provenance)
+        draft = engine.generate()
+
+        # Should mention comparison across models
+        assert "Table 1" in draft.results or "candidate models" in draft.results
+        # Should mention ranking
+        assert "lowest" in draft.results.lower() or "highest" in draft.results.lower()
+
+    def test_results_notes_simple_vs_complex(self):
+        """Results should note when simple models are competitive."""
+        prov = WorkflowProvenance()
+        prov.record_upload("glucose", "regression", ["age", "bmi"], 500)
+        prov.record_training(
+            models_trained=["ridge", "rf"],
+            primary_model="rf",
+            metrics_by_model={
+                "ridge": {"RMSE": 10.2, "R2": 0.84},
+                "rf": {"RMSE": 10.1, "R2": 0.85},
+            },
+        )
+
+        engine = NarrativeEngine(prov)
+        draft = engine.generate()
+
+        # Should note that linear model is competitive
+        assert "linear" in draft.results.lower() or "comparable" in draft.results.lower()
+
+    def test_discussion_section_generated(self, full_provenance, full_ledger):
+        """Discussion section should have structured skeleton."""
+        engine = NarrativeEngine(full_provenance, full_ledger)
+        draft = engine.generate()
+
+        assert draft.discussion != ""
+        # Check for subsection headers
+        assert "Principal Findings" in draft.discussion
+        assert "Comparison with Prior Work" in draft.discussion
+        assert "Strengths and Limitations" in draft.discussion
+        assert "Practical Implications" in draft.discussion or "Clinical" in draft.discussion
+        assert "Conclusions" in draft.discussion
+
+    def test_discussion_principal_findings_auto_generated(self, full_provenance):
+        """Principal Findings should auto-summarize results."""
+        engine = NarrativeEngine(full_provenance)
+        draft = engine.generate()
+
+        assert "Random Forest" in draft.discussion  # best model
+        assert "85%" in draft.discussion or "0.85" in draft.discussion  # R2 percentage
+        assert "compared across" in draft.discussion.lower()  # comparison note
+
+    def test_discussion_placeholders(self, full_provenance):
+        """Discussion should include placeholders for human completion."""
+        engine = NarrativeEngine(full_provenance)
+        draft = engine.generate()
+
+        assert "[To be completed by the investigator" in draft.discussion
+        # At least 2 placeholders (Prior Work, Implications)
+        assert draft.discussion.count("[To be completed by the investigator") >= 2
+
+    def test_discussion_strengths_and_limitations_from_ledger(self, full_provenance, full_ledger):
+        """Strengths and limitations should auto-populate from InsightLedger."""
+        engine = NarrativeEngine(full_provenance, full_ledger)
+        draft = engine.generate()
+
+        # Should include acknowledged limitations
+        assert "Sample size" in draft.discussion or "adequate but not large" in draft.discussion
+        # Should include strengths
+        assert "Low overall missingness" in draft.discussion or "Favorable" in draft.discussion
+
+    def test_results_and_discussion_in_markdown(self, full_provenance):
+        """Results and Discussion should render as top-level sections in markdown."""
+        engine = NarrativeEngine(full_provenance)
+        draft = engine.generate()
+        md = draft.to_markdown()
+
+        assert "## Methods" in md
+        assert "## Results" in md
+        assert "## Discussion" in md
+        # Results should come before Discussion
+        assert md.index("## Results") < md.index("## Discussion")
+
+    def test_results_and_discussion_in_latex(self, full_provenance):
+        """Results and Discussion should render as top-level sections in LaTeX."""
+        engine = NarrativeEngine(full_provenance)
+        draft = engine.generate()
+        latex = draft.to_latex()
+
+        assert "\\section{Methods}" in latex
+        assert "\\section{Results}" in latex
+        assert "\\section{Discussion}" in latex
 
 
 class TestEdgeCases:
