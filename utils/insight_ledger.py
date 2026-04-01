@@ -363,6 +363,47 @@ def _join_list(items: list, conjunction: str = "and") -> str:
     return ", ".join(str(i) for i in items[:-1]) + f", {conjunction} {items[-1]}"
 
 
+def _clean_for_manuscript(text: str) -> str:
+    """Clean coaching annotations and model keys from text for manuscript.
+    
+    Removes:
+    - Parenthetical coaching annotations like "(optional for tree models)"
+    - Bracket annotations like "[warning]"
+    - Internal model keys (replaced with human names)
+    
+    Returns cleaned text suitable for publication.
+    """
+    import re
+    
+    # Strip parenthetical coaching annotations
+    # Match parentheses that contain coaching keywords
+    coaching_patterns = [
+        r'\s*\(optional[^)]*\)',
+        r'\s*\(recommended[^)]*\)',
+        r'\s*\(suggested[^)]*\)',
+        r'\s*\(warning[^)]*\)',
+        r'\s*\(note[^)]*\)',
+    ]
+    for pattern in coaching_patterns:
+        text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+    
+    # Strip bracket annotations like "[warning]", "[info]"
+    text = re.sub(r'\s*\[[a-z]+\]', '', text, flags=re.IGNORECASE)
+    
+    # Replace model keys with human names
+    # Match uppercase model keys (HISTGB_REG, RIDGE, etc.)
+    def replace_model_key(match):
+        key = match.group(0).lower()
+        return model_display_name(key)
+    
+    text = re.sub(r'\b([A-Z_]{2,})\b', replace_model_key, text)
+    
+    # Clean up multiple spaces
+    text = re.sub(r'\s+', ' ', text)
+    
+    return text.strip()
+
+
 def models_to_families(model_keys: List[str]) -> List[str]:
     """Convert a list of model keys to unique family names."""
     return list(dict.fromkeys(
@@ -1084,11 +1125,16 @@ class InsightLedger:
 
             # Render resolved insights (actions taken)
             for i in resolved_in_phase:
+                # Clean coaching annotations from finding and resolved_by
+                finding = _clean_for_manuscript(i.finding)
+                resolved_by = _clean_for_manuscript(i.resolved_by)
+                
                 if i.resolution_details.get("action_type"):
                     detail_prose = format_resolution_detail(
                         i.resolution_details, model_scope=i.model_scope
                     )
-                    sentences.append(f"{i.finding}. {detail_prose}.")
+                    detail_prose = _clean_for_manuscript(detail_prose)
+                    sentences.append(f"{finding}. {detail_prose}.")
                 else:
                     detail_str = ""
                     if i.resolution_details:
@@ -1097,9 +1143,11 @@ class InsightLedger:
                             if k in ("method", "strategy", "approach", "finding", "category"):
                                 continue
                             if isinstance(v, list):
-                                parts.append(f"{k}: {', '.join(str(x) for x in v)}")
+                                # Clean model keys from list values
+                                cleaned_v = [_clean_for_manuscript(str(x)) for x in v]
+                                parts.append(f"{k}: {', '.join(cleaned_v)}")
                             else:
-                                parts.append(f"{k}={v}")
+                                parts.append(f"{k}={_clean_for_manuscript(str(v))}")
                         if parts:
                             detail_str = f" ({', '.join(parts)})"
 
@@ -1111,17 +1159,19 @@ class InsightLedger:
                         scope_str = f" [applicable to {', '.join(scope_names)}]"
 
                     sentences.append(
-                        f"{i.finding}. {i.resolved_by}{detail_str}.{scope_str}"
+                        f"{finding}. {resolved_by}{detail_str}.{scope_str}"
                     )
 
             # Render acknowledged limitations
             if acknowledged_in_phase:
                 limitations = []
                 for i in acknowledged_in_phase:
+                    finding = _clean_for_manuscript(i.finding)
                     if i.acknowledged_by:
-                        limitations.append(f"{i.finding} ({i.acknowledged_by})")
+                        ack_by = _clean_for_manuscript(i.acknowledged_by)
+                        limitations.append(f"{finding} ({ack_by})")
                     else:
-                        limitations.append(i.finding)
+                        limitations.append(finding)
                 if len(limitations) == 1:
                     sentences.append(
                         f"The following limitation was noted and accepted: {limitations[0]}."
@@ -1134,7 +1184,7 @@ class InsightLedger:
 
             # Render strengths (positive observations)
             if strengths_in_phase:
-                strength_findings = [i.finding for i in strengths_in_phase]
+                strength_findings = [_clean_for_manuscript(i.finding) for i in strengths_in_phase]
                 if len(strength_findings) == 1:
                     sentences.append(
                         f"Dataset characteristics favorable to the analysis: {strength_findings[0]}."
