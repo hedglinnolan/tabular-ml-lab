@@ -83,12 +83,18 @@ class ManuscriptDraft:
 
     def to_latex(self) -> str:
         """Render as LaTeX subsections."""
+        import re
+        
         lines = ["\\section{Methods}\n"]
         for title, content in self.sections.items():
             latex_title = title.replace("&", "\\&")
             lines.append(f"\\subsection{{{latex_title}}}")
             lines.append("")
-            lines.append(content)
+            # Strip markdown headers from content (##, ###, etc.)
+            content_cleaned = re.sub(r'^#+\s+.*$', '', content, flags=re.MULTILINE)
+            # Clean up resulting multiple blank lines
+            content_cleaned = re.sub(r'\n\n\n+', '\n\n', content_cleaned).strip()
+            lines.append(content_cleaned)
             lines.append("")
         if self.warnings:
             lines.append("% Completeness warnings:")
@@ -219,61 +225,63 @@ class NarrativeEngine:
             parts.append(f"The outcome variable was {target}.")
 
         # Split strategy
-        strategy = self.ctx.get("split_strategy", "")
-        n_train = self.ctx.get("n_train", 0)
-        n_val = self.ctx.get("n_val", 0)
-        n_test = self.ctx.get("n_test", 0)
-        seed = self.ctx.get("random_seed", 42)
-
-        # Target trimming — mention BEFORE the split description
         split_prov = self.prov.split
-        if split_prov and split_prov.target_trim_enabled:
-            lo_pct = round(split_prov.target_trim_lower * 100)
-            hi_pct = round((1.0 - split_prov.target_trim_upper) * 100)
-            if lo_pct > 0 or hi_pct > 0:
-                trim_parts = []
-                if lo_pct > 0:
-                    trim_parts.append(f"lower {lo_pct}%")
-                if hi_pct > 0:
-                    trim_parts.append(f"upper {hi_pct}%")
-                parts.append(
-                    f"Extreme target values were removed prior to splitting "
-                    f"(trimmed {' and '.join(trim_parts)} of the target distribution)."
-                )
-            else:
-                parts.append(
-                    "Target variable trimming was applied prior to splitting."
-                )
+        if split_prov:
+            strategy = split_prov.strategy
+            n_train = split_prov.train_n
+            n_val = split_prov.val_n
+            n_test = split_prov.test_n
+            seed = split_prov.random_seed
 
-        if n_train and n_test:
-            # Recompute percentages from actual n values (not stored pct fields)
-            total = n_train + n_val + n_test
-            train_pct = round(n_train / total * 100)
-            val_pct = round(n_val / total * 100) if n_val else 0
-            test_pct = round(n_test / total * 100)
+            # Target trimming — mention BEFORE the split description
+            if split_prov.target_trim_enabled:
+                lo_pct = round(split_prov.target_trim_lower * 100)
+                hi_pct = round((1.0 - split_prov.target_trim_upper) * 100)
+                if lo_pct > 0 or hi_pct > 0:
+                    trim_parts = []
+                    if lo_pct > 0:
+                        trim_parts.append(f"lower {lo_pct}%")
+                    if hi_pct > 0:
+                        trim_parts.append(f"upper {hi_pct}%")
+                    parts.append(
+                        f"Extreme target values were removed prior to splitting "
+                        f"(trimmed {' and '.join(trim_parts)} of the target distribution)."
+                    )
+                else:
+                    parts.append(
+                        "Target variable trimming was applied prior to splitting."
+                    )
 
-            split_desc = f"{strategy} " if strategy else ""
-            if n_val:
-                parts.append(
-                    f"Data were partitioned using a {split_desc}split into training "
-                    f"(n={n_train:,}, {train_pct}%), validation (n={n_val:,}, {val_pct}%), "
-                    f"and test (n={n_test:,}, {test_pct}%) sets (random seed={seed})."
-                )
-            else:
-                parts.append(
-                    f"Data were partitioned using a {split_desc}split into training "
-                    f"(n={n_train:,}, {train_pct}%) and test (n={n_test:,}, {test_pct}%) "
-                    f"sets (random seed={seed})."
-                )
+            # Split description
+            if n_train > 0 and n_test > 0:
+                # Recompute percentages from actual n values (not stored pct fields)
+                total = n_train + n_val + n_test
+                train_pct = round(n_train / total * 100)
+                val_pct = round(n_val / total * 100) if n_val else 0
+                test_pct = round(n_test / total * 100)
 
-        # Target transform
-        target_transform = self.ctx.get("target_transform", "none")
-        if target_transform and target_transform != "none":
-            label = _TRANSFORM_LABELS.get(target_transform, target_transform)
-            parts.append(
-                f"The target variable was transformed using {label} "
-                f"prior to model training; predictions were back-transformed for evaluation."
-            )
+                split_desc = f"{strategy} " if strategy else ""
+                if n_val > 0:
+                    parts.append(
+                        f"Data were partitioned using a {split_desc}split into training "
+                        f"(n={n_train:,}, {train_pct}%), validation (n={n_val:,}, {val_pct}%), "
+                        f"and test (n={n_test:,}, {test_pct}%) sets (random seed={seed})."
+                    )
+                else:
+                    parts.append(
+                        f"Data were partitioned using a {split_desc}split into training "
+                        f"(n={n_train:,}, {train_pct}%) and test (n={n_test:,}, {test_pct}%) "
+                        f"sets (random seed={seed})."
+                    )
+
+            # Target transform
+            target_transform = split_prov.target_transform
+            if target_transform and target_transform != "none":
+                label = _TRANSFORM_LABELS.get(target_transform, target_transform)
+                parts.append(
+                    f"The target variable was transformed using {label} "
+                    f"prior to model training; predictions were back-transformed for evaluation."
+                )
 
         # Data cleaning
         cleaning = self.ctx.get("cleaning_actions", [])
@@ -311,10 +319,15 @@ class NarrativeEngine:
         n_before_sel = self.ctx.get("n_features_before_selection", 0)
         n_after_sel = self.ctx.get("n_features_after_selection", 0)
         if fs_method:
-            parts.append(
-                f"Feature selection was performed using {fs_method}, "
-                f"reducing from {n_before_sel} to {n_after_sel} predictors."
-            )
+            if n_before_sel == n_after_sel and n_after_sel > 0:
+                parts.append(
+                    f"All {n_after_sel} candidate predictors were retained."
+                )
+            elif n_after_sel > 0:
+                parts.append(
+                    f"Feature selection was performed using {fs_method}, "
+                    f"reducing from {n_before_sel} to {n_after_sel} predictors."
+                )
 
         # Final feature count
         if n_final and n_final <= 15 and features:
