@@ -499,7 +499,15 @@ class WorkflowProvenance:
         if self.training:
             ctx["models_trained"] = self.training.models_trained
             ctx["primary_model"] = self.training.primary_model
-            ctx["selection_criteria"] = self.training.selection_criteria
+            # Provide task-appropriate default if selection_criteria is empty
+            selection_criteria = self.training.selection_criteria
+            if not selection_criteria and self.upload:
+                task_type = self.upload.task_type
+                if task_type == "regression":
+                    selection_criteria = "validation RMSE"
+                elif task_type == "classification":
+                    selection_criteria = "validation F1"
+            ctx["selection_criteria"] = selection_criteria
             ctx["use_cv"] = self.training.use_cv
             ctx["cv_folds"] = self.training.cv_folds
             ctx["use_hyperopt"] = self.training.use_hyperopt
