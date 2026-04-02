@@ -114,6 +114,26 @@ def _format_abstract_population_sentence(upload_n: int, analysis_n: int) -> str:
     return f"A total of {total:,} observations were available for analysis."
 
 
+def _format_abstract_predictor_sentence(feature_counts: Dict[str, Any], feature_names: Optional[List[str]]) -> str:
+    """Describe predictor counts consistently in the abstract."""
+    selected_count = feature_counts.get('selected') or (len(feature_names) if feature_names else 0)
+    original_count = feature_counts.get('original')
+    candidate_count = feature_counts.get('candidate')
+
+    if original_count and candidate_count and selected_count and candidate_count != original_count and selected_count != candidate_count:
+        return (
+            f"The raw dataset contained {original_count} predictor variables, "
+            f"feature engineering yielded {candidate_count} candidates, and "
+            f"feature selection retained {selected_count} predictors for final modeling."
+        )
+    if original_count and selected_count and selected_count != original_count:
+        return (
+            f"The workflow began with {original_count} predictor variables and retained "
+            f"{selected_count} predictors for final modeling."
+        )
+    return f"The final modeling set contained {selected_count or 'N'} predictors."
+
+
 def _convert_markdown_to_latex(markdown_text: str) -> Tuple[str, str]:
     """Convert markdown methods section to LaTeX, separating Methods and Results.
     
@@ -416,15 +436,15 @@ def generate_latex_report(
         population_counts = manuscript_facts.get('population_counts', {})
         analysis_n = population_counts.get('analysis_total') or (n_train + n_val + n_test)
         upload_n = population_counts.get('upload_total') or n_total
+        feature_counts = manuscript_facts.get('feature_counts', {})
         
         abs_parts = []
         abs_parts.append(r"\noindent \textbf{Objective:} [PLACEHOLDER: clinical context]. This study developed and validated a prediction model for " + 
                         _escape_latex(target_name) + " using " + _escape_latex(task_type) + ".")
         
-        # Use selected feature count from manuscript context if available, else fall back to feature_names length
-        _n_predictors = manuscript_facts.get('feature_counts', {}).get('selected') or (len(feature_names) if feature_names else 'N')
         abs_parts.append(r"\textbf{Methods:} " + _format_abstract_population_sentence(upload_n, analysis_n) + " " +
-                        "These observations, with " + f"{_n_predictors}" + " predictors, were split into training (n=" + 
+                        _format_abstract_predictor_sentence(feature_counts, feature_names) + " " +
+                        "These observations were split into training (n=" + 
                         f"{n_train:,}" + "), validation (n=" + f"{n_val:,}" + "), and test (n=" + 
                         f"{n_test:,}" + ") sets. " + f"{len(model_results)}" + " models were compared.")
         

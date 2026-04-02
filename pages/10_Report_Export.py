@@ -693,6 +693,10 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     train_n = len(st.session_state.get('X_train', []))
     val_n = len(st.session_state.get('X_val', []))
     test_n = len(st.session_state.get('X_test', []))
+    feature_counts = export_ctx.get('feature_counts') or {}
+    predictor_count = feature_counts.get('selected') or len(data_config.feature_cols)
+    original_count = feature_counts.get('original')
+    candidate_count = feature_counts.get('candidate')
     analysis_n = train_n + val_n + test_n
     if analysis_n and analysis_n != len(df):
         population_clause = (
@@ -701,9 +705,22 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
         )
     else:
         population_clause = f"A total of {analysis_n or len(df):,} observations were available for analysis."
+    if original_count and candidate_count and predictor_count and candidate_count != original_count and predictor_count != candidate_count:
+        predictor_clause = (
+            f"The raw dataset contained {original_count} predictor variables, "
+            f"feature engineering yielded {candidate_count} candidates, and "
+            f"feature selection retained {predictor_count} predictors for final modeling."
+        )
+    elif original_count and predictor_count and predictor_count != original_count:
+        predictor_clause = (
+            f"The workflow began with {original_count} predictor variables and retained "
+            f"{predictor_count} predictors for final modeling."
+        )
+    else:
+        predictor_clause = f"The final modeling set contained {predictor_count} predictors."
     report_lines.append(
         f"**Methods:** {population_clause} "
-        f"These observations, with {len(data_config.feature_cols)} predictors, were split into "
+        f"{predictor_clause} These observations were split into "
         f"training (n={train_n:,}), validation (n={val_n:,}), and test (n={test_n:,}) sets. "
         f"{len(model_results)} models were compared."
     )

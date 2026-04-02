@@ -375,6 +375,32 @@ class TestResultsAndDiscussion:
         assert "lower 5%" in draft.study_design
         assert "upper 5%" in draft.study_design
 
+    def test_predictor_variables_narrate_feature_funnel_and_singular_engineering(self):
+        """Predictor narrative should explain original/candidate/selected counts cleanly."""
+        prov = WorkflowProvenance()
+        prov.record_upload("glucose", "regression", [f"base_{i}" for i in range(26)], 500)
+        prov.record_feature_engineering(
+            transforms=["age × waist circumference"],
+            n_created=1,
+            n_before=26,
+            n_after=27,
+        )
+        prov.record_feature_selection(
+            method="consensus",
+            n_before=27,
+            n_after=18,
+            features_kept=[f"feat_{i}" for i in range(18)],
+        )
+
+        engine = NarrativeEngine(prov)
+        draft = engine.generate()
+
+        assert "1 engineered feature was created" in draft.predictor_variables
+        assert "26 predictor variables" in draft.predictor_variables
+        assert "27 candidate predictors" in draft.predictor_variables
+        assert "18 predictors for final modeling" in draft.predictor_variables
+        assert "1 engineered features were created" not in draft.predictor_variables
+
     def test_results_comparative_performance(self, full_provenance):
         """Results should compare all models."""
         engine = NarrativeEngine(full_provenance)

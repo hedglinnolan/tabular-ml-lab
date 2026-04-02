@@ -246,6 +246,12 @@ _TRANSFORM_LABELS = {
 }
 
 
+def _count_phrase(count: int, singular: str, plural: Optional[str] = None) -> str:
+    """Return a count-aware noun phrase."""
+    noun = singular if count == 1 else (plural or f"{singular}s")
+    return f"{count} {noun}"
+
+
 # ---------------------------------------------------------------------------
 # NarrativeEngine
 # ---------------------------------------------------------------------------
@@ -425,29 +431,54 @@ class NarrativeEngine:
         n_original = self.ctx.get("n_features_original", 0)
         features = self.ctx.get("features_kept") or self.ctx.get("feature_cols", [])
         n_final = len(features) if features else 0
+        n_before_sel = self.ctx.get("n_features_before_selection", 0)
+        n_after_sel = self.ctx.get("n_features_after_selection", 0)
+        candidate_count = n_before_sel or (n_original + self.ctx.get("n_engineered", 0) if n_original else 0)
+        final_count = n_after_sel or n_final
 
         # Feature engineering
         transforms = self.ctx.get("engineering_transforms", [])
         n_engineered = self.ctx.get("n_engineered", 0)
         if transforms:
+            creation_verb = "was" if n_engineered == 1 else "were"
             parts.append(
                 f"Feature engineering was performed: {', '.join(transforms)}. "
-                f"{n_engineered} engineered features were created."
+                f"{_count_phrase(n_engineered, 'engineered feature')} {creation_verb} created."
             )
 
-        # Feature selection
         fs_method = self.ctx.get("fs_method", "")
-        n_before_sel = self.ctx.get("n_features_before_selection", 0)
-        n_after_sel = self.ctx.get("n_features_after_selection", 0)
-        if fs_method:
-            if n_before_sel == n_after_sel and n_after_sel > 0:
+        # Feature funnel narrative
+        if n_original and final_count:
+            if candidate_count and candidate_count != n_original and final_count != candidate_count:
                 parts.append(
-                    f"All {n_after_sel} candidate predictors were retained."
+                    f"The raw dataset contained {n_original} predictor variables. "
+                    f"Feature engineering expanded this to {candidate_count} candidate predictors, "
+                    f"and feature selection retained {final_count} predictors for final modeling."
                 )
-            elif n_after_sel > 0:
+            elif candidate_count and candidate_count != n_original:
+                parts.append(
+                    f"The raw dataset contained {n_original} predictor variables. "
+                    f"Feature engineering expanded this to {candidate_count} candidate predictors, "
+                    f"all of which were retained for final modeling."
+                )
+            elif final_count != n_original:
+                parts.append(
+                    f"The workflow began with {n_original} predictor variables and retained "
+                    f"{final_count} predictors for final modeling."
+                )
+            else:
+                parts.append(f"All {final_count} candidate predictors were retained for final modeling.")
+
+        # Feature selection detail
+        if fs_method and final_count:
+            if candidate_count == final_count:
+                parts.append(
+                    f"Feature selection was performed using {fs_method}, and all {final_count} candidate predictors were retained."
+                )
+            elif candidate_count:
                 parts.append(
                     f"Feature selection was performed using {fs_method}, "
-                    f"reducing from {n_before_sel} to {n_after_sel} predictors."
+                    f"reducing the feature set from {candidate_count} to {final_count} predictors."
                 )
 
         # Final feature count

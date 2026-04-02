@@ -229,6 +229,27 @@ def test_generate_latex_report_reconciles_upload_and_analysis_counts_in_abstract
     assert "training (n=700), validation (n=150), and test (n=100)" in latex
 
 
+def test_generate_latex_report_abstract_uses_feature_funnel_and_final_predictor_count():
+    latex = generate_latex_report(
+        model_results={"ridge": {"metrics": {"RMSE": 0.1234}}},
+        task_type="regression",
+        target_name="glucose",
+        n_total=1000,
+        n_train=700,
+        n_val=150,
+        n_test=150,
+        manuscript_context={
+            'feature_counts': {'original': 26, 'candidate': 27, 'selected': 18},
+            'selected_model_results': {"ridge": {"metrics": {"RMSE": 0.1234}}},
+        },
+    )
+
+    assert "26 predictor variables" in latex
+    assert "27 candidates" in latex
+    assert "18 predictors for final modeling" in latex
+    assert "final modeling set contained 27 predictors" not in latex
+
+
 def test_methods_section_uses_consistent_feature_counts_from_workflow_state():
     import streamlit as st
 
