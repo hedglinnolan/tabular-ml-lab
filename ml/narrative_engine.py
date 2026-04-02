@@ -105,13 +105,7 @@ class ManuscriptDraft:
             lines.append(f"### {title}\n")
             lines.append(content)
             lines.append("")
-        
-        if self.warnings:
-            lines.append("### Completeness Notes\n")
-            for w in self.warnings:
-                lines.append(f"- {w}")
-            lines.append("")
-        
+
         # Results section (top-level)
         if self.results.strip():
             lines.append("## Results\n")
@@ -161,7 +155,7 @@ class ManuscriptDraft:
         if self.warnings:
             lines.append("% Completeness warnings:")
             for w in self.warnings:
-                lines.append(f"% - {w}")
+                lines.append(f"% NOTE: {w}")
             lines.append("")
         
         # Results section (top-level)
@@ -309,7 +303,8 @@ class NarrativeEngine:
         parts = []
 
         task_type = self.ctx.get("task_type", "")
-        n_total = self.ctx.get("n_total", 0)
+        n_total = self.ctx.get("n_analysis_total") or self.ctx.get("n_total", 0)
+        n_upload_total = self.ctx.get("n_upload_total", 0)
         target = self.ctx.get("target_name", "")
 
         if task_type and n_total:
@@ -328,9 +323,40 @@ class NarrativeEngine:
             n_val = split_prov.val_n
             n_test = split_prov.test_n
             seed = split_prov.random_seed
+            n_analysis_total = n_train + n_val + n_test
+            counts_reconciled = False
 
-            # Target trimming — mention BEFORE the split description
-            if split_prov.target_trim_enabled:
+            # Reconcile upload-vs-analysis population before describing the split.
+            if n_upload_total and n_analysis_total and n_upload_total > n_analysis_total:
+                lo_pct = round(split_prov.target_trim_lower * 100)
+                hi_pct = round((1.0 - split_prov.target_trim_upper) * 100)
+                if split_prov.target_trim_enabled and (lo_pct > 0 or hi_pct > 0):
+                    trim_parts = []
+                    if lo_pct > 0:
+                        trim_parts.append(f"the lower {lo_pct}%")
+                    if hi_pct > 0:
+                        trim_parts.append(f"the upper {hi_pct}%")
+                    parts.append(
+                        f"Of {n_upload_total:,} available observations, "
+                        f"{n_analysis_total:,} remained for analysis after trimming "
+                        f"{' and '.join(trim_parts)} of the target distribution prior to splitting."
+                    )
+                elif split_prov.target_trim_enabled:
+                    parts.append(
+                        f"Of {n_upload_total:,} available observations, "
+                        f"{n_analysis_total:,} remained for analysis after target trimming "
+                        f"was applied prior to splitting."
+                    )
+                else:
+                    parts.append(
+                        f"Of {n_upload_total:,} available observations, "
+                        f"{n_analysis_total:,} remained for analysis after exclusion criteria "
+                        f"were applied prior to splitting."
+                    )
+                counts_reconciled = True
+
+            # Target trimming — mention BEFORE the split description when counts are unchanged.
+            if split_prov.target_trim_enabled and not counts_reconciled:
                 lo_pct = round(split_prov.target_trim_lower * 100)
                 hi_pct = round((1.0 - split_prov.target_trim_upper) * 100)
                 if lo_pct > 0 or hi_pct > 0:
@@ -347,7 +373,6 @@ class NarrativeEngine:
                     parts.append(
                         "Target variable trimming was applied prior to splitting."
                     )
-
             # Split description
             if n_train > 0 and n_test > 0:
                 # Recompute percentages from actual n values (not stored pct fields)
@@ -1182,14 +1207,14 @@ class NarrativeEngine:
         completeness = self.prov.get_completeness()
 
         if not completeness.get("upload"):
-            warnings.append("[PLACEHOLDER] Study design section requires data upload provenance.")
+            warnings.append("Study design section requires data upload provenance.")
         if not completeness.get("preprocessing"):
-            warnings.append("[PLACEHOLDER] Preprocessing section requires pipeline configuration.")
+            warnings.append("Preprocessing section requires pipeline configuration.")
         if not completeness.get("training"):
-            warnings.append("[PLACEHOLDER] Model development section requires training provenance.")
+            warnings.append("Model development section requires training provenance.")
         if not completeness.get("split"):
-            warnings.append("[PLACEHOLDER] Study design section requires split configuration.")
+            warnings.append("Study design section requires split configuration.")
         if not completeness.get("eda"):
-            warnings.append("[NOTE] No EDA analyses were recorded in provenance.")
+            warnings.append("No EDA analyses were recorded in provenance.")
 
         return warnings

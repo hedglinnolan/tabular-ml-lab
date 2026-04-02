@@ -209,6 +209,26 @@ def test_generate_latex_report_normalizes_known_text_artifacts():
     assert "mainresults" not in latex
 
 
+def test_generate_latex_report_reconciles_upload_and_analysis_counts_in_abstract():
+    latex = generate_latex_report(
+        model_results={"ridge": {"metrics": {"RMSE": 0.1234}}},
+        task_type="regression",
+        target_name="glucose",
+        n_total=1000,
+        n_train=700,
+        n_val=150,
+        n_test=100,
+        manuscript_context={
+            'feature_counts': {'selected': 2},
+            'population_counts': {'upload_total': 1000, 'analysis_total': 950},
+            'selected_model_results': {"ridge": {"metrics": {"RMSE": 0.1234}}},
+        },
+    )
+
+    assert "Of 1,000 observations, 950 remained for analysis" in latex
+    assert "training (n=700), validation (n=150), and test (n=100)" in latex
+
+
 def test_methods_section_uses_consistent_feature_counts_from_workflow_state():
     import streamlit as st
 

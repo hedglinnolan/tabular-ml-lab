@@ -314,7 +314,29 @@ class TestManuscriptDraft:
         draft = engine.generate()
 
         assert len(draft.warnings) > 0
-        assert any("[PLACEHOLDER]" in w for w in draft.warnings)
+        assert any("requires" in w for w in draft.warnings)
+
+    def test_markdown_omits_completeness_notes(self):
+        """Completeness notes should stay out of manuscript-facing markdown."""
+        prov = WorkflowProvenance()
+        engine = NarrativeEngine(prov)
+        draft = engine.generate()
+        md = draft.to_markdown()
+
+        assert "Completeness Notes" not in md
+        assert "[PLACEHOLDER]" not in md
+        assert "[NOTE]" not in md
+
+    def test_latex_uses_clean_completeness_comments(self):
+        """Completeness notes may appear in LaTeX comments, but not raw tags."""
+        prov = WorkflowProvenance()
+        engine = NarrativeEngine(prov)
+        draft = engine.generate()
+        latex = draft.to_latex()
+
+        assert "% NOTE:" in latex
+        assert "[PLACEHOLDER]" not in latex
+        assert "[NOTE]" not in latex
 
 
 class TestResultsAndDiscussion:
@@ -330,6 +352,28 @@ class TestResultsAndDiscussion:
         assert "R²" in draft.results or "R2" in draft.results
         assert "10.1" in draft.results  # RF RMSE
         assert "0.85" in draft.results  # RF R2
+
+    def test_study_design_reconciles_upload_and_analysis_counts_when_trimmed(self):
+        """Study design should narrate the post-trim analysis population."""
+        prov = WorkflowProvenance()
+        prov.record_upload("glucose", "regression", ["age", "bmi"], 1000)
+        prov.record_split(
+            strategy="random",
+            train_n=700,
+            val_n=150,
+            test_n=100,
+            target_trim_enabled=True,
+            target_trim_lower=0.05,
+            target_trim_upper=0.95,
+        )
+
+        engine = NarrativeEngine(prov)
+        draft = engine.generate()
+
+        assert "950 observations" in draft.study_design
+        assert "Of 1,000 available observations, 950 remained for analysis" in draft.study_design
+        assert "lower 5%" in draft.study_design
+        assert "upper 5%" in draft.study_design
 
     def test_results_comparative_performance(self, full_provenance):
         """Results should compare all models."""

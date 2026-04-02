@@ -320,6 +320,21 @@ def test_get_methods_context_empty():
     assert ctx == {}
 
 
+def test_get_methods_context_prefers_analysis_population_when_split_exists():
+    prov = make_prov()
+    prov.record_upload(target_col='glucose', task_type='regression',
+                       feature_cols=['age', 'bmi'], n_samples=1000)
+    prov.record_split(strategy='random', train_n=700, val_n=150, test_n=100,
+                      target_trim_enabled=True, target_trim_lower=0.05, target_trim_upper=0.95)
+
+    ctx = prov.get_methods_context()
+
+    assert ctx['n_upload_total'] == 1000
+    assert ctx['n_analysis_total'] == 950
+    assert ctx['n_total'] == 950
+    assert ctx['n_rows_removed_before_split'] == 50
+
+
 # ---------------------------------------------------------------------------
 # 5. to_dict() / from_dict() round-trip
 # ---------------------------------------------------------------------------

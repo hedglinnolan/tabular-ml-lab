@@ -364,6 +364,9 @@ def _build_manuscript_context(
             workflow_feature_names = list(feature_names_state)
         else:
             workflow_feature_names = list(data_config.feature_cols)
+    train_n = len(st.session_state.get('X_train', []))
+    val_n = len(st.session_state.get('X_val', []))
+    test_n = len(st.session_state.get('X_test', []))
 
     from ml.publication import _resolve_workflow_feature_counts, generate_methods_from_log
 
@@ -383,6 +386,13 @@ def _build_manuscript_context(
         'best_model_by_metric': export_ctx.get('best_model_by_metric'),
         'best_metric_name': export_ctx.get('best_metric_name'),
         'explainability_methods': list(selected_explain),
+        'population_counts': {
+            'upload_total': len(df) if df is not None else 0,
+            'analysis_total': train_n + val_n + test_n,
+            'train_n': train_n,
+            'val_n': val_n,
+            'test_n': test_n,
+        },
     }
 
 
@@ -670,7 +680,7 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     
     report_lines.append("---")
     report_lines.append("")
-    
+
     # Abstract (Draft) - auto-scaffold from known facts
     report_lines.append("## Abstract (Draft)")
     report_lines.append("")
@@ -683,7 +693,20 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     train_n = len(st.session_state.get('X_train', []))
     val_n = len(st.session_state.get('X_val', []))
     test_n = len(st.session_state.get('X_test', []))
-    report_lines.append(f"**Methods:** A total of {len(df):,} observations with {len(data_config.feature_cols)} predictors were split into training (n={train_n:,}), validation (n={val_n:,}), and test (n={test_n:,}) sets. {len(model_results)} models were compared.")
+    analysis_n = train_n + val_n + test_n
+    if analysis_n and analysis_n != len(df):
+        population_clause = (
+            f"Of {len(df):,} observations, {analysis_n:,} remained for analysis "
+            f"after trimming/exclusion criteria were applied prior to splitting."
+        )
+    else:
+        population_clause = f"A total of {analysis_n or len(df):,} observations were available for analysis."
+    report_lines.append(
+        f"**Methods:** {population_clause} "
+        f"These observations, with {len(data_config.feature_cols)} predictors, were split into "
+        f"training (n={train_n:,}), validation (n={val_n:,}), and test (n={test_n:,}) sets. "
+        f"{len(model_results)} models were compared."
+    )
     report_lines.append("")
     
     # Results - extract best model metrics

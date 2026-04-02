@@ -456,6 +456,7 @@ class WorkflowProvenance:
             ctx["task_type"] = self.upload.task_type
             ctx["feature_cols"] = self.upload.feature_cols
             ctx["n_features_original"] = self.upload.n_features
+            ctx["n_upload_total"] = self.upload.n_samples
             ctx["n_total"] = self.upload.n_samples
             ctx["cleaning_actions"] = self.upload.cleaning_actions
 
@@ -470,10 +471,16 @@ class WorkflowProvenance:
             ctx["features_kept"] = self.feature_selection.features_kept
 
         if self.split:
+            analysis_total = self.split.train_n + self.split.val_n + self.split.test_n
             ctx["split_strategy"] = self.split.strategy
             ctx["n_train"] = self.split.train_n
             ctx["n_val"] = self.split.val_n
             ctx["n_test"] = self.split.test_n
+            ctx["n_analysis_total"] = analysis_total
+            if analysis_total:
+                ctx["n_total"] = analysis_total
+                if self.upload and self.upload.n_samples > analysis_total:
+                    ctx["n_rows_removed_before_split"] = self.upload.n_samples - analysis_total
             ctx["random_seed"] = self.split.random_seed
             ctx["target_transform"] = self.split.target_transform
 

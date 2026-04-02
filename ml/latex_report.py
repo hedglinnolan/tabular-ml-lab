@@ -75,6 +75,7 @@ def _resolve_latex_manuscript_context(
         'best_model_by_metric': context.get('best_model_by_metric'),
         'best_metric_name': context.get('best_metric_name'),
         'feature_counts': dict(context.get('feature_counts') or {}),
+        'population_counts': dict(context.get('population_counts') or {}),
     }
 
 
@@ -100,6 +101,17 @@ def _escape_latex(text: str) -> str:
     for char, replacement in chars.items():
         text = text.replace(char, replacement)
     return text
+
+
+def _format_abstract_population_sentence(upload_n: int, analysis_n: int) -> str:
+    """Describe the abstract population without contradicting split counts."""
+    if analysis_n and upload_n and analysis_n != upload_n:
+        return (
+            f"Of {upload_n:,} observations, {analysis_n:,} remained for analysis "
+            "after trimming/exclusion criteria were applied prior to splitting."
+        )
+    total = analysis_n or upload_n
+    return f"A total of {total:,} observations were available for analysis."
 
 
 def _convert_markdown_to_latex(markdown_text: str) -> Tuple[str, str]:
@@ -401,6 +413,9 @@ def generate_latex_report(
     # Auto-scaffold abstract from known facts
     if abstract == "[ABSTRACT PLACEHOLDER]" and model_results and n_total > 0:
         best_model_key = manuscript_facts.get('manuscript_primary_model') or manuscript_facts.get('best_model_by_metric')
+        population_counts = manuscript_facts.get('population_counts', {})
+        analysis_n = population_counts.get('analysis_total') or (n_train + n_val + n_test)
+        upload_n = population_counts.get('upload_total') or n_total
         
         abs_parts = []
         abs_parts.append(r"\noindent \textbf{Objective:} [PLACEHOLDER: clinical context]. This study developed and validated a prediction model for " + 
@@ -408,8 +423,8 @@ def generate_latex_report(
         
         # Use selected feature count from manuscript context if available, else fall back to feature_names length
         _n_predictors = manuscript_facts.get('feature_counts', {}).get('selected') or (len(feature_names) if feature_names else 'N')
-        abs_parts.append(r"\textbf{Methods:} A total of " + f"{n_total:,}" + " observations with " + 
-                        f"{_n_predictors}" + " predictors were split into training (n=" + 
+        abs_parts.append(r"\textbf{Methods:} " + _format_abstract_population_sentence(upload_n, analysis_n) + " " +
+                        "These observations, with " + f"{_n_predictors}" + " predictors, were split into training (n=" + 
                         f"{n_train:,}" + "), validation (n=" + f"{n_val:,}" + "), and test (n=" + 
                         f"{n_test:,}" + ") sets. " + f"{len(model_results)}" + " models were compared.")
         
