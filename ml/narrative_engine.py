@@ -729,7 +729,7 @@ class NarrativeEngine:
         return " ".join(parts)
 
     def _gen_data_observations(self) -> str:
-        """Data observations from InsightLedger (resolved + acknowledged + strengths)."""
+        """Methods-facing data observations from resolved InsightLedger actions."""
         if not self.ledger:
             return ""
 
@@ -990,24 +990,21 @@ class NarrativeEngine:
         parts.append("### Strengths and Limitations\n")
         
         if self.ledger:
-            # Extract acknowledged insights (limitations) and strengths
-            acknowledged = [i for i in self.ledger.insights if i.acknowledged]
-            strengths = [
-                i for i in self.ledger.insights
-                if i.severity == "info" and "favorable" in i.finding.lower()
-            ]
-            
+            discussion_points = self.ledger.discussion_points_for_manuscript()
+            strengths = discussion_points.get("strengths", [])
+            limitations = discussion_points.get("limitations", [])
+
             if strengths:
                 parts.append("**Strengths:** ")
-                strength_strs = [i.finding for i in strengths[:3]]  # Top 3
+                strength_strs = strengths[:3]
                 parts.append("; ".join(strength_strs) + ". ")
             
-            if acknowledged:
+            if limitations:
                 parts.append("**Limitations:** ")
-                limitation_strs = [i.finding for i in acknowledged[:5]]  # Top 5
+                limitation_strs = limitations[:5]
                 parts.append("; ".join(limitation_strs) + ". ")
             
-            if not strengths and not acknowledged:
+            if not strengths and not limitations:
                 parts.append(
                     "[Auto-population from InsightLedger: No acknowledged limitations or "
                     "strengths were flagged during analysis. Investigator should document "

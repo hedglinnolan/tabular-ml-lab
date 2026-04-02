@@ -389,6 +389,12 @@ def _clean_for_manuscript(text: str) -> str:
     
     # Strip bracket annotations like "[warning]", "[info]"
     text = re.sub(r'\s*\[[a-z]+\]', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\s*\[applicable to [^\]]+\]', '', text, flags=re.IGNORECASE)
+
+    # Remove coaching/diagnostic stock phrases that do not belong in manuscript prose.
+    text = re.sub(r'(?i)\bpositive signal\b\s*[-:]*\s*', '', text)
+    text = re.sub(r'(?i)\bno action needed\b\.?', '', text)
+    text = re.sub(r'(?i)\bdataset characteristics favorable to the analysis\b\s*[:\-]*\s*', '', text)
     
     # Replace model keys with human names
     # Match uppercase model keys (HISTGB_REG, RIDGE, etc.)
@@ -400,6 +406,8 @@ def _clean_for_manuscript(text: str) -> str:
     
     # Clean up multiple spaces
     text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r'\.\.+', '.', text)
+    text = re.sub(r'\s+\.', '.', text)
     
     return text.strip()
 
@@ -1075,26 +1083,77 @@ class InsightLedger:
 
         return "\n".join(lines)
 
+    def discussion_points_for_manuscript(self) -> Dict[str, List[str]]:
+        """Return strengths and limitations for the Discussion section."""
+        strengths: List[str] = []
+        limitations: List[str] = []
+        seen_strengths = set()
+        seen_limitations = set()
+
+        for i in self._insights:
+            if i.resolved:
+                continue
+
+            finding = _clean_for_manuscript(i.finding)
+            if not finding:
+                continue
+
+            is_strength = i.id.startswith("eda_opportunity_") or i.severity == "info"
+            if is_strength:
+                if finding not in seen_strengths:
+                    strengths.append(finding)
+                    seen_strengths.add(finding)
+                continue
+
+            if i.acknowledged or self._is_narrative_worthy(i):
+                if finding not in seen_limitations:
+                    limitations.append(finding)
+                    seen_limitations.add(finding)
+
+        return {
+            "strengths": strengths,
+            "limitations": limitations,
+        }
+
+    def _manuscript_topic_bucket(self, insight: Insight) -> str:
+        """Map resolved insights to publication-friendly topic buckets."""
+        finding = (insight.finding or "").lower()
+        action_type = (insight.resolution_details.get("action_type") or "").lower()
+        category = insight.category
+
+        if "missing" in finding or action_type == "imputation" or category == "data_quality":
+            return "Missing Data"
+        if action_type in {
+            "transform", "power_transform", "outlier_treatment", "encoding",
+            "scaling", "feature_selection"
+        } or category in {"distribution", "relationship", "topology", "methodology"}:
+            return "Preprocessing Rationale"
+        if category == "model_selection":
+            return "Model Development"
+        if category == "explainability":
+            return "Explainability"
+        if category == "sensitivity":
+            return "Sensitivity Analysis"
+        if category == "validation":
+            return "Statistical Validation"
+        return "Workflow Observations"
+
     def to_manuscript_narrative(self) -> Dict[str, str]:
         """Generate manuscript-ready narrative grouped by workflow phase.
 
         Returns dict of {phase_name: narrative_text} for direct insertion
         into the LaTeX methods section.
 
-        Includes three types of insights:
-        1. Resolved: actions taken (e.g., "Skewness addressed via Yeo-Johnson transform")
-        2. Acknowledged: reviewed and accepted (e.g., "Small sample size noted; regularization applied")
-        3. Positive observations: dataset strengths (e.g., "Balanced class distributions observed")
+        Includes resolved workflow actions only. Strengths and limitations are
+        routed separately to the Discussion section via
+        `discussion_points_for_manuscript()`.
         """
         narratives = {}
 
         seen_ids = set()  # Prevent duplicate entries across phases
         for phase_name, phase_pages in WORKFLOW_PHASES.items():
             resolved_in_phase = []
-            acknowledged_in_phase = []
-            strengths_in_phase = []
 
-            # Collect resolved insights (actions taken)
             for i in self.get_resolved():
                 if i.id in seen_ids:
                     continue
@@ -1106,35 +1165,21 @@ class InsightLedger:
                     resolved_in_phase.append(i)
                     seen_ids.add(i.id)
 
-            # Collect acknowledged insights (reviewed and accepted)
-            for i in self.get_acknowledged():
-                if i.id in seen_ids:
-                    continue
-                if i.source_page in phase_pages:
-                    # Separate strengths (opportunity/positive) from limitations
-                    if i.id.startswith("eda_opportunity_") or i.severity == "info":
-                        strengths_in_phase.append(i)
-                    else:
-                        acknowledged_in_phase.append(i)
-                    seen_ids.add(i.id)
-
-            if not resolved_in_phase and not acknowledged_in_phase and not strengths_in_phase:
+            if not resolved_in_phase:
                 continue
 
-            sentences = []
+            grouped_sentences: Dict[str, List[str]] = {}
 
-            # Render resolved insights (actions taken)
             for i in resolved_in_phase:
-                # Clean coaching annotations from finding and resolved_by
                 finding = _clean_for_manuscript(i.finding)
                 resolved_by = _clean_for_manuscript(i.resolved_by)
-                
+
                 if i.resolution_details.get("action_type"):
                     detail_prose = format_resolution_detail(
                         i.resolution_details, model_scope=i.model_scope
                     )
                     detail_prose = _clean_for_manuscript(detail_prose)
-                    sentences.append(f"{finding}. {detail_prose}.")
+                    sentence = f"{finding}. {detail_prose}."
                 else:
                     detail_str = ""
                     if i.resolution_details:
@@ -1143,7 +1188,6 @@ class InsightLedger:
                             if k in ("method", "strategy", "approach", "finding", "category"):
                                 continue
                             if isinstance(v, list):
-                                # Clean model keys from list values
                                 cleaned_v = [_clean_for_manuscript(str(x)) for x in v]
                                 parts.append(f"{k}: {', '.join(cleaned_v)}")
                             else:
@@ -1151,51 +1195,16 @@ class InsightLedger:
                         if parts:
                             detail_str = f" ({', '.join(parts)})"
 
-                    scope_str = ""
-                    if i.model_scope:
-                        scope_names = [
-                            FAMILY_DISPLAY_NAMES.get(f, f) for f in i.model_scope
-                        ]
-                        scope_str = f" [applicable to {', '.join(scope_names)}]"
+                    sentence = f"{finding}. {resolved_by}{detail_str}."
 
-                    sentences.append(
-                        f"{finding}. {resolved_by}{detail_str}.{scope_str}"
-                    )
+                topic = self._manuscript_topic_bucket(i)
+                grouped_sentences.setdefault(topic, []).append(sentence)
 
-            # Render acknowledged limitations
-            if acknowledged_in_phase:
-                limitations = []
-                for i in acknowledged_in_phase:
-                    finding = _clean_for_manuscript(i.finding)
-                    if i.acknowledged_by:
-                        ack_by = _clean_for_manuscript(i.acknowledged_by)
-                        limitations.append(f"{finding} ({ack_by})")
-                    else:
-                        limitations.append(finding)
-                if len(limitations) == 1:
-                    sentences.append(
-                        f"The following limitation was noted and accepted: {limitations[0]}."
-                    )
-                else:
-                    items = "; ".join(limitations)
-                    sentences.append(
-                        f"The following limitations were noted and accepted: {items}."
-                    )
+            topic_blocks = []
+            for topic, sentences in grouped_sentences.items():
+                topic_blocks.append(f"{topic}: {' '.join(sentences)}")
 
-            # Render strengths (positive observations)
-            if strengths_in_phase:
-                strength_findings = [_clean_for_manuscript(i.finding) for i in strengths_in_phase]
-                if len(strength_findings) == 1:
-                    sentences.append(
-                        f"Dataset characteristics favorable to the analysis: {strength_findings[0]}."
-                    )
-                else:
-                    items = "; ".join(strength_findings)
-                    sentences.append(
-                        f"Dataset characteristics favorable to the analysis included: {items}."
-                    )
-
-            narratives[phase_name] = " ".join(sentences)
+            narratives[phase_name] = " ".join(topic_blocks)
 
         return narratives
 
@@ -1288,6 +1297,3 @@ def get_ledger() -> InsightLedger:
         st.session_state.insight_ledger = InsightLedger()
         ledger = st.session_state.insight_ledger
     return ledger
-
-
-

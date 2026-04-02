@@ -272,10 +272,10 @@ class TestNarrativeEngineGeneration:
 
         # Resolved insights
         assert "skew" in draft.data_observations.lower() or "Yeo-Johnson" in draft.data_observations
-        # Acknowledged limitations
-        assert "noted and accepted" in draft.data_observations
-        # Strengths
-        assert "favorable" in draft.data_observations.lower()
+        assert "Missing Data:" in draft.data_observations or "Preprocessing Rationale:" in draft.data_observations
+        # Discussion-only content should not leak into Data Observations
+        assert "noted and accepted" not in draft.data_observations
+        assert "favorable" not in draft.data_observations.lower()
 
 
 class TestManuscriptDraft:

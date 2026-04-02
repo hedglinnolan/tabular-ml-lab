@@ -213,7 +213,7 @@ class TestNarrativeWithEDAAnalyses:
             "stats": {"vif": [("BMI", 23.4), ("weight", 18.7)]},
         }, "VIF (Multicollinearity)")
 
-        # Auto-acknowledge the rest so they show in narrative
+        # Auto-acknowledge the rest so they are available for discussion
         eda_ledger.auto_acknowledge_gate("Preprocessing", source_pages=["02_EDA"])
 
         narratives = eda_ledger.to_manuscript_narrative()
@@ -246,5 +246,5 @@ class TestNarrativeWithEDAAnalyses:
         assert "VIF" in all_text or "collinearity" in all_text.lower()
         assert "Leakage" in all_text or "leakage" in all_text.lower()
 
-        # Acknowledged limitations
-        assert "noted and accepted" in all_text
+        discussion_points = eda_ledger.discussion_points_for_manuscript()
+        assert any("borderline" in text.lower() for text in discussion_points["limitations"])

@@ -169,7 +169,7 @@ class TestAutoAcknowledgeGate:
 
 
 class TestNarrativeWithAcknowledgments:
-    """Test that to_manuscript_narrative() includes acknowledged insights and strengths."""
+    """Test that acknowledged insights route to discussion-only helpers."""
 
     def test_narrative_includes_acknowledged_limitations(self):
         ledger = InsightLedger()
@@ -179,13 +179,11 @@ class TestNarrativeWithAcknowledgments:
         ))
         ledger.acknowledge("eda_small_sample", "Proceeded with regularization")
 
-        narratives = ledger.to_manuscript_narrative()
+        discussion_points = ledger.discussion_points_for_manuscript()
 
-        # Should appear in the EDA phase narrative
-        assert any("Sample size" in text for text in narratives.values()), \
-            f"Acknowledged limitation missing from narrative: {narratives}"
-        assert any("noted and accepted" in text for text in narratives.values()), \
-            f"Acknowledged framing missing from narrative: {narratives}"
+        assert any("Sample size" in text for text in discussion_points["limitations"]), \
+            f"Acknowledged limitation missing from discussion points: {discussion_points}"
+        assert ledger.to_manuscript_narrative() == {}, "Acknowledged-only insights should not populate methods narrative"
 
     def test_narrative_includes_strengths(self):
         ledger = InsightLedger()
@@ -198,12 +196,11 @@ class TestNarrativeWithAcknowledgments:
         # Auto-acknowledge at gate
         ledger.auto_acknowledge_gate("Proceeded to preprocessing", source_pages=["02_EDA"])
 
-        narratives = ledger.to_manuscript_narrative()
+        discussion_points = ledger.discussion_points_for_manuscript()
 
-        assert any("favorable" in text.lower() for text in narratives.values()), \
-            f"Strengths missing from narrative: {narratives}"
-        assert any("Balanced class" in text for text in narratives.values()), \
-            f"Strength details missing: {narratives}"
+        assert any("Balanced class" in text for text in discussion_points["strengths"]), \
+            f"Strength details missing from discussion points: {discussion_points}"
+        assert ledger.to_manuscript_narrative() == {}, "Strength-only insights should not populate methods narrative"
 
     def test_narrative_separates_resolved_and_acknowledged(self):
         """Resolved and acknowledged insights should both appear but with different framing."""
@@ -226,11 +223,11 @@ class TestNarrativeWithAcknowledgments:
 
         narratives = ledger.to_manuscript_narrative()
         all_text = " ".join(narratives.values())
+        discussion_points = ledger.discussion_points_for_manuscript()
 
-        # All three types should be present
         assert "BMI distribution" in all_text, "Resolved insight missing"
-        assert "noted and accepted" in all_text, "Acknowledged limitation missing"
-        assert "favorable" in all_text.lower(), "Strength missing"
+        assert any("Small sample" in text for text in discussion_points["limitations"]), "Acknowledged limitation missing"
+        assert any("Strong univariate associations" in text for text in discussion_points["strengths"]), "Strength missing"
 
     def test_unresolved_unacknowledged_still_invisible(self):
         """Insights that are neither resolved nor acknowledged should not appear."""
@@ -284,15 +281,17 @@ class TestFullLifecycleIntegration:
         assert ledger.get("eda_leakage_cholesterol").acknowledged is True
         assert ledger.get("eda_opportunity_balanced").acknowledged is True
 
-        # Narrative should be comprehensive
+        # Methods narrative should focus on resolved workflow actions
         narratives = ledger.to_manuscript_narrative()
         all_text = " ".join(narratives.values())
+        discussion_points = ledger.discussion_points_for_manuscript()
 
         assert "skewness" in all_text.lower() or "Yeo-Johnson" in all_text
         assert "imput" in all_text.lower() or "median" in all_text.lower()
-        assert "noted and accepted" in all_text  # limitations
-        assert "favorable" in all_text.lower()  # strengths
-        assert "Cholesterol" in all_text or "leakage" in all_text.lower()
+        assert "noted and accepted" not in all_text
+        assert "favorable" not in all_text.lower()
+        assert any("Cholesterol" in text or "leakage" in text.lower() for text in discussion_points["limitations"])
+        assert any("Balanced class" in text for text in discussion_points["strengths"])
 
     def test_all_resolved_no_acknowledged(self):
         """If everything is resolved, no acknowledged section appears."""
