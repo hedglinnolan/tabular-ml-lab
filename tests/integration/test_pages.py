@@ -115,6 +115,19 @@ class TestPageRendering:
         at.run()
         assert_no_exception(at, "Report Export")
 
+    def test_report_export_page_handles_numpy_permutation_importance(self, df):
+        at = AppTest.from_file("pages/10_Report_Export.py", default_timeout=30)
+        inject_data_state(at, df)
+        inject_trained_state(at, df)
+        at.session_state['permutation_importance'] = {
+            'ridge': {
+                'feature_names': ['age', 'bmi', 'cholesterol'],
+                'importances_mean': np.array([0.21, 0.13, 0.08]),
+            }
+        }
+        at.run()
+        assert_no_exception(at, "Report Export")
+
     def test_theory_page(self):
         at = AppTest.from_file("pages/11_Theory_Reference.py", default_timeout=30)
         at.run()

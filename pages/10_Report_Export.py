@@ -391,7 +391,7 @@ def _build_manuscript_context(
         pi_data = perm_importance[abstract_model_key]
         feat_names = pi_data.get('feature_names', [])
         importances = pi_data.get('importances_mean', [])
-        if feat_names and importances and len(feat_names) == len(importances):
+        if len(feat_names) > 0 and len(importances) > 0 and len(feat_names) == len(importances):
             sorted_idx = sorted(range(len(importances)), key=lambda i: importances[i], reverse=True)
             top_features = [feat_names[i] for i in sorted_idx[:3]]
 
