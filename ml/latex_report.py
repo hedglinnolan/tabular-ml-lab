@@ -887,61 +887,7 @@ def generate_latex_report(
 
 \subsection{Conclusion}
 [PLACEHOLDER: State the main conclusion and its implications.]
-
-% ── Commented Figure References ──
-% Uncomment after placing figure files in the manuscript directory
-
 """)
-    
-    # Add commented-out figure blocks for standard plots
-    if best_model_key:
-        if task_type == "regression":
-            sections.append(r"""
-% \begin{figure}[htbp]
-%   \centering
-%   \includegraphics[width=0.8\textwidth]{plots/train/""" + best_model_key + r"""_predictions.png}
-%   \caption{Predicted vs. actual values for the """ + best_model_key.upper() + r""" model on the test set.}
-%   \label{fig:predictions}
-% \end{figure}
-""")
-        else:
-            sections.append(r"""
-% \begin{figure}[htbp]
-%   \centering
-%   \includegraphics[width=0.8\textwidth]{plots/train/""" + best_model_key + r"""_confusion_matrix.png}
-%   \caption{Confusion matrix for the """ + best_model_key.upper() + r""" model on the test set.}
-%   \label{fig:confusion}
-% \end{figure}
-
-% \begin{figure}[htbp]
-%   \centering
-%   \includegraphics[width=0.8\textwidth]{plots/train/""" + best_model_key + r"""_roc_curve.png}
-%   \caption{ROC curve for the """ + best_model_key.upper() + r""" model.}
-%   \label{fig:roc}
-% \end{figure}
-""")
-    
-    if explainability_summary:
-        if explainability_summary.get('permutation_importance_available') and best_model_key:
-            sections.append(r"""
-% \begin{figure}[htbp]
-%   \centering
-%   \includegraphics[width=0.8\textwidth]{plots/explainability/""" + best_model_key + r"""_permutation_importance.png}
-%   \caption{Permutation importance for the """ + best_model_key.upper() + r""" model.}
-%   \label{fig:permutation}
-% \end{figure}
-""")
-        
-        if explainability_summary.get('shap_available') and best_model_key:
-            sections.append(r"""
-% \begin{figure}[htbp]
-%   \centering
-%   \includegraphics[width=0.8\textwidth]{plots/explainability/""" + best_model_key + r"""_shap_summary.png}
-%   \caption{SHAP summary plot showing feature contributions for the """ + best_model_key.upper() + r""" model.}
-%   \label{fig:shap}
-% \end{figure}
-""")
-    
     sections.append("")
 
     # ── References ──
@@ -973,17 +919,30 @@ This analysis was conducted using Tabular ML Lab (Python). Full reproducibility 
     if audit_trail:
         sections.append(r"\subsection{Decision Audit Trail}")
         sections.append("")
-        sections.append(r"\begin{enumerate}")
+        in_list = False
         # Parse the numbered list from audit_trail and convert to LaTeX enumerate
         for line in audit_trail.split('\n'):
-            if line.strip():
-                # Remove the number prefix "1. " etc.
-                import re
-                match = re.match(r'^\d+\.\s*(.+)$', line)
-                if match:
-                    content = _escape_latex(match.group(1))
-                    sections.append(f"\\item {content}")
-        sections.append(r"\end{enumerate}")
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("### "):
+                if in_list:
+                    sections.append(r"\end{enumerate}")
+                    in_list = False
+                sections.append(rf"\paragraph{{{_escape_latex(stripped[4:])}}}")
+                sections.append(r"\begin{enumerate}")
+                in_list = True
+                continue
+
+            match = re.match(r'^\d+\.\s*(.+)$', stripped)
+            if match:
+                if not in_list:
+                    sections.append(r"\begin{enumerate}")
+                    in_list = True
+                content = _escape_latex(match.group(1))
+                sections.append(f"\\item {content}")
+        if in_list:
+            sections.append(r"\end{enumerate}")
         sections.append("")
 
     sections.append(r"\end{document}")

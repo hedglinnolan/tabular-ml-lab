@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 # ============================================================================
@@ -1660,61 +1660,174 @@ def plot_forest_subgroups(subgroup_df: pd.DataFrame, metric_name: str = "Metric"
 # FIX 7: Decision Audit Trail
 # ============================================================================
 
+_AUDIT_PHASE_MAP = {
+    'Upload & Audit': 'Data Preparation',
+    'Data Cleaning': 'Data Preparation',
+    'EDA': 'Data Preparation',
+    'Preprocessing': 'Data Preparation',
+    'Feature Engineering': 'Feature Engineering',
+    'Feature Selection': 'Feature Engineering',
+    'Feature Selection Applied': 'Feature Engineering',
+    'Model Training': 'Model Selection',
+    'Explainability': 'Evaluation',
+    'Sensitivity Analysis': 'Evaluation',
+    'Statistical Validation': 'Evaluation',
+}
+
+
+def _audit_phase_for_step(step: str) -> str:
+    """Map workflow steps to publication-friendly appendix phases."""
+    return _AUDIT_PHASE_MAP.get(step, 'Workflow Decisions')
+
+
+def _clean_audit_text(text: Any) -> str:
+    """Remove formatting artifacts that should not appear in the appendix."""
+    if text is None:
+        return ""
+    cleaned = str(text)
+    cleaned = cleaned.replace("<!--", "").replace("-->", "")
+    cleaned = cleaned.replace("% \\begin{figure}", "").replace("% \\end{figure}", "")
+    cleaned = " ".join(cleaned.split())
+    return cleaned.strip(" .")
+
+
+def _format_audit_timestamp(timestamp: str) -> str:
+    """Format timestamps consistently for the audit appendix."""
+    if not timestamp:
+        return "Timestamp unavailable"
+    try:
+        dt = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt.strftime("%Y-%m-%d %H:%M UTC")
+    except Exception:
+        return _clean_audit_text(timestamp)
+
+
+def _summarize_audit_details(details: Dict[str, Any]) -> str:
+    """Collapse structured details into a short appendix-friendly summary."""
+    if not details:
+        return ""
+
+    parts: List[str] = []
+
+    n_before = details.get('n_before') or details.get('n_features_before')
+    n_after = details.get('n_after') or details.get('n_features_after')
+    if n_before is not None and n_after is not None:
+        parts.append(f"feature count {n_before} -> {n_after}")
+
+    n_created = details.get('n_created') or details.get('n_features_created')
+    if n_created:
+        parts.append(f"{n_created} engineered features added")
+
+    rows = details.get('rows') or details.get('n_rows') or details.get('n_observations')
+    cols = details.get('cols') or details.get('n_cols') or details.get('n_features')
+    target = details.get('target') or details.get('target_col')
+    if rows:
+        row_part = f"{rows} rows"
+        if cols:
+            row_part += f", {cols} columns"
+        if target:
+            row_part += f", target={target}"
+        parts.append(row_part)
+
+    task_type = details.get('task_type')
+    if task_type:
+        parts.append(f"task={task_type}")
+
+    method = details.get('method') or details.get('imputation') or details.get('strategy')
+    if method:
+        parts.append(f"method={_clean_audit_text(method)}")
+
+    models = details.get('models') or details.get('models_trained')
+    if isinstance(models, list) and models:
+        parts.append(f"models={', '.join(_clean_audit_text(m) for m in models[:4])}")
+
+    analyses = details.get('analyses')
+    if isinstance(analyses, list) and analyses:
+        parts.append(f"analyses={', '.join(_clean_audit_text(a) for a in analyses[:4])}")
+
+    if not parts:
+        for key, value in details.items():
+            if key in {'finding', 'category', 'action_type', 'timestamp'}:
+                continue
+            if value in (None, "", [], {}):
+                continue
+            if isinstance(value, list):
+                rendered = ", ".join(_clean_audit_text(v) for v in value[:4])
+            else:
+                rendered = _clean_audit_text(value)
+            if rendered:
+                parts.append(f"{key}={rendered}")
+            if len(parts) >= 3:
+                break
+
+    return "; ".join(parts)
+
+
 def generate_decision_audit_trail() -> str:
-    """Generate a numbered chronological list of all decisions from methodology log.
-    
-    Returns:
-        Markdown-formatted string with numbered decision list.
-    """
+    """Generate a grouped, deduplicated decision appendix from workflow logs."""
     try:
         import streamlit as st
         methodology_log = st.session_state.get('methodology_log', [])
+        try:
+            from utils.insight_ledger import get_ledger
+            ledger_log = get_ledger().get_methodology_log()
+        except Exception:
+            ledger_log = []
     except ImportError:
         return ""
-    
-    if not methodology_log:
+
+    source_entries = ledger_log or methodology_log
+    if not source_entries:
         return ""
-    
-    # Sort by timestamp if available
-    sorted_log = sorted(
-        methodology_log,
-        key=lambda x: x.get('timestamp', '')
-    )
-    
-    decisions = []
-    for i, entry in enumerate(sorted_log, 1):
-        step = entry.get('step', 'Unknown')
-        action = entry.get('action', '')
-        details = entry.get('details', {})
-        
-        # Format decision text
-        if action:
-            decision_text = f"[{step}] {action}"
+
+    sorted_log = sorted(source_entries, key=lambda x: x.get('timestamp', ''))
+    grouped_entries: Dict[str, List[str]] = {}
+    seen_signatures = set()
+
+    for entry in sorted_log:
+        step = _clean_audit_text(entry.get('step', 'Workflow Decisions')) or 'Workflow Decisions'
+        action = _clean_audit_text(entry.get('action', 'Recorded workflow decision')) or 'Recorded workflow decision'
+        details = entry.get('details') or {}
+        finding = _clean_audit_text(details.get('finding', ''))
+        detail_summary = _summarize_audit_details(details)
+        timestamp = _format_audit_timestamp(entry.get('timestamp', ''))
+
+        if finding and finding.lower() != action.lower():
+            rationale = finding
+        elif detail_summary:
+            rationale = f"Recorded parameters: {detail_summary}"
         else:
-            decision_text = f"[{step}]"
-        
-        # Add relevant details for key steps
-        if step == 'Upload & Audit':
-            task = details.get('task_type', '')
-            n_obs = details.get('n_observations', '')
-            n_features = details.get('n_features', '')
-            target = details.get('target', '')
-            if task and n_obs:
-                decision_text = f"[{step}] Configured {task} task with {n_features} features, target: {target} (N={n_obs:,})"
-        elif step == 'Feature Engineering':
-            n_created = details.get('n_features_created', '')
-            if n_created:
-                decision_text += f" ({n_created} features created)"
-        elif step == 'Feature Selection':
-            n_before = details.get('n_features_before', '')
-            n_after = details.get('n_features_after', '')
-            if n_before and n_after:
-                decision_text += f" ({n_before} → {n_after} features)"
-        elif step == 'Model Training':
-            models = details.get('models', [])
-            if models:
-                decision_text += f" ({len(models)} models)"
-        
-        decisions.append(f"{i}. {decision_text}")
-    
-    return "\n".join(decisions)
+            rationale = "Workflow configuration recorded for reproducibility."
+
+        signature = (
+            _audit_phase_for_step(step).lower(),
+            action.lower(),
+            rationale.lower(),
+        )
+        if signature in seen_signatures:
+            continue
+        seen_signatures.add(signature)
+
+        grouped_entries.setdefault(_audit_phase_for_step(step), []).append(
+            f"{timestamp} | Action: {action}. Rationale: {rationale}."
+        )
+
+    if not grouped_entries:
+        return ""
+
+    phase_order = ['Data Preparation', 'Feature Engineering', 'Model Selection', 'Evaluation', 'Workflow Decisions']
+    lines: List[str] = []
+    for phase in phase_order:
+        phase_entries = grouped_entries.get(phase)
+        if not phase_entries:
+            continue
+        lines.append(f"### {phase}")
+        for idx, text in enumerate(phase_entries, 1):
+            lines.append(f"{idx}. {text}")
+        lines.append("")
+
+    return "\n".join(lines).strip()

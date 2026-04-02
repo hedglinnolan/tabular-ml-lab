@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from ml.publication import (
     TRIPODTracker, TRIPOD_ITEMS,
     generate_methods_section,
+    generate_decision_audit_trail,
     generate_flow_diagram_mermaid,
     subgroup_analysis,
 )
@@ -665,3 +666,113 @@ def test_generate_methods_section_accepts_ledger_narratives():
     assert 'Data Quality and Preprocessing Rationale' in text
     assert 'EDA' in text
     assert 'Skewed features were log-transformed.' in text
+
+
+def test_generate_decision_audit_trail_groups_and_deduplicates_entries():
+    import streamlit as st
+    from utils.insight_ledger import InsightLedger
+
+    saved_ledger = st.session_state.get('insight_ledger', None)
+    saved_log = st.session_state.get('methodology_log', None)
+    try:
+        st.session_state['insight_ledger'] = InsightLedger()
+        st.session_state['methodology_log'] = [
+            {
+                'step': 'Preprocessing',
+                'action': 'Applied median imputation',
+                'details': {'finding': '2 features had 5-10% missingness'},
+                'timestamp': '2026-04-02T10:00:00+00:00',
+            },
+            {
+                'step': 'Model Training',
+                'action': 'Ran seed stability analysis',
+                'details': {'finding': 'Checked robustness to random seed'},
+                'timestamp': '2026-04-02T11:00:00+00:00',
+            },
+            {
+                'step': 'Model Training',
+                'action': 'Ran seed stability analysis',
+                'details': {'finding': 'Checked robustness to random seed'},
+                'timestamp': '2026-04-02T11:05:00+00:00',
+            },
+            {
+                'step': 'Statistical Validation',
+                'action': '<!-- hidden --> Residual diagnostics completed',
+                'details': {'finding': 'Confirmed residual assumptions'},
+                'timestamp': '2026-04-02T12:00:00+00:00',
+            },
+        ]
+
+        audit_trail = generate_decision_audit_trail()
+
+        assert '### Data Preparation' in audit_trail
+        assert '### Model Selection' in audit_trail
+        assert '### Evaluation' in audit_trail
+        assert audit_trail.count('Ran seed stability analysis') == 1
+        assert 'Action:' in audit_trail
+        assert 'Rationale:' in audit_trail
+        assert '<!--' not in audit_trail
+        assert '-->' not in audit_trail
+    finally:
+        if saved_ledger is None:
+            st.session_state.pop('insight_ledger', None)
+        else:
+            st.session_state['insight_ledger'] = saved_ledger
+        if saved_log is None:
+            st.session_state.pop('methodology_log', None)
+        else:
+            st.session_state['methodology_log'] = saved_log
+
+
+def test_generate_latex_report_groups_audit_trail_and_omits_commented_figure_blocks():
+    import streamlit as st
+    from utils.insight_ledger import InsightLedger
+
+    saved_ledger = st.session_state.get('insight_ledger', None)
+    saved_log = st.session_state.get('methodology_log', None)
+    try:
+        st.session_state['insight_ledger'] = InsightLedger()
+        st.session_state['methodology_log'] = [
+            {
+                'step': 'Preprocessing',
+                'action': 'Applied median imputation',
+                'details': {'finding': '2 features had 5-10% missingness'},
+                'timestamp': '2026-04-02T10:00:00+00:00',
+            },
+            {
+                'step': 'Model Training',
+                'action': 'Trained Random Forest',
+                'details': {'finding': 'Selected the strongest held-out performer'},
+                'timestamp': '2026-04-02T11:00:00+00:00',
+            },
+        ]
+
+        latex = generate_latex_report(
+            model_results={'rf': {'metrics': {'RMSE': 12.0, 'R2': 0.27}}},
+            task_type='regression',
+            target_name='glucose',
+            n_total=100,
+            n_train=70,
+            n_val=15,
+            n_test=15,
+            explainability_summary={
+                'permutation_importance_available': True,
+                'shap_available': True,
+                'top_features': ['age'],
+            },
+        )
+
+        assert r"\subsection{Decision Audit Trail}" in latex
+        assert r"\paragraph{Data Preparation}" in latex
+        assert r"\paragraph{Model Selection}" in latex
+        assert "% \\begin{figure}" not in latex
+        assert "%   \\includegraphics" not in latex
+    finally:
+        if saved_ledger is None:
+            st.session_state.pop('insight_ledger', None)
+        else:
+            st.session_state['insight_ledger'] = saved_ledger
+        if saved_log is None:
+            st.session_state.pop('methodology_log', None)
+        else:
+            st.session_state['methodology_log'] = saved_log
