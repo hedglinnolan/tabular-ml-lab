@@ -443,7 +443,7 @@ def _build_methods_section_for_export(
         prov = get_provenance()
         completeness = prov.get_completeness()
         if any(completeness.values()):
-            engine = NarrativeEngine(prov, _report_ledger)
+            engine = NarrativeEngine(prov, _report_ledger, manuscript_context=manuscript_context)
             draft = engine.generate()
             return draft.to_markdown()
     except Exception as _ne_err:

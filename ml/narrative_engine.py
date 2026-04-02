@@ -269,10 +269,13 @@ class NarrativeEngine:
         self,
         provenance: WorkflowProvenance,
         ledger: Optional[InsightLedger] = None,
+        manuscript_context: Optional[Dict[str, Any]] = None,
     ):
         self.prov = provenance
         self.ledger = ledger
         self.ctx = provenance.get_methods_context()
+        self.manuscript_context = dict(manuscript_context or {})
+        self._apply_manuscript_context()
         # Normalize metric keys to title-case (e.g. "rmse" → "RMSE", "r2" → "R2")
         self._normalize_metrics()
 
@@ -303,6 +306,38 @@ class NarrativeEngine:
         return draft
 
     # -- Section generators --------------------------------------------------
+
+    def _apply_manuscript_context(self) -> None:
+        """Overlay frozen export facts onto provenance-derived context when provided."""
+        if not self.manuscript_context:
+            return
+
+        selected_results = self.manuscript_context.get("selected_model_results") or {}
+        if selected_results:
+            frozen_metrics = {}
+            for model_key, payload in selected_results.items():
+                if isinstance(payload, dict) and isinstance(payload.get("metrics"), dict):
+                    frozen_metrics[model_key] = dict(payload["metrics"])
+                elif isinstance(payload, dict):
+                    frozen_metrics[model_key] = dict(payload)
+            if frozen_metrics:
+                self.ctx["metrics_by_model"] = frozen_metrics
+                self.ctx["models_trained"] = list(frozen_metrics.keys())
+
+        manuscript_primary = (
+            self.manuscript_context.get("manuscript_primary_model")
+            or self.manuscript_context.get("best_model_by_metric")
+        )
+        if manuscript_primary:
+            self.ctx["primary_model"] = manuscript_primary
+
+        target_stats = self.manuscript_context.get("target_stats") or {}
+        if target_stats:
+            self.ctx["target_stats"] = dict(target_stats)
+
+        top_features = self.manuscript_context.get("top_features") or []
+        if top_features:
+            self.ctx["top_features"] = list(top_features)
 
     def _gen_study_design(self) -> str:
         """Study design: task type, sample size, split strategy."""
@@ -927,11 +962,7 @@ class NarrativeEngine:
         return " ".join(parts)
 
     def _gen_discussion(self) -> str:
-        """Discussion section: skeleton with placeholders.
-        
-        Auto-generates what can be auto-generated (summary, limitations from ledger).
-        Leaves placeholders for human interpretation.
-        """
+        """Discussion section: results-aware scaffold plus investigator-required placeholders."""
         parts = []
         
         # Principal Findings — auto-generated summary
@@ -941,6 +972,10 @@ class NarrativeEngine:
         primary_model = self.ctx.get("primary_model", "")
         task_type = self.ctx.get("task_type", "")
         metrics = self.ctx.get("metrics_by_model", {})
+        top_features = self.ctx.get("top_features", [])
+        target_stats = self.ctx.get("target_stats", {})
+
+        primary_model = self._resolve_primary_model(metrics, task_type, primary_model)
         
         if primary_model and metrics.get(primary_model):
             model_label = self._model_name(primary_model)
@@ -978,13 +1013,30 @@ class NarrativeEngine:
                 f"Performance was compared across {len(models)} candidate models "
                 f"({', '.join(self._model_name(m) for m in models)}). "
             )
+
+        pattern_sentence = self._discussion_model_pattern(task_type, metrics)
+        if pattern_sentence:
+            parts.append(pattern_sentence + " ")
+
+        regression_context_sentence = self._discussion_regression_context(
+            best_metrics=metrics.get(primary_model, {}) if primary_model else {},
+            target_stats=target_stats,
+        )
+        if regression_context_sentence:
+            parts.append(regression_context_sentence + " ")
+
+        if top_features:
+            feature_phrase = self._human_join(top_features[:3])
+            parts.append(
+                f"The strongest predictors in the explainability analyses were {feature_phrase}. "
+            )
         
         parts.append("\n")
         
         # Comparison with Prior Work — placeholder
         parts.append("### Comparison with Prior Work\n")
-        parts.append("[To be completed by the investigator: Compare results to published studies, "
-                    "discuss agreement or discrepancies, contextualize findings within the literature.]\n\n")
+        parts.append("[Investigator required: Compare these results to published studies, "
+                    "discuss agreement or discrepancies, and contextualize findings within the literature.]\n\n")
         
         # Strengths and Limitations — auto-populate from InsightLedger
         parts.append("### Strengths and Limitations\n")
@@ -995,33 +1047,32 @@ class NarrativeEngine:
             limitations = discussion_points.get("limitations", [])
 
             if strengths:
-                parts.append("**Strengths:** ")
+                parts.append("**Strengths (auto-generated from analysis ledger):** ")
                 strength_strs = strengths[:3]
                 parts.append("; ".join(strength_strs) + ". ")
             
             if limitations:
-                parts.append("**Limitations:** ")
+                parts.append("**Limitations (auto-generated from analysis ledger):** ")
                 limitation_strs = limitations[:5]
                 parts.append("; ".join(limitation_strs) + ". ")
             
             if not strengths and not limitations:
                 parts.append(
-                    "[Auto-population from InsightLedger: No acknowledged limitations or "
-                    "strengths were flagged during analysis. Investigator should document "
-                    "any study-specific considerations here.] "
+                    "[Investigator required: No acknowledged strengths or limitations were "
+                    "captured in the analysis ledger. Document any study-specific considerations here.] "
                 )
             
             parts.append("\n")
         else:
             parts.append(
-                "[To be completed by the investigator: Discuss methodological strengths "
+                "[Investigator required: Discuss methodological strengths "
                 "(e.g., sample size, data quality, validation approach) and limitations "
                 "(e.g., generalizability, unmeasured confounders, missing data).]\n\n"
             )
         
         # Clinical/Practical Implications — placeholder
         parts.append("### Clinical and Practical Implications\n")
-        parts.append("[To be completed by the investigator: Discuss how findings could inform "
+        parts.append("[Investigator required: Discuss how findings could inform "
                     "practice, policy, or future research. Consider clinical significance "
                     "beyond statistical significance.]\n\n")
         
@@ -1116,6 +1167,145 @@ class NarrativeEngine:
                 norm[canonical] = v
             normalized[model] = norm
         self.ctx["metrics_by_model"] = normalized
+
+    def _resolve_primary_model(self, metrics: Dict[str, Dict[str, Any]], task_type: str, primary_model: str) -> str:
+        """Resolve the manuscript primary model from explicit context or metric ranking."""
+        if primary_model and metrics.get(primary_model):
+            return primary_model
+        if not metrics:
+            return primary_model
+
+        if task_type == "regression":
+            ranked = [(m, vals.get("RMSE")) for m, vals in metrics.items() if vals.get("RMSE") is not None]
+            if ranked:
+                return min(ranked, key=lambda item: item[1])[0]
+        elif task_type == "classification":
+            ranked = [
+                (m, vals.get("F1", vals.get("Accuracy")))
+                for m, vals in metrics.items()
+                if vals.get("F1", vals.get("Accuracy")) is not None
+            ]
+            if ranked:
+                return max(ranked, key=lambda item: item[1])[0]
+
+        return next(iter(metrics.keys()), primary_model)
+
+    def _human_join(self, values: List[str]) -> str:
+        """Join short phrase lists into publication-style prose."""
+        cleaned = [str(v).strip() for v in values if str(v).strip()]
+        if not cleaned:
+            return ""
+        if len(cleaned) == 1:
+            return cleaned[0]
+        if len(cleaned) == 2:
+            return f"{cleaned[0]} and {cleaned[1]}"
+        return f"{', '.join(cleaned[:-1])}, and {cleaned[-1]}"
+
+    def _discussion_model_pattern(self, task_type: str, metrics: Dict[str, Dict[str, Any]]) -> str:
+        """Interpret broad performance patterns without drifting into domain claims."""
+        if len(metrics) < 2:
+            return ""
+
+        simple_keys = {"ridge", "lasso", "elasticnet", "logistic", "logreg", "glm", "huber"}
+        complex_keys = {
+            "rf", "random_forest", "extratrees_reg", "extratrees_clf",
+            "histgb_reg", "histgb_clf", "xgb_reg", "xgb_clf", "lgbm_reg", "lgbm_clf", "nn"
+        }
+
+        if task_type == "regression":
+            scored = [(m, vals.get("RMSE")) for m, vals in metrics.items() if vals.get("RMSE") is not None]
+            if len(scored) < 2:
+                return ""
+            scored.sort(key=lambda item: item[1])
+            best_score = scored[0][1]
+            if all(score <= best_score * 1.05 for _, score in scored[1:]):
+                return (
+                    "Performance differences across candidate models were small, suggesting "
+                    "that the available predictive signal was captured similarly across model families."
+                )
+
+            simple_scores = [score for model, score in scored if model.lower() in simple_keys]
+            complex_scores = [score for model, score in scored if model.lower() in complex_keys]
+            if simple_scores and complex_scores:
+                best_simple = min(simple_scores)
+                best_complex = min(complex_scores)
+                if best_simple <= best_complex * 1.05:
+                    return (
+                        "Regularized linear models performed comparably to more complex learners, "
+                        "suggesting that much of the predictive signal may be captured by approximately linear effects."
+                    )
+                if best_complex < best_simple * 0.95:
+                    return (
+                        "Tree-based or boosted models outperformed simpler linear baselines, "
+                        "suggesting that non-linear effects or feature interactions contribute materially to performance."
+                    )
+
+        elif task_type == "classification":
+            scored = [
+                (m, vals.get("F1", vals.get("Accuracy")))
+                for m, vals in metrics.items()
+                if vals.get("F1", vals.get("Accuracy")) is not None
+            ]
+            if len(scored) < 2:
+                return ""
+            scored.sort(key=lambda item: item[1], reverse=True)
+            best_score = scored[0][1]
+            if all(score >= best_score * 0.95 for _, score in scored[1:]):
+                return (
+                    "Performance differences across candidate models were small, suggesting "
+                    "that discrimination was similar across model families."
+                )
+
+            simple_scores = [score for model, score in scored if model.lower() in simple_keys]
+            complex_scores = [score for model, score in scored if model.lower() in complex_keys]
+            if simple_scores and complex_scores:
+                best_simple = max(simple_scores)
+                best_complex = max(complex_scores)
+                if best_simple >= best_complex * 0.95:
+                    return (
+                        "Simpler linear classifiers performed comparably to more complex learners, "
+                        "suggesting that decision boundaries may be approximately linear."
+                    )
+                if best_complex > best_simple * 1.05:
+                    return (
+                        "Tree-based or boosted classifiers outperformed simpler linear baselines, "
+                        "suggesting that non-linear decision boundaries contribute materially to discrimination."
+                    )
+
+        return ""
+
+    def _discussion_regression_context(
+        self,
+        best_metrics: Dict[str, Any],
+        target_stats: Dict[str, Any],
+    ) -> str:
+        """Contextualize regression fit against the observed outcome distribution."""
+        if not best_metrics:
+            return ""
+
+        parts = []
+        rmse = best_metrics.get("RMSE")
+        r2 = best_metrics.get("R2")
+        if rmse is not None:
+            std_val = target_stats.get("std")
+            min_val = target_stats.get("min")
+            max_val = target_stats.get("max")
+            if std_val:
+                parts.append(
+                    f"An RMSE of {self._fmt_param(rmse)} corresponded to approximately {rmse / std_val:.2f} SD of the outcome distribution."
+                )
+            elif min_val is not None and max_val is not None and max_val > min_val:
+                outcome_range = max_val - min_val
+                parts.append(
+                    f"An RMSE of {self._fmt_param(rmse)} corresponded to approximately {rmse / outcome_range:.2f} of the observed outcome range."
+                )
+        if r2 is not None:
+            explained = int(round(r2 * 100))
+            unexplained = int(round((1 - r2) * 100))
+            parts.append(
+                f"This model explained {explained}% of outcome variance, leaving {unexplained}% unexplained."
+            )
+        return " ".join(parts)
 
     def _model_name(self, key: str) -> str:
         """Return human-readable model name, falling back to title-cased key."""

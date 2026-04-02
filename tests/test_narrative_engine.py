@@ -451,25 +451,49 @@ class TestResultsAndDiscussion:
         assert "Random Forest" in draft.discussion  # best model
         assert "85%" in draft.discussion or "0.85" in draft.discussion  # R2 percentage
         assert "compared across" in draft.discussion.lower()  # comparison note
+        assert "non-linear effects" in draft.discussion or "feature interactions" in draft.discussion
 
     def test_discussion_placeholders(self, full_provenance):
         """Discussion should include placeholders for human completion."""
         engine = NarrativeEngine(full_provenance)
         draft = engine.generate()
 
-        assert "[To be completed by the investigator" in draft.discussion
+        assert "[Investigator required:" in draft.discussion
         # At least 2 placeholders (Prior Work, Implications)
-        assert draft.discussion.count("[To be completed by the investigator") >= 2
+        assert draft.discussion.count("[Investigator required:") >= 2
 
     def test_discussion_strengths_and_limitations_from_ledger(self, full_provenance, full_ledger):
         """Strengths and limitations should auto-populate from InsightLedger."""
         engine = NarrativeEngine(full_provenance, full_ledger)
         draft = engine.generate()
 
+        assert "auto-generated from analysis ledger" in draft.discussion
         # Should include acknowledged limitations
         assert "Sample size" in draft.discussion or "adequate but not large" in draft.discussion
         # Should include strengths
         assert "Low overall missingness" in draft.discussion or "Favorable" in draft.discussion
+
+    def test_discussion_uses_manuscript_context_for_error_and_feature_context(self, full_provenance, full_ledger):
+        """Discussion should consume frozen export facts when available."""
+        engine = NarrativeEngine(
+            full_provenance,
+            full_ledger,
+            manuscript_context={
+                'selected_model_results': {
+                    'ridge': {'metrics': {'RMSE': 13.5, 'R2': 0.22}},
+                    'rf': {'metrics': {'RMSE': 12.0, 'R2': 0.27}},
+                    'histgb_reg': {'metrics': {'RMSE': 12.6, 'R2': 0.24}},
+                },
+                'manuscript_primary_model': 'rf',
+                'target_stats': {'std': 24.0, 'min': 60.0, 'max': 180.0},
+                'top_features': ['age', 'waist circumference', 'age x waist circumference'],
+            },
+        )
+        draft = engine.generate()
+
+        assert "approximately 0.50 SD of the outcome distribution" in draft.discussion
+        assert "27% of outcome variance" in draft.discussion
+        assert "age, waist circumference, and age x waist circumference" in draft.discussion
 
     def test_results_and_discussion_in_markdown(self, full_provenance):
         """Results and Discussion should render as top-level sections in markdown."""
