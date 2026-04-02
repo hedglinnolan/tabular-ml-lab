@@ -1549,6 +1549,66 @@ if st.session_state.get("table1_df") is not None:
             except:
                 st.caption("LaTeX export requires standard Table 1 format")
 
+# Pre-export manuscript validation
+from ml.latex_report import generate_latex_report as _generate_validation_latex
+from ml.manuscript_validator import validate_manuscript_bundle
+
+validation_manuscript_context = st.session_state.get("manuscript_export_context")
+if validation_manuscript_context is None:
+    validation_manuscript_context = _build_manuscript_context(
+        selected_for_report=list(model_results.keys()),
+        selected_explain=[],
+        include_results=True,
+        best_model=export_ctx.get('manuscript_primary_model'),
+    )
+
+validation_methods_text = st.session_state.get("methods_section", "")
+if not validation_methods_text.strip():
+    validation_methods_text = _build_methods_section_for_export(validation_manuscript_context)
+
+validation_latex = _generate_validation_latex(
+    methods_section=validation_methods_text,
+    model_results=validation_manuscript_context.get('selected_model_results'),
+    bootstrap_results=validation_manuscript_context.get('selected_bootstrap_results'),
+    task_type=data_config.task_type or "regression",
+    feature_names=validation_manuscript_context.get('feature_names_for_manuscript'),
+    target_name=data_config.target_col,
+    n_total=len(df),
+    n_train=len(st.session_state.get('X_train', [])),
+    n_val=len(st.session_state.get('X_val', [])),
+    n_test=len(st.session_state.get('X_test', [])),
+    manuscript_context=validation_manuscript_context,
+)
+
+validation_report = validate_manuscript_bundle(
+    manuscript_context=validation_manuscript_context,
+    methods_text=validation_methods_text,
+    report_text=report_text,
+    latex_text=validation_latex,
+    task_type=data_config.task_type or "regression",
+)
+validation_df = pd.DataFrame(validation_report.to_rows())
+
+st.header("Pre-export Manuscript Validation")
+if validation_report.passed:
+    st.success(f"All {len(validation_report.checks)} validation checks passed.")
+else:
+    st.warning(
+        f"{len(validation_report.failed_checks)} of {len(validation_report.checks)} validation checks failed. "
+        "Review the report below before exporting."
+    )
+table(validation_df, hide_index=True)
+
+validation_override = st.checkbox(
+    "Allow export despite validation failures",
+    value=False,
+    key="manuscript_validation_override",
+    help="Use this only when you intentionally want to export a draft that still contains validation failures.",
+)
+exports_blocked = (not validation_report.passed) and (not validation_override)
+if exports_blocked:
+    st.info("Export downloads remain disabled until you review this validation report and choose to override.")
+
 # LaTeX Manuscript Template
 with st.expander("📝 LaTeX Manuscript Template", expanded=False):
     st.markdown("""
@@ -1564,7 +1624,7 @@ with st.expander("📝 LaTeX Manuscript Template", expanded=False):
     with col_lt2:
         affiliation = st.text_input("Affiliation", value="[Institution]", key="latex_affiliation")
 
-    if st.button("Generate LaTeX Manuscript", key="gen_latex", type="primary"):
+    if st.button("Generate LaTeX Manuscript", key="gen_latex", type="primary", disabled=exports_blocked):
         from ml.latex_report import generate_latex_report
 
         train_n = len(st.session_state.get('X_train', []))
@@ -1707,6 +1767,7 @@ with st.expander("📝 LaTeX Manuscript Template", expanded=False):
             st.session_state["latex_report"],
             "manuscript.tex", "text/plain",
             key="dl_latex",
+            disabled=exports_blocked,
         )
         st.caption("Compile with: `pdflatex manuscript.tex` · Requires `booktabs`, `natbib`, `hyperref` packages.")
 
@@ -1796,7 +1857,8 @@ with col1:
         data=report_text,
         file_name=f"modeling_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
         mime="text/markdown",
-        type="primary"
+        type="primary",
+        disabled=exports_blocked,
     )
 
 with col2:
@@ -1812,7 +1874,8 @@ with col2:
         label="Download Metrics (CSV)",
         data=comparison_df.to_csv(index=False),
         file_name=f"model_metrics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv"
+        mime="text/csv",
+        disabled=exports_blocked,
     )
 
 with col3:
@@ -2021,7 +2084,8 @@ with col3:
         label="Download Complete Package (ZIP)",
         data=zip_buffer.getvalue(),
         file_name=f"modeling_package_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-        mime="application/zip"
+        mime="application/zip",
+        disabled=exports_blocked,
     )
 
 st.success("Report generated successfully!")
