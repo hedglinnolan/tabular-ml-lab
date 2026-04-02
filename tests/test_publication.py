@@ -250,6 +250,38 @@ def test_generate_latex_report_abstract_uses_feature_funnel_and_final_predictor_
     assert "final modeling set contained 27 predictors" not in latex
 
 
+def test_generate_latex_report_abstract_uses_structured_sections_and_context():
+    latex = generate_latex_report(
+        model_results={"rf": {"metrics": {"RMSE": 12.0, "R2": 0.27}}},
+        bootstrap_results={},
+        task_type="regression",
+        target_name="glucose",
+        n_total=1000,
+        n_train=700,
+        n_val=150,
+        n_test=150,
+        manuscript_context={
+            'selected_model_results': {"rf": {"metrics": {"RMSE": 12.0, "R2": 0.27}}},
+            'manuscript_primary_model': 'rf',
+            'feature_counts': {'selected': 18},
+            'population_counts': {'upload_total': 1000, 'analysis_total': 1000},
+            'dataset_descriptor': 'NHANES 2017-2020 adult participants',
+            'cohort_type': 'cross_sectional',
+            'target_stats': {'std': 24.0},
+            'top_features': ['age', 'waist circumference', 'age x waist circumference'],
+        },
+    )
+
+    assert 'Background/Objective:' in latex
+    assert 'NHANES 2017-2020 adult participants' in latex
+    assert 'cross sectional cohort' in latex
+    assert '18 predictors' in latex
+    assert 'approximately 0.50 SD of the outcome distribution' in latex
+    assert '27\\% of outcome variance' in latex
+    assert 'age, waist circumference, and age x waist circumference' in latex
+    assert '[INVESTIGATOR:' in latex
+
+
 def test_methods_section_uses_consistent_feature_counts_from_workflow_state():
     import streamlit as st
 

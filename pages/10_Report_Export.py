@@ -367,6 +367,33 @@ def _build_manuscript_context(
     train_n = len(st.session_state.get('X_train', []))
     val_n = len(st.session_state.get('X_val', []))
     test_n = len(st.session_state.get('X_test', []))
+    data_filename = st.session_state.get('data_filename')
+    data_source = st.session_state.get('data_source')
+    dataset_descriptor = data_filename or data_source
+    cohort_det = st.session_state.get('cohort_structure_detection')
+    cohort_type = None
+    if cohort_det is not None:
+        cohort_type = getattr(cohort_det, 'final', None) or getattr(cohort_det, 'detected', None)
+    target_stats = {}
+    if df is not None and data_config and data_config.target_col in df.columns:
+        target_series = pd.to_numeric(df[data_config.target_col], errors='coerce').dropna()
+        if not target_series.empty:
+            target_stats = {
+                'mean': float(target_series.mean()),
+                'std': float(target_series.std()) if len(target_series) > 1 else 0.0,
+                'min': float(target_series.min()),
+                'max': float(target_series.max()),
+            }
+    top_features: List[str] = []
+    perm_importance = st.session_state.get('permutation_importance') or {}
+    abstract_model_key = best_model or export_ctx.get('best_model_by_metric')
+    if abstract_model_key and abstract_model_key in perm_importance:
+        pi_data = perm_importance[abstract_model_key]
+        feat_names = pi_data.get('feature_names', [])
+        importances = pi_data.get('importances_mean', [])
+        if feat_names and importances and len(feat_names) == len(importances):
+            sorted_idx = sorted(range(len(importances)), key=lambda i: importances[i], reverse=True)
+            top_features = [feat_names[i] for i in sorted_idx[:3]]
 
     from ml.publication import _resolve_workflow_feature_counts, generate_methods_from_log
 
@@ -393,6 +420,10 @@ def _build_manuscript_context(
             'val_n': val_n,
             'test_n': test_n,
         },
+        'dataset_descriptor': dataset_descriptor,
+        'cohort_type': cohort_type,
+        'target_stats': target_stats,
+        'top_features': top_features,
     }
 
 
@@ -619,6 +650,7 @@ def _build_methods_section_for_export(
 def generate_report(export_ctx: Dict[str, Any]) -> str:
     """Generate markdown report with improved structure and aesthetics."""
     report_lines = []
+    from ml.latex_report import _build_structured_abstract_sections
 
     data_config = export_ctx['data_config']
     split_config = export_ctx['split_config']
@@ -652,18 +684,18 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     best_metric_name = export_ctx.get('best_metric_name')
     manuscript_primary_model = export_ctx.get('manuscript_primary_model')
     if best_model_key and best_model_key in model_results:
-        best_model = model_results[best_model_key]
+        best_model_result = model_results[best_model_key]
         report_lines.append(f"**Best Model (by held-out {best_metric_name or 'metric'}):** {best_model_key.upper()}")
         if data_config.task_type == 'regression':
-            if best_model['metrics'].get('RMSE') is not None:
-                report_lines.append(f"**Test RMSE:** {best_model['metrics']['RMSE']:.4f}")
-            if best_model['metrics'].get('R2') is not None:
-                report_lines.append(f"**Test R²:** {best_model['metrics']['R2']:.4f}")
+            if best_model_result['metrics'].get('RMSE') is not None:
+                report_lines.append(f"**Test RMSE:** {best_model_result['metrics']['RMSE']:.4f}")
+            if best_model_result['metrics'].get('R2') is not None:
+                report_lines.append(f"**Test R²:** {best_model_result['metrics']['R2']:.4f}")
         else:
-            if best_model['metrics'].get('Accuracy') is not None:
-                report_lines.append(f"**Test Accuracy:** {best_model['metrics']['Accuracy']:.4f}")
-            if best_model['metrics'].get('F1') is not None:
-                report_lines.append(f"**Test F1:** {best_model['metrics']['F1']:.4f}")
+            if best_model_result['metrics'].get('Accuracy') is not None:
+                report_lines.append(f"**Test Accuracy:** {best_model_result['metrics']['Accuracy']:.4f}")
+            if best_model_result['metrics'].get('F1') is not None:
+                report_lines.append(f"**Test F1:** {best_model_result['metrics']['F1']:.4f}")
     if manuscript_primary_model:
         report_lines.append(f"**Manuscript Primary Model:** {manuscript_primary_model.upper()}")
         if best_model_key and manuscript_primary_model != best_model_key:
@@ -684,76 +716,38 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     # Abstract (Draft) - auto-scaffold from known facts
     report_lines.append("## Abstract (Draft)")
     report_lines.append("")
-    
-    # Objective
-    report_lines.append(f"**Objective:** [PLACEHOLDER: clinical context]. This study developed and validated a prediction model for {data_config.target_col} using {data_config.task_type}.")
-    report_lines.append("")
-    
-    # Methods
+
     train_n = len(st.session_state.get('X_train', []))
     val_n = len(st.session_state.get('X_val', []))
     test_n = len(st.session_state.get('X_test', []))
-    feature_counts = export_ctx.get('feature_counts') or {}
-    predictor_count = feature_counts.get('selected') or len(data_config.feature_cols)
-    original_count = feature_counts.get('original')
-    candidate_count = feature_counts.get('candidate')
-    analysis_n = train_n + val_n + test_n
-    if analysis_n and analysis_n != len(df):
-        population_clause = (
-            f"Of {len(df):,} observations, {analysis_n:,} remained for analysis "
-            f"after trimming/exclusion criteria were applied prior to splitting."
+    manuscript_context = st.session_state.get("manuscript_export_context")
+    if manuscript_context is None:
+        manuscript_context = _build_manuscript_context(
+            selected_for_report=list(model_results.keys()),
+            selected_explain=[],
+            include_results=True,
+            best_model=manuscript_primary_model,
         )
-    else:
-        population_clause = f"A total of {analysis_n or len(df):,} observations were available for analysis."
-    if original_count and candidate_count and predictor_count and candidate_count != original_count and predictor_count != candidate_count:
-        predictor_clause = (
-            f"The raw dataset contained {original_count} predictor variables, "
-            f"feature engineering yielded {candidate_count} candidates, and "
-            f"feature selection retained {predictor_count} predictors for final modeling."
-        )
-    elif original_count and predictor_count and predictor_count != original_count:
-        predictor_clause = (
-            f"The workflow began with {original_count} predictor variables and retained "
-            f"{predictor_count} predictors for final modeling."
-        )
-    else:
-        predictor_clause = f"The final modeling set contained {predictor_count} predictors."
-    report_lines.append(
-        f"**Methods:** {population_clause} "
-        f"{predictor_clause} These observations were split into "
-        f"training (n={train_n:,}), validation (n={val_n:,}), and test (n={test_n:,}) sets. "
-        f"{len(model_results)} models were compared."
+    abstract_sections = _build_structured_abstract_sections(
+        task_type=data_config.task_type or "regression",
+        target_name=data_config.target_col,
+        n_total=len(df),
+        n_train=train_n,
+        n_val=val_n,
+        n_test=test_n,
+        model_results=manuscript_context.get('selected_model_results'),
+        bootstrap_results=manuscript_context.get('selected_bootstrap_results'),
+        manuscript_context=manuscript_context,
+        feature_names=manuscript_context.get('feature_names_for_manuscript'),
     )
+
+    report_lines.append(f"**Background/Objective:** {abstract_sections['background_objective']}")
     report_lines.append("")
-    
-    # Results - extract best model metrics
-    if best_model_key and best_model_key in model_results:
-        best_model = model_results[best_model_key]
-        if data_config.task_type == 'regression':
-            primary_metric = 'RMSE'
-            primary_val = best_model['metrics'].get('RMSE')
-        else:
-            primary_metric = 'F1' if 'F1' in best_model['metrics'] else 'Accuracy'
-            primary_val = best_model['metrics'].get(primary_metric)
-        
-        if primary_val is not None:
-            # Check for bootstrap CIs
-            bootstrap_results_ctx = export_ctx.get('bootstrap_results', {})
-            ci_str = ""
-            if best_model_key in bootstrap_results_ctx:
-                ci = bootstrap_results_ctx[best_model_key].get(primary_metric)
-                if ci and hasattr(ci, 'ci_lower') and hasattr(ci, 'ci_upper'):
-                    ci_str = f" (95% CI: [{ci.ci_lower:.4f}, {ci.ci_upper:.4f}])"
-            
-            report_lines.append(f"**Results:** The best model ({best_model_key.upper()}) achieved {primary_metric}: {primary_val:.4f}{ci_str}.")
-        else:
-            report_lines.append("**Results:** [PLACEHOLDER: Summarize key results with metrics and CIs].")
-    else:
-        report_lines.append("**Results:** [PLACEHOLDER: Summarize key results with metrics and CIs].")
+    report_lines.append(f"**Methods:** {abstract_sections['methods']}")
     report_lines.append("")
-    
-    # Conclusion
-    report_lines.append("**Conclusion:** [PLACEHOLDER: Summarize clinical implications].")
+    report_lines.append(f"**Results:** {abstract_sections['results']}")
+    report_lines.append("")
+    report_lines.append(f"**Conclusions:** {abstract_sections['conclusions']}")
     report_lines.append("")
     
     report_lines.append("---")

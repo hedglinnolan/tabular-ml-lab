@@ -134,6 +134,161 @@ def _format_abstract_predictor_sentence(feature_counts: Dict[str, Any], feature_
     return f"The final modeling set contained {selected_count or 'N'} predictors."
 
 
+def _model_display_name(key: Optional[str]) -> str:
+    """Return a human-readable model label without hard depending on Streamlit modules."""
+    if not key:
+        return "the selected model"
+
+    try:
+        from utils.insight_ledger import model_display_name as ledger_model_display_name
+        return ledger_model_display_name(key)
+    except Exception:
+        fallback_names = {
+            "ridge": "Ridge Regression",
+            "lasso": "Lasso Regression",
+            "elasticnet": "Elastic Net",
+            "rf": "Random Forest",
+            "extratrees_reg": "Extra Trees (Regressor)",
+            "extratrees_clf": "Extra Trees (Classifier)",
+            "histgb_reg": "HistGradientBoosting (Regressor)",
+            "histgb_clf": "HistGradientBoosting (Classifier)",
+            "nn": "Neural Network (MLP)",
+            "knn_reg": "k-Nearest Neighbors (Regressor)",
+            "knn_clf": "k-Nearest Neighbors (Classifier)",
+            "svr": "Support Vector Regressor",
+            "svc": "Support Vector Classifier",
+            "naive_bayes": "Naive Bayes",
+            "gaussian_nb": "Gaussian Naive Bayes",
+            "lda": "Linear Discriminant Analysis",
+            "xgb_reg": "XGBoost (Regressor)",
+            "xgb_clf": "XGBoost (Classifier)",
+            "lgbm_reg": "LightGBM (Regressor)",
+            "lgbm_clf": "LightGBM (Classifier)",
+        }
+        return fallback_names.get(str(key).lower(), str(key).upper())
+
+
+def _human_join(items: List[str]) -> str:
+    """Join short lists into manuscript-style prose."""
+    cleaned = [str(item).strip() for item in items if str(item).strip()]
+    if not cleaned:
+        return ""
+    if len(cleaned) == 1:
+        return cleaned[0]
+    if len(cleaned) == 2:
+        return f"{cleaned[0]} and {cleaned[1]}"
+    return f"{', '.join(cleaned[:-1])}, and {cleaned[-1]}"
+
+
+def _build_structured_abstract_sections(
+    task_type: str,
+    target_name: str,
+    n_total: int,
+    n_train: int,
+    n_val: int,
+    n_test: int,
+    model_results: Optional[Dict[str, Dict]],
+    bootstrap_results: Optional[Dict],
+    manuscript_context: Optional[Dict[str, Any]] = None,
+    feature_names: Optional[List[str]] = None,
+) -> Dict[str, str]:
+    """Build a structured abstract scaffold from workflow facts."""
+    manuscript_facts = _resolve_latex_manuscript_context(
+        manuscript_context,
+        model_results,
+        bootstrap_results,
+        feature_names,
+    )
+    resolved_results = manuscript_facts.get('model_results') or {}
+    resolved_bootstrap = manuscript_facts.get('bootstrap_results') or {}
+    resolved_feature_names = manuscript_facts.get('feature_names') or feature_names
+    feature_counts = manuscript_facts.get('feature_counts', {})
+    context = manuscript_context or {}
+    population_counts = context.get('population_counts', {})
+    upload_n = population_counts.get('upload_total') or n_total
+    analysis_n = population_counts.get('analysis_total') or (n_train + n_val + n_test)
+    dataset_descriptor = context.get('dataset_descriptor')
+    cohort_type = context.get('cohort_type')
+    target_stats = context.get('target_stats') or {}
+    top_features = context.get('top_features') or []
+
+    best_model_key = (
+        manuscript_facts.get('manuscript_primary_model')
+        or manuscript_facts.get('best_model_by_metric')
+        or next(iter(resolved_results.keys()), None)
+    )
+    best_result = resolved_results.get(best_model_key, {}) if best_model_key else {}
+    metrics_dict = best_result.get('metrics', {})
+
+    background_bits = ["[INVESTIGATOR: describe the clinical or scientific question and why it matters]."]
+    if dataset_descriptor and str(dataset_descriptor).lower() not in {"unknown", "none"}:
+        background_bits.append(f"Data were drawn from {dataset_descriptor}.")
+    if cohort_type:
+        background_bits.append(f"The workflow treated the dataset as a {str(cohort_type).replace('_', ' ')} cohort.")
+
+    methods_sentence = (
+        f"{_format_abstract_population_sentence(upload_n, analysis_n)} "
+        f"{_format_abstract_predictor_sentence(feature_counts, resolved_feature_names)} "
+        f"These observations were split into training (n={n_train:,}), validation (n={n_val:,}), "
+        f"and test (n={n_test:,}) sets. {len(resolved_results)} models were compared."
+    )
+
+    results_bits = []
+    if best_model_key and metrics_dict:
+        model_label = _model_display_name(best_model_key)
+        if task_type == 'regression':
+            rmse = metrics_dict.get('RMSE')
+            r2 = metrics_dict.get('R2')
+            if rmse is not None:
+                rmse_str = f"{rmse:.4f}"
+                ci = resolved_bootstrap.get(best_model_key, {}).get('RMSE')
+                if ci and hasattr(ci, 'ci_lower') and hasattr(ci, 'ci_upper'):
+                    rmse_str += f" (95% CI: [{ci.ci_lower:.4f}, {ci.ci_upper:.4f}])"
+                results_bits.append(f"The best-performing model was {model_label} (RMSE {rmse_str}).")
+                std_val = target_stats.get('std')
+                if std_val:
+                    results_bits.append(
+                        f"This corresponded to approximately {rmse / std_val:.2f} SD of the outcome distribution."
+                    )
+            if r2 is not None:
+                results_bits.append(
+                    f"The model explained {int(round(r2 * 100))}% of outcome variance, leaving "
+                    f"{int(round((1 - r2) * 100))}% unexplained."
+                )
+        else:
+            primary_metric = 'F1' if metrics_dict.get('F1') is not None else 'Accuracy'
+            primary_val = metrics_dict.get(primary_metric)
+            if primary_val is not None:
+                results_bits.append(
+                    f"The best-performing model was {model_label} ({primary_metric} {primary_val:.4f})."
+                )
+            auc = metrics_dict.get('AUC')
+            if auc is not None:
+                results_bits.append(f"Discrimination was supported by an AUC of {auc:.4f}.")
+
+    if top_features:
+        results_bits.append(
+            f"The most influential predictors included {_human_join(top_features[:3])}."
+        )
+    if not results_bits:
+        results_bits.append("[INVESTIGATOR: summarize the key results and any leading predictors].")
+
+    conclusions_bits = [
+        "[INVESTIGATOR: interpret the practical importance of these findings and note key limitations]."
+    ]
+    if task_type == 'regression':
+        conclusions_bits.insert(0, "This workflow-derived abstract indicates measurable predictive signal but not complete explanatory coverage.")
+    else:
+        conclusions_bits.insert(0, "This workflow-derived abstract indicates measurable predictive signal that requires domain interpretation before use.")
+
+    return {
+        'background_objective': " ".join(background_bits),
+        'methods': methods_sentence,
+        'results': " ".join(results_bits),
+        'conclusions': " ".join(conclusions_bits),
+    }
+
+
 def _convert_markdown_to_latex(markdown_text: str) -> Tuple[str, str]:
     """Convert markdown methods section to LaTeX, separating Methods and Results.
     
@@ -432,53 +587,23 @@ def generate_latex_report(
     # ── Abstract ──
     # Auto-scaffold abstract from known facts
     if abstract == "[ABSTRACT PLACEHOLDER]" and model_results and n_total > 0:
-        best_model_key = manuscript_facts.get('manuscript_primary_model') or manuscript_facts.get('best_model_by_metric')
-        population_counts = manuscript_facts.get('population_counts', {})
-        analysis_n = population_counts.get('analysis_total') or (n_train + n_val + n_test)
-        upload_n = population_counts.get('upload_total') or n_total
-        feature_counts = manuscript_facts.get('feature_counts', {})
-        
+        abstract_sections = _build_structured_abstract_sections(
+            task_type=task_type,
+            target_name=target_name,
+            n_total=n_total,
+            n_train=n_train,
+            n_val=n_val,
+            n_test=n_test,
+            model_results=model_results,
+            bootstrap_results=bootstrap_results,
+            manuscript_context=manuscript_context,
+            feature_names=feature_names,
+        )
         abs_parts = []
-        abs_parts.append(r"\noindent \textbf{Objective:} [PLACEHOLDER: clinical context]. This study developed and validated a prediction model for " + 
-                        _escape_latex(target_name) + " using " + _escape_latex(task_type) + ".")
-        
-        abs_parts.append(r"\textbf{Methods:} " + _format_abstract_population_sentence(upload_n, analysis_n) + " " +
-                        _format_abstract_predictor_sentence(feature_counts, feature_names) + " " +
-                        "These observations were split into training (n=" + 
-                        f"{n_train:,}" + "), validation (n=" + f"{n_val:,}" + "), and test (n=" + 
-                        f"{n_test:,}" + ") sets. " + f"{len(model_results)}" + " models were compared.")
-        
-        # Results: extract best model metrics
-        if best_model_key and best_model_key in model_results:
-            best_res = model_results[best_model_key]
-            metrics_dict = best_res.get('metrics', {})
-            
-            if task_type == 'regression':
-                primary_metric = 'RMSE'
-                primary_val = metrics_dict.get('RMSE')
-            else:
-                primary_metric = 'F1' if 'F1' in metrics_dict else 'Accuracy'
-                primary_val = metrics_dict.get(primary_metric)
-            
-            result_str = r"\textbf{Results:} The best model (" + _escape_latex(best_model_key.upper()) + ")"
-            
-            if primary_val is not None:
-                result_str += f" achieved {primary_metric}: {primary_val:.4f}"
-                
-                # Add CI if available
-                if bootstrap_results and best_model_key in bootstrap_results:
-                    ci = bootstrap_results[best_model_key].get(primary_metric)
-                    if ci and hasattr(ci, 'ci_lower') and hasattr(ci, 'ci_upper'):
-                        result_str += f" (95\\% CI: [{ci.ci_lower:.4f}, {ci.ci_upper:.4f}])"
-                result_str += "."
-            else:
-                result_str += "."
-            
-            abs_parts.append(result_str)
-        else:
-            abs_parts.append(r"\textbf{Results:} [PLACEHOLDER: Summarize key results with metrics and CIs].")
-        
-        abs_parts.append(r"\textbf{Conclusion:} [PLACEHOLDER: Summarize clinical implications].")
+        abs_parts.append(r"\noindent \textbf{Background/Objective:} " + _escape_latex(abstract_sections['background_objective']))
+        abs_parts.append(r"\textbf{Methods:} " + _escape_latex(abstract_sections['methods']))
+        abs_parts.append(r"\textbf{Results:} " + _escape_latex(abstract_sections['results']))
+        abs_parts.append(r"\textbf{Conclusions:} " + _escape_latex(abstract_sections['conclusions']))
         
         abstract = " ".join(abs_parts)
     
