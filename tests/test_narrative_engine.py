@@ -156,7 +156,7 @@ class TestNarrativeEngineGeneration:
         # Should mention per-model differences using human-readable names
         assert "Ridge Regression" in draft.data_preprocessing
         assert "Random Forest" in draft.data_preprocessing
-        assert "Histogram-based Gradient Boosting" in draft.data_preprocessing
+        assert "Histogram Gradient Boosting (Regressor)" in draft.data_preprocessing
 
         # Ridge gets scaling + transform
         assert "z-score" in draft.data_preprocessing.lower() or "standardization" in draft.data_preprocessing.lower()
@@ -184,7 +184,7 @@ class TestNarrativeEngineGeneration:
 
         assert "Ridge Regression" in draft.model_development
         assert "Random Forest" in draft.model_development
-        assert "Histogram-based Gradient Boosting" in draft.model_development
+        assert "Histogram Gradient Boosting (Regressor)" in draft.model_development
         assert "5-fold" in draft.model_development
         assert "Random Forest" in draft.model_development  # primary model
 
@@ -381,7 +381,8 @@ class TestNarrativeEngineGeneration:
 
         # Resolved insights
         assert "skew" in draft.data_observations.lower() or "Yeo-Johnson" in draft.data_observations
-        assert "Missing Data:" in draft.data_observations or "Preprocessing Rationale:" in draft.data_observations
+        assert "power transformation was applied selectively by model family" in draft.data_observations.lower()
+        assert "median imputation" in draft.data_observations.lower()
         # Discussion-only content should not leak into Data Observations
         assert "noted and accepted" not in draft.data_observations
         assert "favorable" not in draft.data_observations.lower()

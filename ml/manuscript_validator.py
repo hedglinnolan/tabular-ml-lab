@@ -119,6 +119,15 @@ def _contains_any_variant(text: str, variants: List[str]) -> bool:
     return any(variant.lower() in lowered for variant in variants)
 
 
+def _match_snippet(text: str, match: re.Match[str], radius: int = 24) -> str:
+    """Return a short surrounding snippet for a regex match."""
+    start = max(0, match.start() - radius)
+    end = min(len(text or ""), match.end() + radius)
+    snippet = (text or "")[start:end].replace("\n", " ")
+    snippet = re.sub(r"\s+", " ", snippet).strip()
+    return snippet
+
+
 def _invalid_metric_terms_for_task(text: str, task_type: str) -> List[str]:
     invalid_terms = {
         "regression": {"accuracy", "f1", "auc", "precision", "recall"},
@@ -291,7 +300,11 @@ def validate_manuscript_bundle(
     )
 
     explicit_primary_claim = bool(
-        re.search(r"\bselected as the primary model\b|\bmanuscript-primary model was\b", f"{model_dev_section}\n{latex_model_dev_section}", re.IGNORECASE)
+        re.search(
+            r"\bselected as the primary model\b|\bmanuscript-primary model was (?!explicitly selected\b)",
+            f"{model_dev_section}\n{latex_model_dev_section}",
+            re.IGNORECASE,
+        )
     )
     no_primary_claim = "no manuscript-primary model was explicitly selected" in combined_export_text.lower()
     expected_primary_model = context.get("manuscript_primary_model")
@@ -391,12 +404,12 @@ def validate_manuscript_bundle(
     )
 
     punctuation_issues = []
-    if re.search(r"\.\.", combined_export_text):
-        punctuation_issues.append("double periods")
-    if re.search(r"\b(Table|Figure)\s+X\b", combined_export_text):
-        punctuation_issues.append("dangling Table/Figure X reference")
-    if re.search(r"[—-]\.", combined_export_text):
-        punctuation_issues.append("dash followed by period")
+    if match := re.search(r"(?<!\.)\.\.(?!\.)", combined_export_text):
+        punctuation_issues.append(f"double periods near '{_match_snippet(combined_export_text, match)}'")
+    if match := re.search(r"\b(Table|Figure)\s+X\b", combined_export_text):
+        punctuation_issues.append(f"dangling Table/Figure X reference near '{_match_snippet(combined_export_text, match)}'")
+    if match := re.search(r"[—-]\.", combined_export_text):
+        punctuation_issues.append(f"dash followed by period near '{_match_snippet(combined_export_text, match)}'")
     checks.append(
         ManuscriptValidationCheck(
             name="No obvious dangling punctuation or placeholder references remain",

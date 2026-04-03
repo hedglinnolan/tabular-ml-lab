@@ -398,11 +398,20 @@ def _clean_for_manuscript(text: str) -> str:
     text = re.sub(r'(?i)\bdataset characteristics favorable to the analysis\b\s*[:\-]*\s*', '', text)
     text = re.sub(r'(?i)\bfavorable (?:for|to) analysis\b\.?', '', text)
     
-    # Replace internal model keys with manuscript-friendly names regardless of case.
+    # Replace internal model keys with manuscript-friendly names regardless of case,
+    # but do not duplicate text that is already part of the display name.
     for key in sorted(MODEL_DISPLAY_NAMES.keys(), key=len, reverse=True):
+        display = model_display_name(key)
+        display_remainder = display[len(key):] if display.lower().startswith(key.lower()) else ""
+
+        def _replace_model_key(match: re.Match[str]) -> str:
+            if display_remainder and text[match.end():].lower().startswith(display_remainder.lower()):
+                return match.group(0)
+            return display
+
         text = re.sub(
             rf'\b{re.escape(key)}\b',
-            model_display_name(key),
+            _replace_model_key,
             text,
             flags=re.IGNORECASE,
         )

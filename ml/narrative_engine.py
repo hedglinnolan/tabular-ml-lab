@@ -17,11 +17,12 @@ prose from 100+ scattered session_state reads.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from utils.workflow_provenance import WorkflowProvenance
-from utils.insight_ledger import InsightLedger
+from utils.insight_ledger import InsightLedger, MODEL_DISPLAY_NAMES
 
 
 # ---------------------------------------------------------------------------
@@ -192,14 +193,8 @@ class ManuscriptDraft:
 # ---------------------------------------------------------------------------
 
 _MODEL_NAMES: dict = {
-    "histgb_reg": "Histogram-based Gradient Boosting (Regression)",
-    "histgb_clf": "Histogram-based Gradient Boosting (Classification)",
-    "nn": "Neural Network (MLP)",
-    "huber": "Huber Regression",
-    "ridge": "Ridge Regression",
-    "lasso": "Lasso Regression",
-    "elasticnet": "Elastic Net",
-    "rf": "Random Forest",
+    **MODEL_DISPLAY_NAMES,
+    "lasso": "LASSO",
     "xgb": "XGBoost (Gradient Boosting)",
     "lgbm": "LightGBM",
     "svm": "Support Vector Machine",
@@ -279,6 +274,71 @@ def _feature_selection_method_label(method: str) -> str:
     }
     key = str(method or "").strip().lower()
     return labels.get(key, str(method or "").strip())
+
+
+def _polish_data_observations_text(text: str) -> str:
+    """Convert ledger-derived workflow notes into smoother manuscript prose."""
+    cleaned = str(text or "").strip()
+    if not cleaned:
+        return ""
+
+    replacements = {
+        "Workflow Observations: ": "",
+        "Preprocessing Rationale: ": "",
+        "Missing Data: ": "",
+        "Model Development: ": "",
+        "Explainability: ": "",
+        "Sensitivity Analysis: ": "",
+        "Statistical Validation: ": "",
+    }
+    for old, new in replacements.items():
+        cleaned = cleaned.replace(old, new)
+
+    cleaned = re.sub(
+        r"Large sample-to-feature ratio \(([^)]+)\) — plenty of data relative to complexity\.",
+        r"The sample-to-feature ratio was \1, supporting model estimation relative to predictor dimensionality.",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"Pipelines built for (\d+) model\(s\): ([^.]+)\.",
+        r"Preprocessing was tailored across \1 model families (\2).",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"Per-model preprocessing pipelines were configured for \d+ model\(s\)\.\s*",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"Target is skewed \(([^)]+)\)\.",
+        r"The outcome distribution was skewed (\1), which informed preprocessing choices.",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"Power transform \((.+?)\)\.",
+        r"Power transformation was applied selectively by model family (\1).",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"Missing values were imputed with column medians in the \d+ model pipelines\.",
+        "Missing values were handled with median imputation across model pipelines.",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"Missing values were imputed with column medians\.",
+        "Missing values were handled with median imputation.",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    cleaned = re.sub(r"(?<!\.)\.\.(?!\.)", ".", cleaned)
+    return cleaned.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -864,7 +924,9 @@ class NarrativeEngine:
         parts = []
         for phase, text in narratives.items():
             if text.strip():
-                parts.append(text)
+                polished = _polish_data_observations_text(text)
+                if polished:
+                    parts.append(polished)
 
         return " ".join(parts)
 

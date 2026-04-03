@@ -589,7 +589,7 @@ def generate_latex_report(
 
     # ── Abstract ──
     # Auto-scaffold abstract from known facts
-    if abstract == "[ABSTRACT PLACEHOLDER]" and model_results and n_total > 0:
+    if abstract == "[ABSTRACT PLACEHOLDER]" and model_results and (analysis_n > 0 or n_total > 0):
         abstract_sections = _build_structured_abstract_sections(
             task_type=task_type,
             target_name=target_name,
@@ -851,7 +851,10 @@ def generate_latex_report(
 \subsection{Comparison with Prior Work}""")
     if task_type and best_model_key and model_results:
         task_label = "regression" if task_type == "regression" else "classification"
-        sections.append(f"[PLACEHOLDER: Compare the {primary_metric if 'primary_metric' in locals() else 'performance'} to prior work. Note: typical {task_label} models in this domain achieve...]")
+        sections.append(
+            f"[PLACEHOLDER: Compare the {primary_metric if 'primary_metric' in locals() else 'performance'} "
+            f"to prior work. Add an appropriate benchmark for typical {task_label} performance in this domain.]"
+        )
     else:
         sections.append("[PLACEHOLDER: Compare your results with existing literature.]")
     
@@ -866,8 +869,8 @@ def generate_latex_report(
     
     # Auto-fill methodological strengths from what we know
     strength_items = []
-    if n_total > 0:
-        strength_items.append(f"Sample size of {n_total:,} observations")
+    if analysis_n > 0:
+        strength_items.append(f"Sample size of {analysis_n:,} observations")
     if bootstrap_results:
         strength_items.append("Bootstrap confidence intervals for uncertainty quantification")
     if explainability_summary:

@@ -1513,7 +1513,10 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     report_lines.append("### Comparison with Prior Work")
     report_lines.append("")
     task_label = "regression" if data_config.task_type == "regression" else "classification"
-    report_lines.append(f"[PLACEHOLDER: Compare the performance to prior work. Note: typical {task_label} models in this domain achieve...]")
+    report_lines.append(
+        f"[PLACEHOLDER: Compare the performance to prior work. "
+        f"Add an appropriate benchmark for typical {task_label} performance in this domain.]"
+    )
     report_lines.append("")
     
     # Clinical Implications
@@ -1528,8 +1531,9 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     
     # Auto-fill methodological strengths
     strength_items = []
-    if len(df) > 0:
-        strength_items.append(f"Sample size of {len(df):,} observations")
+    analysis_total = manuscript_context.get('population_counts', {}).get('analysis_total') or len(df)
+    if analysis_total > 0:
+        strength_items.append(f"Sample size of {analysis_total:,} observations")
     if export_ctx.get('bootstrap_results'):
         strength_items.append("Bootstrap confidence intervals for uncertainty quantification")
     if export_ctx.get('shap_results'):
