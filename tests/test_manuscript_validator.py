@@ -1,5 +1,7 @@
 """Tests for the pre-export manuscript consistency validator."""
 
+import pandas as pd
+
 from ml.manuscript_validator import validate_manuscript_bundle
 
 
@@ -40,6 +42,12 @@ Methods text only.
 \section{Methods}
 Ridge Regression and Random Forest were evaluated with clean LaTeX output.
 """
+    table1_df = pd.DataFrame(
+        {"Overall (N=950)": ["1.0", "2.0"]},
+        index=["f0, median [IQR]", "f1, median [IQR]"],
+    )
+    for idx in range(2, 18):
+        table1_df.loc[f"f{idx}, median [IQR]"] = "1.0"
 
     report = validate_manuscript_bundle(
         manuscript_context=manuscript_context,
@@ -47,6 +55,7 @@ Ridge Regression and Random Forest were evaluated with clean LaTeX output.
         report_text=report_text,
         latex_text=latex_text,
         task_type='regression',
+        table1_df=table1_df,
     )
 
     assert report.passed
@@ -212,3 +221,55 @@ Clean LaTeX output only.
     failed_names = {check.name for check in report.failed_checks}
 
     assert "LaTeX output is free of markdown and note artifacts" not in failed_names
+
+
+def test_validate_manuscript_bundle_flags_table1_population_and_feature_coverage():
+    manuscript_context = {
+        'population_counts': {
+            'analysis_total': 950,
+            'train_n': 700,
+            'val_n': 150,
+            'test_n': 100,
+        },
+        'feature_counts': {'original': 26, 'selected': 3},
+        'feature_names_for_manuscript': ['age', 'bmi', 'hdl'],
+        'included_models': ['ridge'],
+        'best_metric_name': 'RMSE',
+    }
+    report_text = """
+## Abstract (Draft)
+**Methods:** Of 1,000 observations, 950 remained for analysis after exclusions. The workflow began with 26 predictor variables and retained 3 predictors for final modeling.
+"""
+    methods_text = """
+## Methods
+### Study Design
+A regression analysis was performed on a dataset of 950 observations.
+
+### Predictor Variables
+The workflow began with 26 predictor variables and retained 3 predictors for final modeling.
+
+### Model Development
+Ridge Regression achieved the best held-out performance on validation RMSE, but no manuscript-primary model was explicitly selected.
+
+### Model Evaluation
+Ridge Regression was evaluated on the held-out test set using RMSE and R².
+"""
+    latex_text = r"\section{Methods}Clean LaTeX output only."
+    table1_df = pd.DataFrame(
+        {"Overall (N=1000)": ["47 [31, 63]", "27.7 [24.1, 32.1]"]},
+        index=["age, median [IQR]", "bmi, median [IQR]"],
+    )
+
+    report = validate_manuscript_bundle(
+        manuscript_context=manuscript_context,
+        methods_text=methods_text,
+        report_text=report_text,
+        latex_text=latex_text,
+        task_type='regression',
+        table1_df=table1_df,
+    )
+
+    failed_names = {check.name for check in report.failed_checks}
+
+    assert "Table 1 population matches the analysis cohort" in failed_names
+    assert "Table 1 includes all finalized predictors" in failed_names

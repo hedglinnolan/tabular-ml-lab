@@ -264,6 +264,39 @@ class TestNarrativeEngineGeneration:
         assert "28 candidate predictors" in draft.predictor_variables
         assert "19 predictors for final modeling" in draft.predictor_variables
 
+    def test_predictor_variables_describe_consensus_methods_with_workflow_wide_candidate_count(self):
+        prov = WorkflowProvenance()
+        prov.record_upload("glucose", "regression", [f"base_{i}" for i in range(26)], 21849)
+        prov.record_feature_engineering(
+            transforms=["Custom interaction (Multiply (A × B)): age_x_weight", "Custom interaction (Multiply (A × B)): age_x_sugar"],
+            n_created=2,
+            n_before=26,
+            n_after=28,
+        )
+        prov.record_feature_selection(
+            method="consensus",
+            n_before=19,
+            n_after=19,
+            features_kept=[f"feat_{i}" for i in range(19)],
+            consensus_methods=["lasso", "rfe", "univariate"],
+        )
+
+        engine = NarrativeEngine(
+            prov,
+            manuscript_context={
+                'feature_names_for_manuscript': [f"feat_{i}" for i in range(19)],
+                'feature_counts': {'original': 26, 'candidate': 28, 'selected': 19, 'engineered': 2},
+            },
+        )
+        draft = engine.generate()
+
+        assert "26 predictor variables" in draft.predictor_variables
+        assert "28 candidate predictors" in draft.predictor_variables
+        assert "reduced the candidate set from 28 to 19 predictors" in draft.predictor_variables
+        assert "LASSO" in draft.predictor_variables
+        assert "RFE-CV" in draft.predictor_variables
+        assert "univariate screening" in draft.predictor_variables
+
     def test_hyperparameters_in_model_development(self, full_provenance):
         """#81: Hyperparameters should be described in human-readable prose."""
         engine = NarrativeEngine(full_provenance)

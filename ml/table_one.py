@@ -25,6 +25,50 @@ class Table1Config:
     decimal_places: int = 1
 
 
+def partition_table1_variables(
+    df: pd.DataFrame,
+    feature_names: List[str],
+    grouping_var: Optional[str] = None,
+) -> Tuple[List[str], List[str]]:
+    """Split final manuscript predictors into continuous and categorical Table 1 lists.
+
+    Preserves the incoming feature order and excludes the grouping variable.
+    """
+    available_features = [feature for feature in feature_names if feature in df.columns and feature != grouping_var]
+    numeric_set = set(df.select_dtypes(include=[np.number]).columns.tolist())
+    continuous = [feature for feature in available_features if feature in numeric_set]
+    categorical = [feature for feature in available_features if feature not in numeric_set]
+    return continuous, categorical
+
+
+def generate_feature_table1(
+    df: pd.DataFrame,
+    feature_names: List[str],
+    grouping_var: Optional[str] = None,
+    show_pvalues: bool = True,
+    show_smd: bool = False,
+    show_missing: bool = True,
+    decimal_places: int = 1,
+) -> Tuple[pd.DataFrame, Dict[str, Any], Table1Config]:
+    """Generate a manuscript Table 1 for a specific finalized feature set."""
+    continuous_vars, categorical_vars = partition_table1_variables(
+        df,
+        feature_names,
+        grouping_var=grouping_var,
+    )
+    config = Table1Config(
+        grouping_var=grouping_var,
+        continuous_vars=continuous_vars,
+        categorical_vars=categorical_vars,
+        show_pvalues=show_pvalues,
+        show_smd=show_smd,
+        show_missing=show_missing,
+        decimal_places=decimal_places,
+    )
+    table_df, metadata = generate_table1(df, config)
+    return table_df, metadata, config
+
+
 def _is_normal(series: pd.Series, alpha: float = 0.05) -> bool:
     """Test normality using Shapiro-Wilk (n<5000) or D'Agostino-Pearson."""
     clean = series.dropna()

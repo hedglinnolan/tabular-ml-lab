@@ -319,8 +319,9 @@ def test_methods_section_uses_consistent_feature_counts_from_workflow_state():
         )
 
         assert "23 predictors in the final modeling set" in text
-        assert "began with 26 original predictors, expanded this to 35 candidate predictors after feature engineering, and retained 23 predictors for final modeling" in text
-        assert "reduced the feature set from 35 to 23 predictors" in text
+        assert "Feature engineering added 9 predictors, yielding 35 candidate predictors" in text
+        assert "23 predictors were retained for final modeling" in text
+        assert "Consensus feature selection across LASSO reduced the feature set from 35 to 23 predictors" in text
         assert "35 predictor variables entered into final modeling" not in text
     finally:
         if saved_pre_fe is None:

@@ -216,6 +216,10 @@ def _resolve_workflow_feature_counts(
         if pre_fe:
             original_count = len(pre_fe)
         engineered_count = len(engineered_names) if engineered_names else engineered_count
+        engineered_candidate_count = len(pre_fe) + len(engineered_names) if pre_fe else None
+        if engineered_candidate_count is not None:
+            if candidate_count is None or candidate_count < engineered_candidate_count:
+                candidate_count = engineered_candidate_count
         if candidate_count is None and pre_fe:
             candidate_count = len(pre_fe) + (len(engineered_names) if engineered_names else 0)
         if selected_count is None and selected_features:
@@ -238,6 +242,35 @@ def _resolve_workflow_feature_counts(
         'selected': selected_count,
         'engineered': engineered_count,
     }
+
+
+def _oxford_join(items: List[str]) -> str:
+    """Join list items for manuscript prose."""
+    cleaned = [str(item).strip() for item in items if str(item).strip()]
+    if not cleaned:
+        return ""
+    if len(cleaned) == 1:
+        return cleaned[0]
+    if len(cleaned) == 2:
+        return f"{cleaned[0]} and {cleaned[1]}"
+    return f"{', '.join(cleaned[:-1])}, and {cleaned[-1]}"
+
+
+def _feature_selection_method_label(method: str) -> str:
+    """Render feature-selection methods with manuscript-friendly names."""
+    labels = {
+        'lasso': 'LASSO',
+        'rfe': 'RFE-CV',
+        'rfe-cv': 'RFE-CV',
+        'rfecv': 'RFE-CV',
+        'univariate': 'univariate screening',
+        'f_regression': 'univariate screening',
+        'mutual_info': 'mutual information screening',
+        'stability': 'stability selection',
+        'stability_selection': 'stability selection',
+    }
+    key = str(method or '').strip().lower()
+    return labels.get(key, str(method or '').strip())
 
 
 def _dedupe_latest_by(entries: List[Dict[str, Any]], key_fields: Tuple[str, ...]) -> List[Dict[str, Any]]:
@@ -421,10 +454,13 @@ def generate_methods_section(
     if feature_counts.get('original') and feature_counts.get('selected') and feature_counts['original'] != feature_counts['selected']:
         original_count = feature_counts['original']
         candidate_count = feature_counts.get('candidate')
+        engineered_count = feature_counts.get('engineered')
         selected_count = feature_counts['selected']
         if candidate_count and candidate_count != original_count:
             sections.append(
-                f"The workflow began with {original_count} original predictors, expanded this to {candidate_count} candidate predictors after feature engineering, and retained {selected_count} predictors for final modeling."
+                f"The workflow began with {original_count} original predictors. "
+                f"Feature engineering added {engineered_count if engineered_count is not None else max(candidate_count - original_count, 0)} predictors, yielding {candidate_count} candidate predictors. "
+                f"{selected_count} predictors were retained for final modeling."
             )
         else:
             sections.append(
@@ -465,11 +501,11 @@ def generate_methods_section(
             analysis_methods = ad.get('methods', analysis_methods)
             if ad.get('n_features_before'):
                 n_original = ad['n_features_before']
-        
+        methods_str = _oxford_join(_feature_selection_method_label(method_name) for method_name in analysis_methods)
+
         if method == 'manual' and n_selected is not None:
             # Manual override — report it as such
-            if analysis_methods and n_original:
-                methods_str = ", ".join(analysis_methods)
+            if methods_str and n_original:
                 sections.append(
                     f" Feature selection was performed using {methods_str}. "
                     f"After review, {n_selected} features were manually selected for modeling."
@@ -481,11 +517,7 @@ def generate_methods_section(
             feature_selection_logged = True
         elif method == 'consensus' and n_selected is not None:
             # Consensus selection
-            if analysis_methods:
-                methods_str = ", ".join(analysis_methods)
-            else:
-                methods_str = ""
-            n_before = n_original or details.get('n_features_before')
+            n_before = feature_counts.get('candidate') or n_original or details.get('n_features_before')
             
             # Check for consensus threshold in details
             consensus_threshold = details.get('consensus_threshold') or details.get('threshold')
@@ -497,8 +529,7 @@ def generate_methods_section(
                     if consensus_threshold and n_methods:
                         threshold_clause = f" Features were retained if selected by at least {consensus_threshold} of {n_methods} methods."
                     sections.append(
-                        f" Feature selection was performed using {methods_str}; "
-                        f"all {n_selected} features met the consensus threshold and were included in modeling."
+                        f" Consensus feature selection across {methods_str} retained all {n_selected} candidate predictors."
                         f"{threshold_clause}"
                     )
                 else:
@@ -511,7 +542,7 @@ def generate_methods_section(
                     threshold_clause = f" Features were retained if selected by at least {consensus_threshold} of {n_methods} methods."
                 if methods_str:
                     sections.append(
-                        f" Feature selection using {methods_str} reduced the feature set "
+                        f" Consensus feature selection across {methods_str} reduced the feature set "
                         f"from {n_before} to {n_selected} predictors."
                         f"{threshold_clause}"
                     )
@@ -525,7 +556,7 @@ def generate_methods_section(
                 if consensus_threshold and n_methods:
                     threshold_clause = f" Features were retained if selected by at least {consensus_threshold} of {n_methods} methods."
                 if methods_str:
-                    sections.append(f" Feature selection was performed using {methods_str}, retaining {n_selected} features.{threshold_clause}")
+                    sections.append(f" Consensus feature selection across {methods_str} retained {n_selected} features.{threshold_clause}")
                 else:
                     sections.append(f" Feature selection retained {n_selected} features.{threshold_clause}")
             feature_selection_logged = True
@@ -534,23 +565,22 @@ def generate_methods_section(
     if not feature_selection_logged and analysis_entries:
         for entry in analysis_entries:
             details = entry.get('details', {})
-            n_before = details.get('n_features_before')
+            n_before = feature_counts.get('candidate') or details.get('n_features_before')
             n_after = details.get('n_features_after')
             methods = details.get('methods', [])
+            methods_str = _oxford_join(_feature_selection_method_label(method_name) for method_name in methods)
             if n_before and n_after:
-                methods_str = ", ".join(methods) if methods else ""
                 if n_before == n_after:
                     if methods_str:
                         sections.append(
-                            f" Feature selection was performed using {methods_str}; "
-                            f"all {n_after} features met the retention threshold and were included in modeling."
+                            f" Consensus feature selection across {methods_str} retained all {n_after} candidate predictors."
                         )
                     else:
                         sections.append(f" Feature selection was performed; all {n_after} features were retained.")
                 else:
                     if methods_str:
                         sections.append(
-                            f" Feature selection using {methods_str} reduced the feature set "
+                            f" Consensus feature selection across {methods_str} reduced the feature set "
                             f"from {n_before} to {n_after} predictors."
                         )
                     else:

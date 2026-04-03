@@ -110,6 +110,7 @@ def init_session_state():
         'df_engineered': None,  # Dataset after feature engineering
         'feature_engineering_applied': False,
         'engineered_feature_names': [],
+        'selected_features': [],
         'data_config': DataConfig(),
         'data_audit': None,
         
@@ -230,6 +231,7 @@ def reset_data_dependent_state():
     st.session_state.pop("df_engineered", None)
     st.session_state.feature_engineering_applied = False
     st.session_state.engineered_feature_names = []
+    st.session_state.selected_features = []
     st.session_state.pop("engineering_log", None)
 
     st.session_state.X_train = None
@@ -268,6 +270,7 @@ def reset_data_dependent_state():
         st.session_state.pop(key, None)
     st.session_state.pop("target_label_encoder", None)
     st.session_state.pop("train_indices", None)
+    st.session_state.pop("val_indices", None)
     st.session_state.pop("test_indices", None)
 
 

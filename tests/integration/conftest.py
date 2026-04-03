@@ -59,6 +59,7 @@ def inject_data_state(at, df, target_col='glucose', task_type='regression'):
         feature_cols=feature_cols,
         task_type=task_type,
     )
+    at.session_state['selected_features'] = feature_cols
     at.session_state['data_audit'] = {'n_rows': len(df), 'n_cols': len(df.columns)}
 
     try:
@@ -110,6 +111,7 @@ def inject_trained_state(at, df, target_col='glucose'):
     at.session_state['val_indices'] = list(range(n_train, n_train + n_val))
     at.session_state['test_indices'] = list(range(n_train + n_val, n))
     at.session_state['feature_names'] = feature_cols
+    at.session_state['selected_features'] = feature_cols
     at.session_state['trained_models'] = {'ridge': model}
     at.session_state['fitted_estimators'] = {'ridge': model}
     at.session_state['model_results'] = {

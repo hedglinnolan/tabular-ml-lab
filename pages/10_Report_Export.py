@@ -148,6 +148,7 @@ def get_git_info() -> Dict[str, str]:
 def generate_metadata() -> Dict[str, Any]:
     """Generate comprehensive metadata for export."""
     git_info = get_git_info()
+    finalized_features = st.session_state.get('selected_features') or (data_config.feature_cols if data_config else [])
     
     metadata = {
         'export_timestamp': datetime.now().isoformat(),
@@ -157,10 +158,10 @@ def generate_metadata() -> Dict[str, Any]:
         'random_seed': st.session_state.get('random_seed', 42),
         'dataset': {
             'n_rows': len(df),
-            'n_features': len(data_config.feature_cols),
+            'n_features': len(finalized_features),
             'target': data_config.target_col,
             'task_type': data_config.task_type,
-            'features': data_config.feature_cols
+            'features': finalized_features
         },
         'splits': {
             'train_size': split_config.train_size,
@@ -281,6 +282,7 @@ def build_export_context() -> Dict[str, Any]:
     robustness = st.session_state.get('explainability_robustness') or {}
     manuscript_primary_model = st.session_state.get('report_best_model') or None
     best_model_by_metric, best_metric_name = _get_export_best_model(model_results, data_config.task_type if data_config else None)
+    table1_status, table1_detail = _table1_readiness()
 
     readiness = {
         'models': {'status': 'present' if trained_models else 'missing', 'detail': f"{len(trained_models)} trained model(s) available" if trained_models else 'Train at least one model before export.'},
@@ -289,7 +291,7 @@ def build_export_context() -> Dict[str, Any]:
         'shap': {'status': 'present' if shap_results else ('inferred' if legacy_shap else 'missing'), 'detail': f"SHAP results available for {len(shap_results)} model(s)" if shap_results else ('Legacy shap_values detected, but export uses shap_results payloads.' if legacy_shap else 'SHAP results not computed.')},
         'partial_dependence': {'status': 'present' if pdp_results else 'missing', 'detail': f"PDP results available for {len(pdp_results)} model(s)" if pdp_results else 'Partial dependence not computed.'},
         'bootstrap': {'status': 'present' if st.session_state.get('bootstrap_results') else 'missing', 'detail': 'Bootstrap confidence intervals available.' if st.session_state.get('bootstrap_results') else 'Bootstrap confidence intervals not found.'},
-        'tripod_table1': {'status': 'present' if st.session_state.get('table1_df') is not None else 'missing', 'detail': 'Table 1 available for manuscript export.' if st.session_state.get('table1_df') is not None else 'Table 1 has not been generated.'},
+        'tripod_table1': {'status': table1_status, 'detail': table1_detail},
         'bland_altman': {'status': 'inferred' if len([1 for r in model_results.values() if r.get('y_test_pred') is not None]) >= 2 and (data_config.task_type if data_config else None) == 'regression' else 'missing', 'detail': 'Can be recomputed from stored test predictions for regression models; not stored as a persistent artifact.' if len([1 for r in model_results.values() if r.get('y_test_pred') is not None]) >= 2 and (data_config.task_type if data_config else None) == 'regression' else 'Requires at least two regression models with test predictions.'},
     }
 
@@ -427,7 +429,7 @@ def _build_manuscript_context(
     feature_counts = _resolve_workflow_feature_counts(
         workflow_feature_names,
         logged_steps=generate_methods_from_log(),
-        data_config={'feature_cols': list(data_config.feature_cols)},
+        data_config={'feature_cols': list(st.session_state.get('selected_features') or data_config.feature_cols)},
     )
 
     return {
@@ -452,6 +454,79 @@ def _build_manuscript_context(
         'target_stats': target_stats,
         'top_features': top_features,
     }
+
+
+def _build_analysis_cohort_df() -> pd.DataFrame:
+    """Reconstruct the analysis cohort used for splitting/export."""
+    if df is None:
+        return pd.DataFrame()
+
+    analysis_df = df.copy()
+    target_col = data_config.target_col if data_config else None
+    if not target_col or target_col not in analysis_df.columns:
+        return analysis_df.reset_index(drop=True)
+
+    analysis_df = analysis_df.loc[analysis_df[target_col].notna()].copy()
+
+    if (
+        (data_config.task_type if data_config else None) == 'regression'
+        and split_config
+        and getattr(split_config, 'target_trim_enabled', False)
+    ):
+        target_numeric = pd.to_numeric(analysis_df[target_col], errors='coerce')
+        valid_mask = target_numeric.notna()
+        analysis_df = analysis_df.loc[valid_mask].copy()
+        target_numeric = target_numeric.loc[valid_mask]
+        if not target_numeric.empty:
+            q_lo = float(target_numeric.quantile(getattr(split_config, 'target_trim_lower', 0.0)))
+            q_hi = float(target_numeric.quantile(getattr(split_config, 'target_trim_upper', 1.0)))
+            trim_mask = (target_numeric >= q_lo) & (target_numeric <= q_hi)
+            analysis_df = analysis_df.loc[trim_mask].copy()
+
+    return analysis_df.reset_index(drop=True)
+
+
+def _table1_readiness() -> Tuple[str, str]:
+    """Return readiness state for manuscript Table 1 generation."""
+    feature_names = st.session_state.get('selected_features') or (data_config.feature_cols if data_config else [])
+    analysis_df = _build_analysis_cohort_df()
+    available_features = [feature for feature in feature_names if feature in analysis_df.columns]
+    if analysis_df.empty:
+        return 'missing', 'Analysis cohort is unavailable for Table 1 generation.'
+    if not available_features:
+        return 'missing', 'No finalized predictor set is available for Table 1 generation.'
+    return 'present', (
+        f"Table 1 can be regenerated from the analysis cohort "
+        f"(N={len(analysis_df):,}) using {len(available_features)} finalized predictors."
+    )
+
+
+def _build_manuscript_table1(
+    manuscript_context: Dict[str, Any],
+) -> Tuple[Optional[pd.DataFrame], Dict[str, Any], Optional[Any]]:
+    """Generate the manuscript Table 1 from the analysis cohort and finalized predictors."""
+    analysis_df = _build_analysis_cohort_df()
+    feature_names = list(manuscript_context.get('feature_names_for_manuscript') or [])
+    if analysis_df.empty or not feature_names:
+        return None, {}, None
+
+    grouping_var = st.session_state.get('table1_group')
+    if grouping_var in (None, "None") or grouping_var not in analysis_df.columns:
+        grouping_var = None
+
+    from ml.table_one import generate_feature_table1
+
+    table1_df, table1_metadata, table1_config = generate_feature_table1(
+        analysis_df,
+        feature_names,
+        grouping_var=grouping_var,
+        show_pvalues=st.session_state.get('table1_pval', True),
+        show_smd=st.session_state.get('table1_smd', False),
+        show_missing=st.session_state.get('table1_miss', True),
+    )
+    if table1_df is None or table1_df.empty:
+        return None, table1_metadata, table1_config
+    return table1_df, table1_metadata, table1_config
 
 
 def _build_methods_section_for_export(
@@ -614,7 +689,7 @@ def _build_methods_section_for_export(
             if features_with_missing > 0:
                 n_rows = len(df)
                 missing_rates = {k: v / n_rows for k, v in missing_counts.items() if v > 0}
-                total_features = len(data_config.feature_cols) if data_config else len(missing_counts)
+                total_features = len(st.session_state.get('selected_features') or data_config.feature_cols) if data_config else len(missing_counts)
                 if missing_rates:
                     min_rate = min(missing_rates.values())
                     max_rate = max(missing_rates.values())
@@ -628,7 +703,7 @@ def _build_methods_section_for_export(
     # Final fallback: compute directly from the dataframe
     if not missing_data_summary and df is not None:
         try:
-            feature_cols = list(data_config.feature_cols) if data_config else list(df.columns)
+            feature_cols = list(st.session_state.get('selected_features') or data_config.feature_cols) if data_config else list(df.columns)
             feature_df = df[feature_cols] if all(c in df.columns for c in feature_cols) else df
             missing_per_col = feature_df.isnull().sum()
             cols_with_missing = missing_per_col[missing_per_col > 0]
@@ -646,7 +721,10 @@ def _build_methods_section_for_export(
 
     _ledger_narratives = _report_ledger.to_manuscript_narrative() or None
     return generate_methods_section(
-        data_config={'feature_cols': list(data_config.feature_cols) if data_config else [], 'target_col': data_config.target_col if data_config else ''},
+        data_config={
+            'feature_cols': list(st.session_state.get('selected_features') or data_config.feature_cols) if data_config else [],
+            'target_col': data_config.target_col if data_config else '',
+        },
         preprocessing_config=prep_config,
         model_configs={name: {} for name in selected_for_report},
         split_config=split_config if split_config else {},
@@ -793,11 +871,16 @@ def _build_latex_export_bundle(
         best_model=best_model,
     )
     methods_text = _build_methods_section_for_export(manuscript_context)
+    manuscript_table1_df, manuscript_table1_metadata, manuscript_table1_config = _build_manuscript_table1(
+        manuscript_context
+    )
 
     bundle = {
         'manuscript_context': manuscript_context,
         'methods_text': methods_text,
-        'table1_df_local': _prepare_table1_for_latex_export(st.session_state.get("table1_df")),
+        'table1_df_local': _prepare_table1_for_latex_export(manuscript_table1_df),
+        'table1_metadata': manuscript_table1_metadata,
+        'table1_config': manuscript_table1_config,
         'bootstrap_results': manuscript_context.get('selected_bootstrap_results') or {},
         'explainability_summary': _build_explainability_summary_for_export(manuscript_context),
         'sensitivity_summary': _build_sensitivity_summary_for_export(),
@@ -809,6 +892,8 @@ def _build_latex_export_bundle(
 
     st.session_state["methods_section"] = methods_text
     st.session_state["manuscript_export_context"] = manuscript_context
+    st.session_state["manuscript_table1_df"] = bundle['table1_df_local']
+    st.session_state["manuscript_table1_metadata"] = manuscript_table1_metadata
 
     return bundle
 
@@ -962,7 +1047,7 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     report_lines.append("| Property | Value |")
     report_lines.append("|----------|-------|")
     report_lines.append(f"| Rows | {len(df):,} |")
-    report_lines.append(f"| Features | {len(data_config.feature_cols)} |")
+    report_lines.append(f"| Features | {len(st.session_state.get('selected_features') or data_config.feature_cols)} |")
     report_lines.append(f"| Target | `{data_config.target_col}` |")
     report_lines.append(f"| Task Type | {data_config.task_type.title()} |")
     
@@ -1660,6 +1745,13 @@ with st.expander("📊 Sample Flow Diagram", expanded=False):
         st.caption("Paste the code into [mermaid.live](https://mermaid.live) to render as SVG/PNG for your paper.")
 
 # TRIPOD Checklist
+table1_bundle = _build_latex_export_bundle(
+    selected_for_report=selected_for_report,
+    selected_explain=selected_explain,
+    include_results=include_results,
+    best_model=best_model,
+)
+
 with st.expander("✅ TRIPOD Checklist", expanded=False):
     st.markdown("""
     The [TRIPOD statement](https://www.tripod-statement.org/) is the reporting guideline for
@@ -1685,16 +1777,17 @@ with st.expander("✅ TRIPOD Checklist", expanded=False):
     # Auto-mark from workflow state (items not tracked by ledger)
     if data_config and data_config.target_col:
         tracker.mark_complete("outcome_defined", f"Target: {data_config.target_col}", "Upload & Audit")
-    if data_config and data_config.feature_cols:
-        tracker.mark_complete("predictors_defined", f"{len(data_config.feature_cols)} features", "Upload & Audit")
+    finalized_features = st.session_state.get('selected_features') or (data_config.feature_cols if data_config else [])
+    if finalized_features:
+        tracker.mark_complete("predictors_defined", f"{len(finalized_features)} features", "Upload & Audit")
     if trained_models:
         tracker.mark_complete("model_building", f"Models: {', '.join(trained_models.keys())}", "Train & Compare")
     if model_results:
         tracker.mark_complete("performance_measures", "Test set metrics computed", "Train & Compare")
     if st.session_state.get("bootstrap_results"):
         tracker.mark_complete("performance_ci", "Bootstrap CIs computed", "Train & Compare")
-    if st.session_state.get("table1_df") is not None:
-        tracker.mark_complete("table1", "Table 1 generated", "EDA")
+    if table1_bundle.get("table1_df_local") is not None:
+        tracker.mark_complete("table1", "Table 1 regenerated from the final analysis cohort", "Report Export")
     prep_config = st.session_state.get('preprocessing_config', {})
     if prep_config:
         tracker.mark_complete("predictor_handling", "Preprocessing configured", "Preprocess")
@@ -1716,36 +1809,28 @@ with st.expander("✅ TRIPOD Checklist", expanded=False):
     )
 
 # Table 1 with Custom Tests
-if st.session_state.get("table1_df") is not None:
+if table1_bundle.get("table1_df_local") is not None:
     with st.expander("📋 Table 1: Study Population (with Custom Tests)", expanded=False):
         st.markdown("""
-        This is your final Table 1, including any custom statistical tests you added in **Statistical Validation** (page 9).
+        This Table 1 is regenerated at export time from the final analysis cohort and finalized predictor set.
+        Custom statistical tests from **Statistical Validation** are preserved as notes for export.
         """)
-        
-        table1_display = st.session_state["table1_df"].copy()
+
+        table1_display = table1_bundle["table1_df_local"].copy()
+        table1_metadata = table1_bundle.get("table1_metadata", {})
         custom_tests = st.session_state.get('custom_table1_tests', [])
-        
+
+        if table1_metadata.get("tests_used"):
+            st.caption("**Automatic tests used:** " + ", ".join(
+                f"{var}: {test}" for var, test in table1_metadata["tests_used"].items()
+            ))
         if custom_tests:
-            st.info(f"✅ {len(custom_tests)} custom statistical test(s) added from Statistical Validation page")
-            
-            # Add custom tests as additional rows
+            st.info(f"✅ {len(custom_tests)} custom statistical test(s) will be attached to Table 1 exports")
             for test in custom_tests:
-                new_row = pd.DataFrame({
-                    'Variable': [f"{test['variable']}"],
-                    'p-value': [f"{test['p_value']:.4f}" if test['p_value'] >= 0.001 else "<0.001"]
-                })
-                # Add note column if not exists
-                if 'Test/Note' not in table1_display.columns:
-                    table1_display['Test/Note'] = ''
-                new_row['Test/Note'] = f"{test['test']}: {test['statistic']} ({test['note']})"
-                
-                # Match other columns from original table
-                for col in table1_display.columns:
-                    if col not in new_row.columns:
-                        new_row[col] = '—'
-                
-                table1_display = pd.concat([table1_display, new_row], ignore_index=True)
-        
+                p_str = f"{test['p_value']:.4f}" if test['p_value'] >= 0.001 else "<0.001"
+                note = f" ({test['note']})" if test.get('note') else ""
+                st.caption(f"{test['variable']}: {test['test']} {test['statistic']}, p={p_str}{note}")
+
         table(table1_display, hide_index=True)
         
         # Export buttons
@@ -1799,6 +1884,7 @@ validation_report = validate_manuscript_bundle(
     report_text=validation_report_text,
     latex_text=validation_latex,
     task_type=data_config.task_type or "regression",
+    table1_df=validation_bundle['table1_df_local'],
 )
 validation_df = pd.DataFrame(validation_report.to_rows())
 
@@ -2215,7 +2301,7 @@ with st.expander("Advanced / State Debug", expanded=False):
     st.markdown("**Current State:**")
     st.write(f"• Data shape: {df.shape if df is not None else 'None'}")
     st.write(f"• Target: {data_config.target_col if data_config else 'None'}")
-    st.write(f"• Features: {len(data_config.feature_cols) if data_config else 0}")
+    st.write(f"• Features: {len(st.session_state.get('selected_features') or (data_config.feature_cols if data_config else []))}")
     st.write(f"• Trained models: {len(trained_models)}")
     st.write(f"• Dataset profile: {'Available' if profile else 'Not computed'}")
     st.write(f"• Insight ledger: {len(_report_ledger)} entries ({_report_ledger.summary()['resolved']} resolved)")

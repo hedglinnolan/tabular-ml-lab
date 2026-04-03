@@ -298,10 +298,7 @@ if st.button("Prepare Splits", type="primary"):
 
         # Get feature columns - use engineered features if applied
         target_col = data_config.target_col
-        if st.session_state.get('feature_engineering_applied'):
-            feature_cols = [col for col in df.columns if col != target_col]
-        else:
-            feature_cols = data_config.feature_cols
+        feature_cols = st.session_state.get('selected_features') or data_config.feature_cols
 
         X = df[feature_cols].copy()
         y = df[target_col].copy()
@@ -508,12 +505,15 @@ if st.button("Prepare Splits", type="primary"):
         # Store indices for explainability (original df positions)
         if use_group_split and entity_id_final:
             st.session_state.train_indices = original_indices[train_idx].tolist()
+            st.session_state.val_indices = original_indices[temp_idx[val_idx]].tolist()
             st.session_state.test_indices = original_indices[temp_idx[test_idx]].tolist()
         elif split_config.use_time_split and data_config.datetime_col:
             st.session_state.train_indices = train_indices.tolist()
+            st.session_state.val_indices = val_indices.tolist()
             st.session_state.test_indices = test_indices.tolist()
         else:
             st.session_state.train_indices = original_indices[idx_train].tolist()
+            st.session_state.val_indices = original_indices[idx_val].tolist()
             st.session_state.test_indices = original_indices[idx_test].tolist()
         
         st.success(f"Splits prepared: Train={len(X_train)}, Val={len(X_val)}, Test={len(X_test)}")
@@ -1185,7 +1185,7 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 st.session_state.fitted_preprocessing_pipelines[model_name] = model_pipeline
                 from ml.pipeline import get_feature_names_after_transform
                 st.session_state.feature_names_by_model[model_name] = get_feature_names_after_transform(
-                    model_pipeline, data_config.feature_cols
+                    model_pipeline, st.session_state.get('selected_features') or data_config.feature_cols
                 )
                 
                 progress_bar.progress(1.0)
@@ -1890,7 +1890,7 @@ Poor performance may be due to:
             with tab:
                 model = st.session_state.trained_models[name]
                 results = st.session_state.model_results[name]
-                _feats = _fn_by_model.get(name) or (data_config.feature_cols if data_config else [])
+                _feats = _fn_by_model.get(name) or (st.session_state.get('selected_features') or (data_config.feature_cols if data_config else []))
                 _n_test = len(results.get("y_test", []))
                 _task = data_config.task_type if data_config else None
                 from utils.llm_ui import gather_session_context

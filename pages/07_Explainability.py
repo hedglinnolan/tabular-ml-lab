@@ -188,7 +188,7 @@ def _get_pipeline_and_data(name):
                 elif isinstance(X_test, pd.DataFrame):
                     X_raw = X_test.copy()
                 else:
-                    fallback_cols = list(data_config.feature_cols or feature_names or [])
+                    fallback_cols = list(st.session_state.get('selected_features') or data_config.feature_cols or feature_names or [])
                     X_raw = raw_candidate.loc[:, [c for c in fallback_cols if c in raw_candidate.columns]].copy()
 
                 y_raw = df_raw[data_config.target_col].iloc[test_indices].values
@@ -1004,7 +1004,8 @@ with st.expander("Upload External Validation Dataset", expanded=False):
             ext_df = load_tabular_data(ext_file, filename=ext_file.name)
             st.success(f"Loaded external dataset: {ext_df.shape[0]} rows × {ext_df.shape[1]} columns")
 
-            required_cols = data_config.feature_cols + [data_config.target_col]
+            selected_features = st.session_state.get('selected_features') or data_config.feature_cols
+            required_cols = selected_features + [data_config.target_col]
             missing_cols = [c for c in required_cols if c not in ext_df.columns]
             if missing_cols:
                 st.error(f"Missing columns in external dataset: {missing_cols}")
@@ -1013,7 +1014,7 @@ with st.expander("Upload External Validation Dataset", expanded=False):
                     from ml.bootstrap import bootstrap_all_regression_metrics, bootstrap_all_classification_metrics, format_metric_with_ci
 
                     ext_y = ext_df[data_config.target_col].values
-                    ext_X = ext_df[data_config.feature_cols]
+                    ext_X = ext_df[selected_features]
 
                     st.subheader("External Validation Results")
                     for name in st.session_state.get('trained_models', {}):
@@ -1098,7 +1099,7 @@ with st.expander("Advanced / State Debug", expanded=False):
     _df = get_data()
     st.write(f"• Data shape: {_df.shape if _df is not None else 'None'}")
     st.write(f"• Target: {data_config.target_col if data_config else 'None'}")
-    st.write(f"• Features: {len(data_config.feature_cols) if data_config else 0}")
+    st.write(f"• Features: {len(st.session_state.get('selected_features') or (data_config.feature_cols if data_config else []))}")
     st.write(f"• X_test shape: {X_test.shape if X_test is not None else 'None'}")
     st.write(f"• Trained models: {len(st.session_state.get('trained_models', {}))}")
     st.write(f"• Permutation importance: {len(perm_data)}")

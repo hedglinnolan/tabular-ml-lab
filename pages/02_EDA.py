@@ -1600,7 +1600,7 @@ with st.expander("📄 Table 1 — Publication Summary", expanded=False):
         table1_df, table1_metadata = generate_table1(df, config)
         st.session_state["table1_df"] = table1_df
         st.session_state["table1_metadata"] = table1_metadata
-        log_methodology(step="EDA", action="Generated Table 1", details={
+        log_methodology(step="EDA", action="Generated exploratory Table 1", details={
             "grouping_var": grouping_var if grouping_var != "None" else None,
             "n_continuous": len(t1_continuous),
             "n_categorical": len(t1_categorical),

@@ -252,6 +252,35 @@ def _count_phrase(count: int, singular: str, plural: Optional[str] = None) -> st
     return f"{count} {noun}"
 
 
+def _oxford_join(items: List[str]) -> str:
+    """Join a list for manuscript prose."""
+    cleaned = [str(item).strip() for item in items if str(item).strip()]
+    if not cleaned:
+        return ""
+    if len(cleaned) == 1:
+        return cleaned[0]
+    if len(cleaned) == 2:
+        return f"{cleaned[0]} and {cleaned[1]}"
+    return f"{', '.join(cleaned[:-1])}, and {cleaned[-1]}"
+
+
+def _feature_selection_method_label(method: str) -> str:
+    """Render feature-selection methods with manuscript-friendly names."""
+    labels = {
+        "lasso": "LASSO",
+        "rfe": "RFE-CV",
+        "rfe-cv": "RFE-CV",
+        "rfecv": "RFE-CV",
+        "univariate": "univariate screening",
+        "f_regression": "univariate screening",
+        "mutual_info": "mutual information screening",
+        "stability": "stability selection",
+        "stability_selection": "stability selection",
+    }
+    key = str(method or "").strip().lower()
+    return labels.get(key, str(method or "").strip())
+
+
 # ---------------------------------------------------------------------------
 # NarrativeEngine
 # ---------------------------------------------------------------------------
@@ -504,12 +533,15 @@ class NarrativeEngine:
         n_final = len(features) if features else 0
         n_before_sel = self.ctx.get("n_features_before_selection", 0)
         n_after_sel = self.ctx.get("n_features_after_selection", 0)
-        candidate_count = n_before_sel or (n_original + self.ctx.get("n_engineered", 0) if n_original else 0)
+        n_engineered = self.ctx.get("n_engineered", 0)
+        engineered_candidate_count = (n_original + n_engineered) if n_original else 0
+        candidate_count = max(n_before_sel or 0, engineered_candidate_count or 0)
+        if not candidate_count:
+            candidate_count = engineered_candidate_count or n_before_sel or 0
         final_count = n_after_sel or n_final
 
         # Feature engineering
         transforms = self.ctx.get("engineering_transforms", [])
-        n_engineered = self.ctx.get("n_engineered", 0)
         if transforms:
             creation_verb = "was" if n_engineered == 1 else "were"
             parts.append(
@@ -518,18 +550,24 @@ class NarrativeEngine:
             )
 
         fs_method = self.ctx.get("fs_method", "")
+        consensus_methods = [
+            _feature_selection_method_label(method)
+            for method in (self.ctx.get("fs_consensus_methods") or [])
+        ]
+        consensus_phrase = _oxford_join(consensus_methods)
+
         # Feature funnel narrative
         if n_original and final_count:
             if candidate_count and candidate_count != n_original and final_count != candidate_count:
+                added_count = max(candidate_count - n_original, 0)
                 parts.append(
                     f"The raw dataset contained {n_original} predictor variables. "
-                    f"Feature engineering expanded this to {candidate_count} candidate predictors, "
-                    f"and feature selection retained {final_count} predictors for final modeling."
+                    f"Feature engineering added {added_count} predictor variables, yielding {candidate_count} candidate predictors."
                 )
             elif candidate_count and candidate_count != n_original:
                 parts.append(
                     f"The raw dataset contained {n_original} predictor variables. "
-                    f"Feature engineering expanded this to {candidate_count} candidate predictors, "
+                    f"Feature engineering yielded {candidate_count} candidate predictors, "
                     f"all of which were retained for final modeling."
                 )
             elif final_count != n_original:
@@ -544,12 +582,19 @@ class NarrativeEngine:
         if fs_method and final_count:
             if candidate_count == final_count:
                 parts.append(
-                    f"Feature selection was performed using {fs_method}, and all {final_count} candidate predictors were retained."
+                    (
+                        f"Consensus feature selection across {consensus_phrase} retained all {final_count} candidate predictors."
+                        if fs_method == "consensus" and consensus_phrase
+                        else f"Feature selection was performed using {fs_method}, and all {final_count} candidate predictors were retained."
+                    )
                 )
             elif candidate_count:
                 parts.append(
-                    f"Feature selection was performed using {fs_method}, "
-                    f"reducing the feature set from {candidate_count} to {final_count} predictors."
+                    (
+                        f"Consensus feature selection across {consensus_phrase} reduced the candidate set from {candidate_count} to {final_count} predictors for final modeling."
+                        if fs_method == "consensus" and consensus_phrase
+                        else f"Feature selection was performed using {fs_method}, reducing the feature set from {candidate_count} to {final_count} predictors for final modeling."
+                    )
                 )
 
         # Final feature count
@@ -557,10 +602,7 @@ class NarrativeEngine:
             feat_list = ", ".join(features)
             parts.append(f"The final set of predictor variables included: {feat_list}.")
         elif n_final:
-            parts.append(
-                f"A total of {n_final} predictor variables were included in the final models "
-                f"(see Supplementary Table S1 for full list)."
-            )
+            parts.append("The full final predictor list is provided in Supplementary Table S1.")
         elif n_original:
             parts.append(f"The analysis began with {n_original} candidate predictors.")
 

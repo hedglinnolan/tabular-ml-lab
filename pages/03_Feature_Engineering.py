@@ -1158,6 +1158,7 @@ if new_features > 0:
             st.session_state["df_engineered"] = df_engineered
             st.session_state["feature_engineering_applied"] = True
             st.session_state["engineered_feature_names"] = engineered_features
+            st.session_state["selected_features"] = [col for col in df_engineered.columns if col != target]
             st.session_state["engineering_log"] = engineering_log
             
             # Track which transforms produced each engineered feature

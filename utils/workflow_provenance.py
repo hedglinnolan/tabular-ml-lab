@@ -466,6 +466,7 @@ class WorkflowProvenance:
 
         if self.feature_selection:
             ctx["fs_method"] = self.feature_selection.method
+            ctx["fs_consensus_methods"] = self.feature_selection.consensus_methods
             ctx["n_features_before_selection"] = self.feature_selection.n_features_before
             ctx["n_features_after_selection"] = self.feature_selection.n_features_after
             ctx["features_kept"] = self.feature_selection.features_kept

@@ -83,6 +83,31 @@ def _extract_final_predictor_count(text: str) -> Optional[int]:
     return None
 
 
+def _extract_table1_overall_n(table1_df: Any) -> Optional[int]:
+    """Extract overall N from a generated Table 1 dataframe header."""
+    if table1_df is None:
+        return None
+    for column in getattr(table1_df, "columns", []):
+        match = re.search(r"Overall\s+\(N=([\d,]+)\)", str(column))
+        if match:
+            return int(match.group(1).replace(",", ""))
+    return None
+
+
+def _table1_contains_feature(table1_df: Any, feature_name: str) -> bool:
+    """Check whether a finalized predictor appears in Table 1 row labels."""
+    if table1_df is None:
+        return False
+    needle = str(feature_name).strip().lower()
+    for label in getattr(table1_df, "index", []):
+        normalized = str(label).strip().lower()
+        if normalized == needle:
+            return True
+        if normalized.startswith(f"{needle},"):
+            return True
+    return False
+
+
 def _model_variants(model_key: str) -> List[str]:
     display = _MODEL_NAMES.get(model_key) or _MODEL_NAMES.get(model_key.lower()) or model_key.replace("_", " ").title()
     variants = [display, model_key.upper(), model_key.replace("_", " ").title()]
@@ -108,6 +133,7 @@ def validate_manuscript_bundle(
     report_text: str,
     latex_text: str,
     task_type: str,
+    table1_df: Any = None,
 ) -> ManuscriptValidationReport:
     """Validate manuscript consistency before export."""
     context = manuscript_context or {}
@@ -179,6 +205,41 @@ def validate_manuscript_bundle(
             detail=(
                 f"Expected predictors={expected_predictors}, abstract={abstract_predictors}, "
                 f"predictor section={methods_predictors}."
+            ),
+        )
+    )
+
+    table1_overall_n = _extract_table1_overall_n(table1_df)
+    table1_n_match = table1_overall_n is None or expected_analysis_n == table1_overall_n
+    checks.append(
+        ManuscriptValidationCheck(
+            name="Table 1 population matches the analysis cohort",
+            status="PASS" if table1_n_match else "FAIL",
+            location="Table 1",
+            detail=(
+                "Table 1 is absent or uses the analysis cohort."
+                if table1_n_match
+                else f"Expected analysis N={expected_analysis_n}, Table 1 overall N={table1_overall_n}."
+            ),
+        )
+    )
+
+    expected_feature_names = context.get("feature_names_for_manuscript") or []
+    missing_table1_features = [
+        feature_name for feature_name in expected_feature_names
+        if not _table1_contains_feature(table1_df, feature_name)
+    ]
+    checks.append(
+        ManuscriptValidationCheck(
+            name="Table 1 includes all finalized predictors",
+            status="PASS" if not missing_table1_features else "FAIL",
+            location="Table 1",
+            detail=(
+                "All finalized predictors appear in Table 1."
+                if not missing_table1_features
+                else f"Missing predictors: {', '.join(missing_table1_features[:10])}"
+                + ("..." if len(missing_table1_features) > 10 else "")
+                + "."
             ),
         )
     )

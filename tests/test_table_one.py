@@ -7,7 +7,14 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from ml.table_one import Table1Config, generate_table1, table1_to_csv, table1_to_latex
+from ml.table_one import (
+    Table1Config,
+    generate_feature_table1,
+    generate_table1,
+    partition_table1_variables,
+    table1_to_csv,
+    table1_to_latex,
+)
 
 
 @pytest.fixture
@@ -106,3 +113,47 @@ def test_empty_vars():
     config = Table1Config()
     table, metadata = generate_table1(df, config)
     assert len(table) == 0
+
+
+def test_partition_table1_variables_preserves_feature_order():
+    df = pd.DataFrame({
+        'age': [50, 60],
+        'sex': ['F', 'M'],
+        'bmi': [25.0, 31.2],
+        'group': ['A', 'B'],
+    })
+
+    continuous, categorical = partition_table1_variables(
+        df,
+        ['sex', 'age', 'bmi', 'group'],
+        grouping_var='group',
+    )
+
+    assert continuous == ['age', 'bmi']
+    assert categorical == ['sex']
+
+
+def test_generate_feature_table1_uses_requested_final_features():
+    df = pd.DataFrame({
+        'group': ['A', 'A', 'B', 'B'],
+        'age': [50, 60, 55, 65],
+        'sex': ['F', 'M', 'F', 'M'],
+        'bmi': [25.0, 31.2, 27.5, 29.4],
+        'glucose': [100, 110, 120, 130],
+    })
+
+    table, metadata, config = generate_feature_table1(
+        df,
+        ['age', 'sex', 'bmi'],
+        grouping_var='group',
+        show_pvalues=False,
+        show_smd=False,
+        show_missing=False,
+    )
+
+    assert config.continuous_vars == ['age', 'bmi']
+    assert config.categorical_vars == ['sex']
+    assert "Overall (N=4)" in table.columns
+    assert any(str(idx).startswith('age,') for idx in table.index)
+    assert any(str(idx).startswith('sex,') for idx in table.index)
+    assert not any('glucose' in str(idx).lower() for idx in table.index)

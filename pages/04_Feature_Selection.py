@@ -403,6 +403,7 @@ if results:
         if st.button("📋 Use consensus features for modeling", type="primary"):
             data_config.feature_cols = consensus
             st.session_state['data_config'] = data_config
+            st.session_state['selected_features'] = list(consensus)
             # Retrieve consensus_threshold from the analysis log
             consensus_threshold_logged = None
             for entry in st.session_state.get('methodology_log', []):
@@ -445,6 +446,7 @@ if results:
         if st.button("Apply manual selection"):
             data_config.feature_cols = manual_selection
             st.session_state['data_config'] = data_config
+            st.session_state['selected_features'] = list(manual_selection)
             log_methodology(step='Feature Selection Applied', action='Applied manual feature selection', details={
                 'method': 'manual',
                 'n_features_selected': len(manual_selection),

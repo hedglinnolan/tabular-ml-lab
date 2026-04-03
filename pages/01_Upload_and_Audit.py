@@ -1591,6 +1591,7 @@ if task_mode == "prediction":
             task_type=task_type_final
         )
         st.session_state.data_config = data_config
+        st.session_state.selected_features = list(selected_features)
 
         import hashlib
         _new_hash = hashlib.md5(','.join(sorted(data_config.feature_cols)).encode()).hexdigest()[:8]
