@@ -341,6 +341,32 @@ class NarrativeEngine:
             self.ctx["best_metric_name"] = best_metric_name
             self.ctx["selection_criteria"] = f"validation {best_metric_name}"
 
+        population_counts = self.manuscript_context.get("population_counts") or {}
+        if population_counts:
+            upload_total = population_counts.get("upload_total")
+            analysis_total = population_counts.get("analysis_total")
+            if upload_total is not None:
+                self.ctx["n_upload_total"] = upload_total
+            if analysis_total is not None:
+                self.ctx["n_analysis_total"] = analysis_total
+                self.ctx["n_total"] = analysis_total
+
+        feature_counts = self.manuscript_context.get("feature_counts") or {}
+        if feature_counts:
+            if feature_counts.get("original") is not None:
+                self.ctx["n_features_original"] = feature_counts.get("original")
+            if feature_counts.get("candidate") is not None:
+                self.ctx["n_features_before_selection"] = feature_counts.get("candidate")
+            if feature_counts.get("selected") is not None:
+                self.ctx["n_features_after_selection"] = feature_counts.get("selected")
+            if feature_counts.get("engineered") is not None:
+                self.ctx["n_engineered"] = feature_counts.get("engineered")
+
+        frozen_feature_names = self.manuscript_context.get("feature_names_for_manuscript") or []
+        if frozen_feature_names:
+            self.ctx["feature_cols"] = list(frozen_feature_names)
+            self.ctx["features_kept"] = list(frozen_feature_names)
+
         target_stats = self.manuscript_context.get("target_stats") or {}
         if target_stats:
             self.ctx["target_stats"] = dict(target_stats)

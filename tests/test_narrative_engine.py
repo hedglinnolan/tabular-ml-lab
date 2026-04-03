@@ -219,6 +219,51 @@ class TestNarrativeEngineGeneration:
         assert "best held-out performance on validation RMSE" in draft.model_development
         assert "no manuscript-primary model was explicitly selected" in draft.model_development
 
+    def test_manuscript_context_overrides_population_and_feature_counts_when_provenance_is_sparse(self):
+        prov = WorkflowProvenance()
+        prov.record_upload("glucose", "regression", [f"base_{i}" for i in range(26)], 21849)
+        prov.record_feature_engineering(
+            transforms=["age × sugar", "age × weight"],
+            n_created=2,
+            n_before=26,
+            n_after=28,
+        )
+        prov.record_feature_selection(
+            method="consensus",
+            n_before=28,
+            n_after=19,
+            features_kept=[f"feat_{i}" for i in range(19)],
+        )
+        prov.record_training(
+            models_trained=["huber", "nn"],
+            metrics_by_model={
+                "huber": {"RMSE": 12.4},
+                "nn": {"RMSE": 12.3},
+            },
+        )
+
+        engine = NarrativeEngine(
+            prov,
+            manuscript_context={
+                'feature_names_for_manuscript': [f"feat_{i}" for i in range(19)],
+                'feature_counts': {'original': 26, 'candidate': 28, 'selected': 19, 'engineered': 2},
+                'population_counts': {'upload_total': 21849, 'analysis_total': 19784},
+                'selected_model_results': {
+                    'huber': {'metrics': {'RMSE': 12.4}},
+                    'nn': {'metrics': {'RMSE': 12.3}},
+                },
+                'best_model_by_metric': 'nn',
+                'best_metric_name': 'RMSE',
+            },
+        )
+        draft = engine.generate()
+
+        assert "19,784 observations" in draft.study_design
+        assert "21,849 observations" not in draft.study_design
+        assert "26 predictor variables" in draft.predictor_variables
+        assert "28 candidate predictors" in draft.predictor_variables
+        assert "19 predictors for final modeling" in draft.predictor_variables
+
     def test_hyperparameters_in_model_development(self, full_provenance):
         """#81: Hyperparameters should be described in human-readable prose."""
         engine = NarrativeEngine(full_provenance)

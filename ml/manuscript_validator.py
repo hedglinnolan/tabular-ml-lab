@@ -269,7 +269,7 @@ def validate_manuscript_bundle(
     )
 
     artifact_patterns = {
-        "placeholder prompt": r"\[PLACEHOLDER(?::|\])",
+        "raw placeholder tag": r"\[PLACEHOLDER\](?!:)",
         "note tag": r"\[NOTE(?::|\])",
         "markdown heading": r"(?:^|\n)##\s+\S+|\\#\\#",
         "markdown bold": r"\*\*[^*]+\*\*",

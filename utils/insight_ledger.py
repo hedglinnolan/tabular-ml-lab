@@ -398,13 +398,14 @@ def _clean_for_manuscript(text: str) -> str:
     text = re.sub(r'(?i)\bdataset characteristics favorable to the analysis\b\s*[:\-]*\s*', '', text)
     text = re.sub(r'(?i)\bfavorable (?:for|to) analysis\b\.?', '', text)
     
-    # Replace model keys with human names
-    # Match uppercase model keys (HISTGB_REG, RIDGE, etc.)
-    def replace_model_key(match):
-        key = match.group(0).lower()
-        return model_display_name(key)
-    
-    text = re.sub(r'\b([A-Z_]{2,})\b', replace_model_key, text)
+    # Replace internal model keys with manuscript-friendly names regardless of case.
+    for key in sorted(MODEL_DISPLAY_NAMES.keys(), key=len, reverse=True):
+        text = re.sub(
+            rf'\b{re.escape(key)}\b',
+            model_display_name(key),
+            text,
+            flags=re.IGNORECASE,
+        )
     
     # Clean up multiple spaces
     text = re.sub(r'\s+', ' ', text)
@@ -1186,10 +1187,11 @@ class InsightLedger:
                         i.resolution_details, model_scope=i.model_scope
                     )
                     detail_prose = _clean_for_manuscript(detail_prose)
-                    sentence = (
-                        f"{_strip_terminal_sentence_punctuation(finding)}. "
-                        f"{_strip_terminal_sentence_punctuation(detail_prose)}."
-                    )
+                    finding_clean = _strip_terminal_sentence_punctuation(finding)
+                    detail_clean = _strip_terminal_sentence_punctuation(detail_prose)
+                    sentence = f"{finding_clean}."
+                    if detail_clean:
+                        sentence += f" {detail_clean}."
                 else:
                     detail_str = ""
                     if i.resolution_details:
@@ -1205,10 +1207,11 @@ class InsightLedger:
                         if parts:
                             detail_str = f" ({', '.join(parts)})"
 
-                    sentence = (
-                        f"{_strip_terminal_sentence_punctuation(finding)}. "
-                        f"{_strip_terminal_sentence_punctuation(resolved_by)}{detail_str}."
-                    )
+                    finding_clean = _strip_terminal_sentence_punctuation(finding)
+                    resolved_clean = _strip_terminal_sentence_punctuation(resolved_by)
+                    sentence = f"{finding_clean}."
+                    if resolved_clean or detail_str:
+                        sentence += f" {resolved_clean}{detail_str}."
 
                 topic = self._manuscript_topic_bucket(i)
                 grouped_sentences.setdefault(topic, []).append(sentence)

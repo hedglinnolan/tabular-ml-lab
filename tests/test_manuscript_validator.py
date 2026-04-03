@@ -161,3 +161,54 @@ The best model by RMSE was \textbf{Neural Network (MLP)}. No manuscript-primary 
 
     assert "Selection metric language matches task type" in failed_names
     assert "Primary model statements are internally consistent" in failed_names
+
+
+def test_validate_manuscript_bundle_allows_investigator_placeholders_but_rejects_raw_markdown_artifacts():
+    manuscript_context = {
+        'population_counts': {
+            'analysis_total': 950,
+            'train_n': 700,
+            'val_n': 150,
+            'test_n': 100,
+        },
+        'feature_counts': {'original': 26, 'selected': 18},
+        'feature_names_for_manuscript': [f'f{i}' for i in range(18)],
+        'included_models': ['ridge'],
+        'best_metric_name': 'RMSE',
+    }
+    report_text = """
+## Abstract (Draft)
+**Methods:** Of 1,000 observations, 950 remained for analysis after exclusions. The workflow began with 26 predictor variables and retained 18 predictors for final modeling.
+"""
+    methods_text = """
+## Methods
+### Study Design
+A regression analysis was performed on a dataset of 950 observations.
+
+### Predictor Variables
+The workflow began with 26 predictor variables and retained 18 predictors for final modeling.
+
+### Model Development
+Ridge Regression achieved the best held-out performance on validation RMSE, but no manuscript-primary model was explicitly selected.
+
+### Model Evaluation
+Ridge Regression was evaluated on the held-out test set using RMSE and R².
+"""
+    latex_text = r"""
+\section{Introduction}
+[PLACEHOLDER: Add clinical background.]
+\section{Methods}
+Clean LaTeX output only.
+"""
+
+    report = validate_manuscript_bundle(
+        manuscript_context=manuscript_context,
+        methods_text=methods_text,
+        report_text=report_text,
+        latex_text=latex_text,
+        task_type='regression',
+    )
+
+    failed_names = {check.name for check in report.failed_checks}
+
+    assert "LaTeX output is free of markdown and note artifacts" not in failed_names

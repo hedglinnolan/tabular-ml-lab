@@ -366,17 +366,22 @@ def _build_manuscript_context(
     """Freeze manuscript-scoped facts once so markdown and LaTeX share the same boundary."""
     selected_results = {k: v for k, v in model_results.items() if k in selected_for_report} if include_results else None
     selected_bootstrap = {k: v for k, v in export_ctx['bootstrap_results'].items() if k in selected_for_report} if include_results else None
-
-    x_train = st.session_state.get('X_train')
-    x_train_columns = getattr(x_train, 'columns', None)
-    if x_train_columns is not None:
-        workflow_feature_names = list(x_train_columns)
+    selected_feature_names = st.session_state.get('selected_features')
+    if selected_feature_names:
+        workflow_feature_names = list(selected_feature_names)
+    elif data_config and data_config.feature_cols:
+        workflow_feature_names = list(data_config.feature_cols)
     else:
-        feature_names_state = st.session_state.get('feature_names')
-        if feature_names_state is not None:
-            workflow_feature_names = list(feature_names_state)
+        x_train = st.session_state.get('X_train')
+        x_train_columns = getattr(x_train, 'columns', None)
+        if x_train_columns is not None:
+            workflow_feature_names = list(x_train_columns)
         else:
-            workflow_feature_names = list(data_config.feature_cols)
+            feature_names_state = st.session_state.get('feature_names')
+            if feature_names_state is not None:
+                workflow_feature_names = list(feature_names_state)
+            else:
+                workflow_feature_names = []
     train_n = len(st.session_state.get('X_train', []))
     val_n = len(st.session_state.get('X_val', []))
     test_n = len(st.session_state.get('X_test', []))
@@ -397,9 +402,18 @@ def _build_manuscript_context(
                 'min': float(target_series.min()),
                 'max': float(target_series.max()),
             }
+    scoped_results = selected_results or {k: v for k, v in model_results.items() if k in selected_for_report}
+    scoped_best_model_by_metric, scoped_best_metric_name = _get_export_best_model(
+        scoped_results,
+        data_config.task_type if data_config else None,
+    )
+    if not scoped_best_model_by_metric:
+        scoped_best_model_by_metric = export_ctx.get('best_model_by_metric')
+        scoped_best_metric_name = export_ctx.get('best_metric_name')
+
     top_features: List[str] = []
     perm_importance = st.session_state.get('permutation_importance') or {}
-    abstract_model_key = best_model or export_ctx.get('best_model_by_metric')
+    abstract_model_key = best_model or scoped_best_model_by_metric
     if abstract_model_key and abstract_model_key in perm_importance:
         pi_data = perm_importance[abstract_model_key]
         feat_names = pi_data.get('feature_names', [])
@@ -423,8 +437,8 @@ def _build_manuscript_context(
         'feature_names_for_manuscript': workflow_feature_names,
         'feature_counts': feature_counts,
         'manuscript_primary_model': best_model,
-        'best_model_by_metric': export_ctx.get('best_model_by_metric'),
-        'best_metric_name': export_ctx.get('best_metric_name'),
+        'best_model_by_metric': scoped_best_model_by_metric,
+        'best_metric_name': scoped_best_metric_name,
         'explainability_methods': list(selected_explain),
         'population_counts': {
             'upload_total': len(df) if df is not None else 0,
@@ -797,6 +811,41 @@ def _build_latex_export_bundle(
     st.session_state["manuscript_export_context"] = manuscript_context
 
     return bundle
+
+
+def _build_validation_report_text(bundle: Dict[str, Any]) -> str:
+    """Build markdown validation text from the same frozen manuscript bundle as LaTeX export."""
+    from ml.latex_report import _build_structured_abstract_sections
+
+    manuscript_context = bundle['manuscript_context']
+    abstract_sections = _build_structured_abstract_sections(
+        task_type=data_config.task_type or "regression",
+        target_name=data_config.target_col,
+        n_total=len(df),
+        n_train=bundle['train_n'],
+        n_val=bundle['val_n'],
+        n_test=bundle['test_n'],
+        model_results=manuscript_context.get('selected_model_results'),
+        bootstrap_results=bundle['bootstrap_results'],
+        manuscript_context=manuscript_context,
+        feature_names=manuscript_context.get('feature_names_for_manuscript'),
+    )
+
+    report_lines = [
+        "## Abstract (Draft)",
+        "",
+        f"**Background/Objective:** {abstract_sections['background_objective']}",
+        "",
+        f"**Methods:** {abstract_sections['methods']}",
+        "",
+        f"**Results:** {abstract_sections['results']}",
+        "",
+        f"**Conclusions:** {abstract_sections['conclusions']}",
+        "",
+        bundle['methods_text'].strip(),
+    ]
+
+    return "\n".join(line for line in report_lines if line is not None)
 
 
 def generate_report(export_ctx: Dict[str, Any]) -> str:
@@ -1722,6 +1771,7 @@ validation_bundle = _build_latex_export_bundle(
     include_results=include_results,
     best_model=best_model,
 )
+validation_report_text = _build_validation_report_text(validation_bundle)
 validation_manuscript_context = validation_bundle['manuscript_context']
 validation_methods_text = validation_bundle['methods_text']
 
@@ -1746,7 +1796,7 @@ validation_latex = _generate_validation_latex(
 validation_report = validate_manuscript_bundle(
     manuscript_context=validation_manuscript_context,
     methods_text=validation_methods_text,
-    report_text=report_text,
+    report_text=validation_report_text,
     latex_text=validation_latex,
     task_type=data_config.task_type or "regression",
 )
