@@ -188,6 +188,37 @@ class TestNarrativeEngineGeneration:
         assert "5-fold" in draft.model_development
         assert "Random Forest" in draft.model_development  # primary model
 
+    def test_model_development_does_not_promote_best_by_metric_to_primary(self):
+        prov = WorkflowProvenance()
+        prov.record_upload("glucose", "regression", ["age", "bmi"], 500)
+        prov.record_training(
+            models_trained=["ridge", "nn"],
+            primary_model="",
+            selection_criteria="validation Accuracy",
+            metrics_by_model={
+                "ridge": {"RMSE": 12.5, "R2": 0.20},
+                "nn": {"RMSE": 12.1, "R2": 0.24},
+            },
+        )
+
+        engine = NarrativeEngine(
+            prov,
+            manuscript_context={
+                'selected_model_results': {
+                    'ridge': {'metrics': {'RMSE': 12.5, 'R2': 0.20}},
+                    'nn': {'metrics': {'RMSE': 12.1, 'R2': 0.24}},
+                },
+                'best_model_by_metric': 'nn',
+                'best_metric_name': 'RMSE',
+                'manuscript_primary_model': None,
+            },
+        )
+        draft = engine.generate()
+
+        assert "selected as the primary model" not in draft.model_development
+        assert "best held-out performance on validation RMSE" in draft.model_development
+        assert "no manuscript-primary model was explicitly selected" in draft.model_development
+
     def test_hyperparameters_in_model_development(self, full_provenance):
         """#81: Hyperparameters should be described in human-readable prose."""
         engine = NarrativeEngine(full_provenance)

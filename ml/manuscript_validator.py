@@ -51,6 +51,12 @@ def _extract_section(text: str, heading: str, level: int) -> str:
     return match.group(1).strip() if match else ""
 
 
+def _extract_latex_subsection(text: str, heading: str) -> str:
+    pattern = rf"(?ms)\\subsection\{{{re.escape(heading)}\}}\s*(.*?)(?=\\subsection\{{|\\section\{{|\\paragraph\{{|\\end\{{document\}}|\Z)"
+    match = re.search(pattern, text or "")
+    return match.group(1).strip() if match else ""
+
+
 def _extract_analysis_n(text: str) -> Optional[int]:
     patterns = [
         r"Of\s+[\d,]+\s+observations,\s+([\d,]+)\s+remained for analysis",
@@ -88,6 +94,14 @@ def _contains_any_variant(text: str, variants: List[str]) -> bool:
     return any(variant.lower() in lowered for variant in variants)
 
 
+def _invalid_metric_terms_for_task(text: str, task_type: str) -> List[str]:
+    invalid_terms = {
+        "regression": {"accuracy", "f1", "auc", "precision", "recall"},
+        "classification": {"rmse", "mae", "r2", "medianae"},
+    }.get(task_type, set())
+    return sorted({term for term in invalid_terms if re.search(rf"\b{re.escape(term)}\b", text or "", re.IGNORECASE)})
+
+
 def validate_manuscript_bundle(
     manuscript_context: Optional[Dict[str, Any]],
     methods_text: str,
@@ -111,6 +125,8 @@ def validate_manuscript_bundle(
     predictor_section = _extract_section(methods_text, "Predictor Variables", level=3)
     model_dev_section = _extract_section(methods_text, "Model Development", level=3)
     model_eval_section = _extract_section(methods_text, "Model Evaluation", level=3)
+    latex_model_dev_section = _extract_latex_subsection(latex_text, "Model Development")
+    combined_export_text = f"{report_text}\n{latex_text}"
 
     expected_analysis_n = population.get("analysis_total")
     abstract_analysis_n = _extract_analysis_n(abstract_section)
@@ -193,12 +209,45 @@ def validate_manuscript_bundle(
     ) or (
         task_type == "classification" and metric_name in {"rmse", "mae", "r2", "medianae"}
     )
+    invalid_metric_terms = _invalid_metric_terms_for_task(
+        "\n".join(part for part in (model_dev_section, latex_model_dev_section) if part),
+        task_type,
+    )
     checks.append(
         ManuscriptValidationCheck(
             name="Selection metric language matches task type",
-            status="PASS" if not invalid_metric else "FAIL",
+            status="PASS" if not (invalid_metric or invalid_metric_terms) else "FAIL",
             location="Export Context / Methods",
-            detail=f"task_type={task_type}, best_metric_name={context.get('best_metric_name')}.",
+            detail=(
+                f"task_type={task_type}, best_metric_name={context.get('best_metric_name')}."
+                if not invalid_metric_terms
+                else (
+                    f"task_type={task_type}, best_metric_name={context.get('best_metric_name')}, "
+                    f"invalid rendered metric term(s) in model-development prose: {', '.join(invalid_metric_terms)}."
+                )
+            ),
+        )
+    )
+
+    explicit_primary_claim = bool(
+        re.search(r"\bselected as the primary model\b|\bmanuscript-primary model was\b", f"{model_dev_section}\n{latex_model_dev_section}", re.IGNORECASE)
+    )
+    no_primary_claim = "no manuscript-primary model was explicitly selected" in combined_export_text.lower()
+    expected_primary_model = context.get("manuscript_primary_model")
+    primary_conflict = (
+        (explicit_primary_claim and no_primary_claim)
+        or (explicit_primary_claim and not expected_primary_model)
+        or (no_primary_claim and bool(expected_primary_model))
+    )
+    checks.append(
+        ManuscriptValidationCheck(
+            name="Primary model statements are internally consistent",
+            status="PASS" if not primary_conflict else "FAIL",
+            location="Methods / Results",
+            detail=(
+                f"manuscript_primary_model={expected_primary_model}, "
+                f"explicit_primary_claim={explicit_primary_claim}, no_primary_claim={no_primary_claim}."
+            ),
         )
     )
 
@@ -219,7 +268,16 @@ def validate_manuscript_bundle(
         )
     )
 
-    artifact_tokens = [token for token in ("[PLACEHOLDER]", "[NOTE]", "##", "**") if token in (latex_text or "")]
+    artifact_patterns = {
+        "placeholder prompt": r"\[PLACEHOLDER(?::|\])",
+        "note tag": r"\[NOTE(?::|\])",
+        "markdown heading": r"(?:^|\n)##\s+\S+|\\#\\#",
+        "markdown bold": r"\*\*[^*]+\*\*",
+    }
+    artifact_tokens = [
+        label for label, pattern in artifact_patterns.items()
+        if re.search(pattern, latex_text or "", re.IGNORECASE)
+    ]
     checks.append(
         ManuscriptValidationCheck(
             name="LaTeX output is free of markdown and note artifacts",
@@ -233,8 +291,11 @@ def validate_manuscript_bundle(
         )
     )
 
-    internal_keys = sorted({key.upper() for key in _MODEL_NAMES if "_" in key})
-    leaked_keys = [key for key in internal_keys if re.search(rf"\b{re.escape(key)}\b", f"{report_text}\n{latex_text}")]
+    internal_keys = sorted({key for key in _MODEL_NAMES if "_" in key})
+    leaked_keys = []
+    for key in internal_keys:
+        if re.search(rf"\b{re.escape(key)}\b", combined_export_text) or re.search(rf"\b{re.escape(key.upper())}\b", combined_export_text):
+            leaked_keys.append(key.upper())
     checks.append(
         ManuscriptValidationCheck(
             name="No internal model keys leak into export text",
@@ -254,7 +315,7 @@ def validate_manuscript_bundle(
         "workflow-derived abstract",
         "[applicable to",
     ]
-    found_patterns = [pattern for pattern in coaching_patterns if pattern in f"{report_text}\n{latex_text}".lower()]
+    found_patterns = [pattern for pattern in coaching_patterns if pattern in combined_export_text.lower()]
     checks.append(
         ManuscriptValidationCheck(
             name="No coaching language patterns remain in export text",
@@ -269,10 +330,12 @@ def validate_manuscript_bundle(
     )
 
     punctuation_issues = []
-    if re.search(r"\.\.", f"{report_text}\n{latex_text}"):
+    if re.search(r"\.\.", combined_export_text):
         punctuation_issues.append("double periods")
-    if re.search(r"\b(Table|Figure)\s+X\b", f"{report_text}\n{latex_text}"):
+    if re.search(r"\b(Table|Figure)\s+X\b", combined_export_text):
         punctuation_issues.append("dangling Table/Figure X reference")
+    if re.search(r"[—-]\.", combined_export_text):
+        punctuation_issues.append("dash followed by period")
     checks.append(
         ManuscriptValidationCheck(
             name="No obvious dangling punctuation or placeholder references remain",

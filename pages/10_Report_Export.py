@@ -257,6 +257,19 @@ def _get_export_best_model(model_results: Dict[str, Dict[str, Any]], task_type: 
     return None, None
 
 
+def _export_model_label(model_key: Optional[str]) -> str:
+    """Return a manuscript-friendly model label for export surfaces."""
+    if not model_key:
+        return "Unknown model"
+
+    try:
+        from utils.insight_ledger import model_display_name
+
+        return model_display_name(str(model_key))
+    except Exception:
+        return str(model_key).upper()
+
+
 def build_export_context() -> Dict[str, Any]:
     """Freeze the export view into a single snapshot for consistent rendering/export."""
     pipelines_by_model = st.session_state.get('preprocessing_pipelines_by_model') or {}
@@ -336,11 +349,11 @@ def render_export_readiness_audit(export_ctx: Dict[str, Any]) -> None:
     best_metric_name = export_ctx.get('best_metric_name')
     manuscript_primary = export_ctx.get('manuscript_primary_model')
     if best_by_metric:
-        msg = f"Best by current held-out metric: {best_by_metric.upper()}"
+        msg = f"Best by current held-out metric: {_export_model_label(best_by_metric)}"
         if best_metric_name:
             msg += f" ({best_metric_name})"
         if manuscript_primary and manuscript_primary != best_by_metric:
-            msg += f". Manuscript primary model currently selected: {manuscript_primary.upper()}."
+            msg += f". Manuscript primary model currently selected: {_export_model_label(manuscript_primary)}."
         st.caption(msg)
 
 
@@ -647,6 +660,145 @@ def _build_methods_section_for_export(
     )
 
 
+def _build_explainability_summary_for_export(manuscript_context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Collect explainability outputs for both validation and LaTeX export."""
+    explainability_summary: Dict[str, Any] = {}
+    perm_imp = st.session_state.get('permutation_importance', {}) or {}
+    shap_results = st.session_state.get('shap_results', {}) or {}
+    calibration_results = st.session_state.get('calibration_results', {}) or {}
+
+    if perm_imp:
+        explainability_summary['permutation_importance_available'] = True
+        best_model_key = manuscript_context.get('manuscript_primary_model') or manuscript_context.get('best_model_by_metric')
+        if best_model_key and best_model_key in perm_imp:
+            pi_data = perm_imp[best_model_key]
+            feat_names_raw = pi_data.get('feature_names')
+            importances_raw = pi_data.get('importances_mean')
+            feat_names = list(feat_names_raw) if feat_names_raw is not None else []
+            importances = list(importances_raw) if importances_raw is not None else []
+            if feat_names and importances and len(feat_names) == len(importances):
+                sorted_idx = sorted(range(len(importances)), key=lambda i: importances[i], reverse=True)
+                explainability_summary['top_features'] = [feat_names[i] for i in sorted_idx[:10]]
+
+    if shap_results:
+        explainability_summary['shap_available'] = True
+
+    if calibration_results:
+        best_model_key = manuscript_context.get('manuscript_primary_model') or manuscript_context.get('best_model_by_metric')
+        if best_model_key and best_model_key in calibration_results:
+            cal_data = calibration_results[best_model_key]
+            explainability_summary['calibration_metrics'] = {
+                k: v for k, v in cal_data.items()
+                if isinstance(v, (int, float)) and k not in ('model', 'timestamp')
+            }
+
+    return explainability_summary or None
+
+
+def _build_sensitivity_summary_for_export() -> Optional[Dict[str, Any]]:
+    """Collect sensitivity-analysis outputs for both validation and LaTeX export."""
+    sensitivity_summary: Dict[str, Any] = {}
+    seed_sensitivity = st.session_state.get('sensitivity_seed_results')
+    if seed_sensitivity is not None and not seed_sensitivity.empty:
+        metric_cols = [c for c in seed_sensitivity.columns if c not in ('seed', '_error')]
+        if metric_cols:
+            metric_vals = seed_sensitivity[metric_cols[0]].dropna()
+            if len(metric_vals) > 1:
+                cv_pct = (metric_vals.std() / metric_vals.mean() * 100) if metric_vals.mean() != 0 else 0
+                sensitivity_summary['seed_stability'] = {
+                    'cv_percent': cv_pct,
+                    'range': f"{metric_vals.min():.4f} to {metric_vals.max():.4f}",
+                }
+
+    feature_dropout = st.session_state.get('sensitivity_feature_dropout')
+    if feature_dropout is not None:
+        sensitivity_summary['feature_dropout_conducted'] = True
+
+    return sensitivity_summary or None
+
+
+def _build_stat_validation_summary_for_export() -> Optional[List[Dict[str, Any]]]:
+    """Collect statistical validation outputs for both validation and LaTeX export."""
+    stat_validation_summary = []
+    methodology_log = _report_ledger.get_methodology_log() or st.session_state.get('methodology_log', [])
+    for entry in methodology_log:
+        if entry.get('step') == 'Statistical Validation':
+            details = entry.get('details', {})
+            action = entry.get('action', '')
+            stat_validation_summary.append({
+                'test_name': details.get('test_name') or action,
+                'variable': details.get('variable', 'unknown variable'),
+                'statistic': details.get('statistic'),
+                'p_value': details.get('p_value'),
+            })
+
+    return stat_validation_summary or None
+
+
+def _prepare_table1_for_latex_export(table1_df: Optional[pd.DataFrame]) -> Optional[pd.DataFrame]:
+    """Return a copy of Table 1 with any custom statistical-test footnotes applied."""
+    if table1_df is None:
+        return None
+
+    table1_df_local = table1_df.copy()
+    custom_tests = st.session_state.get('custom_table1_tests', [])
+    if not custom_tests:
+        st.session_state.pop('table1_custom_test_footnotes', None)
+        return table1_df_local
+
+    footnotes = []
+    for idx, test in enumerate(custom_tests, start=1):
+        var_name = test['variable']
+        mask = table1_df_local.index.str.contains(var_name, case=False, na=False)
+        if mask.any():
+            first_match_idx = table1_df_local.index[mask][0]
+            current_label = str(first_match_idx)
+            table1_df_local = table1_df_local.rename(index={first_match_idx: f"{current_label}^{idx}"})
+            p_str = f"{test['p_value']:.4f}" if test['p_value'] >= 0.001 else "<0.001"
+            footnotes.append(f"^{idx} {test['test']}: {test['statistic']}, p={p_str} ({test['note']})")
+
+    if footnotes:
+        st.session_state['table1_custom_test_footnotes'] = footnotes
+    else:
+        st.session_state.pop('table1_custom_test_footnotes', None)
+
+    return table1_df_local
+
+
+def _build_latex_export_bundle(
+    selected_for_report: List[str],
+    selected_explain: List[str],
+    include_results: bool,
+    best_model: Optional[str],
+) -> Dict[str, Any]:
+    """Build the exact manuscript bundle used by both validation and LaTeX export."""
+    manuscript_context = _build_manuscript_context(
+        selected_for_report=selected_for_report,
+        selected_explain=selected_explain,
+        include_results=include_results,
+        best_model=best_model,
+    )
+    methods_text = _build_methods_section_for_export(manuscript_context)
+
+    bundle = {
+        'manuscript_context': manuscript_context,
+        'methods_text': methods_text,
+        'table1_df_local': _prepare_table1_for_latex_export(st.session_state.get("table1_df")),
+        'bootstrap_results': manuscript_context.get('selected_bootstrap_results') or {},
+        'explainability_summary': _build_explainability_summary_for_export(manuscript_context),
+        'sensitivity_summary': _build_sensitivity_summary_for_export(),
+        'stat_validation_summary': _build_stat_validation_summary_for_export(),
+        'train_n': len(st.session_state.get('X_train', [])),
+        'val_n': len(st.session_state.get('X_val', [])),
+        'test_n': len(st.session_state.get('X_test', [])),
+    }
+
+    st.session_state["methods_section"] = methods_text
+    st.session_state["manuscript_export_context"] = manuscript_context
+
+    return bundle
+
+
 def generate_report(export_ctx: Dict[str, Any]) -> str:
     """Generate markdown report with improved structure and aesthetics."""
     report_lines = []
@@ -685,7 +837,9 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     manuscript_primary_model = export_ctx.get('manuscript_primary_model')
     if best_model_key and best_model_key in model_results:
         best_model_result = model_results[best_model_key]
-        report_lines.append(f"**Best Model (by held-out {best_metric_name or 'metric'}):** {best_model_key.upper()}")
+        report_lines.append(
+            f"**Best Model (by held-out {best_metric_name or 'metric'}):** {_export_model_label(best_model_key)}"
+        )
         if data_config.task_type == 'regression':
             if best_model_result['metrics'].get('RMSE') is not None:
                 report_lines.append(f"**Test RMSE:** {best_model_result['metrics']['RMSE']:.4f}")
@@ -697,7 +851,7 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
             if best_model_result['metrics'].get('F1') is not None:
                 report_lines.append(f"**Test F1:** {best_model_result['metrics']['F1']:.4f}")
     if manuscript_primary_model:
-        report_lines.append(f"**Manuscript Primary Model:** {manuscript_primary_model.upper()}")
+        report_lines.append(f"**Manuscript Primary Model:** {_export_model_label(manuscript_primary_model)}")
         if best_model_key and manuscript_primary_model != best_model_key:
             report_lines.append("**Note:** The manuscript primary model differs from the current best held-out metric winner.")
     
@@ -858,7 +1012,7 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
             report_lines.append("")
 
         for mk, pl in pipelines_by_model.items():
-            report_lines.append(f"### {mk.upper()}")
+            report_lines.append(f"### {_export_model_label(mk)}")
             report_lines.append("")
             recipe = get_pipeline_recipe(pl)
             report_lines.append("```")
@@ -900,13 +1054,15 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
             primary_val = best_model['metrics'].get(primary_metric)
         
         if primary_val is not None:
-            report_lines.append(f"Best model: **{best_model_key.upper()}** with {primary_metric} = {primary_val:.4f} on the held-out test set.")
+            report_lines.append(
+                f"Best model: **{_export_model_label(best_model_key)}** with {primary_metric} = {primary_val:.4f} on the held-out test set."
+            )
             report_lines.append("")
     
     # Metrics table
     comparison_data = []
     for name, results in model_results.items():
-        row = {'Model': name.upper()}
+        row = {'Model': _export_model_label(name)}
         row.update(results['metrics'])
         comparison_data.append(row)
     
@@ -937,7 +1093,7 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
         for name, results in model_results.items():
             if results.get('cv_results'):
                 cv = results['cv_results']
-                report_lines.append(f"| {name.upper()} | {cv['mean']:.4f} | ±{cv['std']:.4f} |")
+                report_lines.append(f"| {_export_model_label(name)} | {cv['mean']:.4f} | ±{cv['std']:.4f} |")
         report_lines.append("")
 
         from ml.eval import compare_models_paired_cv
@@ -960,7 +1116,9 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
                 p = v["p"]
                 sig = "Yes" if (p is not None and np.isfinite(p) and p < 0.05) else "No"
                 p_str = f"{p:.4f}" if (p is not None and np.isfinite(p)) else "—"
-                report_lines.append(f"| {ma.upper()} | {mb.upper()} | {mean_d:.4f} | {tname} | {p_str} | {sig} |")
+                report_lines.append(
+                    f"| {_export_model_label(ma)} | {_export_model_label(mb)} | {mean_d:.4f} | {tname} | {p_str} | {sig} |"
+                )
             report_lines.append("")
 
     report_lines.append("---")
@@ -975,7 +1133,7 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     
     for model_key, model_wrapper in trained_models.items():
         spec = registry.get(model_key)
-        model_name = spec.name if spec else model_key.upper()
+        model_name = spec.name if spec else _export_model_label(model_key)
         results = model_results.get(model_key, {})
         
         report_lines.append(f"### {model_name}")
@@ -1058,7 +1216,7 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
         report_lines.append("## Feature Importance (Permutation)")
         report_lines.append("")
         for name, perm_data in perm_importance.items():
-            report_lines.append(f"### {name.upper()}")
+            report_lines.append(f"### {_export_model_label(name)}")
             importance_df = pd.DataFrame({
                 'Feature': perm_data['feature_names'],
                 'Importance': perm_data['importances_mean']
@@ -1091,7 +1249,9 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
             ]
             if not feats and data.get('pd_per_feature'):
                 feats = [str(idx) for idx in list(data['pd_per_feature'].keys())[:5]]
-            report_lines.append(f"**{name.upper()}:** {', '.join(feats)}{'…' if len(pd_feature_indices) > 5 else ''}")
+            report_lines.append(
+                f"**{_export_model_label(name)}:** {', '.join(feats)}{'…' if len(pd_feature_indices) > 5 else ''}"
+            )
         report_lines.append("")
         report_lines.append("---")
         report_lines.append("")
@@ -1099,11 +1259,11 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     if shap_data:
         report_lines.append("## SHAP")
         report_lines.append("")
-        report_lines.append(f"Models: {', '.join(m.upper() for m in shap_data.keys())}.")
+        report_lines.append(f"Models: {', '.join(_export_model_label(m) for m in shap_data.keys())}.")
         for name, s in shap_data.items():
             ss = s.get("stats_summary", "")
             if ss:
-                report_lines.append(f"- **{name.upper()}:** {ss[:120]}{'…' if len(ss) > 120 else ''}")
+                report_lines.append(f"- **{_export_model_label(name)}:** {ss[:120]}{'…' if len(ss) > 120 else ''}")
         report_lines.append("")
         report_lines.append("---")
         report_lines.append("")
@@ -1117,7 +1277,7 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
             r = v.get("spearman")
             r_str = f"{r:.3f}" if r is not None else "N/A"
             ov = v.get("top_k_overlap", "N/A")
-            report_lines.append(f"| {ma} | {mb} | {r_str} | {ov} |")
+            report_lines.append(f"| {_export_model_label(ma)} | {_export_model_label(mb)} | {r_str} | {ov} |")
         report_lines.append("")
         report_lines.append("---")
         report_lines.append("")
@@ -1193,7 +1353,10 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
             primary_val = best_model['metrics'].get(primary_metric)
         
         if primary_val is not None:
-            report_lines.append(f"The {best_model_key.upper()} achieved {primary_metric} of {primary_val:.4f} on held-out data. [PLACEHOLDER: Interpret this performance in clinical context]")
+            report_lines.append(
+                f"The {_export_model_label(best_model_key)} achieved {primary_metric} of {primary_val:.4f} on held-out data. "
+                "[PLACEHOLDER: Interpret this performance in clinical context]"
+            )
         else:
             report_lines.append("[PLACEHOLDER: Summarize the main results in context of the study objectives.]")
     else:
@@ -1369,7 +1532,7 @@ with st.expander("📄 Auto-Generated Methods Section", expanded=False):
     if selected_for_report:
         default_best_model = export_ctx.get('best_model_by_metric')
         st.caption(
-            f"Current best by held-out metric: {default_best_model.upper()}"
+            f"Current best by held-out metric: {_export_model_label(default_best_model)}"
             if default_best_model else
             "Current best-by-metric model is not available."
         )
@@ -1553,30 +1716,30 @@ if st.session_state.get("table1_df") is not None:
 from ml.latex_report import generate_latex_report as _generate_validation_latex
 from ml.manuscript_validator import validate_manuscript_bundle
 
-validation_manuscript_context = st.session_state.get("manuscript_export_context")
-if validation_manuscript_context is None:
-    validation_manuscript_context = _build_manuscript_context(
-        selected_for_report=list(model_results.keys()),
-        selected_explain=[],
-        include_results=True,
-        best_model=export_ctx.get('manuscript_primary_model'),
-    )
-
-validation_methods_text = st.session_state.get("methods_section", "")
-if not validation_methods_text.strip():
-    validation_methods_text = _build_methods_section_for_export(validation_manuscript_context)
+validation_bundle = _build_latex_export_bundle(
+    selected_for_report=selected_for_report,
+    selected_explain=selected_explain,
+    include_results=include_results,
+    best_model=best_model,
+)
+validation_manuscript_context = validation_bundle['manuscript_context']
+validation_methods_text = validation_bundle['methods_text']
 
 validation_latex = _generate_validation_latex(
     methods_section=validation_methods_text,
     model_results=validation_manuscript_context.get('selected_model_results'),
-    bootstrap_results=validation_manuscript_context.get('selected_bootstrap_results'),
+    bootstrap_results=validation_bundle['bootstrap_results'],
     task_type=data_config.task_type or "regression",
     feature_names=validation_manuscript_context.get('feature_names_for_manuscript'),
     target_name=data_config.target_col,
     n_total=len(df),
-    n_train=len(st.session_state.get('X_train', [])),
-    n_val=len(st.session_state.get('X_val', [])),
-    n_test=len(st.session_state.get('X_test', [])),
+    n_train=validation_bundle['train_n'],
+    n_val=validation_bundle['val_n'],
+    n_test=validation_bundle['test_n'],
+    table1_df=validation_bundle['table1_df_local'],
+    explainability_summary=validation_bundle['explainability_summary'],
+    sensitivity_summary=validation_bundle['sensitivity_summary'],
+    stat_validation_summary=validation_bundle['stat_validation_summary'],
     manuscript_context=validation_manuscript_context,
 )
 
@@ -1627,136 +1790,32 @@ with st.expander("📝 LaTeX Manuscript Template", expanded=False):
     if st.button("Generate LaTeX Manuscript", key="gen_latex", type="primary", disabled=exports_blocked):
         from ml.latex_report import generate_latex_report
 
-        train_n = len(st.session_state.get('X_train', []))
-        val_n = len(st.session_state.get('X_val', []))
-        test_n = len(st.session_state.get('X_test', []))
-        table1_df_local = st.session_state.get("table1_df")
-        
-        # Merge custom statistical tests from page 09 into Table 1
-        # Format test info within existing Table 1 columns (not as extra columns)
-        custom_tests = st.session_state.get('custom_table1_tests', [])
-        if custom_tests and table1_df_local is not None:
-            # Add footnote marker to variable names and collect footnotes
-            footnotes = []
-            for idx, test in enumerate(custom_tests, start=1):
-                var_name = test['variable']
-                # Find matching row in table1_df_local and add footnote marker
-                mask = table1_df_local.index.str.contains(var_name, case=False, na=False)
-                if mask.any():
-                    first_match_idx = table1_df_local.index[mask][0]
-                    current_label = str(first_match_idx)
-                    table1_df_local = table1_df_local.rename(index={first_match_idx: f"{current_label}^{idx}"})
-                    p_str = f"{test['p_value']:.4f}" if test['p_value'] >= 0.001 else "<0.001"
-                    footnotes.append(f"^{idx} {test['test']}: {test['statistic']}, p={p_str} ({test['note']})")
-            
-            # Store footnotes in metadata for LaTeX generation
-            if footnotes:
-                st.session_state['table1_custom_test_footnotes'] = footnotes
-        methods_text = st.session_state.get("methods_section", "")
-        if not methods_text.strip():
-            manuscript_context = _build_manuscript_context(
-                selected_for_report=selected_for_report,
-                selected_explain=selected_explain,
-                include_results=include_results,
-                best_model=best_model,
-            )
-            methods_text = _build_methods_section_for_export(manuscript_context)
-            st.session_state["methods_section"] = methods_text
-            st.session_state["manuscript_export_context"] = manuscript_context
-
-        manuscript_context = st.session_state.get("manuscript_export_context") or _build_manuscript_context(
+        latex_bundle = _build_latex_export_bundle(
             selected_for_report=selected_for_report,
             selected_explain=selected_explain,
             include_results=include_results,
             best_model=best_model,
         )
-        st.session_state["manuscript_export_context"] = manuscript_context
-        bootstrap_res = manuscript_context.get('selected_bootstrap_results') or {}
-        
-        # Build explainability summary from session state
-        explainability_summary = {}
-        perm_imp = st.session_state.get('permutation_importance', {})
-        shap_results = st.session_state.get('shap_results', {})
-        calibration_results = st.session_state.get('calibration_results', {})
-        
-        if perm_imp:
-            explainability_summary['permutation_importance_available'] = True
-            # Extract top features from permutation importance
-            best_model_key = manuscript_context.get('manuscript_primary_model') or manuscript_context.get('best_model_by_metric')
-            if best_model_key and best_model_key in perm_imp:
-                pi_data = perm_imp[best_model_key]
-                feat_names = pi_data.get('feature_names', [])
-                importances = pi_data.get('importances_mean', [])
-                if len(feat_names) > 0 and len(importances) > 0:
-                    # Sort by importance
-                    sorted_idx = sorted(range(len(importances)), key=lambda i: importances[i], reverse=True)
-                    explainability_summary['top_features'] = [feat_names[i] for i in sorted_idx[:10]]
-        
-        if shap_results:
-            explainability_summary['shap_available'] = True
-        
-        if calibration_results:
-            # Extract calibration metrics if available
-            best_model_key = manuscript_context.get('manuscript_primary_model') or manuscript_context.get('best_model_by_metric')
-            if best_model_key and best_model_key in calibration_results:
-                cal_data = calibration_results[best_model_key]
-                explainability_summary['calibration_metrics'] = {
-                    k: v for k, v in cal_data.items() 
-                    if isinstance(v, (int, float)) and k not in ('model', 'timestamp')
-                }
-        
-        # Build sensitivity summary from session state
-        sensitivity_summary = {}
-        seed_sensitivity = st.session_state.get('sensitivity_seed_results')
-        if seed_sensitivity is not None and not seed_sensitivity.empty:
-            # Calculate CV% for the primary metric
-            metric_cols = [c for c in seed_sensitivity.columns if c not in ('seed', '_error')]
-            if metric_cols:
-                metric_vals = seed_sensitivity[metric_cols[0]].dropna()
-                if len(metric_vals) > 1:
-                    cv_pct = (metric_vals.std() / metric_vals.mean() * 100) if metric_vals.mean() != 0 else 0
-                    sensitivity_summary['seed_stability'] = {
-                        'cv_percent': cv_pct,
-                        'range': f"{metric_vals.min():.4f} to {metric_vals.max():.4f}"
-                    }
-        
-        feature_dropout = st.session_state.get('sensitivity_feature_dropout')
-        if feature_dropout is not None:
-            sensitivity_summary['feature_dropout_conducted'] = True
-
-        # FIX 4: Build statistical validation summary from methodology log
-        stat_validation_summary = []
-        _sv_log = _report_ledger.get_methodology_log() or st.session_state.get('methodology_log', [])
-        for entry in _sv_log:
-            if entry.get('step') == 'Statistical Validation':
-                details = entry.get('details', {})
-                action = entry.get('action', '')
-                stat_validation_summary.append({
-                    'test_name': details.get('test_name') or action,
-                    'variable': details.get('variable', 'unknown variable'),
-                    'statistic': details.get('statistic'),
-                    'p_value': details.get('p_value'),
-                })
 
         latex_source = generate_latex_report(
             title=paper_title,
             authors=authors,
             affiliation=affiliation,
-            methods_section=methods_text,
-            table1_df=table1_df_local,
-            model_results=manuscript_context.get('selected_model_results'),
-            bootstrap_results=bootstrap_res,
+            methods_section=latex_bundle['methods_text'],
+            table1_df=latex_bundle['table1_df_local'],
+            model_results=latex_bundle['manuscript_context'].get('selected_model_results'),
+            bootstrap_results=latex_bundle['bootstrap_results'],
             task_type=data_config.task_type or "regression",
-            feature_names=manuscript_context.get('feature_names_for_manuscript'),
+            feature_names=latex_bundle['manuscript_context'].get('feature_names_for_manuscript'),
             target_name=data_config.target_col,
             n_total=len(df),
-            n_train=train_n,
-            n_val=val_n,
-            n_test=test_n,
-            explainability_summary=explainability_summary if explainability_summary else None,
-            sensitivity_summary=sensitivity_summary if sensitivity_summary else None,
-            stat_validation_summary=stat_validation_summary if stat_validation_summary else None,
-            manuscript_context=manuscript_context,
+            n_train=latex_bundle['train_n'],
+            n_val=latex_bundle['val_n'],
+            n_test=latex_bundle['test_n'],
+            explainability_summary=latex_bundle['explainability_summary'],
+            sensitivity_summary=latex_bundle['sensitivity_summary'],
+            stat_validation_summary=latex_bundle['stat_validation_summary'],
+            manuscript_context=latex_bundle['manuscript_context'],
         )
         st.session_state["latex_report"] = latex_source
 

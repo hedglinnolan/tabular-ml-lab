@@ -277,9 +277,9 @@ def _build_structured_abstract_sections(
         "[INVESTIGATOR: interpret the practical importance of these findings and note key limitations]."
     ]
     if task_type == 'regression':
-        conclusions_bits.insert(0, "This workflow-derived abstract indicates measurable predictive signal but not complete explanatory coverage.")
+        conclusions_bits.insert(0, "These results indicate measurable predictive signal but still leave substantial unexplained variation.")
     else:
-        conclusions_bits.insert(0, "This workflow-derived abstract indicates measurable predictive signal that requires domain interpretation before use.")
+        conclusions_bits.insert(0, "These results indicate measurable predictive signal that requires domain interpretation before use.")
 
     return {
         'background_objective': " ".join(background_bits),
@@ -317,6 +317,7 @@ def _convert_markdown_to_latex(markdown_text: str) -> Tuple[str, str]:
             intro = parts[0].strip()
             # Remove markdown separators and stray escaped subsection typos from upstream text
             intro = re.sub(r'\n?---\s*\n?', '\n\n', intro).strip()
+            intro = re.sub(r'(?m)^##\s+[^\n]+\s*$', '', intro).strip()
             intro = intro.replace('\\subelection', '\\subsection')
             # Convert markdown formatting (this handles escaping internally)
             intro_processed = _convert_inline_markdown(intro)
@@ -450,7 +451,7 @@ def _metrics_to_latex_table(
         if bootstrap_results and name in bootstrap_results:
             cis = bootstrap_results[name]
 
-        cells = [_escape_latex(name.upper())]
+        cells = [_escape_latex(_model_display_name(name))]
         for m in metric_names:
             val = metrics.get(m)
             ci = cis.get(m)
@@ -551,6 +552,8 @@ def generate_latex_report(
     model_results = manuscript_facts['model_results']
     bootstrap_results = manuscript_facts['bootstrap_results']
     feature_names = manuscript_facts['feature_names']
+    population_counts = manuscript_facts.get('population_counts', {})
+    analysis_n = population_counts.get('analysis_total') or (n_train + n_val + n_test) or n_total
 
     sections = []
 
@@ -678,8 +681,8 @@ def generate_latex_report(
 
 \subsection{Study Population}""")
 
-    if n_total > 0:
-        sections.append(f"A total of {n_total:,} participants were included in the analysis.")
+    if analysis_n > 0:
+        sections.append(f"A total of {analysis_n:,} participants were included in the analysis.")
 
     # Table 1
     if table1_df is not None and not table1_df.empty:
@@ -696,11 +699,16 @@ def generate_latex_report(
         best_model_by_metric = manuscript_facts.get('best_model_by_metric')
         best_metric_name = manuscript_facts.get('best_metric_name') or 'held-out metric'
         if primary_model:
-            sections.append(f"The manuscript-primary model was \\textbf{{{_escape_latex(primary_model.upper())}}}.")
+            sections.append(f"The manuscript-primary model was \\textbf{{{_escape_latex(_model_display_name(primary_model))}}}.")
             if best_model_by_metric and best_model_by_metric != primary_model:
-                sections.append(f"The best model by {_escape_latex(best_metric_name)} was \\textbf{{{_escape_latex(best_model_by_metric.upper())}}}.")
+                sections.append(
+                    f"The best model by {_escape_latex(best_metric_name)} was \\textbf{{{_escape_latex(_model_display_name(best_model_by_metric))}}}."
+                )
         elif best_model_by_metric:
-            sections.append(f"The best model by {_escape_latex(best_metric_name)} was \\textbf{{{_escape_latex(best_model_by_metric.upper())}}}. No manuscript-primary model was explicitly selected in the workflow.")
+            sections.append(
+                f"The best model by {_escape_latex(best_metric_name)} was \\textbf{{{_escape_latex(_model_display_name(best_model_by_metric))}}}. "
+                "No manuscript-primary model was explicitly selected in the workflow."
+            )
         sections.append("Table \\ref{tab:model_performance} summarizes held-out performance across the evaluated models.")
         sections.append(_metrics_to_latex_table(model_results, task_type, bootstrap_results))
     elif draft_results:
@@ -821,7 +829,10 @@ def generate_latex_report(
             primary_val = best_metrics.get(primary_metric)
         
         if primary_val is not None:
-            sections.append(f"The {_escape_latex(best_model_key.upper())} achieved {primary_metric} of {primary_val:.4f} on held-out data. [PLACEHOLDER: Interpret this performance in clinical context]")
+            sections.append(
+                f"The {_escape_latex(_model_display_name(best_model_key))} achieved {primary_metric} of {primary_val:.4f} on held-out data. "
+                "[PLACEHOLDER: Interpret this performance in clinical context]"
+            )
         else:
             sections.append("[PLACEHOLDER: Summarize the main results in context of the study objectives.]")
     else:

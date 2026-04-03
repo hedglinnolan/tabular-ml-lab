@@ -89,6 +89,19 @@ def _fmt_param_value(value: Any) -> str:
     return str(value)
 
 
+def _publication_model_label(model_key: Any) -> str:
+    """Return a manuscript-friendly model label."""
+    if model_key is None:
+        return "Unknown model"
+
+    try:
+        from utils.insight_ledger import model_display_name
+
+        return model_display_name(str(model_key))
+    except Exception:
+        return str(model_key).upper()
+
+
 def _describe_outlier_handling(method: str, params: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """Return a specific outlier-handling description when reliable params exist."""
     params = params or {}
@@ -810,9 +823,9 @@ def generate_methods_section(
                     diffs.append("log transform")
                 
                 if diffs:
-                    sections.append(f" {mk.upper()}: {'; '.join(diffs)}.")
+                    sections.append(f" {_publication_model_label(mk)}: {'; '.join(diffs)}.")
                 else:
-                    sections.append(f" {mk.upper()}: default preprocessing (no additional transformations).")
+                    sections.append(f" {_publication_model_label(mk)}: default preprocessing (no additional transformations).")
     elif 'Preprocessing' in logged_steps:
         # Fallback to logged preprocessing (single-config path)
         preprocessing_logged = False
@@ -948,7 +961,7 @@ def generate_methods_section(
             hyperopt_logged = details.get('hyperparameter_optimization', False)
             
             if models_trained:
-                models_str = ', '.join(m.upper() for m in models_trained)
+                models_str = ', '.join(_publication_model_label(m) for m in models_trained)
                 sections.append(f"The workflow trained and compared the following model candidates: {models_str}.")
             
             # Don't use logged best_model here - we'll determine it from actual results below
@@ -957,7 +970,7 @@ def generate_methods_section(
     else:
         model_names = list(model_configs.keys()) if model_configs else []
         if model_names:
-            models_str = ', '.join(n.upper() for n in model_names)
+            models_str = ', '.join(_publication_model_label(n) for n in model_names)
             sections.append(
                 f"The following models were developed and compared: {models_str}."
             )
@@ -991,7 +1004,7 @@ def generate_methods_section(
                 if 'l1_ratio' in params and model_key == 'elasticnet':
                     relevant.append(f"l1_ratio={_fmt_param_value(params['l1_ratio'])}")
                 if relevant:
-                    hp_details.append(f"{model_name.upper()} ({', '.join(relevant)})")
+                    hp_details.append(f"{_publication_model_label(model_name)} ({', '.join(relevant)})")
             elif model_key in ('histgb_reg', 'histgb_clf', 'rf', 'xgb', 'lgbm'):
                 relevant = []
                 if 'n_estimators' in params:
@@ -1001,7 +1014,7 @@ def generate_methods_section(
                 if 'learning_rate' in params:
                     relevant.append(f"learning_rate={_fmt_param_value(params['learning_rate'])}")
                 if relevant:
-                    hp_details.append(f"{model_name.upper()} ({', '.join(relevant)})")
+                    hp_details.append(f"{_publication_model_label(model_name)} ({', '.join(relevant)})")
             elif model_key == 'nn':
                 relevant = []
                 if 'hidden_layer_sizes' in params:
@@ -1015,7 +1028,7 @@ def generate_methods_section(
                 if 'max_iter' in params:
                     relevant.append(f"max epochs={_fmt_param_value(params['max_iter'])}")
                 if relevant:
-                    hp_details.append(f"{model_name.upper()} ({', '.join(relevant)})")
+                    hp_details.append(f"{_publication_model_label(model_name)} ({', '.join(relevant)})")
             elif model_key == 'svm':
                 relevant = []
                 if 'C' in params:
@@ -1025,7 +1038,7 @@ def generate_methods_section(
                 if 'gamma' in params:
                     relevant.append(f"gamma={_fmt_param_value(params['gamma'])}")
                 if relevant:
-                    hp_details.append(f"{model_name.upper()} ({', '.join(relevant)})")
+                    hp_details.append(f"{_publication_model_label(model_name)} ({', '.join(relevant)})")
             elif model_key == 'knn':
                 relevant = []
                 if 'n_neighbors' in params:
@@ -1033,7 +1046,7 @@ def generate_methods_section(
                 if 'weights' in params:
                     relevant.append(f"weights={params['weights']}")
                 if relevant:
-                    hp_details.append(f"{model_name.upper()} ({', '.join(relevant)})")
+                    hp_details.append(f"{_publication_model_label(model_name)} ({', '.join(relevant)})")
         if hp_details:
             sections.append(f" Key hyperparameters: {'; '.join(hp_details)}.")
     
@@ -1208,13 +1221,13 @@ def generate_methods_section(
             if len(seed_entries) == 1:
                 d = seed_entries[0]
                 sections.append(
-                    f"Seed stability analysis was performed on {d.get('model', '?').upper()} "
+                    f"Seed stability analysis was performed on {_publication_model_label(d.get('model', '?'))} "
                     f"using {d.get('n_seeds', 'multiple')} random seeds to assess sensitivity of "
                     f"{d.get('metric', 'the primary metric')} to random initialization. "
                 )
             else:
                 models_str = ", ".join(
-                    f"{d.get('model', '?').upper()} ({d.get('metric', '?')}, {d.get('n_seeds', '?')} seeds)"
+                    f"{_publication_model_label(d.get('model', '?'))} ({d.get('metric', '?')}, {d.get('n_seeds', '?')} seeds)"
                     for d in seed_entries
                 )
                 sections.append(
@@ -1228,7 +1241,7 @@ def generate_methods_section(
                 if seed_df is not None:
                     # Report results for the last seed entry's metric
                     last_metric = seed_entries[-1].get('metric', '')
-                    last_model = seed_entries[-1].get('model', '?').upper()
+                    last_model = _publication_model_label(seed_entries[-1].get('model', '?'))
                     if last_metric and last_metric in seed_df.columns:
                         valid = seed_df[last_metric].dropna()
                         if len(valid) > 1:
@@ -1246,7 +1259,7 @@ def generate_methods_section(
             if len(dropout_entries) == 1:
                 d = dropout_entries[0]
                 sections.append(
-                    f"Feature dropout analysis was performed on {d.get('model', '?').upper()}, "
+                    f"Feature dropout analysis was performed on {_publication_model_label(d.get('model', '?'))}, "
                     f"sequentially removing each of {d.get('n_features_tested', '')} features and retraining "
                     f"to measure the impact on {d.get('metric', 'the primary metric')}. "
                 )
@@ -1254,7 +1267,7 @@ def generate_methods_section(
                 parts = []
                 for d in dropout_entries:
                     parts.append(
-                        f"{d.get('model', '?').upper()} "
+                        f"{_publication_model_label(d.get('model', '?'))} "
                         f"({d.get('n_features_tested', '?')} features, {d.get('metric', '?')})"
                     )
                 sections.append(
@@ -1394,17 +1407,20 @@ def generate_methods_section(
         manuscript_primary_model = manuscript_facts.get('manuscript_primary_model')
 
         if manuscript_primary_model:
-            sections.append(f"The manuscript-primary model was **{manuscript_primary_model.upper()}**. ")
+            sections.append(f"The manuscript-primary model was **{_publication_model_label(manuscript_primary_model)}**. ")
             if actual_best and actual_best != manuscript_primary_model:
                 metric_name = manuscript_facts.get('best_metric_name') or 'held-out metric'
-                sections.append(f"The best model by {metric_name} was **{actual_best.upper()}**. ")
+                sections.append(f"The best model by {metric_name} was **{_publication_model_label(actual_best)}**. ")
         elif actual_best:
             metric_name = manuscript_facts.get('best_metric_name') or 'held-out metric'
-            sections.append(f"The best model by {metric_name} was **{actual_best.upper()}**. No manuscript-primary model was explicitly selected in the workflow. ")
+            sections.append(
+                f"The best model by {metric_name} was **{_publication_model_label(actual_best)}**. "
+                "No manuscript-primary model was explicitly selected in the workflow. "
+            )
 
         sections.append(
-            f"Table X should summarize the held-out performance of the {len(selected_model_results)} included model(s); "
-            "the bullet list below mirrors those computed outputs for draft writing.\n\n"
+            f"The bullet list below summarizes held-out performance for the {len(selected_model_results)} included model(s) "
+            "and can be used when drafting the Results section.\n\n"
         )
 
         # Build a text table
@@ -1418,7 +1434,7 @@ def generate_methods_section(
                     metric_strs.append(f"{m}: {v:.4f} (95% CI: {ci.ci_lower:.4f}–{ci.ci_upper:.4f})")
                 else:
                     metric_strs.append(f"{m}: {v:.4f}")
-            sections.append(f"**{name.upper()}:** {'; '.join(metric_strs)}\n\n")
+            sections.append(f"**{_publication_model_label(name)}:** {'; '.join(metric_strs)}\n\n")
 
         # Calibration
         if calibration_results:
@@ -1427,12 +1443,12 @@ def generate_methods_section(
             for model_name, cal in calibration_results.items():
                 if hasattr(cal, 'brier_score') and cal.brier_score is not None:
                     sections.append(
-                        f"**{model_name.upper()}:** Brier score = {cal.brier_score:.4f}, "
+                        f"**{_publication_model_label(model_name)}:** Brier score = {cal.brier_score:.4f}, "
                         f"ECE = {cal.ece:.4f}.\n\n"
                     )
                 elif hasattr(cal, 'calibration_slope') and cal.calibration_slope is not None:
                     sections.append(
-                        f"**{model_name.upper()}:** Calibration slope = {cal.calibration_slope:.3f}, "
+                        f"**{_publication_model_label(model_name)}:** Calibration slope = {cal.calibration_slope:.3f}, "
                         f"intercept = {cal.calibration_intercept:.3f}.\n\n"
                     )
 
@@ -1688,7 +1704,13 @@ def _clean_audit_text(text: Any) -> str:
     cleaned = cleaned.replace("<!--", "").replace("-->", "")
     cleaned = cleaned.replace("% \\begin{figure}", "").replace("% \\end{figure}", "")
     cleaned = " ".join(cleaned.split())
-    return cleaned.strip(" .")
+    try:
+        from utils.insight_ledger import _clean_for_manuscript
+
+        cleaned = _clean_for_manuscript(cleaned)
+    except Exception:
+        pass
+    return cleaned.strip(" .-–—:;")
 
 
 def _format_audit_timestamp(timestamp: str) -> str:
@@ -1793,7 +1815,7 @@ def generate_decision_audit_trail() -> str:
         action = _clean_audit_text(entry.get('action', 'Recorded workflow decision')) or 'Recorded workflow decision'
         details = entry.get('details') or {}
         finding = _clean_audit_text(details.get('finding', ''))
-        detail_summary = _summarize_audit_details(details)
+        detail_summary = _clean_audit_text(_summarize_audit_details(details))
         timestamp = _format_audit_timestamp(entry.get('timestamp', ''))
 
         if finding and finding.lower() != action.lower():

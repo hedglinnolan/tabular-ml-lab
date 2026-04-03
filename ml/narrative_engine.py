@@ -326,10 +326,20 @@ class NarrativeEngine:
 
         manuscript_primary = (
             self.manuscript_context.get("manuscript_primary_model")
-            or self.manuscript_context.get("best_model_by_metric")
         )
         if manuscript_primary:
             self.ctx["primary_model"] = manuscript_primary
+        elif "manuscript_primary_model" in self.manuscript_context:
+            self.ctx["primary_model"] = ""
+
+        best_model_by_metric = self.manuscript_context.get("best_model_by_metric")
+        if best_model_by_metric:
+            self.ctx["best_model_by_metric"] = best_model_by_metric
+
+        best_metric_name = self.manuscript_context.get("best_metric_name")
+        if best_metric_name:
+            self.ctx["best_metric_name"] = best_metric_name
+            self.ctx["selection_criteria"] = f"validation {best_metric_name}"
 
         target_stats = self.manuscript_context.get("target_stats") or {}
         if target_stats:
@@ -664,11 +674,22 @@ class NarrativeEngine:
 
         # Primary model selection
         primary = self.ctx.get("primary_model", "")
+        best_by_metric = self.ctx.get("best_model_by_metric", "")
         criteria = self.ctx.get("selection_criteria", "")
         if primary:
             parts.append(
                 f"{self._model_name(primary)} was selected as the primary model"
                 f"{f', based on {criteria}' if criteria else ''}."
+            )
+        elif best_by_metric:
+            metric_phrase = criteria or (
+                f"validation {self.ctx.get('best_metric_name')}"
+                if self.ctx.get('best_metric_name') else ""
+            )
+            parts.append(
+                f"{self._model_name(best_by_metric)} achieved the best held-out performance"
+                f"{f' on {metric_phrase}' if metric_phrase else ''}, "
+                "but no manuscript-primary model was explicitly selected."
             )
         elif models:
             parts.append(

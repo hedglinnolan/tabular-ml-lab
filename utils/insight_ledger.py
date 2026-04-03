@@ -42,6 +42,7 @@ Usage:
 from dataclasses import dataclass, field
 from typing import List, Optional, Literal, Dict, Any, Tuple
 from datetime import datetime
+import re
 import streamlit as st
 
 
@@ -395,6 +396,7 @@ def _clean_for_manuscript(text: str) -> str:
     text = re.sub(r'(?i)\bpositive signal\b\s*[-:]*\s*', '', text)
     text = re.sub(r'(?i)\bno action needed\b\.?', '', text)
     text = re.sub(r'(?i)\bdataset characteristics favorable to the analysis\b\s*[:\-]*\s*', '', text)
+    text = re.sub(r'(?i)\bfavorable (?:for|to) analysis\b\.?', '', text)
     
     # Replace model keys with human names
     # Match uppercase model keys (HISTGB_REG, RIDGE, etc.)
@@ -410,6 +412,11 @@ def _clean_for_manuscript(text: str) -> str:
     text = re.sub(r'\s+\.', '.', text)
     
     return text.strip()
+
+
+def _strip_terminal_sentence_punctuation(text: str) -> str:
+    """Normalize sentence fragments before reassembling narrative prose."""
+    return re.sub(r'[\s\.\-–—:;]+$', '', (text or "").strip())
 
 
 def models_to_families(model_keys: List[str]) -> List[str]:
@@ -1179,7 +1186,10 @@ class InsightLedger:
                         i.resolution_details, model_scope=i.model_scope
                     )
                     detail_prose = _clean_for_manuscript(detail_prose)
-                    sentence = f"{finding}. {detail_prose}."
+                    sentence = (
+                        f"{_strip_terminal_sentence_punctuation(finding)}. "
+                        f"{_strip_terminal_sentence_punctuation(detail_prose)}."
+                    )
                 else:
                     detail_str = ""
                     if i.resolution_details:
@@ -1195,7 +1205,10 @@ class InsightLedger:
                         if parts:
                             detail_str = f" ({', '.join(parts)})"
 
-                    sentence = f"{finding}. {resolved_by}{detail_str}."
+                    sentence = (
+                        f"{_strip_terminal_sentence_punctuation(finding)}. "
+                        f"{_strip_terminal_sentence_punctuation(resolved_by)}{detail_str}."
+                    )
 
                 topic = self._manuscript_topic_bucket(i)
                 grouped_sentences.setdefault(topic, []).append(sentence)

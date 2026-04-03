@@ -50,7 +50,7 @@ def test_methods_section():
     assert "1,000 observations" in text
     assert "RMSE" in text
     assert "age, bmi, glucose" in text
-    assert "RIDGE" in text
+    assert "Ridge" in text
     assert "bootstrap" in text.lower()
 
 
@@ -195,7 +195,7 @@ SHapley Additive exPlanations (SHAP) values were computed.
     assert "\\subsection{Model Interpretability}" in latex
     assert "SHapley Additive exPlanations" in latex
     assert "Table \\ref{tab:model_performance} summarizes held-out performance" in latex
-    assert "RIDGE" in latex
+    assert "Ridge Regression" in latex
 
 
 def test_generate_latex_report_normalizes_known_text_artifacts():
@@ -455,10 +455,10 @@ def test_methods_section_prefers_manuscript_context_over_session_state_model_dri
             manuscript_context=manuscript_context,
         )
 
-        assert 'The manuscript-primary model was **RIDGE**.' in text
-        assert 'The best model by RMSE was **RF**.' in text
+        assert 'The manuscript-primary model was **Ridge Regression**.' in text
+        assert 'The best model by RMSE was **Random Forest**.' in text
         assert '**XGB:**' not in text
-        assert '**RIDGE:**' in text and '**RF:**' in text
+        assert '**Ridge Regression:**' in text and '**Random Forest:**' in text
     finally:
         if saved_log is None:
             st.session_state.pop('methodology_log', None)
@@ -488,9 +488,9 @@ def test_methods_results_draft_marks_boundary_and_orders_metrics_from_outputs():
 
     assert '## Results (Workflow-Derived Draft)' in text
     assert 'leaves interpretation to the author' in text
-    assert 'Table X should summarize the held-out performance of the 1 included model(s)' in text
+    assert 'The bullet list below summarizes held-out performance for the 1 included model(s)' in text
     assert 'No manuscript-primary model was explicitly selected in the workflow' in text
-    assert '**RIDGE:** RMSE: 0.3000; MAE: 0.2000; R2: 0.8000' in text
+    assert '**Ridge Regression:** RMSE: 0.3000; MAE: 0.2000; R2: 0.8000' in text
 
 
 def test_methods_results_draft_does_not_infer_manuscript_primary_from_best_model_name():
@@ -516,7 +516,7 @@ def test_methods_results_draft_does_not_infer_manuscript_primary_from_best_model
     )
 
     assert 'The manuscript-primary model was' not in text
-    assert 'The best model by held-out metric was **RF**.' in text
+    assert 'The best model by held-out metric was **Random Forest**.' in text
     assert 'No manuscript-primary model was explicitly selected in the workflow.' in text
 
 
@@ -547,11 +547,11 @@ def test_generate_latex_report_uses_frozen_manuscript_subset_and_primary_model()
         manuscript_context=manuscript_context,
     )
 
-    assert 'The manuscript-primary model was \\textbf{RIDGE}.' in latex
-    assert 'The best model by RMSE was \\textbf{RF}.' in latex
+    assert 'The manuscript-primary model was \\textbf{Ridge Regression}.' in latex
+    assert 'The best model by RMSE was \\textbf{Random Forest}.' in latex
     assert 'XGB' not in latex
-    assert 'RIDGE & 0.4200' in latex
-    assert 'RF & 0.3500' in latex
+    assert 'Ridge Regression & 0.4200' in latex
+    assert 'Random Forest & 0.3500' in latex
 
 
 def test_generate_latex_report_does_not_infer_primary_model_from_best_by_metric_only():
@@ -574,7 +574,39 @@ def test_generate_latex_report_does_not_infer_primary_model_from_best_by_metric_
     )
 
     assert 'The manuscript-primary model was' not in latex
-    assert 'The best model by RMSE was \\textbf{RF}. No manuscript-primary model was explicitly selected in the workflow.' in latex
+    assert 'The best model by RMSE was \\textbf{Random Forest}. No manuscript-primary model was explicitly selected in the workflow.' in latex
+
+
+def test_generate_latex_report_uses_analysis_population_and_human_model_labels():
+    latex = generate_latex_report(
+        methods_section='## Methods\n### Model Development\nNeural Network (MLP) achieved the best held-out performance on validation RMSE.\n',
+        model_results={
+            'histgb_reg': {'metrics': {'RMSE': 12.31}},
+            'nn': {'metrics': {'RMSE': 12.30}},
+        },
+        bootstrap_results={},
+        task_type='regression',
+        manuscript_context={
+            'selected_model_results': {
+                'histgb_reg': {'metrics': {'RMSE': 12.31}},
+                'nn': {'metrics': {'RMSE': 12.30}},
+            },
+            'best_model_by_metric': 'nn',
+            'best_metric_name': 'RMSE',
+            'feature_counts': {'selected': 2},
+            'population_counts': {'upload_total': 1000, 'analysis_total': 950},
+        },
+        n_total=1000,
+        n_train=700,
+        n_val=150,
+        n_test=100,
+    )
+
+    assert "A total of 950 participants were included in the analysis." in latex
+    assert "Histogram Gradient Boosting (Regressor)" in latex
+    assert "Neural Network (MLP)" in latex
+    assert "HISTGB_REG" not in latex
+    assert r"\#\# Methods" not in latex
 
 
 def test_generate_latex_report_fallback_methods_use_frozen_feature_names():
@@ -767,6 +799,39 @@ def test_generate_latex_report_groups_audit_trail_and_omits_commented_figure_blo
         assert r"\paragraph{Model Selection}" in latex
         assert "% \\begin{figure}" not in latex
         assert "%   \\includegraphics" not in latex
+    finally:
+        if saved_ledger is None:
+            st.session_state.pop('insight_ledger', None)
+        else:
+            st.session_state['insight_ledger'] = saved_ledger
+        if saved_log is None:
+            st.session_state.pop('methodology_log', None)
+        else:
+            st.session_state['methodology_log'] = saved_log
+
+
+def test_generate_decision_audit_trail_cleans_internal_keys_and_coaching_language():
+    import streamlit as st
+    from utils.insight_ledger import InsightLedger
+
+    saved_ledger = st.session_state.get('insight_ledger', None)
+    saved_log = st.session_state.get('methodology_log', None)
+    try:
+        st.session_state['insight_ledger'] = InsightLedger()
+        st.session_state['methodology_log'] = [
+            {
+                'step': 'Model Training',
+                'action': 'Positive signal — no action needed',
+                'details': {'finding': 'Pipelines built for 1 model(s): HISTGB_REG.'},
+                'timestamp': '2026-04-02T11:00:00+00:00',
+            },
+        ]
+
+        audit_trail = generate_decision_audit_trail()
+
+        assert 'HISTGB_REG' not in audit_trail
+        assert 'no action needed' not in audit_trail.lower()
+        assert 'Histogram Gradient Boosting (Regressor)' in audit_trail
     finally:
         if saved_ledger is None:
             st.session_state.pop('insight_ledger', None)
