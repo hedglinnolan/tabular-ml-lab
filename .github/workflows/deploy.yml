@@ -1,0 +1,22 @@
+name: Deploy Tabular ML Lab
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, clawserver]
+    steps:
+      - name: Pull latest code
+        run: |
+          cd /home/claw/.openclaw/workspace/glucose-mlp-interactive
+          git pull origin main
+
+      - name: Update dependencies
+        run: |
+          cd /home/claw/.openclaw/workspace/glucose-mlp-interactive
+          ./venv/bin/pip install -r requirements.txt 2>/dev/null || true
+
+      - name: Restart service
+        run: |
+          sudo systemctl restart tabular-ml-lab
