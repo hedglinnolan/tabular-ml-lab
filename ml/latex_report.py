@@ -103,6 +103,15 @@ def _escape_latex(text: str) -> str:
     return text
 
 
+def _styled_placeholder(text: str) -> str:
+    """Wrap placeholder/investigator markers in deliberate LaTeX formatting.
+
+    Preserves the literal marker text (e.g., '[PLACEHOLDER: ...]') so that
+    existing tests matching on those strings continue to pass.
+    """
+    return rf"\textcolor{{gray}}{{\textit{{{text}}}}}"
+
+
 def _format_abstract_population_sentence(upload_n: int, analysis_n: int) -> str:
     """Describe the abstract population without contradicting split counts."""
     if analysis_n and upload_n and analysis_n != upload_n:
@@ -422,22 +431,25 @@ def _metrics_to_latex_table(
     n_metrics = len(metric_names)
     is_wide = n_metrics > 4 or n_models > 4
     
-    # Use p{3cm} for first column to allow wrapping
-    col_spec = "p{3cm}" + "c" * len(metric_names)
+    # Use p{3.5cm} for first column to allow wrapping without cramping model names
+    col_spec = "p{3.5cm}" + "c" * len(metric_names)
 
     lines = []
     lines.append(r"\begin{table}[htbp]")
+    lines.append(r"\begin{spacing}{1.0}")
     lines.append(r"\centering")
     lines.append(f"\\caption{{{caption}}}")
     lines.append(r"\label{tab:model_performance}")
-    
+
     # Width containment: wrap in adjustbox
     lines.append(r"\begin{adjustbox}{max width=\textwidth}")
-    
+
     # Use smaller font for wide tables
     if is_wide:
+        lines.append(r"\footnotesize")
+        lines.append(r"\setlength{\tabcolsep}{5pt}")
+    else:
         lines.append(r"\small")
-        lines.append(r"\setlength{\tabcolsep}{4pt}")
     
     lines.append(f"\\begin{{tabular}}{{{col_spec}}}")
     lines.append(r"\toprule")
@@ -467,6 +479,7 @@ def _metrics_to_latex_table(
     lines.append(r"\bottomrule")
     lines.append(r"\end{tabular}")
     lines.append(r"\end{adjustbox}")
+    lines.append(r"\end{spacing}")
     lines.append(r"\end{table}")
 
     return "\n".join(lines)
@@ -485,13 +498,14 @@ def _table1_to_latex(table1_df: pd.DataFrame) -> str:
 
     lines = []
     lines.append(r"\begin{table}[htbp]")
+    lines.append(r"\begin{spacing}{1.0}")
     lines.append(r"\centering")
     lines.append(r"\caption{Characteristics of the study population.}")
     lines.append(r"\label{tab:table1}")
-    
+
     # Width containment: wrap in adjustbox
     lines.append(r"\begin{adjustbox}{max width=\textwidth}")
-    
+
     # Use smaller font for wide tables
     if is_wide:
         lines.append(r"\small")
@@ -514,6 +528,7 @@ def _table1_to_latex(table1_df: pd.DataFrame) -> str:
     lines.append(r"\bottomrule")
     lines.append(r"\end{tabular}")
     lines.append(r"\end{adjustbox}")
+    lines.append(r"\end{spacing}")
     lines.append(r"\end{table}")
 
     return "\n".join(lines)
@@ -563,11 +578,12 @@ def generate_latex_report(
 % ── Packages ──
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
+\usepackage{mathpazo}          % Palatino serif (submission-quality typography)
 \usepackage{amsmath, amssymb}
 \usepackage{booktabs}
 \usepackage{graphicx}
 \usepackage[margin=1in]{geometry}
-\usepackage{hyperref}
+\usepackage[colorlinks=true,linkcolor=blue!60!black,citecolor=blue!60!black,urlcolor=blue!60!black]{hyperref}
 \usepackage{natbib}
 \usepackage{float}
 \usepackage{setspace}
@@ -575,6 +591,8 @@ def generate_latex_report(
 \usepackage{tabularx}
 \usepackage{adjustbox}
 \usepackage{longtable}
+\usepackage{microtype}         % Improved line-breaking and spacing
+\usepackage{xcolor}            % For placeholder styling
 
 \doublespacing
 
@@ -586,6 +604,7 @@ def generate_latex_report(
     sections.append("")
     sections.append(r"\begin{document}")
     sections.append(r"\maketitle")
+    sections.append(r"\thispagestyle{empty}")
 
     # ── Abstract ──
     # Auto-scaffold abstract from known facts
@@ -611,22 +630,23 @@ def generate_latex_report(
         abstract = " ".join(abs_parts)
     
     sections.append(r"""
-\begin{abstract}""")
+\begin{abstract}
+\begin{spacing}{1.0}""")
     sections.append(f"{abstract if not abstract.startswith('[ABSTRACT') else _escape_latex(abstract)}")
-    sections.append(r"""\end{abstract}
+    sections.append(r"""\end{spacing}
+\end{abstract}
 
-\clearpage
+\vspace{1.5em}
 """)
 
     # ── Introduction ──
-    sections.append(r"""\section{Introduction}
-
-[PLACEHOLDER: Provide background on the clinical/research context and rationale for developing this prediction model. Cite relevant prior work.]
-
-\subsection{Objectives}
-[PLACEHOLDER: State the specific objectives of this study, including whether you are developing, validating, or both.]
-
-""")
+    sections.append(r"\section{Introduction}")
+    sections.append("")
+    sections.append(_styled_placeholder("[PLACEHOLDER: Provide background on the clinical/research context and rationale for developing this prediction model. Cite relevant prior work.]"))
+    sections.append(r"""
+\subsection{Objectives}""")
+    sections.append(_styled_placeholder("[PLACEHOLDER: State the specific objectives of this study, including whether you are developing, validating, or both.]"))
+    sections.append("")
 
     # ── Methods ──
     sections.append(r"\section{Methods}")
@@ -642,9 +662,9 @@ def generate_latex_report(
     else:
         draft_results = ""
         sections.append(r"""
-\subsection{Study Design and Participants}
-[PLACEHOLDER: Describe the study design, data source, eligibility criteria, and key dates.]
-
+\subsection{Study Design and Participants}""")
+        sections.append(_styled_placeholder("[PLACEHOLDER: Describe the study design, data source, eligibility criteria, and key dates.]"))
+        sections.append(r"""
 \subsection{Outcome Definition}
 """)
         sections.append(f"The outcome variable was {_escape_latex(target_name)}.")
@@ -658,12 +678,12 @@ def generate_latex_report(
                 sections.append(f"A total of {len(feature_names)} predictor variables were included (see Supplementary Table S1).")
 
         sections.append(r"""
-\subsection{Missing Data}
-[PLACEHOLDER: Describe how missing data were handled, including the mechanism (MCAR/MAR/MNAR) and imputation strategy.]
-
-\subsection{Model Development}
-[PLACEHOLDER: Describe preprocessing, model selection, and internal validation strategy.]
-""")
+\subsection{Missing Data}""")
+        sections.append(_styled_placeholder("[PLACEHOLDER: Describe how missing data were handled, including the mechanism (MCAR/MAR/MNAR) and imputation strategy.]"))
+        sections.append(r"""
+\subsection{Model Development}""")
+        sections.append(_styled_placeholder("[PLACEHOLDER: Describe preprocessing, model selection, and internal validation strategy.]"))
+        sections.append("")
         if n_total > 0:
             sections.append(f"Data were split into training (n={n_train:,}), validation (n={n_val:,}), and test (n={n_test:,}) sets.")
 
@@ -688,7 +708,7 @@ def generate_latex_report(
     if table1_df is not None and not table1_df.empty:
         sections.append(_table1_to_latex(table1_df))
     else:
-        sections.append(r"[INSERT TABLE 1: Characteristics of the study population]")
+        sections.append(_styled_placeholder("[INSERT TABLE 1: Characteristics of the study population]"))
 
     # Model Performance — avoid duplicating a prose dump when the structured table is present.
     sections.append(r"""
@@ -715,7 +735,7 @@ def generate_latex_report(
         sections.append(draft_results)
         sections.append("\n")
     else:
-        sections.append(r"[INSERT TABLE: Model performance metrics with 95\% CIs]")
+        sections.append(_styled_placeholder(r"[INSERT TABLE: Model performance metrics with 95\% CIs]"))
 
     # Calibration
     if calibration_text:
@@ -725,14 +745,14 @@ def generate_latex_report(
     else:
         if task_type == "regression":
             sections.append(r"""
-\subsection{Calibration}
-[PLACEHOLDER: Report calibration results --- calibration slope/intercept, predicted vs.\ observed plots, residual diagnostics. Include calibration plot as a figure.]
-""")
+\subsection{Calibration}""")
+            sections.append(_styled_placeholder(r"[PLACEHOLDER: Report calibration results --- calibration slope/intercept, predicted vs.\ observed plots, residual diagnostics. Include calibration plot as a figure.]"))
+            sections.append("")
         else:
             sections.append(r"""
-\subsection{Calibration}
-[PLACEHOLDER: Report calibration results --- Brier score, ECE, calibration slope/intercept. Include calibration plot as a figure.]
-""")
+\subsection{Calibration}""")
+            sections.append(_styled_placeholder("[PLACEHOLDER: Report calibration results --- Brier score, ECE, calibration slope/intercept. Include calibration plot as a figure.]"))
+            sections.append("")
     
     # Explainability results (if provided)
     if explainability_summary:
@@ -785,7 +805,7 @@ def generate_latex_report(
             sections.append("Feature dropout sensitivity analysis was conducted to assess model robustness to missing predictors.")
             sections.append("")
         
-        sections.append("[PLACEHOLDER: Interpret sensitivity results in context]")
+        sections.append(_styled_placeholder("[PLACEHOLDER: Interpret sensitivity results in context]"))
         sections.append("")
 
     # FIX 4: Statistical Validation subsection
@@ -831,12 +851,12 @@ def generate_latex_report(
         if primary_val is not None:
             sections.append(
                 f"The {_escape_latex(_model_display_name(best_model_key))} achieved {primary_metric} of {primary_val:.4f} on held-out data. "
-                "[PLACEHOLDER: Interpret this performance in clinical context]"
+                + _styled_placeholder("[PLACEHOLDER: Interpret this performance in clinical context]")
             )
         else:
-            sections.append("[PLACEHOLDER: Summarize the main results in context of the study objectives.]")
+            sections.append(_styled_placeholder("[PLACEHOLDER: Summarize the main results in context of the study objectives.]"))
     else:
-        sections.append("[PLACEHOLDER: Summarize the main results in context of the study objectives.]")
+        sections.append(_styled_placeholder("[PLACEHOLDER: Summarize the main results in context of the study objectives.]"))
     
     sections.append("")
     
@@ -844,25 +864,25 @@ def generate_latex_report(
     if explainability_summary and explainability_summary.get('top_features'):
         top_feats = explainability_summary['top_features'][:3]
         feat_str = ", ".join(_escape_latex(f) for f in top_feats)
-        sections.append(f"Key predictors identified were {feat_str}. [PLACEHOLDER: Discuss biological plausibility and consistency with prior knowledge]")
+        sections.append(f"Key predictors identified were {feat_str}. " + _styled_placeholder("[PLACEHOLDER: Discuss biological plausibility and consistency with prior knowledge]"))
         sections.append("")
     
     sections.append(r"""
 \subsection{Comparison with Prior Work}""")
     if task_type and best_model_key and model_results:
         task_label = "regression" if task_type == "regression" else "classification"
-        sections.append(
+        sections.append(_styled_placeholder(
             f"[PLACEHOLDER: Compare the {primary_metric if 'primary_metric' in locals() else 'performance'} "
             f"to prior work. Add an appropriate benchmark for typical {task_label} performance in this domain.]"
-        )
+        ))
     else:
-        sections.append("[PLACEHOLDER: Compare your results with existing literature.]")
+        sections.append(_styled_placeholder("[PLACEHOLDER: Compare your results with existing literature.]"))
     
     sections.append(r"""
 
-\subsection{Clinical Implications}
-[PLACEHOLDER: Discuss practical implications for clinical decision-making or research.]
-
+\subsection{Clinical Implications}""")
+    sections.append(_styled_placeholder("[PLACEHOLDER: Discuss practical implications for clinical decision-making or research.]"))
+    sections.append(r"""
 \subsection{Strengths and Limitations}
 
 \paragraph{Strengths}""")
@@ -887,9 +907,9 @@ def generate_latex_report(
             sections.append(f"\\item {item}")
         sections.append(r"\end{itemize}")
         sections.append("")
-        sections.append("[PLACEHOLDER: Add study-specific strengths]")
+        sections.append(_styled_placeholder("[PLACEHOLDER: Add study-specific strengths]"))
     else:
-        sections.append("[PLACEHOLDER: Discuss methodological strengths]")
+        sections.append(_styled_placeholder("[PLACEHOLDER: Discuss methodological strengths]"))
     
     sections.append(r"""
 
@@ -899,29 +919,33 @@ def generate_latex_report(
     
     sections.append(r"""
 
-\subsection{Conclusion}
-[PLACEHOLDER: State the main conclusion and its implications.]
-""")
+\subsection{Conclusion}""")
+    sections.append(_styled_placeholder("[PLACEHOLDER: State the main conclusion and its implications.]"))
+    sections.append("")
     sections.append("")
 
     # ── References ──
     sections.append(r"""
 \section*{References}
-\begin{enumerate}
-\item [PLACEHOLDER: Add references in journal format]
-\item Collins GS, et al. Transparent reporting of a multivariable prediction model for individual prognosis or diagnosis (TRIPOD). BMJ. 2015;350:g7594.
+\begin{spacing}{1.0}
+\begin{enumerate}""")
+    sections.append(r"\item " + _styled_placeholder("[PLACEHOLDER: Add references in journal format]"))
+    sections.append(r"""\item Collins GS, et al. Transparent reporting of a multivariable prediction model for individual prognosis or diagnosis (TRIPOD). BMJ. 2015;350:g7594.
 \end{enumerate}
+\end{spacing}
 """)
 
     # ── Supplementary ──
     sections.append(r"""
 \clearpage
 \appendix
+\begin{spacing}{1.0}
+\renewcommand{\thesubsection}{S\arabic{subsection}}
 \section{Supplementary Material}
 
-\subsection{TRIPOD Checklist}
-[See exported TRIPOD checklist CSV/PDF]
-
+\subsection{TRIPOD Checklist}""")
+    sections.append(_styled_placeholder("[See exported TRIPOD checklist CSV/PDF]"))
+    sections.append(r"""
 \subsection{Reproducibility}
 This analysis was conducted using Tabular ML Lab (Python). Full reproducibility manifest including software versions, random seeds, and data hashes is available in the exported analysis package.
 
@@ -932,6 +956,8 @@ This analysis was conducted using Tabular ML Lab (Python). Full reproducibility 
     audit_trail = generate_decision_audit_trail()
     if audit_trail:
         sections.append(r"\subsection{Decision Audit Trail}")
+        sections.append(r"\small")
+        sections.append("The following audit trail documents key methodological decisions made during the analysis workflow.")
         sections.append("")
         in_list = False
         # Parse the numbered list from audit_trail and convert to LaTeX enumerate
@@ -959,6 +985,7 @@ This analysis was conducted using Tabular ML Lab (Python). Full reproducibility 
             sections.append(r"\end{enumerate}")
         sections.append("")
 
+    sections.append(r"\end{spacing}")
     sections.append(r"\end{document}")
 
     return "\n".join(sections)
