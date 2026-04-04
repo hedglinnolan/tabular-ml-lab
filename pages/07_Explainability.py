@@ -538,8 +538,34 @@ if run_button:
                 pd_per_feature = {}
                 for fidx in top_features_idx:
                     pd_per_feature[fidx] = partial_dependence(model_for_pdp, X_pdp, features=[fidx], kind='average')
+
+                # ── 2D PDP for top feature pairs ──
+                # Subsample more aggressively and use coarser grid for 2D
+                max_2d_samples = min(1000, X_pdp.shape[0])
+                if X_pdp.shape[0] > max_2d_samples:
+                    rng_2d = np.random.RandomState(43)
+                    idx_2d = rng_2d.choice(X_pdp.shape[0], max_2d_samples, replace=False)
+                    X_pdp_2d = X_pdp[idx_2d]
+                else:
+                    X_pdp_2d = X_pdp
+                top_pairs = []
+                for ii in range(min(len(top_features_idx), 3)):
+                    for jj in range(ii + 1, min(len(top_features_idx), 3)):
+                        top_pairs.append((top_features_idx[ii], top_features_idx[jj]))
+                pd_2d = {}
+                for pair in top_pairs:
+                    try:
+                        pd_2d[pair] = partial_dependence(
+                            model_for_pdp, X_pdp_2d,
+                            features=[pair], kind='average',
+                            grid_resolution=15,
+                        )
+                    except Exception:
+                        pass
+
                 pdp_results[name] = {
                     'pd_per_feature': pd_per_feature,
+                    'pd_2d': pd_2d,
                     'feature_indices': top_features_idx,
                     'feature_names': pi_data['feature_names'],
                 }
@@ -884,6 +910,59 @@ if perm_data or shap_data:
                                               yaxis_title="Partial Dependence",
                                               height=300, margin=dict(l=10, r=10, t=40, b=10))
                             st.plotly_chart(fig, key=f"pdp_{name}_{fidx}")
+
+                    # ── 2D PDP: Explore Interactions ──────────────
+                    pd_2d = pd_info.get('pd_2d', {})
+                    if pd_2d:
+                        with st.expander("🔍 Explore Interactions (2D Partial Dependence)", expanded=False):
+                            st.caption(
+                                "2D partial dependence shows how the **joint effect** of two features "
+                                "influences predictions. Patterns that deviate from simple additive "
+                                "effects indicate feature interactions."
+                            )
+                            for pair, pf_2d in pd_2d.items():
+                                fidx_a, fidx_b = pair
+                                fname_a = feat_names[fidx_a] if fidx_a < len(feat_names) else f"Feature {fidx_a}"
+                                fname_b = feat_names[fidx_b] if fidx_b < len(feat_names) else f"Feature {fidx_b}"
+                                grid_a = pf_2d['grid_values'][0]
+                                grid_b = pf_2d['grid_values'][1]
+                                avg_2d = pf_2d['average'][0]
+
+                                # Interaction effect: total 2D range minus sum of 1D ranges
+                                range_2d = float(np.max(avg_2d) - np.min(avg_2d))
+                                range_1d_a = 0.0
+                                range_1d_b = 0.0
+                                if fidx_a in pd_per_feature:
+                                    a1d = pd_per_feature[fidx_a]['average'][0].ravel()
+                                    range_1d_a = float(np.max(a1d) - np.min(a1d))
+                                if fidx_b in pd_per_feature:
+                                    b1d = pd_per_feature[fidx_b]['average'][0].ravel()
+                                    range_1d_b = float(np.max(b1d) - np.min(b1d))
+                                interaction_magnitude = max(0.0, range_2d - range_1d_a - range_1d_b)
+
+                                fig_2d = go.Figure(data=go.Heatmap(
+                                    x=grid_a, y=grid_b, z=avg_2d,
+                                    colorscale='RdBu_r',
+                                    colorbar=dict(title="Partial<br>Dependence"),
+                                ))
+                                fig_2d.update_layout(
+                                    title=f"2D PDP: {fname_a} × {fname_b}",
+                                    xaxis_title=fname_a,
+                                    yaxis_title=fname_b,
+                                    height=420,
+                                    margin=dict(l=10, r=10, t=40, b=10),
+                                )
+                                st.plotly_chart(fig_2d, use_container_width=True, key=f"pdp2d_{name}_{fidx_a}_{fidx_b}")
+
+                                if interaction_magnitude > 1e-6:
+                                    st.metric(
+                                        label=f"Interaction Effect ({fname_a} × {fname_b})",
+                                        value=f"{interaction_magnitude:.4f}",
+                                        help="Magnitude of the interaction effect beyond additive 1D effects. "
+                                             "Larger values indicate stronger feature interactions.",
+                                    )
+                                else:
+                                    st.caption(f"No meaningful interaction detected between {fname_a} and {fname_b} — effects appear additive.")
                 else:
                     st.info("Partial dependence not available. Model may not support it, or permutation importance wasn't computed.")
 
