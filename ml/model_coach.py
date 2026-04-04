@@ -1345,3 +1345,233 @@ def select_top_picks(profile: Any) -> Tuple[List[TopPick], List[Tuple[str, str]]
         skip_list.append(("SVM", "adds complexity without clear benefit for this data shape"))
 
     return picks, skip_list
+
+
+# ── Post-Training Diagnostics ──────────────────────────────────────────────
+
+def _model_display_name_coach(key: str) -> str:
+    """Return a human-readable model name from the coach's model info dict."""
+    info = _get_model_info()
+    return info.get(key, {}).get('name', key.upper())
+
+
+def _detect_prefer_simpler(
+    model_results: Dict[str, Dict[str, Any]],
+    task_type: str,
+    tolerance: float = 0.05,
+) -> List[Dict[str, Any]]:
+    """Detect when simple models perform within tolerance of complex ones.
+
+    Simple = interpretability 'high' (linear, GLM, Huber, etc.)
+    Complex = interpretability 'low' (boosting, neural net, etc.)
+    """
+    info = _get_model_info()
+    simple = {}  # key -> primary metric
+    complex_ = {}
+
+    for key, results in model_results.items():
+        metrics = results.get('metrics', {})
+        model_info = info.get(key, info.get(key.lower(), {}))
+        interp = model_info.get('interpretability', 'medium')
+
+        if task_type == 'regression':
+            val = metrics.get('RMSE')
+        else:
+            val = metrics.get('F1', metrics.get('Accuracy'))
+
+        if val is None:
+            continue
+        if interp == 'high':
+            simple[key] = val
+        elif interp == 'low':
+            complex_[key] = val
+
+    if not simple or not complex_:
+        return []
+
+    if task_type == 'regression':
+        best_simple_key = min(simple, key=lambda k: simple[k])
+        best_complex_key = min(complex_, key=lambda k: complex_[k])
+        best_simple_val = simple[best_simple_key]
+        best_complex_val = complex_[best_complex_key]
+        within_tolerance = best_simple_val <= best_complex_val * (1 + tolerance)
+        margin_pct = ((best_simple_val - best_complex_val) / best_complex_val * 100) if best_complex_val else 0
+        metric_name = 'RMSE'
+    else:
+        best_simple_key = max(simple, key=lambda k: simple[k])
+        best_complex_key = max(complex_, key=lambda k: complex_[k])
+        best_simple_val = simple[best_simple_key]
+        best_complex_val = complex_[best_complex_key]
+        within_tolerance = best_simple_val >= best_complex_val * (1 - tolerance)
+        margin_pct = ((best_complex_val - best_simple_val) / best_complex_val * 100) if best_complex_val else 0
+        metric_name = 'F1'
+
+    if not within_tolerance:
+        return []
+
+    simple_name = _model_display_name_coach(best_simple_key)
+    complex_name = _model_display_name_coach(best_complex_key)
+
+    return [{
+        'id': 'train_prefer_simpler',
+        'severity': 'warning',
+        'finding': (
+            f"{simple_name} performed within {abs(margin_pct):.1f}% of {complex_name} "
+            f"({metric_name} {best_simple_val:.4f} vs {best_complex_val:.4f}). "
+            "A reviewer would question why the more complex model was selected."
+        ),
+        'implication': (
+            "When models perform comparably, parsimony favors the simpler, more "
+            "interpretable model. Complex models carry higher risk of overfitting "
+            "and are harder to explain in publication."
+        ),
+        'recommended_action': (
+            f"Consider selecting {simple_name} as the primary model, or justify "
+            "the complex model's selection based on domain-specific requirements."
+        ),
+        'model_scope': [],
+        'metadata': {
+            'simple_best_model': best_simple_key,
+            'simple_best_name': simple_name,
+            'simple_best_score': float(best_simple_val),
+            'complex_best_model': best_complex_key,
+            'complex_best_name': complex_name,
+            'complex_best_score': float(best_complex_val),
+            'margin_pct': float(margin_pct),
+            'tolerance_pct': float(tolerance * 100),
+            'metric_name': metric_name,
+        },
+    }]
+
+
+def _detect_low_overall_performance(
+    model_results: Dict[str, Dict[str, Any]],
+    task_type: str,
+) -> List[Dict[str, Any]]:
+    """Detect when the best model has very low performance, suggesting feature engineering."""
+    if not model_results:
+        return []
+
+    if task_type == 'regression':
+        best_r2 = max(
+            (r.get('metrics', {}).get('R2', -1) for r in model_results.values()),
+            default=-1,
+        )
+        if best_r2 >= 0.15 or best_r2 < 0:
+            return []
+        return [{
+            'id': 'train_low_performance',
+            'severity': 'opportunity',
+            'finding': (
+                f"Best model explains only {best_r2 * 100:.1f}% of outcome variance "
+                f"(R\u00b2 = {best_r2:.3f}). This suggests the current features capture "
+                "limited predictive signal."
+            ),
+            'implication': (
+                "Low R\u00b2 may indicate that important predictors are missing, "
+                "that the relationship is non-linear and not captured by current features, "
+                "or that the outcome is inherently difficult to predict."
+            ),
+            'recommended_action': (
+                "Return to Feature Engineering to explore interaction terms, non-linear "
+                "transforms, or domain-driven composite features. Also consider whether "
+                "additional data sources are available."
+            ),
+            'model_scope': [],
+            'metadata': {'best_r2': float(best_r2)},
+        }]
+    else:
+        best_auc = max(
+            (r.get('metrics', {}).get('AUC', 0) for r in model_results.values()),
+            default=0,
+        )
+        if best_auc >= 0.60 or best_auc <= 0:
+            return []
+        return [{
+            'id': 'train_low_performance',
+            'severity': 'opportunity',
+            'finding': (
+                f"Best model achieved AUC of {best_auc:.3f}, indicating weak "
+                "discrimination between classes."
+            ),
+            'implication': (
+                "An AUC below 0.60 suggests the model barely outperforms random "
+                "guessing. The current features may not capture the decision boundary."
+            ),
+            'recommended_action': (
+                "Return to Feature Engineering to explore interaction terms, "
+                "non-linear transforms, or domain-driven composite features."
+            ),
+            'model_scope': [],
+            'metadata': {'best_auc': float(best_auc)},
+        }]
+
+
+def _detect_high_cv_variance(
+    model_results: Dict[str, Dict[str, Any]],
+    task_type: str,
+) -> List[Dict[str, Any]]:
+    """Detect when CV variance is large relative to inter-model performance gaps."""
+    cv_stds = []
+    scores = []
+    for key, results in model_results.items():
+        cv = results.get('cv_results')
+        if cv and cv.get('std') is not None:
+            cv_stds.append(cv['std'])
+        metrics = results.get('metrics', {})
+        if task_type == 'regression':
+            val = metrics.get('RMSE')
+        else:
+            val = metrics.get('F1', metrics.get('Accuracy'))
+        if val is not None:
+            scores.append(val)
+
+    if len(cv_stds) < 1 or len(scores) < 2:
+        return []
+
+    max_cv_std = max(cv_stds)
+    score_range = max(scores) - min(scores)
+
+    if score_range <= 0 or max_cv_std < score_range * 0.5:
+        return []
+
+    return [{
+        'id': 'train_cv_variance',
+        'severity': 'info',
+        'finding': (
+            f"Cross-validation variability (max std = {max_cv_std:.4f}) exceeds "
+            f"half the inter-model performance range ({score_range:.4f}). "
+            "Model ranking may not be stable."
+        ),
+        'implication': (
+            "When evaluation noise is large relative to model differences, "
+            "the apparent best model may change with different random splits. "
+            "A reviewer would question the robustness of model selection."
+        ),
+        'recommended_action': (
+            "Run Sensitivity Analysis (seed robustness) to verify that model "
+            "rankings are stable across random seeds."
+        ),
+        'model_scope': [],
+        'metadata': {
+            'max_cv_std': float(max_cv_std),
+            'score_range': float(score_range),
+        },
+    }]
+
+
+def run_post_training_diagnostics(
+    model_results: Dict[str, Dict[str, Any]],
+    task_type: str,
+    tolerance: float = 0.05,
+) -> List[Dict[str, Any]]:
+    """Run all post-training diagnostic checks and return a list of findings.
+
+    Each finding is a dict with keys: id, severity, finding, implication,
+    recommended_action, model_scope, metadata.
+    """
+    findings = []
+    findings.extend(_detect_prefer_simpler(model_results, task_type, tolerance))
+    findings.extend(_detect_low_overall_performance(model_results, task_type))
+    findings.extend(_detect_high_cv_variance(model_results, task_type))
+    return findings

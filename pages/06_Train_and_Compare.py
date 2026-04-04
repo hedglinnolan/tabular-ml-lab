@@ -1283,6 +1283,31 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
         except Exception:
             pass
 
+        # Post-training coaching: detect complexity tradeoffs and other patterns
+        try:
+            from ml.model_coach import run_post_training_diagnostics
+            from utils.insight_ledger import Insight
+            _diagnostics = run_post_training_diagnostics(
+                model_results=model_results,
+                task_type=task_type_final_local,
+            )
+            for diag in _diagnostics:
+                _tc_ledger.upsert(Insight(
+                    id=diag['id'],
+                    source_page="06_Train_and_Compare",
+                    category="model_selection",
+                    severity=diag['severity'],
+                    finding=diag['finding'],
+                    implication=diag['implication'],
+                    recommended_action=diag['recommended_action'],
+                    relevant_pages=["06_Train_and_Compare", "10_Report_Export"],
+                    tripod_keys=["model_building"],
+                    model_scope=diag.get('model_scope', []),
+                    metadata=diag.get('metadata', {}),
+                ))
+        except Exception:
+            pass  # Coaching diagnostics should never break the workflow
+
 # Class imbalance handling toggle
 if task_type_final == 'classification':
     profile = st.session_state.get('dataset_profile')
@@ -1645,7 +1670,20 @@ if st.session_state.get('trained_models'):
     # ================================================================
     st.markdown("---")
     st.markdown("### 🎯 How to Choose Your Model")
-    
+
+    # Surface prefer-simpler coaching inline if detected
+    try:
+        from utils.insight_ledger import get_ledger as _get_guidance_ledger
+        _guidance_ledger = _get_guidance_ledger()
+        _prefer_simpler = _guidance_ledger.get("train_prefer_simpler")
+        if _prefer_simpler and not _prefer_simpler.resolved:
+            st.warning(
+                f"**Simplicity Coaching:** {_prefer_simpler.finding}\n\n"
+                f"→ {_prefer_simpler.recommended_action}"
+            )
+    except Exception:
+        pass
+
     # Helper function for complexity description
     def get_model_complexity(model_name: str) -> str:
         """Return human-readable complexity description."""
