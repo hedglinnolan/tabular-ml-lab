@@ -166,6 +166,37 @@ if _profile:
         import logging
         logging.getLogger(__name__).debug(f"Model coach error: {_coach_err}")
 
+# ── Model-Scoped Preprocessing Coaching ────────────────────────────────────
+# Generate scoped insights based on selected models + data profile
+try:
+    from ml.model_coach import generate_preprocessing_insights
+    from utils.insight_ledger import get_ledger as _get_prep_ledger, Insight as _PrepInsight
+    _prep_ledger = _get_prep_ledger()
+    _selected_for_coaching = [
+        k for k in st.session_state.get("trained_models", {}).keys()
+    ] or [
+        k for k, spec in (st.session_state.get("model_registry", {}) or {}).items()
+        if st.session_state.get(f"train_model_{k}", False)
+    ]
+    if _selected_for_coaching and profile:
+        _prep_insights = generate_preprocessing_insights(_selected_for_coaching, profile)
+        for _pi in _prep_insights:
+            _prep_ledger.upsert(_PrepInsight(
+                id=_pi["id"],
+                source_page=_pi["source_page"],
+                category=_pi["category"],
+                severity=_pi["severity"],
+                finding=_pi["finding"],
+                implication=_pi["implication"],
+                recommended_action=_pi["recommended_action"],
+                model_scope=_pi.get("model_scope", []),
+                relevant_pages=_pi.get("relevant_pages", []),
+                theory_anchor=_pi.get("theory_anchor", ""),
+                metadata=_pi.get("metadata", {}),
+            ))
+except Exception:
+    pass
+
 # ============================================================================
 # 1. MODEL SELECTION FIRST
 # ============================================================================
@@ -327,10 +358,13 @@ if use_smart_defaults:
         st.session_state[f"preprocess_{_mk}_numeric_imputation"] = _auto_imputation
         st.session_state[f"preprocess_{_mk}_numeric_missing_indicators"] = _auto_missing_indicators
         st.session_state[f"preprocess_{_mk}_numeric_outlier_treatment"] = _auto_outlier
-        # Auto-enable power transform for linear models when skewness detected
-        _is_linear = _mk in ("ridge", "lasso", "elasticnet", "glm", "logreg", "huber")
+        # Auto-enable power transform for models sensitive to skewness
+        from utils.insight_ledger import MODEL_TO_FAMILY, ISSUE_MODEL_RELEVANCE
+        _mk_family = MODEL_TO_FAMILY.get(_mk, "")
+        _skew_families = ISSUE_MODEL_RELEVANCE.get("skewness", [])
+        _needs_power = _mk_family in _skew_families
         _has_skewed_features = bool(profile and getattr(profile, "highly_skewed_features", []))
-        if _has_skewed_features and _is_linear:
+        if _has_skewed_features and _needs_power:
             st.session_state[f"preprocess_{_mk}_numeric_power_transform"] = "yeo-johnson"
         else:
             st.session_state[f"preprocess_{_mk}_numeric_power_transform"] = "none"

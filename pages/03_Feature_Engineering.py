@@ -1050,6 +1050,139 @@ if use_dimred:
                     st.error(f"❌ Error: {e}")
 
 # ============================================================================
+# Missingness-as-Feature (Section 8)
+# ============================================================================
+
+st.markdown("---")
+st.subheader("🔍 Missingness-as-Feature")
+
+# Identify features with any missing values
+_missing_counts = X.isnull().sum()
+_features_with_missing = _missing_counts[_missing_counts > 0].sort_values(ascending=False)
+
+if len(_features_with_missing) == 0:
+    st.info("No missing values detected in the selected features — this section is not applicable.")
+else:
+    _n_rows = len(X)
+    st.markdown(
+        f"**{len(_features_with_missing)}** feature(s) have missing values. "
+        "High missingness may be **informative** (MNAR): if a question was only asked of a "
+        "subgroup, the presence or absence of data is itself predictive."
+    )
+
+    # Show missingness table
+    _miss_df = pd.DataFrame({
+        "Feature": _features_with_missing.index,
+        "Missing": _features_with_missing.values,
+        "% Missing": [f"{100 * v / _n_rows:.1f}%" for v in _features_with_missing.values],
+    }).reset_index(drop=True)
+    st.dataframe(_miss_df, use_container_width=True, hide_index=True)
+
+    # Coaching callout for high-missingness features
+    _high_missing = _features_with_missing[_features_with_missing / _n_rows > 0.30]
+    if len(_high_missing) > 0:
+        st.warning(
+            f"**Coaching:** {len(_high_missing)} feature(s) have >30% missingness "
+            f"({', '.join(_high_missing.index[:5])}{'…' if len(_high_missing) > 5 else ''}). "
+            "A reviewer would ask whether this missingness is random (MCAR) or structural (MNAR). "
+            "If structural, create a binary `has_data` indicator — the indicator itself may be "
+            "more predictive than the imputed value."
+        )
+
+    # Threshold slider
+    _miss_threshold = st.slider(
+        "Minimum missing % to show",
+        min_value=0, max_value=100, value=5,
+        key="miss_indicator_threshold",
+        help="Only show features with at least this % missing",
+    )
+    _eligible = _features_with_missing[_features_with_missing / _n_rows >= _miss_threshold / 100]
+
+    if len(_eligible) > 0:
+        _selected_miss = st.multiselect(
+            "Select features to create `has_data` indicators for",
+            options=list(_eligible.index),
+            default=list(_eligible.index),
+            key="miss_indicator_features",
+        )
+
+        if _selected_miss:
+            # Check which indicators already exist
+            _already_created = [f for f in _selected_miss if f"{f}_has_data" in X_engineered.columns]
+            _to_create = [f for f in _selected_miss if f"{f}_has_data" not in X_engineered.columns]
+
+            if _already_created:
+                st.caption(f"Already created: {', '.join(f'`{f}_has_data`' for f in _already_created)}")
+
+            if _to_create and st.button(
+                f"🔬 Create {len(_to_create)} Missing Indicator(s)",
+                key="btn_create_miss_indicators",
+            ):
+                for feat in _to_create:
+                    col_name = f"{feat}_has_data"
+                    X_engineered[col_name] = (~X[feat].isnull()).astype(int)
+                    engineered_features.append(col_name)
+                    _pct = 100 * _missing_counts[feat] / _n_rows
+                    engineering_log.append(
+                        f"Missingness indicator: {col_name} (1 = observed, 0 = missing; "
+                        f"{_pct:.1f}% missing)"
+                    )
+
+                st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
+                st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
+                st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                st.success(f"✅ Created **{len(_to_create)} missingness indicator(s)**: "
+                           f"{', '.join(f'`{f}_has_data`' for f in _to_create)}")
+                st.rerun()
+
+            # Conditional ordinal encoding for categorical columns with high missingness
+            _cat_with_missing = [f for f in _selected_miss if f in categorical_features]
+            if _cat_with_missing:
+                st.markdown("---")
+                st.markdown("**Conditional Ordinal Encoding** (categorical features with high missingness)")
+                st.caption(
+                    "For partially-observed categorical features, encode as ordinal: "
+                    "missing → 0, then each category gets a sequential integer. "
+                    "This preserves the has-data / no-data distinction in a single column."
+                )
+                _selected_cat_ordinal = st.multiselect(
+                    "Select categorical features for conditional ordinal encoding",
+                    options=_cat_with_missing,
+                    default=[],
+                    key="miss_cat_ordinal_features",
+                )
+                if _selected_cat_ordinal:
+                    _already_ordinal = [f for f in _selected_cat_ordinal if f"{f}_ordinal" in X_engineered.columns]
+                    _to_encode = [f for f in _selected_cat_ordinal if f"{f}_ordinal" not in X_engineered.columns]
+
+                    if _already_ordinal:
+                        st.caption(f"Already encoded: {', '.join(f'`{f}_ordinal`' for f in _already_ordinal)}")
+
+                    if _to_encode and st.button(
+                        f"🔬 Create {len(_to_encode)} Ordinal Encoding(s)",
+                        key="btn_create_cat_ordinal",
+                    ):
+                        for feat in _to_encode:
+                            col_name = f"{feat}_ordinal"
+                            series = X[feat].copy()
+                            categories = series.dropna().unique()
+                            cat_map = {cat: i + 1 for i, cat in enumerate(sorted(categories))}
+                            X_engineered[col_name] = series.map(cat_map).fillna(0).astype(int)
+                            engineered_features.append(col_name)
+                            engineering_log.append(
+                                f"Conditional ordinal: {col_name} (0=missing, "
+                                f"{len(cat_map)} categories)"
+                            )
+
+                        st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
+                        st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
+                        st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                        st.success(f"✅ Created **{len(_to_encode)} ordinal encoding(s)**")
+                        st.rerun()
+    else:
+        st.info(f"No features have ≥{_miss_threshold}% missingness. Lower the threshold to see more.")
+
+# ============================================================================
 # Summary & Save
 # ============================================================================
 

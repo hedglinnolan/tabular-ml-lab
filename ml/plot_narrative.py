@@ -258,6 +258,34 @@ def narrative_partial_dependence(
     return pref + " ".join(parts)
 
 
+def narrative_partial_dependence_2d(
+    pair_label: str,
+    interaction_magnitude: float,
+    range_2d: float,
+    model_name: Optional[str] = None,
+) -> str:
+    """Narrative for a single 2D partial dependence heatmap."""
+    pref = f"**{model_name or 'Model'}:** " if model_name else ""
+    if interaction_magnitude < 1e-6:
+        return (
+            f"{pref}The joint effect of {pair_label} appears additive — "
+            "knowing one feature's value does not change the other's marginal effect."
+        )
+    ratio = interaction_magnitude / range_2d if range_2d > 0 else 0
+    if ratio > 0.3:
+        strength = "strong"
+    elif ratio > 0.1:
+        strength = "moderate"
+    else:
+        strength = "mild"
+    return (
+        f"{pref}A {strength} interaction is detected for {pair_label} "
+        f"(interaction magnitude {interaction_magnitude:.4f}, "
+        f"{ratio:.0%} of total 2D effect range). "
+        "The effect of one feature depends on the value of the other."
+    )
+
+
 def narrative_learning_curves(history: Dict[str, List[float]]) -> str:
     """Narrative for learning curves (train/val loss)."""
     if not history:
