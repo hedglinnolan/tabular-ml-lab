@@ -215,6 +215,86 @@ def analyze_pred_vs_actual(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, 
     }
 
 
+def analyze_residuals_stratified(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    n_bins: int = 5,
+    custom_edges: Optional[List[float]] = None,
+) -> Dict[str, Any]:
+    """Residual analysis stratified by target-value range.
+
+    Returns per-bin MAE, mean bias (pred − true), RMSE, sample count,
+    and a bias_direction label ('over' / 'under' / 'balanced').
+
+    Parameters
+    ----------
+    y_true, y_pred : array-like
+        Ground-truth and predicted values.
+    n_bins : int
+        Number of equal-frequency bins (ignored when *custom_edges* given).
+    custom_edges : list of float, optional
+        Explicit bin boundaries.  Must be monotonically increasing and span
+        the target range.
+    """
+    yt = np.asarray(y_true, dtype=float).ravel()
+    yp = np.asarray(y_pred, dtype=float).ravel()
+    valid = np.isfinite(yt) & np.isfinite(yp)
+    if valid.sum() < 3:
+        return {"bins": [], "overall_bias_direction": "balanced"}
+
+    yt, yp = yt[valid], yp[valid]
+
+    if custom_edges is not None:
+        edges = np.array(sorted(custom_edges), dtype=float)
+    else:
+        percentiles = np.linspace(0, 100, n_bins + 1)
+        edges = np.percentile(yt, percentiles)
+        # deduplicate edges that collapse on repeated values
+        edges = np.unique(edges)
+
+    # ensure last edge captures max
+    edges[-1] = max(edges[-1], float(np.max(yt)) + 1e-9)
+
+    bins: List[Dict[str, Any]] = []
+    for i in range(len(edges) - 1):
+        lo, hi = edges[i], edges[i + 1]
+        mask = (yt >= lo) & (yt < hi)
+        n = int(mask.sum())
+        if n == 0:
+            bins.append({
+                "range": f"{lo:.2f}–{hi:.2f}",
+                "lo": float(lo), "hi": float(hi),
+                "n": 0, "mae": 0.0, "rmse": 0.0,
+                "mean_bias": 0.0, "bias_direction": "balanced",
+            })
+            continue
+        err = yp[mask] - yt[mask]
+        mae = float(np.mean(np.abs(err)))
+        rmse = float(np.sqrt(np.mean(err ** 2)))
+        mean_bias = float(np.mean(err))
+        if mean_bias > mae * 0.1:
+            direction = "over"
+        elif mean_bias < -mae * 0.1:
+            direction = "under"
+        else:
+            direction = "balanced"
+        bins.append({
+            "range": f"{lo:.2f}–{hi:.2f}",
+            "lo": float(lo), "hi": float(hi),
+            "n": n, "mae": mae, "rmse": rmse,
+            "mean_bias": mean_bias, "bias_direction": direction,
+        })
+
+    # overall bias direction from the worst-bias bin
+    if bins:
+        worst = max(bins, key=lambda b: abs(b["mean_bias"]))
+        overall = worst["bias_direction"]
+    else:
+        overall = "balanced"
+
+    return {"bins": bins, "overall_bias_direction": overall}
+
+
 def analyze_confusion_matrix(
     y_true: np.ndarray, y_pred: np.ndarray, labels: Optional[List[str]] = None
 ) -> Dict[str, Any]:
