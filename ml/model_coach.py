@@ -1347,6 +1347,172 @@ def select_top_picks(profile: Any) -> Tuple[List[TopPick], List[Tuple[str, str]]
     return picks, skip_list
 
 
+# ── Preprocessing Coaching (Model-Scoped) ─────────────────────────────────
+
+def generate_preprocessing_insights(
+    selected_models: List[str],
+    profile: Any,
+) -> List[Dict[str, Any]]:
+    """Generate model-scoped preprocessing coaching insights.
+
+    Returns a list of dicts ready to be converted to Insight objects.
+    Each insight's ``model_scope`` narrows the recommendation to the
+    model families that actually need the action.
+
+    Parameters
+    ----------
+    selected_models : list of str
+        Model keys the user has selected (e.g. ["ridge", "rf", "nn"]).
+    profile : DatasetProfile or similar
+        Must expose: ``highly_skewed_features``, ``features_with_outliers``,
+        ``n_features_with_missing``.
+    """
+    from utils.insight_ledger import (
+        MODEL_TO_FAMILY, ISSUE_MODEL_RELEVANCE,
+        MODEL_FAMILY_LINEAR, MODEL_FAMILY_TREE, MODEL_FAMILY_NEURAL,
+        MODEL_FAMILY_DISTANCE, MODEL_FAMILY_MARGIN,
+    )
+
+    if not profile or not selected_models:
+        return []
+
+    # Determine which families are in the user's selection
+    user_families = set()
+    for mk in selected_models:
+        fam = MODEL_TO_FAMILY.get(mk)
+        if fam:
+            user_families.add(fam)
+
+    insights: List[Dict[str, Any]] = []
+
+    # Helper: family names for display
+    _family_names = {
+        MODEL_FAMILY_LINEAR: "linear models (Ridge, LASSO, etc.)",
+        MODEL_FAMILY_TREE: "tree-based models (RF, XGBoost, etc.)",
+        MODEL_FAMILY_NEURAL: "neural networks",
+        MODEL_FAMILY_DISTANCE: "distance-based models (kNN)",
+        MODEL_FAMILY_MARGIN: "margin-based models (SVM)",
+    }
+
+    def _family_list(families):
+        return ", ".join(_family_names.get(f, f) for f in families if f in user_families)
+
+    # 1. Skewness → power transform (affects linear, neural, distance)
+    skewed = getattr(profile, "highly_skewed_features", [])
+    if skewed:
+        affected = [f for f in ISSUE_MODEL_RELEVANCE["skewness"] if f in user_families]
+        immune = [f for f in user_families if f not in ISSUE_MODEL_RELEVANCE["skewness"]]
+        if affected:
+            immune_msg = ""
+            if immune:
+                immune_msg = f" Your {_family_list(immune)} handle skewness natively — no transform needed for them."
+            insights.append({
+                "id": "preprocess_skewness_transform",
+                "source_page": "05_Preprocess",
+                "category": "preprocessing",
+                "severity": "warning",
+                "finding": (
+                    f"{len(skewed)} feature(s) are highly skewed "
+                    f"({', '.join(skewed[:3])}{'…' if len(skewed) > 3 else ''})."
+                ),
+                "implication": (
+                    f"Skewness can bias {_family_list(affected)}, "
+                    "producing suboptimal coefficients or gradient updates."
+                ),
+                "recommended_action": (
+                    f"For your {_family_list(affected)}, apply Yeo-Johnson or log transform "
+                    f"to stabilise the feature distributions.{immune_msg}"
+                ),
+                "model_scope": affected,
+                "relevant_pages": ["05_Preprocess"],
+                "theory_anchor": "skewness",
+                "metadata": {"skewed_features": skewed[:10]},
+            })
+
+    # 2. Outliers → robust scaling or clipping (affects linear, neural, distance)
+    outlier_feats = getattr(profile, "features_with_outliers", [])
+    if outlier_feats:
+        affected = [f for f in ISSUE_MODEL_RELEVANCE["outliers"] if f in user_families]
+        immune = [f for f in user_families if f not in ISSUE_MODEL_RELEVANCE["outliers"]]
+        if affected:
+            immune_msg = ""
+            if immune:
+                immune_msg = f" Your {_family_list(immune)} are naturally robust to outliers."
+            insights.append({
+                "id": "preprocess_outlier_handling",
+                "source_page": "05_Preprocess",
+                "category": "preprocessing",
+                "severity": "info",
+                "finding": (
+                    f"{len(outlier_feats)} feature(s) contain outliers "
+                    f"({', '.join(outlier_feats[:3])}{'…' if len(outlier_feats) > 3 else ''})."
+                ),
+                "implication": (
+                    f"Outliers can inflate loss and destabilise {_family_list(affected)}."
+                ),
+                "recommended_action": (
+                    f"For your {_family_list(affected)}, consider Winsorising or "
+                    f"robust scaling.{immune_msg}"
+                ),
+                "model_scope": affected,
+                "relevant_pages": ["05_Preprocess"],
+                "theory_anchor": "outliers",
+            })
+
+    # 3. Feature scaling (affects linear, neural, distance, margin)
+    scale_affected = [f for f in ISSUE_MODEL_RELEVANCE["feature_scale"] if f in user_families]
+    scale_immune = [f for f in user_families if f not in ISSUE_MODEL_RELEVANCE["feature_scale"]]
+    if scale_affected:
+        immune_msg = ""
+        if scale_immune:
+            immune_msg = f" Your {_family_list(scale_immune)} are scale-invariant — no scaling needed."
+        insights.append({
+            "id": "preprocess_feature_scaling",
+            "source_page": "05_Preprocess",
+            "category": "preprocessing",
+            "severity": "info",
+            "finding": "Feature scaling is important for some of your selected models.",
+            "implication": (
+                f"{_family_list(scale_affected)} are sensitive to feature scale. "
+                "Unscaled features will bias distance metrics and gradient magnitudes."
+            ),
+            "recommended_action": (
+                f"Apply StandardScaler or RobustScaler for {_family_list(scale_affected)}.{immune_msg}"
+            ),
+            "model_scope": scale_affected,
+            "relevant_pages": ["05_Preprocess"],
+            "theory_anchor": "feature_scale",
+        })
+
+    # 4. Missing data — native handling differs by family
+    n_missing = getattr(profile, "n_features_with_missing", 0)
+    if n_missing > 0 and MODEL_FAMILY_TREE in user_families:
+        non_tree = [f for f in user_families if f != MODEL_FAMILY_TREE]
+        insights.append({
+            "id": "preprocess_missing_tree_native",
+            "source_page": "05_Preprocess",
+            "category": "preprocessing",
+            "severity": "info",
+            "finding": (
+                f"{n_missing} feature(s) have missing values."
+            ),
+            "implication": (
+                "HistGradientBoosting and LightGBM handle missing values natively. "
+                "Other model families require imputation."
+            ),
+            "recommended_action": (
+                "Tree-based models can skip imputation (native NaN support). "
+                + (f"For your {_family_list(non_tree)}, apply median or iterative imputation."
+                   if non_tree else "")
+            ),
+            "model_scope": [],  # relevant to all, but differentiates
+            "relevant_pages": ["05_Preprocess"],
+            "theory_anchor": "missing_data",
+        })
+
+    return insights
+
+
 # ── Post-Training Diagnostics ──────────────────────────────────────────────
 
 def _model_display_name_coach(key: str) -> str:
