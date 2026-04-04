@@ -1618,78 +1618,106 @@ render_export_readiness_audit(export_ctx)
 report_text = generate_report(export_ctx)
 
 # ============================================================================
+# REPORT PREVIEW (prominent position — this is the main output)
+# ============================================================================
+st.header("📄 Report Preview")
+_preview_tab_md, _preview_tab_latex = st.tabs(["Markdown Preview", "LaTeX Preview"])
+with _preview_tab_md:
+    with st.container():
+        st.markdown(report_text)
+with _preview_tab_latex:
+    if st.session_state.get("latex_report"):
+        st.code(st.session_state["latex_report"], language="latex")
+    else:
+        st.info("Generate a LaTeX manuscript below to preview it here.")
+
+# ============================================================================
+# REPORT SCOPE — controls what appears in all exported materials
+# ============================================================================
+st.header("🎯 Report Scope")
+st.caption("These selections govern which models and analyses appear in the Methods section, LaTeX manuscript, and all exports.")
+
+all_model_names = list(trained_models.keys()) if trained_models else []
+if all_model_names:
+    selected_for_report = st.multiselect(
+        "Models to include in report",
+        options=all_model_names,
+        default=all_model_names,
+        key="report_model_selection",
+        help="Select which models' results to include in the methods/results section.",
+    )
+else:
+    selected_for_report = []
+
+# Explainability methods to mention
+available_explain = []
+if st.session_state.get("permutation_importance"):
+    available_explain.append("permutation_importance")
+if st.session_state.get("shap_results") or st.session_state.get("shap_values"):
+    available_explain.append("shap")
+if st.session_state.get("pdp_results") or st.session_state.get("partial_dependence"):
+    available_explain.append("partial_dependence")
+if st.session_state.get("calibration_results"):
+    available_explain.append("calibration")
+if st.session_state.get("bland_altman_results"):
+    available_explain.append("bland_altman")
+
+if available_explain:
+    selected_explain = st.multiselect(
+        "Explainability methods to describe",
+        options=available_explain,
+        default=available_explain,
+        key="report_explain_selection",
+        help="Select which analyses to describe in the methods section.",
+    )
+else:
+    selected_explain = []
+
+# Manuscript-primary model selection
+best_model = None
+if selected_for_report:
+    default_best_model = export_ctx.get('best_model_by_metric')
+    st.caption(
+        f"Current best by held-out metric: {_export_model_label(default_best_model)}"
+        if default_best_model else
+        "Current best-by-metric model is not available."
+    )
+    primary_options = ["None (describe best-by-metric only)"] + selected_for_report
+    stored_primary_model = st.session_state.get("report_best_model")
+    default_primary_index = primary_options.index(stored_primary_model) if stored_primary_model in selected_for_report else 0
+    selected_primary_option = st.selectbox(
+        "Manuscript-primary model (optional)",
+        options=primary_options,
+        index=default_primary_index,
+        key="report_best_model_selection",
+        help="Select a manuscript-primary model only if you want to explicitly frame one model as primary in the draft.",
+    )
+    best_model = selected_primary_option if selected_primary_option in selected_for_report else None
+    st.session_state["report_best_model"] = best_model
+
+include_results = st.checkbox("Include draft Results section with actual metrics", value=True,
+                               key="report_include_results",
+                               help="Adds a Results section populated with your model's actual performance numbers and CIs.")
+
+# Compute the export bundle ONCE — used by TRIPOD, Validation, and LaTeX
+_cached_bundle = _build_latex_export_bundle(
+    selected_for_report=selected_for_report,
+    selected_explain=selected_explain,
+    include_results=include_results,
+    best_model=best_model,
+)
+
+# ============================================================================
 # PUBLICATION TOOLS
 # ============================================================================
 st.header("📝 Publication Tools")
 
 # Methods Section Generator
 with st.expander("📄 Auto-Generated Methods Section", expanded=False):
-    st.markdown("""
-    Generate a workflow-derived draft of the methods section and, optionally, a factual results draft.
-    Fill in the `[PLACEHOLDER]` sections with study-specific details and add your own interpretation separately.
-    """)
-    # Let user select which models to include in the report
-    all_model_names = list(trained_models.keys()) if trained_models else []
-    if all_model_names:
-        selected_for_report = st.multiselect(
-            "Models to include in report",
-            options=all_model_names,
-            default=all_model_names,
-            key="report_model_selection",
-            help="Select which models' results to include in the methods/results section.",
-        )
-    else:
-        selected_for_report = []
-
-    # Explainability methods to mention
-    available_explain = []
-    if st.session_state.get("permutation_importance"):
-        available_explain.append("permutation_importance")
-    if st.session_state.get("shap_results") or st.session_state.get("shap_values"):
-        available_explain.append("shap")
-    if st.session_state.get("pdp_results") or st.session_state.get("partial_dependence"):
-        available_explain.append("partial_dependence")
-    if st.session_state.get("calibration_results"):
-        available_explain.append("calibration")
-    if st.session_state.get("bland_altman_results"):
-        available_explain.append("bland_altman")
-
-    if available_explain:
-        selected_explain = st.multiselect(
-            "Explainability methods to describe",
-            options=available_explain,
-            default=available_explain,
-            key="report_explain_selection",
-            help="Select which analyses to describe in the methods section.",
-        )
-    else:
-        selected_explain = []
-
-    # Manuscript-primary model selection is optional and should only reflect an explicit user choice
-    best_model = None
-    if selected_for_report:
-        default_best_model = export_ctx.get('best_model_by_metric')
-        st.caption(
-            f"Current best by held-out metric: {_export_model_label(default_best_model)}"
-            if default_best_model else
-            "Current best-by-metric model is not available."
-        )
-        primary_options = ["None (describe best-by-metric only)"] + selected_for_report
-        stored_primary_model = st.session_state.get("report_best_model")
-        default_primary_index = primary_options.index(stored_primary_model) if stored_primary_model in selected_for_report else 0
-        selected_primary_option = st.selectbox(
-            "Manuscript-primary model (optional)",
-            options=primary_options,
-            index=default_primary_index,
-            key="report_best_model_selection",
-            help="Select a manuscript-primary model only if you want to explicitly frame one model as primary in the draft.",
-        )
-        best_model = selected_primary_option if selected_primary_option in selected_for_report else None
-        st.session_state["report_best_model"] = best_model
-
-    include_results = st.checkbox("Include draft Results section with actual metrics", value=True,
-                                   key="report_include_results",
-                                   help="Adds a Results section populated with your model's actual performance numbers and CIs.")
+    st.markdown(
+        "Generate a workflow-derived draft of the methods section and, optionally, a factual results draft. "
+        "Fill in the `[PLACEHOLDER]` sections with study-specific details."
+    )
 
     if st.button("Generate Methods Section", key="gen_methods", type="primary"):
         manuscript_context = _build_manuscript_context(
@@ -1749,12 +1777,7 @@ with st.expander("📊 Sample Flow Diagram", expanded=False):
         st.caption("Paste the code into [mermaid.live](https://mermaid.live) to render as SVG/PNG for your paper.")
 
 # TRIPOD Checklist
-table1_bundle = _build_latex_export_bundle(
-    selected_for_report=selected_for_report,
-    selected_explain=selected_explain,
-    include_results=include_results,
-    best_model=best_model,
-)
+table1_bundle = _cached_bundle
 
 with st.expander("✅ TRIPOD Checklist", expanded=False):
     st.markdown("""
@@ -1854,12 +1877,7 @@ if table1_bundle.get("table1_df_local") is not None:
 from ml.latex_report import generate_latex_report as _generate_validation_latex
 from ml.manuscript_validator import validate_manuscript_bundle
 
-validation_bundle = _build_latex_export_bundle(
-    selected_for_report=selected_for_report,
-    selected_explain=selected_explain,
-    include_results=include_results,
-    best_model=best_model,
-)
+validation_bundle = _cached_bundle
 validation_report_text = _build_validation_report_text(validation_bundle)
 validation_manuscript_context = validation_bundle['manuscript_context']
 validation_methods_text = validation_bundle['methods_text']
@@ -1892,25 +1910,26 @@ validation_report = validate_manuscript_bundle(
 )
 validation_df = pd.DataFrame(validation_report.to_rows())
 
-st.header("Pre-export Manuscript Validation")
-if validation_report.passed:
-    st.success(f"All {len(validation_report.checks)} validation checks passed.")
-else:
-    st.warning(
-        f"{len(validation_report.failed_checks)} of {len(validation_report.checks)} validation checks failed. "
-        "Review the report below before exporting."
-    )
-table(validation_df, hide_index=True)
+with st.expander("🔍 Pre-export Manuscript Validation", expanded=not validation_report.passed):
+    if validation_report.passed:
+        st.success(f"All {len(validation_report.checks)} validation checks passed.")
+    else:
+        st.warning(
+            f"{len(validation_report.failed_checks)} of {len(validation_report.checks)} validation checks failed. "
+            "Review the report below before exporting."
+        )
+    table(validation_df, hide_index=True)
 
-validation_override = st.checkbox(
-    "Allow export despite validation failures",
-    value=False,
-    key="manuscript_validation_override",
-    help="Use this only when you intentionally want to export a draft that still contains validation failures.",
-)
+    validation_override = st.checkbox(
+        "Allow export despite validation failures",
+        value=False,
+        key="manuscript_validation_override",
+        help="Use this only when you intentionally want to export a draft that still contains validation failures.",
+    )
+
 exports_blocked = (not validation_report.passed) and (not validation_override)
 if exports_blocked:
-    st.info("Export downloads remain disabled until you review this validation report and choose to override.")
+    st.info("Export downloads remain disabled until you review the validation report and choose to override.")
 
 # LaTeX Manuscript Template
 with st.expander("📝 LaTeX Manuscript Template", expanded=False):
@@ -1930,12 +1949,7 @@ with st.expander("📝 LaTeX Manuscript Template", expanded=False):
     if st.button("Generate LaTeX Manuscript", key="gen_latex", type="primary", disabled=exports_blocked):
         from ml.latex_report import generate_latex_report
 
-        latex_bundle = _build_latex_export_bundle(
-            selected_for_report=selected_for_report,
-            selected_explain=selected_explain,
-            include_results=include_results,
-            best_model=best_model,
-        )
+        latex_bundle = _cached_bundle
 
         latex_source = generate_latex_report(
             title=paper_title,
@@ -1960,7 +1974,7 @@ with st.expander("📝 LaTeX Manuscript Template", expanded=False):
         st.session_state["latex_report"] = latex_source
 
     if st.session_state.get("latex_report"):
-        st.text_area("LaTeX Source", value=st.session_state["latex_report"], height=400, key="latex_preview")
+        st.success("LaTeX manuscript generated. See the **LaTeX Preview** tab above, or download below.")
         st.download_button(
             "📥 Download LaTeX (.tex)",
             st.session_state["latex_report"],
@@ -2047,37 +2061,15 @@ def export_model_artifact(model_wrapper, model_key: str) -> Optional[bytes]:
         return None
 
 
-# Download buttons
-col1, col2, col3 = st.columns(3)
+# Build metrics CSV (used by ZIP and individual download)
+comparison_data = []
+for name, results in model_results.items():
+    row = {'Model': name.upper()}
+    row.update(results['metrics'])
+    comparison_data.append(row)
+comparison_df = pd.DataFrame(comparison_data)
 
-with col1:
-    st.download_button(
-        label="Download Report (Markdown)",
-        data=report_text,
-        file_name=f"modeling_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
-        mime="text/markdown",
-        type="primary",
-        disabled=exports_blocked,
-    )
-
-with col2:
-    # Quick metrics CSV
-    comparison_data = []
-    for name, results in model_results.items():
-        row = {'Model': name.upper()}
-        row.update(results['metrics'])
-        comparison_data.append(row)
-    comparison_df = pd.DataFrame(comparison_data)
-    
-    st.download_button(
-        label="Download Metrics (CSV)",
-        data=comparison_df.to_csv(index=False),
-        file_name=f"model_metrics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv",
-        disabled=exports_blocked,
-    )
-
-with col3:
+# Build ZIP package
     # Create comprehensive zip package
     # Get selected_model_params from session_state (needed for export)
     selected_model_params = st.session_state.get('selected_model_params', {})
@@ -2278,25 +2270,52 @@ with col3:
         if selected_model_params:
             manifest['model_hyperparameters'] = selected_model_params
         zip_file.writestr("manifest.json", json.dumps(manifest, indent=2, default=str))
-    
+
+        # LaTeX manuscript (if generated)
+        _latex_for_zip = st.session_state.get("latex_report")
+        if _latex_for_zip:
+            zip_file.writestr("manuscript.tex", _latex_for_zip)
+
+# ── Download buttons ──────────────────────────────────────────────────────
+# Primary: ZIP (contains everything)
+st.download_button(
+    label="Download Complete Package (ZIP)",
+    data=zip_buffer.getvalue(),
+    file_name=f"modeling_package_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+    mime="application/zip",
+    type="primary",
+    disabled=exports_blocked,
+    use_container_width=True,
+)
+
+# Secondary: individual exports (also in the ZIP)
+st.caption("Individual exports (also included in the ZIP above):")
+_dl_col1, _dl_col2, _dl_col3 = st.columns(3)
+with _dl_col1:
     st.download_button(
-        label="Download Complete Package (ZIP)",
-        data=zip_buffer.getvalue(),
-        file_name=f"modeling_package_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-        mime="application/zip",
+        label="Report (.md)",
+        data=report_text,
+        file_name=f"modeling_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+        mime="text/markdown",
         disabled=exports_blocked,
     )
-
-st.success("Report generated successfully!")
-
-# ============================================================================
-# REPORT PREVIEW
-# ============================================================================
-st.header("Report Preview")
-
-# Display in a nice container
-with st.container():
-    st.markdown(report_text)
+with _dl_col2:
+    st.download_button(
+        label="Metrics (.csv)",
+        data=comparison_df.to_csv(index=False),
+        file_name=f"model_metrics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+        mime="text/csv",
+        disabled=exports_blocked,
+    )
+with _dl_col3:
+    _latex_dl = st.session_state.get("latex_report", "")
+    st.download_button(
+        label="Manuscript (.tex)",
+        data=_latex_dl or "% No LaTeX generated yet",
+        file_name="manuscript.tex",
+        mime="text/plain",
+        disabled=exports_blocked or not _latex_dl,
+    )
 
 # ============================================================================
 # STATE DEBUG
