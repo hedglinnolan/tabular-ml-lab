@@ -36,7 +36,7 @@ render_sidebar_workflow(current_page="")
 st.markdown("""
 <div class="hero-container">
     <div class="hero-badge">Open Source · Guided Default Path · Advanced Options When Needed</div>
-    <h1>Tabular ML Lab</h1>
+    <h1>Tabular Machine Learning Lab</h1>
     <p class="hero-sub">
         Interactive machine learning workbench for researchers.<br/>
         Start with the core guided workflow, then add advanced analyses only when they help your study.
