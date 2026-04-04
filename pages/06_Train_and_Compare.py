@@ -2005,6 +2005,80 @@ Poor performance may be due to:
                     _bg_res = {k: v for k, v in _bg.items() if k not in ("feature_names", "sample_size", "task_type")}
                     ctx = build_llm_context("residuals", stats_summary, model_name=name, model_family=_model_family, existing=nar or "", metrics=results.get("metrics"), feature_names=_feats, sample_size=_n_test, task_type=_task, **_bg_res)
                     render_interpretation_with_llm_button(ctx, key=f"llm_resid_{name}", result_session_key=f"llm_result_resid_{name}", plot_type="residuals")
+
+                    # ── Stratified residual analysis ────────────────────────
+                    st.subheader("Residuals by Target Range")
+                    from ml.eval import analyze_residuals_stratified
+                    from ml.plot_narrative import narrative_residuals_stratified
+                    import pandas as pd
+
+                    _strat_col1, _strat_col2 = st.columns([1, 3])
+                    with _strat_col1:
+                        _n_bins = st.slider(
+                            "Number of bins", min_value=3, max_value=10, value=5,
+                            key=f"strat_bins_{name}",
+                        )
+                        _custom_input = st.text_input(
+                            "Custom edges (comma-separated, optional)",
+                            key=f"strat_edges_{name}",
+                            help="e.g. 0,50,100,200 — overrides bin count",
+                        )
+                        _custom_edges = None
+                        if _custom_input.strip():
+                            try:
+                                _custom_edges = [float(x.strip()) for x in _custom_input.split(",") if x.strip()]
+                            except ValueError:
+                                st.error("Edges must be comma-separated numbers.")
+                                _custom_edges = None
+
+                    strat_stats = analyze_residuals_stratified(
+                        results["y_test"], results["y_test_pred"],
+                        n_bins=_n_bins,
+                        custom_edges=_custom_edges,
+                    )
+                    strat_bins = strat_stats.get("bins", [])
+
+                    with _strat_col2:
+                        if strat_bins:
+                            _rows = []
+                            for b in strat_bins:
+                                direction_icon = {"over": "\u2191 Over", "under": "\u2193 Under", "balanced": "\u2194 Balanced"}
+                                _rows.append({
+                                    "Range": b["range"],
+                                    "n": b["n"],
+                                    "MAE": round(b["mae"], 4),
+                                    "RMSE": round(b["rmse"], 4),
+                                    "Mean Bias": round(b["mean_bias"], 4),
+                                    "Direction": direction_icon.get(b["bias_direction"], b["bias_direction"]),
+                                })
+                            st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+
+                    if strat_bins:
+                        import plotly.graph_objects as go
+                        _fig_strat = go.Figure()
+                        _fig_strat.add_trace(go.Bar(
+                            x=[b["range"] for b in strat_bins],
+                            y=[b["mean_bias"] for b in strat_bins],
+                            marker_color=["#e74c3c" if b["bias_direction"] == "over"
+                                          else "#3498db" if b["bias_direction"] == "under"
+                                          else "#95a5a6" for b in strat_bins],
+                            text=[f"n={b['n']}" for b in strat_bins],
+                            textposition="outside",
+                        ))
+                        _fig_strat.update_layout(
+                            title=f"{name.upper()} — Mean Bias by Target Range",
+                            xaxis_title="Target Range",
+                            yaxis_title="Mean Bias (pred − actual)",
+                            showlegend=False,
+                            height=350,
+                        )
+                        _fig_strat.add_hline(y=0, line_dash="dash", line_color="gray")
+                        st.plotly_chart(_fig_strat, use_container_width=True, key=f"strat_bias_{name}")
+
+                        nar_strat = narrative_residuals_stratified(strat_stats, model_name=name)
+                        if nar_strat:
+                            st.markdown(f"**Summary:** {nar_strat}")
+
                 else:
                     st.subheader("Classification Performance")
                     from sklearn.metrics import confusion_matrix as sk_confusion_matrix, roc_curve, precision_recall_curve, auc

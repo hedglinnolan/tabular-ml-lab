@@ -61,6 +61,48 @@ def narrative_pred_vs_actual(stats: Dict[str, Any], model_name: Optional[str] = 
     return pref + " ".join(parts) if parts else ""
 
 
+def narrative_residuals_stratified(stats: Dict[str, Any], model_name: Optional[str] = None) -> str:
+    """Narrative for stratified residual analysis (scientific-inquiry tone)."""
+    bins = stats.get("bins", [])
+    if not bins:
+        return ""
+    pref = f"**{model_name or 'Model'}:** " if model_name else ""
+    parts: List[str] = []
+
+    over_bins = [b for b in bins if b["bias_direction"] == "over" and b["n"] > 0]
+    under_bins = [b for b in bins if b["bias_direction"] == "under" and b["n"] > 0]
+    worst = max(bins, key=lambda b: abs(b["mean_bias"])) if bins else None
+
+    if over_bins and under_bins:
+        parts.append(
+            "The model exhibits mixed bias across the target range — "
+            "over-predicting in some regions and under-predicting in others."
+        )
+    elif over_bins:
+        parts.append("The model tends to over-predict across the target range.")
+    elif under_bins:
+        parts.append("The model tends to under-predict across the target range.")
+    else:
+        parts.append("Predictions appear unbiased across target-value bins.")
+
+    if worst and worst["n"] > 0 and abs(worst["mean_bias"]) > 1e-6:
+        parts.append(
+            f"The largest bias occurs in the {worst['range']} range "
+            f"(mean error {worst['mean_bias']:+.4f}, n={worst['n']})."
+        )
+
+    mae_vals = [b["mae"] for b in bins if b["n"] > 0]
+    if mae_vals and max(mae_vals) > 2 * min(mae_vals):
+        best_bin = min(bins, key=lambda b: b["mae"] if b["n"] > 0 else float("inf"))
+        worst_mae = max(bins, key=lambda b: b["mae"] if b["n"] > 0 else 0)
+        parts.append(
+            f"Error varies substantially: MAE ranges from {best_bin['mae']:.4f} "
+            f"({best_bin['range']}) to {worst_mae['mae']:.4f} ({worst_mae['range']})."
+        )
+
+    return pref + " ".join(parts) if parts else ""
+
+
 def narrative_confusion_matrix(stats: Dict[str, Any], model_name: Optional[str] = None) -> str:
     """Narrative for confusion matrix."""
     if not stats:
