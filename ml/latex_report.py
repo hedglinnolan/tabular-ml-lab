@@ -868,20 +868,15 @@ def generate_latex_report(
         sections.append("")
     
     sections.append(r"""
-\subsection{Comparison with Prior Work}""")
+\subsection{Comparison with Prior Work and Implications}""")
     if task_type and best_model_key and model_results:
         task_label = "regression" if task_type == "regression" else "classification"
         sections.append(_styled_placeholder(
             f"[PLACEHOLDER: Compare the {primary_metric if 'primary_metric' in locals() else 'performance'} "
-            f"to prior work. Add an appropriate benchmark for typical {task_label} performance in this domain.]"
+            f"to published benchmarks for {task_label} in this domain and discuss practical or clinical implications.]"
         ))
     else:
-        sections.append(_styled_placeholder("[PLACEHOLDER: Compare your results with existing literature.]"))
-    
-    sections.append(r"""
-
-\subsection{Clinical Implications}""")
-    sections.append(_styled_placeholder("[PLACEHOLDER: Discuss practical implications for clinical decision-making or research.]"))
+        sections.append(_styled_placeholder("[PLACEHOLDER: Compare your results with existing literature and discuss implications.]"))
     sections.append(r"""
 \subsection{Strengths and Limitations}
 
@@ -901,6 +896,7 @@ def generate_latex_report(
     if sensitivity_summary and sensitivity_summary.get('seed_stability'):
         strength_items.append("Random seed sensitivity analysis for robustness assessment")
     
+    strength_items = strength_items[:4]
     if strength_items:
         sections.append(r"\begin{itemize}")
         for item in strength_items:
@@ -930,8 +926,12 @@ def generate_latex_report(
 \begin{spacing}{1.0}
 \begin{enumerate}""")
     sections.append(r"\item " + _styled_placeholder("[PLACEHOLDER: Add references in journal format]"))
-    sections.append(r"""\item Collins GS, et al. Transparent reporting of a multivariable prediction model for individual prognosis or diagnosis (TRIPOD). BMJ. 2015;350:g7594.
-\end{enumerate}
+    sections.append(r"\item Collins GS, et al. Transparent reporting of a multivariable prediction model for individual prognosis or diagnosis (TRIPOD). BMJ. 2015;350:g7594.")
+    sections.append(r"\item Steyerberg EW, et al. Assessing the performance of prediction models: a framework for some traditional and novel measures. Epidemiology. 2010;21(1):128--138.")
+    sections.append(r"\item Efron B, Tibshirani RJ. An Introduction to the Bootstrap. New York: Chapman \& Hall; 1993.")
+    if explainability_summary and explainability_summary.get('shap_available'):
+        sections.append(r"\item Lundberg SM, Lee SI. A unified approach to interpreting model predictions. Advances in Neural Information Processing Systems. 2017;30.")
+    sections.append(r"""\end{enumerate}
 \end{spacing}
 """)
 
