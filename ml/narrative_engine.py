@@ -1357,6 +1357,20 @@ class NarrativeEngine:
         if len(metrics) < 2:
             return ""
 
+        # Check ledger for a prefer-simpler insight (from post-training diagnostics)
+        if self.ledger:
+            try:
+                prefer_simpler = self.ledger.get("train_prefer_simpler")
+                if prefer_simpler and not prefer_simpler.resolved:
+                    return (
+                        f"{prefer_simpler.finding} "
+                        "This pattern suggests that the available predictive signal is largely "
+                        "captured by linear effects, favoring the simpler model on grounds of "
+                        "parsimony and interpretability."
+                    )
+            except Exception:
+                pass  # Fall through to hardcoded logic
+
         simple_keys = {"ridge", "lasso", "elasticnet", "logistic", "logreg", "glm", "huber"}
         complex_keys = {
             "rf", "random_forest", "extratrees_reg", "extratrees_clf",
