@@ -312,27 +312,13 @@ with st.expander("❓ Frequently Asked Questions", expanded=False):
 
 # ── Quick Start ────────────────────────────────────────────────────────────
 st.markdown("---")
-st.markdown("### 🚀 Quick Start")
-_qs_col1, _qs_col2 = st.columns(2)
-with _qs_col1:
-    st.markdown("""
-    <div class="info-card">
-        <h3>📂 Your Data</h3>
-        <p>Bring your own CSV, Excel, or Parquet file. The guided workflow starts at Upload &amp; Audit.</p>
-    </div>
-    """, unsafe_allow_html=True)
-    if st.button("→ Go to Upload & Audit", type="primary", key="cta_upload"):
-        st.switch_page("pages/01_Upload_and_Audit.py")
-
-with _qs_col2:
-    st.markdown("""
-    <div class="info-card">
-        <h3>🧪 Demo Dataset</h3>
-        <p>No data yet? Try a built-in sample dataset on the Upload &amp; Audit page — look for the <em>"Need a practice dataset?"</em> expander.</p>
-    </div>
-    """, unsafe_allow_html=True)
-    if st.button("→ Go to Upload & Audit (Demo)", type="secondary", key="cta_demo"):
-        st.switch_page("pages/01_Upload_and_Audit.py")
+st.markdown("### 🚀 Ready to Start?")
+st.markdown(
+    "Upload your own CSV, Excel, or Parquet file — or try one of the built-in demo datasets "
+    "if you just want to explore."
+)
+if st.button("→ Go to Upload & Audit", type="primary", key="cta_upload"):
+    st.switch_page("pages/01_Upload_and_Audit.py")
 
 # Theory Reference callout
 st.markdown("---")
