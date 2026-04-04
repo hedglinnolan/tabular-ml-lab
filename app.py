@@ -310,43 +310,29 @@ with st.expander("❓ Frequently Asked Questions", expanded=False):
     A: The statistical methods used (bootstrap CIs, calibration, SHAP) are standard in the field. However, **you are responsible** for ensuring your analysis is scientifically sound and appropriate for your research question.
     """)
 
-# ── Quick Start: Try a Demo Dataset ─────────────────────────────────────
+# ── Quick Start ────────────────────────────────────────────────────────────
 st.markdown("---")
 st.markdown("### 🚀 Quick Start")
 _qs_col1, _qs_col2 = st.columns(2)
 with _qs_col1:
     st.markdown("""
     <div class="info-card">
-        <h3>📂 Upload Your Data</h3>
-        <p>Bring your own CSV, Excel, or Parquet file to begin the guided workflow.</p>
+        <h3>📂 Your Data</h3>
+        <p>Bring your own CSV, Excel, or Parquet file. The guided workflow starts at Upload &amp; Audit.</p>
     </div>
     """, unsafe_allow_html=True)
-    if st.button("📂 Upload a CSV to Begin", type="primary", key="cta_upload"):
+    if st.button("→ Go to Upload & Audit", type="primary", key="cta_upload"):
         st.switch_page("pages/01_Upload_and_Audit.py")
 
 with _qs_col2:
     st.markdown("""
     <div class="info-card">
-        <h3>🧪 Try a Demo Dataset</h3>
-        <p>Explore the app instantly with a built-in sample dataset — no upload needed.</p>
+        <h3>🧪 Demo Dataset</h3>
+        <p>No data yet? Try a built-in sample dataset on the Upload &amp; Audit page — look for the <em>"Need a practice dataset?"</em> expander.</p>
     </div>
     """, unsafe_allow_html=True)
-    _demo_choice = st.selectbox(
-        "Select a demo dataset",
-        options=["Nonlinear Regression", "Linear Regression with Outliers", "Imbalanced Classification"],
-        key="demo_dataset_choice",
-        label_visibility="collapsed",
-    )
-    if st.button("🧪 Load Demo & Start", type="secondary", key="cta_demo"):
-        from utils.datasets import get_builtin_datasets
-        _generators = get_builtin_datasets()
-        if _demo_choice in _generators:
-            _demo_df = _generators[_demo_choice]()
-            from utils.session_state import set_data
-            set_data(_demo_df)
-            st.session_state["datasets_registry"] = {_demo_choice: _demo_df}
-            st.session_state["data_source_name"] = _demo_choice
-            st.switch_page("pages/01_Upload_and_Audit.py")
+    if st.button("→ Go to Upload & Audit (Demo)", type="secondary", key="cta_demo"):
+        st.switch_page("pages/01_Upload_and_Audit.py")
 
 # Theory Reference callout
 st.markdown("---")
