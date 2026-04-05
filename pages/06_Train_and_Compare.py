@@ -1514,23 +1514,21 @@ if st.session_state.get('trained_models'):
         try:
             from ml.model_coach import _get_model_info, _model_display_name_coach
             _spread_info = _get_model_info()
+            _spread_vals = {}
+            _lower_is_better = True
             if data_config.task_type == 'regression':
                 _spread_metric = 'RMSE'
                 _spread_vals = {r['Model']: r.get('RMSE') for r in comparison_data if r.get('RMSE') is not None}
                 if _spread_vals:
                     _best_key = min(_spread_vals, key=_spread_vals.get)
-                    _worst_key = max(_spread_vals, key=_spread_vals.get)
                     _best_val = _spread_vals[_best_key]
-                    _worst_val = _spread_vals[_worst_key]
                     _lower_is_better = True
             else:
                 _spread_metric = 'F1' if any(r.get('F1') is not None for r in comparison_data) else 'Accuracy'
                 _spread_vals = {r['Model']: r.get(_spread_metric) for r in comparison_data if r.get(_spread_metric) is not None}
                 if _spread_vals:
                     _best_key = max(_spread_vals, key=_spread_vals.get)
-                    _worst_key = min(_spread_vals, key=_spread_vals.get)
                     _best_val = _spread_vals[_best_key]
-                    _worst_val = _spread_vals[_worst_key]
                     _lower_is_better = False
 
             if _spread_vals and len(_spread_vals) >= 2:

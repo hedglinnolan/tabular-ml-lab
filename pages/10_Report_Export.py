@@ -2070,211 +2070,210 @@ for name, results in model_results.items():
 comparison_df = pd.DataFrame(comparison_data)
 
 # Build ZIP package
-    # Create comprehensive zip package
-    # Get selected_model_params from session_state (needed for export)
-    selected_model_params = st.session_state.get('selected_model_params', {})
-    zip_buffer = io.BytesIO()
+# Get selected_model_params from session_state (needed for export)
+selected_model_params = st.session_state.get('selected_model_params', {})
+zip_buffer = io.BytesIO()
+
+with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+    # Report
+    zip_file.writestr("report.md", report_text)
     
-    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        # Report
-        zip_file.writestr("report.md", report_text)
-        
-        # Metadata JSON
-        metadata = generate_metadata()
-        zip_file.writestr("metadata.json", json.dumps(metadata, indent=2, default=str))
-        
-        # Metrics CSV
-        zip_file.writestr("metrics.csv", comparison_df.to_csv(index=False))
-        
-        # Predictions CSV
-        if export_predictions:
-            for name, results in model_results.items():
-                pred_df = pd.DataFrame({
-                    'Actual': results['y_test'],
-                    'Predicted': results['y_test_pred']
-                })
-                zip_file.writestr(f"predictions/{name}_predictions.csv", pred_df.to_csv(index=False))
-        
-        # Model artifacts
-        if export_models:
-            for model_key, model_wrapper in trained_models.items():
-                model_bytes = export_model_artifact(model_wrapper, model_key)
-                if model_bytes:
-                    zip_file.writestr(f"models/{model_key}_model.joblib", model_bytes)
-                    
-                    # For NN, also export model info
-                    if model_key == 'nn':
-                        model_info = {
-                            'type': 'neural_network',
-                            'params': selected_model_params.get(model_key, {}),
-                            'note': 'Use joblib.load() to load the sklearn-compatible estimator'
-                        }
-                        zip_file.writestr(f"models/{model_key}_info.json", json.dumps(model_info, indent=2))
-        
-        # Preprocessing artifacts
-        preprocessing_manifest = {'global_pipeline': None, 'per_model': {}}
-        if pipeline:
-            try:
-                import joblib
-                pipeline_buffer = io.BytesIO()
-                joblib.dump(pipeline, pipeline_buffer)
-                zip_file.writestr("preprocessing_pipeline.joblib", pipeline_buffer.getvalue())
-                preprocessing_manifest['global_pipeline'] = 'preprocessing_pipeline.joblib'
-            except Exception as e:
-                logger.warning(f"Could not export pipeline: {e}")
-
-        for model_key, model_pipeline in export_ctx['pipelines_by_model'].items():
-            artifact_path = f"preprocessing/{model_key}_pipeline.joblib"
-            config_path = f"preprocessing/{model_key}_config.json"
-            entry = {'pipeline_artifact': None, 'config_artifact': None}
-            try:
-                import joblib
-                pipeline_buffer = io.BytesIO()
-                joblib.dump(model_pipeline, pipeline_buffer)
-                zip_file.writestr(artifact_path, pipeline_buffer.getvalue())
-                entry['pipeline_artifact'] = artifact_path
-            except Exception as e:
-                logger.warning(f"Could not export preprocessing pipeline for {model_key}: {e}")
-            cfg = export_ctx['configs_by_model'].get(model_key)
-            if cfg is not None:
-                zip_file.writestr(config_path, json.dumps(cfg, indent=2, default=str))
-                entry['config_artifact'] = config_path
-            preprocessing_manifest['per_model'][model_key] = entry
-        
-        # Plots
-        if export_plots and (export_plots_train or export_plots_explain or export_plots_sensitivity):
-            from sklearn.metrics import confusion_matrix as sk_confusion_matrix, roc_curve, precision_recall_curve, auc as sk_auc
-
-            if export_plots_train:
-                for name, results in model_results.items():
-                    y_true = results['y_test']
-                    y_pred = results['y_test_pred']
-
-                    if data_config.task_type == 'regression':
-                        fig = px.scatter(
-                            x=y_true, y=y_pred,
-                            labels={'x': 'Actual', 'y': 'Predicted'},
-                            title=f"{name.upper()} - Predictions vs Actual"
-                        )
-                        fig.add_trace(go.Scatter(
-                            x=[min(y_true), max(y_true)],
-                            y=[min(y_true), max(y_true)],
-                            mode='lines', name='Perfect', line=dict(dash='dash', color='red')
-                        ))
-                        plot_bytes = save_plotly_fig(fig, f"plot_{name}.png")
-                        if plot_bytes:
-                            zip_file.writestr(f"plots/train/{name}_predictions.png", plot_bytes)
-
-                        residuals = np.array(y_true) - np.array(y_pred)
-                        fig_res = px.histogram(residuals, nbins=30, title=f"{name.upper()} - Residual Distribution",
-                                               labels={'value': 'Residual', 'count': 'Count'})
-                        plot_bytes = save_plotly_fig(fig_res, f"resid_{name}.png")
-                        if plot_bytes:
-                            zip_file.writestr(f"plots/train/{name}_residuals.png", plot_bytes)
-                    else:
-                        cm = sk_confusion_matrix(y_true, y_pred)
-                        fig_cm = px.imshow(cm, text_auto=True, aspect="auto", title=f"{name.upper()} - Confusion Matrix",
-                                           labels=dict(x="Predicted", y="Actual"), color_continuous_scale="Blues")
-                        plot_bytes = save_plotly_fig(fig_cm, f"cm_{name}.png")
-                        if plot_bytes:
-                            zip_file.writestr(f"plots/train/{name}_confusion_matrix.png", plot_bytes)
-
-                        y_proba = results.get('y_test_proba')
-                        if y_proba is not None:
-                            try:
-                                unique_classes = np.unique(y_true)
-                                if len(unique_classes) == 2:
-                                    proba_pos = y_proba[:, 1] if y_proba.ndim > 1 else y_proba
-                                    fpr, tpr, _ = roc_curve(y_true, proba_pos)
-                                    roc_auc_val = sk_auc(fpr, tpr)
-                                    fig_roc = px.area(x=fpr, y=tpr, labels=dict(x="FPR", y="TPR"),
-                                                      title=f"{name.upper()} - ROC Curve (AUC={roc_auc_val:.3f})")
-                                    plot_bytes = save_plotly_fig(fig_roc, f"roc_{name}.png")
-                                    if plot_bytes:
-                                        zip_file.writestr(f"plots/train/{name}_roc_curve.png", plot_bytes)
-
-                                    prec, rec, _ = precision_recall_curve(y_true, proba_pos)
-                                    pr_auc_val = sk_auc(rec, prec)
-                                    fig_pr = px.area(x=rec, y=prec, labels=dict(x="Recall", y="Precision"),
-                                                     title=f"{name.upper()} - PR Curve (AUC={pr_auc_val:.3f})")
-                                    plot_bytes = save_plotly_fig(fig_pr, f"pr_{name}.png")
-                                    if plot_bytes:
-                                        zip_file.writestr(f"plots/train/{name}_pr_curve.png", plot_bytes)
-                            except Exception:
-                                pass
-
-            if export_plots_explain:
-                # Permutation importance (Plotly)
-                perm_data = st.session_state.get('permutation_importance', {})
-                for name, pi in perm_data.items():
-                    try:
-                        fn = pi.get('feature_names', [])
-                        imp = pi.get('importances_mean', [])
-                        if len(fn) > 0 and len(imp) > 0:
-                            sort_idx = np.argsort(imp)[::-1][:15]
-                            fig_pi = px.bar(x=np.array(imp)[sort_idx], y=np.array(fn)[sort_idx],
-                                            orientation='h', title=f"{name.upper()} - Permutation Importance",
-                                            labels={'x': 'Importance', 'y': 'Feature'})
-                            fig_pi.update_layout(yaxis=dict(autorange="reversed"))
-                            plot_bytes = save_plotly_fig(fig_pi, f"pi_{name}.png")
-                            if plot_bytes:
-                                zip_file.writestr(f"plots/explainability/{name}_permutation_importance.png", plot_bytes)
-                    except Exception:
-                        pass
+    # Metadata JSON
+    metadata = generate_metadata()
+    zip_file.writestr("metadata.json", json.dumps(metadata, indent=2, default=str))
+    
+    # Metrics CSV
+    zip_file.writestr("metrics.csv", comparison_df.to_csv(index=False))
+    
+    # Predictions CSV
+    if export_predictions:
+        for name, results in model_results.items():
+            pred_df = pd.DataFrame({
+                'Actual': results['y_test'],
+                'Predicted': results['y_test_pred']
+            })
+            zip_file.writestr(f"predictions/{name}_predictions.csv", pred_df.to_csv(index=False))
+    
+    # Model artifacts
+    if export_models:
+        for model_key, model_wrapper in trained_models.items():
+            model_bytes = export_model_artifact(model_wrapper, model_key)
+            if model_bytes:
+                zip_file.writestr(f"models/{model_key}_model.joblib", model_bytes)
                 
-                # SHAP plots (matplotlib)
-                shap_figs = export_ctx['shap_figs']
-                for fig_key, fig in shap_figs.items():
-                    try:
-                        plot_bytes = save_matplotlib_fig(fig, f"{fig_key}.png")
+                # For NN, also export model info
+                if model_key == 'nn':
+                    model_info = {
+                        'type': 'neural_network',
+                        'params': selected_model_params.get(model_key, {}),
+                        'note': 'Use joblib.load() to load the sklearn-compatible estimator'
+                    }
+                    zip_file.writestr(f"models/{model_key}_info.json", json.dumps(model_info, indent=2))
+    
+    # Preprocessing artifacts
+    preprocessing_manifest = {'global_pipeline': None, 'per_model': {}}
+    if pipeline:
+        try:
+            import joblib
+            pipeline_buffer = io.BytesIO()
+            joblib.dump(pipeline, pipeline_buffer)
+            zip_file.writestr("preprocessing_pipeline.joblib", pipeline_buffer.getvalue())
+            preprocessing_manifest['global_pipeline'] = 'preprocessing_pipeline.joblib'
+        except Exception as e:
+            logger.warning(f"Could not export pipeline: {e}")
+
+    for model_key, model_pipeline in export_ctx['pipelines_by_model'].items():
+        artifact_path = f"preprocessing/{model_key}_pipeline.joblib"
+        config_path = f"preprocessing/{model_key}_config.json"
+        entry = {'pipeline_artifact': None, 'config_artifact': None}
+        try:
+            import joblib
+            pipeline_buffer = io.BytesIO()
+            joblib.dump(model_pipeline, pipeline_buffer)
+            zip_file.writestr(artifact_path, pipeline_buffer.getvalue())
+            entry['pipeline_artifact'] = artifact_path
+        except Exception as e:
+            logger.warning(f"Could not export preprocessing pipeline for {model_key}: {e}")
+        cfg = export_ctx['configs_by_model'].get(model_key)
+        if cfg is not None:
+            zip_file.writestr(config_path, json.dumps(cfg, indent=2, default=str))
+            entry['config_artifact'] = config_path
+        preprocessing_manifest['per_model'][model_key] = entry
+    
+    # Plots
+    if export_plots and (export_plots_train or export_plots_explain or export_plots_sensitivity):
+        from sklearn.metrics import confusion_matrix as sk_confusion_matrix, roc_curve, precision_recall_curve, auc as sk_auc
+
+        if export_plots_train:
+            for name, results in model_results.items():
+                y_true = results['y_test']
+                y_pred = results['y_test_pred']
+
+                if data_config.task_type == 'regression':
+                    fig = px.scatter(
+                        x=y_true, y=y_pred,
+                        labels={'x': 'Actual', 'y': 'Predicted'},
+                        title=f"{name.upper()} - Predictions vs Actual"
+                    )
+                    fig.add_trace(go.Scatter(
+                        x=[min(y_true), max(y_true)],
+                        y=[min(y_true), max(y_true)],
+                        mode='lines', name='Perfect', line=dict(dash='dash', color='red')
+                    ))
+                    plot_bytes = save_plotly_fig(fig, f"plot_{name}.png")
+                    if plot_bytes:
+                        zip_file.writestr(f"plots/train/{name}_predictions.png", plot_bytes)
+
+                    residuals = np.array(y_true) - np.array(y_pred)
+                    fig_res = px.histogram(residuals, nbins=30, title=f"{name.upper()} - Residual Distribution",
+                                           labels={'value': 'Residual', 'count': 'Count'})
+                    plot_bytes = save_plotly_fig(fig_res, f"resid_{name}.png")
+                    if plot_bytes:
+                        zip_file.writestr(f"plots/train/{name}_residuals.png", plot_bytes)
+                else:
+                    cm = sk_confusion_matrix(y_true, y_pred)
+                    fig_cm = px.imshow(cm, text_auto=True, aspect="auto", title=f"{name.upper()} - Confusion Matrix",
+                                       labels=dict(x="Predicted", y="Actual"), color_continuous_scale="Blues")
+                    plot_bytes = save_plotly_fig(fig_cm, f"cm_{name}.png")
+                    if plot_bytes:
+                        zip_file.writestr(f"plots/train/{name}_confusion_matrix.png", plot_bytes)
+
+                    y_proba = results.get('y_test_proba')
+                    if y_proba is not None:
+                        try:
+                            unique_classes = np.unique(y_true)
+                            if len(unique_classes) == 2:
+                                proba_pos = y_proba[:, 1] if y_proba.ndim > 1 else y_proba
+                                fpr, tpr, _ = roc_curve(y_true, proba_pos)
+                                roc_auc_val = sk_auc(fpr, tpr)
+                                fig_roc = px.area(x=fpr, y=tpr, labels=dict(x="FPR", y="TPR"),
+                                                  title=f"{name.upper()} - ROC Curve (AUC={roc_auc_val:.3f})")
+                                plot_bytes = save_plotly_fig(fig_roc, f"roc_{name}.png")
+                                if plot_bytes:
+                                    zip_file.writestr(f"plots/train/{name}_roc_curve.png", plot_bytes)
+
+                                prec, rec, _ = precision_recall_curve(y_true, proba_pos)
+                                pr_auc_val = sk_auc(rec, prec)
+                                fig_pr = px.area(x=rec, y=prec, labels=dict(x="Recall", y="Precision"),
+                                                 title=f"{name.upper()} - PR Curve (AUC={pr_auc_val:.3f})")
+                                plot_bytes = save_plotly_fig(fig_pr, f"pr_{name}.png")
+                                if plot_bytes:
+                                    zip_file.writestr(f"plots/train/{name}_pr_curve.png", plot_bytes)
+                        except Exception:
+                            pass
+
+        if export_plots_explain:
+            # Permutation importance (Plotly)
+            perm_data = st.session_state.get('permutation_importance', {})
+            for name, pi in perm_data.items():
+                try:
+                    fn = pi.get('feature_names', [])
+                    imp = pi.get('importances_mean', [])
+                    if len(fn) > 0 and len(imp) > 0:
+                        sort_idx = np.argsort(imp)[::-1][:15]
+                        fig_pi = px.bar(x=np.array(imp)[sort_idx], y=np.array(fn)[sort_idx],
+                                        orientation='h', title=f"{name.upper()} - Permutation Importance",
+                                        labels={'x': 'Importance', 'y': 'Feature'})
+                        fig_pi.update_layout(yaxis=dict(autorange="reversed"))
+                        plot_bytes = save_plotly_fig(fig_pi, f"pi_{name}.png")
                         if plot_bytes:
-                            zip_file.writestr(f"plots/explainability/{fig_key}.png", plot_bytes)
-                    except Exception:
-                        pass
+                            zip_file.writestr(f"plots/explainability/{name}_permutation_importance.png", plot_bytes)
+                except Exception:
+                    pass
+            
+            # SHAP plots (matplotlib)
+            shap_figs = export_ctx['shap_figs']
+            for fig_key, fig in shap_figs.items():
+                try:
+                    plot_bytes = save_matplotlib_fig(fig, f"{fig_key}.png")
+                    if plot_bytes:
+                        zip_file.writestr(f"plots/explainability/{fig_key}.png", plot_bytes)
+                except Exception:
+                    pass
 
-            if export_plots_sensitivity:
-                seed_df = st.session_state.get('sensitivity_seed_results')
-                if seed_df is not None:
-                    try:
-                        metric_cols = [c for c in seed_df.columns if c not in ('seed', '_error')]
-                        if metric_cols:
-                            fig_seed = px.bar(seed_df, x='seed', y=metric_cols[0], title=f"Seed Sensitivity - {metric_cols[0]}")
-                            plot_bytes = save_plotly_fig(fig_seed, "seed_sensitivity.png")
-                            if plot_bytes:
-                                zip_file.writestr(f"plots/sensitivity/seed_sensitivity.png", plot_bytes)
-                    except Exception:
-                        pass
-        
-        # Raw data sample
-        if include_raw_data:
-            zip_file.writestr("data_sample.csv", df.head(100).to_csv(index=False))
-        
-        # Feature names
-        feature_names = st.session_state.get('feature_names', [])
-        if feature_names:
-            zip_file.writestr("feature_names.txt", "\n".join(feature_names))
-        
-        # Manifest with summary
-        manifest = {
-            'export_timestamp': datetime.now().isoformat(),
-            'models_trained': list(trained_models.keys()),
-            'metrics_summary': {name: results['metrics'] for name, results in model_results.items()},
-            'preprocessing_available': pipeline is not None or bool(export_ctx['pipelines_by_model']),
-            'permutation_importance_available': len(export_ctx['permutation_importance']) > 0,
-            'export_readiness': export_ctx['readiness'],
-            'best_model_by_metric': export_ctx.get('best_model_by_metric'),
-            'best_metric_name': export_ctx.get('best_metric_name'),
-            'manuscript_primary_model': export_ctx.get('manuscript_primary_model'),
-            'preprocessing_artifacts': preprocessing_manifest
-        }
-        if selected_model_params:
-            manifest['model_hyperparameters'] = selected_model_params
-        zip_file.writestr("manifest.json", json.dumps(manifest, indent=2, default=str))
+        if export_plots_sensitivity:
+            seed_df = st.session_state.get('sensitivity_seed_results')
+            if seed_df is not None:
+                try:
+                    metric_cols = [c for c in seed_df.columns if c not in ('seed', '_error')]
+                    if metric_cols:
+                        fig_seed = px.bar(seed_df, x='seed', y=metric_cols[0], title=f"Seed Sensitivity - {metric_cols[0]}")
+                        plot_bytes = save_plotly_fig(fig_seed, "seed_sensitivity.png")
+                        if plot_bytes:
+                            zip_file.writestr(f"plots/sensitivity/seed_sensitivity.png", plot_bytes)
+                except Exception:
+                    pass
+    
+    # Raw data sample
+    if include_raw_data:
+        zip_file.writestr("data_sample.csv", df.head(100).to_csv(index=False))
+    
+    # Feature names
+    feature_names = st.session_state.get('feature_names', [])
+    if feature_names:
+        zip_file.writestr("feature_names.txt", "\n".join(feature_names))
+    
+    # Manifest with summary
+    manifest = {
+        'export_timestamp': datetime.now().isoformat(),
+        'models_trained': list(trained_models.keys()),
+        'metrics_summary': {name: results['metrics'] for name, results in model_results.items()},
+        'preprocessing_available': pipeline is not None or bool(export_ctx['pipelines_by_model']),
+        'permutation_importance_available': len(export_ctx['permutation_importance']) > 0,
+        'export_readiness': export_ctx['readiness'],
+        'best_model_by_metric': export_ctx.get('best_model_by_metric'),
+        'best_metric_name': export_ctx.get('best_metric_name'),
+        'manuscript_primary_model': export_ctx.get('manuscript_primary_model'),
+        'preprocessing_artifacts': preprocessing_manifest
+    }
+    if selected_model_params:
+        manifest['model_hyperparameters'] = selected_model_params
+    zip_file.writestr("manifest.json", json.dumps(manifest, indent=2, default=str))
 
-        # LaTeX manuscript (if generated)
-        _latex_for_zip = st.session_state.get("latex_report")
-        if _latex_for_zip:
-            zip_file.writestr("manuscript.tex", _latex_for_zip)
+    # LaTeX manuscript (if generated)
+    _latex_for_zip = st.session_state.get("latex_report")
+    if _latex_for_zip:
+        zip_file.writestr("manuscript.tex", _latex_for_zip)
 
 # ── Download buttons ──────────────────────────────────────────────────────
 # Primary: ZIP (contains everything)
