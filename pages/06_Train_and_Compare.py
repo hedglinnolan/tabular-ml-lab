@@ -695,7 +695,65 @@ for group_name in sorted_groups:
                 with st.expander(f"{spec.name} Hyperparameters"):
                     params = {}
                     automl_best = st.session_state.get("nn_automl_best_params", {}) if model_key == "nn" else {}
-                    
+
+                    # NN recommendation card (#95)
+                    if model_key == "nn" and X_train is not None:
+                        try:
+                            from ml.nn_recommender import recommend_nn_config
+                            _profile = st.session_state.get("dataset_profile")
+                            _target_prof = _profile.target_profile if _profile else None
+                            _data_suff = _profile.data_sufficiency if _profile else None
+                            _p_n = _profile.p_n_ratio if _profile else (X_train.shape[1] / max(1, len(X_train)))
+                            _n_eng = len(st.session_state.get("engineered_feature_names", []))
+                            _rec = recommend_nn_config(
+                                n_samples=len(X_train),
+                                n_features=X_train.shape[1],
+                                target_profile=_target_prof,
+                                data_sufficiency=_data_suff,
+                                p_n_ratio=_p_n,
+                                task_type=task_type_final,
+                                has_engineered_interactions=_n_eng > 0,
+                            )
+                            st.session_state["nn_recommended_params"] = _rec.params
+                            st.session_state["nn_config_reasoning"] = _rec.reasoning
+
+                            # Determine display values
+                            _n = len(X_train)
+                            _p = X_train.shape[1]
+                            _ratio = _n / max(_p, 1)
+                            _skew_str = ""
+                            if _target_prof and _target_prof.skewness is not None:
+                                _skew_str = f", target skew {abs(_target_prof.skewness):.2f}"
+
+                            with st.container(border=True):
+                                st.markdown(
+                                    f"**Recommended Configuration** — "
+                                    f"{_n:,} samples, {_p} features, "
+                                    f"ratio {_ratio:.0f}:1{_skew_str}"
+                                )
+                                # Show key recommendations
+                                _key_params = [
+                                    "num_layers", "layer_width", "lr", "dropout",
+                                    "loss_function", "use_batchnorm", "lr_scheduler"
+                                ]
+                                for _rk in _key_params:
+                                    if _rk in _rec.reasoning:
+                                        st.caption(f"  {_rk}: {_rec.reasoning[_rk]}")
+
+                                _use_rec = st.checkbox(
+                                    "Use recommended configuration",
+                                    value=st.session_state.get("nn_use_recommended", True),
+                                    key="nn_use_recommended_cb"
+                                )
+                                st.session_state["nn_use_recommended"] = _use_rec
+                                if _use_rec:
+                                    automl_best = _rec.params
+                                    st.session_state["nn_config_source"] = "recommended"
+                                else:
+                                    st.session_state["nn_config_source"] = "custom"
+                        except Exception:
+                            pass  # Recommendation should never block training
+
                     # Get training sample size for KNN validation
                     n_train_samples = len(X_train) if X_train is not None else 1000
                     
@@ -740,6 +798,30 @@ for group_name in sorted_groups:
                                 index=default_idx,
                                 key=param_key
                             )
+                        elif param_def['type'] == 'bool':
+                            params[param_name] = st.checkbox(
+                                param_def.get('help', param_name),
+                                value=bool(automl_best.get(param_name, param_def['default'])),
+                                key=param_key
+                            )
+                        elif param_def['type'] == 'float_or_none':
+                            use_none = st.checkbox(
+                                f"{param_def.get('help', param_name)} = disabled",
+                                value=default_val is None,
+                                key=f"{param_key}_none"
+                            )
+                            if use_none:
+                                params[param_name] = None
+                            else:
+                                format_str = "%.4f" if param_def.get('log', False) else "%.1f"
+                                params[param_name] = st.number_input(
+                                    param_def.get('help', param_name),
+                                    min_value=param_def['min'],
+                                    max_value=param_def['max'],
+                                    value=param_def['min'] if default_val is None else float(default_val),
+                                    format=format_str,
+                                    key=param_key
+                                )
                         elif param_def['type'] == 'int_or_none':
                             # Special handling for max_depth=None
                             use_none = st.checkbox(f"{param_name} = None (unlimited)", value=param_def['default'] is None, key=f"{param_key}_none")
@@ -755,6 +837,14 @@ for group_name in sorted_groups:
                                 )
                     
                     selected_model_params[model_key] = params
+
+                    # Track NN recommendation modifications (#95)
+                    if model_key == "nn" and st.session_state.get("nn_config_source") == "recommended":
+                        _rec_params = st.session_state.get("nn_recommended_params", {})
+                        _mods = {k: params[k] for k in params if k in _rec_params and params[k] != _rec_params[k]}
+                        if _mods:
+                            st.session_state["nn_config_source"] = "recommended+modified"
+                            st.session_state["nn_config_modifications"] = _mods
 
 st.session_state.model_config = model_config
 
@@ -817,6 +907,16 @@ def optimize_model_hyperparameters(model_name, spec, X_train_transformed, y_trai
                         params[param_name] = selected_value
                 else:
                     params[param_name] = selected_value
+            elif param_def['type'] == 'bool':
+                params[param_name] = trial.suggest_categorical(param_name, [True, False])
+            elif param_def['type'] == 'float_or_none':
+                use_none = trial.suggest_categorical(f"{param_name}_use_none", [False, True])
+                if use_none:
+                    params[param_name] = None
+                else:
+                    log_scale = param_def.get('log', False)
+                    min_val = max(1e-5, param_def['min']) if log_scale else param_def['min']
+                    params[param_name] = trial.suggest_float(param_name, min_val, param_def['max'], log=log_scale)
             elif param_def['type'] == 'int_or_none':
                 # For int_or_none, suggest int with option for None
                 use_none = trial.suggest_categorical(f"{param_name}_use_none", [False, True])
@@ -845,16 +945,20 @@ def optimize_model_hyperparameters(model_name, spec, X_train_transformed, y_trai
                 hidden_layers=hidden_layers,
                 dropout=params.get('dropout', 0.1),
                 task_type=task_type,
-                activation=params.get('activation', 'relu')
+                activation=params.get('activation', 'relu'),
+                loss_function=params.get('loss_function', 'mse'),
+                use_batchnorm=params.get('use_batchnorm', False)
             )
             res = model.fit(
                 X_train_transformed, y_train, X_val_transformed, y_val,
                 epochs=params.get('epochs', 200),
                 batch_size=params.get('batch_size', 256),
-                lr=params.get('lr', 0.0015),
-                weight_decay=params.get('weight_decay', 0.0002),
+                lr=params.get('lr', 0.001),
+                weight_decay=params.get('weight_decay', 1e-5),
                 patience=params.get('patience', 30),
-                random_seed=random_seed
+                random_seed=random_seed,
+                lr_scheduler=params.get('lr_scheduler', 'reduce_on_plateau'),
+                grad_clip_norm=params.get('grad_clip_norm', None)
             )
             hist = res.get("history", {}) if isinstance(res, dict) else {}
             if task_type == "regression":
@@ -999,7 +1103,9 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                         hidden_layers=hidden_layers,
                         dropout=params.get('dropout', model_config.nn_dropout),
                         task_type=task_type_final,
-                        activation=params.get('activation', 'relu')
+                        activation=params.get('activation', 'relu'),
+                        loss_function=params.get('loss_function', 'mse'),
+                        use_batchnorm=params.get('use_batchnorm', False)
                     )
                     def progress_cb(epoch, train_loss, val_loss, val_metric):
                         epochs = params.get('epochs', model_config.nn_epochs)
@@ -1009,7 +1115,7 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                             status_text.text(f"Epoch {epoch}/{epochs} | Loss: {train_loss:.4f} | Val RMSE: {val_metric:.4f}")
                         else:
                             status_text.text(f"Epoch {epoch}/{epochs} | Loss: {train_loss:.4f} | Val Accuracy: {val_metric:.4f}")
-                    
+
                     results = model.fit(
                         X_train_model, y_train, X_val_model, y_val,
                         epochs=params.get('epochs', model_config.nn_epochs),
@@ -1018,7 +1124,9 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                         weight_decay=params.get('weight_decay', model_config.nn_weight_decay),
                         patience=params.get('patience', model_config.nn_patience),
                         progress_callback=progress_cb,
-                        random_seed=st.session_state.get('random_seed', 42)
+                        random_seed=st.session_state.get('random_seed', 42),
+                        lr_scheduler=params.get('lr_scheduler', 'reduce_on_plateau'),
+                        grad_clip_norm=params.get('grad_clip_norm', None)
                     )
                     
                     # Store architecture info in results for reporting
@@ -1268,7 +1376,11 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 cv_folds=st.session_state.get('cv_folds', 5) if st.session_state.get('use_cv', False) else None,
                 use_hyperopt=use_optimization,
                 class_weight_balanced=st.session_state.get('use_class_weight', False),
+                hyperparameters={name: selected_model_params.get(name, {}) for name in trained_models.keys()},
                 metrics_by_model={name: res.get('metrics', {}) for name, res in _model_results_local.items()} if _model_results_local else {},
+                nn_config_source=st.session_state.get('nn_config_source', ''),
+                nn_config_reasoning=st.session_state.get('nn_config_reasoning', {}),
+                nn_config_modifications=st.session_state.get('nn_config_modifications', {}),
             )
         except Exception:
             pass  # Provenance recording should never break the workflow

@@ -792,6 +792,23 @@ class NarrativeEngine:
                 "Hyperparameter optimization was performed using grid search."
             )
 
+        # NN config rationale (#95)
+        nn_config_source = self.ctx.get("nn_config_source", "")
+        if nn_config_source == "recommended":
+            parts.append(
+                "Neural network hyperparameters were configured using data-driven "
+                "recommendations based on dataset characteristics (sample-to-feature "
+                "ratio, target distribution, and data sufficiency)."
+            )
+        elif nn_config_source == "recommended+modified":
+            mods = self.ctx.get("nn_config_modifications", {})
+            if mods:
+                mod_names = ", ".join(mods.keys())
+                parts.append(
+                    "Neural network hyperparameters were initialized from data-driven "
+                    f"recommendations, with manual adjustments to: {mod_names}."
+                )
+
         # Class weighting
         if self.ctx.get("class_weight_balanced"):
             parts.append(
@@ -1541,17 +1558,35 @@ class NarrativeEngine:
         if "hidden_layers" in params:
             layers = params["hidden_layers"]
             if isinstance(layers, list):
-                layer_str = "×".join(str(w) for w in layers)
+                layer_str = "\u00d7".join(str(w) for w in layers)
                 desc_parts.append(f"architecture [{layer_str}]")
-        
+
+        if "num_layers" in params and "hidden_layers" not in params:
+            width = params.get("layer_width", "?")
+            desc_parts.append(f"{params['num_layers']} layers \u00d7 {width} units")
+
+        if params.get("use_batchnorm"):
+            desc_parts.append("batch normalization")
+
         if "dropout" in params and params.get("dropout", 0) > 0:
             desc_parts.append(f"dropout={self._fmt_param(params['dropout'])}")
-        
+
         if "lr" in params:
             desc_parts.append(f"learning rate={self._fmt_param(params['lr'])}")
-        
+
         if "epochs" in params:
             desc_parts.append(f"{params['epochs']} epochs")
+
+        if "lr_scheduler" in params and params["lr_scheduler"] != "reduce_on_plateau":
+            sched_names = {"cosine_warm_restarts": "cosine annealing", "one_cycle": "one-cycle LR"}
+            desc_parts.append(sched_names.get(params["lr_scheduler"], params["lr_scheduler"]))
+
+        if params.get("grad_clip_norm") is not None:
+            desc_parts.append(f"gradient clipping (max norm={self._fmt_param(params['grad_clip_norm'])})")
+
+        if "loss_function" in params and params["loss_function"] != "mse":
+            loss_names = {"huber": "Huber loss", "weighted_huber": "weighted Huber loss", "mae": "MAE loss"}
+            desc_parts.append(loss_names.get(params["loss_function"], params["loss_function"]))
         
         # SVM
         if "C" in params:

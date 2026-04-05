@@ -185,6 +185,9 @@ def test_nn_architecture_params():
     assert 'layer_width' in schema, "NN should have layer_width param"
     assert 'architecture_pattern' in schema, "NN should have architecture_pattern param"
     assert 'activation' in schema, "NN should have activation param"
+    assert 'use_batchnorm' in schema, "NN should have use_batchnorm param"
+    assert 'lr_scheduler' in schema, "NN should have lr_scheduler param"
+    assert 'grad_clip_norm' in schema, "NN should have grad_clip_norm param"
 
 
 @test("Coach: recommendations are merged by group")

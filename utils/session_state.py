@@ -87,8 +87,8 @@ class ModelConfig:
     # Neural Network
     nn_epochs: int = 200
     nn_batch_size: int = 256
-    nn_lr: float = 0.0015
-    nn_weight_decay: float = 0.0002
+    nn_lr: float = 0.001
+    nn_weight_decay: float = 1e-5
     nn_patience: int = 30
     nn_dropout: float = 0.1
     

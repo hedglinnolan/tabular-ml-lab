@@ -23,20 +23,22 @@ import torch.nn as nn
 class SimpleMLP(nn.Module):
     """Simplified MLP for regression and classification."""
     
-    def __init__(self, input_dim: int, hidden: list = [32, 32], dropout: float = 0.1, 
-                 output_dim: int = 1, activation: str = 'relu'):
+    def __init__(self, input_dim: int, hidden: list = [32, 32], dropout: float = 0.1,
+                 output_dim: int = 1, activation: str = 'relu',
+                 use_batchnorm: bool = False):
         """
         Initialize MLP.
-        
+
         Args:
             input_dim: Input feature dimension
             hidden: List of hidden layer sizes
             dropout: Dropout rate
             output_dim: Output dimension (1 for regression/binary, n_classes for multiclass)
             activation: Activation function ('relu', 'tanh', 'leaky_relu', 'elu')
+            use_batchnorm: If True, add BatchNorm1d after each linear layer
         """
         super().__init__()
-        
+
         # Select activation function
         activation_map = {
             'relu': nn.ReLU(),
@@ -45,20 +47,23 @@ class SimpleMLP(nn.Module):
             'elu': nn.ELU(),
         }
         activation_fn = activation_map.get(activation.lower(), nn.ReLU())
-        
+
         layers = []
         prev_dim = input_dim
-        
+
         for h in hidden:
             layers.append(nn.Linear(prev_dim, h))
+            if use_batchnorm:
+                layers.append(nn.BatchNorm1d(h))
             layers.append(activation_fn)
             layers.append(nn.Dropout(dropout))
             prev_dim = h
-        
+
         layers.append(nn.Linear(prev_dim, output_dim))
         self.layers = nn.Sequential(*layers)
         self.output_dim = output_dim
         self.activation_name = activation
+        self.use_batchnorm = use_batchnorm
     
     def forward(self, x):
         return self.layers(x)
@@ -230,26 +235,28 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
         'mae': 'Mean Absolute Error (robust)',
     }
 
-    def __init__(self, hidden_layers: List[int] = None, dropout: float = 0.1, 
+    def __init__(self, hidden_layers: List[int] = None, dropout: float = 0.1,
                  task_type: str = 'regression', activation: str = 'relu',
-                 loss_function: str = 'mse'):
+                 loss_function: str = 'mse', use_batchnorm: bool = False):
         """
         Initialize NN wrapper.
-        
+
         Args:
-            hidden_layers: List of hidden layer sizes (default: [32, 32])
+            hidden_layers: List of hidden layer sizes (default: [128, 128, 128])
             dropout: Dropout rate
             task_type: 'regression' or 'classification'
             activation: Activation function ('relu', 'tanh', 'leaky_relu', 'elu')
             loss_function: For regression: 'mse' (default), 'huber', 'weighted_huber', 'mae'
                           For classification: automatically set to BCE/CE
+            use_batchnorm: If True, add BatchNorm1d after each linear layer
         """
         super().__init__("Neural Network")
-        self.hidden_layers = hidden_layers or [32, 32]
+        self.hidden_layers = hidden_layers or [128, 128, 128]
         self.dropout = dropout
         self.task_type = task_type
         self.activation = activation
         self.loss_function = loss_function
+        self.use_batchnorm = use_batchnorm
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.history = None
         self._sklearn_estimator = None  # Lazy initialization
@@ -263,6 +270,8 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
             'num_layers': len(self.hidden_layers),
             'dropout': self.dropout,
             'activation': self.activation,
+            'use_batchnorm': self.use_batchnorm,
+            'loss_function': self.loss_function,
             'total_params': sum(p.numel() for p in self.model.parameters()) if hasattr(self, 'model') else None
         }
     
@@ -271,15 +280,17 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
             y_val: Optional[np.ndarray] = None,
             epochs: int = 200,
             batch_size: int = 256,
-            lr: float = 0.0015,
-            weight_decay: float = 0.0002,
+            lr: float = 0.001,
+            weight_decay: float = 1e-5,
             patience: int = 30,
             progress_callback: Optional[callable] = None,
             random_seed: Optional[int] = None,
+            lr_scheduler: str = 'reduce_on_plateau',
+            grad_clip_norm: Optional[float] = None,
             **kwargs) -> Dict[str, Any]:
         """
         Train the neural network.
-        
+
         Args:
             X_train: Training features
             y_train: Training targets
@@ -292,8 +303,10 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
             patience: Early stopping patience
             progress_callback: Optional callback function(epoch, train_loss, val_loss, val_metric)
             random_seed: Random seed for reproducibility
+            lr_scheduler: Learning rate scheduler ('reduce_on_plateau', 'cosine_warm_restarts', 'one_cycle')
+            grad_clip_norm: Max gradient norm for clipping (None to disable)
             **kwargs: Additional arguments (ignored)
-            
+
         Returns:
             Dictionary with training history
         """
@@ -365,18 +378,40 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
             hidden=self.hidden_layers,
             dropout=self.dropout,
             output_dim=output_dim,
-            activation=self.activation
+            activation=self.activation,
+            use_batchnorm=self.use_batchnorm
         )
         self.model = self.model.to(self.device)
-        
-        # Optimizer and scheduler
+
+        # Optimizer
         optimizer = torch.optim.Adam(
             self.model.parameters(),
             lr=lr,
             weight_decay=weight_decay
         )
-        
-        if X_val_t is not None:
+
+        # Learning rate scheduler
+        train_loader = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(X_train_t, y_train_t),
+            batch_size=batch_size,
+            shuffle=True
+        )
+        scheduler = None
+        _scheduler_step_per_batch = False
+        _scheduler_step_per_epoch_only = False
+        if lr_scheduler == 'cosine_warm_restarts':
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                optimizer, T_0=20, T_mult=2
+            )
+            _scheduler_step_per_epoch_only = True
+        elif lr_scheduler == 'one_cycle':
+            scheduler = torch.optim.lr_scheduler.OneCycleLR(
+                optimizer, max_lr=lr, epochs=epochs,
+                steps_per_epoch=len(train_loader)
+            )
+            _scheduler_step_per_batch = True
+        elif X_val_t is not None:
+            # reduce_on_plateau (default) — only usable with validation set
             scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
                 optimizer, mode='min', factor=0.5, patience=8, min_lr=1e-6
             )
@@ -391,13 +426,7 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
             'val_rmse': [] if self.task_type == 'regression' else [],
             'val_accuracy': [] if self.task_type == 'classification' else []
         }
-        
-        train_loader = torch.utils.data.DataLoader(
-            torch.utils.data.TensorDataset(X_train_t, y_train_t),
-            batch_size=batch_size,
-            shuffle=True
-        )
-        
+
         for epoch in range(epochs):
             # Training
             self.model.train()
@@ -421,7 +450,11 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
                         loss = weighted_huber_loss(y_pred, y_batch)
                 
                 loss.backward()
+                if grad_clip_norm is not None:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), grad_clip_norm)
                 optimizer.step()
+                if _scheduler_step_per_batch and scheduler is not None:
+                    scheduler.step()
                 train_losses.append(loss.item())
             
             train_loss = np.mean(train_losses)
@@ -464,11 +497,12 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
                     else:
                         progress_callback(epoch + 1, train_loss, val_loss.item(), val_accuracy)
                 
-                # Learning rate scheduling
-                if self.task_type == 'regression':
-                    scheduler.step(val_rmse)
-                else:
-                    scheduler.step(1.0 - val_accuracy)  # Step on negative accuracy (higher is better)
+                # Learning rate scheduling (ReduceLROnPlateau steps on val metric)
+                if scheduler is not None and not _scheduler_step_per_batch and not _scheduler_step_per_epoch_only:
+                    if self.task_type == 'regression':
+                        scheduler.step(val_rmse)
+                    else:
+                        scheduler.step(1.0 - val_accuracy)
                 
                 # Early stopping
                 if self.task_type == 'regression':
@@ -489,7 +523,11 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
                 # No validation set
                 if progress_callback:
                     progress_callback(epoch + 1, train_loss, train_loss, 0.0)
-        
+
+            # Per-epoch scheduler stepping (cosine_warm_restarts)
+            if _scheduler_step_per_epoch_only and scheduler is not None:
+                scheduler.step()
+
         # Load best model if validation was used
         if X_val_t is not None and 'best_model_state' in locals():
             self.model.load_state_dict(best_model_state)

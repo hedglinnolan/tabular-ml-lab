@@ -122,6 +122,9 @@ class TrainingProvenance:
     use_hyperopt: bool = False
     class_weight_balanced: bool = False
     metrics_by_model: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    nn_config_source: str = ""  # "recommended", "custom", "recommended+modified"
+    nn_config_reasoning: Dict[str, str] = field(default_factory=dict)
+    nn_config_modifications: Dict[str, Any] = field(default_factory=dict)
     timestamp: str = ""
 
 
@@ -361,6 +364,9 @@ class WorkflowProvenance:
         class_weight_balanced: bool = False,
         hyperparameters: Optional[Dict[str, Dict[str, Any]]] = None,
         metrics_by_model: Optional[Dict[str, Dict[str, Any]]] = None,
+        nn_config_source: str = "",
+        nn_config_reasoning: Optional[Dict[str, str]] = None,
+        nn_config_modifications: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Called by Train & Compare when training completes."""
         self.training = TrainingProvenance(
@@ -373,6 +379,9 @@ class WorkflowProvenance:
             use_hyperopt=use_hyperopt,
             class_weight_balanced=class_weight_balanced,
             metrics_by_model=dict(metrics_by_model or {}),
+            nn_config_source=nn_config_source,
+            nn_config_reasoning=dict(nn_config_reasoning or {}),
+            nn_config_modifications=dict(nn_config_modifications or {}),
             timestamp=datetime.now().isoformat(),
         )
 
@@ -522,6 +531,9 @@ class WorkflowProvenance:
             ctx["class_weight_balanced"] = self.training.class_weight_balanced
             ctx["hyperparameters"] = self.training.hyperparameters
             ctx["metrics_by_model"] = self.training.metrics_by_model
+            ctx["nn_config_source"] = self.training.nn_config_source
+            ctx["nn_config_reasoning"] = self.training.nn_config_reasoning
+            ctx["nn_config_modifications"] = self.training.nn_config_modifications
 
         if self.explainability:
             ctx["explainability_methods"] = self.explainability.methods_used
