@@ -1904,7 +1904,7 @@ if exports_blocked:
     st.info("Export downloads remain disabled until you review the validation report and choose to override.")
 
 # ============================================================================
-# SECTION 5: REPORT PREVIEW (3 tabs)
+# REPORT PREVIEW (3 tabs)
 # ============================================================================
 st.header("📄 Report Preview")
 

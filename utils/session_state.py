@@ -206,10 +206,24 @@ def get_data() -> Optional[pd.DataFrame]:
     return st.session_state.get('raw_data')
 
 
-def set_data(df: pd.DataFrame):
-    """Set raw data in session state. Clears filtered_data so it is not stale."""
+def set_data(df: pd.DataFrame, is_schema_change: Optional[bool] = None):
+    """Set raw data in session state. Clears filtered_data so it is not stale.
+
+    If the column set changes (or is_schema_change=True), resets all downstream
+    state (EDA results, models, splits, etc.) via reset_data_dependent_state().
+    """
+    old_df = st.session_state.get('raw_data')
+    old_cols = frozenset(old_df.columns) if old_df is not None else None
+    new_cols = frozenset(df.columns)
+
     st.session_state.raw_data = df
     st.session_state.pop("filtered_data", None)
+
+    if is_schema_change is None:
+        is_schema_change = (old_cols is not None and old_cols != new_cols)
+
+    if is_schema_change:
+        reset_data_dependent_state()
 
 
 def reset_data_dependent_state():

@@ -1376,7 +1376,7 @@ if suggested_actions:
                         st.error("This action would result in an empty dataset. Aborted.")
                     else:
                         st.session_state.working_table = new_df
-                        set_data(new_df)
+                        set_data(new_df, is_schema_change=False)
                         log_methodology(step='Data Cleaning', action=label, details={
                             'affected_columns': cols if cols else 'all',
                             'rows_before': df.shape[0],
@@ -1610,6 +1610,7 @@ if task_mode == "prediction":
                 'feature_selection_results', 'consensus_features',
                 'split_config', 'target_transformer',
                 'y_train_original', 'y_val_original', 'y_test_original',
+                'eda_results', 'eda_insights',
             ]:
                 st.session_state.pop(key, None)
             if _old_hash:  # Only warn if this isn't the first save
