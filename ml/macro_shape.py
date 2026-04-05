@@ -17,14 +17,25 @@ import streamlit as st
 # sklearn 1.8+ compatibility: force_all_finite → ensure_all_finite
 # Some dependencies (umap-learn, giotto-tda) use the old kwarg name.
 # Patch once at module import so all downstream calls work.
+# Bidirectional: detects which kwarg the installed sklearn accepts.
 # ---------------------------------------------------------------------------
+import inspect as _inspect
 import sklearn.utils.validation as _skval
 
 _orig_check_array = _skval.check_array
+_sig = _inspect.signature(_orig_check_array)
+_has_ensure = "ensure_all_finite" in _sig.parameters
+_has_force = "force_all_finite" in _sig.parameters
 
 def _compat_check_array(*args, **kwargs):
-    if "force_all_finite" in kwargs:
-        kwargs["ensure_all_finite"] = kwargs.pop("force_all_finite")
+    if _has_ensure and not _has_force:
+        # sklearn >= 1.8: translate old → new
+        if "force_all_finite" in kwargs:
+            kwargs["ensure_all_finite"] = kwargs.pop("force_all_finite")
+    elif _has_force and not _has_ensure:
+        # sklearn < 1.8: translate new → old
+        if "ensure_all_finite" in kwargs:
+            kwargs["force_all_finite"] = kwargs.pop("ensure_all_finite")
     return _orig_check_array(*args, **kwargs)
 
 _skval.check_array = _compat_check_array
