@@ -857,6 +857,31 @@ def _prepare_table1_for_latex_export(table1_df: Optional[pd.DataFrame]) -> Optio
     return table1_df_local
 
 
+def _compile_latex_to_pdf(latex_source: str) -> Optional[bytes]:
+    """Compile LaTeX source to PDF using pdflatex. Returns PDF bytes or None."""
+    import shutil as _shutil
+    if not _shutil.which("pdflatex"):
+        return None
+    import subprocess, tempfile, os
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tex_path = os.path.join(tmpdir, "manuscript.tex")
+            with open(tex_path, "w") as f:
+                f.write(latex_source)
+            for _ in range(2):  # Run twice for cross-references
+                subprocess.run(
+                    ["pdflatex", "-interaction=nonstopmode", "-output-directory", tmpdir, tex_path],
+                    capture_output=True, text=True, timeout=30,
+                )
+            pdf_path = os.path.join(tmpdir, "manuscript.pdf")
+            if os.path.exists(pdf_path):
+                with open(pdf_path, "rb") as f:
+                    return f.read()
+    except Exception:
+        pass
+    return None
+
+
 def _build_latex_export_bundle(
     selected_for_report: List[str],
     selected_explain: List[str],
@@ -933,7 +958,7 @@ def _build_validation_report_text(bundle: Dict[str, Any]) -> str:
     return "\n".join(line for line in report_lines if line is not None)
 
 
-def generate_report(export_ctx: Dict[str, Any]) -> str:
+def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Report") -> str:
     """Generate markdown report with improved structure and aesthetics."""
     report_lines = []
     from ml.latex_report import _build_structured_abstract_sections
@@ -952,7 +977,7 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
     git_info = get_git_info()
     
     # Header with metadata
-    report_lines.append("# Tabular ML Lab Report")
+    report_lines.append(f"# {title}")
     report_lines.append("")
     report_lines.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     report_lines.append(f"**App Version:** {git_info.get('app_version', git_info.get('commit', 'unknown'))}")
@@ -1612,30 +1637,21 @@ def generate_report(export_ctx: Dict[str, Any]) -> str:
 
 # Freeze export state once per page render so downstream UI and downloads stay consistent
 export_ctx = build_export_context()
-render_export_readiness_audit(export_ctx)
-
-# Generate report text once — used by Export Options and Report Preview below
-report_text = generate_report(export_ctx)
 
 # ============================================================================
-# REPORT PREVIEW (prominent position — this is the main output)
+# SECTION 3: MANUSCRIPT SETUP (metadata + scope)
 # ============================================================================
-st.header("📄 Report Preview")
-_preview_tab_md, _preview_tab_latex = st.tabs(["Markdown Preview", "LaTeX Preview"])
-with _preview_tab_md:
-    with st.container():
-        st.markdown(report_text)
-with _preview_tab_latex:
-    if st.session_state.get("latex_report"):
-        st.code(st.session_state["latex_report"], language="latex")
-    else:
-        st.info("Generate a LaTeX manuscript below to preview it here.")
+st.header("📋 Manuscript Setup")
+st.caption("Set manuscript metadata and choose which models/analyses to include in all exports.")
 
-# ============================================================================
-# REPORT SCOPE — controls what appears in all exported materials
-# ============================================================================
-st.header("🎯 Report Scope")
-st.caption("These selections govern which models and analyses appear in the Methods section, LaTeX manuscript, and all exports.")
+col_meta1, col_meta2 = st.columns(2)
+with col_meta1:
+    paper_title = st.text_input("Paper title", value="Prediction Model Development and Validation", key="manuscript_title")
+    authors = st.text_input("Authors", value="[Author Names]", key="manuscript_authors")
+with col_meta2:
+    affiliation = st.text_input("Affiliation", value="[Institution]", key="manuscript_affiliation")
+
+st.markdown("---")
 
 all_model_names = list(trained_models.keys()) if trained_models else []
 if all_model_names:
@@ -1708,14 +1724,238 @@ _cached_bundle = _build_latex_export_bundle(
 )
 
 # ============================================================================
-# PUBLICATION TOOLS
+# AUTO-GENERATE BOTH REPORTS (LaTeX + Markdown)
 # ============================================================================
-st.header("📝 Publication Tools")
+from ml.latex_report import generate_latex_report as _generate_latex
+from ml.manuscript_validator import validate_manuscript_bundle
+
+# Auto-generate LaTeX — cache with invalidation when inputs change
+_latex_cache_key = (paper_title, authors, affiliation,
+                    tuple(selected_for_report), tuple(selected_explain),
+                    include_results, best_model)
+if st.session_state.get("_latex_cache_key") != _latex_cache_key or not st.session_state.get("latex_report"):
+    st.session_state["latex_report"] = _generate_latex(
+        title=paper_title,
+        authors=authors,
+        affiliation=affiliation,
+        methods_section=_cached_bundle['methods_text'],
+        table1_df=_cached_bundle['table1_df_local'],
+        model_results=_cached_bundle['manuscript_context'].get('selected_model_results'),
+        bootstrap_results=_cached_bundle['bootstrap_results'],
+        task_type=data_config.task_type or "regression",
+        feature_names=_cached_bundle['manuscript_context'].get('feature_names_for_manuscript'),
+        target_name=data_config.target_col,
+        n_total=len(df),
+        n_train=_cached_bundle['train_n'],
+        n_val=_cached_bundle['val_n'],
+        n_test=_cached_bundle['test_n'],
+        explainability_summary=_cached_bundle['explainability_summary'],
+        sensitivity_summary=_cached_bundle['sensitivity_summary'],
+        stat_validation_summary=_cached_bundle['stat_validation_summary'],
+        manuscript_context=_cached_bundle['manuscript_context'],
+    )
+    st.session_state["_latex_cache_key"] = _latex_cache_key
+    # Invalidate PDF cache when LaTeX changes
+    st.session_state.pop("compiled_pdf", None)
+    st.session_state.pop("_pdf_cache_key", None)
+
+# Auto-generate Markdown report (uses title)
+report_text = generate_report(export_ctx, title=paper_title)
+
+# ============================================================================
+# SECTION 4: CONTENT CHECK
+# ============================================================================
+st.header("✅ Content Check")
+st.caption("Review what's available for export and verify TRIPOD compliance before downloading.")
+
+# 4a: Export Readiness Audit
+render_export_readiness_audit(export_ctx)
+
+# 4b: TRIPOD Checklist
+table1_bundle = _cached_bundle
+
+with st.expander("✅ TRIPOD Checklist", expanded=False):
+    st.markdown("""
+    The [TRIPOD statement](https://www.tripod-statement.org/) is the reporting guideline for
+    prediction model studies. Track your compliance here.
+    """)
+    from ml.publication import TRIPODTracker, TRIPOD_ITEMS
+
+    tracker = TRIPODTracker()
+
+    # Auto-mark from ledger resolutions
+    _tripod_from_ledger = _report_ledger.get_tripod_status()
+    for auto_key, completed in _tripod_from_ledger.items():
+        if completed:
+            note = ""
+            for _ins in _report_ledger.get_resolved():
+                if auto_key in _ins.tripod_keys:
+                    note = _ins.resolved_by
+                    break
+            tracker.mark_complete(auto_key, note or "Auto-detected from analysis", "Ledger")
+
+    # Auto-mark from workflow state
+    if data_config and data_config.target_col:
+        tracker.mark_complete("outcome_defined", f"Target: {data_config.target_col}", "Upload & Audit")
+    finalized_features = st.session_state.get('selected_features') or (data_config.feature_cols if data_config else [])
+    if finalized_features:
+        tracker.mark_complete("predictors_defined", f"{len(finalized_features)} features", "Upload & Audit")
+    if trained_models:
+        tracker.mark_complete("model_building", f"Models: {', '.join(trained_models.keys())}", "Train & Compare")
+    if model_results:
+        tracker.mark_complete("performance_measures", "Test set metrics computed", "Train & Compare")
+    if st.session_state.get("bootstrap_results"):
+        tracker.mark_complete("performance_ci", "Bootstrap CIs computed", "Train & Compare")
+    if table1_bundle.get("table1_df_local") is not None:
+        tracker.mark_complete("table1", "Table 1 regenerated from the final analysis cohort", "Report Export")
+    prep_config = st.session_state.get('preprocessing_config', {})
+    if prep_config:
+        tracker.mark_complete("predictor_handling", "Preprocessing configured", "Preprocess")
+        if prep_config.get("numeric_imputation", "none") != "none":
+            tracker.mark_complete("missing_data", f"Imputation: {prep_config.get('numeric_imputation')}", "Preprocess")
+
+    done, total = tracker.get_progress()
+    st.progress(done / total)
+    st.markdown(f"**{done}/{total} items addressed** (auto-completed from your workflow)")
+
+    checklist_df = tracker.get_checklist_df()
+    table(checklist_df, hide_index=True)
+
+    st.download_button(
+        "📥 Download TRIPOD Checklist",
+        checklist_df.to_csv(index=False),
+        "tripod_checklist.csv", "text/csv",
+        key="dl_tripod",
+    )
+
+# 4c: Table 1 Preview
+if table1_bundle.get("table1_df_local") is not None:
+    with st.expander("📋 Table 1: Study Population", expanded=False):
+        st.markdown(
+            "Regenerated at export time from the final analysis cohort and finalized predictor set. "
+            "Included automatically in the LaTeX manuscript."
+        )
+        table1_display = table1_bundle["table1_df_local"].copy()
+        table1_metadata = table1_bundle.get("table1_metadata", {})
+        custom_tests = st.session_state.get('custom_table1_tests', [])
+
+        if table1_metadata.get("tests_used"):
+            st.caption("**Automatic tests used:** " + ", ".join(
+                f"{var}: {test}" for var, test in table1_metadata["tests_used"].items()
+            ))
+        if custom_tests:
+            st.info(f"✅ {len(custom_tests)} custom statistical test(s) attached")
+            for test in custom_tests:
+                p_str = f"{test['p_value']:.4f}" if test['p_value'] >= 0.001 else "<0.001"
+                note = f" ({test['note']})" if test.get('note') else ""
+                st.caption(f"{test['variable']}: {test['test']} {test['statistic']}, p={p_str}{note}")
+
+        table(table1_display, hide_index=True)
+
+        col_t1_exp1, col_t1_exp2 = st.columns(2)
+        with col_t1_exp1:
+            csv_data = table1_display.to_csv(index=False)
+            st.download_button("📥 Download CSV", csv_data, "table1_final.csv", "text/csv", key="dl_table1_final_csv")
+        with col_t1_exp2:
+            from ml.table_one import table1_to_latex
+            try:
+                latex_data = table1_to_latex(table1_display)
+                st.download_button("📥 Download LaTeX", latex_data, "table1_final.tex", "text/plain", key="dl_table1_final_latex")
+            except Exception:
+                st.caption("LaTeX export requires standard Table 1 format")
+
+# 4d: Pre-export Manuscript Validation
+validation_bundle = _cached_bundle
+validation_report_text = _build_validation_report_text(validation_bundle)
+validation_manuscript_context = validation_bundle['manuscript_context']
+validation_methods_text = validation_bundle['methods_text']
+
+validation_latex = st.session_state.get("latex_report", "")
+
+validation_report = validate_manuscript_bundle(
+    manuscript_context=validation_manuscript_context,
+    methods_text=validation_methods_text,
+    report_text=validation_report_text,
+    latex_text=validation_latex,
+    task_type=data_config.task_type or "regression",
+    table1_df=validation_bundle['table1_df_local'],
+)
+validation_df = pd.DataFrame(validation_report.to_rows())
+
+with st.expander("🔍 Pre-export Manuscript Validation", expanded=not validation_report.passed):
+    if validation_report.passed:
+        st.success(f"All {len(validation_report.checks)} validation checks passed.")
+    else:
+        st.warning(
+            f"{len(validation_report.failed_checks)} of {len(validation_report.checks)} validation checks failed. "
+            "Review the report below before exporting."
+        )
+    table(validation_df, hide_index=True)
+
+    validation_override = st.checkbox(
+        "Allow export despite validation failures",
+        value=False,
+        key="manuscript_validation_override",
+        help="Use this only when you intentionally want to export a draft that still contains validation failures.",
+    )
+
+exports_blocked = (not validation_report.passed) and (not validation_override)
+if exports_blocked:
+    st.info("Export downloads remain disabled until you review the validation report and choose to override.")
+
+# ============================================================================
+# SECTION 5: REPORT PREVIEW (3 tabs)
+# ============================================================================
+st.header("📄 Report Preview")
+
+_preview_tab_md, _preview_tab_latex, _preview_tab_pdf = st.tabs(["Markdown", "LaTeX Source", "PDF Preview"])
+
+with _preview_tab_md:
+    with st.container():
+        st.markdown(report_text)
+
+with _preview_tab_latex:
+    if st.session_state.get("latex_report"):
+        st.code(st.session_state["latex_report"], language="latex")
+    else:
+        st.info("LaTeX report could not be generated.")
+
+with _preview_tab_pdf:
+    _latex_src = st.session_state.get("latex_report")
+    if not _latex_src:
+        st.info("No LaTeX source available for PDF compilation.")
+    else:
+        # Cache PDF compilation (only recompile when LaTeX changes)
+        if st.session_state.get("_pdf_cache_key") != st.session_state.get("_latex_cache_key"):
+            with st.spinner("Compiling PDF..."):
+                _pdf_bytes = _compile_latex_to_pdf(_latex_src)
+            st.session_state["compiled_pdf"] = _pdf_bytes
+            st.session_state["_pdf_cache_key"] = st.session_state.get("_latex_cache_key")
+
+        _pdf_bytes = st.session_state.get("compiled_pdf")
+        if _pdf_bytes:
+            import base64
+            _b64 = base64.b64encode(_pdf_bytes).decode()
+            st.markdown(
+                f'<iframe src="data:application/pdf;base64,{_b64}" width="100%" height="800" type="application/pdf"></iframe>',
+                unsafe_allow_html=True,
+            )
+            st.download_button("Download PDF", _pdf_bytes, "manuscript.pdf", "application/pdf", key="dl_pdf_preview")
+        else:
+            st.warning(
+                "PDF compilation requires `pdflatex` installed on the server. "
+                "Download the `.tex` file and compile locally, or paste into [Overleaf](https://overleaf.com)."
+            )
+
+# ============================================================================
+# SECTION 6: SUPPORTING ARTIFACTS
+# ============================================================================
+st.header("📝 Supporting Artifacts")
 
 # Methods Section Generator
 with st.expander("📄 Auto-Generated Methods Section", expanded=False):
     st.markdown(
-        "Generate a workflow-derived draft of the methods section and, optionally, a factual results draft. "
+        "Generate a workflow-derived draft of the methods section. "
         "Fill in the `[PLACEHOLDER]` sections with study-specific details."
     )
 
@@ -1726,9 +1966,8 @@ with st.expander("📄 Auto-Generated Methods Section", expanded=False):
             include_results=include_results,
             best_model=best_model,
         )
-        methods_text = _build_methods_section_for_export(manuscript_context)
-
-        st.session_state["methods_section"] = methods_text
+        methods_text_gen = _build_methods_section_for_export(manuscript_context)
+        st.session_state["methods_section"] = methods_text_gen
         st.session_state["manuscript_export_context"] = manuscript_context
 
     if st.session_state.get("methods_section"):
@@ -1775,214 +2014,6 @@ with st.expander("📊 Sample Flow Diagram", expanded=False):
         with col_fd2:
             st.link_button("🔗 Open in Mermaid Live Editor", "https://mermaid.live")
         st.caption("Paste the code into [mermaid.live](https://mermaid.live) to render as SVG/PNG for your paper.")
-
-# TRIPOD Checklist
-table1_bundle = _cached_bundle
-
-with st.expander("✅ TRIPOD Checklist", expanded=False):
-    st.markdown("""
-    The [TRIPOD statement](https://www.tripod-statement.org/) is the reporting guideline for
-    prediction model studies. Track your compliance here.
-    """)
-    from ml.publication import TRIPODTracker, TRIPOD_ITEMS
-
-    # TRIPOD auto-completion from ledger + workflow state
-    tracker = TRIPODTracker()
-
-    # Auto-mark from ledger resolutions (covers: missing_data, predictor_handling, etc.)
-    _tripod_from_ledger = _report_ledger.get_tripod_status()
-    for auto_key, completed in _tripod_from_ledger.items():
-        if completed:
-            # Find a resolved insight with this tripod key for the note
-            note = ""
-            for _ins in _report_ledger.get_resolved():
-                if auto_key in _ins.tripod_keys:
-                    note = _ins.resolved_by
-                    break
-            tracker.mark_complete(auto_key, note or "Auto-detected from analysis", "Ledger")
-
-    # Auto-mark from workflow state (items not tracked by ledger)
-    if data_config and data_config.target_col:
-        tracker.mark_complete("outcome_defined", f"Target: {data_config.target_col}", "Upload & Audit")
-    finalized_features = st.session_state.get('selected_features') or (data_config.feature_cols if data_config else [])
-    if finalized_features:
-        tracker.mark_complete("predictors_defined", f"{len(finalized_features)} features", "Upload & Audit")
-    if trained_models:
-        tracker.mark_complete("model_building", f"Models: {', '.join(trained_models.keys())}", "Train & Compare")
-    if model_results:
-        tracker.mark_complete("performance_measures", "Test set metrics computed", "Train & Compare")
-    if st.session_state.get("bootstrap_results"):
-        tracker.mark_complete("performance_ci", "Bootstrap CIs computed", "Train & Compare")
-    if table1_bundle.get("table1_df_local") is not None:
-        tracker.mark_complete("table1", "Table 1 regenerated from the final analysis cohort", "Report Export")
-    prep_config = st.session_state.get('preprocessing_config', {})
-    if prep_config:
-        tracker.mark_complete("predictor_handling", "Preprocessing configured", "Preprocess")
-        if prep_config.get("numeric_imputation", "none") != "none":
-            tracker.mark_complete("missing_data", f"Imputation: {prep_config.get('numeric_imputation')}", "Preprocess")
-
-    done, total = tracker.get_progress()
-    st.progress(done / total)
-    st.markdown(f"**{done}/{total} items addressed** (auto-completed from your workflow)")
-
-    checklist_df = tracker.get_checklist_df()
-    table(checklist_df, hide_index=True)
-
-    st.download_button(
-        "📥 Download TRIPOD Checklist",
-        checklist_df.to_csv(index=False),
-        "tripod_checklist.csv", "text/csv",
-        key="dl_tripod",
-    )
-
-# Table 1 with Custom Tests
-if table1_bundle.get("table1_df_local") is not None:
-    with st.expander("📋 Table 1: Study Population (with Custom Tests)", expanded=False):
-        st.markdown("""
-        This Table 1 is regenerated at export time from the final analysis cohort and finalized predictor set.
-        Custom statistical tests from **Statistical Validation** are preserved as notes for export.
-        """)
-
-        table1_display = table1_bundle["table1_df_local"].copy()
-        table1_metadata = table1_bundle.get("table1_metadata", {})
-        custom_tests = st.session_state.get('custom_table1_tests', [])
-
-        if table1_metadata.get("tests_used"):
-            st.caption("**Automatic tests used:** " + ", ".join(
-                f"{var}: {test}" for var, test in table1_metadata["tests_used"].items()
-            ))
-        if custom_tests:
-            st.info(f"✅ {len(custom_tests)} custom statistical test(s) will be attached to Table 1 exports")
-            for test in custom_tests:
-                p_str = f"{test['p_value']:.4f}" if test['p_value'] >= 0.001 else "<0.001"
-                note = f" ({test['note']})" if test.get('note') else ""
-                st.caption(f"{test['variable']}: {test['test']} {test['statistic']}, p={p_str}{note}")
-
-        table(table1_display, hide_index=True)
-        
-        # Export buttons
-        col_t1_exp1, col_t1_exp2 = st.columns(2)
-        with col_t1_exp1:
-            csv_data = table1_display.to_csv(index=False)
-            st.download_button("📥 Download CSV", csv_data, "table1_final.csv", "text/csv", key="dl_table1_final_csv")
-        with col_t1_exp2:
-            from ml.table_one import table1_to_latex
-            try:
-                latex_data = table1_to_latex(table1_display)
-                st.download_button("📥 Download LaTeX", latex_data, "table1_final.tex", "text/plain", key="dl_table1_final_latex")
-            except:
-                st.caption("LaTeX export requires standard Table 1 format")
-
-# Pre-export manuscript validation
-from ml.latex_report import generate_latex_report as _generate_validation_latex
-from ml.manuscript_validator import validate_manuscript_bundle
-
-validation_bundle = _cached_bundle
-validation_report_text = _build_validation_report_text(validation_bundle)
-validation_manuscript_context = validation_bundle['manuscript_context']
-validation_methods_text = validation_bundle['methods_text']
-
-validation_latex = _generate_validation_latex(
-    methods_section=validation_methods_text,
-    model_results=validation_manuscript_context.get('selected_model_results'),
-    bootstrap_results=validation_bundle['bootstrap_results'],
-    task_type=data_config.task_type or "regression",
-    feature_names=validation_manuscript_context.get('feature_names_for_manuscript'),
-    target_name=data_config.target_col,
-    n_total=len(df),
-    n_train=validation_bundle['train_n'],
-    n_val=validation_bundle['val_n'],
-    n_test=validation_bundle['test_n'],
-    table1_df=validation_bundle['table1_df_local'],
-    explainability_summary=validation_bundle['explainability_summary'],
-    sensitivity_summary=validation_bundle['sensitivity_summary'],
-    stat_validation_summary=validation_bundle['stat_validation_summary'],
-    manuscript_context=validation_manuscript_context,
-)
-
-validation_report = validate_manuscript_bundle(
-    manuscript_context=validation_manuscript_context,
-    methods_text=validation_methods_text,
-    report_text=validation_report_text,
-    latex_text=validation_latex,
-    task_type=data_config.task_type or "regression",
-    table1_df=validation_bundle['table1_df_local'],
-)
-validation_df = pd.DataFrame(validation_report.to_rows())
-
-with st.expander("🔍 Pre-export Manuscript Validation", expanded=not validation_report.passed):
-    if validation_report.passed:
-        st.success(f"All {len(validation_report.checks)} validation checks passed.")
-    else:
-        st.warning(
-            f"{len(validation_report.failed_checks)} of {len(validation_report.checks)} validation checks failed. "
-            "Review the report below before exporting."
-        )
-    table(validation_df, hide_index=True)
-
-    validation_override = st.checkbox(
-        "Allow export despite validation failures",
-        value=False,
-        key="manuscript_validation_override",
-        help="Use this only when you intentionally want to export a draft that still contains validation failures.",
-    )
-
-exports_blocked = (not validation_report.passed) and (not validation_override)
-if exports_blocked:
-    st.info("Export downloads remain disabled until you review the validation report and choose to override.")
-
-# LaTeX Manuscript Template
-with st.expander("📝 LaTeX Manuscript Template", expanded=False):
-    st.markdown("""
-    Generate a **complete LaTeX manuscript** populated with your actual results.
-    Compile with `pdflatex` to produce a publication-ready PDF. All placeholders
-    are clearly marked with `[PLACEHOLDER]` for you to fill in study-specific details.
-    """)
-
-    col_lt1, col_lt2 = st.columns(2)
-    with col_lt1:
-        paper_title = st.text_input("Paper title", value="Prediction Model Development and Validation", key="latex_title")
-        authors = st.text_input("Authors", value="[Author Names]", key="latex_authors")
-    with col_lt2:
-        affiliation = st.text_input("Affiliation", value="[Institution]", key="latex_affiliation")
-
-    if st.button("Generate LaTeX Manuscript", key="gen_latex", type="primary", disabled=exports_blocked):
-        from ml.latex_report import generate_latex_report
-
-        latex_bundle = _cached_bundle
-
-        latex_source = generate_latex_report(
-            title=paper_title,
-            authors=authors,
-            affiliation=affiliation,
-            methods_section=latex_bundle['methods_text'],
-            table1_df=latex_bundle['table1_df_local'],
-            model_results=latex_bundle['manuscript_context'].get('selected_model_results'),
-            bootstrap_results=latex_bundle['bootstrap_results'],
-            task_type=data_config.task_type or "regression",
-            feature_names=latex_bundle['manuscript_context'].get('feature_names_for_manuscript'),
-            target_name=data_config.target_col,
-            n_total=len(df),
-            n_train=latex_bundle['train_n'],
-            n_val=latex_bundle['val_n'],
-            n_test=latex_bundle['test_n'],
-            explainability_summary=latex_bundle['explainability_summary'],
-            sensitivity_summary=latex_bundle['sensitivity_summary'],
-            stat_validation_summary=latex_bundle['stat_validation_summary'],
-            manuscript_context=latex_bundle['manuscript_context'],
-        )
-        st.session_state["latex_report"] = latex_source
-
-    if st.session_state.get("latex_report"):
-        st.success("LaTeX manuscript generated. See the **LaTeX Preview** tab above, or download below.")
-        st.download_button(
-            "📥 Download LaTeX (.tex)",
-            st.session_state["latex_report"],
-            "manuscript.tex", "text/plain",
-            key="dl_latex",
-            disabled=exports_blocked,
-        )
-        st.caption("Compile with: `pdflatex manuscript.tex` · Requires `booktabs`, `natbib`, `hyperref` packages.")
 
 st.markdown("---")
 
@@ -2275,6 +2306,11 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
     if _latex_for_zip:
         zip_file.writestr("manuscript.tex", _latex_for_zip)
 
+    # Compiled PDF (if available)
+    _pdf_for_zip = st.session_state.get("compiled_pdf")
+    if _pdf_for_zip:
+        zip_file.writestr("manuscript.pdf", _pdf_for_zip)
+
 # ── Download buttons ──────────────────────────────────────────────────────
 # Primary: ZIP (contains everything)
 st.download_button(
@@ -2289,7 +2325,7 @@ st.download_button(
 
 # Secondary: individual exports (also in the ZIP)
 st.caption("Individual exports (also included in the ZIP above):")
-_dl_col1, _dl_col2, _dl_col3 = st.columns(3)
+_dl_col1, _dl_col2, _dl_col3, _dl_col4 = st.columns(4)
 with _dl_col1:
     st.download_button(
         label="Report (.md)",
@@ -2315,6 +2351,25 @@ with _dl_col3:
         mime="text/plain",
         disabled=exports_blocked or not _latex_dl,
     )
+with _dl_col4:
+    _pdf_dl = st.session_state.get("compiled_pdf")
+    if _pdf_dl:
+        st.download_button(
+            label="PDF (.pdf)",
+            data=_pdf_dl,
+            file_name="manuscript.pdf",
+            mime="application/pdf",
+            disabled=exports_blocked,
+        )
+    else:
+        st.download_button(
+            label="PDF (.pdf)",
+            data=b"",
+            file_name="manuscript.pdf",
+            mime="application/pdf",
+            disabled=True,
+            help="PDF compilation requires pdflatex on the server",
+        )
 
 # ============================================================================
 # STATE DEBUG
