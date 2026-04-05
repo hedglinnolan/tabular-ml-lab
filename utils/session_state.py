@@ -272,6 +272,9 @@ def reset_data_dependent_state():
     st.session_state.eda_results = {}
     st.session_state.eda_insights = []
     st.session_state.report_data = None
+    st.session_state.pop("dataset_profile", None)
+    st.session_state.pop("table1_df", None)
+    st.session_state.pop("table1_metadata", None)
 
     # Reset insight ledger
     from utils.insight_ledger import InsightLedger
