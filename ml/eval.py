@@ -252,7 +252,8 @@ def analyze_residuals_stratified(
         # deduplicate edges that collapse on repeated values
         edges = np.unique(edges)
 
-    # ensure last edge captures max
+    # ensure edges span the full data range
+    edges[0] = min(edges[0], float(np.min(yt)) - 1e-9)
     edges[-1] = max(edges[-1], float(np.max(yt)) + 1e-9)
 
     bins: List[Dict[str, Any]] = []
