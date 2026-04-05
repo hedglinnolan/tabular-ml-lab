@@ -12,6 +12,11 @@ jobs:
           cd /home/claw/.openclaw/workspace/glucose-mlp-interactive
           git pull origin main
 
+      - name: Install LaTeX (for PDF compilation)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra
+
       - name: Update dependencies
         run: |
           cd /home/claw/.openclaw/workspace/glucose-mlp-interactive

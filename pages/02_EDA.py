@@ -88,6 +88,13 @@ elif task_mode != "prediction":
     st.stop()
 
 data_config: Optional[DataConfig] = st.session_state.get("data_config")
+
+# Staleness guard: if data_config references columns not in df, reset downstream state
+if data_config and data_config.target_col and data_config.target_col not in df.columns:
+    from utils.session_state import reset_data_dependent_state
+    reset_data_dependent_state()
+    st.rerun()
+
 if task_mode == "prediction" and (data_config is None or not data_config.target_col):
     st.warning("Please select target and features in the Upload & Audit page first.")
     st.stop()
