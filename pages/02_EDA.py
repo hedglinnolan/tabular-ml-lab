@@ -115,6 +115,11 @@ feature_cols = (
 )
 _has_target = target_col is not None and target_col in df.columns
 
+# Lightweight fingerprint for @st.cache_data invalidation when dataset changes.
+# Streamlit skips hashing _-prefixed params (like _df), so we pass this as a
+# non-prefixed param to ensure cache misses on dataset switch.
+_data_fingerprint = (len(df), len(df.columns), tuple(sorted(df.columns)))
+
 # Detection values
 task_type_detection: TaskTypeDetection = st.session_state.get(
     "task_type_detection", TaskTypeDetection()
@@ -135,7 +140,7 @@ ledger = get_ledger()
 
 # Dataset profile (cached)
 @st.cache_data
-def _compute_profile(_df, target, features, task_type, outlier_method):
+def _compute_profile(_df, target, features, task_type, outlier_method, data_id=None):
     from ml.dataset_profile import compute_dataset_profile
     return compute_dataset_profile(_df, target, features, task_type, outlier_method)
 
@@ -151,19 +156,21 @@ with st.sidebar:
 
 profile = _compute_profile(
     df, target_col or feature_cols[0],
-    feature_cols, task_type_final or "regression", outlier_method
+    feature_cols, task_type_final or "regression", outlier_method,
+    data_id=_data_fingerprint,
 )
 st.session_state["dataset_profile"] = profile
 
 # Signals (cached)
 @st.cache_data
-def _compute_signals(_df, target, task_type, cohort_type, entity_id, outlier_method, _feature_cols=None):
+def _compute_signals(_df, target, task_type, cohort_type, entity_id, outlier_method, _feature_cols=None, data_id=None):
     return compute_dataset_signals(_df, target, task_type, cohort_type, entity_id, outlier_method=outlier_method, feature_cols=_feature_cols)
 
 try:
     signals = _compute_signals(
         df, target_col, task_type_final, cohort_type_final, entity_id_final, outlier_method,
         _feature_cols=feature_cols,
+        data_id=_data_fingerprint,
     )
 except Exception as e:
     st.warning(f"Signal computation partially failed: {str(e)[:100]}")
@@ -339,7 +346,7 @@ def _auto_generate_insights():
 
     # Feature skewness — use cached computation
     @st.cache_data
-    def _get_skewed_features(_df, _feature_cols):
+    def _get_skewed_features(_df, _feature_cols, data_id=None):
         cols = _df[_feature_cols].select_dtypes(include=[np.number]).columns
         skewed = []
         for col in cols:
@@ -351,7 +358,7 @@ def _auto_generate_insights():
                 pass
         return skewed
 
-    skewed_list = _get_skewed_features(df, feature_cols)
+    skewed_list = _get_skewed_features(df, feature_cols, data_id=_data_fingerprint)
     if skewed_list:
         skew_names = ", ".join(f"{c} ({s:.1f})" for c, s in skewed_list[:8])
         if len(skewed_list) > 8:
@@ -703,7 +710,7 @@ if numeric_features and regime.row_regime != "tiny":
     _outlier_features = numeric_features[:_outlier_cap]
 
     @st.cache_data
-    def _compute_outlier_heatmap(_df, _numeric_feats, methods):
+    def _compute_outlier_heatmap(_df, _numeric_feats, methods, data_id=None):
         """Cached outlier prevalence computation."""
         outlier_data = {}
         for feat in _numeric_feats:
@@ -720,7 +727,7 @@ if numeric_features and regime.row_regime != "tiny":
             outlier_data[feat] = row
         return outlier_data
 
-    outlier_data = _compute_outlier_heatmap(df, _outlier_features, ["iqr", "zscore"])
+    outlier_data = _compute_outlier_heatmap(df, _outlier_features, ["iqr", "zscore"], data_id=_data_fingerprint)
     if len(numeric_features) > _outlier_cap:
         st.caption(f"Showing {_outlier_cap} of {len(numeric_features)} features. Use Column Inspector for individual features.")
 
@@ -808,12 +815,12 @@ if len(numeric_features) >= 2:
     method_name = corr_method.lower() if corr_method else "pearson"
 
     @st.cache_data
-    def _compute_corr(_df, _features, method):
+    def _compute_corr(_df, _features, method, data_id=None):
         return _df[_features].corr(method=method).round(3)
 
     if regime.show_full_corr_matrix:
         # Full heatmap for narrow/medium datasets
-        corr_matrix = _compute_corr(df, numeric_features, method_name)
+        corr_matrix = _compute_corr(df, numeric_features, method_name, data_id=_data_fingerprint)
         threshold = st.slider("Highlight threshold", 0.0, 1.0, 0.8, 0.05, key="corr_threshold")
 
         fig_corr = px.imshow(
@@ -845,7 +852,7 @@ if len(numeric_features) >= 2:
         top_n = regime.corr_top_n
 
         @st.cache_data
-        def _top_corr_pairs(_df, _features, method, n):
+        def _top_corr_pairs(_df, _features, method, n, data_id=None):
             corr = _df[_features].corr(method=method).values
             cols = _features
             idx_upper = np.triu_indices_from(corr, k=1)
@@ -861,7 +868,7 @@ if len(numeric_features) >= 2:
                 for i in top_idx
             ])
 
-        pairs_df = _top_corr_pairs(df, numeric_features, method_name, top_n)
+        pairs_df = _top_corr_pairs(df, numeric_features, method_name, top_n, data_id=_data_fingerprint)
         n_total = len(numeric_features) * (len(numeric_features) - 1) // 2
         st.caption(f"Top {top_n} correlated pairs ({method_name}) out of {n_total:,} total")
         table(pairs_df)
@@ -876,11 +883,11 @@ if _has_target:
     # Sort by absolute correlation with target (cached)
     if target_features and task_type_final == "regression":
         @st.cache_data
-        def _sort_by_target_corr(_df, _features, _target):
+        def _sort_by_target_corr(_df, _features, _target, data_id=None):
             corrs = _df[_features].corrwith(_df[_target]).abs().fillna(0)
             return corrs.sort_values(ascending=False).index.tolist()
 
-        target_features = _sort_by_target_corr(df, target_features, target_col)
+        target_features = _sort_by_target_corr(df, target_features, target_col, data_id=_data_fingerprint)
 
     if regime.target_relationship_top_n > 0:
         target_features = target_features[:regime.target_relationship_top_n]
@@ -970,7 +977,7 @@ if _has_target and len(numeric_features) >= 4:
         st.caption("Top feature pairs by mutual information with target. Click to explore.")
 
         @st.cache_data
-        def _compute_interactions(_df, _features, _target, _task_type, max_pairs=5):
+        def _compute_interactions(_df, _features, _target, _task_type, max_pairs=5, data_id=None):
             """Compute top interaction pairs by MI gain."""
             from sklearn.feature_selection import mutual_info_regression, mutual_info_classif
             sample = _df.sample(min(1000, len(_df)), random_state=42) if len(_df) > 1000 else _df
@@ -1001,7 +1008,7 @@ if _has_target and len(numeric_features) >= 4:
             return results[:max_pairs]
 
         try:
-            interactions = _compute_interactions(df, numeric_features, target_col, task_type_final)
+            interactions = _compute_interactions(df, numeric_features, target_col, task_type_final, data_id=_data_fingerprint)
             if interactions:
                 for a, b, gain in interactions:
                     st.markdown(f"- **{a} × {b}** (MI gain: {gain:.4f})")
