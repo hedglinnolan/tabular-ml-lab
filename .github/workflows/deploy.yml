@@ -20,7 +20,7 @@ jobs:
       - name: Update dependencies
         run: |
           cd /home/claw/.openclaw/workspace/glucose-mlp-interactive
-          ./venv/bin/pip install -r requirements.txt 2>/dev/null || true
+          ./venv/bin/pip install -r requirements.txt
 
       - name: Restart service
         run: |

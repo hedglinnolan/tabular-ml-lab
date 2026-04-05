@@ -639,9 +639,9 @@ def _build_methods_section_for_export(
                             relevant[k] = params[k]
                 if relevant:
                     model_hyperparameters[model_key] = relevant
-            except Exception:
-                pass
-    
+            except Exception as e:
+                logger.debug("Could not extract hyperparameters for %s: %s", model_key, e)
+
     # Check methodology log for hyperparameter_optimization
     hyperparameter_optimization = False
     _hp_log = _report_ledger.get_methodology_log() or st.session_state.get('methodology_log', [])
@@ -716,8 +716,8 @@ def _build_methods_section_for_export(
                     'min_missing_rate': rates.min(),
                     'max_missing_rate': rates.max(),
                 }
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not build missing_data_summary: %s", e)
 
     _ledger_narratives = _report_ledger.to_manuscript_narrative() or None
     return generate_methods_section(
@@ -877,8 +877,8 @@ def _compile_latex_to_pdf(latex_source: str) -> Optional[bytes]:
             if os.path.exists(pdf_path):
                 with open(pdf_path, "rb") as f:
                     return f.read()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("PDF compilation failed: %s", e)
     return None
 
 
@@ -2230,8 +2230,8 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                                 plot_bytes = save_plotly_fig(fig_pr, f"pr_{name}.png")
                                 if plot_bytes:
                                     zip_file.writestr(f"plots/train/{name}_pr_curve.png", plot_bytes)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("Could not export training plot for %s: %s", name, e)
 
         if export_plots_explain:
             # Permutation importance (Plotly)
@@ -2249,8 +2249,8 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                         plot_bytes = save_plotly_fig(fig_pi, f"pi_{name}.png")
                         if plot_bytes:
                             zip_file.writestr(f"plots/explainability/{name}_permutation_importance.png", plot_bytes)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Could not export permutation importance for %s: %s", name, e)
             
             # SHAP plots (matplotlib)
             shap_figs = export_ctx['shap_figs']

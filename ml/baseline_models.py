@@ -4,6 +4,7 @@ Baseline/null model comparison.
 Automatically trains trivial baselines (mean predictor, majority class,
 simple linear/logistic regression) and compares against user models.
 """
+import logging
 import numpy as np
 from typing import Dict, Optional, Tuple
 from sklearn.dummy import DummyRegressor, DummyClassifier
@@ -13,6 +14,8 @@ from sklearn.metrics import (
     accuracy_score, f1_score, roc_auc_score,
 )
 from ml.bootstrap import bootstrap_all_regression_metrics, bootstrap_all_classification_metrics
+
+logger = logging.getLogger(__name__)
 
 
 def train_baseline_models(
@@ -83,8 +86,8 @@ def train_baseline_models(
                 "description": "Ordinary least squares. The simplest useful model — your model should improve on this.",
                 "model": lr,
             }
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Baseline linear regression failed: %s", e)
 
     else:  # classification
         # Majority class predictor
@@ -123,8 +126,8 @@ def train_baseline_models(
             if y_proba_log is not None and len(np.unique(y_test)) == 2:
                 try:
                     log_metrics["AUC"] = roc_auc_score(y_test, y_proba_log[:, 1])
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Baseline AUC computation failed: %s", e)
 
             log_cis = bootstrap_all_classification_metrics(
                 y_test, y_pred_log, y_proba=y_proba_log[:, 1] if y_proba_log is not None and y_proba_log.shape[1] == 2 else None,
@@ -138,8 +141,8 @@ def train_baseline_models(
                 "description": "Simple logistic regression with L2 penalty. A solid baseline for classification.",
                 "model": log_reg,
             }
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Baseline logistic regression failed: %s", e)
 
     return results
 

@@ -54,7 +54,7 @@ X_test = st.session_state.get("X_test")
 y_train = st.session_state.get("y_train")
 y_test = st.session_state.get("y_test")
 
-if X_train is None or X_test is None:
+if X_train is None or X_test is None or y_train is None or y_test is None:
     st.warning("⚠️ Train/test split not found. Please run **Preprocess** and **Train & Compare** first.")
     st.stop()
 

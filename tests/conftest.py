@@ -72,8 +72,9 @@ def inject_uploaded_state(session_state, df, target_col='glucose', task_type='re
         from ml.dataset_profile import compute_dataset_profile
         profile = compute_dataset_profile(df, target_col, feature_cols, task_type)
         session_state['dataset_profile'] = profile
-    except Exception:
-        pass
+    except Exception as e:
+        import warnings
+        warnings.warn(f"inject_uploaded_state: dataset_profile computation failed: {e}")
 
     # Set feature hash (as Upload & Audit would)
     import hashlib

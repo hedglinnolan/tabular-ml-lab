@@ -5,6 +5,14 @@ Module-scoped fixtures provide mutable state containers that persist
 across sequential test steps within each file. Tests modify the shared
 state dict in-place, simulating a real user session progressing through
 the app pipeline.
+
+IMPORTANT: Tests using these mutable state fixtures MUST be defined in
+sequential order within a class (test_step1, test_step2, etc.). Pytest
+runs class methods in definition order by default. Do NOT reorder test
+methods or add parallel execution — state is shared and mutated.
+
+Immutable fixtures (regression_df, classification_df, etc.) are safe to
+share across any ordering.
 """
 import sys
 import os

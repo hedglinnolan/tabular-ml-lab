@@ -14,11 +14,6 @@ from models.base import BaseModelWrapper
 
 logger = logging.getLogger(__name__)
 
-# Copy SimpleMLP and weighted_huber_loss from existing models.py
-# This wraps the existing implementation cleanly
-import torch
-import torch.nn as nn
-
 
 class SimpleMLP(nn.Module):
     """Simplified MLP for regression and classification."""
