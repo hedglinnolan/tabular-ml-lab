@@ -1121,7 +1121,29 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 else:
                     y_test_proba = model.predict_proba(X_test_model) if model.supports_proba() else None
                     test_metrics = calculate_classification_metrics(y_test, y_test_pred, y_test_proba)
-                
+
+                # Compute train-set metrics for overfitting assessment (#92)
+                try:
+                    y_train_pred = model.predict(X_train_model)
+                    if task_type_final == 'regression' and _bt_transformer is not None:
+                        if _bt_transformer == 'log1p':
+                            y_train_pred = np.expm1(y_train_pred)
+                        else:
+                            y_train_pred = _bt_transformer.inverse_transform(
+                                y_train_pred.reshape(-1, 1)
+                            ).ravel()
+                        y_train_eval = st.session_state.get('y_train_original', y_train)
+                    else:
+                        y_train_eval = y_train
+
+                    if task_type_final == 'regression':
+                        train_metrics = calculate_regression_metrics(y_train_eval, y_train_pred)
+                    else:
+                        y_train_proba = model.predict_proba(X_train_model) if model.supports_proba() else None
+                        train_metrics = calculate_classification_metrics(y_train, y_train_pred, y_train_proba)
+                except Exception:
+                    train_metrics = {}
+
                 # Cross-validation if enabled (skip for NN - PyTorch models don't implement sklearn interface)
                 cv_results = None
                 if use_cv and model_name != 'nn':
@@ -1158,6 +1180,7 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 # Store results (y_test and y_test_pred are always on original scale)
                 model_results = {
                     'metrics': test_metrics,
+                    'train_metrics': train_metrics,
                     'history': results.get('history', {}),
                     'y_test_pred': y_test_pred,
                     'y_test': y_test_eval,
@@ -1458,20 +1481,91 @@ if st.session_state.get('trained_models'):
     
     # Metrics table with native copy support
     from utils.table_export import table
-    
+
     comparison_data = []
     for name, results in st.session_state.model_results.items():
         row = {'Model': name.upper()}
+        # Add train metrics columns for overfitting assessment (#92)
+        train_m = results.get('train_metrics', {})
+        if data_config.task_type == 'regression':
+            if train_m.get('R2') is not None:
+                row['Train R²'] = round(train_m['R2'], 4)
+            if train_m.get('RMSE') is not None:
+                row['Train RMSE'] = round(train_m['RMSE'], 4)
+        else:
+            if train_m.get('Accuracy') is not None:
+                row['Train Acc'] = round(train_m['Accuracy'], 4)
+            if train_m.get('F1') is not None:
+                row['Train F1'] = round(train_m['F1'], 4)
         row.update(results['metrics'])
         comparison_data.append(row)
-    
+
     comparison_df = pd.DataFrame(comparison_data)
-    
+
     if data_config.task_type == 'regression':
         comparison_df = comparison_df.sort_values('RMSE')
     else:
         comparison_df = comparison_df.sort_values('Accuracy', ascending=False)
-    
+
+    # ================================================================
+    # PERFORMANCE SPREAD SUMMARY (#92)
+    # ================================================================
+    if len(comparison_data) >= 2:
+        try:
+            from ml.model_coach import _get_model_info, _model_display_name_coach
+            _spread_info = _get_model_info()
+            _spread_vals = {}
+            _lower_is_better = True
+            if data_config.task_type == 'regression':
+                _spread_metric = 'RMSE'
+                _spread_vals = {r['Model']: r.get('RMSE') for r in comparison_data if r.get('RMSE') is not None}
+                if _spread_vals:
+                    _best_key = min(_spread_vals, key=_spread_vals.get)
+                    _best_val = _spread_vals[_best_key]
+                    _lower_is_better = True
+            else:
+                _spread_metric = 'F1' if any(r.get('F1') is not None for r in comparison_data) else 'Accuracy'
+                _spread_vals = {r['Model']: r.get(_spread_metric) for r in comparison_data if r.get(_spread_metric) is not None}
+                if _spread_vals:
+                    _best_key = max(_spread_vals, key=_spread_vals.get)
+                    _best_val = _spread_vals[_best_key]
+                    _lower_is_better = False
+
+            if _spread_vals and len(_spread_vals) >= 2:
+                _spread = abs(_best_val - _worst_val)
+                # Find simplest competitive model (highest interpretability within 5% of best)
+                _interp_rank = {'high': 0, 'medium': 1, 'low': 2}
+                _simplest_key = None
+                _simplest_val = None
+                for _mk, _mv in _spread_vals.items():
+                    _mk_lower = _mk.lower()
+                    _m_interp = _spread_info.get(_mk_lower, {}).get('interpretability', 'medium')
+                    if _lower_is_better:
+                        _within_tol = _mv <= _best_val * 1.05
+                    else:
+                        _within_tol = _mv >= _best_val * 0.95
+                    if _within_tol:
+                        if _simplest_key is None or _interp_rank.get(_m_interp, 1) < _interp_rank.get(
+                            _spread_info.get(_simplest_key.lower(), {}).get('interpretability', 'medium'), 1
+                        ):
+                            _simplest_key = _mk
+                            _simplest_val = _mv
+
+                # Only show spread summary; don't flag convergence if spread is large
+                _all_vals = list(_spread_vals.values())
+                _min_display = min(_all_vals)
+                _max_display = max(_all_vals)
+                _summary = (
+                    f"All {len(_spread_vals)} models achieve {_spread_metric} between "
+                    f"{_min_display:.3f} and {_max_display:.3f} (spread: {_spread:.3f}). "
+                    f"**Best:** {_best_key} ({_best_val:.3f})."
+                )
+                if _simplest_key and _simplest_key != _best_key:
+                    _summary += f" **Simplest competitive:** {_simplest_key} ({_simplest_val:.3f})."
+                st.info(_summary)
+        except Exception:
+            pass
+
     # Model metrics table with export option
     table(comparison_df, key="model_metrics")
 
@@ -1671,16 +1765,27 @@ if st.session_state.get('trained_models'):
     st.markdown("---")
     st.markdown("### 🎯 How to Choose Your Model")
 
-    # Surface prefer-simpler coaching inline if detected
+    # Surface all post-training coaching insights (#87)
     try:
         from utils.insight_ledger import get_ledger as _get_guidance_ledger
         _guidance_ledger = _get_guidance_ledger()
-        _prefer_simpler = _guidance_ledger.get("train_prefer_simpler")
-        if _prefer_simpler and not _prefer_simpler.resolved:
-            st.warning(
-                f"**Simplicity Coaching:** {_prefer_simpler.finding}\n\n"
-                f"→ {_prefer_simpler.recommended_action}"
-            )
+        _coaching_ids = ['train_prefer_simpler', 'train_low_performance', 'train_cv_variance']
+        # Also check for per-model overfit insights
+        for _mkey in st.session_state.get('model_results', {}):
+            _coaching_ids.append(f'train_overfit_{_mkey}')
+        _coaching_insights = [
+            _guidance_ledger.get(iid) for iid in _coaching_ids
+            if _guidance_ledger.get(iid) and not _guidance_ledger.get(iid).resolved
+        ]
+        if _coaching_insights:
+            st.subheader("📋 Post-Training Coaching")
+            _severity_map = {'blocker': 'error', 'warning': 'warning', 'info': 'info', 'opportunity': 'info'}
+            for _insight in _coaching_insights:
+                _st_fn = getattr(st, _severity_map.get(_insight.severity, 'info'))
+                _st_fn(
+                    f"**{_insight.finding}**\n\n"
+                    f"→ {_insight.recommended_action}"
+                )
     except Exception:
         pass
 

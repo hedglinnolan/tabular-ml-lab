@@ -1726,6 +1726,79 @@ def _detect_high_cv_variance(
     }]
 
 
+def _detect_overfit(
+    model_results: Dict[str, Dict[str, Any]],
+    task_type: str,
+    gap_threshold: float = 0.10,
+) -> List[Dict[str, Any]]:
+    """Detect when train performance significantly exceeds test performance.
+
+    For regression, compares Train R² vs Test R².
+    For classification, compares Train F1 vs Test F1.
+    Flags models where the gap exceeds ``gap_threshold``.
+    """
+    info = _get_model_info()
+    findings = []
+
+    for key, results in model_results.items():
+        train_m = results.get('train_metrics', {})
+        test_m = results.get('metrics', {})
+        if not train_m:
+            continue
+
+        if task_type == 'regression':
+            train_val = train_m.get('R2')
+            test_val = test_m.get('R2')
+            metric_name = 'R²'
+        else:
+            train_val = train_m.get('F1', train_m.get('Accuracy'))
+            test_val = test_m.get('F1', test_m.get('Accuracy'))
+            metric_name = 'F1' if 'F1' in train_m else 'Accuracy'
+
+        if train_val is None or test_val is None:
+            continue
+
+        gap = train_val - test_val
+        if gap <= gap_threshold:
+            continue
+
+        display_name = _model_display_name_coach(key)
+        model_family = info.get(key, info.get(key.lower(), {}))
+        family_scope = [model_family.get('group', '').lower()] if model_family.get('group') else []
+
+        findings.append({
+            'id': f'train_overfit_{key}',
+            'severity': 'warning',
+            'finding': (
+                f"{display_name} shows signs of overfitting: train {metric_name} = "
+                f"{train_val:.3f} vs test {metric_name} = {test_val:.3f} "
+                f"(gap: {gap:.3f}). The model memorises training data patterns "
+                "that don't generalise."
+            ),
+            'implication': (
+                "Overfitting inflates apparent performance. A reviewer would note "
+                "the train/test discrepancy and question whether the model is "
+                "learning signal or noise."
+            ),
+            'recommended_action': (
+                f"Consider regularising {display_name} (increase regularisation "
+                "strength, reduce model complexity, or add dropout). Alternatively, "
+                "use a simpler model or collect more training data."
+            ),
+            'model_scope': family_scope,
+            'metadata': {
+                'model_key': key,
+                'model_name': display_name,
+                'train_score': float(train_val),
+                'test_score': float(test_val),
+                'gap': float(gap),
+                'metric_name': metric_name,
+            },
+        })
+
+    return findings
+
+
 def run_post_training_diagnostics(
     model_results: Dict[str, Dict[str, Any]],
     task_type: str,
@@ -1740,4 +1813,5 @@ def run_post_training_diagnostics(
     findings.extend(_detect_prefer_simpler(model_results, task_type, tolerance))
     findings.extend(_detect_low_overall_performance(model_results, task_type))
     findings.extend(_detect_high_cv_variance(model_results, task_type))
+    findings.extend(_detect_overfit(model_results, task_type))
     return findings
