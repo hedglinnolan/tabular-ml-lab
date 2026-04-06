@@ -2,7 +2,7 @@
 
 **Read this before touching any code. This is the design philosophy of the Tabular Machine Learning Lab.**
 
-*Last updated: 2026-04-04*
+*Last updated: 2026-04-06*
 
 ---
 
@@ -238,10 +238,106 @@ Whenever a new feature or ML model is added, it cuts across all three layers:
 
 ---
 
-## Earmarked Future Features
+## Page-to-Page Data Flow
 
-### Target Variable Transformation (Preprocessing)
-The app supports power transforms (log1p, Yeo-Johnson) for *features* but has no UI for transforming the *target variable*. For regression tasks with skewed targets, this is a gap — the coach flags the problem but the user has no in-app way to fix it. The Preprocess page should offer target transforms with clear guidance and automatic back-transformation of predictions. Must integrate with the per-model pipeline.
+All inter-page communication flows through `st.session_state`. Each page reads from upstream pages and writes state consumed downstream.
+
+```
+Page 01 (Upload) ──> raw_data, data_config, dataset_profile
+       |
+Page 02 (EDA) ──> table1_df, table1_metadata
+       |
+Page 03 (Feature Eng) ──> df_engineered, engineered_feature_names
+       |
+Page 04 (Feature Sel) ──> selected_features
+       |
+Page 05 (Preprocess) ──> preprocessing_pipelines_by_model
+       |
+Page 06 (Train) ──> X_train/val/test, y_train/val/test, trained_models,
+       |              model_results, fitted_estimators, fitted_preprocessing_pipelines
+       |
+Page 07 (Explain) ──> shap_results, permutation_importance
+       |
+Page 08 (Sensitivity) ──> sensitivity_seed_results
+       |
+Page 09 (Hypothesis) ──> hypothesis_test_results
+       |
+Page 10 (Report) ──reads all above──> manuscript, LaTeX, PDF
+```
+
+**Cascade invalidation:** When upstream state changes (e.g., feature set changes in Page 04), `reset_data_dependent_state()` in `utils/session_state.py` clears all downstream keys (pipelines, models, results, explainability).
+
+---
+
+## Session State Reference
+
+The major keys that flow between pages. Excludes transient UI widget keys.
+
+### Upload & Configuration (set by Page 01)
+
+| Key | Type | Read by |
+|-----|------|---------|
+| `raw_data` | DataFrame | All pages (via `get_data()`) |
+| `filtered_data` | DataFrame | All downstream |
+| `data_config` | DataConfig | All pages |
+| `dataset_profile` | DatasetProfile | Pages 05, 06, 10 |
+| `task_type_detection` | TaskTypeDetection | Pages 01, 02, 06, 07, 10 |
+| `_data_config_features_hash` | str | Page 01 (cache invalidation) |
+
+### EDA (set by Page 02)
+
+| Key | Type | Read by |
+|-----|------|---------|
+| `table1_df` | DataFrame | Pages 02, 10 |
+| `table1_metadata` | Dict | Pages 02, 10 |
+
+### Feature Engineering (set by Page 03)
+
+| Key | Type | Read by |
+|-----|------|---------|
+| `df_engineered` | DataFrame | Pages 03-07 (via `get_data()`) |
+| `engineered_feature_names` | List[str] | Pages 04-07, 10 |
+| `feature_engineering_applied` | bool | Pages 03-07, 10 |
+
+### Feature Selection (set by Pages 01, 03, 04)
+
+| Key | Type | Read by |
+|-----|------|---------|
+| `selected_features` | List[str] | Pages 05-10 |
+
+### Preprocessing (set by Page 05)
+
+| Key | Type | Read by |
+|-----|------|---------|
+| `preprocessing_pipelines_by_model` | Dict[str, Pipeline] | Pages 06, 07, 10 |
+| `preprocessing_config_by_model` | Dict[str, Dict] | Pages 05, 06 |
+
+### Splits & Training (set by Page 06)
+
+| Key | Type | Read by |
+|-----|------|---------|
+| `X_train`, `X_val`, `X_test` | ndarray/DataFrame | Pages 06-08, 10 |
+| `y_train`, `y_val`, `y_test` | ndarray/Series | Pages 06-08, 10 |
+| `test_indices` | ndarray | Page 07 |
+| `trained_models` | Dict[str, model] | Pages 06-08, 10 |
+| `model_results` | Dict[str, Dict] | Pages 06-08, 10 |
+| `fitted_estimators` | Dict[str, estimator] | Pages 06, 07, 10 |
+| `fitted_preprocessing_pipelines` | Dict[str, Pipeline] | Pages 07, 10 |
+| `feature_names_by_model` | Dict[str, List[str]] | Pages 07, 10 |
+
+### Explainability (set by Page 07)
+
+| Key | Type | Read by |
+|-----|------|---------|
+| `shap_results` | Dict[str, Dict] | Pages 07, 10 |
+| `permutation_importance` | Dict[str, Dict] | Pages 07, 10 |
+
+### Provenance (set by all pages)
+
+| Key | Type | Read by |
+|-----|------|---------|
+| `methodology_log` | List[Dict] | Pages 01, 04, 10 |
+| `insight_ledger` | InsightLedger | All pages |
 
 ---
 
