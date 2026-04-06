@@ -9,10 +9,18 @@ if (-Not $py) {
     exit 1
 }
 
+# Check Python version
+$pyVersion = python --version 2>&1
+Write-Host "Found: $pyVersion" -ForegroundColor Gray
+
 # Create virtual environment
 if (-Not (Test-Path "venv")) {
     Write-Host "📦 Creating virtual environment..." -ForegroundColor Yellow
     python -m venv venv
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "❌ Failed to create virtual environment." -ForegroundColor Red
+        exit 1
+    }
 }
 
 # Activate
@@ -20,8 +28,15 @@ if (-Not (Test-Path "venv")) {
 
 # Install dependencies
 Write-Host "📦 Installing dependencies..." -ForegroundColor Yellow
-pip install --upgrade pip
+pip install --upgrade pip 2>$null
 pip install -r requirements.txt
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "⚠️  Some dependencies failed to install." -ForegroundColor Yellow
+    Write-Host "The app may still work — optional packages (giotto-tda, umap-learn) require Python <=3.12." -ForegroundColor Yellow
+    Write-Host "Core features work on Python 3.10-3.13." -ForegroundColor Yellow
+    Write-Host ""
+}
 
 Write-Host ""
 Write-Host "✅ Setup complete!" -ForegroundColor Green

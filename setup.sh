@@ -18,19 +18,24 @@ pip install --upgrade pip
 
 # Install requirements
 echo "📥 Installing dependencies..."
-pip install -r requirements.txt
+if pip install -r requirements.txt; then
+    echo ""
+    echo "✅ Setup complete!"
+else
+    echo ""
+    echo "⚠️  Some dependencies failed to install."
+    echo "The app may still work — optional packages (giotto-tda, umap-learn) require Python <=3.12."
+    echo "Core features work on Python 3.10-3.13."
+fi
 
 # Create cache directory
 mkdir -p .cache
 
 echo ""
-echo "✅ Setup complete!"
-echo ""
 echo "To run the app:"
 echo "  source venv/bin/activate"
 echo "  streamlit run app.py"
 echo ""
-echo "Optional: For AI-powered interpretation, install an LLM backend:"
-echo "  - Ollama (free, local): https://ollama.ai → ollama serve → ollama pull llama3.2"
-echo "  - OpenAI: pip install openai (configure API key in app sidebar)"
-echo "  - Anthropic: pip install anthropic (configure API key in app sidebar)"
+echo "Optional: For AI-powered interpretation, install and run Ollama:"
+echo "  https://ollama.ai → ollama serve → ollama pull qwen3.5:9b"
+echo "  Or use OpenAI/Anthropic API keys in the app sidebar."
