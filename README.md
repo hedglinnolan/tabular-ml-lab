@@ -99,47 +99,41 @@ Any Ollama-compatible model works — type the model name in the sidebar LLM Set
 
 ## Quick Start
 
-### Linux / macOS
+### Recommended (uv — works with any Python version)
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) first, then:
 
 ```bash
 git clone https://github.com/hedglinnolan/tabular-ml-lab.git
 cd tabular-ml-lab
-
-# Automated
-chmod +x setup.sh && ./setup.sh
-./run.sh
-
-# Or manual
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-streamlit run app.py
+chmod +x setup.sh && ./setup.sh   # Linux/macOS
+# .\setup.ps1                     # Windows PowerShell
+./run.sh                           # Linux/macOS
+# .\run.ps1                       # Windows PowerShell
 ```
 
-### Windows (PowerShell)
+`uv` automatically downloads Python 3.12 and installs all dependencies — including optional packages (TDA, UMAP) that require specific Python versions.
 
-```powershell
+### Without uv
+
+```bash
 git clone https://github.com/hedglinnolan/tabular-ml-lab.git
 cd tabular-ml-lab
-
-# Automated
-.\setup.ps1
-.\run.ps1
-
-# Or manual
-python -m venv venv
-.\venv\Scripts\Activate.ps1
+python3 -m venv venv
+source venv/bin/activate           # Linux/macOS
+# .\venv\Scripts\Activate.ps1     # Windows PowerShell
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
 The app opens at **http://localhost:8501**.
 
-For detailed setup with `uv`, preflight checks, troubleshooting, and a smoke test checklist, see [QUICKSTART.md](QUICKSTART.md).
+For preflight checks, troubleshooting, and a smoke test checklist, see [QUICKSTART.md](QUICKSTART.md).
 
 ### Requirements
 
-- Python 3.10+ (tested on 3.12)
+- **With uv:** Any Python 3.10+ installed (uv handles the rest)
+- **Without uv:** Python 3.10-3.12 recommended (3.13 works but optional TDA/UMAP features are unavailable)
 - ~2GB disk for dependencies (PyTorch, scikit-learn, SHAP)
 - GPU optional (only used by neural network models)
 

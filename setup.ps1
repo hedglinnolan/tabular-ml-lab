@@ -2,42 +2,71 @@
 
 Write-Host "🔬 Setting up Tabular ML Lab..." -ForegroundColor Cyan
 
-# Check Python
-$py = Get-Command python -ErrorAction SilentlyContinue
-if (-Not $py) {
-    Write-Host "❌ Python not found! Install Python 3.10+ from https://python.org" -ForegroundColor Red
-    exit 1
-}
-
-# Check Python version
-$pyVersion = python --version 2>&1
-Write-Host "Found: $pyVersion" -ForegroundColor Gray
-
-# Create virtual environment
-if (-Not (Test-Path "venv")) {
-    Write-Host "📦 Creating virtual environment..." -ForegroundColor Yellow
-    python -m venv venv
+# ── Try uv first (handles Python version automatically) ──────────
+$uv = Get-Command uv -ErrorAction SilentlyContinue
+if ($uv) {
+    Write-Host "📦 Found uv — setting up with Python 3.12..." -ForegroundColor Yellow
+    uv venv --python 3.12 .venv
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "❌ Failed to create virtual environment." -ForegroundColor Red
+        Write-Host "❌ Failed to create virtual environment with uv." -ForegroundColor Red
         exit 1
     }
-}
+    & ".venv\Scripts\Activate.ps1"
 
-# Activate
-& "venv\Scripts\Activate.ps1"
+    Write-Host "📥 Installing dependencies..." -ForegroundColor Yellow
+    uv pip install -r requirements.txt
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "❌ Failed to install core dependencies." -ForegroundColor Red
+        exit 1
+    }
 
-# Install dependencies
-Write-Host "📦 Installing dependencies..." -ForegroundColor Yellow
-pip install --upgrade pip 2>$null
-pip install -r requirements.txt
-if ($LASTEXITCODE -ne 0) {
+    # Install optional packages that need Python <=3.12
+    Write-Host "📥 Installing optional packages (TDA, UMAP)..." -ForegroundColor Yellow
+    uv pip install giotto-tda umap-learn 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "⚠️  Optional packages (giotto-tda, umap-learn) failed — TDA/UMAP features will be unavailable." -ForegroundColor Yellow
+    }
+
     Write-Host ""
-    Write-Host "⚠️  Some dependencies failed to install." -ForegroundColor Yellow
-    Write-Host "The app may still work — optional packages (giotto-tda, umap-learn) require Python <=3.12." -ForegroundColor Yellow
-    Write-Host "Core features work on Python 3.10-3.13." -ForegroundColor Yellow
-    Write-Host ""
-}
+    Write-Host "✅ Setup complete!" -ForegroundColor Green
+    Write-Host "Run: .\run.ps1" -ForegroundColor Cyan
 
-Write-Host ""
-Write-Host "✅ Setup complete!" -ForegroundColor Green
-Write-Host "Run: .\run.ps1" -ForegroundColor Cyan
+# ── Fallback to pip ───────────────────────────────────────────────
+} else {
+    Write-Host "📦 uv not found — using pip" -ForegroundColor Yellow
+    Write-Host "For best experience, install uv: irm https://astral.sh/uv/install.ps1 | iex" -ForegroundColor Gray
+
+    # Check Python
+    $py = Get-Command python -ErrorAction SilentlyContinue
+    if (-Not $py) {
+        Write-Host "❌ Python not found! Install Python 3.10+ from https://python.org" -ForegroundColor Red
+        exit 1
+    }
+    $pyVersion = python --version 2>&1
+    Write-Host "Found: $pyVersion" -ForegroundColor Gray
+
+    # Create virtual environment
+    if (-Not (Test-Path "venv")) {
+        Write-Host "📦 Creating virtual environment..." -ForegroundColor Yellow
+        python -m venv venv
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "❌ Failed to create virtual environment." -ForegroundColor Red
+            exit 1
+        }
+    }
+    & "venv\Scripts\Activate.ps1"
+
+    Write-Host "📥 Installing dependencies..." -ForegroundColor Yellow
+    pip install --upgrade pip 2>$null
+    pip install -r requirements.txt
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ""
+        Write-Host "⚠️  Some dependencies failed to install." -ForegroundColor Yellow
+        Write-Host "Core features still work. Optional packages (giotto-tda, umap-learn) require Python <=3.12." -ForegroundColor Yellow
+        Write-Host "Install uv (irm https://astral.sh/uv/install.ps1 | iex) to automatically use the right Python version." -ForegroundColor Yellow
+    }
+
+    Write-Host ""
+    Write-Host "✅ Setup complete!" -ForegroundColor Green
+    Write-Host "Run: .\run.ps1" -ForegroundColor Cyan
+}
