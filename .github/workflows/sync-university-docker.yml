@@ -1,0 +1,60 @@
+# Auto-sync main → university-docker
+#
+# When main is pushed, this workflow opens a PR to merge main into
+# university-docker. The PR only has conflicts if deployment-layer files
+# (Dockerfile, docker-compose.yml, auth.py, etc.) were touched on both
+# branches — which should be rare since those files only live on
+# university-docker.
+
+name: Sync main → university-docker
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if university-docker exists
+        id: check
+        run: |
+          if git ls-remote --heads origin university-docker | grep -q university-docker; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create sync PR
+        if: steps.check.outputs.exists == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if there are commits on main that university-docker doesn't have
+          BEHIND=$(git rev-list origin/university-docker..origin/main --count)
+          if [ "$BEHIND" = "0" ]; then
+            echo "university-docker is up to date with main"
+            exit 0
+          fi
+
+          # Check for existing open sync PR
+          EXISTING=$(gh pr list --base university-docker --head main --state open --json number --jq '.[0].number')
+          if [ -n "$EXISTING" ]; then
+            echo "Sync PR #$EXISTING already open — skipping"
+            exit 0
+          fi
+
+          # Create the PR
+          gh pr create \
+            --base university-docker \
+            --head main \
+            --title "sync: merge main into university-docker ($BEHIND commits)" \
+            --body "Automated sync from main branch. $BEHIND new commit(s).
+
+          Review for conflicts in deployment-layer files (Dockerfile, docker-compose.yml, utils/auth.py, utils/compute_config.py).
+
+          App code changes (pages/, ml/, utils/, tests/) should merge cleanly."
