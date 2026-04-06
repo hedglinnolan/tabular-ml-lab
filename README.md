@@ -132,6 +132,8 @@ For preflight checks, troubleshooting, and a smoke test checklist, see [QUICKSTA
 - ~2GB disk for dependencies (PyTorch, scikit-learn, SHAP)
 - GPU optional (only used by neural network models)
 
+> **First launch:** The app loads ~60 packages including PyTorch and scikit-learn. Expect 15-30 seconds on a typical work laptop before the browser opens. Subsequent launches are faster.
+
 ---
 
 ## For Researchers
