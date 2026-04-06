@@ -387,6 +387,93 @@ class TestNarrativeEngineGeneration:
         assert "noted and accepted" not in draft.data_observations
         assert "favorable" not in draft.data_observations.lower()
 
+    def test_create_resolve_narrate_full_cycle(self, full_provenance):
+        """Full lifecycle in one test: create insight → resolve → generate manuscript → verify prose.
+
+        Unlike fixture-based tests, this constructs the ledger inline so the
+        entire create→resolve→narrate path is exercised in a single call stack.
+        """
+        ledger = InsightLedger()
+
+        # --- CREATE: EDA detects skewness ---
+        ledger.add(Insight(
+            id="cycle_skew", source_page="02_EDA", category="distribution",
+            severity="warning",
+            finding="BMI and insulin exhibit moderate right skewness",
+            implication="May violate normality assumptions for linear models",
+            relevant_pages=["05_Preprocess"],
+            model_scope=["linear"],
+        ))
+
+        # --- CREATE: EDA detects outliers ---
+        ledger.add(Insight(
+            id="cycle_outliers", source_page="02_EDA", category="data_quality",
+            severity="warning",
+            finding="Insulin contains extreme outliers beyond 3 IQR",
+            implication="Could inflate error metrics for sensitive models",
+            relevant_pages=["05_Preprocess"],
+        ))
+
+        # --- CREATE: an acknowledged limitation (should NOT appear in data_observations) ---
+        ledger.add(Insight(
+            id="cycle_sample_size", source_page="02_EDA", category="methodology",
+            severity="warning",
+            finding="Sample size is borderline for the number of predictors",
+            implication="Limited statistical power for interaction terms",
+        ))
+        ledger.acknowledge("cycle_sample_size", "Accepted — using regularization to compensate")
+
+        # Verify pre-resolution state (acknowledged insights are still "unresolved")
+        assert len(ledger.get_unresolved()) == 3
+        assert len(ledger.get_resolved()) == 0
+
+        # --- RESOLVE: preprocessing addresses the findings ---
+        ledger.resolve(
+            "cycle_skew",
+            "Applied Yeo-Johnson transform for Ridge; left raw for tree-based models",
+            "05_Preprocess",
+            {"action_type": "power_transform", "per_model": {"ridge": "yeo-johnson", "rf": "none"}},
+        )
+        ledger.resolve(
+            "cycle_outliers",
+            "Applied percentile clipping at 5th/95th for HistGradientBoosting",
+            "05_Preprocess",
+            {"action_type": "outlier_treatment", "method": "percentile_clip",
+             "lower": 5, "upper": 95},
+        )
+
+        # Verify post-resolution state (1 acknowledged insight remains "unresolved")
+        assert len(ledger.get_unresolved()) == 1
+        assert ledger.get_unresolved()[0].id == "cycle_sample_size"
+        assert len(ledger.get_resolved()) == 2
+
+        # --- NARRATE: NarrativeEngine consumes the ledger ---
+        engine = NarrativeEngine(full_provenance, ledger)
+        draft = engine.generate()
+
+        obs = draft.data_observations.lower()
+
+        # Resolved insights appear in data_observations
+        assert "skew" in obs
+        assert "yeo-johnson" in obs or "power transform" in obs
+        assert "outlier" in obs
+        assert "percentile" in obs or "clip" in obs
+
+        # Acknowledged limitation must NOT leak into data_observations
+        assert "borderline" not in obs
+        assert "regularization" not in obs
+
+        # Discussion section should contain the acknowledged limitation
+        discussion = draft.discussion.lower() if draft.discussion else ""
+        if discussion:
+            assert "sample size" in discussion or "borderline" in discussion
+
+        # Manuscript renders without error
+        md = draft.to_markdown()
+        assert "## Methods" in md
+        latex = draft.to_latex()
+        assert "\\section{Methods}" in latex
+
 
 class TestManuscriptDraft:
 
