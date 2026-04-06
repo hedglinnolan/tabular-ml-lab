@@ -125,6 +125,8 @@ streamlit run app.py
 
 The app opens at **http://localhost:8501**.
 
+For detailed setup with `uv`, preflight checks, troubleshooting, and a smoke test checklist, see [QUICKSTART.md](QUICKSTART.md).
+
 ### Requirements
 
 - Python 3.10+ (tested on 3.12)

@@ -1,17 +1,8 @@
 # Deployment Guide
 
-Tabular ML Lab can be deployed in several ways depending on your environment and requirements.
+For local development setup, see the [Quick Start in README.md](README.md#quick-start) or [QUICKSTART.md](QUICKSTART.md) for detailed instructions with `uv`, preflight checks, and troubleshooting.
 
-## Quick Start (Local / Individual Use)
-
-```bash
-git clone https://github.com/hedglinnolan/tabular-ml-lab.git
-cd tabular-ml-lab
-pip install -r requirements.txt
-streamlit run app.py
-```
-
-See [QUICKSTART.md](QUICKSTART.md) for detailed setup with `uv`, cross-platform scripts, and troubleshooting.
+This document covers remote and institutional deployment options.
 
 ## Streamlit Cloud (Personal / Demo)
 

@@ -16,8 +16,8 @@
 # 1. Install uv (one-time): irm https://astral.sh/uv/install.ps1 | iex
 
 # 2. Clone the repository (if not already cloned)
-# git clone <repo-url>
-# cd glucose-mlp-interactive
+# git clone https://github.com/hedglinnolan/tabular-ml-lab.git
+# cd tabular-ml-lab
 
 # 3. First time setup (creates .venv, installs deps via uv)
 .\setup.ps1
@@ -43,8 +43,8 @@ uv run python preflight.py
 # 1. Install uv (one-time): curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # 2. Clone the repository (if not already cloned)
-# git clone <repo-url>
-# cd glucose-mlp-interactive
+# git clone https://github.com/hedglinnolan/tabular-ml-lab.git
+# cd tabular-ml-lab
 
 # 3. Make scripts executable (first time)
 chmod +x setup.sh run.sh
