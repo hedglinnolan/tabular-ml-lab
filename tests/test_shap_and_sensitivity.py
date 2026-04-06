@@ -174,6 +174,60 @@ class TestPermutationImportance:
         assert not np.allclose(pi.importances_mean, 0), \
             "All feature importances are zero — synthetic data should have signal"
 
+    def test_permutation_importance_post_pca(self, small_splits):
+        """PI on PCA-reduced data must operate on transformed features, not originals.
+
+        Regression test for #126: PI stalled on high-dimensional data because
+        it permuted 3000+ original features instead of 20 PCA components.
+        The fix: transform X through the preprocessing pipeline first, then
+        compute PI on the transformed data using just the estimator.
+        """
+        from sklearn.inspection import permutation_importance
+        from sklearn.decomposition import PCA
+        from sklearn.pipeline import Pipeline as SklearnPipeline
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.linear_model import Ridge
+
+        X_train = small_splits["X_train"].values
+        X_test = small_splits["X_test"].values
+        y_train = small_splits["y_train"].values
+        y_test = small_splits["y_test"].values
+        n_original_features = X_train.shape[1]
+
+        # Build a preprocessing pipeline with PCA (reduces to 3 components)
+        n_components = 3
+        prep_pipeline = SklearnPipeline([
+            ('scaler', StandardScaler()),
+            ('pca', PCA(n_components=n_components)),
+        ])
+        prep_pipeline.fit(X_train)
+        X_train_pca = prep_pipeline.transform(X_train)
+        X_test_pca = prep_pipeline.transform(X_test)
+
+        # Train model on PCA-transformed data
+        model = Ridge(alpha=1.0)
+        model.fit(X_train_pca, y_train)
+
+        # CORRECT: PI on transformed features (what the fix does)
+        pi_correct = permutation_importance(
+            model, X_test_pca, y_test,
+            n_repeats=5, random_state=42,
+        )
+        assert pi_correct.importances_mean.shape == (n_components,), \
+            f"PI should have {n_components} features (PCA components), got {pi_correct.importances_mean.shape}"
+
+        # WRONG (what the old code did): PI on full pipeline with raw features
+        full_pipeline = SklearnPipeline([('preprocess', prep_pipeline), ('model', model)])
+        pi_wrong = permutation_importance(
+            full_pipeline, X_test, y_test,
+            n_repeats=5, random_state=42,
+        )
+        assert pi_wrong.importances_mean.shape == (n_original_features,), \
+            "Full-pipeline PI permutes original features (the bug)"
+
+        # The correct approach should be faster and have fewer features
+        assert pi_correct.importances_mean.shape[0] < pi_wrong.importances_mean.shape[0]
+
 
 # ---------------------------------------------------------------------------
 # Sensitivity analysis tests

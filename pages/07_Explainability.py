@@ -346,7 +346,22 @@ if run_button:
             perm_start = time.perf_counter()
             overall_status.text(f"Permutation importance: {name.upper()}...")
             try:
-                pi = permutation_importance(full_pipe, X_perm, y_perm, n_repeats=perm_repeats,
+                # Transform data through preprocessing pipeline first, then
+                # compute PI on the transformed features using just the estimator.
+                # This ensures PI permutes the features the model actually sees
+                # (e.g., 20 PCA components) instead of the original feature space
+                # (e.g., 3000+ raw features), which would stall and produce
+                # misleading results.  Mirrors the SHAP approach below.
+                if isinstance(full_pipe, SklearnPipeline) and 'preprocess' in getattr(full_pipe, 'named_steps', {}):
+                    prep = full_pipe.named_steps['preprocess']
+                    X_perm_transformed = _to_dense_numpy(prep.transform(X_perm))
+                    pi_estimator = full_pipe.named_steps['model']
+                else:
+                    X_perm_transformed = _to_dense_numpy(X_perm)
+                    pi_estimator = full_pipe
+
+                pi = permutation_importance(pi_estimator, X_perm_transformed, y_perm,
+                                            n_repeats=perm_repeats,
                                             random_state=42, n_jobs=-1)
                 fn_by_model = st.session_state.get('feature_names_by_model', {})
                 n = len(pi.importances_mean)
