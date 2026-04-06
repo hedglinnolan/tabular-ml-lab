@@ -54,20 +54,11 @@ An interactive research workbench for scientists who work with tabular data and 
 
 ### 📄 Publication-Ready Manuscript Generation
 
-The export pipeline does the mechanical assembly work of writing a prediction model paper:
+**What you write:** Clinical context, study design rationale, interpretation of findings, comparison with prior work.
 
-- **Compilable LaTeX manuscript** with structured abstract, methods, results, and discussion
-- **Auto-generated methods section** reflecting your exact workflow decisions — preprocessing parameters, feature selection thresholds, model hyperparameters, split strategy
-- **Results section** with width-contained performance tables, bootstrap CIs, explainability findings, sensitivity analysis
-- **Structured discussion skeleton** with result-specific prompts referencing your actual best model, top features, and metrics
-- **Table 1** with stratified descriptives, statistical tests, and footnoted custom tests
-- **TRIPOD checklist** auto-tracked from your workflow
-- **Commented figure references** matching your export filenames — uncomment after placing figures
-- **Markdown report** with the same content for quick review
+**What the app writes:** Sample sizes, split ratios, preprocessing parameters, model hyperparameters, metrics with bootstrap CIs, feature importance rankings, sensitivity results, software versions — a compilable LaTeX manuscript with methods, results, and a structured discussion skeleton populated from your actual analysis.
 
-**What you still write:** Clinical context, study design rationale, interpretation of findings, comparison with prior work, domain-specific limitations.
-
-**What the app writes for you:** Everything else — sample sizes, split ratios, model names, hyperparameters, metrics with CIs, preprocessing details, feature importance rankings, sensitivity results, software versions, methodological considerations.
+Also generates: Table 1 with stratified descriptives and statistical tests, TRIPOD checklist auto-tracked from your workflow, and a markdown report for quick review.
 
 ### 🧠 22 Models, Zero Configuration
 

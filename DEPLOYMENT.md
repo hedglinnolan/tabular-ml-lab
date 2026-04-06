@@ -47,7 +47,7 @@ docker run -p 8501:8501 tabular-ml-lab
 
 For institutions that need authentication, on-premises hosting, or managed LLM backends, see the dedicated deployment branches:
 
-### [`university-docker`](https://github.com/hedglinnolan/tabular-ml-lab/tree/university-docker) — General-Purpose
+### [`university-docker`](https://github.com/hedglinnolan/tabular-ml-lab/tree/university-docker)
 
 Flexible Docker-based deployment for any university compute environment:
 
@@ -56,14 +56,6 @@ Flexible Docker-based deployment for any university compute environment:
 - Optional Ollama integration for local LLM interpretation
 - Works on departmental servers, institutional cloud, or VMs
 - See [`UNIVERSITY_DEPLOYMENT.md`](https://github.com/hedglinnolan/tabular-ml-lab/blob/university-docker/UNIVERSITY_DEPLOYMENT.md) on that branch
-
-### `enterprise-docker` — Production / Managed
-
-For institutions with specific infrastructure requirements:
-
-- KeyCloak authentication landing page
-- vLLM backend for LLM interpretation at scale
-- Designed for managed Kubernetes or Docker Swarm environments
 
 ## Environment Variables
 
