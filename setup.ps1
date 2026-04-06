@@ -2,6 +2,30 @@
 
 Write-Host "🔬 Setting up Tabular ML Lab..." -ForegroundColor Cyan
 
+# ── Check for cloud-synced folders (OneDrive, Dropbox, iCloud) ────
+$cwd = (Get-Location).Path
+$cloudPatterns = @("OneDrive", "Dropbox", "iCloudDrive", "Google Drive")
+$inCloudFolder = $false
+foreach ($pattern in $cloudPatterns) {
+    if ($cwd -match [regex]::Escape($pattern)) {
+        $inCloudFolder = $true
+        break
+    }
+}
+if ($inCloudFolder) {
+    Write-Host ""
+    Write-Host "⚠️  This folder appears to be inside a cloud-synced directory ($pattern)." -ForegroundColor Yellow
+    Write-Host "   This can cause slow git operations, file locking issues, and unnecessary" -ForegroundColor Yellow
+    Write-Host "   syncing of thousands of virtual environment files." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "   Recommended: clone the repo to a local folder instead, e.g.:" -ForegroundColor Yellow
+    Write-Host "     cd C:\dev" -ForegroundColor White
+    Write-Host "     git clone https://github.com/hedglinnolan/tabular-ml-lab.git" -ForegroundColor White
+    Write-Host ""
+    Write-Host "   Continuing anyway..." -ForegroundColor Gray
+    Write-Host ""
+}
+
 # ── Try uv first (handles Python version automatically) ──────────
 $uv = Get-Command uv -ErrorAction SilentlyContinue
 if ($uv) {
@@ -13,7 +37,7 @@ if ($uv) {
     }
     & ".venv\Scripts\Activate.ps1"
 
-    # --link-mode=copy avoids hardlink errors on OneDrive / cloud-synced folders
+    # --link-mode=copy avoids hardlink errors on cloud-synced and cross-filesystem paths
     Write-Host "📥 Installing dependencies..." -ForegroundColor Yellow
     uv pip install --link-mode=copy -r requirements.txt
     if ($LASTEXITCODE -ne 0) {
