@@ -13,8 +13,9 @@ if ($uv) {
     }
     & ".venv\Scripts\Activate.ps1"
 
+    # --link-mode=copy avoids hardlink errors on OneDrive / cloud-synced folders
     Write-Host "📥 Installing dependencies..." -ForegroundColor Yellow
-    uv pip install -r requirements.txt
+    uv pip install --link-mode=copy -r requirements.txt
     if ($LASTEXITCODE -ne 0) {
         Write-Host "❌ Failed to install core dependencies." -ForegroundColor Red
         exit 1
@@ -22,7 +23,7 @@ if ($uv) {
 
     # Install optional packages that need Python <=3.12
     Write-Host "📥 Installing optional packages (TDA, UMAP)..." -ForegroundColor Yellow
-    uv pip install giotto-tda umap-learn 2>$null
+    uv pip install --link-mode=copy giotto-tda umap-learn 2>$null
     if ($LASTEXITCODE -ne 0) {
         Write-Host "⚠️  Optional packages (giotto-tda, umap-learn) failed — TDA/UMAP features will be unavailable." -ForegroundColor Yellow
     }
