@@ -99,41 +99,36 @@ Any Ollama-compatible model works — type the model name in the sidebar LLM Set
 
 ## Quick Start
 
-### Recommended (uv — works with any Python version)
+We recommend installing [uv](https://docs.astral.sh/uv/getting-started/installation/) first — it automatically downloads the right Python version and installs all dependencies including optional packages (TDA, UMAP).
 
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/) first, then:
+### Linux / macOS
 
 ```bash
 git clone https://github.com/hedglinnolan/tabular-ml-lab.git
 cd tabular-ml-lab
-chmod +x setup.sh && ./setup.sh   # Linux/macOS
-# .\setup.ps1                     # Windows PowerShell
-./run.sh                           # Linux/macOS
-# .\run.ps1                       # Windows PowerShell
+chmod +x setup.sh && ./setup.sh
+./run.sh
 ```
 
-`uv` automatically downloads Python 3.12 and installs all dependencies — including optional packages (TDA, UMAP) that require specific Python versions.
+### Windows (PowerShell)
 
-### Without uv
-
-```bash
+```powershell
 git clone https://github.com/hedglinnolan/tabular-ml-lab.git
 cd tabular-ml-lab
-python3 -m venv venv
-source venv/bin/activate           # Linux/macOS
-# .\venv\Scripts\Activate.ps1     # Windows PowerShell
-pip install -r requirements.txt
-streamlit run app.py
+.\setup.ps1
+.\run.ps1
 ```
 
 The app opens at **http://localhost:8501**.
+
+> Without uv, the setup scripts fall back to `pip` with your system Python. Core features work on Python 3.10-3.13, but optional packages (giotto-tda, umap-learn) require 3.12 or earlier.
 
 For preflight checks, troubleshooting, and a smoke test checklist, see [QUICKSTART.md](QUICKSTART.md).
 
 ### Requirements
 
 - **With uv:** Any Python 3.10+ installed (uv handles the rest)
-- **Without uv:** Python 3.10-3.12 recommended (3.13 works but optional TDA/UMAP features are unavailable)
+- **Without uv:** Python 3.10-3.12 recommended
 - ~2GB disk for dependencies (PyTorch, scikit-learn, SHAP)
 - GPU optional (only used by neural network models)
 
