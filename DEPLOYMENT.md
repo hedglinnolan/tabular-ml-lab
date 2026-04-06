@@ -1,75 +1,74 @@
 # Deployment Guide
 
-## Local Development
+Tabular ML Lab can be deployed in several ways depending on your environment and requirements.
+
+## Quick Start (Local / Individual Use)
 
 ```bash
-# Install dependencies
+git clone https://github.com/hedglinnolan/tabular-ml-lab.git
+cd tabular-ml-lab
 pip install -r requirements.txt
-
-# Run locally
 streamlit run app.py
 ```
 
-## Streamlit Cloud (Recommended - Free)
+See [QUICKSTART.md](QUICKSTART.md) for detailed setup with `uv`, cross-platform scripts, and troubleshooting.
 
-1. Push your code to GitHub
-2. Go to https://share.streamlit.io/
-3. Sign in with GitHub
-4. Click "New app"
-5. Select your repository and branch
-6. Set main file to `app.py`
-7. Click "Deploy"
+## Streamlit Cloud (Personal / Demo)
 
-Your app will be live at `https://your-app-name.streamlit.app`
+1. Fork or push this repo to GitHub
+2. Go to [share.streamlit.io](https://share.streamlit.io/)
+3. Sign in with GitHub, click "New app"
+4. Select your repository, branch `main`, main file `app.py`
+5. Deploy
 
-## Docker Deployment
+Your app will be live at `https://your-app-name.streamlit.app`.
 
-Create `Dockerfile`:
+## Docker (Self-Hosted)
 
 ```dockerfile
-FROM python:3.9-slim
+FROM python:3.12-slim
 
 WORKDIR /app
-
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
 COPY . .
 
 EXPOSE 8501
-
+HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
 CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
 ```
 
-Build and run:
 ```bash
-docker build -t glucose-mlp-app .
-docker run -p 8501:8501 glucose-mlp-app
+docker build -t tabular-ml-lab .
+docker run -p 8501:8501 tabular-ml-lab
 ```
 
-## Heroku Deployment
+## University / Institutional Deployment
 
-Create `Procfile`:
-```
-web: streamlit run app.py --server.port=$PORT --server.address=0.0.0.0
-```
+For institutions that need authentication, on-premises hosting, or managed LLM backends, see the dedicated deployment branches:
 
-Create `setup.sh`:
-```bash
-mkdir -p ~/.streamlit/
-echo "[server]" > ~/.streamlit/config.toml
-echo "port = $PORT" >> ~/.streamlit/config.toml
-echo "enableCORS = false" >> ~/.streamlit/config.toml
-```
+### [`university-docker`](https://github.com/hedglinnolan/tabular-ml-lab/tree/university-docker) — General-Purpose
 
-Deploy:
-```bash
-heroku create your-app-name
-git push heroku main
-```
+Flexible Docker-based deployment for any university compute environment:
+
+- Docker Compose setup with configurable resource profiles
+- OIDC authentication (KeyCloak, Shibboleth, or institutional SSO)
+- Optional Ollama integration for local LLM interpretation
+- Works on departmental servers, institutional cloud, or VMs
+- See [`UNIVERSITY_DEPLOYMENT.md`](https://github.com/hedglinnolan/tabular-ml-lab/blob/university-docker/UNIVERSITY_DEPLOYMENT.md) on that branch
+
+### `enterprise-docker` — Production / Managed
+
+For institutions with specific infrastructure requirements:
+
+- KeyCloak authentication landing page
+- vLLM backend for LLM interpretation at scale
+- Designed for managed Kubernetes or Docker Swarm environments
 
 ## Environment Variables
 
-Set these if needed:
-- `STREAMLIT_SERVER_PORT`: Port number (default: 8501)
-- `STREAMLIT_SERVER_ADDRESS`: Server address (default: localhost)
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STREAMLIT_SERVER_PORT` | `8501` | Port number |
+| `STREAMLIT_SERVER_ADDRESS` | `0.0.0.0` | Bind address |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API endpoint (if using local LLM) |

@@ -46,7 +46,7 @@ An interactive research workbench for scientists who work with tabular data and 
 | 3 | **Feature Engineering** | PCA, polynomial features, log transforms, ratios, binning, TDA features |
 | 4 | **Feature Selection** | LASSO path, RFE-CV, univariate, stability selection, consensus ranking |
 | 5 | **Preprocess** | Per-model pipelines: imputation, scaling, encoding, outlier handling, power transforms |
-| 6 | **Train & Compare** | 18 model families with bootstrap CIs, baseline comparison, optional Optuna optimization |
+| 6 | **Train & Compare** | 22 models with bootstrap CIs, baseline comparison, optional Optuna optimization |
 | 7 | **Explainability** | SHAP, permutation importance, PDP, calibration, decision curves, subgroup analysis |
 | 8 | **Sensitivity Analysis** | Seed robustness, feature dropout — prove your results aren't fragile |
 | 9 | **Statistical Validation** | Traditional stats for Table 1: t-tests, ANOVA, chi-square, custom hypothesis tests |
@@ -69,12 +69,13 @@ The export pipeline does the mechanical assembly work of writing a prediction mo
 
 **What the app writes for you:** Everything else — sample sizes, split ratios, model names, hyperparameters, metrics with CIs, preprocessing details, feature importance rankings, sensitivity results, software versions, methodological considerations.
 
-### 🧠 18 Models, Zero Configuration
+### 🧠 22 Models, Zero Configuration
 
 | Category | Models |
 |----------|--------|
 | **Linear** | Ridge, Lasso, ElasticNet, Logistic Regression, GLM, Huber |
 | **Trees** | Random Forest, ExtraTrees, HistGradientBoosting |
+| **Boosting** | XGBoost, LightGBM (regression & classification) |
 | **Distance** | KNN (regression & classification) |
 | **Margin** | SVM (SVR / SVC) |
 | **Probabilistic** | Gaussian Naive Bayes, LDA |
@@ -164,7 +165,7 @@ This tool enforces methodological rigor so reviewers don't have to:
 ```
 tabular-ml-lab/
 ├── app.py                    # Landing page and sidebar
-├── pages/                    # 10 workflow pages
+├── pages/                    # 11 workflow pages
 │   ├── 01_Upload_and_Audit.py
 │   ├── 02_EDA.py
 │   ├── 03_Feature_Engineering.py
@@ -174,9 +175,10 @@ tabular-ml-lab/
 │   ├── 07_Explainability.py
 │   ├── 08_Sensitivity_Analysis.py
 │   ├── 09_Hypothesis_Testing.py
-│   └── 10_Report_Export.py
+│   ├── 10_Report_Export.py
+│   └── 11_Theory_Reference.py
 ├── ml/                       # Core ML modules
-│   ├── model_registry.py     # 18 model definitions
+│   ├── model_registry.py     # 22 model definitions
 │   ├── bootstrap.py          # BCa bootstrap CIs
 │   ├── calibration.py        # Calibration metrics & plots
 │   ├── dataset_profile.py    # Automated data profiling

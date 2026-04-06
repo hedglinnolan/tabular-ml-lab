@@ -135,14 +135,13 @@ uv pip install shap
 3. Pull a model, e.g. `ollama run qwen2.5:7b`.  
 The app works fully without Ollama; this only affects the optional LLM feature. See [README → Troubleshooting](README.md#-troubleshooting) for more detail.
 
-### Error: `uv pip install` fails — "llvmlite" / "only versions >=3.6,<3.10 are supported"
-**Cause:** The venv uses Python 3.10+; `llvmlite` (numba/shap) supports only &lt;3.10.  
-**Fix:** Use Python 3.9. Remove `.venv` and re-run setup:
+### Error: `uv pip install` fails — "llvmlite" build error
+**Cause:** Older versions of `llvmlite` (used by numba/SHAP) required Python &lt;3.10. This is resolved in current versions.  
+**Fix:** Ensure you have Python 3.10+ and upgrade pip/uv, then recreate the environment:
 ```bash
 rm -rf .venv && ./setup.sh   # macOS/Linux
 # Windows: Remove-Item -Recurse -Force .venv; .\setup.ps1
 ```
-Setup creates `.venv` with `uv venv --python 3.9` and installs deps.
 
 ### Error: "Port 8501 already in use"
 **Fix:** Use a different port
