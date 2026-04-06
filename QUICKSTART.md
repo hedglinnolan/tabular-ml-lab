@@ -132,8 +132,13 @@ uv pip install shap
 **Fix:**
 1. Install [Ollama](https://ollama.ai).
 2. Run `ollama serve` in a terminal (and keep it running).
-3. Pull a model, e.g. `ollama run qwen2.5:7b`.  
-The app works fully without Ollama; this only affects the optional LLM feature. See [README → Troubleshooting](README.md#-troubleshooting) for more detail.
+3. Pull a model appropriate for your hardware:
+   - 8 GB RAM: `ollama pull qwen3.5:1.5b`
+   - 16 GB RAM: `ollama pull qwen3.5:9b` (app default)
+   - 32 GB+ / GPU: `ollama pull qwen3.5:32b`
+4. Change the model in the sidebar under LLM Settings if needed.
+
+The app works fully without Ollama; this only affects the optional LLM interpretation feature. See [README](README.md#-ai-powered-interpretation-optional) for more detail on model selection.
 
 ### Error: `uv pip install` fails — "llvmlite" build error
 **Cause:** Older versions of `llvmlite` (used by numba/SHAP) required Python &lt;3.10. This is resolved in current versions.  

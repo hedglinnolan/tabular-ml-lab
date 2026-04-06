@@ -77,13 +77,23 @@ Every model gets its own preprocessing pipeline. No data leakage. No shortcuts.
 
 ### 🤖 AI-Powered Interpretation (Optional)
 
-Connect a local LLM or cloud API for plain-language analysis interpretation:
+Connect a local LLM or cloud API for plain-language analysis interpretation. The app is model-agnostic — select any backend and model in the sidebar.
 
-| Backend | Setup |
-|---------|-------|
-| **Ollama** (free, local) | `ollama serve && ollama pull llama3.2` |
-| **OpenAI** | API key in sidebar |
-| **Anthropic** | API key in sidebar |
+| Backend | Setup | Notes |
+|---------|-------|-------|
+| **Ollama** (free, local) | [Install Ollama](https://ollama.ai), then `ollama serve` | See model recommendations below |
+| **OpenAI** | API key in sidebar | GPT-4o recommended |
+| **Anthropic** | API key in sidebar | Claude Sonnet recommended |
+
+**Ollama model selection** depends on your hardware:
+
+| Available RAM | Recommended model | Pull command |
+|---------------|-------------------|--------------|
+| 8 GB | `qwen3.5:1.5b` | `ollama pull qwen3.5:1.5b` |
+| 16 GB | `qwen3.5:9b` (app default) | `ollama pull qwen3.5:9b` |
+| 32 GB+ / GPU | `qwen3.5:32b` or `llama3.1:70b` | `ollama pull qwen3.5:32b` |
+
+Any Ollama-compatible model works — type the model name in the sidebar LLM Settings. Larger models produce better interpretations but require more memory.
 
 ---
 
