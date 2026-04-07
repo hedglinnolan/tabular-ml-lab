@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center">🔬 Tabular ML Lab</h1>
+  <h1 align="center">🔬 Tabular Machine Learning Lab</h1>
   <p align="center">
     <strong>From raw data to a manuscript-ready starting point. No coding required.</strong>
   </p>
