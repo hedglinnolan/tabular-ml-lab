@@ -30,9 +30,9 @@ jobs:
           restore-keys: ${{ runner.os }}-pip-
 
       - name: Install pdflatex (for PDF round-trip integration test)
-        # Match deploy.yml's TeX package set so CI compiles the same manuscript
-        # the live server does (the manuscript template uses adjustbox and
-        # microtype, which live in texlive-latex-extra).
+        # Match the deploy environment's TeX package set so CI compiles the
+        # same manuscript the live server does (manuscript template uses
+        # adjustbox and microtype, which live in texlive-latex-extra).
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra
@@ -50,3 +50,45 @@ jobs:
       - name: Tier 2 — Streamlit AppTest integration + PDF round-trip
         run: |
           python -m pytest tests/integration -q --timeout=120
+
+  # ── Deploy ────────────────────────────────────────────────────────────
+  # Runs only after test passes, only on direct pushes to main (not PRs).
+  # Using `needs: test` rather than a separate workflow_run-triggered file
+  # because workflow_run dispatch was unreliable in our environment --
+  # `needs` is a simple in-workflow dependency GitHub honors deterministically.
+  deploy:
+    needs: test
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: [self-hosted, clawserver]
+    steps:
+      - name: Pull latest code
+        run: |
+          cd /home/claw/.openclaw/workspace/glucose-mlp-interactive
+          git pull origin main
+
+      - name: Install LaTeX (for PDF compilation)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra
+
+      - name: Update dependencies
+        run: |
+          cd /home/claw/.openclaw/workspace/glucose-mlp-interactive
+          ./venv/bin/pip install -r requirements.txt
+
+      - name: Restart service
+        run: |
+          sudo systemctl restart tabular-ml-lab
+
+      - name: Wait for service to come up
+        timeout-minutes: 2
+        run: |
+          until curl -sf http://localhost:8501/_stcore/health | grep -q ok; do
+            sleep 1
+          done
+
+      - name: E2E smoke test against live service
+        timeout-minutes: 5
+        run: |
+          cd /home/claw/.openclaw/workspace/glucose-mlp-interactive
+          ./venv/bin/python scripts/integration_test.py
