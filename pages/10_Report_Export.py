@@ -857,29 +857,7 @@ def _prepare_table1_for_latex_export(table1_df: Optional[pd.DataFrame]) -> Optio
     return table1_df_local
 
 
-def _compile_latex_to_pdf(latex_source: str) -> Optional[bytes]:
-    """Compile LaTeX source to PDF using pdflatex. Returns PDF bytes or None."""
-    import shutil as _shutil
-    if not _shutil.which("pdflatex"):
-        return None
-    import subprocess, tempfile, os
-    try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tex_path = os.path.join(tmpdir, "manuscript.tex")
-            with open(tex_path, "w") as f:
-                f.write(latex_source)
-            for _ in range(2):  # Run twice for cross-references
-                subprocess.run(
-                    ["pdflatex", "-interaction=nonstopmode", "-output-directory", tmpdir, tex_path],
-                    capture_output=True, text=True, timeout=30,
-                )
-            pdf_path = os.path.join(tmpdir, "manuscript.pdf")
-            if os.path.exists(pdf_path):
-                with open(pdf_path, "rb") as f:
-                    return f.read()
-    except Exception as e:
-        logger.debug("PDF compilation failed: %s", e)
-    return None
+from ml.latex_report import compile_latex_to_pdf as _compile_latex_to_pdf
 
 
 def _build_latex_export_bundle(

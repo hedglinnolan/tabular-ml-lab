@@ -4,11 +4,48 @@ LaTeX report generator.
 Generates a complete LaTeX manuscript template populated with actual results
 from the modeling workflow. Ready to compile with pdflatex.
 """
+import logging
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+
+def compile_latex_to_pdf(latex_source: str, timeout: int = 30) -> Optional[bytes]:
+    """Compile a LaTeX source string to PDF bytes using pdflatex.
+
+    Returns the PDF bytes, or None if pdflatex is unavailable or compilation
+    failed. Runs pdflatex twice so cross-references resolve.
+
+    Used by Page 10 to render the in-app PDF preview, and by integration
+    tests to verify the compile pipeline end-to-end.
+    """
+    if not shutil.which("pdflatex"):
+        return None
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tex_path = os.path.join(tmpdir, "manuscript.tex")
+            with open(tex_path, "w") as f:
+                f.write(latex_source)
+            for _ in range(2):
+                subprocess.run(
+                    ["pdflatex", "-interaction=nonstopmode", "-output-directory", tmpdir, tex_path],
+                    capture_output=True, text=True, timeout=timeout,
+                )
+            pdf_path = os.path.join(tmpdir, "manuscript.pdf")
+            if os.path.exists(pdf_path):
+                with open(pdf_path, "rb") as f:
+                    return f.read()
+    except Exception as exc:
+        logger.debug("PDF compilation failed: %s", exc)
+    return None
 
 
 def _normalize_generated_latex_text(text: str) -> str:

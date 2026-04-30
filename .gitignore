@@ -34,6 +34,9 @@ env/
 *.swo
 *~
 
+# Claude Code local project state
+.claude/
+
 # Streamlit (but allow config)
 .streamlit/*
 !.streamlit/config.toml
