@@ -22,6 +22,15 @@ DEFAULT_OLLAMA_MODEL = "qwen3.5:9b"
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
 
+# When True, first try a thinking-enabled call before falling back to no-think.
+# Empirically (qwen3.5:9b on Pascal-class GPUs) the thinking attempt either
+# burns the token budget on internal deliberation without producing a final
+# answer, or times out — making it net-negative versus going straight to the
+# no-think path. Flip to True to A/B test on better hardware or a different
+# model. The thinking branch is preserved below so this flag is the only
+# change required to re-enable it.
+_USE_THINKING_FIRST = False
+
 # ============================================================================
 # Domain detection
 # ============================================================================
@@ -498,18 +507,19 @@ def _call_llm(
 def _call_ollama(context: str, system_prompt: str, model: str, url: str) -> Optional[str]:
     """Call Ollama API using the chat endpoint.
 
-    Strategy for thinking models (Qwen3.5):
-    1. First try WITH thinking enabled (num_predict=3000, 75s timeout)
-       - Thinking produces better quality but is slower
-       - If content is returned, use it
-       - If only thinking is returned (budget exhausted), extract from thinking
-    2. If that times out, retry WITHOUT thinking (num_predict=2048, 30s timeout)
-       - Still good quality thanks to structured system prompt
-       - Fast fallback ensures the user always gets a response
+    Default path (best quality + speed on Pascal-class GPUs per benchmarks):
+    Single call with `think: false`, num_predict=2048, 30s timeout. The
+    structured system prompt does the reasoning work; explicit thinking
+    tokens just delay the answer or exhaust the budget.
+
+    Optional thinking-first path: set `_USE_THINKING_FIRST = True` near the
+    top of this file. The original two-attempt strategy (thinking, 75s →
+    no-think fallback, 30s) is preserved below the guard for easy A/B
+    testing on different hardware / different models.
     """
     import requests
     try:
-        # Ensure running
+        # Ensure ollama is running
         try:
             requests.get(f"{url}/api/tags", timeout=2)
         except Exception:
@@ -523,38 +533,38 @@ def _call_ollama(context: str, system_prompt: str, model: str, url: str) -> Opti
             {"role": "user", "content": context},
         ]
 
-        # Attempt 1: thinking enabled, moderate budget
-        try:
-            resp = requests.post(
-                f"{url}/api/chat",
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "stream": False,
-                    "options": {"temperature": 0.3, "num_predict": 3000},
-                },
-                timeout=75,
-            )
-            if resp.ok:
-                data = resp.json()
-                message = data.get("message", {})
-                content = (message.get("content") or "").strip()
-                if content:
-                    return content
-                # Thinking but no content — extract from thinking tail
-                thinking = (message.get("thinking") or "").strip()
-                if thinking:
-                    logger.info(f"Ollama thinking-only response ({len(thinking)} chars) — extracting")
-                    fallback = thinking[-1000:].strip()
-                    last_break = fallback.rfind("\n\n")
-                    if last_break > 100:
-                        fallback = fallback[last_break:].strip()
-                    if fallback:
-                        return fallback
-        except requests.exceptions.Timeout:
-            logger.info("Ollama thinking attempt timed out at 75s — falling back to no-think mode")
+        # Optional thinking-first attempt (gated by flag — see top of file)
+        if _USE_THINKING_FIRST:
+            try:
+                resp = requests.post(
+                    f"{url}/api/chat",
+                    json={
+                        "model": model,
+                        "messages": messages,
+                        "stream": False,
+                        "options": {"temperature": 0.3, "num_predict": 3000},
+                    },
+                    timeout=75,
+                )
+                if resp.ok:
+                    data = resp.json()
+                    message = data.get("message", {})
+                    content = (message.get("content") or "").strip()
+                    if content:
+                        return content
+                    thinking = (message.get("thinking") or "").strip()
+                    if thinking:
+                        logger.info(f"Ollama thinking-only response ({len(thinking)} chars) — extracting")
+                        fallback = thinking[-1000:].strip()
+                        last_break = fallback.rfind("\n\n")
+                        if last_break > 100:
+                            fallback = fallback[last_break:].strip()
+                        if fallback:
+                            return fallback
+            except requests.exceptions.Timeout:
+                logger.info("Ollama thinking attempt timed out at 75s — falling back to no-think mode")
 
-        # Attempt 2: thinking disabled, fast fallback
+        # Default path: thinking disabled, single call
         resp = requests.post(
             f"{url}/api/chat",
             json={
