@@ -30,9 +30,12 @@ jobs:
           restore-keys: ${{ runner.os }}-pip-
 
       - name: Install pdflatex (for PDF round-trip integration test)
+        # Match deploy.yml's TeX package set so CI compiles the same manuscript
+        # the live server does (the manuscript template uses adjustbox and
+        # microtype, which live in texlive-latex-extra).
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq texlive-latex-base texlive-latex-recommended texlive-fonts-recommended
+          sudo apt-get install -y -qq texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra
 
       - name: Install dependencies
         run: |
