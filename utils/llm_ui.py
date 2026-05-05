@@ -508,7 +508,8 @@ def _call_ollama(context: str, system_prompt: str, model: str, url: str) -> Opti
     """Call Ollama API using the chat endpoint.
 
     Default path (best quality + speed on Pascal-class GPUs per benchmarks):
-    Single call with `think: false`, num_predict=2048, 30s timeout. The
+    Single call with `think: false`, num_predict=2048, 120s timeout, and
+    keep_alive=30m to avoid repeated cold-loads within a session. The
     structured system prompt does the reasoning work; explicit thinking
     tokens just delay the answer or exhaust the budget.
 
@@ -542,9 +543,10 @@ def _call_ollama(context: str, system_prompt: str, model: str, url: str) -> Opti
                         "model": model,
                         "messages": messages,
                         "stream": False,
+                        "keep_alive": "30m",
                         "options": {"temperature": 0.3, "num_predict": 3000},
                     },
-                    timeout=75,
+                    timeout=120,
                 )
                 if resp.ok:
                     data = resp.json()
@@ -562,9 +564,12 @@ def _call_ollama(context: str, system_prompt: str, model: str, url: str) -> Opti
                         if fallback:
                             return fallback
             except requests.exceptions.Timeout:
-                logger.info("Ollama thinking attempt timed out at 75s — falling back to no-think mode")
+                logger.info("Ollama thinking attempt timed out at 120s — falling back to no-think mode")
 
-        # Default path: thinking disabled, single call
+        # Default path: thinking disabled, single call.
+        # 120s covers cold-load (~36s for qwen3.5:9b on this server) plus
+        # long-output generation. keep_alive="30m" pins the model in memory
+        # so subsequent Deep Analysis clicks in a session avoid reload.
         resp = requests.post(
             f"{url}/api/chat",
             json={
@@ -572,9 +577,10 @@ def _call_ollama(context: str, system_prompt: str, model: str, url: str) -> Opti
                 "messages": messages,
                 "stream": False,
                 "think": False,
+                "keep_alive": "30m",
                 "options": {"temperature": 0.3, "num_predict": 2048},
             },
-            timeout=30,
+            timeout=120,
         )
         if resp.ok:
             data = resp.json()
