@@ -1329,7 +1329,8 @@ if numeric_cols:
         numeric_stats = df[numeric_cols].describe().T
         numeric_stats['skewness'] = df[numeric_cols].skew()
         numeric_stats['kurtosis'] = df[numeric_cols].kurtosis()
-        table(numeric_stats.round(3), width="stretch")
+        numeric_stats.index.name = 'Feature'
+        table(numeric_stats.round(3).reset_index(), width="stretch")
         audit_results['numeric_stats'] = numeric_stats.to_dict()
         
         # Flag potential outliers

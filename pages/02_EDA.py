@@ -624,7 +624,8 @@ if regime.distribution_mode == "summary":
         summary_df = df[numeric_features].describe().T
         summary_df["skew"] = df[numeric_features].skew()
         summary_df["missing_%"] = df[numeric_features].isnull().mean() * 100
-        table(summary_df.round(3))
+        summary_df.index.name = "Feature"
+        table(summary_df.round(3).reset_index())
 
         # Distribution-of-distributions: skew histogram
         skews = df[numeric_features].skew().dropna()
@@ -814,13 +815,18 @@ if len(numeric_features) >= 2:
     corr_method = st.pills("Method", ["Pearson", "Spearman"], default="Pearson", key="corr_method")
     method_name = corr_method.lower() if corr_method else "pearson"
 
+    # Include numeric target so the matrix surfaces feature↔target relationships, not just feature↔feature.
+    corr_cols = list(numeric_features)
+    if _has_target and pd.api.types.is_numeric_dtype(df[target_col]) and target_col not in corr_cols:
+        corr_cols.append(target_col)
+
     @st.cache_data
     def _compute_corr(_df, _features, method, data_id=None):
         return _df[_features].corr(method=method).round(3)
 
     if regime.show_full_corr_matrix:
         # Full heatmap for narrow/medium datasets
-        corr_matrix = _compute_corr(df, numeric_features, method_name, data_id=_data_fingerprint)
+        corr_matrix = _compute_corr(df, corr_cols, method_name, data_id=_data_fingerprint)
         threshold = st.slider("Highlight threshold", 0.0, 1.0, 0.8, 0.05, key="corr_threshold")
 
         fig_corr = px.imshow(
@@ -830,7 +836,7 @@ if len(numeric_features) >= 2:
             title=f"{corr_method} Correlation Matrix",
             aspect="auto",
         )
-        fig_corr.update_layout(template="plotly_white", height=max(400, len(numeric_features) * 18 + 100))
+        fig_corr.update_layout(template="plotly_white", height=max(400, len(corr_cols) * 18 + 100))
         st.plotly_chart(fig_corr)
 
         # List pairs above threshold (numpy-based)
@@ -868,8 +874,8 @@ if len(numeric_features) >= 2:
                 for i in top_idx
             ])
 
-        pairs_df = _top_corr_pairs(df, numeric_features, method_name, top_n, data_id=_data_fingerprint)
-        n_total = len(numeric_features) * (len(numeric_features) - 1) // 2
+        pairs_df = _top_corr_pairs(df, corr_cols, method_name, top_n, data_id=_data_fingerprint)
+        n_total = len(corr_cols) * (len(corr_cols) - 1) // 2
         st.caption(f"Top {top_n} correlated pairs ({method_name}) out of {n_total:,} total")
         table(pairs_df)
 else:
