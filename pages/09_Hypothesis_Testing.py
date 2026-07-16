@@ -486,8 +486,8 @@ elif test_type == "Two-sample comparison (numeric variable, two groups)":
         **Summary:**
         - Test: **{results['test_name']}**
         - Mean difference: **{results['group1_mean'] - results['group2_mean']:.4f}**
-        - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < 0.05 else 'not statistically significant'} at α=0.05)
-        - This {'suggests' if results['p'] < 0.05 else 'does not suggest'} a significant difference between {results['group1']} and {results['group2']}
+        - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < alpha_level else 'not statistically significant'} at α={alpha_level})
+        - This {'suggests' if results['p'] < alpha_level else 'does not suggest'} a significant difference between {results['group1']} and {results['group2']}
         """)
         
         # Export to Table 1 button
@@ -631,8 +631,8 @@ elif test_type == "Multi-group comparison (numeric variable, multiple groups)":
         st.info(f"""
         **Summary:**
         - Test: **{results['test_name']}**
-        - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < 0.05 else 'not statistically significant'} at α=0.05)
-        - This {'suggests' if results['p'] < 0.05 else 'does not suggest'} a significant difference among groups
+        - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < alpha_level else 'not statistically significant'} at α={alpha_level})
+        - This {'suggests' if results['p'] < alpha_level else 'does not suggest'} a significant difference among groups
         - Note: If significant, consider post-hoc tests to identify which groups differ
         """)
         
@@ -747,8 +747,8 @@ elif test_type == "Categorical association (two categorical variables)":
         st.info(f"""
         **Summary:**
         - Test: **{results['test_name']}**
-        - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < 0.05 else 'not statistically significant'} at α=0.05)
-        - This {'suggests' if results['p'] < 0.05 else 'does not suggest'} an association between {var1} and {var2}
+        - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < alpha_level else 'not statistically significant'} at α={alpha_level})
+        - This {'suggests' if results['p'] < alpha_level else 'does not suggest'} an association between {var1} and {var2}
         """)
         
         # Export to Table 1 button
@@ -759,7 +759,9 @@ elif test_type == "Categorical association (two categorical variables)":
             st.session_state['custom_table1_tests'].append({
                 'variable': f"{results['var1']} vs {results['var2']}",
                 'test': results['test_name'],
-                'statistic': f"χ² = {results['stat']:.3f}",
+                # Fisher's exact returns an odds ratio as its statistic, not χ²
+                'statistic': (f"OR = {results['stat']:.3f}" if 'fisher' in str(results['test_name']).lower()
+                              else f"χ² = {results['stat']:.3f}"),
                 'p_value': results['p'],
                 'note': 'Categorical association'
             })
@@ -958,9 +960,9 @@ elif test_type == "Paired comparison (numeric variable, before/after)":
         **Summary:**
         - Test: **{results['test_name']}**
         - Mean difference: **{results['mean_diff']:.4f}**
-        - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < 0.05 else 'not statistically significant'} at α=0.05)
+        - p-value: **{results['p']:.4f}** ({'statistically significant' if results['p'] < alpha_level else 'not statistically significant'} at α={alpha_level})
         - Number of pairs: **{results['n_pairs']}**
-        - This {'suggests' if results['p'] < 0.05 else 'does not suggest'} a significant change from {results['var_before']} to {results['var_after']}
+        - This {'suggests' if results['p'] < alpha_level else 'does not suggest'} a significant change from {results['var_before']} to {results['var_after']}
         """)
         
         # Export to Table 1 button

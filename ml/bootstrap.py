@@ -129,36 +129,48 @@ def bootstrap_metric(
             ci_level=ci_level, n_resamples=0, metric_name=metric_name
         )
 
-    # Bootstrap resamples
-    boot_stats = np.zeros(n_resamples)
+    # Bootstrap resamples. Degenerate resamples (e.g. a single-class resample
+    # for AUC) are left as NaN and dropped, rather than substituted — substitution
+    # with the point estimate artificially narrows the interval, and a single
+    # NaN would otherwise propagate through np.percentile into both CI bounds.
+    boot_stats = np.full(n_resamples, np.nan)
     for i in range(n_resamples):
         idx = rng.randint(0, n, size=n)
         try:
             boot_stats[i] = metric_fn(y_true[idx], pred_input[idx])
         except Exception:
-            boot_stats[i] = original_stat
+            pass
+
+    valid_boot = boot_stats[np.isfinite(boot_stats)]
+    if len(valid_boot) < max(50, n_resamples // 2):
+        return BootstrapResult(
+            estimate=original_stat, ci_lower=float('nan'), ci_upper=float('nan'),
+            ci_level=ci_level, n_resamples=len(valid_boot), metric_name=metric_name,
+        )
 
     # Jackknife for BCa
-    jack_stats = np.zeros(n)
-    for i in range(min(n, 200)):  # Cap jackknife at 200 for performance
+    n_jack = min(n, 200)  # Cap jackknife at 200 for performance
+    jack_stats = np.full(n, np.nan)
+    for i in range(n_jack):
         idx = np.concatenate([np.arange(i), np.arange(i + 1, n)])
         try:
             jack_stats[i] = metric_fn(y_true[idx], pred_input[idx])
         except Exception:
-            jack_stats[i] = original_stat
+            pass
 
-    if n > 200:
-        jack_stats[200:] = np.mean(jack_stats[:200])
+    computed = jack_stats[:n_jack]
+    jack_fill = np.nanmean(computed) if np.isfinite(computed).any() else original_stat
+    jack_stats[~np.isfinite(jack_stats)] = jack_fill
 
-    # BCa interval
-    ci_lower, ci_upper = _bca_ci(original_stat, boot_stats, jack_stats, alpha)
+    # BCa interval on the valid resamples only
+    ci_lower, ci_upper = _bca_ci(original_stat, valid_boot, jack_stats, alpha)
 
     return BootstrapResult(
         estimate=original_stat,
         ci_lower=ci_lower,
         ci_upper=ci_upper,
         ci_level=ci_level,
-        n_resamples=n_resamples,
+        n_resamples=len(valid_boot),
         metric_name=metric_name,
     )
 

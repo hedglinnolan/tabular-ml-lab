@@ -413,7 +413,9 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
         
         # Training loop
         best_val_metric = float('inf') if self.task_type == 'regression' else 0.0
-        best_model_state = self.model.state_dict().copy()
+        # state_dict() tensors alias the live parameters; clone so the snapshot
+        # is not mutated by subsequent optimizer steps
+        best_model_state = {k: v.detach().clone() for k, v in self.model.state_dict().items()}
         patience_counter = 0
         history = {
             'train_loss': [],
@@ -508,7 +510,7 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
                 if is_better:
                     best_val_metric = val_metric
                     patience_counter = 0
-                    best_model_state = self.model.state_dict().copy()
+                    best_model_state = {k: v.detach().clone() for k, v in self.model.state_dict().items()}
                 else:
                     patience_counter += 1
                     if patience_counter >= patience:

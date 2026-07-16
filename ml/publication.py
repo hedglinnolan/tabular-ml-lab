@@ -1495,9 +1495,10 @@ def generate_methods_section(
                 p_value = details.get('p_value')
                 
                 if statistic is not None and p_value is not None:
+                    p_text = "p < 0.001" if p_value < 0.001 else f"p = {p_value:.3f}"
                     sections.append(
                         f"{test_name} was performed on {variable}: "
-                        f"statistic = {statistic:.4f}, p = {p_value:.4f}.\n\n"
+                        f"statistic = {statistic:.4f}, {p_text}.\n\n"
                     )
                 elif action:
                     sections.append(f"{action}.\n\n")

@@ -1753,9 +1753,17 @@ if st.session_state.get('trained_models'):
         if st.button("Train Baseline Models", key="train_baselines"):
             from ml.baseline_models import train_baseline_models
             X_train_base = st.session_state.get("X_train")
-            y_train_base = st.session_state.get("y_train")
             X_test_base = st.session_state.get("X_test")
-            y_test_base = st.session_state.get("y_test")
+            # When a target transform is active, y_train/y_test hold the
+            # transformed target while the model leaderboard reports on the
+            # original (back-transformed) scale. Baselines must use the
+            # original scale to be comparable.
+            y_train_base = st.session_state.get("y_train_original")
+            if y_train_base is None:
+                y_train_base = st.session_state.get("y_train")
+            y_test_base = st.session_state.get("y_test_original")
+            if y_test_base is None:
+                y_test_base = st.session_state.get("y_test")
 
             if X_train_base is not None and y_test_base is not None:
                 # Use the first model's preprocessing pipeline for baselines
@@ -1801,6 +1809,7 @@ if st.session_state.get('trained_models'):
         Poor calibration means predicted probabilities are unreliable — critical for clinical decisions.
         """)
 
+        _calibration_by_model = {}
         if data_config.task_type == "classification":
             for name, results in st.session_state.model_results.items():
                 model_obj = st.session_state.trained_models.get(name)
@@ -1812,8 +1821,16 @@ if st.session_state.get('trained_models'):
                             X_test_local = pipeline_local.transform(st.session_state.get("X_test"))
                             y_proba_local = model_obj.predict_proba(X_test_local)
                             if y_proba_local is not None and y_proba_local.ndim == 2:
-                                y_proba_pos = y_proba_local[:, 1] if y_proba_local.shape[1] == 2 else y_proba_local[:, -1]
+                                if y_proba_local.shape[1] != 2:
+                                    # Reliability curves / Brier as computed here are
+                                    # defined for binary outcomes; a one-vs-rest slice
+                                    # against multiclass labels produces invalid numbers.
+                                    st.caption(f"{name.upper()}: calibration curves are shown for binary "
+                                               f"classification only ({y_proba_local.shape[1]} classes detected).")
+                                    continue
+                                y_proba_pos = y_proba_local[:, 1]
                                 cal = calibration_classification(np.array(results["y_test"]), y_proba_pos, model_name=name.upper())
+                                _calibration_by_model[name] = cal
                                 fig_cal = plot_calibration_curve(cal)
                                 st.plotly_chart(fig_cal, key=f"cal_{name}")
                                 st.caption(f"Brier Score: {cal.brier_score:.4f} | ECE: {cal.ece:.4f} | MCE: {cal.mce:.4f}")
@@ -1826,11 +1843,16 @@ if st.session_state.get('trained_models'):
                     np.array(results["y_test"]), np.array(results["y_test_pred"]),
                     model_name=name.upper(),
                 )
+                _calibration_by_model[name] = cal
                 st.markdown(f"**{name.upper()}:** Calibration slope = {cal.calibration_slope:.3f}, "
                            f"Intercept = {cal.calibration_intercept:.3f} "
                            f"(perfect: slope=1, intercept=0)")
             st.caption("Calibration slope measures systematic over/under-prediction. "
                       "Slope < 1 = predictions too extreme; slope > 1 = predictions too conservative.")
+        # Persist for Report Export — previously computed here but never stored,
+        # so calibration silently never reached the manuscript.
+        if _calibration_by_model:
+            st.session_state["calibration_results"] = _calibration_by_model
     
     # CV results if available
     if use_cv:
@@ -1921,26 +1943,30 @@ if st.session_state.get('trained_models'):
         else:
             return "Unknown complexity"
     
-    # Get top 3 models by performance
-    metric_col = 'AUC (val)' if task_type_final == 'classification' else 'R² (val)'
-    
+    # Get top 3 models by performance (metric keys must match ml/eval.py output)
+    if task_type_final == 'classification':
+        metric_col = 'ROC-AUC' if 'ROC-AUC' in comparison_df.columns else 'Accuracy'
+    else:
+        metric_col = 'R2'
+
     # Check if the metric column exists in the comparison_df
     if metric_col in comparison_df.columns and len(comparison_df) > 0:
         top_models = comparison_df.nlargest(3, metric_col)
-        
+
         # Check if top models have overlapping confidence intervals
         if len(top_models) >= 2:
-            # Get bootstrap CIs for top 2 models
-            model1_name = top_models.index[0]
-            model2_name = top_models.index[1]
-            
+            # Display names are upper-cased model keys; bootstrap_results is
+            # keyed by the lower-case model key
+            model1_name = top_models.iloc[0]['Model']
+            model2_name = top_models.iloc[1]['Model']
+
             bootstrap_results = st.session_state.get("bootstrap_results", {})
-            
+
             if bootstrap_results:
-                # Get BootstrapResult objects
-                metric_name = metric_col.replace(' (val)', '')  # 'AUC' or 'R²'
-                model1_result = bootstrap_results.get(model1_name, {}).get(metric_name)
-                model2_result = bootstrap_results.get(model2_name, {}).get(metric_name)
+                # Get BootstrapResult objects (bootstrap metric keys differ from display keys)
+                metric_name = {'R2': 'R2', 'ROC-AUC': 'AUC', 'Accuracy': 'Accuracy'}[metric_col]
+                model1_result = bootstrap_results.get(model1_name.lower(), {}).get(metric_name)
+                model2_result = bootstrap_results.get(model2_name.lower(), {}).get(metric_name)
                 
                 # Extract CI bounds from BootstrapResult dataclass
                 from ml.bootstrap import BootstrapResult
@@ -1993,7 +2019,8 @@ if st.session_state.get('trained_models'):
                         
                         # Show all top 3
                         st.markdown("**Top 3 Models:**")
-                        for idx, (model_name, row) in enumerate(top_models.iterrows(), 1):
+                        for idx, (_, row) in enumerate(top_models.iterrows(), 1):
+                            model_name = row['Model']
                             metric_val = row[metric_col]
                             complexity = get_model_complexity(model_name)
                             st.markdown(f"{idx}. **{model_name}**: {metric_val:.3f} — {complexity}")

@@ -779,6 +779,10 @@ def _build_explainability_summary_for_export(manuscript_context: Dict[str, Any])
         best_model_key = manuscript_context.get('manuscript_primary_model') or manuscript_context.get('best_model_by_metric')
         if best_model_key and best_model_key in calibration_results:
             cal_data = calibration_results[best_model_key]
+            if not isinstance(cal_data, dict):
+                # Page 06 stores CalibrationResult dataclasses
+                import dataclasses
+                cal_data = dataclasses.asdict(cal_data) if dataclasses.is_dataclass(cal_data) else vars(cal_data)
             explainability_summary['calibration_metrics'] = {
                 k: v for k, v in cal_data.items()
                 if isinstance(v, (int, float)) and k not in ('model', 'timestamp')
@@ -1252,7 +1256,10 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
                 tname = v["test_name"]
                 p = v["p"]
                 sig = "Yes" if (p is not None and np.isfinite(p) and p < 0.05) else "No"
-                p_str = f"{p:.4f}" if (p is not None and np.isfinite(p)) else "—"
+                if p is not None and np.isfinite(p):
+                    p_str = "<0.001" if p < 0.001 else f"{p:.4f}"
+                else:
+                    p_str = "—"
                 report_lines.append(
                     f"| {_export_model_label(ma)} | {_export_model_label(mb)} | {mean_d:.4f} | {tname} | {p_str} | {sig} |"
                 )
