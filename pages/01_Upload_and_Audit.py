@@ -1577,10 +1577,25 @@ if task_mode == "prediction":
                 )
                 st.session_state.task_type_detection = task_detection
         
-        # Show detection result
+        # Show detection result — confidence-aware. A confident green banner
+        # for an ambiguous detection (e.g. low-cardinality integer targets:
+        # class codes vs counts vs ratings) silently steers users into the
+        # wrong task type.
         task_det = st.session_state.task_type_detection
         if task_det.detected:
-            st.success(f"Detected task type: **{task_det.detected.title()}**")
+            _det_conf = getattr(task_det, 'confidence', None) or 'high'
+            if _det_conf == 'high':
+                st.success(f"Detected task type: **{task_det.detected.title()}**")
+            else:
+                _det_reason = ""
+                _det_reasons = getattr(task_det, 'reasons', None)
+                if _det_reasons:
+                    _det_reason = f" — {_det_reasons[-1]}"
+                st.info(
+                    f"Best guess for task type: **{task_det.detected.title()}** "
+                    f"(confidence: {_det_conf}){_det_reason} "
+                    f"Please verify, or use the override below."
+                )
         
         # Override option
         with st.expander("Override Task Type"):

@@ -963,7 +963,7 @@ except Exception:
     pass
 
 # Generic Optuna optimization function
-def optimize_model_hyperparameters(model_name, spec, X_train_transformed, y_train, X_val_transformed, y_val, task_type, random_seed, n_trials=30):
+def optimize_model_hyperparameters(model_name, spec, X_train_transformed, y_train, X_val_transformed, y_val, task_type, random_seed, n_trials=30, progress_callback=None):
     """
     Generic function to optimize hyperparameters for any model using Optuna.
     
@@ -1096,8 +1096,16 @@ def optimize_model_hyperparameters(model_name, spec, X_train_transformed, y_trai
     
     direction = "minimize"  # Always minimize (we convert accuracy to error)
     study = optuna.create_study(direction=direction)
-    study.optimize(_objective, n_trials=n_trials, show_progress_bar=False)
-    
+    _callbacks = []
+    if progress_callback is not None:
+        def _optuna_progress(study_obj, trial):
+            try:
+                progress_callback(trial.number + 1, n_trials, study_obj.best_value)
+            except Exception:
+                pass
+        _callbacks.append(_optuna_progress)
+    study.optimize(_objective, n_trials=n_trials, show_progress_bar=False, callbacks=_callbacks)
+
     return study.best_params
 
 def _train_models(models_to_train, selected_model_params, use_optimization=False):
@@ -1166,11 +1174,22 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 
                 # Optimize hyperparameters if requested
                 if use_optimization and spec and spec.hyperparam_schema:
-                    status_text.text("Running Optuna hyperparameter optimization...")
+                    status_text.text(f"Running Optuna hyperparameter optimization for {model_name.upper()}...")
+                    _optuna_bar = st.progress(0, text="Optuna: starting trials...")
+
+                    def _optuna_ui_progress(done, total, best_value):
+                        _optuna_bar.progress(
+                            min(done / total, 1.0),
+                            text=f"Optuna {model_name.upper()}: trial {done}/{total} "
+                                 f"(best objective so far: {best_value:.4f})",
+                        )
+
                     best_params = optimize_model_hyperparameters(
                         model_name, spec, X_train_model, y_train, X_val_model, y_val,
-                        task_type_final, random_seed, n_trials=30
+                        task_type_final, random_seed, n_trials=30,
+                        progress_callback=_optuna_ui_progress,
                     )
+                    _optuna_bar.empty()
                     if best_params:
                         # Update selected_model_params with optimized values
                         selected_model_params[model_name] = best_params

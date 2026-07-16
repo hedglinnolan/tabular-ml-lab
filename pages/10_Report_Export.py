@@ -2121,14 +2121,18 @@ with st.expander("Export Configuration"):
 
 # Helper function to save plotly figures as images
 def save_plotly_fig(fig, filename: str) -> Optional[bytes]:
-    """Save plotly figure as PNG bytes."""
+    """Save plotly figure as PNG bytes.
+
+    Failures are counted for disclosure next to the ZIP download — silently
+    missing figures read as 'export worked' when it did not. (The previous
+    fallback retried the identical call and could not succeed either.)
+    """
     try:
         return fig.to_image(format="png", width=1200, height=800)
-    except Exception:
-        try:
-            return fig.to_image(format="png", width=1200, height=800, engine="kaleido")
-        except Exception:
-            return None
+    except Exception as e:
+        logger.debug("Figure export failed for %s: %s", filename, e)
+        st.session_state['_plot_export_failures'] = st.session_state.get('_plot_export_failures', 0) + 1
+        return None
 
 
 def save_matplotlib_fig(fig, filename: str) -> Optional[bytes]:
@@ -2178,6 +2182,7 @@ comparison_df = pd.DataFrame(comparison_data)
 # Get selected_model_params from session_state (needed for export)
 selected_model_params = st.session_state.get('selected_model_params', {})
 zip_buffer = io.BytesIO()
+st.session_state['_plot_export_failures'] = 0
 
 with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
     # Report
@@ -2390,6 +2395,14 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
         zip_file.writestr("manuscript.pdf", _pdf_for_zip)
 
 # ── Download buttons ──────────────────────────────────────────────────────
+_n_plot_failures = st.session_state.get('_plot_export_failures', 0)
+if _n_plot_failures:
+    st.warning(
+        f"{_n_plot_failures} figure(s) could not be rendered to PNG and are missing "
+        f"from the ZIP (static image export requires a working kaleido/Chromium). "
+        f"All tables, manuscripts, and data artifacts are unaffected."
+    )
+
 # Primary: ZIP (contains everything)
 st.download_button(
     label="Download Complete Package (ZIP)",
