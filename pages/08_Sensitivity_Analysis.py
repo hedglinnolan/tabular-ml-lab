@@ -127,7 +127,9 @@ if st.button("▶️ Run Seed Sensitivity", type="primary", key="run_seed"):
     # GLM, kNN, LDA, NB — and says nothing about split luck.
     from sklearn.model_selection import train_test_split as _seed_tts
     _as_df = lambda p: p if isinstance(p, pd.DataFrame) else pd.DataFrame(p)
-    _pool_parts = [(X_train, y_train), (X_val, y_val), (X_test, y_test)]
+    _X_val_ss = st.session_state.get("X_val")
+    _y_val_ss = st.session_state.get("y_val")
+    _pool_parts = [(X_train, y_train), (_X_val_ss, _y_val_ss), (X_test, y_test)]
     _pool_parts = [(px_, py_) for px_, py_ in _pool_parts if px_ is not None and len(px_) > 0]
     X_pool = pd.concat([_as_df(px_) for px_, _ in _pool_parts], axis=0, ignore_index=True)
     y_pool = np.concatenate([np.asarray(py_) for _, py_ in _pool_parts])
