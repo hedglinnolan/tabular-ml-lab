@@ -30,8 +30,20 @@ SEVERITY_STYLES = {
 
 
 def _get_selected_models() -> List[str]:
-    """Get the user's currently selected models from session state."""
-    return st.session_state.get("selected_models", [])
+    """Get the user's currently selected models from session state.
+
+    The model-selection checkboxes (train_model_<key>, shared by the
+    Preprocess and Train pages) are the source of truth; an explicit
+    'selected_models' key acts as an override for programmatic use. Nothing
+    wrote 'selected_models' before, which left model-aware coaching —
+    grouping and per-family scoping — permanently inactive.
+    """
+    explicit = st.session_state.get("selected_models")
+    if explicit:
+        return list(explicit)
+    return [k.replace("train_model_", "")
+            for k, v in st.session_state.items()
+            if k.startswith("train_model_") and v is True]
 
 
 def render_page_coaching(

@@ -1481,7 +1481,9 @@ def generate_preprocessing_insights(
             ),
             "model_scope": scale_affected,
             "relevant_pages": ["05_Preprocess"],
-            "theory_anchor": "feature_scale",
+            # 'scaling' is the key that exists in THEORY_ANCHORS; the demo
+            # previously rendered only via an accidental text match
+            "theory_anchor": "scaling",
         })
 
     # 4. Missing data — native handling differs by family
