@@ -491,6 +491,22 @@ if st.button("Prepare Splits", type="primary"):
                 action=f'Target variable transformed using {_target_transform}',
                 details={'target_transform': _target_transform},
             )
+            # A target transform is the action that actually addresses the
+            # target-skew insight (Preprocess feature transforms do not).
+            try:
+                from utils.insight_ledger import get_ledger as _split_ledger_get
+                _split_ledger = _split_ledger_get()
+                _ts_ins = _split_ledger.get("eda_target_skew")
+                if _ts_ins and not _ts_ins.resolved:
+                    _split_ledger.resolve(
+                        "eda_target_skew",
+                        resolved_by=f"Target transformed using {_target_transform} before model fitting",
+                        resolved_on_page="06_Train_and_Compare",
+                        resolution_details={"action_type": "target_transform",
+                                            "method": _target_transform},
+                    )
+            except Exception:
+                pass
         else:
             # No transform: clear any stale transformer state from a previous run
             st.session_state.pop('target_transformer', None)
@@ -516,6 +532,30 @@ if st.button("Prepare Splits", type="primary"):
             st.session_state.val_indices = original_indices[idx_val].tolist()
             st.session_state.test_indices = original_indices[idx_test].tolist()
         
+        # Record the split in workflow provenance — without this the generated
+        # Methods section contains no train/val/test statement and no seed.
+        try:
+            from utils.workflow_provenance import get_provenance
+            if use_group_split and entity_id_final:
+                _split_strategy = "grouped"
+            elif split_config.use_time_split and data_config.datetime_col:
+                _split_strategy = "time-based"
+            elif split_config.stratify and task_type_final == 'classification':
+                _split_strategy = "stratified random"
+            else:
+                _split_strategy = "random"
+            get_provenance().record_split(
+                strategy=_split_strategy,
+                train_n=len(X_train), val_n=len(X_val), test_n=len(X_test),
+                random_seed=int(getattr(split_config, 'random_state', 42)),
+                target_transform=_target_transform or "none",
+                target_trim_enabled=bool(getattr(split_config, 'trim_target', False)),
+                target_trim_lower=float(getattr(split_config, 'trim_lower', 0.0)),
+                target_trim_upper=float(getattr(split_config, 'trim_upper', 1.0)),
+            )
+        except Exception:
+            logger.exception("Failed to record split provenance")
+
         st.success(f"Splits prepared: Train={len(X_train)}, Val={len(X_val)}, Test={len(X_test)}")
         # Guardrails for small evaluation sets
         if len(X_test) < 5:
@@ -1750,7 +1790,14 @@ if st.session_state.get('trained_models'):
         Without this comparison, they can't tell if your model actually adds value.
         """)
 
-        if st.button("Train Baseline Models", key="train_baselines"):
+        # Baselines are advertised as automatic: compute them whenever models
+        # exist and no (current) baseline results do — reset_downstream_results
+        # clears them when the data or configuration changes.
+        _baselines_missing = (
+            st.session_state.get("baseline_results") is None
+            and bool(st.session_state.get("model_results"))
+        )
+        if st.button("Recompute Baseline Models", key="train_baselines") or _baselines_missing:
             from ml.baseline_models import train_baseline_models
             X_train_base = st.session_state.get("X_train")
             X_test_base = st.session_state.get("X_test")

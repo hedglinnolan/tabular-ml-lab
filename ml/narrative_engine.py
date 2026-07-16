@@ -973,8 +973,13 @@ class NarrativeEngine:
         task_type = self.ctx.get("task_type", "")
         primary_model = self.ctx.get("primary_model", "")
         
-        # Determine best model if not specified
-        if not primary_model and metrics:
+        # Best model by metric — used as the default primary AND to keep the
+        # prose honest when the user deliberately picks a non-best primary
+        # (e.g. an interpretable model): the Results section must not claim
+        # "best overall performance" for a model the comparison sentence will
+        # then describe as having the highest error.
+        metric_best = ""
+        if metrics:
             if task_type == "regression":
                 # Lower RMSE is better
                 best_rmse = float("inf")
@@ -982,7 +987,7 @@ class NarrativeEngine:
                     rmse = m_metrics.get("RMSE", float("inf"))
                     if rmse < best_rmse:
                         best_rmse = rmse
-                        primary_model = m
+                        metric_best = m
             elif task_type == "classification":
                 # Higher accuracy/F1 is better
                 best_f1 = 0.0
@@ -990,7 +995,9 @@ class NarrativeEngine:
                     f1 = m_metrics.get("F1", m_metrics.get("Accuracy", 0.0))
                     if f1 > best_f1:
                         best_f1 = f1
-                        primary_model = m
+                        metric_best = m
+        if not primary_model:
+            primary_model = metric_best
         
         # Report best model and key metrics
         if primary_model and metrics.get(primary_model):
@@ -1004,8 +1011,14 @@ class NarrativeEngine:
                 r2_ci_hi = best_metrics.get("R2_ci_upper")
                 rmse_ci_lo = best_metrics.get("RMSE_ci_lower")
                 rmse_ci_hi = best_metrics.get("RMSE_ci_upper")
-                
-                parts.append(f"{model_label} demonstrated the best overall performance.")
+
+                if not metric_best or primary_model == metric_best:
+                    parts.append(f"{model_label} demonstrated the best overall performance.")
+                else:
+                    parts.append(
+                        f"{model_label} was selected as the primary model for reporting; "
+                        f"{self._model_name(metric_best)} achieved the best point-estimate performance."
+                    )
                 
                 metric_strs = []
                 if r2 is not None:
@@ -1033,8 +1046,14 @@ class NarrativeEngine:
                 acc = best_metrics.get("Accuracy")
                 f1 = best_metrics.get("F1")
                 auc = best_metrics.get("AUC")
-                
-                parts.append(f"{model_label} demonstrated the best overall performance.")
+
+                if not metric_best or primary_model == metric_best:
+                    parts.append(f"{model_label} demonstrated the best overall performance.")
+                else:
+                    parts.append(
+                        f"{model_label} was selected as the primary model for reporting; "
+                        f"{self._model_name(metric_best)} achieved the best point-estimate performance."
+                    )
                 
                 metric_strs = []
                 for metric_key, metric_val in [("Accuracy", acc), ("F1", f1), ("AUC", auc)]:
@@ -1084,12 +1103,16 @@ class NarrativeEngine:
                         f"while {worst_name} demonstrated the lowest classification performance."
                     )
         
-        # Feature importance findings (if available from session_state or ledger)
-        # For now, placeholder — feature importance would need to be in provenance
-        # or passed via an extended context
-        parts.append(
-            "[Feature importance analysis pending — requires explainability provenance integration.]"
-        )
+        # Feature importance findings — from the explainability context when
+        # available; omitted entirely otherwise (never a placeholder in a
+        # reader-facing Results section).
+        top_features = self.ctx.get("top_features") or []
+        if top_features:
+            parts.append(
+                f"Feature importance analysis identified "
+                f"{self._human_join([str(f) for f in top_features[:5]])} "
+                f"as the strongest predictors."
+            )
         
         # Note if complex models didn't beat simple ones (this is a finding, not a failure)
         if len(models) >= 2 and metrics:

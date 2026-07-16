@@ -211,9 +211,15 @@ def extract_model_coefficients(model, model_key: str, feature_names: list) -> Op
             # Handle multi-class case
             if len(coef.shape) > 1:
                 coef = coef[0]  # Take first class for binary classification
-            
+
+            # A name/coefficient count mismatch means the names are from the
+            # wrong space (raw vs post-transform); positional truncation would
+            # attach real variable names to the wrong coefficients.
+            if feature_names is None or len(feature_names) != len(coef):
+                return None
+
             coef_df = pd.DataFrame({
-                'Feature': feature_names[:len(coef)],
+                'Feature': list(feature_names),
                 'Coefficient': coef
             }).sort_values('Coefficient', key=abs, ascending=False)
             
@@ -453,7 +459,61 @@ def _build_manuscript_context(
         'cohort_type': cohort_type,
         'target_stats': target_stats,
         'top_features': top_features,
+        'baseline_results': _summarize_baselines(),
     }
+
+
+def _build_reproducibility_manifest() -> Dict[str, Any]:
+    """Software versions, seeds, and a content hash of the analysis data.
+
+    The LaTeX supplementary promises reviewers that the exported package
+    contains exactly these; this function is what makes that claim true.
+    """
+    import platform
+    import hashlib as _hashlib
+
+    versions: Dict[str, str] = {'python': platform.python_version()}
+    for _pkg in ('numpy', 'pandas', 'sklearn', 'scipy', 'statsmodels',
+                 'streamlit', 'torch', 'xgboost', 'lightgbm', 'shap', 'optuna'):
+        try:
+            _mod = __import__(_pkg)
+            versions[_pkg] = str(getattr(_mod, '__version__', 'unknown'))
+        except Exception:
+            pass
+
+    data_hash = None
+    n_rows = n_cols = None
+    try:
+        _active_df = get_data()
+        if _active_df is not None:
+            row_hashes = pd.util.hash_pandas_object(_active_df, index=False)
+            data_hash = _hashlib.sha256(row_hashes.values.tobytes()).hexdigest()
+            n_rows, n_cols = int(_active_df.shape[0]), int(_active_df.shape[1])
+    except Exception:
+        pass
+
+    _split_cfg = st.session_state.get('split_config')
+    return {
+        'software_versions': versions,
+        'random_seed': int(getattr(_split_cfg, 'random_state',
+                                   st.session_state.get('random_seed', 42)) or 42),
+        'data_sha256': data_hash,
+        'data_shape': {'rows': n_rows, 'columns': n_cols},
+    }
+
+
+def _summarize_baselines() -> Optional[Dict[str, Dict[str, Any]]]:
+    """Plain-metric summary of the null/simple baselines for export."""
+    baselines = st.session_state.get('baseline_results') or {}
+    out: Dict[str, Dict[str, Any]] = {}
+    for bname, bres in baselines.items():
+        if not isinstance(bres, dict):
+            continue
+        metrics = bres.get('metrics') or {}
+        summary = {k: float(v) for k, v in metrics.items() if isinstance(v, (int, float))}
+        if summary:
+            out[bname] = {'metrics': summary, 'description': bres.get('description', '')}
+    return out or None
 
 
 def _build_analysis_cohort_df() -> pd.DataFrame:
@@ -1265,9 +1325,26 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
                 )
             report_lines.append("")
 
+    # Baseline comparison — the "is your model better than trivial?" anchor
+    _baselines_for_report = (export_ctx.get('manuscript_context') or {}).get('baseline_results')
+    if _baselines_for_report:
+        report_lines.append("### Baseline Comparison")
+        report_lines.append("")
+        report_lines.append("Null and simple baselines, evaluated on the same held-out test set "
+                            "(original target scale):")
+        report_lines.append("")
+        _b_metric_names = sorted({m for b in _baselines_for_report.values() for m in b.get('metrics', {})})
+        report_lines.append("| Baseline | " + " | ".join(_b_metric_names) + " |")
+        report_lines.append("|---" * (len(_b_metric_names) + 1) + "|")
+        for _bname, _bdata in _baselines_for_report.items():
+            _vals = [f"{_bdata['metrics'].get(m):.4f}" if _bdata['metrics'].get(m) is not None else "—"
+                     for m in _b_metric_names]
+            report_lines.append(f"| {_bname} | " + " | ".join(_vals) + " |")
+        report_lines.append("")
+
     report_lines.append("---")
     report_lines.append("")
-    
+
     # Model-Specific Details
     report_lines.append("## Model-Specific Details")
     report_lines.append("")
@@ -1292,9 +1369,20 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
                 report_lines.append(f"- `{param_name}`: {param_value}")
             report_lines.append("")
         
-        # Linear model coefficients
+        # Linear model coefficients. Coefficients live in POST-transform space
+        # (after one-hot/scaling/PCA), so they must be labeled with the model's
+        # post-transform feature names — raw column names would silently
+        # mislabel them (e.g. PCA components labeled as clinical variables).
         if model_key in ['ridge', 'lasso', 'elasticnet', 'glm', 'huber', 'logreg']:
-            coef_df = extract_model_coefficients(model_wrapper, model_key, feature_names)
+            _post_transform_names = (st.session_state.get('feature_names_by_model') or {}).get(model_key)
+            coef_df = extract_model_coefficients(
+                model_wrapper, model_key, _post_transform_names or feature_names
+            )
+            if coef_df is None:
+                report_lines.append("_Coefficient table omitted: post-transform feature names "
+                                    "were unavailable for this model, and mislabeled coefficients "
+                                    "are worse than none._")
+                report_lines.append("")
             if coef_df is not None:
                 report_lines.append("**Model Coefficients (Top 10 by magnitude):**")
                 report_lines.append("")
@@ -2284,6 +2372,10 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
     }
     if selected_model_params:
         manifest['model_hyperparameters'] = selected_model_params
+    # Reproducibility: the manuscript's supplementary section tells reviewers
+    # this package contains software versions, seeds, and a data hash — make
+    # that statement true.
+    manifest['reproducibility'] = _build_reproducibility_manifest()
     zip_file.writestr("manifest.json", json.dumps(manifest, indent=2, default=str))
 
     # LaTeX manuscript (if generated)

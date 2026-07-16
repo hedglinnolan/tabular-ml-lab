@@ -1108,18 +1108,22 @@ class InsightLedger:
         seen_limitations = set()
 
         for i in self._insights:
-            if i.resolved:
-                continue
-
             finding = _clean_for_manuscript(i.finding)
             if not finding:
                 continue
 
-            is_strength = i.id.startswith("eda_opportunity_") or i.severity == "info"
-            if is_strength:
+            # Only genuine positives (eda_opportunity_*) are strengths. They are
+            # typically created already-resolved ("no action needed"), so they
+            # must be collected BEFORE the resolved-skip. Severity alone must
+            # never promote an insight: an unresolved info-level concern
+            # ("N features are heavily skewed") is not a study strength.
+            if i.id.startswith("eda_opportunity_"):
                 if finding not in seen_strengths:
                     strengths.append(finding)
                     seen_strengths.add(finding)
+                continue
+
+            if i.resolved:
                 continue
 
             if i.acknowledged or self._is_narrative_worthy(i):

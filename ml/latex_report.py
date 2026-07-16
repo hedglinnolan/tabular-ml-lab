@@ -768,6 +768,18 @@ def generate_latex_report(
             )
         sections.append("Table \\ref{tab:model_performance} summarizes held-out performance across the evaluated models.")
         sections.append(_metrics_to_latex_table(model_results, task_type, bootstrap_results))
+
+        baselines = manuscript_facts.get('baseline_results') or {}
+        if baselines:
+            b_parts = []
+            for bname, bdata in baselines.items():
+                metrics = (bdata or {}).get('metrics', {})
+                m_txt = ", ".join(f"{_escape_latex(str(k))} = {v:.4f}" for k, v in metrics.items())
+                b_parts.append(f"{_escape_latex(str(bname))} ({m_txt})")
+            sections.append(
+                "For reference, null and simple baseline models evaluated on the same "
+                "held-out test set achieved: " + "; ".join(b_parts) + "."
+            )
     elif draft_results:
         sections.append(draft_results)
         sections.append("\n")

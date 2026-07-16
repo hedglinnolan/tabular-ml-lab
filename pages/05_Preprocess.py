@@ -1036,7 +1036,11 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
             _models_with_transform = {mk: t for mk, t in _transform_by_model.items() if t != "none"}
             _models_without = [mk for mk, t in _transform_by_model.items() if t == "none"]
             if _models_with_transform:
-                for _skew_id in ["eda_skew_individual", "eda_skew_batch", "eda_target_skew"]:
+                # eda_skew_group is the id EDA actually creates for feature skew.
+                # eda_target_skew is deliberately NOT here: it concerns the target
+                # variable, which a feature power transform does not touch — it is
+                # resolved on Train & Compare when a target transform is applied.
+                for _skew_id in ["eda_skew_group"]:
                     _ins = _pp_resolve_ledger.get(_skew_id)
                     if _ins and not _ins.resolved:
                         if _models_without:
@@ -1051,7 +1055,9 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
             _outlier_by_model = {mk: mc.get("numeric_outlier_treatment", "none") for mk, mc in configs_by_model.items()}
             _models_with_outlier = {mk: t for mk, t in _outlier_by_model.items() if t != "none"}
             if _models_with_outlier:
-                for _out_id in ["eda_outliers"]:
+                # preprocess_outlier_handling is the model-coach insight that
+                # actually exists; no insight named eda_outliers is ever created.
+                for _out_id in ["preprocess_outlier_handling"]:
                     _ins = _pp_resolve_ledger.get(_out_id)
                     if _ins and not _ins.resolved:
                         _models_no_outlier = [mk for mk, t in _outlier_by_model.items() if t == "none"]
