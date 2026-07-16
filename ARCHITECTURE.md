@@ -10,7 +10,7 @@
 
 A research workbench that guides scientists through a complete, defensible ML workflow on tabular data — from raw CSV to compilable LaTeX manuscript. The user provides domain expertise; the app provides methodological rigor.
 
-**Stack:** Streamlit (~22K lines Python), Ollama for LLM-powered interpretation, SQLite for project/dataset persistence.
+**Stack:** Streamlit (~22K lines Python), Ollama for LLM-powered interpretation, session-state-only project/dataset management (nothing is persisted to disk; sessions are saved as user-downloaded archives).
 
 **URL:** https://app.tabularml.dev (deployed via Cloudflare Tunnel → Streamlit on port 8501)
 
@@ -168,14 +168,24 @@ Consistent interface for all model families:
 
 ## Data Persistence
 
-### Project System (`utils/dataset_db.py`)
-SQLite-backed project and dataset management. Supports:
+### Project System (`utils/session_projects.py`)
+Session-state-only project and dataset management — all state lives in
+`st.session_state`; nothing is written to disk, and each browser session is
+fully isolated. Supports:
 - Project-based organization (multiple datasets per project)
 - Dataset merging with intelligent column reconciliation
 - Working table management
 
+(`utils/dataset_db.py` contains an unwired SQLite implementation of the same
+interface; it is NOT used by the running app.)
+
 ### Session Management (`utils/session_manager.py`)
-Save/load full analysis sessions (pickle-based). Users can download and resume their workflow, preserving all state including ledger entries, provenance records, and trained models.
+Save/load full analysis sessions as a ZIP of JSON + Parquet. Deliberately
+**not** pickle-based: pickle files are rejected on load for security, and
+fitted models/pipelines are never persisted (`_NEVER_PERSIST`) — after
+restoring a session, models are re-trained by re-running Train & Compare.
+What round-trips: data, configuration, ledger entries, provenance records,
+and methodology logs.
 
 ---
 
@@ -216,7 +226,7 @@ Whenever a new feature or ML model is added, it cuts across all three layers:
 
 | Concern | Primary files |
 |---|---|
-| **Data pipeline** | `ml/preprocessing.py`, `ml/preprocess_operators.py`, `ml/pipeline.py`, `ml/training.py` |
+| **Data pipeline** | `ml/preprocess_operators.py`, `ml/pipeline.py`, `ml/feature_steps.py` |
 | **Model registry** | `ml/model_registry.py`, `models/*.py` (wrappers) |
 | **Insight layer** | `utils/insight_ledger.py` (single source of truth) |
 | **Coaching UI** | `utils/coaching_ui.py` (renders ledger insights consistently) |
@@ -231,7 +241,7 @@ Whenever a new feature or ML model is added, it cuts across all three layers:
 | **Feature selection** | `ml/feature_selection.py`, `ml/feature_steps.py` |
 | **Evaluation** | `ml/eval.py`, `ml/calibration.py`, `ml/bootstrap.py`, `ml/sensitivity.py` |
 | **Regime detection** | `ml/regime.py` (adaptive layout based on dataset shape) |
-| **Data persistence** | `utils/dataset_db.py` (SQLite projects), `utils/session_manager.py` (save/load) |
+| **Data persistence** | `utils/session_projects.py` (session-state projects), `utils/session_manager.py` (save/load) |
 | **Navigation** | `utils/storyline.py` (breadcrumbs), `utils/theme.py` (CSS/styling) |
 | **Utilities** | `utils/reconcile.py`, `utils/column_utils.py`, `utils/widget_helpers.py`, `utils/seed.py` |
 | **Tests** | `tests/` (unit + integration + workflow tests) |
@@ -265,7 +275,7 @@ Page 09 (Hypothesis) ──> hypothesis_test_results
 Page 10 (Report) ──reads all above──> manuscript, LaTeX, PDF
 ```
 
-**Cascade invalidation:** When upstream state changes (e.g., feature set changes in Page 04), `reset_data_dependent_state()` in `utils/session_state.py` clears all downstream keys (pipelines, models, results, explainability).
+**Cascade invalidation:** `reset_downstream_results()` in `utils/session_state.py` is the single source of truth for clearing every result computed from data (splits, models, metrics, explainability, sensitivity, hypothesis tests, Table 1, report artifacts, downstream provenance sections). It fires on three triggers: (1) full dataset replacement — `reset_data_dependent_state()` additionally clears configuration, the insight ledger, and provenance; (2) same-schema content change — `set_data()` fingerprints data content, so re-uploads and cleaning actions invalidate results while keeping configuration; (3) modeling-config change — Page 01 hashes the feature set, target column, AND task type. Any page that introduces a new result key must add it to `reset_downstream_results()`.
 
 ---
 

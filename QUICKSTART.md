@@ -22,8 +22,8 @@
 # 3. First time setup (creates .venv, installs deps via uv)
 .\setup.ps1
 
-# 4. Run preflight check (optional but recommended)
-uv run python preflight.py
+# 4. Run smoke check (optional but recommended)
+uv run python scripts/smoke_check.py
 
 # 5. Run the app
 .\run.ps1
@@ -52,8 +52,8 @@ chmod +x setup.sh run.sh
 # 4. First time setup (creates .venv, installs deps via uv)
 ./setup.sh
 
-# 5. Run preflight check (optional but recommended)
-uv run python preflight.py
+# 5. Run smoke check (optional but recommended)
+uv run python scripts/smoke_check.py
 
 # 6. Run the app
 ./run.sh
@@ -75,22 +75,20 @@ chmod +x setup.sh run.sh
 git checkout <branch-name>
 ```
 
-## Preflight Check
+## Smoke Check
 
-Run before starting the app to verify dependencies:
+Run before starting the app to verify dependencies and core functionality:
 
 ```bash
 # Windows
-python preflight.py
+python scripts/smoke_check.py
 
 # macOS/Linux
-python3 preflight.py
+python3 scripts/smoke_check.py
 ```
 
-This checks:
-- Python version (3.8+)
-- Key packages (streamlit, torch, pandas, numpy, sklearn, plotly)
-- Module imports (ml/*, models/*, utils/*)
+This exercises module imports (ml/*, models/*, utils/*) and core workflow
+functions without starting the UI.
 
 ## Common Errors & Fixes
 
@@ -158,7 +156,7 @@ streamlit run app.py --server.port 8502
 **Fix:** Ensure you're in the repo root directory
 ```bash
 # Verify you're in the right directory
-pwd  # Should show: .../glucose-mlp-interactive
+pwd  # Should show: .../tabular-ml-lab
 
 # Check that directories exist
 ls ml/ models/ utils/
