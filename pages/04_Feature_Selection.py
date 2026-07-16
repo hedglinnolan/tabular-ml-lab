@@ -117,10 +117,21 @@ if categorical_excluded:
         f"These features are retained in your dataset and can still be used for modeling."
     )
 
-# Prepare data (drop missing target)
-mask = df[target_col].notna()
+# Prepare data: drop missing targets AND quarantine the locked test rows.
+# Running selectors on all rows would let the test set vote on which
+# predictors enter the model — the classic feature-selection leakage
+# (Ambroise & McLachlan 2002; ESL §7.10.2).
+from utils.test_lockbox import train_row_mask, render_lockbox_status, is_exploratory
+
+render_lockbox_status("Selectors on this page are fit on training rows only.")
+mask = df[target_col].notna() & train_row_mask(df.index)
 X = df.loc[mask, numeric_features].values
 y = df.loc[mask, target_col].values
+if not is_exploratory():
+    st.caption(
+        f"Selection methods see n={int(mask.sum())} training rows; "
+        f"held-out test rows are excluded to prevent selection leakage."
+    )
 
 # Handle NaN in features (simple imputation for feature selection)
 # Note: This temporary imputation does not affect the modeling pipeline

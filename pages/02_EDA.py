@@ -66,6 +66,8 @@ inject_custom_css()
 render_sidebar_workflow(current_page="02_EDA")
 render_step_indicator(2, "Exploratory Data Analysis")
 render_breadcrumb("02_EDA")
+from utils.test_lockbox import render_lockbox_status
+render_lockbox_status("Descriptive EDA is full-cohort; automated selection and modeling decisions use training rows only.")
 render_page_navigation("02_EDA")
 
 # ============================================================================

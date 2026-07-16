@@ -1627,6 +1627,66 @@ if task_mode == "prediction":
             if _old_hash:  # Only warn if this isn't the first save
                 st.info('Feature configuration changed — downstream preprocessing, splits, and models have been reset.')
 
+        # Quarantine the test set NOW, before any target-aware analysis can
+        # see it. EDA target views, feature-engineering fits, and feature
+        # selection all scope to training rows via this lockbox.
+        from utils.test_lockbox import (
+            ensure_lockbox, render_lockbox_status, get_lockbox,
+            DEFAULT_TEST_FRACTION, is_exploratory,
+        )
+        _lb = ensure_lockbox(df, target_col, task_type_final)
+        if _lb is not None and get_lockbox() is not None:
+            _prev_ledger_note = st.session_state.get('_lockbox_ledger_noted')
+            if _prev_ledger_note != _lb['signature']:
+                st.session_state['_lockbox_ledger_noted'] = _lb['signature']
+                try:
+                    from utils.insight_ledger import get_ledger, Insight
+                    get_ledger().upsert(Insight(
+                        id="upload_test_lockbox",
+                        source_page="01_Upload_and_Audit",
+                        category="study_design",
+                        severity="info",
+                        finding=(f"A {_lb['fraction']:.0%} test set (n={_lb['n_test']}"
+                                 f"{', stratified' if _lb.get('stratified') else ''}) was "
+                                 f"held out at upload, before feature engineering or selection."),
+                        implication="Held-out evaluation is protected from selection and preprocessing leakage.",
+                        recommended_action="",
+                        relevant_pages=["06_Train_and_Compare"],
+                        resolved=True,
+                        resolved_by="Quarantined automatically at upload (seed "
+                                    f"{_lb['seed']})",
+                        resolved_on_page="01_Upload_and_Audit",
+                        resolution_details={"action_type": "test_lockbox",
+                                            "fraction": _lb['fraction'],
+                                            "seed": _lb['seed'],
+                                            "n_test": _lb['n_test']},
+                    ))
+                except Exception:
+                    pass
+        render_lockbox_status()
+        with st.expander("🔒 Test holdout settings", expanded=False):
+            st.caption(
+                "The test fraction is drawn once, here, so that no downstream "
+                "step can peek at it. Changing it (or enabling exploratory "
+                "mode) resets downstream results."
+            )
+            _lb_frac = st.slider(
+                "Held-out test fraction", 0.05, 0.40,
+                float(st.session_state.get("test_lockbox_fraction", DEFAULT_TEST_FRACTION)),
+                0.05, key="lockbox_fraction_slider",
+            )
+            if _lb_frac != st.session_state.get("test_lockbox_fraction", DEFAULT_TEST_FRACTION):
+                st.session_state["test_lockbox_fraction"] = _lb_frac
+                ensure_lockbox(df, target_col, task_type_final, fraction=_lb_frac)
+            st.checkbox(
+                "Exploratory mode (disable test-set quarantine)",
+                key="exploratory_mode",
+                help="Target-aware steps see ALL rows, including the test set. "
+                     "Useful for hypothesis generation; downstream metrics and "
+                     "the manuscript are watermarked as exploratory and are not "
+                     "publishable as held-out performance.",
+            )
+
         # Log methodology
         log_methodology(
             step='Upload & Audit',

@@ -359,6 +359,9 @@ def reset_data_dependent_state():
 
     st.session_state.pop("methodology_log", None)
     st.session_state.pop("workflow_provenance", None)
+    # New dataset → a fresh test lockbox is drawn on the next config save
+    st.session_state.pop("test_lockbox", None)
+    st.session_state.pop("_lockbox_ledger_noted", None)
 
     # Reset insight ledger
     from utils.insight_ledger import InsightLedger

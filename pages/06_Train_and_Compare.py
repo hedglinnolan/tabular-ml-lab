@@ -88,6 +88,8 @@ render_step_indicator(6, "Train & Compare Models")
 st.title("🧠 Train & Compare Models")
 st.caption("This is the center of the recommended workflow: establish a credible baseline result before deciding whether you need advanced analyses.")
 render_breadcrumb("06_Train_and_Compare")
+from utils.test_lockbox import render_lockbox_status, is_exploratory as _lb_is_exploratory
+render_lockbox_status("This page opens the held-out test set exactly once.")
 render_page_navigation("06_Train_and_Compare")
 
 # Progress indicator
@@ -303,20 +305,47 @@ if st.button("Prepare Splits", type="primary"):
         X = df[feature_cols].copy()
         y = df[target_col].copy()
         mask = y.notna()
+        orig_labels = df.index[mask]
         X = X[mask].reset_index(drop=True)
         y = y[mask].reset_index(drop=True)
         original_indices = np.where(mask)[0]
         n_after_notna = len(X)
 
+        # Test-set lockbox: labels frozen at upload, before feature
+        # engineering/selection could see them. When present (and not in
+        # exploratory mode), it IS the test set; this page only divides the
+        # remaining rows into train/validation. Group- and time-based splits
+        # have their own leakage semantics and bypass the lockbox (disclosed).
+        from utils.test_lockbox import get_lockbox as _get_lockbox, is_exploratory as _lb_exploratory
+        _lockbox = None if _lb_exploratory() else _get_lockbox()
+        _lockbox_applicable = (
+            _lockbox is not None
+            and not (use_group_split and entity_id_final)
+            and not (split_config.use_time_split and data_config.datetime_col)
+        )
+        if _lockbox_applicable:
+            _test_label_set = set(_lockbox["labels"])
+            is_test_row = np.array([lbl in _test_label_set for lbl in orig_labels])
+            if int(is_test_row.sum()) < 2 or int((~is_test_row).sum()) < 4:
+                _lockbox_applicable = False
+
         # Target trimming (regression only, before split)
         if task_type_final == 'regression' and split_config.target_trim_enabled:
-            q_lo = float(y.quantile(split_config.target_trim_lower))
-            q_hi = float(y.quantile(split_config.target_trim_upper))
+            # With a lockbox, trim thresholds come from training rows only and
+            # test rows are never dropped — otherwise the trim both leaks
+            # test-target statistics and evaluates on a truncated population.
+            _trim_basis = y[~is_test_row] if _lockbox_applicable else y
+            q_lo = float(_trim_basis.quantile(split_config.target_trim_lower))
+            q_hi = float(_trim_basis.quantile(split_config.target_trim_upper))
             trim_mask = (y >= q_lo) & (y <= q_hi)
+            if _lockbox_applicable:
+                trim_mask = trim_mask | pd.Series(is_test_row, index=y.index)
             n_trimmed_rows = int((~trim_mask).sum())
             X = X[trim_mask].reset_index(drop=True)
             y = y[trim_mask].reset_index(drop=True)
             original_indices = original_indices[trim_mask.values]
+            if _lockbox_applicable:
+                is_test_row = is_test_row[trim_mask.values]
             st.info(
                 f"Target trimming: removed **{n_trimmed_rows}** rows "
                 f"(quantiles [{split_config.target_trim_lower:.2f}, {split_config.target_trim_upper:.2f}] "
@@ -420,6 +449,37 @@ if st.button("Prepare Splits", type="primary"):
             test_indices = original_indices[test_pos]
 
             st.info(f"Time-based split: Train={df_work.iloc[0][data_config.datetime_col]} to {df_work.iloc[n_train - 1][data_config.datetime_col]}")
+        elif _lockbox_applicable:
+            idx_test = indices[is_test_row]
+            _rest = indices[~is_test_row]
+            _den = train_size + val_size
+            _rel_val = (val_size / _den) if _den > 0 else 0.18
+            _strat = None
+            if split_config.stratify and task_type_final == 'classification':
+                _strat_candidate = y.iloc[_rest]
+                if _strat_candidate.value_counts().min() >= 2:
+                    _strat = _strat_candidate
+            try:
+                idx_train, idx_val = train_test_split(
+                    _rest, test_size=_rel_val,
+                    random_state=split_config.random_state, stratify=_strat
+                )
+            except ValueError:
+                idx_train, idx_val = train_test_split(
+                    _rest, test_size=_rel_val, random_state=split_config.random_state
+                )
+            X_train = X.iloc[idx_train]
+            X_val = X.iloc[idx_val]
+            X_test = X.iloc[idx_test]
+            y_train = y.iloc[idx_train]
+            y_val = y.iloc[idx_val]
+            y_test = y.iloc[idx_test]
+            st.info(
+                f"🔒 Test set from the upload lockbox: n={len(idx_test)} "
+                f"({_lockbox['fraction']:.0%} drawn at upload with seed {_lockbox['seed']}, "
+                f"never seen by feature engineering or selection). "
+                f"Remaining rows were divided into train/validation."
+            )
         elif split_config.stratify and task_type_final == 'classification':
             idx_train, idx_temp, y_train, y_temp = train_test_split(
                 indices, y, test_size=(val_size + test_size),
@@ -544,6 +604,8 @@ if st.button("Prepare Splits", type="primary"):
                 _split_strategy = "stratified random"
             else:
                 _split_strategy = "random"
+            if _lockbox_applicable:
+                _split_strategy += " (test set locked at upload, before feature engineering/selection)"
             get_provenance().record_split(
                 strategy=_split_strategy,
                 train_n=len(X_train), val_n=len(X_val), test_n=len(X_test),

@@ -42,6 +42,8 @@ render_step_indicator(5, "Preprocessing")
 st.title("⚙️ Preprocess for Modeling")
 st.caption("Recommended workflow: make the data model-ready here, then move directly into training and comparison.")
 render_breadcrumb("05_Preprocess")
+from utils.test_lockbox import render_lockbox_status
+render_lockbox_status("Pipelines configured here are fit on training rows at Train & Compare.")
 render_page_navigation("05_Preprocess")
 
 st.markdown("""

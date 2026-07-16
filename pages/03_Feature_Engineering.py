@@ -62,6 +62,8 @@ render_sidebar_workflow(current_page="03_Feature_Engineering")
 st.title("🧬 Feature Engineering")
 st.caption("Advanced workflow step: expand the feature space only after the quick workflow baseline tells you richer features may be worth the complexity.")
 render_breadcrumb("03_Feature_Engineering")
+from utils.test_lockbox import render_lockbox_status
+render_lockbox_status("Stateful transforms (PCA, binning, UMAP, TDA) are fit on training rows, then applied to all rows.")
 render_page_navigation("03_Feature_Engineering")
 
 if st.session_state.get("workflow_mode", "quick") == "quick":
@@ -698,15 +700,20 @@ if use_binning:
             with st.spinner("Creating binned features..."):
                 try:
                     new_cols = []
+                    from utils.test_lockbox import train_row_mask as _lb_mask
+                    _fit_rows = _lb_mask(X_engineered.index)
                     for feat in selected_bin_features:
                         discretizer = KBinsDiscretizer(
                             n_bins=n_bins,
                             encode='ordinal' if encode_as == 'ordinal' else 'onehot-dense',
                             strategy=strategy
                         )
-                        
+
                         feat_data = X_engineered[[feat]]
-                        binned = discretizer.fit_transform(feat_data)
+                        # Bin edges estimated on training rows only; transform
+                        # clips out-of-range test values into the edge bins.
+                        discretizer.fit(feat_data.loc[_fit_rows])
+                        binned = discretizer.transform(feat_data)
                         
                         if encode_as == 'ordinal':
                             col_name = f"{feat}_binned"
@@ -844,21 +851,29 @@ if use_tda:
                     st.error("❌ giotto-tda not installed. Run: `pip install giotto-tda`")
                     st.stop()
                 
+                # TDA summarizes the dataset as ONE point cloud, so its output
+                # columns are dataset-level constants — build that cloud from
+                # training rows only so test structure cannot influence them.
+                from utils.test_lockbox import train_row_mask as _lb_mask
+                _fit_rows_arr = _lb_mask(X_engineered.index).values
                 X_numeric = X_engineered[numeric_features].values
-                
+
                 if normalize_tda:
                     scaler = StandardScaler()
-                    X_numeric = scaler.fit_transform(X_numeric)
-                
+                    scaler.fit(X_numeric[_fit_rows_arr])
+                    X_numeric = scaler.transform(X_numeric)
+
+                _train_pool = X_numeric[_fit_rows_arr]
                 if subsample:
                     rng = np.random.RandomState(42)
-                    indices = rng.choice(len(X_numeric), size=subsample_size, replace=False)
-                    X_tda = X_numeric[indices]
+                    _pool_size = min(subsample_size, len(_train_pool))
+                    indices = rng.choice(len(_train_pool), size=_pool_size, replace=False)
+                    X_tda = _train_pool[indices]
                 else:
-                    X_tda = X_numeric
+                    X_tda = _train_pool
                 
-                # Treat entire dataset as one point cloud
-                X_point_cloud = X_tda.reshape(1, subsample_size if subsample else n_samples, -1)
+                # Treat the training rows as one point cloud
+                X_point_cloud = X_tda.reshape(1, len(X_tda), -1)
                 
                 vr = VietorisRipsPersistence(
                     homology_dimensions=homology_dims,
@@ -988,7 +1003,12 @@ if use_dimred:
                 try:
                     X_numeric = X_engineered[numeric_features]
                     pca = PCA(n_components=n_components_pca)
-                    X_pca = pca.fit_transform(X_numeric)
+                    # Fit loadings on training rows only (test rows are in the
+                    # upload lockbox); transform every row for downstream use.
+                    from utils.test_lockbox import train_row_mask as _lb_mask
+                    _fit_rows = _lb_mask(X_numeric.index)
+                    pca.fit(X_numeric.loc[_fit_rows])
+                    X_pca = pca.transform(X_numeric)
                     
                     pca_cols = [f"PCA_{i+1}" for i in range(n_components_pca)]
                     pca_df = pd.DataFrame(X_pca, columns=pca_cols, index=X_engineered.index)
@@ -1027,7 +1047,15 @@ if use_dimred:
                         random_state=42,
                         n_jobs=-1
                     )
-                    X_umap = reducer.fit_transform(X_numeric)
+                    # Manifold learned from training rows only; test rows are
+                    # projected onto it afterwards.
+                    from utils.test_lockbox import train_row_mask as _lb_mask
+                    _fit_rows = _lb_mask(X_numeric.index)
+                    if bool(_fit_rows.all()):
+                        X_umap = reducer.fit_transform(X_numeric)
+                    else:
+                        reducer.fit(X_numeric.loc[_fit_rows])
+                        X_umap = reducer.transform(X_numeric)
                     
                     umap_cols = [f"UMAP_{i+1}" for i in range(n_components_umap)]
                     umap_df = pd.DataFrame(X_umap, columns=umap_cols, index=X_engineered.index)

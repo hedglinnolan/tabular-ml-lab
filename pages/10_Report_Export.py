@@ -460,6 +460,7 @@ def _build_manuscript_context(
         'target_stats': target_stats,
         'top_features': top_features,
         'baseline_results': _summarize_baselines(),
+        'exploratory_mode': bool(st.session_state.get('exploratory_mode', False)),
     }
 
 

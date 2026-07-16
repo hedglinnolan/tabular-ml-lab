@@ -288,6 +288,8 @@ The major keys that flow between pages. Excludes transient UI widget keys.
 | Key | Type | Read by |
 |-----|------|---------|
 | `raw_data` | DataFrame | All pages (via `get_data()`) |
+| `test_lockbox` | Dict (frozen test row labels, drawn at upload) | Pages 02-04 (train_row_mask), 06 (consumes as THE test set) |
+| `exploratory_mode` | bool (disables quarantine, watermarks outputs) | Pages 02-04, 06, 10 |
 | `filtered_data` | DataFrame | All downstream |
 | `data_config` | DataConfig | All pages |
 | `dataset_profile` | DatasetProfile | Pages 05, 06, 10 |

@@ -140,7 +140,7 @@ For preflight checks, troubleshooting, and a smoke test checklist, see [QUICKSTA
 
 This tool enforces methodological rigor so reviewers don't have to:
 
-- ✅ Proper train/validation/test splits (no data leakage)
+- ✅ Test set locked away at upload — feature engineering and selection fit on training rows only (no leakage into held-out evaluation), with an explicit, watermarked exploratory mode if you want full-data screening
 - ✅ Bootstrap confidence intervals on all reported metrics
 - ✅ Automatic comparison against null and simple baselines
 - ✅ Calibration analysis for clinical prediction models

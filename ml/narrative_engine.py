@@ -464,6 +464,9 @@ class NarrativeEngine:
         if top_features:
             self.ctx["top_features"] = list(top_features)
 
+        if self.manuscript_context.get("exploratory_mode"):
+            self.ctx["exploratory_mode"] = True
+
     def _gen_study_design(self) -> str:
         """Study design: task type, sample size, split strategy."""
         parts = []
@@ -1242,6 +1245,15 @@ class NarrativeEngine:
                 strength_strs = strengths[:3]
                 parts.append("; ".join(strength_strs) + ". ")
             
+            if self.ctx.get("exploratory_mode"):
+                limitations = list(limitations) + [
+                    "the analysis was run in exploratory mode: the held-out test "
+                    "set was not quarantined from feature engineering and "
+                    "selection, so reported performance may be optimistically "
+                    "biased and should not be presented as validated held-out "
+                    "performance"
+                ]
+
             if limitations:
                 parts.append("**Limitations (auto-generated from analysis ledger):** ")
                 limitation_strs = limitations[:5]
