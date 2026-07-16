@@ -525,7 +525,7 @@ def get_registry() -> Dict[str, ModelSpec]:
             'patience': {'type': 'int', 'min': 5, 'max': 50, 'default': 30, 'help': 'Early stopping patience'},
             'lr_scheduler': {'type': 'select', 'options': ['reduce_on_plateau', 'cosine_warm_restarts', 'one_cycle'], 'default': 'reduce_on_plateau', 'help': 'Learning rate scheduler'},
             'grad_clip_norm': {'type': 'float_or_none', 'min': 0.1, 'max': 10.0, 'default': None, 'help': 'Gradient clipping max norm (None = disabled)'},
-            'loss_function': {'type': 'select', 'options': ['mse', 'huber', 'mae', 'weighted_huber'], 'default': 'mse', 'help': 'Loss function for regression (MSE is standard; weighted_huber emphasizes high-value targets)'}
+            'loss_function': {'type': 'select', 'options': ['mse', 'huber', 'mae', 'weighted_huber'], 'default': 'mse', 'help': 'Loss function for regression (MSE is standard; weighted_huber emphasizes targets near the 90th percentile of the training target)'}
         },
         capabilities=ModelCapabilities(
             supports_regression=True,

@@ -1358,27 +1358,33 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 cv_results = None
                 if use_cv and model_name != 'nn':
                     try:
-                        _cv_estimator = model.get_model()
+                        from sklearn.base import clone as _sklearn_clone
+                        from ml.eval import make_cv_pipeline
+                        _cv_estimator = _sklearn_clone(model.get_model())
                         _cv_y_train = y_train
                         _cv_transformer = st.session_state.get('target_transformer')
                         if task_type_final == 'regression' and _cv_transformer is not None:
                             from sklearn.compose import TransformedTargetRegressor
-                            from sklearn.base import clone as _sklearn_clone
                             _y_train_orig = st.session_state.get('y_train_original', y_train)
                             if _cv_transformer == 'log1p':
                                 _cv_estimator = TransformedTargetRegressor(
-                                    regressor=_sklearn_clone(_cv_estimator),
+                                    regressor=_cv_estimator,
                                     func=np.log1p,
                                     inverse_func=np.expm1,
                                 )
                             else:
                                 _cv_estimator = TransformedTargetRegressor(
-                                    regressor=_sklearn_clone(_cv_estimator),
+                                    regressor=_cv_estimator,
                                     transformer=_sklearn_clone(_cv_transformer),
                                 )
                             _cv_y_train = _y_train_orig
+                        # CV on RAW training data with the preprocessing re-fit
+                        # inside each fold — scoring the pre-transformed matrix
+                        # leaked every fold's held-out rows into the transformer
+                        # statistics and optimistically biased CV scores.
+                        _cv_full = make_cv_pipeline(model_pipeline, _cv_estimator)
                         cv_results = perform_cross_validation(
-                            _cv_estimator, X_train_model, _cv_y_train,
+                            _cv_full, X_train, _cv_y_train,
                             cv_folds=cv_folds, task_type=data_config.task_type
                         )
                     except Exception as cv_error:

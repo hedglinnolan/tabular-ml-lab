@@ -66,7 +66,11 @@ class SimpleMLP(nn.Module):
 
 def weighted_huber_loss(y_pred: torch.Tensor, y_true: torch.Tensor, 
                        t0: float = 180.0, s: float = 20.0, alpha: float = 2.5) -> torch.Tensor:
-    """Weighted Huber loss focusing on high values (from existing models.py)."""
+    """Weighted Huber loss with a Gaussian emphasis window centred at t0.
+
+    Callers derive t0/s from the training target (90th percentile / half an
+    SD); the numeric defaults are only a legacy fallback.
+    """
     errors = y_true - y_pred
     abs_errors = torch.abs(errors)
     
@@ -226,7 +230,7 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
     REGRESSION_LOSSES = {
         'mse': 'Mean Squared Error (standard)',
         'huber': 'Huber Loss (robust to outliers)',
-        'weighted_huber': 'Weighted Huber (emphasizes high-value targets, e.g., glucose)',
+        'weighted_huber': 'Weighted Huber (emphasizes targets near the 90th percentile of the training target)',
         'mae': 'Mean Absolute Error (robust)',
     }
 
@@ -364,6 +368,14 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
                 criterion = nn.L1Loss()
             elif self.loss_function == 'weighted_huber':
                 criterion = None  # Use weighted_huber_loss function
+                # Derive the emphasis window from the TRAINING target rather
+                # than hardcoded glucose constants (t0=180, s=20): the weight
+                # peaks at the 90th percentile of y_train and decays over half
+                # a standard deviation, so 'emphasizes high-value targets'
+                # holds on any target scale.
+                _y_flat = np.asarray(y_train, dtype=float).ravel()
+                self._whuber_t0 = float(np.percentile(_y_flat, 90))
+                self._whuber_s = float(max(np.std(_y_flat) * 0.5, 1e-6))
             else:
                 criterion = nn.MSELoss()  # Default to MSE
         
@@ -444,7 +456,9 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
                     if criterion is not None:
                         loss = criterion(y_pred, y_batch)
                     else:
-                        loss = weighted_huber_loss(y_pred, y_batch)
+                        loss = weighted_huber_loss(y_pred, y_batch,
+                                                   t0=getattr(self, '_whuber_t0', 180.0),
+                                                   s=getattr(self, '_whuber_s', 20.0))
                 
                 loss.backward()
                 if grad_clip_norm is not None:
@@ -477,7 +491,9 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
                         if criterion is not None:
                             val_loss = criterion(y_val_pred, y_val_t)
                         else:
-                            val_loss = weighted_huber_loss(y_val_pred, y_val_t)
+                            val_loss = weighted_huber_loss(y_val_pred, y_val_t,
+                                                           t0=getattr(self, '_whuber_t0', 180.0),
+                                                           s=getattr(self, '_whuber_s', 20.0))
                         val_rmse = torch.sqrt(torch.mean((y_val_pred - y_val_t) ** 2)).item()
                         val_metric = val_rmse
                 

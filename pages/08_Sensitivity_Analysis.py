@@ -86,9 +86,16 @@ st.markdown("---")
 # ── 1. Random Seed Sensitivity ───────────────────────────────────────
 st.header("🎲 Random Seed Sensitivity")
 st.markdown(
-    "If your results change dramatically with a different random seed, "
-    "they may be driven by a lucky/unlucky train-test split rather than real signal. "
-    "**Robust results show low variance across seeds.**"
+    "Each seed below draws a **fresh train/test split**, re-fits the "
+    "preprocessing pipeline on the new training rows, and retrains the model "
+    "(the model's own random seed is varied too). If results change "
+    "dramatically across seeds, they were driven by a lucky/unlucky split "
+    "rather than real signal. **Robust results show low variance across seeds.**"
+)
+st.caption(
+    "Note: this diagnostic deliberately re-partitions all rows (including the "
+    "locked test set) to measure split sensitivity — your reported headline "
+    "metrics still come from the untouched lockbox test set on Train & Compare."
 )
 
 n_seeds = st.slider("Number of seeds to test", 3, 20, 8, help="More seeds = more confident assessment, but takes longer.")
@@ -110,61 +117,86 @@ if st.button("▶️ Run Seed Sensitivity", type="primary", key="run_seed"):
         st.warning("⚠️ Seed sensitivity is not supported for Neural Network models (PyTorch doesn't support sklearn clone). Select a different model.")
         st.stop()
 
-    progress = st.progress(0, text=f"Initializing seed sensitivity for {selected_model.upper()}... (retraining model {n_seeds} times)")
+    progress = st.progress(0, text=f"Initializing seed sensitivity for {selected_model.upper()}... (re-splitting and retraining {n_seeds} times)")
     status_text = st.empty()
     results = []
 
+    # Pool the stored splits back together so every seed draws a genuinely
+    # fresh partition. Re-seeding a model on a FIXED split (the old behavior)
+    # measures only model-internal randomness — identically zero for Ridge,
+    # GLM, kNN, LDA, NB — and says nothing about split luck.
+    from sklearn.model_selection import train_test_split as _seed_tts
+    _as_df = lambda p: p if isinstance(p, pd.DataFrame) else pd.DataFrame(p)
+    _pool_parts = [(X_train, y_train), (X_val, y_val), (X_test, y_test)]
+    _pool_parts = [(px_, py_) for px_, py_ in _pool_parts if px_ is not None and len(px_) > 0]
+    X_pool = pd.concat([_as_df(px_) for px_, _ in _pool_parts], axis=0, ignore_index=True)
+    y_pool = np.concatenate([np.asarray(py_) for _, py_ in _pool_parts])
+    _test_frac = max(0.05, min(0.5, len(X_test) / max(1, len(X_pool))))
+    _seed_transformer = st.session_state.get('target_transformer')
+
     for i, seed in enumerate(seed_list):
-        status_text.text(f"Training {selected_model.upper()} with seed {seed} ({i+1}/{len(seed_list)})...")
+        status_text.text(f"Split + train {selected_model.upper()} with seed {seed} ({i+1}/{len(seed_list)})...")
         try:
-            # Clone and retrain with different seed
+            # Fresh split for this seed
+            _strat = y_pool if task_type != "regression" else None
+            try:
+                X_tr_raw, X_te_raw, y_tr, y_te = _seed_tts(
+                    X_pool, y_pool, test_size=_test_frac, random_state=seed, stratify=_strat)
+            except ValueError:
+                X_tr_raw, X_te_raw, y_tr, y_te = _seed_tts(
+                    X_pool, y_pool, test_size=_test_frac, random_state=seed)
+
+            # Clone model and vary its internal seed too
             cloned = clone(model_obj)
             if hasattr(cloned, "random_state"):
                 cloned.set_params(random_state=seed)
 
-            # Get preprocessed data
+            # Re-fit the preprocessing on THIS seed's training rows
             if pipeline is not None:
-                X_tr = pipeline.transform(X_train)
-                X_te = pipeline.transform(X_test)
+                _pipe_seed = clone(pipeline)
+                _pipe_seed.fit(X_tr_raw)
+                X_tr = _pipe_seed.transform(X_tr_raw)
+                X_te = _pipe_seed.transform(X_te_raw)
             else:
-                X_tr = X_train.values if hasattr(X_train, "values") else X_train
-                X_te = X_test.values if hasattr(X_test, "values") else X_test
+                X_tr = X_tr_raw.values
+                X_te = X_te_raw.values
 
             if hasattr(X_tr, "toarray"):
                 X_tr = X_tr.toarray()
                 X_te = X_te.toarray()
 
-            cloned.fit(X_tr, y_train)
+            cloned.fit(X_tr, y_tr)
             preds = cloned.predict(X_te)
 
-            # Back-transform predictions if a target transformer was used
-            _seed_transformer = st.session_state.get('target_transformer')
-            _y_test_seed = y_test
+            # Evaluate on the original target scale when a transform is active
+            y_eval = y_te
             if task_type == "regression" and _seed_transformer is not None:
                 if _seed_transformer == 'log1p':
                     preds = np.expm1(preds)
+                    y_eval = np.expm1(np.asarray(y_te, dtype=float))
                 else:
                     preds = _seed_transformer.inverse_transform(preds.reshape(-1, 1)).ravel()
-                _y_test_seed = st.session_state.get('y_test_original', y_test)
+                    y_eval = _seed_transformer.inverse_transform(
+                        np.asarray(y_te, dtype=float).reshape(-1, 1)).ravel()
 
             metrics = {}
             if task_type == "regression":
-                metrics["rmse"] = np.sqrt(mean_squared_error(_y_test_seed, preds))
-                metrics["mae"] = mean_absolute_error(_y_test_seed, preds)
-                metrics["r2"] = r2_score(_y_test_seed, preds)
+                metrics["rmse"] = np.sqrt(mean_squared_error(y_eval, preds))
+                metrics["mae"] = mean_absolute_error(y_eval, preds)
+                metrics["r2"] = r2_score(y_eval, preds)
             else:
-                metrics["accuracy"] = accuracy_score(y_test, preds)
+                metrics["accuracy"] = accuracy_score(y_te, preds)
                 try:
-                    metrics["f1"] = f1_score(y_test, preds, average="weighted")
+                    metrics["f1"] = f1_score(y_te, preds, average="weighted")
                 except:
                     metrics["f1"] = float("nan")
                 try:
                     if hasattr(cloned, "predict_proba"):
                         proba = cloned.predict_proba(X_te)
                         if proba.shape[1] == 2:
-                            metrics["roc_auc"] = roc_auc_score(y_test, proba[:, 1])
+                            metrics["roc_auc"] = roc_auc_score(y_te, proba[:, 1])
                         else:
-                            metrics["roc_auc"] = roc_auc_score(y_test, proba, multi_class="ovr", average="weighted")
+                            metrics["roc_auc"] = roc_auc_score(y_te, proba, multi_class="ovr", average="weighted")
                 except:
                     metrics["roc_auc"] = float("nan")
 
@@ -368,27 +400,57 @@ if st.button("▶️ Run Feature Dropout", type="primary", key="run_dropout"):
     else:
         baseline_score = accuracy_score(y_test, preds_base)
 
-    # Test dropping each feature
+    # Ablate each feature: neutralize it to its training median/mode, re-fit
+    # the model's own preprocessing pipeline, and retrain. Two bugs in the old
+    # design: (1) clone() was called on the app's model WRAPPER, which is not
+    # a sklearn estimator, so every feature errored and reported impact=0;
+    # (2) the baseline went through the fitted pipeline while the retrain used
+    # raw median-imputed features, so 'impact' conflated removing a feature
+    # with removing all preprocessing. Neutralization (rather than column
+    # removal) keeps the pipeline's column contract intact.
+    _est_for_dropout = model_obj.get_model() if hasattr(model_obj, "get_model") else model_obj
     features_to_test = feature_names[:max_features]
-    progress = st.progress(0, text="Running feature dropout...")
+    progress = st.progress(0, text="Running feature dropout (ablation)...")
     dropout_results = []
+    st.caption(
+        "Method: each feature is neutralized to its training median (numeric) "
+        "or mode (categorical); the preprocessing pipeline is re-fit and the "
+        "model retrained. Impact = how much held-out performance degrades "
+        "without that feature's variation."
+    )
+
+    _X_train_df = X_train if hasattr(X_train, "columns") else pd.DataFrame(X_train, columns=feature_names)
+    _X_test_df = X_test if hasattr(X_test, "columns") else pd.DataFrame(X_test, columns=feature_names)
 
     for i, feat in enumerate(features_to_test):
         try:
-            remaining = [f for f in feature_names if f != feat]
-            X_tr_drop = X_train[remaining] if hasattr(X_train, "columns") else np.delete(X_train, feature_names.index(feat), axis=1)
-            X_te_drop = X_test[remaining] if hasattr(X_test, "columns") else np.delete(X_test, feature_names.index(feat), axis=1)
+            X_tr_abl = _X_train_df.copy()
+            X_te_abl = _X_test_df.copy()
+            _col = X_tr_abl[feat]
+            if pd.api.types.is_numeric_dtype(_col):
+                _fill = _col.median()
+            else:
+                _mode = _col.mode(dropna=True)
+                _fill = _mode.iloc[0] if len(_mode) else None
+            X_tr_abl[feat] = _fill
+            X_te_abl[feat] = _fill
 
-            cloned = clone(model_obj)
-            # Retrain without pipeline (raw features) for simplicity
-            X_tr_vals = X_tr_drop.values if hasattr(X_tr_drop, "values") else X_tr_drop
-            X_te_vals = X_te_drop.values if hasattr(X_te_drop, "values") else X_te_drop
+            cloned = clone(_est_for_dropout)
 
-            # Handle NaN with simple median fill for dropout test
-            from sklearn.impute import SimpleImputer
-            imp = SimpleImputer(strategy="median")
-            X_tr_vals = imp.fit_transform(X_tr_vals)
-            X_te_vals = imp.transform(X_te_vals)
+            if pipeline is not None:
+                _pipe_abl = clone(pipeline)
+                _pipe_abl.fit(X_tr_abl)
+                X_tr_vals = _pipe_abl.transform(X_tr_abl)
+                X_te_vals = _pipe_abl.transform(X_te_abl)
+            else:
+                from sklearn.impute import SimpleImputer
+                imp = SimpleImputer(strategy="median")
+                X_tr_vals = imp.fit_transform(X_tr_abl.select_dtypes(include=[np.number]))
+                X_te_vals = imp.transform(X_te_abl.select_dtypes(include=[np.number]))
+
+            if hasattr(X_tr_vals, "toarray"):
+                X_tr_vals = X_tr_vals.toarray()
+                X_te_vals = X_te_vals.toarray()
 
             cloned.fit(X_tr_vals, y_train)
             preds_drop = cloned.predict(X_te_vals)
@@ -412,11 +474,17 @@ if st.button("▶️ Run Feature Dropout", type="primary", key="run_dropout"):
                 "impact": impact,
             })
         except Exception as e:
-            dropout_results.append({"feature": feat, "score_without": float("nan"), "impact": 0, "_error": str(e)})
+            # NaN, not 0 — a failed ablation must not masquerade as "no impact"
+            dropout_results.append({"feature": feat, "score_without": float("nan"), "impact": float("nan"), "_error": str(e)})
 
         progress.progress((i + 1) / len(features_to_test), text=f"Testing without '{feat}' ({i+1}/{len(features_to_test)})")
 
     progress.empty()
+
+    _n_drop_errors = sum(1 for r in dropout_results if r.get("_error"))
+    if _n_drop_errors:
+        st.warning(f"{_n_drop_errors}/{len(dropout_results)} feature ablations failed — "
+                   f"see the full results table for error details.")
 
     if dropout_results:
         df_dropout = pd.DataFrame(dropout_results).sort_values("impact", ascending=False)

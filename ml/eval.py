@@ -119,6 +119,29 @@ def perform_cross_validation(
     }
 
 
+def _to_dense(A):
+    """Named (picklable, for n_jobs=-1) densifier for CV pipelines."""
+    return A.toarray() if hasattr(A, "toarray") else A
+
+
+def make_cv_pipeline(preprocessing, estimator):
+    """Compose an UNFITTED clone of a preprocessing pipeline with an estimator.
+
+    Cross-validating this composite on raw training data re-fits the
+    preprocessing inside every fold, so no fold's held-out rows contribute to
+    imputer/scaler/encoder/PCA statistics — scoring a pre-transformed matrix
+    would leak each fold's test portion into the transformer fits.
+    """
+    from sklearn.base import clone
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import FunctionTransformer
+    return Pipeline([
+        ("prep", clone(preprocessing)),
+        ("densify", FunctionTransformer(_to_dense)),
+        ("est", estimator),
+    ])
+
+
 def analyze_residuals(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, Any]:
     """
     Analyze residuals for regression models.
