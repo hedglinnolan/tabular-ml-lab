@@ -1123,10 +1123,18 @@ else:
     single_dataset = project_datasets[0]
     
     if single_dataset['id'] in st.session_state.datasets_registry:
-        working_df = st.session_state.datasets_registry[single_dataset['id']].copy()
-        # Ensure string column names
-        working_df.columns = [str(c) for c in working_df.columns]
-        st.session_state.working_table = working_df
+        # Rebuild the working table from the registry only when the source
+        # dataset changes — rebuilding on every rerun silently reverted any
+        # cleaning actions applied to the working table.
+        if (st.session_state.get('working_table') is None
+                or st.session_state.get('_working_table_source_id') != single_dataset['id']):
+            working_df = st.session_state.datasets_registry[single_dataset['id']].copy()
+            # Ensure string column names
+            working_df.columns = [str(c) for c in working_df.columns]
+            st.session_state.working_table = working_df
+            st.session_state['_working_table_source_id'] = single_dataset['id']
+        else:
+            working_df = st.session_state.working_table
         set_data(working_df)
         
         st.success(f"**Working Table:** {single_dataset['name']}")
@@ -1377,7 +1385,11 @@ if suggested_actions:
                         st.error("This action would result in an empty dataset. Aborted.")
                     else:
                         st.session_state.working_table = new_df
+                        # Content changed → set_data clears downstream results
+                        # (config is kept); reconcile drops any config references
+                        # to columns this action removed.
                         set_data(new_df, is_schema_change=False)
+                        reconcile_state_with_df(new_df, st.session_state)
                         log_methodology(step='Data Cleaning', action=label, details={
                             'affected_columns': cols if cols else 'all',
                             'rows_before': df.shape[0],
@@ -1399,7 +1411,8 @@ if suggested_actions:
                             )
                         except Exception:
                             pass  # Provenance recording should never break the workflow
-                        st.success(f"Applied: {label}. New shape: {new_df.shape[0]:,} rows × {new_df.shape[1]} columns")
+                        st.success(f"Applied: {label}. New shape: {new_df.shape[0]:,} rows × {new_df.shape[1]} columns. "
+                                   f"Downstream results (splits, models, reports) were reset — they described the pre-cleaning data.")
                         st.rerun()
                 except Exception as e:
                     st.error(f"Failed to apply: {e}")
@@ -1595,25 +1608,22 @@ if task_mode == "prediction":
         st.session_state.selected_features = list(selected_features)
 
         import hashlib
-        _new_hash = hashlib.md5(','.join(sorted(data_config.feature_cols)).encode()).hexdigest()[:8]
+        # Invalidation must key on everything that defines the modeling
+        # problem: the feature set, the target, and the task type. A target
+        # swap with unchanged features previously kept the old target's
+        # models/metrics/SHAP alive under the new outcome's name.
+        _config_sig = (
+            ','.join(sorted(data_config.feature_cols))
+            + f"|target={data_config.target_col}|task={data_config.task_type}"
+        )
+        _new_hash = hashlib.md5(_config_sig.encode()).hexdigest()[:8]
         _old_hash = st.session_state.get('_data_config_features_hash', '')
         if _new_hash != _old_hash:
             st.session_state['_data_config_features_hash'] = _new_hash
-            for key in [
-                'preprocessing_pipeline', 'preprocessing_config',
-                'preprocessing_pipelines_by_model', 'preprocessing_config_by_model',
-                'trained_models', 'model_results', 'fitted_estimators',
-                'fitted_preprocessing_pipelines', 'feature_names_by_model',
-                'X_train', 'X_val', 'X_test', 'y_train', 'y_val', 'y_test',
-                'train_indices', 'val_indices', 'test_indices',
-                'permutation_importance', 'partial_dependence', 'shap_results',
-                'sensitivity_seed_results', 'report_data',
-                'feature_selection_results', 'consensus_features',
-                'split_config', 'target_transformer',
-                'y_train_original', 'y_val_original', 'y_test_original',
-                'eda_results', 'eda_insights',
-            ]:
-                st.session_state.pop(key, None)
+            from utils.session_state import reset_downstream_results
+            # Keep feature engineering: page-01 selectors operate on the
+            # engineered frame, so a re-selection does not invalidate it.
+            reset_downstream_results(clear_feature_engineering=False)
             if _old_hash:  # Only warn if this isn't the first save
                 st.info('Feature configuration changed — downstream preprocessing, splits, and models have been reset.')
 

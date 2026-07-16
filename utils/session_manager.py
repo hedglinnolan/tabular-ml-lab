@@ -365,6 +365,11 @@ def _clear_downstream_state() -> None:
         pass
     for key in _NEVER_PERSIST:
         st.session_state.pop(key, None)
+    # Invalidation bookkeeping from the pre-load session must not survive into
+    # the restored one: a stale fingerprint could trigger (or suppress) a
+    # spurious downstream reset on the next set_data call.
+    st.session_state.pop("_raw_data_fingerprint", None)
+    st.session_state.pop("_working_table_source_id", None)
 
 
 def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any]]:
