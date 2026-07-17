@@ -428,13 +428,14 @@ if use_smart_defaults:
 else:
     st.markdown("---")
     st.subheader("Per-Model Configuration")
-    st.caption("Expand each model to customize its preprocessing pipeline. Settings apply per-model so you can tailor preprocessing to each algorithm's needs.")
+    st.caption("Each tab is one model's pipeline. Settings apply per-model so you can tailor preprocessing to each algorithm's needs.")
 
     # Helper: detect high-cardinality categoricals
     _high_card_feats = [f for f in categorical_features if df[f].nunique() > 10] if categorical_features else []
 
-    for _mk in _config_keys:
-        with st.expander(f"🔧 Configure {_mk.upper()}", expanded=(len(_config_keys) == 1)):
+    _model_cfg_tabs = st.tabs([f"🔧 {mk.upper()}" for mk in _config_keys])
+    for _mk, _model_cfg_tab in zip(_config_keys, _model_cfg_tabs):
+        with _model_cfg_tab:
 
             # ── 1. 🧹 Handle Missing Data ──
             st.markdown("#### 🧹 Handle Missing Data")
@@ -1177,7 +1178,8 @@ if pipelines_by_model:
         st.rerun()
 
 # State Debug (Advanced)
-with st.expander("Advanced / State Debug", expanded=False):
+if st.session_state.get("show_debug_panel"):
+  with st.expander("Advanced / State Debug", expanded=False):
     st.markdown("**Current State:**")
     st.write(f"• Data shape: {df.shape if df is not None else 'None'}")
     st.write(f"• Target: {data_config.target_col if data_config else 'None'}")

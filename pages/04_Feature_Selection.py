@@ -58,8 +58,8 @@ render_page_coaching("04_Feature_Selection")
 # ============================================================================
 # WHY FEATURE SELECTION?
 # ============================================================================
-st.markdown("""
-### Why Feature Selection?
+with st.expander("📖 Why feature selection?", expanded=False):
+    st.markdown("""
 
 After uploading and exploring your data, you likely have many features (predictors). 
 Feature selection helps you:
@@ -307,8 +307,11 @@ if results:
     st.header("Results")
 
     # Per-method results
-    for result in results:
-        with st.expander(f"**{result.method}** — {len(result.selected_features)}/{len(result.all_features)} features selected", expanded=True):
+    _method_tabs = st.tabs([
+        f"{r.method} · {len(r.selected_features)}/{len(r.all_features)} kept" for r in results
+    ])
+    for result, _method_tab in zip(results, _method_tabs):
+        with _method_tab:
             st.markdown(result.description)
 
             # Score table

@@ -1857,7 +1857,8 @@ if st.session_state.get('trained_models'):
     # ================================================================
     # BOOTSTRAP CONFIDENCE INTERVALS
     # ================================================================
-    with st.expander("📊 Metrics with 95% Bootstrap Confidence Intervals", expanded=True):
+    _analysis_tabs = st.tabs(["📊 Bootstrap CIs", "📏 Baselines", "📐 Calibration"])
+    with _analysis_tabs[0]:
         st.markdown("""
         **Why this matters:** Point estimates (e.g., "RMSE = 0.82") aren't sufficient for publication.
         Confidence intervals show the uncertainty in your estimates. Reviewers expect these.
@@ -1916,7 +1917,7 @@ if st.session_state.get('trained_models'):
     # ================================================================
     # BASELINE MODEL COMPARISON
     # ================================================================
-    with st.expander("📏 Baseline Model Comparison", expanded=False):
+    with _analysis_tabs[1]:
         st.markdown("""
         **Why this matters:** Reviewers need to see that your model outperforms trivial baselines.
         Without this comparison, they can't tell if your model actually adds value.
@@ -1985,7 +1986,7 @@ if st.session_state.get('trained_models'):
     # ================================================================
     # CALIBRATION ANALYSIS
     # ================================================================
-    with st.expander("📐 Calibration Analysis", expanded=False):
+    with _analysis_tabs[2]:
         st.markdown("""
         **Why this matters:** A model that says "70% chance of event" should be right about 70% of the time.
         Poor calibration means predicted probabilities are unreliable — critical for clinical decisions.
