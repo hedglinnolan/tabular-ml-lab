@@ -68,9 +68,8 @@ from utils.test_lockbox import render_lockbox_status
 render_lockbox_status("Stateful transforms (PCA, binning, UMAP, TDA) are fit on training rows, then applied to all rows.")
 render_page_navigation("03_Feature_Engineering")
 
-if st.session_state.get("workflow_mode", "quick") == "quick":
-    st.info("🧭 **Advanced workflow step** — Complete the quick workflow first, then return here only if baseline performance suggests richer features are worth the complexity.")
-
+# (The page caption above already frames this as an advanced step — a second
+# banner repeating the same guidance was pure noise.)
 with st.expander("📚 When to use Feature Engineering", expanded=False):
     st.markdown("""
 **Feature Engineering ADDS new features** alongside originals (e.g., `Glucose` + `log_Glucose`).  
@@ -128,11 +127,12 @@ if not numeric_features:
     st.error("❌ No numeric features found. Feature engineering requires at least one numeric column.")
     st.stop()
 
-st.info(f"""
-📊 **Current dataset:**  
-- **{len(X):,} samples × {len(X.columns)} features**  
-- {len(numeric_features)} numeric, {len(categorical_features)} categorical, {len(datetime_features)} datetime
-""")
+# Status, not guidance — a caption, so info-boxes stay reserved for guidance
+st.caption(
+    f"Current dataset: **{len(X):,} samples × {len(X.columns)} features** — "
+    f"{len(numeric_features)} numeric, {len(categorical_features)} categorical, "
+    f"{len(datetime_features)} datetime."
+)
 
 # Initialize tracking - persist across reruns using session state
 # After getting selected_features, before initializing fe_work_in_progress:

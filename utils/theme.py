@@ -820,12 +820,17 @@ def render_sidebar_workflow(current_page: str = ""):
                 unsafe_allow_html=True,
             )
         else:
-            st.markdown(
-                '<div class="sidebar-step sidebar-step-pending">'
-                '<span class="sidebar-dot sidebar-dot-pending"></span>'
-                '📖 Theory Reference</div>',
-                unsafe_allow_html=True,
-            )
+            # A real link — the previous styled <div> looked clickable but
+            # wasn't, making the pedagogy layer feel unreachable.
+            try:
+                st.page_link("pages/11_Theory_Reference.py", label="📖 Theory Reference")
+            except Exception:
+                st.markdown(
+                    '<div class="sidebar-step sidebar-step-pending">'
+                    '<span class="sidebar-dot sidebar-dot-pending"></span>'
+                    '📖 Theory Reference</div>',
+                    unsafe_allow_html=True,
+                )
 
         # Session save/load controls
         render_session_controls()
@@ -883,10 +888,13 @@ def render_glass_card(content: str):
 def render_metric_card(label: str, value: str, ci: str = ""):
     """Render a single metric card with optional CI."""
     ci_html = f'<div class="metric-ci">{ci}</div>' if ci else ""
+    # Long word values ('Adequate', 'Borderline') truncated to 'Ade…' at the
+    # default numeral size — shrink instead of clipping.
+    size_style = ' style="font-size: 1.1rem; line-height: 2.2;"' if len(str(value)) > 6 else ""
     return f"""
     <div class="metric-card">
         <div class="metric-label">{label}</div>
-        <div class="metric-value">{value}</div>
+        <div class="metric-value"{size_style}>{value}</div>
         {ci_html}
     </div>
     """

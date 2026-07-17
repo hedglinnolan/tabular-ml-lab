@@ -65,6 +65,7 @@ st.set_page_config(page_title="EDA", page_icon="📈", layout="wide")
 inject_custom_css()
 render_sidebar_workflow(current_page="02_EDA")
 render_step_indicator(2, "Exploratory Data Analysis")
+st.title("📈 Explore Your Data")
 render_breadcrumb("02_EDA")
 from utils.test_lockbox import render_lockbox_status
 render_lockbox_status("Descriptive EDA is full-cohort; automated selection and modeling decisions use training rows only.")
@@ -475,8 +476,8 @@ _auto_generate_insights()
 # ============================================================================
 # SECTION 0: AT-A-GLANCE HEADER
 # ============================================================================
-
-st.title("📈 Explore Your Data")
+# (Title renders in the header cluster at the top of the page, matching the
+# title-first order of the other workflow pages.)
 
 cols = st.columns([1, 1, 1, 1, 1, 1])
 with cols[0]:
@@ -492,7 +493,13 @@ with cols[4]:
     st.metric("Missing", f"{missing_pct:.1f}%")
 with cols[5]:
     sufficiency_val = getattr(getattr(profile, "data_sufficiency", None), "value", "adequate")
-    st.metric("Sufficiency", sufficiency_val.title())
+    # Words like 'Adequate'/'Borderline' truncate ('Ade…') at the metric
+    # tile's numeral font size — show a compact verdict, keep the full term
+    # in the tooltip.
+    _suff_display = {"adequate": "✓ OK", "borderline": "△ Low",
+                     "insufficient": "✗ Poor"}.get(sufficiency_val, sufficiency_val.title())
+    st.metric("Sufficiency", _suff_display,
+              help=f"Data sufficiency: {sufficiency_val} (based on samples-per-feature ratio)")
 
 # Alert ribbon — only if blockers exist
 if ledger.has_blockers():

@@ -148,7 +148,7 @@ if _high_missing:
         f"Features with >20% missing: {', '.join(_high_missing[:5])}. "
         f"Results may be affected — preprocessing handles imputation separately during training."
     )
-else:
+elif df.loc[mask, numeric_features].isna().any().any():
     st.caption("Missing values temporarily filled with column medians for selection (does not affect modeling data).")
 
 # ============================================================================

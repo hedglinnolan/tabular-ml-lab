@@ -1750,15 +1750,9 @@ if task_mode == "prediction":
             pass  # Provenance recording should never break the workflow
 
         st.success(f"✅ Configuration saved: **{task_type_final.title()}** task with **{len(selected_features)}** features")
-        
-        # Next steps
-        st.markdown("---")
-        st.markdown("### Next Steps")
-        st.markdown("""
-        1. Go to **EDA** to explore your data
-        2. Go to **Preprocess** to build your preprocessing pipeline
-        3. Go to **Train & Compare** to train models
-        """)
+        # (Next-step guidance renders once, in the consolidated "What Happens
+        # Next?" section below — two adjacent, slightly different step lists
+        # read as contradictory.)
     else:
         st.warning("Please select a target variable and at least one feature.")
 
@@ -1779,10 +1773,15 @@ else:
     """)
 
 # ============================================================================
-# WHAT HAPPENS NEXT
+# WHAT HAPPENS NEXT — only once configuration is actually saved; the previous
+# unconditional copy claimed "You've ... selected a target variable" while the
+# warning above it said no target was selected.
 # ============================================================================
-st.markdown("---")
-st.markdown("""
+_dc_next = st.session_state.get('data_config')
+if (st.session_state.get('task_mode') == 'prediction'
+        and _dc_next is not None and getattr(_dc_next, 'target_col', None)):
+    st.markdown("---")
+    st.markdown("""
 ### What Happens Next?
 
 You've uploaded your data and selected a target variable. Here's your workflow:
@@ -1790,16 +1789,17 @@ You've uploaded your data and selected a target variable. Here's your workflow:
 1. **Explore Your Data (EDA)** — Distributions, correlations, missing patterns, Table 1
 2. **Optional: Engineer Features** — Create polynomial, ratio, or TDA features if needed
 3. **Select Features** — Identify the most predictive variables
-4. **Train Models** — Compare 18 different algorithms with bootstrap CIs
+4. **Train Models** — Compare up to 22 models with bootstrap CIs
 5. **Validate & Export** — SHAP, calibration, sensitivity, publication-ready reports
 
 👉 **Continue to Exploratory Data Analysis (EDA)**
 """)
 
 # ============================================================================
-# STATE DEBUG
+# STATE DEBUG — developer tooling; never shown on the golden path
 # ============================================================================
-with st.expander("Debug: Session State", expanded=False):
+if st.session_state.get("show_debug_panel"):
+  with st.expander("Debug: Session State", expanded=False):
     st.write(f"• Active Project: {active_project['name'] if active_project else 'None'}")
     st.write(f"• Datasets in Project: {len(project_datasets)}")
     st.write(f"• Working Table Shape: {df.shape if df is not None else 'None'}")

@@ -112,7 +112,7 @@ with st.sidebar:
 # Check prerequisites
 df = get_data()
 if df is None:
-    st.warning("Please upload data first")
+    st.warning("Please upload data on the **Upload & Audit** page first.")
     st.stop()
 if len(df) == 0 or len(df.columns) == 0:
     st.warning("Your dataset is empty. Please upload data with at least one row and one column.")
@@ -130,13 +130,15 @@ if task_mode != 'prediction':
 
 data_config: DataConfig = st.session_state.get('data_config')
 if data_config is None or not data_config.target_col:
-    st.warning("Please configure target and features")
+    st.warning("Please configure your target and features on the **Upload & Audit** page (Step 4: Configure Analysis).")
     st.stop()
 
 pipelines_by_model = st.session_state.get('preprocessing_pipelines_by_model', {})
 pipeline = get_preprocessing_pipeline()
 if pipeline is None and not pipelines_by_model:
-    st.warning("Please build preprocessing pipeline first")
+    st.warning("Please build your preprocessing pipelines first — open the **Preprocess** page "
+               "and click **🔨 Build Pipelines**. (If you just changed data or configuration, "
+               "downstream results were reset and pipelines need rebuilding.)")
     st.stop()
 
 # Get final detection values
