@@ -1645,6 +1645,21 @@ if task_type_final == 'classification':
 st.markdown("---")
 st.header("Train Models")
 
+# Wide-feature advisory: training itself stays fast, but downstream
+# explainability (permutation importance) scales with feature count, and
+# p >> n modeling without selection is hard to defend in a manuscript.
+_n_train_features = len(st.session_state.get('selected_features')
+                        or st.session_state.get('feature_names') or [])
+if models_to_train and _n_train_features > 500:
+    st.info(
+        f"📐 You are about to train on **{_n_train_features:,} features**. "
+        f"Models will train, but permutation importance on the Explainability "
+        f"page will take minutes per model at this width, and reviewers will "
+        f"expect a feature-selection rationale when features vastly outnumber "
+        f"samples. The Feature Selection page can cut this to a defensible "
+        f"subset first."
+    )
+
 if models_to_train:
     col1, col2 = st.columns(2)
     
@@ -2482,7 +2497,7 @@ Poor performance may be due to:
                                     "Mean Bias": round(b["mean_bias"], 4),
                                     "Direction": direction_icon.get(b["bias_direction"], b["bias_direction"]),
                                 })
-                            st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+                            st.dataframe(pd.DataFrame(_rows), width="stretch", hide_index=True)
 
                     if strat_bins:
                         import plotly.graph_objects as go
@@ -2504,7 +2519,7 @@ Poor performance may be due to:
                             height=350,
                         )
                         _fig_strat.add_hline(y=0, line_dash="dash", line_color="gray")
-                        st.plotly_chart(_fig_strat, use_container_width=True, key=f"strat_bias_{name}")
+                        st.plotly_chart(_fig_strat, width="stretch", key=f"strat_bias_{name}")
 
                         nar_strat = narrative_residuals_stratified(strat_stats, model_name=name)
                         if nar_strat:

@@ -2428,7 +2428,7 @@ st.download_button(
     mime="application/zip",
     type="primary",
     disabled=exports_blocked,
-    use_container_width=True,
+    width="stretch",
 )
 if not exports_blocked:
     # Marks the final workflow step complete for the sidebar checklist —

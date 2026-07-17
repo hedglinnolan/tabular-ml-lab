@@ -143,7 +143,7 @@ regime = detect_regime(df, feature_cols, target_col)
 ledger = get_ledger()
 
 # Dataset profile (cached)
-@st.cache_data
+@st.cache_data(show_spinner="Profiling dataset structure (one-time per dataset)…")
 def _compute_profile(_df, target, features, task_type, outlier_method, data_id=None):
     from ml.dataset_profile import compute_dataset_profile
     return compute_dataset_profile(_df, target, features, task_type, outlier_method)
@@ -166,7 +166,7 @@ profile = _compute_profile(
 st.session_state["dataset_profile"] = profile
 
 # Signals (cached)
-@st.cache_data
+@st.cache_data(show_spinner="Scanning statistical signals (one-time per dataset)…")
 def _compute_signals(_df, target, task_type, cohort_type, entity_id, outlier_method, _feature_cols=None, data_id=None):
     return compute_dataset_signals(_df, target, task_type, cohort_type, entity_id, outlier_method=outlier_method, feature_cols=_feature_cols)
 
@@ -487,6 +487,13 @@ _auto_generate_insights()
 # (Title renders in the header cluster at the top of the page, matching the
 # title-first order of the other workflow pages.)
 
+if regime.n_features > 500:
+    st.caption(
+        f"⏱️ Wide dataset ({regime.n_features:,} features): the first visit to "
+        "this page computes its statistics once — the spinners below name each "
+        "step — and everything afterward is served from cache."
+    )
+
 cols = st.columns([1, 1, 1, 1, 1, 1])
 with cols[0]:
     st.metric("Rows", f"{regime.n_rows:,}")
@@ -541,7 +548,7 @@ with _eda_tabs[0]:
     # Interactive dataframe
     st.dataframe(
         df.head(200),
-        use_container_width=True,
+        width="stretch",
         height=350,
     )
 

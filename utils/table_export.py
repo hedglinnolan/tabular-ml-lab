@@ -6,29 +6,30 @@ import streamlit as st
 import pandas as pd
 
 
-def table(df: pd.DataFrame, use_container_width=True, hide_index=True, **kwargs):
+def table(df: pd.DataFrame, width="stretch", hide_index=True, **kwargs):
     """
     Render a table with downloadable export (TSV format with headers).
-    
+
     Reality check: Streamlit doesn't provide Plotly-level native header copy.
     - st.dataframe: cells copyable, but headers aren't easily selectable
     - st.data_editor: still doesn't give full header selection when disabled
-    
+
     Solution: Show table normally + provide TSV download button that users can import to Excel.
-    
+
     Args:
         df: DataFrame to display
-        use_container_width: Expand to container width (default: True)
+        width: st.dataframe width ('stretch', 'content', or pixels)
         hide_index: Hide the index column (default: True)
         **kwargs: Additional arguments passed to st.dataframe()
-    
+
     Returns:
         The st.dataframe component
     """
-    # Map parameters for st.dataframe
-    if use_container_width:
-        kwargs['width'] = kwargs.pop('width', 'stretch')
-    kwargs.pop('use_container_width', None)  # Remove if present
+    # Legacy callers may still pass use_container_width — map it onto width.
+    legacy_ucw = kwargs.pop('use_container_width', None)
+    if legacy_ucw is not None:
+        width = 'stretch' if legacy_ucw else 'content'
+    kwargs['width'] = kwargs.pop('width', width)
     
     # Handle hide_index
     if hide_index:
@@ -51,7 +52,7 @@ def table(df: pd.DataFrame, use_container_width=True, hide_index=True, **kwargs)
             key=f"dl_{table_key}",
             help="Download table with headers (opens directly in Excel)",
             type="secondary",
-            use_container_width=False
+            width="content"
         )
     
     return result

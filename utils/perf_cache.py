@@ -18,7 +18,7 @@ import pandas as pd
 import streamlit as st
 
 
-@st.cache_data(show_spinner=False, max_entries=8)
+@st.cache_data(show_spinner="Parsing uploaded file…", max_entries=8)
 def cached_parse_upload(file_bytes: bytes, filename: str,
                         transpose: bool, excel_sheet: int) -> pd.DataFrame:
     """Parse an uploaded file once per (content, options) combination.
@@ -33,7 +33,7 @@ def cached_parse_upload(file_bytes: bytes, filename: str,
     )
 
 
-@st.cache_data(show_spinner=False, max_entries=8)
+@st.cache_data(show_spinner="Auditing columns (one-time per dataset)…", max_entries=8)
 def cached_audit_tables(df: pd.DataFrame) -> Tuple[List[dict], List[dict]]:
     """(cardinality_data, dtype_data) for the audit section, vectorized.
 
@@ -109,7 +109,7 @@ def cached_audit_tables(df: pd.DataFrame) -> Tuple[List[dict], List[dict]]:
     return cardinality_data, dtype_data
 
 
-@st.cache_data(show_spinner=False, max_entries=8)
+@st.cache_data(show_spinner="Computing summary statistics (one-time per dataset)…", max_entries=8)
 def cached_numeric_summary(df: pd.DataFrame, cols: Tuple[str, ...]) -> pd.DataFrame:
     """describe().T + skew + missing_% for the given numeric columns.
 
@@ -124,7 +124,7 @@ def cached_numeric_summary(df: pd.DataFrame, cols: Tuple[str, ...]) -> pd.DataFr
     return out
 
 
-@st.cache_data(show_spinner=False, max_entries=8)
+@st.cache_data(show_spinner="Scanning feature–target correlations (one-time per dataset)…", max_entries=8)
 def cached_target_correlations(
     df: pd.DataFrame, target_col: str, cols: Tuple[str, ...]
 ) -> Tuple[pd.Series, pd.Series]:

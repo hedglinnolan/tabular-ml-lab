@@ -111,6 +111,47 @@ categorical_features = [f for f in all_features if f not in numeric_cols]
 
 st.info(f"**Numeric features:** {len(numeric_features)} | **Categorical features:** {len(categorical_features)}")
 
+# ── High-cardinality one-hot guardrail ──────────────────────────
+# An ID-like categorical (hundreds+ of levels) silently explodes into that
+# many one-hot columns inside the pipeline. Warn unconditionally (both
+# smart-defaults and Advanced mode) and record it in the ledger.
+_ONEHOT_EXPLOSION_LEVELS = 50
+if categorical_features:
+    _cat_nunique = df[categorical_features].nunique()
+    _explosive = _cat_nunique[_cat_nunique > _ONEHOT_EXPLOSION_LEVELS].sort_values(ascending=False)
+    if len(_explosive) > 0:
+        _worst = ", ".join(f"`{c}` ({int(n)} levels)" for c, n in _explosive.head(5).items())
+        st.warning(
+            f"🏷️ **{len(_explosive)} high-cardinality categorical feature(s)** would "
+            f"one-hot into **{int(_explosive.sum()):,} extra columns**: {_worst}"
+            f"{' …' if len(_explosive) > 5 else ''}. If these are identifiers, drop "
+            f"them on the Upload page; otherwise use Target Encoding (Advanced mode) "
+            f"instead of One-Hot."
+        )
+        from utils.insight_ledger import Insight as _HCInsight, get_ledger as _get_hc_ledger
+        _get_hc_ledger().upsert(_HCInsight(
+            id="preprocess_high_cardinality",
+            source_page="05_Preprocess", category="data_quality", severity="warning",
+            finding=(f"{len(_explosive)} categorical feature(s) exceed "
+                     f"{_ONEHOT_EXPLOSION_LEVELS} levels (max: {_explosive.index[0]} "
+                     f"with {int(_explosive.iloc[0])})"),
+            implication=(f"One-hot encoding would add ~{int(_explosive.sum()):,} sparse "
+                         "columns, slowing training and diluting importance scores. "
+                         "ID-like columns also leak row identity."),
+            affected_features=list(_explosive.index),
+            recommended_action="Drop identifier-like columns, or switch these to target encoding",
+            relevant_pages=["01_Upload_and_Audit", "05_Preprocess"],
+            auto_generated=True,
+        ))
+    else:
+        # Self-heal: the offending columns are gone (dropped or deselected),
+        # so the warning must not linger in the coaching layer.
+        from utils.insight_ledger import get_ledger as _get_hc_ledger
+        _get_hc_ledger().remove("preprocess_high_cardinality")
+else:
+    from utils.insight_ledger import get_ledger as _get_hc_ledger
+    _get_hc_ledger().remove("preprocess_high_cardinality")
+
 # ── Double-transformation guardrail ─────────────────────────────
 _eng_transform_map = st.session_state.get("engineered_feature_transforms", {})
 _log_engineered = [f for f, t in _eng_transform_map.items() if t == "log" and f in numeric_features]
@@ -271,7 +312,7 @@ for group_name in sorted(model_groups_prep.keys()):
             if st.button(
                 btn_label,
                 key=f"btn_{ck}",
-                use_container_width=True,
+                width="stretch",
                 type="primary" if is_selected else "secondary",
                 help=desc,
             ):

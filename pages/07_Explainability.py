@@ -297,13 +297,32 @@ with _explain_tabs[0]:
     if not any([run_perm, run_shap, run_pdp]):
         st.info("Select at least one analysis above.")
 
+    # Wide-feature advisory: permutation importance evaluates the model
+    # n_features × n_repeats times. Measured ~141s at 3000 features × 5
+    # repeats — warn up front instead of letting the run look hung.
+    if run_perm and model_selection:
+        _fn_by_model = st.session_state.get('feature_names_by_model') or {}
+        _max_model_feats = max(
+            (len(_fn_by_model.get(m) or []) for m in model_selection),
+            default=0,
+        ) or len(st.session_state.get('feature_names') or [])
+        if _max_model_feats > 500:
+            st.info(
+                f"⏱️ Up to **{_max_model_feats:,} features** reach your models. "
+                f"Permutation importance costs features × repeats model "
+                f"evaluations — expect **several minutes per model** at "
+                f"{perm_repeats} repeats. To speed this up: reduce features on "
+                f"the Feature Selection page, enable PCA in Preprocessing, or "
+                f"lower the repeats slider. The Cancel button works mid-run."
+            )
+
     # Initialize cancel flag
     if 'cancel_explainability' not in st.session_state:
         st.session_state.cancel_explainability = False
 
     run_col, cancel_col = st.columns([3, 1])
     with run_col:
-        run_button = st.button("🚀 Run Selected Analyses", type="primary", use_container_width=True,
+        run_button = st.button("🚀 Run Selected Analyses", type="primary", width="stretch",
                                disabled=not any([run_perm, run_shap, run_pdp]) or not model_selection)
     with cancel_col:
         if st.button("🛑 Cancel", type="secondary", key="cancel_explain_init"):
@@ -972,7 +991,7 @@ with _explain_tabs[0]:
                                         height=420,
                                         margin=dict(l=10, r=10, t=40, b=10),
                                     )
-                                    st.plotly_chart(fig_2d, use_container_width=True, key=f"pdp2d_{name}_{fidx_a}_{fidx_b}")
+                                    st.plotly_chart(fig_2d, width="stretch", key=f"pdp2d_{name}_{fidx_a}_{fidx_b}")
 
                                     if interaction_magnitude > 1e-6:
                                         st.metric(

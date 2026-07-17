@@ -1015,7 +1015,7 @@ with _fe_tabs[6]:
             "Missing": _features_with_missing.values,
             "% Missing": [f"{100 * v / _n_rows:.1f}%" for v in _features_with_missing.values],
         }).reset_index(drop=True)
-        st.dataframe(_miss_df, use_container_width=True, hide_index=True)
+        st.dataframe(_miss_df, width="stretch", hide_index=True)
 
         # Coaching callout for high-missingness features
         _high_missing = _features_with_missing[_features_with_missing / _n_rows > 0.30]

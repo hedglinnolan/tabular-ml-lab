@@ -77,6 +77,22 @@ tile's tooltip names the worst column. Verified end-to-end in a real
 browser session (upload → EDA → Feature Selection) plus 8 new regression
 tests. Test count: 525 passing.
 
+**Bucket-1 hardening wave (2026-07-18):** downstream ultrawide smoke showed
+training/CV/bootstrap/SHAP all fast at 28×3000 but permutation importance at
+~141s (features × repeats evaluations) — both Train & Compare and
+Explainability now show upfront wide-feature advisories (>500 features)
+instead of appearing hung; a high-cardinality one-hot guard on Preprocess
+warns and writes a self-healing ledger insight when categoricals exceed 50
+levels; the `use_container_width` deprecation was swept repo-wide (the API
+is already past its removal date); a new AST-based CI scan
+(`tests/test_insight_id_integrity.py`) fails on insight ids that nothing
+produces — it caught a third live instance of the stale-identifier class on
+its first run (`train_prefer_simpler`, produced via a dict-literal pattern
+the scanner now understands); and long cold loads are designed out rather
+than hidden: every cached heavy computation carries a named spinner
+("Profiling dataset structure (one-time per dataset)…") and wide datasets
+get an explicit first-visit caption on EDA. Test count: 532 passing.
+
 **Known remaining work (deliberately deferred, none demo-blocking):**
 publication-register `limitation_text` separation for coaching prose in the
 Discussion; an `insight_ids` constants module + CI scan to make the
