@@ -14,15 +14,36 @@ from sklearn.metrics import (
 def calculate_regression_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
     """
     Calculate regression metrics.
-    
+
+    Non-finite prediction pairs are dropped before scoring: a degenerate
+    target-transform back-mapping (e.g. a power transform fit on a
+    near-constant target) can produce NaN/inf predictions, and sklearn's
+    metric functions raise on them. If no finite pairs remain, all metrics
+    are NaN — an honest 'no valid predictions' rather than a crash.
+
     Returns:
         Dictionary with MAE, RMSE, R2, MedianAE
     """
+    y_true = np.asarray(y_true, dtype=float).ravel()
+    y_pred = np.asarray(y_pred, dtype=float).ravel()
+    finite = np.isfinite(y_true) & np.isfinite(y_pred)
+    if not finite.all():
+        import logging
+        logging.getLogger(__name__).warning(
+            "calculate_regression_metrics: dropping %d non-finite prediction "
+            "pair(s) — check for a degenerate target transform",
+            int((~finite).sum()),
+        )
+        y_true, y_pred = y_true[finite], y_pred[finite]
+    if y_true.size < 2:
+        return {'MAE': float('nan'), 'RMSE': float('nan'),
+                'R2': float('nan'), 'MedianAE': float('nan')}
+
     mae = mean_absolute_error(y_true, y_pred)
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     r2 = r2_score(y_true, y_pred)
     median_ae = np.median(np.abs(y_true - y_pred))
-    
+
     return {
         'MAE': float(mae),
         'RMSE': float(rmse),
