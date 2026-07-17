@@ -1990,6 +1990,13 @@ if exports_blocked:
 # REPORT PREVIEW (3 tabs)
 # ============================================================================
 st.header("📄 Report Preview")
+st.caption(
+    "Three kinds of content, three owners: **machine-owned** facts (manifest, "
+    "seed, data hash, tables), **machine-drafted** prose compiled from the "
+    "recorded workflow (Methods, Results — verify, don't rewrite from memory), "
+    "and **author-owned** interpretation (Discussion scaffolds marked "
+    "`[AUTHOR REQUIRED — …]`)."
+)
 
 _preview_tab_md, _preview_tab_latex, _preview_tab_pdf = st.tabs(["Markdown", "LaTeX Source", "PDF Preview"])
 
@@ -2036,14 +2043,17 @@ with _preview_tab_pdf:
 # ============================================================================
 st.header("📝 Supporting Artifacts")
 
-# Methods Section Generator
-with st.expander("📄 Auto-Generated Methods Section", expanded=False):
+# Methods Section — compiled from the recorded workflow
+with st.expander("📄 Compiled Methods & Results Draft", expanded=False):
     st.markdown(
-        "Generate a workflow-derived draft of the methods section. "
-        "Fill in the `[PLACEHOLDER]` sections with study-specific details."
+        "Compile a Methods/Results draft from the **recorded workflow**: every "
+        "quantitative statement traces to a logged event, and nothing is "
+        "written that the pipeline did not record. Passages marked "
+        "`[AUTHOR REQUIRED — …]` are yours — interpretation and context belong "
+        "to the authors, not the software."
     )
 
-    if st.button("Generate Methods Section", key="gen_methods", type="primary"):
+    if st.button("Compile Draft from Workflow", key="gen_methods", type="primary"):
         manuscript_context = _build_manuscript_context(
             selected_for_report=selected_for_report,
             selected_explain=selected_explain,
@@ -2055,6 +2065,11 @@ with st.expander("📄 Auto-Generated Methods Section", expanded=False):
         st.session_state["manuscript_export_context"] = manuscript_context
 
     if st.session_state.get("methods_section"):
+        _n_author_inputs = st.session_state["methods_section"].count("[AUTHOR REQUIRED")
+        if _n_author_inputs:
+            st.info(f"✍️ **{_n_author_inputs} author input(s) remain** — each is "
+                    "marked `[AUTHOR REQUIRED — …]` and cites the evidence it "
+                    "expects you to interpret.")
         st.markdown(st.session_state["methods_section"])
         st.download_button(
             "📥 Download Methods Section",
@@ -2063,6 +2078,30 @@ with st.expander("📄 Auto-Generated Methods Section", expanded=False):
             key="dl_methods",
             disabled=exports_blocked,
         )
+
+# Evidence Map — the audit trail behind the draft
+with st.expander("🔎 Evidence Map (what the draft is compiled from)", expanded=False):
+    st.markdown(
+        "Per-section traceability: which recorded workflow events supplied "
+        "each part of the draft, and the key values. Sections whose sources "
+        "were never recorded say **NOT RECORDED** — the draft omits them "
+        "rather than inventing content."
+    )
+    try:
+        from utils.workflow_provenance import get_provenance as _get_prov_em
+        from ml.narrative_engine import NarrativeEngine as _NE_em
+
+        _em_engine = _NE_em(_get_prov_em(), _report_ledger)
+        _evidence_map_md = _em_engine.generate_evidence_map()
+        st.markdown(_evidence_map_md)
+        st.download_button(
+            "📥 Download Evidence Map",
+            _evidence_map_md,
+            "evidence_map.md", "text/markdown",
+            key="dl_evidence_map",
+        )
+    except Exception as _em_err:
+        st.caption(f"Evidence map unavailable: {_em_err}")
 
 # CONSORT-Style Flow Diagram
 with st.expander("📊 Sample Flow Diagram", expanded=False):

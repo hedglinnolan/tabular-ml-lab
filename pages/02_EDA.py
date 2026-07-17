@@ -191,6 +191,11 @@ eda_recommendations = recommend_eda(signals)
 # HELPER: Auto-generate insights from profile/signals
 # ============================================================================
 
+def _count_word(n: int, noun: str) -> str:
+    """'1 predictor' / '3 predictors' — manuscript prose avoids '(s)'."""
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+
 def _auto_generate_insights():
     """Write auto-detected insights to the ledger. Idempotent via upsert."""
 
@@ -208,6 +213,12 @@ def _auto_generate_insights():
             finding=f"Sample size may be insufficient ({regime.n_rows:,} rows, {regime.n_features} features, {_suff_ratio_str} samples per feature)",
             implication="Complex models will likely overfit. Prefer simple baselines.",
             recommended_action="Reduce features or gather more data",
+            manuscript_text=(
+                f"the sample size was small relative to the number of candidate "
+                f"predictors ({regime.n_rows:,} observations, {regime.n_features} "
+                f"predictors), which limits statistical power and increases "
+                f"overfitting risk"
+            ),
             relevant_pages=["04_Feature_Selection", "06_Train_and_Compare", "10_Report_Export"],
             model_scope=[MODEL_FAMILY_NEURAL],  # most affected by low sample size
         ))
@@ -218,6 +229,11 @@ def _auto_generate_insights():
             finding=f"Data sufficiency is {sufficiency} ({regime.n_rows:,} rows, {regime.n_features} features)",
             implication="Prefer simpler models and tighter regularization.",
             recommended_action="Consider feature reduction before complex modeling",
+            manuscript_text=(
+                f"the modest ratio of observations to candidate predictors "
+                f"({regime.n_rows:,} observations, {regime.n_features} predictors) "
+                f"constrained the model complexity that could be reliably supported"
+            ),
             relevant_pages=["04_Feature_Selection", "06_Train_and_Compare"],
             model_scope=[MODEL_FAMILY_NEURAL],  # most affected by low sample size
         ))
@@ -232,6 +248,11 @@ def _auto_generate_insights():
                 implication="Model performance will be artificially inflated",
                 affected_features=[col],
                 recommended_action=f"Remove {col} from feature set",
+                manuscript_text=(
+                    f"the predictor {col} was nearly collinear with the outcome "
+                    f"(|r| > 0.95), raising the possibility of information leakage; "
+                    f"results including this predictor should be interpreted with caution"
+                ),
                 relevant_pages=["04_Feature_Selection", "10_Report_Export"],
             ))
 
@@ -286,6 +307,12 @@ def _auto_generate_insights():
                 implication=f"Keeping all {n_feats} may inflate variance in linear models. Consider retaining 1-2 representatives.",
                 affected_features=cluster_features,
                 recommended_action=f"Review in Feature Selection — consider dropping {n_feats - 1} of {n_feats}",
+                manuscript_text=(
+                    f"a cluster of {n_feats} intercorrelated predictors was present "
+                    f"(maximum pairwise r = {cluster_max:.2f}), which can inflate the "
+                    f"variance of coefficient estimates and complicate attribution of "
+                    f"importance among the correlated predictors"
+                ),
                 relevant_pages=["04_Feature_Selection", "05_Preprocess"],
                 model_scope=ISSUE_MODEL_RELEVANCE["collinearity"],  # linear only
                 metadata={"max_correlation": cluster_max, "cluster_size": n_feats},
@@ -305,6 +332,11 @@ def _auto_generate_insights():
                 implication="High missingness may require column removal or advanced imputation (MICE, kNN). Simple mean imputation may distort distributions.",
                 affected_features=[c for c, _ in severe_missing],
                 recommended_action="Review in Preprocessing — consider dropping or advanced imputation",
+                manuscript_text=(
+                    f"{_count_word(len(severe_missing), 'predictor')} exhibited "
+                    f"substantial missingness (>30% of values: {cols_str}), which may "
+                    f"bias estimates if the missingness mechanism is not random"
+                ),
                 relevant_pages=["05_Preprocess", "10_Report_Export"],
                 metadata={"n_features": len(severe_missing), "max_rate": max(r for _, r in severe_missing)},
             ))
@@ -330,6 +362,10 @@ def _auto_generate_insights():
                 source_page="02_EDA", category="distribution", severity="warning",
                 finding=f"Target is skewed (skew={skew:.2f})",
                 implication="May affect loss function choice and prediction intervals",
+                manuscript_text=(
+                    f"the outcome distribution was skewed (skewness = {skew:.2f}), "
+                    f"which can affect error-based metrics and prediction intervals"
+                ),
                 affected_features=[target_col],
                 recommended_action="Apply a target transformation on the Train & Compare page (Log, Yeo-Johnson, or Box-Cox). Predictions are automatically back-transformed and metrics reported on the original scale. Tree-based models and Huber regression are also robust to target skew.",
                 relevant_pages=["06_Train_and_Compare"],
@@ -346,6 +382,11 @@ def _auto_generate_insights():
                 source_page="02_EDA", category="distribution", severity="warning",
                 finding=f"Class imbalance detected (ratio={imbalance:.2f})",
                 implication="Accuracy alone may be misleading. Use F1, balanced accuracy, or AUROC.",
+                manuscript_text=(
+                    f"the outcome classes were imbalanced (minority-to-majority "
+                    f"ratio = {imbalance:.2f}), so threshold-dependent metrics "
+                    f"should be interpreted alongside AUROC and F1"
+                ),
                 affected_features=[target_col],
                 recommended_action="Use class weighting or stratified sampling",
                 relevant_pages=["05_Preprocess", "06_Train_and_Compare"],
@@ -377,6 +418,11 @@ def _auto_generate_insights():
             source_page="02_EDA", category="distribution", severity="info",
             finding=f"{len(skewed_list)} feature(s) heavily skewed (|skew| > 2): {skew_names}",
             implication="Log or power transforms may improve linear model performance and reduce outlier influence",
+            manuscript_text=(
+                f"{_count_word(len(skewed_list), 'predictor')} exhibited strong "
+                f"skewness (|skewness| > 2), which can increase the influence of "
+                f"extreme values in scale-sensitive models"
+            ),
             affected_features=[c for c, _ in skewed_list],
             recommended_action="Consider transforms in Feature Engineering or Preprocessing",
             relevant_pages=["03_Feature_Engineering", "05_Preprocess"],
@@ -396,6 +442,9 @@ def _auto_generate_insights():
             source_page="02_EDA", category="data_quality", severity="opportunity",
             finding="Dataset has no blockers or warnings — unusually clean",
             implication="You can lean into interpretable models (GLM, GAM) where coefficient interpretation is meaningful, rather than defaulting to black-box approaches",
+            manuscript_text=("the dataset contained no blocking data-quality issues "
+                             "(no severe missingness, leakage candidates, or "
+                             "distributional anomalies)"),
             recommended_action="Consider GLM or GAM baselines in Train & Compare",
             relevant_pages=["06_Train_and_Compare"],
             resolved=True, resolved_by="Positive signal — no action needed",
@@ -421,6 +470,9 @@ def _auto_generate_insights():
                     source_page="02_EDA", category="relationship", severity="opportunity",
                     finding=f"Strong linear signal detected (max |r| with target = {top_corr:.2f})",
                     implication="Linear models may perform surprisingly well. Establish a strong OLS baseline before trying complex models.",
+                    manuscript_text=(f"at least one predictor showed a strong linear "
+                                     f"association with the outcome "
+                                     f"(maximum |r| = {top_corr:.2f})"),
                     recommended_action="Run GLM baseline first in Train & Compare",
                     relevant_pages=["06_Train_and_Compare"],
                     metadata={"max_target_correlation": float(top_corr)},
@@ -440,6 +492,10 @@ def _auto_generate_insights():
                         source_page="02_EDA", category="relationship", severity="opportunity",
                         finding=f"Features show non-linear relationships with target (avg Spearman-Pearson gap = {avg_gap:.3f})",
                         implication="Tree-based models (RF, XGBoost) or GAMs may capture structure that linear models miss",
+                        manuscript_text=(f"rank-based predictor–outcome associations "
+                                         f"exceeded linear associations (mean "
+                                         f"Spearman−Pearson gap = {avg_gap:.3f}), "
+                                         f"consistent with non-linear structure"),
                         recommended_action="Include tree-based models in Train & Compare",
                         relevant_pages=["06_Train_and_Compare"],
                         metadata={"spearman_pearson_gap": float(avg_gap)},
@@ -455,6 +511,9 @@ def _auto_generate_insights():
             source_page="02_EDA", category="sufficiency", severity="opportunity",
             finding=f"Large sample-to-feature ratio ({n_p_ratio:.0f}:1) — plenty of data relative to complexity",
             implication="You can afford more complex models (deep trees, neural nets) without overfitting. Cross-validation will be reliable.",
+            manuscript_text=(f"the sample size was large relative to the number of "
+                             f"predictors ({n_p_ratio:.0f}:1 observations per "
+                             f"predictor), supporting stable model estimation"),
             recommended_action="Consider full model suite in Train & Compare",
             relevant_pages=["06_Train_and_Compare"],
             metadata={"n_p_ratio": float(n_p_ratio)},
@@ -471,6 +530,8 @@ def _auto_generate_insights():
                 source_page="02_EDA", category="distribution", severity="opportunity",
                 finding=f"Classes are well-balanced (ratio = {imbalance:.2f})",
                 implication="Accuracy is a valid metric. No need for class weighting or oversampling.",
+                manuscript_text=(f"the outcome classes were well balanced "
+                                 f"(minority-to-majority ratio = {imbalance:.2f})"),
                 recommended_action="Standard metrics will be reliable in Train & Compare",
                 relevant_pages=["06_Train_and_Compare"],
                 resolved=True, resolved_by="Positive signal — no action needed",

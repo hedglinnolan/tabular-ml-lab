@@ -93,14 +93,38 @@ than hidden: every cached heavy computation carries a named spinner
 ("Profiling dataset structure (one-time per dataset)…") and wide datasets
 get an explicit first-visit caption on EDA. Test count: 532 passing.
 
+**Manuscript-trust wave (2026-07-18):** the manuscript layer now operates as
+a compiler from provenance to prose with an explicit ownership contract.
+(1) Register separation: `Insight.manuscript_text` carries reviewer-facing
+phrasing for every auto-generated producer (EDA, coach diagnostics,
+preprocessing guards); coaching voice ("a reviewer would question…",
+"consider…") can no longer reach the Discussion verbatim, and the regex
+cleaner is now a fallback rather than the mechanism. (2) Overclaims
+removed: the Conclusions no longer assert the model "can effectively
+predict" regardless of performance — they state the recorded result and
+hand the adequacy judgment to the author; negative R² is reported as
+"below a mean-only baseline"; "strongest" is claimed only when multiple
+models were actually compared. (3) Author-owned passages are standardized
+`[AUTHOR REQUIRED — …]` scaffolds that cite the study's own evidence
+(headline metric for prior-work comparison, top predictors with an
+explicit not-causal guard for implications); page 10 counts remaining
+author inputs. (4) Every draft ships an ownership preamble (markdown
+blockquote / LaTeX comments) stating the compiled-vs-author contract.
+(5) A per-section **evidence map** artifact traces each compiled section to
+the recorded events and values behind it, admitting "NOT RECORDED" where
+the pipeline holds no evidence — downloadable beside the draft.
+(6) `ManuscriptDraft.to_latex()` escapes LaTeX specials before command
+conversion, so hostile column names (`feat_0042`, "15%") compile.
+17 new tests in `tests/test_manuscript_trust.py`. Test count: 549 passing.
+
 **Known remaining work (deliberately deferred, none demo-blocking):**
-publication-register `limitation_text` separation for coaching prose in the
-Discussion; an `insight_ids` constants module + CI scan to make the
-stale-ID bug class impossible; explicit theory anchors at every EDA producer
-(inference fallback is currently benign but fragile); coaching badge counts
-vs scoped body coherence; removing or wiring the dead `dataset_db.py` /
-`decision_curve_analysis` code; `ManuscriptDraft.to_latex()` escaping (unused
-by the export path); Pandas 4 deprecation warnings in `data_processor.py`.
+explicit theory anchors at every EDA producer (inference fallback is
+currently benign but fragile); coaching badge counts vs scoped body
+coherence; removing or wiring the dead `DatasetDB` /
+`decision_curve_analysis` code; Pandas 4 deprecation warnings in
+`data_processor.py`. (Resolved since first written: the manuscript-register
+separation, the insight-ID CI scan, and `ManuscriptDraft.to_latex()`
+escaping — see the manuscript-trust wave below.)
 
 ---
 

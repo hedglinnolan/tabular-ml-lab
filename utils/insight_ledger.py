@@ -563,6 +563,12 @@ class Insight:
     finding: str
     implication: str
     recommended_action: str = ""
+    # Manuscript-register phrasing of this insight for the Discussion
+    # (limitations/strengths). Coaching voice ("consider...", "a reviewer
+    # would question...") addresses the ANALYST; a manuscript addresses the
+    # REVIEWER and states facts about the study. When empty, the cleaned
+    # `finding` is used as a fallback.
+    manuscript_text: str = ""
     relevant_pages: List[str] = field(default_factory=list)
     affected_features: List[str] = field(default_factory=list)
     tripod_keys: List[str] = field(default_factory=list)
@@ -1176,8 +1182,11 @@ class InsightLedger:
         seen_limitations = set()
 
         for i in self._insights:
-            finding = _clean_for_manuscript(i.finding)
-            if not finding:
+            # Manuscript-register text wins when the producer supplied one;
+            # the cleaned finding is a fallback, not the preferred source —
+            # coaching voice must never reach the manuscript verbatim.
+            text = (i.manuscript_text or "").strip() or _clean_for_manuscript(i.finding)
+            if not text:
                 continue
 
             # Only genuine positives (eda_opportunity_*) are strengths. They are
@@ -1186,18 +1195,18 @@ class InsightLedger:
             # never promote an insight: an unresolved info-level concern
             # ("N features are heavily skewed") is not a study strength.
             if i.id.startswith("eda_opportunity_"):
-                if finding not in seen_strengths:
-                    strengths.append(finding)
-                    seen_strengths.add(finding)
+                if text not in seen_strengths:
+                    strengths.append(text)
+                    seen_strengths.add(text)
                 continue
 
             if i.resolved:
                 continue
 
             if i.acknowledged or self._is_narrative_worthy(i):
-                if finding not in seen_limitations:
-                    limitations.append(finding)
-                    seen_limitations.add(finding)
+                if text not in seen_limitations:
+                    limitations.append(text)
+                    seen_limitations.add(text)
 
         return {
             "strengths": strengths,

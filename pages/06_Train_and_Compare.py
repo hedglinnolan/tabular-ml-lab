@@ -1596,6 +1596,7 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                     finding=diag['finding'],
                     implication=diag['implication'],
                     recommended_action=diag['recommended_action'],
+                    manuscript_text=diag.get('manuscript_text', ''),
                     relevant_pages=["06_Train_and_Compare", "10_Report_Export"],
                     tripod_keys=["model_building"],
                     model_scope=diag.get('model_scope', []),

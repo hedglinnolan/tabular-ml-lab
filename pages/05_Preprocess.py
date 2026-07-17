@@ -138,6 +138,12 @@ if categorical_features:
             implication=(f"One-hot encoding would add ~{int(_explosive.sum()):,} sparse "
                          "columns, slowing training and diluting importance scores. "
                          "ID-like columns also leak row identity."),
+            manuscript_text=(
+                f"{len(_explosive)} categorical "
+                f"{'predictor' if len(_explosive) == 1 else 'predictors'} had very "
+                f"high cardinality (maximum: {int(_explosive.iloc[0])} levels), "
+                f"substantially inflating the encoded feature space"
+            ),
             affected_features=list(_explosive.index),
             recommended_action="Drop identifier-like columns, or switch these to target encoding",
             relevant_pages=["01_Upload_and_Audit", "05_Preprocess"],

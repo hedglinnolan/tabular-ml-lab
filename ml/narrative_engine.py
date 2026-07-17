@@ -96,10 +96,31 @@ class ManuscriptDraft:
         ]
         return {k: v for k, v in ordered if v.strip()}
 
+    #: The ownership contract shipped inside every draft. Methods/Results are
+    #: compiled from recorded events; interpretation belongs to the authors.
+    OWNERSHIP_PREAMBLE = (
+        "> **How to read this draft.** The Methods and Results below are "
+        "compiled from the recorded analysis workflow: every quantitative "
+        "statement traces to a logged event (see the evidence map), and "
+        "nothing is asserted that the pipeline did not record. Passages "
+        "marked **[AUTHOR REQUIRED — …]** belong to the authors: "
+        "interpretation, literature context, and claims of adequacy are "
+        "yours, not the software's. Verify all compiled text before "
+        "submission.\n"
+    )
+
+    def count_author_inputs(self) -> int:
+        """Number of [AUTHOR REQUIRED — …] scaffolds awaiting the author.
+
+        Counts section content only (not the ownership preamble, which
+        mentions the marker while explaining it).
+        """
+        return sum(v.count("[AUTHOR REQUIRED") for v in self.all_sections.values())
+
     def to_markdown(self) -> str:
         """Render as markdown with subsection headers."""
-        lines = []
-        
+        lines = [self.OWNERSHIP_PREAMBLE]
+
         # Methods section with subsections
         lines.append("## Methods\n")
         for title, content in self.sections.items():
@@ -123,24 +144,40 @@ class ManuscriptDraft:
 
     @staticmethod
     def _md_to_latex(text: str) -> str:
-        """Convert markdown formatting to LaTeX equivalents."""
+        """Convert markdown formatting to LaTeX equivalents.
+
+        LaTeX specials are escaped FIRST, while the text is still plain prose
+        with no commands in it — feature names like ``feat_0042`` and values
+        like ``15%`` would otherwise break compilation (underscore = math
+        mode, percent = comment). The bold/italic conversion runs after, so
+        the commands it inserts stay intact.
+        """
         import re
+        for ch, rep in (('&', '\\&'), ('%', '\\%'), ('#', '\\#'), ('_', '\\_')):
+            text = text.replace(ch, rep)
         # Bold **text** → \textbf{text}
         text = re.sub(r'\*\*(.+?)\*\*', r'\\textbf{\1}', text)
         # Italic *text* → \textit{text}  (single asterisk, not inside bold)
         text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'\\textit{\1}', text)
-        # Escape special LaTeX chars that might appear in prose (but not our own commands)
         text = text.replace('²', '$^2$')
         text = text.replace('×', '$\\times$')
+        text = text.replace('−', '--')
         text = text.replace('–', '--')
+        text = text.replace('—', '---')
         return text
 
     def to_latex(self) -> str:
         """Render as LaTeX subsections."""
         import re
-        
-        lines = []
-        
+
+        lines = [
+            "% How to read this draft: Methods and Results are compiled from",
+            "% the recorded analysis workflow — every quantitative statement",
+            "% traces to a logged event. Passages marked [AUTHOR REQUIRED - ...]",
+            "% belong to the authors. Verify all compiled text before submission.",
+            "",
+        ]
+
         # Methods section with subsections
         lines.append("\\section{Methods}\n")
         for title, content in self.sections.items():
@@ -393,6 +430,103 @@ class NarrativeEngine:
         draft.warnings = self._check_completeness()
 
         return draft
+
+    def generate_evidence_map(self) -> str:
+        """Markdown table tracing each compiled draft section to its recorded
+        sources.
+
+        This is the artifact that makes 'compiled from the audit trail'
+        checkable rather than a slogan: for every section, which workflow
+        events supplied its facts and the key recorded values. Sections whose
+        sources were never recorded say so — the draft omits them rather
+        than inventing content.
+        """
+        ctx = self.ctx
+        comp = self.prov.get_completeness()
+
+        def _n(key):
+            v = ctx.get(key)
+            return v if v is not None else "—"
+
+        rows: List[tuple] = []
+
+        if comp.get("upload") or comp.get("split"):
+            vals = (f"{_n('n_total')} observations; target `{ctx.get('target_name', '—')}` "
+                    f"({ctx.get('task_type', '—')})")
+            if comp.get("split"):
+                vals += (f"; split {_n('n_train')}/{_n('n_val')}/{_n('n_test')} "
+                         f"(strategy: {ctx.get('split_strategy', '—')}, "
+                         f"seed {_n('random_seed')})")
+            rows.append(("Study Design", "upload + split records", vals))
+        else:
+            rows.append(("Study Design", "NOT RECORDED", "section omitted or generic"))
+
+        if comp.get("feature_selection"):
+            rows.append(("Predictor Variables", "feature-selection record",
+                         f"{ctx.get('fs_method', '—')}: "
+                         f"{_n('n_features_before_selection')} → "
+                         f"{_n('n_features_after_selection')} predictors"))
+        elif comp.get("upload"):
+            rows.append(("Predictor Variables", "upload record",
+                         f"{_n('n_features_original')} predictors (no selection recorded)"))
+        else:
+            rows.append(("Predictor Variables", "NOT RECORDED", "section omitted or generic"))
+
+        if comp.get("preprocessing"):
+            models_cfg = ctx.get("models_configured") or []
+            rows.append(("Missing Data / Preprocessing", "per-model preprocessing configs",
+                         f"{len(models_cfg)} model pipeline(s): "
+                         f"{', '.join(models_cfg) if models_cfg else '—'}"))
+        else:
+            rows.append(("Missing Data / Preprocessing", "NOT RECORDED",
+                         "section omitted or generic"))
+
+        if comp.get("training"):
+            models = ctx.get("models_trained") or []
+            rows.append(("Model Development / Evaluation", "training record",
+                         f"{len(models)} model(s): {', '.join(models) if models else '—'}; "
+                         f"primary: {ctx.get('primary_model') or '—'}; "
+                         f"CV: {'yes' if ctx.get('use_cv') else 'no'}"))
+            rows.append(("Results", "recorded per-model metrics",
+                         f"metrics for {len(ctx.get('metrics_by_model') or {})} model(s)"))
+        else:
+            rows.append(("Model Development / Evaluation", "NOT RECORDED",
+                         "section omitted or generic"))
+            rows.append(("Results", "NOT RECORDED", "section omitted"))
+
+        if comp.get("sensitivity"):
+            rows.append(("Sensitivity Analysis", "sensitivity record",
+                         "seed stability / feature dropout as recorded"))
+        if comp.get("statistical_validation"):
+            rows.append(("Statistical Validation", "statistical-test record",
+                         f"{len(ctx.get('statistical_tests') or [])} test(s)"))
+
+        if self.ledger is not None and len(self.ledger) > 0:
+            contributing = sorted(
+                i.id for i in self.ledger.insights
+                if i.id.startswith("eda_opportunity_") or i.acknowledged or not i.resolved
+            )
+            rows.append(("Data Observations & Strengths/Limitations", "insight ledger",
+                         f"{len(contributing)} contributing insight(s): "
+                         f"{', '.join(contributing[:8])}"
+                         f"{' …' if len(contributing) > 8 else ''}"))
+
+        rows.append(("Discussion — interpretation, prior work, implications",
+                     "AUTHOR", "author-owned; evidence-citing scaffolds only"))
+
+        lines = [
+            "# Evidence Map",
+            "",
+            "Every compiled section of the draft traces to recorded workflow "
+            "events. \"NOT RECORDED\" means the pipeline holds no evidence for "
+            "that section — the draft omits it rather than inventing it.",
+            "",
+            "| Draft section | Compiled from | Recorded values |",
+            "|---|---|---|",
+        ]
+        for section, source, vals in rows:
+            lines.append(f"| {section} | {source} | {vals} |")
+        return "\n".join(lines) + "\n"
 
     # -- Section generators --------------------------------------------------
 
@@ -1188,36 +1322,55 @@ class NarrativeEngine:
         target_stats = self.ctx.get("target_stats", {})
 
         primary_model = self._resolve_primary_model(metrics, task_type, primary_model)
-        
+        target_name = self.ctx.get("target_name") or "the outcome"
+
+        # "strongest" implies a comparison — only claim it when there was one.
+        _comparative = len(models) > 1
+        headline = ""  # e.g. "R² = 0.62"; reused by the author scaffolds below
+
         if primary_model and metrics.get(primary_model):
             model_label = self._model_name(primary_model)
             best_metrics = metrics[primary_model]
-            
+
             if task_type == "regression":
                 r2 = best_metrics.get("R2")
                 if r2 is not None:
-                    parts.append(
-                        f"In this analysis, {model_label} demonstrated the strongest "
-                        f"predictive performance (R² = {self._fmt_param(r2)}), "
-                        f"accounting for {int(r2*100)}% of variance in the outcome. "
-                    )
+                    headline = f"R² = {self._fmt_param(r2)}"
+                    if _comparative:
+                        lead = (f"Among the models compared, {model_label} achieved "
+                                f"the strongest held-out performance ({headline})")
+                    else:
+                        lead = f"{model_label} achieved {headline} on the held-out test set"
+                    if r2 >= 0:
+                        lead += (f", accounting for {int(r2*100)}% of variance "
+                                 f"in {target_name}. ")
+                    else:
+                        # A negative R² is worse than predicting the mean — say so
+                        # rather than dressing it up.
+                        lead += (", which is below a mean-only baseline: the model "
+                                 "did not explain outcome variance in held-out data. ")
+                    parts.append(lead)
                 else:
-                    parts.append(f"In this analysis, {model_label} demonstrated the strongest predictive performance. ")
+                    parts.append(f"{model_label} was selected as the primary model. ")
             elif task_type == "classification":
                 acc = best_metrics.get("Accuracy")
                 f1 = best_metrics.get("F1")
                 if acc is not None:
-                    parts.append(
-                        f"In this analysis, {model_label} demonstrated the strongest "
-                        f"classification performance (accuracy = {self._fmt_param(acc)}). "
-                    )
+                    headline = f"accuracy = {self._fmt_param(acc)}"
                 elif f1 is not None:
-                    parts.append(
-                        f"In this analysis, {model_label} demonstrated the strongest "
-                        f"classification performance (F1 = {self._fmt_param(f1)}). "
-                    )
+                    headline = f"F1 = {self._fmt_param(f1)}"
+                if headline:
+                    if _comparative:
+                        parts.append(
+                            f"Among the models compared, {model_label} achieved the "
+                            f"strongest held-out classification performance ({headline}). "
+                        )
+                    else:
+                        parts.append(
+                            f"{model_label} achieved {headline} on the held-out test set. "
+                        )
                 else:
-                    parts.append(f"In this analysis, {model_label} demonstrated the strongest classification performance. ")
+                    parts.append(f"{model_label} was selected as the primary model. ")
         
         # Note if multiple models were compared
         if len(models) > 1:
@@ -1245,10 +1398,19 @@ class NarrativeEngine:
         
         parts.append("\n")
         
-        # Comparison with Prior Work — placeholder
+        # Comparison with Prior Work — author-owned, scaffolded with the
+        # study's own evidence so the author starts from facts, not a blank.
         parts.append("### Comparison with Prior Work\n")
-        parts.append("[Investigator required: Compare these results to published studies, "
-                    "discuss agreement or discrepancies, and contextualize findings within the literature.]\n\n")
+        _headline_clause = (
+            f" This analysis achieved {headline} for predicting {target_name}."
+            if headline else ""
+        )
+        parts.append(
+            "[AUTHOR REQUIRED — Situate these results in the literature."
+            f"{_headline_clause} Compare against published models of the same or "
+            "a similar outcome, and discuss agreement, discrepancies, and "
+            "plausible reasons (population, predictors, validation design).]\n\n"
+        )
         
         # Strengths and Limitations — auto-populate from InsightLedger
         parts.append("### Strengths and Limitations\n")
@@ -1279,38 +1441,64 @@ class NarrativeEngine:
             
             if not strengths and not limitations:
                 parts.append(
-                    "[Investigator required: No acknowledged strengths or limitations were "
-                    "captured in the analysis ledger. Document any study-specific considerations here.] "
+                    "[AUTHOR REQUIRED — No acknowledged strengths or limitations "
+                    "were captured in the analysis ledger. Document any "
+                    "study-specific considerations here.] "
                 )
-            
+
             parts.append("\n")
         else:
             parts.append(
-                "[Investigator required: Discuss methodological strengths "
+                "[AUTHOR REQUIRED — Discuss methodological strengths "
                 "(e.g., sample size, data quality, validation approach) and limitations "
                 "(e.g., generalizability, unmeasured confounders, missing data).]\n\n"
             )
-        
-        # Clinical/Practical Implications — placeholder
+
+        # Clinical/Practical Implications — author-owned, scaffolded with the
+        # explainability evidence when available.
         parts.append("### Clinical and Practical Implications\n")
-        parts.append("[Investigator required: Discuss how findings could inform "
-                    "practice, policy, or future research. Consider clinical significance "
-                    "beyond statistical significance.]\n\n")
-        
-        # Conclusions — brief auto-generated restatement
-        parts.append("### Conclusions\n")
-        if primary_model:
-            model_label = self._model_name(primary_model)
+        if top_features:
+            _feats_clause = self._human_join(top_features[:3])
             parts.append(
-                f"This study demonstrates that {model_label} can effectively predict "
-                f"the target outcome from the available predictors. "
+                f"[AUTHOR REQUIRED — The leading predictors in the explainability "
+                f"analyses were {_feats_clause}. Discuss whether these associations "
+                "are plausible and actionable in your domain, and what use "
+                "(screening, triage, hypothesis generation) the observed "
+                "performance would support. These are predictive associations, "
+                "not causal effects — do not present them as drivers of the "
+                "outcome.]\n\n"
             )
-        
+        else:
+            parts.append(
+                "[AUTHOR REQUIRED — Discuss how findings could inform practice, "
+                "policy, or future research. Consider clinical significance "
+                "beyond statistical significance.]\n\n"
+            )
+
+        # Conclusions — state the recorded facts; the claim they support
+        # belongs to the author. "Effectively predicts" is not something the
+        # software can certify, at any metric value.
+        parts.append("### Conclusions\n")
+        if primary_model and headline:
+            parts.append(
+                f"In this dataset, {self._model_name(primary_model)} predicted "
+                f"{target_name} with {headline} on the held-out test set. "
+            )
+        elif primary_model:
+            parts.append(
+                f"In this dataset, {self._model_name(primary_model)} was selected "
+                f"as the primary model. "
+            )
+        parts.append(
+            "[AUTHOR REQUIRED — State the conclusion this level of performance "
+            "supports in your domain: whether it is adequate for the intended "
+            "application, and what it does not establish.] "
+        )
         parts.append(
             "Further validation in independent cohorts and exploration of causal mechanisms "
             "are warranted before clinical or policy implementation.\n"
         )
-        
+
         return "".join(parts)
 
     # -- Helpers --------------------------------------------------------------
