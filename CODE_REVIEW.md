@@ -21,6 +21,58 @@ None of the critical findings crash the app; they produce *wrong or misleading s
 
 ---
 
+## Remediation status (updated 2026-07-16, same day)
+
+**All critical and major findings below have been fixed on this branch**, in a
+series of commits following this document (see `git log` from `1f35cf7`).
+Highlights:
+
+- **Both leakage criticals** are resolved structurally by the **test-set
+  lockbox** (`utils/test_lockbox.py`): seeded test rows are frozen at upload;
+  EDA target views, feature-engineering fits (PCA/UMAP/binning/TDA), and all
+  feature selectors are train-scoped; Train & Compare consumes the frozen
+  labels as THE test set (verified end-to-end at the widget level:
+  `tests/integration/test_lockbox_split.py`). An explicit, watermarked
+  Exploratory mode preserves fast full-data screening, and toggling it in
+  either direction resets downstream results so exploratory selection can
+  never launder into a clean manuscript.
+- **All state-integrity criticals** fixed: complete downstream reset (single
+  helper), content-fingerprinted re-uploads, target/task-aware invalidation,
+  cleaning actions that stick, ledger resolution rollback + EDA insight
+  pruning so the manuscript can never assert actions invalidated mid-session.
+- **All statistical majors** fixed: NaN-safe BCa bootstrap, per-fold CV
+  preprocessing, honest seed sensitivity (re-splits per seed), working feature
+  dropout (pipeline-respecting ablation), NN best-weight restoration,
+  data-driven weighted-Huber, α wiring, revived model-selection guidance.
+- **All manuscript majors** fixed: split/seed recorded, calibration and
+  auto-computed baselines exported, honest best-model claims, no placeholders,
+  corrected Strengths/Limitations, real reproducibility manifest (versions +
+  SHA-256 data hash), lockbox stated in Methods and tracked for TRIPOD.
+- **Docs corrected** (README/ARCHITECTURE/QUICKSTART) to match the code.
+
+A second, Fable-model design-review round (fresh-context reviewers over the
+coaching/provenance system and the UI/UX, plus an author-independent
+adversarial pass over the fix series) produced a further wave of fixes:
+one-vocabulary model families, blocker-safe acknowledge gates, per-insight
+deduped grouped coaching, flash messages that survive reruns, data-scope
+captions on every major number, lockbox/exploratory status on all result
+pages, and validation-gated downloads.
+
+**Verification state:** 515 tests passing (including 28 new regression tests
+pinning every fix), 32/32 adversarial click-around scenarios, 13/13 lockbox
+invariants, end-to-end lockbox widget tests.
+
+**Known remaining work (deliberately deferred, none demo-blocking):**
+publication-register `limitation_text` separation for coaching prose in the
+Discussion; an `insight_ids` constants module + CI scan to make the
+stale-ID bug class impossible; explicit theory anchors at every EDA producer
+(inference fallback is currently benign but fragile); coaching badge counts
+vs scoped body coherence; removing or wiring the dead `dataset_db.py` /
+`decision_curve_analysis` code; `ManuscriptDraft.to_latex()` escaping (unused
+by the export path); Pandas 4 deprecation warnings in `data_processor.py`.
+
+---
+
 ## What genuinely holds (verified strengths)
 
 | Claim | Verdict | Evidence |
