@@ -41,9 +41,16 @@ def _get_selected_models() -> List[str]:
     explicit = st.session_state.get("selected_models")
     if explicit:
         return list(explicit)
-    return [k.replace("train_model_", "")
-            for k, v in st.session_state.items()
-            if k.startswith("train_model_") and v is True]
+    from_checkboxes = [k.replace("train_model_", "")
+                       for k, v in st.session_state.items()
+                       if k.startswith("train_model_") and v is True]
+    if from_checkboxes:
+        return from_checkboxes
+    # train_model_* keys become widget-bound on the Train page, so Streamlit
+    # garbage-collects them when the user navigates elsewhere. Fall back to
+    # the durable record of models whose pipelines were built on Preprocess.
+    built = st.session_state.get("preprocess_built_model_keys")
+    return list(built) if built else []
 
 
 def render_page_coaching(

@@ -190,6 +190,32 @@ class TestDownstreamReset:
         set_data(df1.copy())  # benign rerun with identical content
         assert st.session_state["trained_models"] == {"marker": "KEEP"}
 
+    def test_non_unique_index_reset_before_storage(self):
+        """Duplicate index labels (e.g. a parquet upload that preserved a
+        non-unique index) would break label-based lockbox membership —
+        Index.isin over-selects every row carrying a duplicated label, putting
+        rows in both train and test. set_data must normalize the index."""
+        from utils.session_state import set_data, get_data
+        from utils.test_lockbox import ensure_lockbox, get_lockbox, train_row_mask
+
+        n = 60
+        dup_index = list(range(n // 2)) * 2  # every label appears twice
+        df = pd.DataFrame(
+            {"a": np.arange(float(n)), "y": np.arange(float(n))},
+            index=dup_index,
+        )
+        set_data(df)
+        active = get_data()
+        assert active.index.is_unique, "set_data stored a non-unique index"
+
+        ensure_lockbox(active, target_col="y", task_type="regression")
+        lb = get_lockbox()
+        test_labels = set(lb["labels"])
+        train_mask = train_row_mask(active.index)
+        train_labels = set(active.index[train_mask])
+        assert not (train_labels & test_labels), \
+            "lockbox partitions overlap after duplicate-index upload"
+
 
 # ── Manuscript honesty ───────────────────────────────────────────────────
 
@@ -281,6 +307,23 @@ class TestWiringPins:
     def test_coaching_derives_selected_models(self):
         src = self._read("utils/coaching_ui.py")
         assert "train_model_" in src
+
+    def test_coaching_falls_back_to_built_pipelines(self):
+        """train_model_* keys are widget-bound on the Train page, so Streamlit
+        garbage-collects them when the user navigates to Explainability or
+        Sensitivity. Coaching must fall back to the durable record of built
+        pipelines instead of silently losing model-aware grouping."""
+        from utils.coaching_ui import _get_selected_models
+
+        _clear_session()
+        try:
+            st.session_state["preprocess_built_model_keys"] = ["rf", "ridge"]
+            assert _get_selected_models() == ["rf", "ridge"]
+            # explicit selection still wins over the fallback
+            st.session_state["train_model_lasso"] = True
+            assert _get_selected_models() == ["lasso"]
+        finally:
+            _clear_session()
 
     def test_selection_guidance_uses_real_metric_columns(self):
         src = self._read("pages/06_Train_and_Compare.py")

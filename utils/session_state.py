@@ -235,6 +235,12 @@ def set_data(df: pd.DataFrame, is_schema_change: Optional[bool] = None):
     is_schema_change=False suppresses only the full config reset; it does NOT
     keep results computed from different data.
     """
+    if not df.index.is_unique:
+        # The test-set lockbox and train/test masks identify rows by index
+        # LABEL; duplicate labels would silently over-select rows into both
+        # partitions (e.g. a parquet upload that preserved a non-unique index).
+        df = df.reset_index(drop=True)
+
     old_df = st.session_state.get('raw_data')
     old_cols = frozenset(old_df.columns) if old_df is not None else None
     new_cols = frozenset(df.columns)
