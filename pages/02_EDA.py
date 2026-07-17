@@ -31,6 +31,7 @@ from utils.session_state import (
 )
 from utils.storyline import render_breadcrumb, render_page_navigation
 from data_processor import get_numeric_columns
+from utils.perf_cache import cached_numeric_summary, cached_target_correlations
 from utils.theme import (
     inject_custom_css, render_guidance, render_reviewer_concern,
     render_step_indicator, render_sidebar_workflow
@@ -193,23 +194,28 @@ eda_recommendations = recommend_eda(signals)
 def _auto_generate_insights():
     """Write auto-detected insights to the ledger. Idempotent via upsert."""
 
-    # Sufficiency
+    # Sufficiency. DataSufficiencyLevel values are abundant/adequate/limited/
+    # scarce/critical — an earlier vocabulary ("insufficient"/"borderline")
+    # matched nothing, so these insights never fired even on p >> n data.
+    # Insight ids are kept for downstream resolution mappings.
     sufficiency = getattr(getattr(profile, "data_sufficiency", None), "value", "adequate")
-    if sufficiency == "insufficient":
+    _suff_ratio = regime.n_rows / max(regime.n_features, 1)
+    _suff_ratio_str = f"{_suff_ratio:.2f}:1" if _suff_ratio < 10 else f"{_suff_ratio:.0f}:1"
+    if sufficiency == "critical":
         ledger.upsert(Insight(
             id="eda_sufficiency_insufficient",
             source_page="02_EDA", category="sufficiency", severity="blocker",
-            finding=f"Sample size may be insufficient ({regime.n_rows:,} rows, {regime.n_features} features, ratio {regime.n_rows / max(regime.n_features, 1):.0f}:1)",
+            finding=f"Sample size may be insufficient ({regime.n_rows:,} rows, {regime.n_features} features, {_suff_ratio_str} samples per feature)",
             implication="Complex models will likely overfit. Prefer simple baselines.",
             recommended_action="Reduce features or gather more data",
             relevant_pages=["04_Feature_Selection", "06_Train_and_Compare", "10_Report_Export"],
             model_scope=[MODEL_FAMILY_NEURAL],  # most affected by low sample size
         ))
-    elif sufficiency == "borderline":
+    elif sufficiency in ("scarce", "limited"):
         ledger.upsert(Insight(
             id="eda_sufficiency_borderline",
             source_page="02_EDA", category="sufficiency", severity="warning",
-            finding=f"Data sufficiency is borderline ({regime.n_rows:,} rows, {regime.n_features} features)",
+            finding=f"Data sufficiency is {sufficiency} ({regime.n_rows:,} rows, {regime.n_features} features)",
             implication="Prefer simpler models and tighter regularization.",
             recommended_action="Consider feature reduction before complex modeling",
             relevant_pages=["04_Feature_Selection", "06_Train_and_Compare"],
@@ -397,14 +403,19 @@ def _auto_generate_insights():
         ))
 
     # Strong target signal opportunity
+    # Both this check and the non-linearity check below need per-feature
+    # correlations with the target; one cached vectorized pass replaces
+    # thousands of per-column Series.corr calls on wide data.
+    _corr_pearson, _corr_spearman = None, None
     if _has_target and task_type_final == "regression":
         numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
-        if len(numeric_cols) >= 2:
-            top_corr = max(
-                (abs(df[c].corr(df[target_col])) for c in numeric_cols if c != target_col),
-                default=0,
-            )
-            if top_corr > 0.7:
+        _corr_cols = tuple(c for c in numeric_cols if c != target_col)
+        if _corr_cols:
+            _corr_pearson, _corr_spearman = cached_target_correlations(
+                df, target_col, _corr_cols)
+    if _corr_pearson is not None and len(_corr_pearson) >= 2:
+            top_corr = float(_corr_pearson.abs().max(skipna=True) or 0)
+            if not np.isnan(top_corr) and top_corr > 0.7:
                 ledger.upsert(Insight(
                     id="eda_opportunity_strong_signal",
                     source_page="02_EDA", category="relationship", severity="opportunity",
@@ -418,14 +429,11 @@ def _auto_generate_insights():
                 ))
 
     # Non-linear relationship opportunity
-    if _has_target and task_type_final == "regression":
-        numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
-        if len(numeric_cols) >= 3:
+    if _corr_pearson is not None and len(_corr_pearson) >= 3:
             # Compare Pearson vs Spearman to detect non-linearity
-            pearson_corrs = [abs(df[c].corr(df[target_col])) for c in numeric_cols if c != target_col]
-            spearman_corrs = [abs(df[c].corr(df[target_col], method="spearman")) for c in numeric_cols if c != target_col]
-            if pearson_corrs and spearman_corrs:
-                avg_gap = np.mean([s - p for p, s in zip(pearson_corrs, spearman_corrs) if not (np.isnan(p) or np.isnan(s))])
+            _gap = (_corr_spearman.abs() - _corr_pearson.abs()).dropna()
+            if len(_gap) > 0:
+                avg_gap = float(_gap.mean())
                 if avg_gap > 0.08:
                     ledger.upsert(Insight(
                         id="eda_opportunity_nonlinear",
@@ -489,15 +497,24 @@ with cols[2]:
 with cols[3]:
     st.metric("Categorical", f"{regime.n_categorical}")
 with cols[4]:
-    missing_pct = df[feature_cols].isnull().mean().mean() * 100
-    st.metric("Missing", f"{missing_pct:.1f}%")
+    _missing_by_col = df[feature_cols].isnull().mean()
+    missing_pct = _missing_by_col.mean() * 100
+    # The overall mean dilutes a badly-missing column across thousands of
+    # complete ones — surface the worst offender in the tooltip.
+    _missing_help = "Mean missingness across selected features."
+    if len(_missing_by_col) > 0 and _missing_by_col.max() > 0:
+        _worst_col = _missing_by_col.idxmax()
+        _missing_help += f" Highest single feature: {_worst_col} ({_missing_by_col.max():.0%})."
+    st.metric("Missing", f"{missing_pct:.1f}%", help=_missing_help)
 with cols[5]:
     sufficiency_val = getattr(getattr(profile, "data_sufficiency", None), "value", "adequate")
-    # Words like 'Adequate'/'Borderline' truncate ('Ade…') at the metric
-    # tile's numeral font size — show a compact verdict, keep the full term
-    # in the tooltip.
-    _suff_display = {"adequate": "✓ OK", "borderline": "△ Low",
-                     "insufficient": "✗ Poor"}.get(sufficiency_val, sufficiency_val.title())
+    # Compact verdicts: anything longer than ~4 glyphs ('Critical',
+    # '✗ Poor') truncates at the metric tile's numeral font size at
+    # six-tiles-across width. Full term stays in the tooltip. Covers every
+    # DataSufficiencyLevel value.
+    _suff_display = {"abundant": "High", "adequate": "OK",
+                     "limited": "Fair", "scarce": "Weak",
+                     "critical": "Poor"}.get(sufficiency_val, sufficiency_val.title()[:4])
     st.metric("Sufficiency", _suff_display,
               help=f"Data sufficiency: {sufficiency_val} (based on samples-per-feature ratio)")
 
@@ -634,9 +651,7 @@ with _eda_tabs[1]:
         # Ultra-wide: summary-of-summaries view
         st.caption(f"Dataset has {regime.n_features} features — showing summary statistics. Use Column Inspector to drill into individual features.")
         if numeric_features:
-            summary_df = df[numeric_features].describe().T
-            summary_df["skew"] = df[numeric_features].skew()
-            summary_df["missing_%"] = df[numeric_features].isnull().mean() * 100
+            summary_df = cached_numeric_summary(df, tuple(numeric_features))
             summary_df.index.name = "Feature"
             table(summary_df.round(3).reset_index())
 

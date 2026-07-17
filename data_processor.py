@@ -141,18 +141,18 @@ def load_and_preview_csv(file_path: str, n_rows: int = 5) -> pd.DataFrame:
 
 
 def get_numeric_columns(df: pd.DataFrame) -> List[str]:
-    """Get list of numeric column names (at least one non-null, truly numeric)."""
-    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    valid_numeric = []
-    for col in numeric_cols:
-        if df[col].notna().sum() > 0:
-            # Double-check that the column is truly numeric (no string values)
-            try:
-                pd.to_numeric(df[col].dropna(), errors='raise')
-                valid_numeric.append(col)
-            except (ValueError, TypeError):
-                pass  # Skip columns with non-numeric values
-    return valid_numeric
+    """Get list of numeric column names (at least one non-null).
+
+    select_dtypes(np.number) already guarantees numeric dtype, so no
+    per-column value revalidation is needed — a float64/int64 column cannot
+    hold strings. The vectorized notna scan keeps this O(cells in C), which
+    matters on wide data where a Python per-column loop costs seconds.
+    """
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    if len(numeric_cols) == 0:
+        return []
+    has_data = df[numeric_cols].notna().any()
+    return [col for col in numeric_cols if has_data[col]]
 
 
 def get_categorical_columns(df: pd.DataFrame) -> List[str]:

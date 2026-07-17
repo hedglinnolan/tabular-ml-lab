@@ -62,6 +62,21 @@ pages, and validation-gated downloads.
 pinning every fix), 32/32 adversarial click-around scenarios, 13/13 lockbox
 invariants, end-to-end lockbox widget tests.
 
+**Ultrawide-shape wave (2026-07-17, driven by a 3000×34 browser stress
+test):** the first-10 feature default (which silently dropped predictors on
+wide data and made the EDA tiles describe a subset) now defaults to all
+features; a stale sufficiency vocabulary meant the p≫n blocker never fired —
+fixed against the real `DataSufficiencyLevel` enum and verified firing on
+3000×34; per-rerun O(columns) scans (audit loops, `df.describe`, per-column
+target correlations, uploaded-file re-parse) were vectorized and cached in
+`utils/perf_cache.py`, cutting EDA warm reruns from ~10s to ~2.5s and
+page-01 clicks from 11–22s to 3–6s at 3000 columns; RFE-CV (measured 80s at
+this shape) auto-disables above 500 features; the LASSO path plot caps at
+the 20 strongest paths; metric tiles no longer truncate and the Missing
+tile's tooltip names the worst column. Verified end-to-end in a real
+browser session (upload → EDA → Feature Selection) plus 8 new regression
+tests. Test count: 525 passing.
+
 **Known remaining work (deliberately deferred, none demo-blocking):**
 publication-register `limitation_text` separation for coaching prose in the
 Discussion; an `insight_ids` constants module + CI scan to make the

@@ -413,3 +413,102 @@ class TestLedgerInvalidation:
         st.session_state["exploratory_used"] = True
         reset_downstream_results()
         assert "exploratory_used" not in st.session_state
+
+
+# ── Ultrawide-dataset fixes (3000×34 stress test) ────────────────────────
+
+class TestUltrawideFixes:
+    def _read(self, rel):
+        with open(os.path.join(PROJECT_ROOT, rel)) as f:
+            return f.read()
+
+    def test_features_default_is_all_not_first_ten(self):
+        """The first-10 default silently dropped predictors on wide data
+        (column order is not relevance order) and made the EDA tiles
+        describe a subset the user never chose."""
+        src = self._read("pages/01_Upload_and_Audit.py")
+        assert "feature_options[:min(10" not in src
+        assert "default_features = list(feature_options)" in src
+
+    def test_rfe_auto_disables_on_wide_data(self):
+        """RFE-CV with step=1 measured ~80s at 3000 features; it must not be
+        the default there."""
+        src = self._read("pages/04_Feature_Selection.py")
+        assert "_RFE_AUTO_DISABLE_FEATURES" in src
+        assert "value=not _rfe_too_wide" in src
+
+    def test_lasso_path_plot_caps_traces(self):
+        src = self._read("pages/04_Feature_Selection.py")
+        assert "_LASSO_PLOT_MAX_TRACES" in src
+
+    def test_sufficiency_vocabulary_matches_enum(self):
+        """The tile map and the auto-insight triggers previously used a stale
+        vocabulary ('insufficient'/'borderline') that matched no
+        DataSufficiencyLevel value — the sufficiency blocker never fired,
+        even on 34 rows × 3000 features."""
+        from ml.dataset_profile import DataSufficiencyLevel
+
+        src = self._read("pages/02_EDA.py")
+        for level in DataSufficiencyLevel:
+            assert f'"{level.value}"' in src, (
+                f"page 02 does not handle sufficiency level '{level.value}'")
+
+    def test_profile_flags_ultrawide_as_critical(self):
+        from ml.dataset_profile import compute_dataset_profile
+
+        rng = np.random.default_rng(0)
+        n, p = 40, 300
+        df = pd.DataFrame(rng.normal(size=(n, p)),
+                          columns=[f"f{i}" for i in range(p)])
+        df["y"] = rng.normal(size=n)
+        profile = compute_dataset_profile(df, "y", [f"f{i}" for i in range(p)],
+                                          "regression")
+        assert profile.data_sufficiency.value == "critical"
+
+    def test_vectorized_numeric_columns_semantics(self):
+        """get_numeric_columns dropped a per-column pd.to_numeric revalidation
+        that was a no-op for numeric dtypes but cost ~2s at 3000 columns.
+        Semantics must be unchanged: numeric dtype, at least one non-null."""
+        from data_processor import get_numeric_columns
+
+        df = pd.DataFrame({
+            "a": [1.0, 2.0],
+            "b": [np.nan, np.nan],          # numeric but all-null → excluded
+            "c": ["x", "y"],                # object → excluded
+            "d": [1, 2],
+        })
+        assert get_numeric_columns(df) == ["a", "d"]
+
+    def test_cached_audit_tables_semantics(self):
+        from utils.perf_cache import cached_audit_tables
+
+        df = pd.DataFrame({
+            "const": [1] * 6,
+            "binary": [0, 1, 0, 1, 0, 1],
+            "ident": list(range(6)),
+            "mixed": ["1", "2", "x", "3", "y", "4"],
+            "missing": [1.0, np.nan, 3.0, np.nan, 5.0, 6.0],
+        })
+        card, dtypes = cached_audit_tables(df)
+        by_col = {r["Column"]: r for r in card}
+        assert by_col["const"]["Type"] == "Constant"
+        assert by_col["binary"]["Type"] == "Binary"
+        assert by_col["ident"]["Type"] == "Unique (potential ID)"
+
+        dtype_by_col = {r["Column"]: r for r in dtypes}
+        assert "mixed types" in dtype_by_col["mixed"]["Issues"]
+        assert "2 missing" in dtype_by_col["missing"]["Issues"]
+        assert dtype_by_col["const"]["Issues"] == "OK"
+
+    def test_cached_target_correlations_match_pairwise(self):
+        from utils.perf_cache import cached_target_correlations
+
+        rng = np.random.default_rng(1)
+        df = pd.DataFrame(rng.normal(size=(60, 5)),
+                          columns=list("abcde"))
+        df["y"] = df["a"] * 2 + rng.normal(size=60)
+        pearson, spearman = cached_target_correlations(df, "y", ("a", "b", "c"))
+        for col in ("a", "b", "c"):
+            assert abs(pearson[col] - df[col].corr(df["y"])) < 1e-9
+            assert abs(spearman[col]
+                       - df[col].corr(df["y"], method="spearman")) < 1e-9

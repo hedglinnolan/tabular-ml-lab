@@ -158,12 +158,21 @@ elif df.loc[mask, numeric_features].isna().any().any():
 st.header("Select Methods")
 st.caption("Run multiple methods and compare which features are consistently selected.")
 
+# RFE with step=1 fits ~p models over shrinking feature sets — measured
+# ~80s at 3000 features on this hardware, so default it off on wide data.
+_RFE_AUTO_DISABLE_FEATURES = 500
+_rfe_too_wide = len(numeric_features) > _RFE_AUTO_DISABLE_FEATURES
+
 col1, col2 = st.columns(2)
 with col1:
     run_lasso = st.checkbox("LASSO Path", value=True,
                             help="Shows how features enter/leave the model as regularization changes. Best for identifying the strongest linear predictors.")
-    run_rfe = st.checkbox("RFE-CV (Recursive Feature Elimination)", value=True,
+    run_rfe = st.checkbox("RFE-CV (Recursive Feature Elimination)", value=not _rfe_too_wide,
                           help="Iteratively removes least important features. Finds the optimal subset size via cross-validation.")
+    if _rfe_too_wide and not run_rfe:
+        st.caption(f"Off by default above {_RFE_AUTO_DISABLE_FEATURES} features "
+                   "— recursive elimination takes minutes at this width. "
+                   "Enable it if you need it.")
 with col2:
     run_univariate = st.checkbox("Univariate Screening (FDR-corrected)", value=True,
                                  help="Tests each feature individually against the target. FDR correction controls false discovery rate.")
@@ -186,7 +195,8 @@ with st.expander("⚙️ Advanced Settings", expanded=False):
 n_features = len(numeric_features)
 n_samples = len(X)
 if n_features > 200:
-    st.caption(f"⚠️ {n_features} features × {n_samples} samples — selection may take a few minutes.{' Consider disabling RFE.' if n_features > 500 else ''}")
+    _rfe_note = " RFE is the slow one — expect minutes if enabled." if run_rfe and n_features > _RFE_AUTO_DISABLE_FEATURES else ""
+    st.caption(f"⚠️ {n_features} features × {n_samples} samples — selection may take a few minutes.{_rfe_note}")
 
 if st.button("🔍 Run Feature Selection", type="primary"):
     import signal, functools
@@ -329,12 +339,23 @@ if results:
                     import plotly.graph_objects as go
                     alphas = np.array(result.details["alphas"])
                     coefs = np.array(result.details["path_coefs"])
+                    # One trace per feature is unreadable (and a huge payload)
+                    # on wide data — keep the strongest paths only.
+                    _LASSO_PLOT_MAX_TRACES = 20
+                    _path_order = np.argsort(-np.abs(coefs).max(axis=1))
+                    _shown = _path_order[:_LASSO_PLOT_MAX_TRACES]
                     fig = go.Figure()
-                    for j, fname in enumerate(numeric_features):
+                    for j in _shown:
                         fig.add_trace(go.Scatter(
                             x=np.log10(alphas), y=coefs[j, :],
-                            mode='lines', name=fname,
+                            mode='lines', name=numeric_features[j],
                         ))
+                    if len(numeric_features) > _LASSO_PLOT_MAX_TRACES:
+                        st.caption(
+                            f"Showing the {_LASSO_PLOT_MAX_TRACES} strongest coefficient "
+                            f"paths of {len(numeric_features)} features (ranked by max "
+                            "|coefficient| along the path)."
+                        )
                     fig.add_vline(
                         x=np.log10(result.details["optimal_alpha"]),
                         line_dash="dash", line_color="red",

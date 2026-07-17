@@ -32,6 +32,9 @@ from data_processor import (
     load_tabular_data, get_numeric_columns, get_selectable_columns,
     detect_file_type
 )
+from utils.perf_cache import (
+    cached_parse_upload, cached_audit_tables, cached_numeric_summary,
+)
 from ml.triage import detect_task_type, detect_cohort_structure
 from ml.eda_recommender import compute_dataset_signals
 
@@ -333,13 +336,16 @@ if uploaded_files:
                     help="Use this if your features are in rows instead of columns"
                 )
                 
-                # Load preview with transpose setting
+                # Load preview with transpose setting. Cached on file content:
+                # this block re-executes on every rerun while the file sits in
+                # the uploader, and re-parsing a wide file each click costs
+                # seconds.
                 with st.spinner(f"Loading {uploaded_file.name}..."):
-                    df_preview = load_tabular_data(
-                        uploaded_file,
-                        filename=uploaded_file.name,
-                        transpose=transpose_this_file,
-                        excel_sheet=excel_sheet_choice if file_type == 'excel' else 0
+                    df_preview = cached_parse_upload(
+                        uploaded_file.getvalue(),
+                        uploaded_file.name,
+                        transpose_this_file,
+                        excel_sheet_choice if file_type == 'excel' else 0,
                     )
                 
                 # Reset file position for later
@@ -390,15 +396,15 @@ if uploaded_files:
                             st.error(f"Please check 'Replace existing' or change the dataset name.")
                             st.stop()
                         
-                        # Reload to ensure fresh data
-                        uploaded_file.seek(0)
+                        # Same cached parse as the preview — content-keyed, so
+                        # this returns the identical frame without re-reading.
                         sheet_param = excel_sheet_choice if file_type == 'excel' else 0
                         with st.spinner(f"Adding {dataset_name} to project..."):
-                            df = load_tabular_data(
-                                uploaded_file,
-                                filename=uploaded_file.name,
-                                transpose=transpose_this_file,
-                                excel_sheet=sheet_param
+                            df = cached_parse_upload(
+                                uploaded_file.getvalue(),
+                                uploaded_file.name,
+                                transpose_this_file,
+                                sheet_param,
                             )
                         
                         # Ensure column names are strings for merge compatibility
@@ -1192,46 +1198,12 @@ audit_results = {}
 # -------------------------------------------------------------------------
 # CARDINALITY ANALYSIS
 # -------------------------------------------------------------------------
+_cardinality_data, _dtype_data = cached_audit_tables(df)
+
 with st.expander("Cardinality Analysis (Unique Values per Column)", expanded=True):
     st.caption("Helps identify potential ID columns, categorical variables, and constants.")
-    
-    cardinality_data = []
-    for col in df.columns:
-        n_unique = df[col].nunique()
-        n_total = len(df)
-        pct_unique = (n_unique / n_total) * 100 if n_total > 0 else 0
-        
-        # Classify cardinality
-        if n_unique == 1:
-            card_type = "Constant"
-            card_flag = "⚠️"
-        elif n_unique == 2:
-            card_type = "Binary"
-            card_flag = ""
-        elif n_unique == n_total:
-            card_type = "Unique (potential ID)"
-            card_flag = "🔑"
-        elif n_unique <= 10:
-            card_type = "Low cardinality"
-            card_flag = ""
-        elif n_unique <= 50:
-            card_type = "Moderate cardinality"
-            card_flag = ""
-        elif pct_unique > 90:
-            card_type = "High cardinality (near-unique)"
-            card_flag = ""
-        else:
-            card_type = "High cardinality"
-            card_flag = ""
-        
-        cardinality_data.append({
-            'Column': col,
-            'Unique': n_unique,
-            '% Unique': f"{pct_unique:.1f}%",
-            'Type': card_type,
-            'Flag': card_flag
-        })
-    
+
+    cardinality_data = _cardinality_data
     card_df = pd.DataFrame(cardinality_data)
     table(card_df, width="stretch", hide_index=True)
     audit_results['cardinality'] = cardinality_data
@@ -1248,41 +1220,8 @@ with st.expander("Cardinality Analysis (Unique Values per Column)", expanded=Tru
 # -------------------------------------------------------------------------
 with st.expander("Data Types & Validity Checks", expanded=False):
     st.subheader("Column Types")
-    
-    dtype_data = []
-    for col in df.columns:
-        dtype = str(df[col].dtype)
-        n_nonnull = df[col].count()
-        n_null = df[col].isnull().sum()
-        n_unique = df[col].nunique()
-        
-        # Sample values
-        sample_vals = df[col].dropna().head(3).tolist()
-        sample_str = str(sample_vals)[:50] + "..." if len(str(sample_vals)) > 50 else str(sample_vals)
-        
-        # Validity check
-        validity_issues = []
-        if n_null > 0:
-            validity_issues.append(f"{n_null} missing")
-        if dtype == 'object':
-            # Check for mixed types
-            try:
-                numeric_count = pd.to_numeric(df[col], errors='coerce').notna().sum()
-                if 0 < numeric_count < n_nonnull:
-                    validity_issues.append("mixed types")
-            except Exception:
-                pass
-        
-        dtype_data.append({
-            'Column': col,
-            'Type': dtype,
-            'Non-null': n_nonnull,
-            'Null': n_null,
-            'Unique': n_unique,
-            'Sample': sample_str,
-            'Issues': ', '.join(validity_issues) if validity_issues else 'OK'
-        })
-    
+
+    dtype_data = _dtype_data
     dtype_df = pd.DataFrame(dtype_data)
     table(dtype_df, width="stretch", hide_index=True)
     audit_results['dtypes'] = dtype_data
@@ -1336,23 +1275,26 @@ with st.expander("Duplicate Rows", expanded=False):
 numeric_cols = get_numeric_columns(df)
 if numeric_cols:
     with st.expander("Numeric Column Statistics", expanded=False):
-        numeric_stats = df[numeric_cols].describe().T
-        numeric_stats['skewness'] = df[numeric_cols].skew()
-        numeric_stats['kurtosis'] = df[numeric_cols].kurtosis()
+        numeric_stats = cached_numeric_summary(df, tuple(numeric_cols)).rename(
+            columns={"skew": "skewness"})
         numeric_stats.index.name = 'Feature'
         table(numeric_stats.round(3).reset_index(), width="stretch")
         audit_results['numeric_stats'] = numeric_stats.to_dict()
-        
-        # Flag potential outliers
+
+        # Flag potential outliers — vectorized IQR scan across all columns
         n_rows = len(df)
-        for col in numeric_cols:
-            q1 = df[col].quantile(0.25)
-            q3 = df[col].quantile(0.75)
-            iqr = q3 - q1
-            outlier_count = ((df[col] < q1 - 1.5*iqr) | (df[col] > q3 + 1.5*iqr)).sum()
-            if n_rows > 0 and outlier_count > n_rows * 0.05:  # More than 5% outliers
-                outlier_pct = (outlier_count / n_rows * 100)
-                st.info(f"**{col}**: {outlier_count} potential outliers ({outlier_pct:.1f}%)")
+        if n_rows > 0:
+            _num = df[numeric_cols]
+            _q1 = _num.quantile(0.25)
+            _q3 = _num.quantile(0.75)
+            _iqr = _q3 - _q1
+            _outlier_counts = ((_num.lt(_q1 - 1.5 * _iqr, axis=1))
+                               | (_num.gt(_q3 + 1.5 * _iqr, axis=1))).sum()
+            _flagged = _outlier_counts[_outlier_counts > n_rows * 0.05]
+            for col, cnt in _flagged.head(10).items():
+                st.info(f"**{col}**: {int(cnt)} potential outliers ({cnt / n_rows * 100:.1f}%)")
+            if len(_flagged) > 10:
+                st.caption(f"…and {len(_flagged) - 10} more columns with >5% potential outliers.")
 
 # -------------------------------------------------------------------------
 # SUGGESTED ACTIONS
@@ -1532,7 +1474,12 @@ if task_mode == "prediction":
             if existing_features:
                 default_features = [f for f in existing_features if f in feature_options]
             else:
-                default_features = feature_options[:min(10, len(feature_options))]
+                # Default to ALL candidate features. An arbitrary first-N cap
+                # silently drops predictors on wide data (column order is not
+                # relevance order) and makes the EDA tiles describe a subset
+                # the user never chose. Narrowing is the Feature Selection
+                # page's job, on training rows only.
+                default_features = list(feature_options)
         else:
             # Widget already exists, use its current value
             default_features = [f for f in st.session_state.features_multiselect if f in feature_options]
