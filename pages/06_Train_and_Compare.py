@@ -198,6 +198,19 @@ with col2:
 with col3:
     test_size = st.slider("Test %", 5, 30, test_size_default, key="train_split_test_pct") / 100
 
+# Under the lockbox the test fraction is fixed at upload; the Test % slider
+# above only matters for group/time splits (which bypass the lockbox) or when
+# no lockbox exists. Say so rather than leaving a silently dead control.
+from utils.test_lockbox import get_lockbox as _slider_get_lockbox, is_exploratory as _slider_is_exploratory
+_slider_lb = None if _slider_is_exploratory() else _slider_get_lockbox()
+if _slider_lb is not None:
+    st.caption(
+        f"🔒 The held-out test fraction is governed by the upload lockbox "
+        f"({_slider_lb['fraction']:.0%}, n={_slider_lb['n_test']}) — for random/stratified "
+        f"splits the Test % slider is ignored and Train/Val set only their relative sizes. "
+        f"Change the holdout on Upload & Audit."
+    )
+
 if abs(train_size + val_size + test_size - 1.0) > 0.01:
     st.error("Splits must sum to 100%")
     st.stop()
@@ -318,6 +331,16 @@ if st.button("Prepare Splits", type="primary"):
         # have their own leakage semantics and bypass the lockbox (disclosed).
         from utils.test_lockbox import get_lockbox as _get_lockbox, is_exploratory as _lb_exploratory
         _lockbox = None if _lb_exploratory() else _get_lockbox()
+        if _lockbox is not None and use_group_split and entity_id_final:
+            st.warning(
+                "🔓 Group-based splitting draws its own test set (grouping has its own "
+                "leakage semantics) — the upload lockbox does NOT apply to this split."
+            )
+        if _lockbox is not None and split_config.use_time_split and data_config.datetime_col:
+            st.warning(
+                "🔓 Time-based splitting uses chronological ordering — the upload "
+                "lockbox does NOT apply to this split."
+            )
         _lockbox_applicable = (
             _lockbox is not None
             and not (use_group_split and entity_id_final)
@@ -327,6 +350,10 @@ if st.button("Prepare Splits", type="primary"):
             _test_label_set = set(_lockbox["labels"])
             is_test_row = np.array([lbl in _test_label_set for lbl in orig_labels])
             if int(is_test_row.sum()) < 2 or int((~is_test_row).sum()) < 4:
+                st.warning(
+                    "🔓 Too few lockbox test rows survive the current filters — "
+                    "falling back to a fresh random split for this run."
+                )
                 _lockbox_applicable = False
 
         # Target trimming (regression only, before split)
@@ -1536,11 +1563,16 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                     resolution_details=_resolve_details,
                 )
 
-        # Auto-acknowledge any remaining unresolved insights at the training gate.
-        # Training completion means the user has made all upstream decisions.
+        # Auto-acknowledge remaining unresolved UPSTREAM insights at the
+        # training gate — proceeding to train means the user made those
+        # upstream decisions. Scoped so that retraining never sweeps
+        # explainability/sensitivity insights, and blockers are never
+        # bulk-acknowledged (the ledger skips them regardless).
         try:
             _tc_ledger.auto_acknowledge_gate(
                 gate_name="Training completed",
+                source_pages=["02_EDA", "03_Feature_Engineering",
+                              "04_Feature_Selection", "05_Preprocess"],
             )
         except Exception:
             pass
@@ -1810,6 +1842,14 @@ if st.session_state.get('trained_models'):
             pass
 
     # Model metrics table with export option
+    _xte = st.session_state.get('X_test')
+    _xtr = st.session_state.get('X_train')
+    _n_te = len(_xte) if _xte is not None else 0
+    _n_tr = len(_xtr) if _xtr is not None else 0
+    st.caption(
+        f"Data scope: unprefixed metrics are computed on the held-out test set "
+        f"(n={_n_te}); 'Train'-prefixed columns use the training rows (n={_n_tr})."
+    )
     table(comparison_df, key="model_metrics")
 
     # ================================================================
@@ -1866,7 +1906,10 @@ if st.session_state.get('trained_models'):
                 ci_rows.append(row)
             ci_df = pd.DataFrame(ci_rows)
             table(ci_df, key="bootstrap_ci")
-            st.caption("Format: estimate [95% CI lower, upper] via BCa bootstrap (1000 resamples)")
+            _xte_ci = st.session_state.get('X_test')
+            st.caption(f"Format: estimate [95% CI lower, upper] via BCa bootstrap "
+                       f"(1000 resamples) on the held-out test set "
+                       f"(n={len(_xte_ci) if _xte_ci is not None else 0})")
 
     # ================================================================
     # BASELINE MODEL COMPARISON
@@ -1923,6 +1966,9 @@ if st.session_state.get('trained_models'):
 
         if st.session_state.get("baseline_results"):
             baselines = st.session_state["baseline_results"]
+            _xte_b = st.session_state.get('X_test')
+            st.caption(f"Baselines are evaluated on the same held-out test set "
+                       f"(n={len(_xte_b) if _xte_b is not None else 0}), on the original target scale.")
             for bname, bres in baselines.items():
                 st.markdown(f"**{bname}:** {bres['description']}")
                 cols_b = st.columns(len(bres["metrics"]))

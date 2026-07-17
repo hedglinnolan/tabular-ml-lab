@@ -118,6 +118,8 @@ inject_custom_css()
 render_sidebar_workflow(current_page="01_Upload_and_Audit")
 
 st.title("📂 Upload & Audit")
+from utils.theme import render_flash
+render_flash()
 st.caption("Start here. Upload one dataset, confirm it looks right, then choose your analysis setup. Multi-file workflows are still available when you need them.")
 render_guidance(
     "<strong>Recommended first pass:</strong> 1) Upload a single dataset, 2) review the working table and audit, 3) choose your target and continue to EDA. "
@@ -1411,8 +1413,10 @@ if suggested_actions:
                             )
                         except Exception:
                             pass  # Provenance recording should never break the workflow
-                        st.success(f"Applied: {label}. New shape: {new_df.shape[0]:,} rows × {new_df.shape[1]} columns. "
-                                   f"Downstream results (splits, models, reports) were reset — they described the pre-cleaning data.")
+                        from utils.theme import flash
+                        flash("success",
+                              f"Applied: {label}. New shape: {new_df.shape[0]:,} rows × {new_df.shape[1]} columns. "
+                              f"Downstream results (splits, models, reports) were reset — they described the pre-cleaning data.")
                         st.rerun()
                 except Exception as e:
                     st.error(f"Failed to apply: {e}")
@@ -1667,23 +1671,33 @@ if task_mode == "prediction":
                         implication="Held-out evaluation is protected from selection and preprocessing leakage.",
                         recommended_action="",
                         relevant_pages=["06_Train_and_Compare"],
+                        tripod_keys=["study_design", "model_building"],
                         resolved=True,
                         resolved_by="Quarantined automatically at upload (seed "
                                     f"{_lb['seed']})",
                         resolved_on_page="01_Upload_and_Audit",
                         resolution_details={"action_type": "test_lockbox",
-                                            "fraction": _lb['fraction'],
-                                            "seed": _lb['seed'],
-                                            "n_test": _lb['n_test']},
+                                            "params": {"fraction": _lb['fraction'],
+                                                       "seed": _lb['seed'],
+                                                       "n_test": _lb['n_test']}},
                     ))
                 except Exception:
                     pass
-        render_lockbox_status()
+        def _on_exploratory_toggle():
+            # Both directions invalidate: results computed under one quarantine
+            # regime must not survive the flip — otherwise toggling exploratory
+            # off would launder full-data feature selection into an
+            # unwatermarked manuscript.
+            from utils.session_state import reset_downstream_results as _rdr
+            _rdr(clear_feature_engineering=False)
+            if st.session_state.get("exploratory_mode"):
+                st.session_state["exploratory_used"] = True
+
         with st.expander("🔒 Test holdout settings", expanded=False):
             st.caption(
                 "The test fraction is drawn once, here, so that no downstream "
-                "step can peek at it. Changing it (or enabling exploratory "
-                "mode) resets downstream results."
+                "step can peek at it. Changing it (or toggling exploratory "
+                "mode in either direction) resets downstream results."
             )
             _lb_frac = st.slider(
                 "Held-out test fraction", 0.05, 0.40,
@@ -1696,11 +1710,19 @@ if task_mode == "prediction":
             st.checkbox(
                 "Exploratory mode (disable test-set quarantine)",
                 key="exploratory_mode",
+                on_change=_on_exploratory_toggle,
                 help="Target-aware steps see ALL rows, including the test set. "
                      "Useful for hypothesis generation; downstream metrics and "
                      "the manuscript are watermarked as exploratory and are not "
-                     "publishable as held-out performance.",
+                     "publishable as held-out performance. Toggling in either "
+                     "direction resets downstream results.",
             )
+        if st.session_state.pop("_lockbox_redrawn", False):
+            st.info("🔒 Test lockbox redrawn (data, target, fraction, or seed changed) — "
+                    "downstream results were reset so nothing is evaluated against the old test set.")
+        # Chip rendered AFTER the settings expander so it always reflects the
+        # just-applied fraction rather than the pre-interaction value.
+        render_lockbox_status()
 
         # Log methodology
         log_methodology(

@@ -289,3 +289,84 @@ class TestWiringPins:
     def test_feature_selection_scopes_to_train_rows(self):
         src = self._read("pages/04_Feature_Selection.py")
         assert "train_row_mask" in src
+
+
+# ── Fable design-review fixes (wave 2) ───────────────────────────────────
+
+class TestLedgerInvalidation:
+    def setup_method(self):
+        _clear_session()
+
+    def teardown_method(self):
+        _clear_session()
+
+    def _insight(self, id, source_page, resolved_on=None, severity="info",
+                 auto=True):
+        from utils.insight_ledger import Insight
+        return Insight(
+            id=id, source_page=source_page, category="distribution",
+            severity=severity, finding=f"finding {id}", implication="impl",
+            auto_generated=auto,
+            resolved=resolved_on is not None,
+            resolved_by="did a thing" if resolved_on else "",
+            resolved_on_page=resolved_on or "",
+        )
+
+    def test_downstream_reset_rolls_back_resolutions(self):
+        """A target/config change must not leave the manuscript asserting
+        actions (target transform, training) that were just invalidated."""
+        from utils.insight_ledger import InsightLedger
+        from utils.session_state import reset_downstream_results
+
+        ledger = InsightLedger()
+        ledger.upsert(self._insight("eda_target_skew", "02_EDA",
+                                    resolved_on="06_Train_and_Compare"))
+        ledger.upsert(self._insight("upload_test_lockbox", "01_Upload_and_Audit",
+                                    resolved_on="01_Upload_and_Audit"))
+        st.session_state["insight_ledger"] = ledger
+
+        reset_downstream_results()
+
+        # Wait: eda_target_skew is sourced on 02_EDA, so pruning removes it
+        # entirely — absent is better than falsely resolved.
+        assert ledger.get("eda_target_skew") is None
+        # The lockbox insight (resolved on page 01, outside the cleared set)
+        # must survive with its resolution intact.
+        lb = ledger.get("upload_test_lockbox")
+        assert lb is not None and lb.resolved
+
+    def test_rollback_keeps_finding_drops_resolution(self):
+        from utils.insight_ledger import InsightLedger
+
+        ledger = InsightLedger()
+        ledger.upsert(self._insight("preprocess_outlier_handling", "05_Preprocess",
+                                    resolved_on="05_Preprocess"))
+        n = ledger.rollback_resolutions({"05_Preprocess"})
+        assert n == 1
+        ins = ledger.get("preprocess_outlier_handling")
+        assert ins is not None and not ins.resolved and ins.resolved_by == ""
+
+    def test_family_vocabulary_normalized_at_construction(self):
+        ins = self._insight("train_overfit_histgb_clf", "06_Train_and_Compare")
+        ins.model_scope = ["Boosting", "Neural Net"]
+        ins.__post_init__()
+        assert ins.model_scope == ["tree", "neural"]
+
+    def test_gate_never_acknowledges_blockers(self):
+        from utils.insight_ledger import InsightLedger
+
+        ledger = InsightLedger()
+        blocker = self._insight("eda_leakage_col", "02_EDA", severity="blocker")
+        info = self._insight("eda_skew_group", "02_EDA", severity="info")
+        ledger.upsert(blocker)
+        ledger.upsert(info)
+        ledger.auto_acknowledge_gate("Training completed", source_pages=["02_EDA"])
+        assert not ledger.get("eda_leakage_col").acknowledged
+        assert ledger.get("eda_skew_group").acknowledged
+
+    def test_exploratory_used_cleared_only_by_reset(self):
+        from utils.session_state import reset_downstream_results
+
+        st.session_state["exploratory_used"] = True
+        reset_downstream_results()
+        assert "exploratory_used" not in st.session_state

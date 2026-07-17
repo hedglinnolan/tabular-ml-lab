@@ -29,6 +29,8 @@ render_step_indicator(4, "Feature Selection")
 st.title("🎯 Feature Selection")
 st.caption("Recommended workflow: use this step to simplify the modeling problem before you start tuning preprocessing or training multiple models.")
 render_breadcrumb("04_Feature_Selection")
+from utils.test_lockbox import render_lockbox_status as _render_lockbox_chip
+_render_lockbox_chip("Selectors on this page are fit on training rows only.")
 render_page_navigation("04_Feature_Selection")
 
 # Prerequisites
@@ -121,9 +123,8 @@ if categorical_excluded:
 # Running selectors on all rows would let the test set vote on which
 # predictors enter the model — the classic feature-selection leakage
 # (Ambroise & McLachlan 2002; ESL §7.10.2).
-from utils.test_lockbox import train_row_mask, render_lockbox_status, is_exploratory
+from utils.test_lockbox import train_row_mask, is_exploratory
 
-render_lockbox_status("Selectors on this page are fit on training rows only.")
 mask = df[target_col].notna() & train_row_mask(df.index)
 X = df.loc[mask, numeric_features].values
 y = df.loc[mask, target_col].values

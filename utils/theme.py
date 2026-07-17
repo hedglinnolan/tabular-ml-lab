@@ -899,3 +899,25 @@ def render_metric_row(metrics: list):
     """
     cards = "".join(render_metric_card(l, v, c) for l, v, c in metrics)
     st.markdown(f'<div class="metric-row">{cards}</div>', unsafe_allow_html=True)
+
+
+# ── Flash messages that survive st.rerun() ──────────────────────────────────
+# Disclosure banners rendered immediately before st.rerun() are destroyed
+# before the user can read them. Set a flash instead; the destination page
+# renders it at the top of the next run.
+
+def flash(level: str, message: str) -> None:
+    """Queue a one-shot message to render after the next rerun."""
+    st.session_state["_flash"] = (level, message)
+
+
+def render_flash() -> None:
+    """Render and clear a queued flash message. Call near the top of a page."""
+    queued = st.session_state.pop("_flash", None)
+    if queued:
+        level, message = queued
+        renderer = getattr(st, level, None)
+        if level in ("success", "info", "warning", "error") and callable(renderer):
+            renderer(message)
+        else:
+            st.info(message)

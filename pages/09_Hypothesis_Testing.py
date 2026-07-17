@@ -41,6 +41,8 @@ render_sidebar_workflow(current_page="09_Hypothesis_Testing")
 st.title("📊 Statistical Validation")
 st.caption("Use this when you need classical tests to support the story coming out of EDA and model explainability.")
 render_breadcrumb("09_Hypothesis_Testing")
+from utils.test_lockbox import render_lockbox_status
+render_lockbox_status("Tests on this page run on the full cohort (including locked test rows) — appropriate for Table 1 and descriptive claims, not model-performance claims.")
 render_page_navigation("09_Hypothesis_Testing")
 
 from utils.coaching_ui import render_page_coaching

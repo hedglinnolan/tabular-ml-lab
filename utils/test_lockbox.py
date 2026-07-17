@@ -107,6 +107,8 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
         # Different test set → previous results are not comparable
         from utils.session_state import reset_downstream_results
         reset_downstream_results(clear_feature_engineering=False)
+        # Let the page disclose the redraw — a silent reset reads as data loss
+        st.session_state["_lockbox_redrawn"] = True
 
     st.session_state["test_lockbox"] = lockbox
     return lockbox

@@ -32,6 +32,8 @@ render_sidebar_workflow(current_page="08_Sensitivity_Analysis")
 st.title("🔬 Sensitivity Analysis")
 st.caption("Use this after the quick workflow when you need to show that your result is robust, not just strong once.")
 render_breadcrumb("08_Sensitivity_Analysis")
+from utils.test_lockbox import render_lockbox_status
+render_lockbox_status("Robustness diagnostics here deliberately re-partition data; headline metrics remain lockbox-based.")
 render_page_navigation("08_Sensitivity_Analysis")
 
 from utils.coaching_ui import render_page_coaching

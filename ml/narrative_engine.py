@@ -585,6 +585,24 @@ class NarrativeEngine:
                 f"{f', removing {total_removed:,} observations' if total_removed > 0 else ''}."
             )
 
+        # The quarantine timing is the study design's strongest methodological
+        # guarantee — state it explicitly when the lockbox governed the run.
+        if not self.ctx.get("exploratory_mode") and self.ledger is not None:
+            try:
+                _lb_ins = self.ledger.get("upload_test_lockbox")
+            except Exception:
+                _lb_ins = None
+            if _lb_ins is not None and _lb_ins.resolved:
+                _p = (_lb_ins.resolution_details or {}).get("params", {})
+                _frac = _p.get("fraction")
+                parts.append(
+                    "The held-out test set"
+                    + (f" ({_frac:.0%} of eligible observations)" if _frac else "")
+                    + " was frozen at data upload, before any feature engineering "
+                    "or feature selection, and was accessed only for the final "
+                    "evaluation."
+                )
+
         return " ".join(parts)
 
     def _gen_predictor_variables(self) -> str:

@@ -39,6 +39,8 @@ render_step_indicator(10, "Report Export")
 st.title("📄 Report Export")
 st.caption("This is the culmination of the workflow: package the strongest parts of your analysis into one manuscript-ready starting point.")
 render_breadcrumb("10_Report_Export")
+from utils.test_lockbox import render_lockbox_status
+render_lockbox_status("The exported report packages held-out (lockbox) results.")
 render_page_navigation("10_Report_Export")
 
 st.markdown("""
@@ -460,7 +462,12 @@ def _build_manuscript_context(
         'target_stats': target_stats,
         'top_features': top_features,
         'baseline_results': _summarize_baselines(),
-        'exploratory_mode': bool(st.session_state.get('exploratory_mode', False)),
+        # Sticky: a manuscript is only quarantine-clean if EVERY surviving
+        # result was computed with the lockbox on. 'exploratory_used' is set
+        # when the mode is enabled and cleared only by the downstream reset,
+        # so toggling the mode off cannot launder exploratory results.
+        'exploratory_mode': bool(st.session_state.get('exploratory_mode', False)
+                                 or st.session_state.get('exploratory_used', False)),
     }
 
 
@@ -1733,6 +1740,7 @@ if all_model_names:
         "Models to include in report",
         options=all_model_names,
         default=all_model_names,
+        format_func=_export_model_label,
         key="report_model_selection",
         help="Select which models' results to include in the methods/results section.",
     )
@@ -1779,6 +1787,7 @@ if selected_for_report:
         "Manuscript-primary model (optional)",
         options=primary_options,
         index=default_primary_index,
+        format_func=lambda opt: _export_model_label(opt) if opt in selected_for_report else opt,
         key="report_best_model_selection",
         help="Select a manuscript-primary model only if you want to explicitly frame one model as primary in the draft.",
     )
@@ -2014,7 +2023,8 @@ with _preview_tab_pdf:
                 f'<iframe src="data:application/pdf;base64,{_b64}" width="100%" height="800" type="application/pdf"></iframe>',
                 unsafe_allow_html=True,
             )
-            st.download_button("Download PDF", _pdf_bytes, "manuscript.pdf", "application/pdf", key="dl_pdf_preview")
+            st.download_button("Download PDF", _pdf_bytes, "manuscript.pdf", "application/pdf",
+                               key="dl_pdf_preview", disabled=exports_blocked)
         else:
             st.warning(
                 "PDF compilation requires `pdflatex` installed on the server. "
@@ -2051,6 +2061,7 @@ with st.expander("📄 Auto-Generated Methods Section", expanded=False):
             st.session_state["methods_section"],
             "methods_section.md", "text/markdown",
             key="dl_methods",
+            disabled=exports_blocked,
         )
 
 # CONSORT-Style Flow Diagram
@@ -2404,6 +2415,12 @@ if _n_plot_failures:
     )
 
 # Primary: ZIP (contains everything)
+if exports_blocked:
+    st.caption(
+        "⛔ Downloads are disabled because pre-export validation failed — open "
+        "**🔍 Pre-export Manuscript Validation** above to review the failed "
+        "checks or apply an override."
+    )
 st.download_button(
     label="Download Complete Package (ZIP)",
     data=zip_buffer.getvalue(),
@@ -2413,6 +2430,10 @@ st.download_button(
     disabled=exports_blocked,
     use_container_width=True,
 )
+if not exports_blocked:
+    # Marks the final workflow step complete for the sidebar checklist —
+    # previously read-only, so the progress bar could never reach 10/10.
+    st.session_state['report_data'] = {'generated_at': datetime.now().isoformat()}
 
 # Secondary: individual exports (also in the ZIP)
 st.caption("Individual exports (also included in the ZIP above):")

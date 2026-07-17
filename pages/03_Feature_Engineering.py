@@ -60,6 +60,8 @@ inject_custom_css()
 render_sidebar_workflow(current_page="03_Feature_Engineering")
 
 st.title("🧬 Feature Engineering")
+from utils.theme import render_flash
+render_flash()
 st.caption("Advanced workflow step: expand the feature space only after the quick workflow baseline tells you richer features may be worth the complexity.")
 render_breadcrumb("03_Feature_Engineering")
 from utils.test_lockbox import render_lockbox_status
@@ -1369,14 +1371,14 @@ if new_features > 0:
             except Exception:
                 pass  # Provenance recording should never break the workflow
 
-            st.success(f"✅ Saved engineered dataset! ({len(engineered_features)} new features)")
             st.balloons()
-            st.info("""
-            👉 **Next step: Feature Selection**
-            
-            Your engineered features are now part of the working dataset.
-            Navigate to **Feature Selection** to identify the most important features.
-            """)
+            # The rerun below would destroy any banner rendered here — queue a
+            # flash so the confirmation and next-step hint survive it.
+            from utils.theme import flash
+            flash("success",
+                  f"✅ Saved engineered dataset ({len(engineered_features)} new features). "
+                  f"👉 **Next step: Feature Selection** — your engineered features are now "
+                  f"part of the working dataset.")
             # Force page rerun to show updated state
             st.rerun()
 else:

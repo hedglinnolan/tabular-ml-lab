@@ -335,12 +335,33 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
     # Downstream provenance sections now describe work that no longer exists
     prov = st.session_state.get("workflow_provenance")
     if prov is not None:
-        for section in ("feature_selection", "split", "preprocessing",
+        for section in ("eda", "feature_selection", "split", "preprocessing",
                         "training", "explainability"):
             if hasattr(prov, section):
                 setattr(prov, section, None)
         if clear_feature_engineering and hasattr(prov, "feature_engineering"):
             prov.feature_engineering = None
+
+    # The ledger must not keep asserting actions that were just invalidated:
+    # roll back resolutions earned on the cleared pages (the findings remain),
+    # and drop auto-generated EDA insights outright — they were computed
+    # against data/config that changed, and EDA re-detects on its next visit.
+    ledger = st.session_state.get("insight_ledger")
+    if ledger is not None:
+        if hasattr(ledger, "rollback_resolutions"):
+            ledger.rollback_resolutions({
+                "03_Feature_Engineering", "04_Feature_Selection",
+                "05_Preprocess", "06_Train_and_Compare",
+                "07_Explainability", "08_Sensitivity_Analysis",
+                "09_Hypothesis_Testing",
+            })
+        if hasattr(ledger, "prune_auto_generated"):
+            ledger.prune_auto_generated({"02_EDA"})
+
+    # A manuscript is only quarantine-clean if EVERY surviving result was
+    # computed with the lockbox on; results computed in exploratory mode are
+    # gone now, so the sticky flag can clear.
+    st.session_state.pop("exploratory_used", None)
 
 
 def reset_data_dependent_state():

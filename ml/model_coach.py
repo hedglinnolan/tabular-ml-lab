@@ -1765,8 +1765,13 @@ def _detect_overfit(
             continue
 
         display_name = _model_display_name_coach(key)
-        model_family = info.get(key, info.get(key.lower(), {}))
-        family_scope = [model_family.get('group', '').lower()] if model_family.get('group') else []
+        # Use the ledger's canonical family vocabulary — the coach's display
+        # groups ('Trees', 'Boosting', 'Neural Net') don't match it, and a
+        # non-matching model_scope makes grouped coaching silently hide the
+        # warning behind '✅ no issues'.
+        from utils.insight_ledger import MODEL_TO_FAMILY as _mtf
+        _fam = _mtf.get(key, _mtf.get(str(key).lower()))
+        family_scope = [_fam] if _fam else []
 
         findings.append({
             'id': f'train_overfit_{key}',

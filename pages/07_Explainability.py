@@ -51,6 +51,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 render_breadcrumb("07_Explainability")
+from utils.test_lockbox import render_lockbox_status
+render_lockbox_status("Explanations on this page are computed on the held-out test set.")
 render_page_navigation("07_Explainability")
 
 # ── Coaching companion ──
