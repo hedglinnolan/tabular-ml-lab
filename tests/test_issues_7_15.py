@@ -219,12 +219,18 @@ class TestIssue1_BestModelState:
         with open('models/nn_whuber.py', 'r') as f:
             source = f.read()
 
-        # Find the initialization
-        init_pos = source.find('best_model_state = self.model.state_dict().copy()')
+        # Snapshot must be initialized before the loop AND deep-clone the
+        # tensors: state_dict().copy() is shallow — its tensors alias the live
+        # parameters, so "restoring" it was a no-op.
+        init_pos = source.find(
+            'best_model_state = {k: v.detach().clone() for k, v in self.model.state_dict().items()}'
+        )
         loop_pos = source.find('for epoch in range')
 
-        assert init_pos > 0, "best_model_state initialization not found"
+        assert init_pos > 0, "best_model_state (cloned-tensor) initialization not found"
         assert init_pos < loop_pos, "best_model_state must be initialized before training loop"
+        assert 'best_model_state = self.model.state_dict().copy()' not in source, \
+            "shallow state_dict().copy() snapshot must not reappear"
 
 
 # ── Issue #2: Label encoding in explainability ──────────────────────

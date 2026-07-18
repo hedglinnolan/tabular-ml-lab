@@ -206,17 +206,50 @@ def get_data() -> Optional[pd.DataFrame]:
     return st.session_state.get('raw_data')
 
 
+def _content_fingerprint(df: pd.DataFrame) -> Optional[int]:
+    """Cheap deterministic fingerprint of a DataFrame's contents.
+
+    Stable across .copy() (hashes values, not identity). Returns None when the
+    frame contains unhashable cells — callers treat None as 'unknown' and fall
+    back to schema-only invalidation.
+    """
+    try:
+        return hash((df.shape, int(pd.util.hash_pandas_object(df, index=False).sum())))
+    except Exception:
+        return None
+
+
 def set_data(df: pd.DataFrame, is_schema_change: Optional[bool] = None):
     """Set raw data in session state. Clears filtered_data so it is not stale.
 
-    If the column set changes (or is_schema_change=True), resets all downstream
-    state (EDA results, models, splits, etc.) via reset_data_dependent_state().
+    Invalidation contract:
+    - Column set changed (or is_schema_change=True): full reset via
+      reset_data_dependent_state() — new dataset, new analysis.
+    - Same columns but different values (re-upload of corrected data, cleaning
+      actions): configuration (target, features, ledger, logs) is kept, but all
+      downstream RESULTS (engineered features, splits, models, metrics,
+      explainability, reports) are cleared via reset_downstream_results() —
+      they describe data that no longer exists.
+    - Identical content (benign rerun): no-op.
+
+    is_schema_change=False suppresses only the full config reset; it does NOT
+    keep results computed from different data.
     """
+    if not df.index.is_unique:
+        # The test-set lockbox and train/test masks identify rows by index
+        # LABEL; duplicate labels would silently over-select rows into both
+        # partitions (e.g. a parquet upload that preserved a non-unique index).
+        df = df.reset_index(drop=True)
+
     old_df = st.session_state.get('raw_data')
     old_cols = frozenset(old_df.columns) if old_df is not None else None
     new_cols = frozenset(df.columns)
 
+    old_fp = st.session_state.get('_raw_data_fingerprint')
+    new_fp = _content_fingerprint(df)
+
     st.session_state.raw_data = df
+    st.session_state['_raw_data_fingerprint'] = new_fp
     st.session_state.pop("filtered_data", None)
 
     if is_schema_change is None:
@@ -224,30 +257,43 @@ def set_data(df: pd.DataFrame, is_schema_change: Optional[bool] = None):
 
     if is_schema_change:
         reset_data_dependent_state()
+    elif (old_df is not None and old_fp is not None and new_fp is not None
+          and old_fp != new_fp):
+        reset_downstream_results()
 
 
-def reset_data_dependent_state():
-    """Reset state that depends on the active dataset."""
-    st.session_state.data_config = DataConfig()
-    st.session_state.data_audit = None
-    st.session_state.task_type_detection = TaskTypeDetection()
-    st.session_state.cohort_structure_detection = CohortStructureDetection()
-    # Note: task_mode and datasets_registry are NOT reset here
-    # as they are workflow-level, not dataset-specific
+def reset_downstream_results(clear_feature_engineering: bool = True,
+                             restore_pre_fe_features: bool = True):
+    """Clear every RESULT computed from the current data, keeping configuration.
 
+    Single source of truth for downstream invalidation — used by
+    reset_data_dependent_state() (full data change), set_data() (same-schema
+    content change), and Page 01 (feature/target/task change). Any page that
+    introduces a new result key must add it here.
+    """
+    # Feature engineering (df_engineered would otherwise keep serving stale
+    # data through get_data()'s precedence)
+    if clear_feature_engineering:
+        st.session_state.pop("df_engineered", None)
+        st.session_state.feature_engineering_applied = False
+        st.session_state.engineered_feature_names = []
+        st.session_state.pop("engineering_log", None)
+        # FE overwrote selected_features with engineered columns; restore the
+        # pre-FE selection so the config refers to columns that still exist.
+        pre_fe = st.session_state.pop("pre_fe_feature_cols", None)
+        if restore_pre_fe_features and pre_fe:
+            st.session_state.selected_features = list(pre_fe)
+            dc = st.session_state.get("data_config")
+            if dc is not None and getattr(dc, "feature_cols", None):
+                dc.feature_cols = list(pre_fe)
+
+    # Pipelines
     st.session_state.preprocessing_pipeline = None
     st.session_state.preprocessing_config = None
     st.session_state.preprocessing_pipelines_by_model = {}
     st.session_state.preprocessing_config_by_model = {}
-    st.session_state.pop("filtered_data", None)
-    
-    # Clear feature engineering state
-    st.session_state.pop("df_engineered", None)
-    st.session_state.feature_engineering_applied = False
-    st.session_state.engineered_feature_names = []
-    st.session_state.selected_features = []
-    st.session_state.pop("engineering_log", None)
 
+    # Splits & targets
     st.session_state.X_train = None
     st.session_state.X_val = None
     st.session_state.X_test = None
@@ -256,39 +302,99 @@ def reset_data_dependent_state():
     st.session_state.y_test = None
     st.session_state.feature_names = None
     st.session_state.feature_names_by_model = {}
+    for key in ("train_indices", "val_indices", "test_indices", "split_config",
+                "target_transformer", "target_label_encoder",
+                "y_train_original", "y_val_original", "y_test_original"):
+        st.session_state.pop(key, None)
 
+    # Models & metrics
     st.session_state.trained_models = {}
     st.session_state.model_results = {}
     st.session_state.fitted_estimators = {}
     st.session_state.fitted_preprocessing_pipelines = {}
-
     st.session_state.cv_results = None
-    st.session_state.use_cv = False
-    st.session_state.cv_folds = 5
 
+    # Analysis results (pages 02-09) — all computed from data values, so all
+    # stale the moment the data changes, even with an unchanged schema.
     st.session_state.permutation_importance = {}
     st.session_state.partial_dependence = {}
     st.session_state.explainability_robustness = {}
     st.session_state.eda_results = {}
     st.session_state.eda_insights = []
+    for key in ("shap_results", "shap_matplotlib_figs", "bootstrap_results",
+                "baseline_results", "calibration_results",
+                "sensitivity_seed_results", "hypothesis_test_results",
+                "feature_selection_results", "consensus_features",
+                "table1_df", "table1_metadata", "custom_table1_tests",
+                "dataset_profile"):
+        st.session_state.pop(key, None)
+
+    # Report artifacts
     st.session_state.report_data = None
-    st.session_state.pop("dataset_profile", None)
-    st.session_state.pop("table1_df", None)
-    st.session_state.pop("table1_metadata", None)
+    for key in (
+        'methods_section', 'flow_diagram', 'tripod_tracker', 'latex_report',
+        'report_best_model', 'report_model_selection', 'report_explain_selection',
+        'report_include_results', 'report_include_llm', 'manuscript_context',
+    ):
+        st.session_state.pop(key, None)
+
+    # Downstream provenance sections now describe work that no longer exists
+    prov = st.session_state.get("workflow_provenance")
+    if prov is not None:
+        for section in ("eda", "feature_selection", "split", "preprocessing",
+                        "training", "explainability"):
+            if hasattr(prov, section):
+                setattr(prov, section, None)
+        if clear_feature_engineering and hasattr(prov, "feature_engineering"):
+            prov.feature_engineering = None
+
+    # The ledger must not keep asserting actions that were just invalidated:
+    # roll back resolutions earned on the cleared pages (the findings remain),
+    # and drop auto-generated EDA insights outright — they were computed
+    # against data/config that changed, and EDA re-detects on its next visit.
+    ledger = st.session_state.get("insight_ledger")
+    if ledger is not None:
+        if hasattr(ledger, "rollback_resolutions"):
+            ledger.rollback_resolutions({
+                "03_Feature_Engineering", "04_Feature_Selection",
+                "05_Preprocess", "06_Train_and_Compare",
+                "07_Explainability", "08_Sensitivity_Analysis",
+                "09_Hypothesis_Testing",
+            })
+        if hasattr(ledger, "prune_auto_generated"):
+            ledger.prune_auto_generated({"02_EDA"})
+
+    # A manuscript is only quarantine-clean if EVERY surviving result was
+    # computed with the lockbox on; results computed in exploratory mode are
+    # gone now, so the sticky flag can clear.
+    st.session_state.pop("exploratory_used", None)
+
+
+def reset_data_dependent_state():
+    """Full reset for a new/replaced dataset: configuration AND results."""
+    st.session_state.data_config = DataConfig()
+    st.session_state.data_audit = None
+    st.session_state.task_type_detection = TaskTypeDetection()
+    st.session_state.cohort_structure_detection = CohortStructureDetection()
+    # Note: task_mode and datasets_registry are NOT reset here
+    # as they are workflow-level, not dataset-specific
+
+    st.session_state.pop("filtered_data", None)
+    st.session_state.selected_features = []
+    st.session_state.use_cv = False
+    st.session_state.cv_folds = 5
+
+    st.session_state.pop("methodology_log", None)
+    st.session_state.pop("workflow_provenance", None)
+    # New dataset → a fresh test lockbox is drawn on the next config save
+    st.session_state.pop("test_lockbox", None)
+    st.session_state.pop("_lockbox_ledger_noted", None)
 
     # Reset insight ledger
     from utils.insight_ledger import InsightLedger
     st.session_state.insight_ledger = InsightLedger()
-    for key in (
-        'methods_section', 'flow_diagram', 'tripod_tracker', 'latex_report',
-        'report_best_model', 'report_model_selection', 'report_explain_selection',
-        'report_include_results', 'report_include_llm', 'shap_matplotlib_figs'
-    ):
-        st.session_state.pop(key, None)
-    st.session_state.pop("target_label_encoder", None)
-    st.session_state.pop("train_indices", None)
-    st.session_state.pop("val_indices", None)
-    st.session_state.pop("test_indices", None)
+
+    reset_downstream_results(restore_pre_fe_features=False)
 
 
 def get_preprocessing_pipeline(model_key: Optional[str] = None) -> Optional[Pipeline]:

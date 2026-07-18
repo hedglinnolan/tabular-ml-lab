@@ -482,7 +482,9 @@ class TestManuscriptDraft:
         draft = engine.generate()
         md = draft.to_markdown()
 
-        assert md.startswith("## Methods")
+        # The ownership preamble leads; the compiled sections follow.
+        assert md.startswith("> **How to read this draft.**")
+        assert "## Methods" in md
         assert "### Study Design" in md
         assert "### Data Preprocessing" in md
         assert "### Model Development" in md
@@ -655,9 +657,9 @@ class TestResultsAndDiscussion:
         engine = NarrativeEngine(full_provenance)
         draft = engine.generate()
 
-        assert "[Investigator required:" in draft.discussion
-        # At least 2 placeholders (Prior Work, Implications)
-        assert draft.discussion.count("[Investigator required:") >= 2
+        assert "[AUTHOR REQUIRED" in draft.discussion
+        # At least 3 author-owned scaffolds (Prior Work, Implications, Conclusions)
+        assert draft.discussion.count("[AUTHOR REQUIRED") >= 3
 
     def test_discussion_strengths_and_limitations_from_ledger(self, full_provenance, full_ledger):
         """Strengths and limitations should auto-populate from InsightLedger."""

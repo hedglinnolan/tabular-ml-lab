@@ -88,6 +88,8 @@ render_step_indicator(6, "Train & Compare Models")
 st.title("🧠 Train & Compare Models")
 st.caption("This is the center of the recommended workflow: establish a credible baseline result before deciding whether you need advanced analyses.")
 render_breadcrumb("06_Train_and_Compare")
+from utils.test_lockbox import render_lockbox_status, is_exploratory as _lb_is_exploratory
+render_lockbox_status("This page opens the held-out test set exactly once.")
 render_page_navigation("06_Train_and_Compare")
 
 # Progress indicator
@@ -110,7 +112,7 @@ with st.sidebar:
 # Check prerequisites
 df = get_data()
 if df is None:
-    st.warning("Please upload data first")
+    st.warning("Please upload data on the **Upload & Audit** page first.")
     st.stop()
 if len(df) == 0 or len(df.columns) == 0:
     st.warning("Your dataset is empty. Please upload data with at least one row and one column.")
@@ -128,13 +130,15 @@ if task_mode != 'prediction':
 
 data_config: DataConfig = st.session_state.get('data_config')
 if data_config is None or not data_config.target_col:
-    st.warning("Please configure target and features")
+    st.warning("Please configure your target and features on the **Upload & Audit** page (Step 4: Configure Analysis).")
     st.stop()
 
 pipelines_by_model = st.session_state.get('preprocessing_pipelines_by_model', {})
 pipeline = get_preprocessing_pipeline()
 if pipeline is None and not pipelines_by_model:
-    st.warning("Please build preprocessing pipeline first")
+    st.warning("Please build your preprocessing pipelines first — open the **Preprocess** page "
+               "and click **🔨 Build Pipelines**. (If you just changed data or configuration, "
+               "downstream results were reset and pipelines need rebuilding.)")
     st.stop()
 
 # Get final detection values
@@ -195,6 +199,19 @@ with col2:
     val_size = st.slider("Val %", 5, 30, val_size_default, key="train_split_val_pct") / 100
 with col3:
     test_size = st.slider("Test %", 5, 30, test_size_default, key="train_split_test_pct") / 100
+
+# Under the lockbox the test fraction is fixed at upload; the Test % slider
+# above only matters for group/time splits (which bypass the lockbox) or when
+# no lockbox exists. Say so rather than leaving a silently dead control.
+from utils.test_lockbox import get_lockbox as _slider_get_lockbox, is_exploratory as _slider_is_exploratory
+_slider_lb = None if _slider_is_exploratory() else _slider_get_lockbox()
+if _slider_lb is not None:
+    st.caption(
+        f"🔒 The held-out test fraction is governed by the upload lockbox "
+        f"({_slider_lb['fraction']:.0%}, n={_slider_lb['n_test']}) — for random/stratified "
+        f"splits the Test % slider is ignored and Train/Val set only their relative sizes. "
+        f"Change the holdout on Upload & Audit."
+    )
 
 if abs(train_size + val_size + test_size - 1.0) > 0.01:
     st.error("Splits must sum to 100%")
@@ -303,20 +320,61 @@ if st.button("Prepare Splits", type="primary"):
         X = df[feature_cols].copy()
         y = df[target_col].copy()
         mask = y.notna()
+        orig_labels = df.index[mask]
         X = X[mask].reset_index(drop=True)
         y = y[mask].reset_index(drop=True)
         original_indices = np.where(mask)[0]
         n_after_notna = len(X)
 
+        # Test-set lockbox: labels frozen at upload, before feature
+        # engineering/selection could see them. When present (and not in
+        # exploratory mode), it IS the test set; this page only divides the
+        # remaining rows into train/validation. Group- and time-based splits
+        # have their own leakage semantics and bypass the lockbox (disclosed).
+        from utils.test_lockbox import get_lockbox as _get_lockbox, is_exploratory as _lb_exploratory
+        _lockbox = None if _lb_exploratory() else _get_lockbox()
+        if _lockbox is not None and use_group_split and entity_id_final:
+            st.warning(
+                "🔓 Group-based splitting draws its own test set (grouping has its own "
+                "leakage semantics) — the upload lockbox does NOT apply to this split."
+            )
+        if _lockbox is not None and split_config.use_time_split and data_config.datetime_col:
+            st.warning(
+                "🔓 Time-based splitting uses chronological ordering — the upload "
+                "lockbox does NOT apply to this split."
+            )
+        _lockbox_applicable = (
+            _lockbox is not None
+            and not (use_group_split and entity_id_final)
+            and not (split_config.use_time_split and data_config.datetime_col)
+        )
+        if _lockbox_applicable:
+            _test_label_set = set(_lockbox["labels"])
+            is_test_row = np.array([lbl in _test_label_set for lbl in orig_labels])
+            if int(is_test_row.sum()) < 2 or int((~is_test_row).sum()) < 4:
+                st.warning(
+                    "🔓 Too few lockbox test rows survive the current filters — "
+                    "falling back to a fresh random split for this run."
+                )
+                _lockbox_applicable = False
+
         # Target trimming (regression only, before split)
         if task_type_final == 'regression' and split_config.target_trim_enabled:
-            q_lo = float(y.quantile(split_config.target_trim_lower))
-            q_hi = float(y.quantile(split_config.target_trim_upper))
+            # With a lockbox, trim thresholds come from training rows only and
+            # test rows are never dropped — otherwise the trim both leaks
+            # test-target statistics and evaluates on a truncated population.
+            _trim_basis = y[~is_test_row] if _lockbox_applicable else y
+            q_lo = float(_trim_basis.quantile(split_config.target_trim_lower))
+            q_hi = float(_trim_basis.quantile(split_config.target_trim_upper))
             trim_mask = (y >= q_lo) & (y <= q_hi)
+            if _lockbox_applicable:
+                trim_mask = trim_mask | pd.Series(is_test_row, index=y.index)
             n_trimmed_rows = int((~trim_mask).sum())
             X = X[trim_mask].reset_index(drop=True)
             y = y[trim_mask].reset_index(drop=True)
             original_indices = original_indices[trim_mask.values]
+            if _lockbox_applicable:
+                is_test_row = is_test_row[trim_mask.values]
             st.info(
                 f"Target trimming: removed **{n_trimmed_rows}** rows "
                 f"(quantiles [{split_config.target_trim_lower:.2f}, {split_config.target_trim_upper:.2f}] "
@@ -420,6 +478,37 @@ if st.button("Prepare Splits", type="primary"):
             test_indices = original_indices[test_pos]
 
             st.info(f"Time-based split: Train={df_work.iloc[0][data_config.datetime_col]} to {df_work.iloc[n_train - 1][data_config.datetime_col]}")
+        elif _lockbox_applicable:
+            idx_test = indices[is_test_row]
+            _rest = indices[~is_test_row]
+            _den = train_size + val_size
+            _rel_val = (val_size / _den) if _den > 0 else 0.18
+            _strat = None
+            if split_config.stratify and task_type_final == 'classification':
+                _strat_candidate = y.iloc[_rest]
+                if _strat_candidate.value_counts().min() >= 2:
+                    _strat = _strat_candidate
+            try:
+                idx_train, idx_val = train_test_split(
+                    _rest, test_size=_rel_val,
+                    random_state=split_config.random_state, stratify=_strat
+                )
+            except ValueError:
+                idx_train, idx_val = train_test_split(
+                    _rest, test_size=_rel_val, random_state=split_config.random_state
+                )
+            X_train = X.iloc[idx_train]
+            X_val = X.iloc[idx_val]
+            X_test = X.iloc[idx_test]
+            y_train = y.iloc[idx_train]
+            y_val = y.iloc[idx_val]
+            y_test = y.iloc[idx_test]
+            st.info(
+                f"🔒 Test set from the upload lockbox: n={len(idx_test)} "
+                f"({_lockbox['fraction']:.0%} drawn at upload with seed {_lockbox['seed']}, "
+                f"never seen by feature engineering or selection). "
+                f"Remaining rows were divided into train/validation."
+            )
         elif split_config.stratify and task_type_final == 'classification':
             idx_train, idx_temp, y_train, y_temp = train_test_split(
                 indices, y, test_size=(val_size + test_size),
@@ -491,6 +580,22 @@ if st.button("Prepare Splits", type="primary"):
                 action=f'Target variable transformed using {_target_transform}',
                 details={'target_transform': _target_transform},
             )
+            # A target transform is the action that actually addresses the
+            # target-skew insight (Preprocess feature transforms do not).
+            try:
+                from utils.insight_ledger import get_ledger as _split_ledger_get
+                _split_ledger = _split_ledger_get()
+                _ts_ins = _split_ledger.get("eda_target_skew")
+                if _ts_ins and not _ts_ins.resolved:
+                    _split_ledger.resolve(
+                        "eda_target_skew",
+                        resolved_by=f"Target transformed using {_target_transform} before model fitting",
+                        resolved_on_page="06_Train_and_Compare",
+                        resolution_details={"action_type": "target_transform",
+                                            "method": _target_transform},
+                    )
+            except Exception:
+                pass
         else:
             # No transform: clear any stale transformer state from a previous run
             st.session_state.pop('target_transformer', None)
@@ -516,6 +621,32 @@ if st.button("Prepare Splits", type="primary"):
             st.session_state.val_indices = original_indices[idx_val].tolist()
             st.session_state.test_indices = original_indices[idx_test].tolist()
         
+        # Record the split in workflow provenance — without this the generated
+        # Methods section contains no train/val/test statement and no seed.
+        try:
+            from utils.workflow_provenance import get_provenance
+            if use_group_split and entity_id_final:
+                _split_strategy = "grouped"
+            elif split_config.use_time_split and data_config.datetime_col:
+                _split_strategy = "time-based"
+            elif split_config.stratify and task_type_final == 'classification':
+                _split_strategy = "stratified random"
+            else:
+                _split_strategy = "random"
+            if _lockbox_applicable:
+                _split_strategy += " (test set locked at upload, before feature engineering/selection)"
+            get_provenance().record_split(
+                strategy=_split_strategy,
+                train_n=len(X_train), val_n=len(X_val), test_n=len(X_test),
+                random_seed=int(getattr(split_config, 'random_state', 42)),
+                target_transform=_target_transform or "none",
+                target_trim_enabled=bool(getattr(split_config, 'trim_target', False)),
+                target_trim_lower=float(getattr(split_config, 'trim_lower', 0.0)),
+                target_trim_upper=float(getattr(split_config, 'trim_upper', 1.0)),
+            )
+        except Exception:
+            logger.exception("Failed to record split provenance")
+
         st.success(f"Splits prepared: Train={len(X_train)}, Val={len(X_val)}, Test={len(X_test)}")
         # Guardrails for small evaluation sets
         if len(X_test) < 5:
@@ -861,7 +992,7 @@ except Exception:
     pass
 
 # Generic Optuna optimization function
-def optimize_model_hyperparameters(model_name, spec, X_train_transformed, y_train, X_val_transformed, y_val, task_type, random_seed, n_trials=30):
+def optimize_model_hyperparameters(model_name, spec, X_train_transformed, y_train, X_val_transformed, y_val, task_type, random_seed, n_trials=30, progress_callback=None):
     """
     Generic function to optimize hyperparameters for any model using Optuna.
     
@@ -994,8 +1125,16 @@ def optimize_model_hyperparameters(model_name, spec, X_train_transformed, y_trai
     
     direction = "minimize"  # Always minimize (we convert accuracy to error)
     study = optuna.create_study(direction=direction)
-    study.optimize(_objective, n_trials=n_trials, show_progress_bar=False)
-    
+    _callbacks = []
+    if progress_callback is not None:
+        def _optuna_progress(study_obj, trial):
+            try:
+                progress_callback(trial.number + 1, n_trials, study_obj.best_value)
+            except Exception:
+                pass
+        _callbacks.append(_optuna_progress)
+    study.optimize(_objective, n_trials=n_trials, show_progress_bar=False, callbacks=_callbacks)
+
     return study.best_params
 
 def _train_models(models_to_train, selected_model_params, use_optimization=False):
@@ -1064,11 +1203,22 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 
                 # Optimize hyperparameters if requested
                 if use_optimization and spec and spec.hyperparam_schema:
-                    status_text.text("Running Optuna hyperparameter optimization...")
+                    status_text.text(f"Running Optuna hyperparameter optimization for {model_name.upper()}...")
+                    _optuna_bar = st.progress(0, text="Optuna: starting trials...")
+
+                    def _optuna_ui_progress(done, total, best_value):
+                        _optuna_bar.progress(
+                            min(done / total, 1.0),
+                            text=f"Optuna {model_name.upper()}: trial {done}/{total} "
+                                 f"(best objective so far: {best_value:.4f})",
+                        )
+
                     best_params = optimize_model_hyperparameters(
                         model_name, spec, X_train_model, y_train, X_val_model, y_val,
-                        task_type_final, random_seed, n_trials=30
+                        task_type_final, random_seed, n_trials=30,
+                        progress_callback=_optuna_ui_progress,
                     )
+                    _optuna_bar.empty()
                     if best_params:
                         # Update selected_model_params with optimized values
                         selected_model_params[model_name] = best_params
@@ -1256,27 +1406,33 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 cv_results = None
                 if use_cv and model_name != 'nn':
                     try:
-                        _cv_estimator = model.get_model()
+                        from sklearn.base import clone as _sklearn_clone
+                        from ml.eval import make_cv_pipeline
+                        _cv_estimator = _sklearn_clone(model.get_model())
                         _cv_y_train = y_train
                         _cv_transformer = st.session_state.get('target_transformer')
                         if task_type_final == 'regression' and _cv_transformer is not None:
                             from sklearn.compose import TransformedTargetRegressor
-                            from sklearn.base import clone as _sklearn_clone
                             _y_train_orig = st.session_state.get('y_train_original', y_train)
                             if _cv_transformer == 'log1p':
                                 _cv_estimator = TransformedTargetRegressor(
-                                    regressor=_sklearn_clone(_cv_estimator),
+                                    regressor=_cv_estimator,
                                     func=np.log1p,
                                     inverse_func=np.expm1,
                                 )
                             else:
                                 _cv_estimator = TransformedTargetRegressor(
-                                    regressor=_sklearn_clone(_cv_estimator),
+                                    regressor=_cv_estimator,
                                     transformer=_sklearn_clone(_cv_transformer),
                                 )
                             _cv_y_train = _y_train_orig
+                        # CV on RAW training data with the preprocessing re-fit
+                        # inside each fold — scoring the pre-transformed matrix
+                        # leaked every fold's held-out rows into the transformer
+                        # statistics and optimistically biased CV scores.
+                        _cv_full = make_cv_pipeline(model_pipeline, _cv_estimator)
                         cv_results = perform_cross_validation(
-                            _cv_estimator, X_train_model, _cv_y_train,
+                            _cv_full, X_train, _cv_y_train,
                             cv_folds=cv_folds, task_type=data_config.task_type
                         )
                     except Exception as cv_error:
@@ -1409,11 +1565,16 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                     resolution_details=_resolve_details,
                 )
 
-        # Auto-acknowledge any remaining unresolved insights at the training gate.
-        # Training completion means the user has made all upstream decisions.
+        # Auto-acknowledge remaining unresolved UPSTREAM insights at the
+        # training gate — proceeding to train means the user made those
+        # upstream decisions. Scoped so that retraining never sweeps
+        # explainability/sensitivity insights, and blockers are never
+        # bulk-acknowledged (the ledger skips them regardless).
         try:
             _tc_ledger.auto_acknowledge_gate(
                 gate_name="Training completed",
+                source_pages=["02_EDA", "03_Feature_Engineering",
+                              "04_Feature_Selection", "05_Preprocess"],
             )
         except Exception:
             pass
@@ -1435,6 +1596,7 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                     finding=diag['finding'],
                     implication=diag['implication'],
                     recommended_action=diag['recommended_action'],
+                    manuscript_text=diag.get('manuscript_text', ''),
                     relevant_pages=["06_Train_and_Compare", "10_Report_Export"],
                     tripod_keys=["model_building"],
                     model_scope=diag.get('model_scope', []),
@@ -1483,6 +1645,21 @@ if task_type_final == 'classification':
 # Training section with two buttons
 st.markdown("---")
 st.header("Train Models")
+
+# Wide-feature advisory: training itself stays fast, but downstream
+# explainability (permutation importance) scales with feature count, and
+# p >> n modeling without selection is hard to defend in a manuscript.
+_n_train_features = len(st.session_state.get('selected_features')
+                        or st.session_state.get('feature_names') or [])
+if models_to_train and _n_train_features > 500:
+    st.info(
+        f"📐 You are about to train on **{_n_train_features:,} features**. "
+        f"Models will train, but permutation importance on the Explainability "
+        f"page will take minutes per model at this width, and reviewers will "
+        f"expect a feature-selection rationale when features vastly outnumber "
+        f"samples. The Feature Selection page can cut this to a defensible "
+        f"subset first."
+    )
 
 if models_to_train:
     col1, col2 = st.columns(2)
@@ -1683,12 +1860,21 @@ if st.session_state.get('trained_models'):
             pass
 
     # Model metrics table with export option
+    _xte = st.session_state.get('X_test')
+    _xtr = st.session_state.get('X_train')
+    _n_te = len(_xte) if _xte is not None else 0
+    _n_tr = len(_xtr) if _xtr is not None else 0
+    st.caption(
+        f"Data scope: unprefixed metrics are computed on the held-out test set "
+        f"(n={_n_te}); 'Train'-prefixed columns use the training rows (n={_n_tr})."
+    )
     table(comparison_df, key="model_metrics")
 
     # ================================================================
     # BOOTSTRAP CONFIDENCE INTERVALS
     # ================================================================
-    with st.expander("📊 Metrics with 95% Bootstrap Confidence Intervals", expanded=True):
+    _analysis_tabs = st.tabs(["📊 Bootstrap CIs", "📏 Baselines", "📐 Calibration"])
+    with _analysis_tabs[0]:
         st.markdown("""
         **Why this matters:** Point estimates (e.g., "RMSE = 0.82") aren't sufficient for publication.
         Confidence intervals show the uncertainty in your estimates. Reviewers expect these.
@@ -1739,23 +1925,41 @@ if st.session_state.get('trained_models'):
                 ci_rows.append(row)
             ci_df = pd.DataFrame(ci_rows)
             table(ci_df, key="bootstrap_ci")
-            st.caption("Format: estimate [95% CI lower, upper] via BCa bootstrap (1000 resamples)")
+            _xte_ci = st.session_state.get('X_test')
+            st.caption(f"Format: estimate [95% CI lower, upper] via BCa bootstrap "
+                       f"(1000 resamples) on the held-out test set "
+                       f"(n={len(_xte_ci) if _xte_ci is not None else 0})")
 
     # ================================================================
     # BASELINE MODEL COMPARISON
     # ================================================================
-    with st.expander("📏 Baseline Model Comparison", expanded=False):
+    with _analysis_tabs[1]:
         st.markdown("""
         **Why this matters:** Reviewers need to see that your model outperforms trivial baselines.
         Without this comparison, they can't tell if your model actually adds value.
         """)
 
-        if st.button("Train Baseline Models", key="train_baselines"):
+        # Baselines are advertised as automatic: compute them whenever models
+        # exist and no (current) baseline results do — reset_downstream_results
+        # clears them when the data or configuration changes.
+        _baselines_missing = (
+            st.session_state.get("baseline_results") is None
+            and bool(st.session_state.get("model_results"))
+        )
+        if st.button("Recompute Baseline Models", key="train_baselines") or _baselines_missing:
             from ml.baseline_models import train_baseline_models
             X_train_base = st.session_state.get("X_train")
-            y_train_base = st.session_state.get("y_train")
             X_test_base = st.session_state.get("X_test")
-            y_test_base = st.session_state.get("y_test")
+            # When a target transform is active, y_train/y_test hold the
+            # transformed target while the model leaderboard reports on the
+            # original (back-transformed) scale. Baselines must use the
+            # original scale to be comparable.
+            y_train_base = st.session_state.get("y_train_original")
+            if y_train_base is None:
+                y_train_base = st.session_state.get("y_train")
+            y_test_base = st.session_state.get("y_test_original")
+            if y_test_base is None:
+                y_test_base = st.session_state.get("y_test")
 
             if X_train_base is not None and y_test_base is not None:
                 # Use the first model's preprocessing pipeline for baselines
@@ -1781,6 +1985,9 @@ if st.session_state.get('trained_models'):
 
         if st.session_state.get("baseline_results"):
             baselines = st.session_state["baseline_results"]
+            _xte_b = st.session_state.get('X_test')
+            st.caption(f"Baselines are evaluated on the same held-out test set "
+                       f"(n={len(_xte_b) if _xte_b is not None else 0}), on the original target scale.")
             for bname, bres in baselines.items():
                 st.markdown(f"**{bname}:** {bres['description']}")
                 cols_b = st.columns(len(bres["metrics"]))
@@ -1795,12 +2002,13 @@ if st.session_state.get('trained_models'):
     # ================================================================
     # CALIBRATION ANALYSIS
     # ================================================================
-    with st.expander("📐 Calibration Analysis", expanded=False):
+    with _analysis_tabs[2]:
         st.markdown("""
         **Why this matters:** A model that says "70% chance of event" should be right about 70% of the time.
         Poor calibration means predicted probabilities are unreliable — critical for clinical decisions.
         """)
 
+        _calibration_by_model = {}
         if data_config.task_type == "classification":
             for name, results in st.session_state.model_results.items():
                 model_obj = st.session_state.trained_models.get(name)
@@ -1812,8 +2020,16 @@ if st.session_state.get('trained_models'):
                             X_test_local = pipeline_local.transform(st.session_state.get("X_test"))
                             y_proba_local = model_obj.predict_proba(X_test_local)
                             if y_proba_local is not None and y_proba_local.ndim == 2:
-                                y_proba_pos = y_proba_local[:, 1] if y_proba_local.shape[1] == 2 else y_proba_local[:, -1]
+                                if y_proba_local.shape[1] != 2:
+                                    # Reliability curves / Brier as computed here are
+                                    # defined for binary outcomes; a one-vs-rest slice
+                                    # against multiclass labels produces invalid numbers.
+                                    st.caption(f"{name.upper()}: calibration curves are shown for binary "
+                                               f"classification only ({y_proba_local.shape[1]} classes detected).")
+                                    continue
+                                y_proba_pos = y_proba_local[:, 1]
                                 cal = calibration_classification(np.array(results["y_test"]), y_proba_pos, model_name=name.upper())
+                                _calibration_by_model[name] = cal
                                 fig_cal = plot_calibration_curve(cal)
                                 st.plotly_chart(fig_cal, key=f"cal_{name}")
                                 st.caption(f"Brier Score: {cal.brier_score:.4f} | ECE: {cal.ece:.4f} | MCE: {cal.mce:.4f}")
@@ -1826,11 +2042,16 @@ if st.session_state.get('trained_models'):
                     np.array(results["y_test"]), np.array(results["y_test_pred"]),
                     model_name=name.upper(),
                 )
+                _calibration_by_model[name] = cal
                 st.markdown(f"**{name.upper()}:** Calibration slope = {cal.calibration_slope:.3f}, "
                            f"Intercept = {cal.calibration_intercept:.3f} "
                            f"(perfect: slope=1, intercept=0)")
             st.caption("Calibration slope measures systematic over/under-prediction. "
                       "Slope < 1 = predictions too extreme; slope > 1 = predictions too conservative.")
+        # Persist for Report Export — previously computed here but never stored,
+        # so calibration silently never reached the manuscript.
+        if _calibration_by_model:
+            st.session_state["calibration_results"] = _calibration_by_model
     
     # CV results if available
     if use_cv:
@@ -1921,26 +2142,30 @@ if st.session_state.get('trained_models'):
         else:
             return "Unknown complexity"
     
-    # Get top 3 models by performance
-    metric_col = 'AUC (val)' if task_type_final == 'classification' else 'R² (val)'
-    
+    # Get top 3 models by performance (metric keys must match ml/eval.py output)
+    if task_type_final == 'classification':
+        metric_col = 'ROC-AUC' if 'ROC-AUC' in comparison_df.columns else 'Accuracy'
+    else:
+        metric_col = 'R2'
+
     # Check if the metric column exists in the comparison_df
     if metric_col in comparison_df.columns and len(comparison_df) > 0:
         top_models = comparison_df.nlargest(3, metric_col)
-        
+
         # Check if top models have overlapping confidence intervals
         if len(top_models) >= 2:
-            # Get bootstrap CIs for top 2 models
-            model1_name = top_models.index[0]
-            model2_name = top_models.index[1]
-            
+            # Display names are upper-cased model keys; bootstrap_results is
+            # keyed by the lower-case model key
+            model1_name = top_models.iloc[0]['Model']
+            model2_name = top_models.iloc[1]['Model']
+
             bootstrap_results = st.session_state.get("bootstrap_results", {})
-            
+
             if bootstrap_results:
-                # Get BootstrapResult objects
-                metric_name = metric_col.replace(' (val)', '')  # 'AUC' or 'R²'
-                model1_result = bootstrap_results.get(model1_name, {}).get(metric_name)
-                model2_result = bootstrap_results.get(model2_name, {}).get(metric_name)
+                # Get BootstrapResult objects (bootstrap metric keys differ from display keys)
+                metric_name = {'R2': 'R2', 'ROC-AUC': 'AUC', 'Accuracy': 'Accuracy'}[metric_col]
+                model1_result = bootstrap_results.get(model1_name.lower(), {}).get(metric_name)
+                model2_result = bootstrap_results.get(model2_name.lower(), {}).get(metric_name)
                 
                 # Extract CI bounds from BootstrapResult dataclass
                 from ml.bootstrap import BootstrapResult
@@ -1993,7 +2218,8 @@ if st.session_state.get('trained_models'):
                         
                         # Show all top 3
                         st.markdown("**Top 3 Models:**")
-                        for idx, (model_name, row) in enumerate(top_models.iterrows(), 1):
+                        for idx, (_, row) in enumerate(top_models.iterrows(), 1):
+                            model_name = row['Model']
                             metric_val = row[metric_col]
                             complexity = get_model_complexity(model_name)
                             st.markdown(f"{idx}. **{model_name}**: {metric_val:.3f} — {complexity}")
@@ -2272,7 +2498,7 @@ Poor performance may be due to:
                                     "Mean Bias": round(b["mean_bias"], 4),
                                     "Direction": direction_icon.get(b["bias_direction"], b["bias_direction"]),
                                 })
-                            st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+                            st.dataframe(pd.DataFrame(_rows), width="stretch", hide_index=True)
 
                     if strat_bins:
                         import plotly.graph_objects as go
@@ -2294,7 +2520,7 @@ Poor performance may be due to:
                             height=350,
                         )
                         _fig_strat.add_hline(y=0, line_dash="dash", line_color="gray")
-                        st.plotly_chart(_fig_strat, use_container_width=True, key=f"strat_bias_{name}")
+                        st.plotly_chart(_fig_strat, width="stretch", key=f"strat_bias_{name}")
 
                         nar_strat = narrative_residuals_stratified(strat_stats, model_name=name)
                         if nar_strat:

@@ -42,6 +42,10 @@ def render_breadcrumb(current_page: str, step_label: Optional[str] = None) -> No
             parts.append(display)
             break
         parts.append(display)
+    # Deep pages would otherwise render the full 8-11 item trail — keep the
+    # origin, the previous step, and the current step; elide the middle.
+    if len(parts) > 4:
+        parts = [parts[0], "…", parts[-2], parts[-1]]
     breadcrumb = " > ".join(parts)
     if step_label:
         breadcrumb += f" > {step_label}"

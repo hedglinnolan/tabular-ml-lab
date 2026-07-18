@@ -211,10 +211,16 @@ CHAPTERS = [
     "Reporting Standards (TRIPOD)",
 ]
 
+# Coaching cards deep-link here with a target chapter; honor it (one-shot)
+_target_chapter = st.session_state.pop("theory_target_chapter", None)
+if _target_chapter in CHAPTERS:
+    st.session_state["theory_chapter_select"] = _target_chapter
+
 chapter = st.selectbox(
     "Choose a chapter",
     CHAPTERS,
     index=0,
+    key="theory_chapter_select",
     help="Each chapter covers the theory behind one or more pages of the app.",
 )
 

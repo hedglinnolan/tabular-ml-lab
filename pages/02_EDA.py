@@ -31,6 +31,7 @@ from utils.session_state import (
 )
 from utils.storyline import render_breadcrumb, render_page_navigation
 from data_processor import get_numeric_columns
+from utils.perf_cache import cached_numeric_summary, cached_target_correlations
 from utils.theme import (
     inject_custom_css, render_guidance, render_reviewer_concern,
     render_step_indicator, render_sidebar_workflow
@@ -65,7 +66,10 @@ st.set_page_config(page_title="EDA", page_icon="📈", layout="wide")
 inject_custom_css()
 render_sidebar_workflow(current_page="02_EDA")
 render_step_indicator(2, "Exploratory Data Analysis")
+st.title("📈 Explore Your Data")
 render_breadcrumb("02_EDA")
+from utils.test_lockbox import render_lockbox_status
+render_lockbox_status("Descriptive EDA is full-cohort; automated selection and modeling decisions use training rows only.")
 render_page_navigation("02_EDA")
 
 # ============================================================================
@@ -139,7 +143,7 @@ regime = detect_regime(df, feature_cols, target_col)
 ledger = get_ledger()
 
 # Dataset profile (cached)
-@st.cache_data
+@st.cache_data(show_spinner="Profiling dataset structure (one-time per dataset)…")
 def _compute_profile(_df, target, features, task_type, outlier_method, data_id=None):
     from ml.dataset_profile import compute_dataset_profile
     return compute_dataset_profile(_df, target, features, task_type, outlier_method)
@@ -162,7 +166,7 @@ profile = _compute_profile(
 st.session_state["dataset_profile"] = profile
 
 # Signals (cached)
-@st.cache_data
+@st.cache_data(show_spinner="Scanning statistical signals (one-time per dataset)…")
 def _compute_signals(_df, target, task_type, cohort_type, entity_id, outlier_method, _feature_cols=None, data_id=None):
     return compute_dataset_signals(_df, target, task_type, cohort_type, entity_id, outlier_method=outlier_method, feature_cols=_feature_cols)
 
@@ -187,28 +191,49 @@ eda_recommendations = recommend_eda(signals)
 # HELPER: Auto-generate insights from profile/signals
 # ============================================================================
 
+def _count_word(n: int, noun: str) -> str:
+    """'1 predictor' / '3 predictors' — manuscript prose avoids '(s)'."""
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+
 def _auto_generate_insights():
     """Write auto-detected insights to the ledger. Idempotent via upsert."""
 
-    # Sufficiency
+    # Sufficiency. DataSufficiencyLevel values are abundant/adequate/limited/
+    # scarce/critical — an earlier vocabulary ("insufficient"/"borderline")
+    # matched nothing, so these insights never fired even on p >> n data.
+    # Insight ids are kept for downstream resolution mappings.
     sufficiency = getattr(getattr(profile, "data_sufficiency", None), "value", "adequate")
-    if sufficiency == "insufficient":
+    _suff_ratio = regime.n_rows / max(regime.n_features, 1)
+    _suff_ratio_str = f"{_suff_ratio:.2f}:1" if _suff_ratio < 10 else f"{_suff_ratio:.0f}:1"
+    if sufficiency == "critical":
         ledger.upsert(Insight(
             id="eda_sufficiency_insufficient",
             source_page="02_EDA", category="sufficiency", severity="blocker",
-            finding=f"Sample size may be insufficient ({regime.n_rows:,} rows, {regime.n_features} features, ratio {regime.n_rows / max(regime.n_features, 1):.0f}:1)",
+            finding=f"Sample size may be insufficient ({regime.n_rows:,} rows, {regime.n_features} features, {_suff_ratio_str} samples per feature)",
             implication="Complex models will likely overfit. Prefer simple baselines.",
             recommended_action="Reduce features or gather more data",
+            manuscript_text=(
+                f"the sample size was small relative to the number of candidate "
+                f"predictors ({regime.n_rows:,} observations, {regime.n_features} "
+                f"predictors), which limits statistical power and increases "
+                f"overfitting risk"
+            ),
             relevant_pages=["04_Feature_Selection", "06_Train_and_Compare", "10_Report_Export"],
             model_scope=[MODEL_FAMILY_NEURAL],  # most affected by low sample size
         ))
-    elif sufficiency == "borderline":
+    elif sufficiency in ("scarce", "limited"):
         ledger.upsert(Insight(
             id="eda_sufficiency_borderline",
             source_page="02_EDA", category="sufficiency", severity="warning",
-            finding=f"Data sufficiency is borderline ({regime.n_rows:,} rows, {regime.n_features} features)",
+            finding=f"Data sufficiency is {sufficiency} ({regime.n_rows:,} rows, {regime.n_features} features)",
             implication="Prefer simpler models and tighter regularization.",
             recommended_action="Consider feature reduction before complex modeling",
+            manuscript_text=(
+                f"the modest ratio of observations to candidate predictors "
+                f"({regime.n_rows:,} observations, {regime.n_features} predictors) "
+                f"constrained the model complexity that could be reliably supported"
+            ),
             relevant_pages=["04_Feature_Selection", "06_Train_and_Compare"],
             model_scope=[MODEL_FAMILY_NEURAL],  # most affected by low sample size
         ))
@@ -223,6 +248,11 @@ def _auto_generate_insights():
                 implication="Model performance will be artificially inflated",
                 affected_features=[col],
                 recommended_action=f"Remove {col} from feature set",
+                manuscript_text=(
+                    f"the predictor {col} was nearly collinear with the outcome "
+                    f"(|r| > 0.95), raising the possibility of information leakage; "
+                    f"results including this predictor should be interpreted with caution"
+                ),
                 relevant_pages=["04_Feature_Selection", "10_Report_Export"],
             ))
 
@@ -277,6 +307,12 @@ def _auto_generate_insights():
                 implication=f"Keeping all {n_feats} may inflate variance in linear models. Consider retaining 1-2 representatives.",
                 affected_features=cluster_features,
                 recommended_action=f"Review in Feature Selection — consider dropping {n_feats - 1} of {n_feats}",
+                manuscript_text=(
+                    f"a cluster of {n_feats} intercorrelated predictors was present "
+                    f"(maximum pairwise r = {cluster_max:.2f}), which can inflate the "
+                    f"variance of coefficient estimates and complicate attribution of "
+                    f"importance among the correlated predictors"
+                ),
                 relevant_pages=["04_Feature_Selection", "05_Preprocess"],
                 model_scope=ISSUE_MODEL_RELEVANCE["collinearity"],  # linear only
                 metadata={"max_correlation": cluster_max, "cluster_size": n_feats},
@@ -296,6 +332,11 @@ def _auto_generate_insights():
                 implication="High missingness may require column removal or advanced imputation (MICE, kNN). Simple mean imputation may distort distributions.",
                 affected_features=[c for c, _ in severe_missing],
                 recommended_action="Review in Preprocessing — consider dropping or advanced imputation",
+                manuscript_text=(
+                    f"{_count_word(len(severe_missing), 'predictor')} exhibited "
+                    f"substantial missingness (>30% of values: {cols_str}), which may "
+                    f"bias estimates if the missingness mechanism is not random"
+                ),
                 relevant_pages=["05_Preprocess", "10_Report_Export"],
                 metadata={"n_features": len(severe_missing), "max_rate": max(r for _, r in severe_missing)},
             ))
@@ -321,6 +362,10 @@ def _auto_generate_insights():
                 source_page="02_EDA", category="distribution", severity="warning",
                 finding=f"Target is skewed (skew={skew:.2f})",
                 implication="May affect loss function choice and prediction intervals",
+                manuscript_text=(
+                    f"the outcome distribution was skewed (skewness = {skew:.2f}), "
+                    f"which can affect error-based metrics and prediction intervals"
+                ),
                 affected_features=[target_col],
                 recommended_action="Apply a target transformation on the Train & Compare page (Log, Yeo-Johnson, or Box-Cox). Predictions are automatically back-transformed and metrics reported on the original scale. Tree-based models and Huber regression are also robust to target skew.",
                 relevant_pages=["06_Train_and_Compare"],
@@ -337,6 +382,11 @@ def _auto_generate_insights():
                 source_page="02_EDA", category="distribution", severity="warning",
                 finding=f"Class imbalance detected (ratio={imbalance:.2f})",
                 implication="Accuracy alone may be misleading. Use F1, balanced accuracy, or AUROC.",
+                manuscript_text=(
+                    f"the outcome classes were imbalanced (minority-to-majority "
+                    f"ratio = {imbalance:.2f}), so threshold-dependent metrics "
+                    f"should be interpreted alongside AUROC and F1"
+                ),
                 affected_features=[target_col],
                 recommended_action="Use class weighting or stratified sampling",
                 relevant_pages=["05_Preprocess", "06_Train_and_Compare"],
@@ -368,6 +418,11 @@ def _auto_generate_insights():
             source_page="02_EDA", category="distribution", severity="info",
             finding=f"{len(skewed_list)} feature(s) heavily skewed (|skew| > 2): {skew_names}",
             implication="Log or power transforms may improve linear model performance and reduce outlier influence",
+            manuscript_text=(
+                f"{_count_word(len(skewed_list), 'predictor')} exhibited strong "
+                f"skewness (|skewness| > 2), which can increase the influence of "
+                f"extreme values in scale-sensitive models"
+            ),
             affected_features=[c for c, _ in skewed_list],
             recommended_action="Consider transforms in Feature Engineering or Preprocessing",
             relevant_pages=["03_Feature_Engineering", "05_Preprocess"],
@@ -387,6 +442,9 @@ def _auto_generate_insights():
             source_page="02_EDA", category="data_quality", severity="opportunity",
             finding="Dataset has no blockers or warnings — unusually clean",
             implication="You can lean into interpretable models (GLM, GAM) where coefficient interpretation is meaningful, rather than defaulting to black-box approaches",
+            manuscript_text=("the dataset contained no blocking data-quality issues "
+                             "(no severe missingness, leakage candidates, or "
+                             "distributional anomalies)"),
             recommended_action="Consider GLM or GAM baselines in Train & Compare",
             relevant_pages=["06_Train_and_Compare"],
             resolved=True, resolved_by="Positive signal — no action needed",
@@ -394,19 +452,27 @@ def _auto_generate_insights():
         ))
 
     # Strong target signal opportunity
+    # Both this check and the non-linearity check below need per-feature
+    # correlations with the target; one cached vectorized pass replaces
+    # thousands of per-column Series.corr calls on wide data.
+    _corr_pearson, _corr_spearman = None, None
     if _has_target and task_type_final == "regression":
         numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
-        if len(numeric_cols) >= 2:
-            top_corr = max(
-                (abs(df[c].corr(df[target_col])) for c in numeric_cols if c != target_col),
-                default=0,
-            )
-            if top_corr > 0.7:
+        _corr_cols = tuple(c for c in numeric_cols if c != target_col)
+        if _corr_cols:
+            _corr_pearson, _corr_spearman = cached_target_correlations(
+                df, target_col, _corr_cols)
+    if _corr_pearson is not None and len(_corr_pearson) >= 2:
+            top_corr = float(_corr_pearson.abs().max(skipna=True) or 0)
+            if not np.isnan(top_corr) and top_corr > 0.7:
                 ledger.upsert(Insight(
                     id="eda_opportunity_strong_signal",
                     source_page="02_EDA", category="relationship", severity="opportunity",
                     finding=f"Strong linear signal detected (max |r| with target = {top_corr:.2f})",
                     implication="Linear models may perform surprisingly well. Establish a strong OLS baseline before trying complex models.",
+                    manuscript_text=(f"at least one predictor showed a strong linear "
+                                     f"association with the outcome "
+                                     f"(maximum |r| = {top_corr:.2f})"),
                     recommended_action="Run GLM baseline first in Train & Compare",
                     relevant_pages=["06_Train_and_Compare"],
                     metadata={"max_target_correlation": float(top_corr)},
@@ -415,20 +481,21 @@ def _auto_generate_insights():
                 ))
 
     # Non-linear relationship opportunity
-    if _has_target and task_type_final == "regression":
-        numeric_cols = df[feature_cols].select_dtypes(include=[np.number]).columns
-        if len(numeric_cols) >= 3:
+    if _corr_pearson is not None and len(_corr_pearson) >= 3:
             # Compare Pearson vs Spearman to detect non-linearity
-            pearson_corrs = [abs(df[c].corr(df[target_col])) for c in numeric_cols if c != target_col]
-            spearman_corrs = [abs(df[c].corr(df[target_col], method="spearman")) for c in numeric_cols if c != target_col]
-            if pearson_corrs and spearman_corrs:
-                avg_gap = np.mean([s - p for p, s in zip(pearson_corrs, spearman_corrs) if not (np.isnan(p) or np.isnan(s))])
+            _gap = (_corr_spearman.abs() - _corr_pearson.abs()).dropna()
+            if len(_gap) > 0:
+                avg_gap = float(_gap.mean())
                 if avg_gap > 0.08:
                     ledger.upsert(Insight(
                         id="eda_opportunity_nonlinear",
                         source_page="02_EDA", category="relationship", severity="opportunity",
                         finding=f"Features show non-linear relationships with target (avg Spearman-Pearson gap = {avg_gap:.3f})",
                         implication="Tree-based models (RF, XGBoost) or GAMs may capture structure that linear models miss",
+                        manuscript_text=(f"rank-based predictor–outcome associations "
+                                         f"exceeded linear associations (mean "
+                                         f"Spearman−Pearson gap = {avg_gap:.3f}), "
+                                         f"consistent with non-linear structure"),
                         recommended_action="Include tree-based models in Train & Compare",
                         relevant_pages=["06_Train_and_Compare"],
                         metadata={"spearman_pearson_gap": float(avg_gap)},
@@ -444,6 +511,9 @@ def _auto_generate_insights():
             source_page="02_EDA", category="sufficiency", severity="opportunity",
             finding=f"Large sample-to-feature ratio ({n_p_ratio:.0f}:1) — plenty of data relative to complexity",
             implication="You can afford more complex models (deep trees, neural nets) without overfitting. Cross-validation will be reliable.",
+            manuscript_text=(f"the sample size was large relative to the number of "
+                             f"predictors ({n_p_ratio:.0f}:1 observations per "
+                             f"predictor), supporting stable model estimation"),
             recommended_action="Consider full model suite in Train & Compare",
             relevant_pages=["06_Train_and_Compare"],
             metadata={"n_p_ratio": float(n_p_ratio)},
@@ -460,6 +530,8 @@ def _auto_generate_insights():
                 source_page="02_EDA", category="distribution", severity="opportunity",
                 finding=f"Classes are well-balanced (ratio = {imbalance:.2f})",
                 implication="Accuracy is a valid metric. No need for class weighting or oversampling.",
+                manuscript_text=(f"the outcome classes were well balanced "
+                                 f"(minority-to-majority ratio = {imbalance:.2f})"),
                 recommended_action="Standard metrics will be reliable in Train & Compare",
                 relevant_pages=["06_Train_and_Compare"],
                 resolved=True, resolved_by="Positive signal — no action needed",
@@ -473,8 +545,15 @@ _auto_generate_insights()
 # ============================================================================
 # SECTION 0: AT-A-GLANCE HEADER
 # ============================================================================
+# (Title renders in the header cluster at the top of the page, matching the
+# title-first order of the other workflow pages.)
 
-st.title("📈 Explore Your Data")
+if regime.n_features > 500:
+    st.caption(
+        f"⏱️ Wide dataset ({regime.n_features:,} features): the first visit to "
+        "this page computes its statistics once — the spinners below name each "
+        "step — and everything afterward is served from cache."
+    )
 
 cols = st.columns([1, 1, 1, 1, 1, 1])
 with cols[0]:
@@ -486,11 +565,26 @@ with cols[2]:
 with cols[3]:
     st.metric("Categorical", f"{regime.n_categorical}")
 with cols[4]:
-    missing_pct = df[feature_cols].isnull().mean().mean() * 100
-    st.metric("Missing", f"{missing_pct:.1f}%")
+    _missing_by_col = df[feature_cols].isnull().mean()
+    missing_pct = _missing_by_col.mean() * 100
+    # The overall mean dilutes a badly-missing column across thousands of
+    # complete ones — surface the worst offender in the tooltip.
+    _missing_help = "Mean missingness across selected features."
+    if len(_missing_by_col) > 0 and _missing_by_col.max() > 0:
+        _worst_col = _missing_by_col.idxmax()
+        _missing_help += f" Highest single feature: {_worst_col} ({_missing_by_col.max():.0%})."
+    st.metric("Missing", f"{missing_pct:.1f}%", help=_missing_help)
 with cols[5]:
     sufficiency_val = getattr(getattr(profile, "data_sufficiency", None), "value", "adequate")
-    st.metric("Sufficiency", sufficiency_val.title())
+    # Compact verdicts: anything longer than ~4 glyphs ('Critical',
+    # '✗ Poor') truncates at the metric tile's numeral font size at
+    # six-tiles-across width. Full term stays in the tooltip. Covers every
+    # DataSufficiencyLevel value.
+    _suff_display = {"abundant": "High", "adequate": "OK",
+                     "limited": "Fair", "scarce": "Weak",
+                     "critical": "Poor"}.get(sufficiency_val, sufficiency_val.title()[:4])
+    st.metric("Sufficiency", _suff_display,
+              help=f"Data sufficiency: {sufficiency_val} (based on samples-per-feature ratio)")
 
 # Alert ribbon — only if blockers exist
 if ledger.has_blockers():
@@ -506,525 +600,528 @@ if regime.show_sample_size_warning:
 # ============================================================================
 
 st.markdown("---")
-st.header("Data Snapshot")
-st.caption("See your data. Sort, filter, and inspect columns to build initial intuition.")
+_eda_tabs = st.tabs(["📷 Data Snapshot", "📊 Distributions & Outliers", "🔗 Relationships"])
 
-# Interactive dataframe
-st.dataframe(
-    df.head(200),
-    use_container_width=True,
-    height=350,
-)
+with _eda_tabs[0]:
+    st.header("Data Snapshot")
+    st.caption("See your data. Sort, filter, and inspect columns to build initial intuition.")
 
-# Type filter pills and column inspector
-type_label = f"{regime.n_numeric} numeric · {regime.n_categorical} categorical"
-if regime.n_datetime > 0:
-    type_label += f" · {regime.n_datetime} datetime"
-st.caption(type_label)
+    # Interactive dataframe
+    st.dataframe(
+        df.head(200),
+        width="stretch",
+        height=350,
+    )
 
-# Column inspector
-with st.expander("🔍 Column Inspector", expanded=False):
-    inspect_col = st.selectbox("Select column to inspect", df.columns, key="col_inspector")
-    if inspect_col:
-        col_data = df[inspect_col]
-        ic1, ic2, ic3, ic4 = st.columns(4)
-        with ic1:
-            st.metric("Type", str(col_data.dtype))
-        with ic2:
-            st.metric("Unique", f"{col_data.nunique():,}")
-        with ic3:
-            st.metric("Missing", f"{col_data.isnull().sum():,} ({col_data.isnull().mean():.1%})")
-        with ic4:
+    # Type filter pills and column inspector
+    type_label = f"{regime.n_numeric} numeric · {regime.n_categorical} categorical"
+    if regime.n_datetime > 0:
+        type_label += f" · {regime.n_datetime} datetime"
+    st.caption(type_label)
+
+    # Column inspector
+    with st.expander("🔍 Column Inspector", expanded=False):
+        inspect_col = st.selectbox("Select column to inspect", df.columns, key="col_inspector")
+        if inspect_col:
+            col_data = df[inspect_col]
+            ic1, ic2, ic3, ic4 = st.columns(4)
+            with ic1:
+                st.metric("Type", str(col_data.dtype))
+            with ic2:
+                st.metric("Unique", f"{col_data.nunique():,}")
+            with ic3:
+                st.metric("Missing", f"{col_data.isnull().sum():,} ({col_data.isnull().mean():.1%})")
+            with ic4:
+                if pd.api.types.is_numeric_dtype(col_data):
+                    st.metric("Mean", f"{col_data.mean():.3f}")
+                else:
+                    st.metric("Top Value", str(col_data.mode().iloc[0]) if len(col_data.mode()) > 0 else "N/A")
+
             if pd.api.types.is_numeric_dtype(col_data):
-                st.metric("Mean", f"{col_data.mean():.3f}")
+                # Sparkline histogram
+                fig = px.histogram(col_data.dropna(), nbins=30, height=200)
+                fig.update_layout(
+                    showlegend=False, margin=dict(l=0, r=0, t=10, b=0),
+                    xaxis_title="", yaxis_title="",
+                )
+                st.plotly_chart(fig)
+
+                desc = col_data.describe()
+                d1, d2, d3, d4 = st.columns(4)
+                d1.metric("Min", f"{desc['min']:.3f}")
+                d2.metric("Median", f"{desc['50%']:.3f}")
+                d3.metric("Max", f"{desc['max']:.3f}")
+                d4.metric("Std", f"{desc['std']:.3f}")
             else:
-                st.metric("Top Value", str(col_data.mode().iloc[0]) if len(col_data.mode()) > 0 else "N/A")
+                # Value counts for categorical
+                vc = col_data.value_counts().head(10)
+                fig = px.bar(x=vc.index.astype(str), y=vc.values, height=200)
+                fig.update_layout(
+                    showlegend=False, margin=dict(l=0, r=0, t=10, b=0),
+                    xaxis_title="", yaxis_title="Count",
+                )
+                st.plotly_chart(fig)
 
-        if pd.api.types.is_numeric_dtype(col_data):
-            # Sparkline histogram
-            fig = px.histogram(col_data.dropna(), nbins=30, height=200)
-            fig.update_layout(
-                showlegend=False, margin=dict(l=0, r=0, t=10, b=0),
-                xaxis_title="", yaxis_title="",
-            )
-            st.plotly_chart(fig)
-
-            desc = col_data.describe()
-            d1, d2, d3, d4 = st.columns(4)
-            d1.metric("Min", f"{desc['min']:.3f}")
-            d2.metric("Median", f"{desc['50%']:.3f}")
-            d3.metric("Max", f"{desc['max']:.3f}")
-            d4.metric("Std", f"{desc['std']:.3f}")
-        else:
-            # Value counts for categorical
-            vc = col_data.value_counts().head(10)
-            fig = px.bar(x=vc.index.astype(str), y=vc.values, height=200)
-            fig.update_layout(
-                showlegend=False, margin=dict(l=0, r=0, t=10, b=0),
-                xaxis_title="", yaxis_title="Count",
-            )
-            st.plotly_chart(fig)
-
-        # Show insights for this column
-        col_insights = ledger.get_for_features([inspect_col])
-        if col_insights:
-            for ins in col_insights:
-                if not ins.resolved:
-                    icon = {"blocker": "🚨", "warning": "⚠️", "info": "ℹ️", "opportunity": "💡"}.get(ins.severity, "ℹ️")
-                    st.caption(f"{icon} {ins.finding}")
+            # Show insights for this column
+            col_insights = ledger.get_for_features([inspect_col])
+            if col_insights:
+                for ins in col_insights:
+                    if not ins.resolved:
+                        icon = {"blocker": "🚨", "warning": "⚠️", "info": "ℹ️", "opportunity": "💡"}.get(ins.severity, "ℹ️")
+                        st.caption(f"{icon} {ins.finding}")
 
 
-# ============================================================================
-# SECTION 2: SHAPE OF THE DATA
-# ============================================================================
+    # ============================================================================
+    # SECTION 2: SHAPE OF THE DATA
+    # ============================================================================
 
-st.markdown("---")
-st.header("Shape of the Data")
-st.caption("Distributions, outliers, and missing data patterns. Build visual intuition before analyzing relationships.")
+    st.markdown("---")
+with _eda_tabs[1]:
+    st.header("Shape of the Data")
+    st.caption("Distributions, outliers, and missing data patterns. Build visual intuition before analyzing relationships.")
 
-# -- Target Distribution --------------------------------------------------
-if _has_target:
-    st.subheader(f"Target: {target_col}")
-    tc1, tc2 = st.columns(2)
-    with tc1:
-        fig_hist = px.histogram(df, x=target_col, nbins=30, title=f"Distribution of {target_col}")
-        fig_hist.update_layout(template="plotly_white", height=350)
-        st.plotly_chart(fig_hist)
-    with tc2:
-        if task_type_final == "classification":
-            class_counts = df[target_col].value_counts().sort_index()
-            fig_bar = px.bar(
-                x=class_counts.index.astype(str), y=class_counts.values,
-                title="Class Distribution",
-                labels={"x": "Class", "y": "Count"},
-            )
-            fig_bar.update_layout(template="plotly_white", height=350)
-            st.plotly_chart(fig_bar)
-            imbalance = class_counts.min() / class_counts.max()
-            if imbalance < 0.35:
-                st.caption(f"⚠️ Class imbalance: {imbalance:.2f} ratio. Stratified sampling recommended.")
-        else:
-            fig_box = px.box(df, y=target_col, title=f"Box Plot of {target_col}")
-            fig_box.update_layout(template="plotly_white", height=350)
-            st.plotly_chart(fig_box)
-            skew = signals.target_stats.get("skew")
-            if skew and abs(skew) > 1.5:
-                st.caption(f"ℹ️ Skew = {skew:.2f} — log transform may help.")
+    # -- Target Distribution --------------------------------------------------
+    if _has_target:
+        st.subheader(f"Target: {target_col}")
+        tc1, tc2 = st.columns(2)
+        with tc1:
+            fig_hist = px.histogram(df, x=target_col, nbins=30, title=f"Distribution of {target_col}")
+            fig_hist.update_layout(template="plotly_white", height=350)
+            st.plotly_chart(fig_hist)
+        with tc2:
+            if task_type_final == "classification":
+                class_counts = df[target_col].value_counts().sort_index()
+                fig_bar = px.bar(
+                    x=class_counts.index.astype(str), y=class_counts.values,
+                    title="Class Distribution",
+                    labels={"x": "Class", "y": "Count"},
+                )
+                fig_bar.update_layout(template="plotly_white", height=350)
+                st.plotly_chart(fig_bar)
+                imbalance = class_counts.min() / class_counts.max()
+                if imbalance < 0.35:
+                    st.caption(f"⚠️ Class imbalance: {imbalance:.2f} ratio. Stratified sampling recommended.")
+            else:
+                fig_box = px.box(df, y=target_col, title=f"Box Plot of {target_col}")
+                fig_box.update_layout(template="plotly_white", height=350)
+                st.plotly_chart(fig_box)
+                skew = signals.target_stats.get("skew")
+                if skew and abs(skew) > 1.5:
+                    st.caption(f"ℹ️ Skew = {skew:.2f} — log transform may help.")
 
-# -- Feature Distribution Gallery -----------------------------------------
-st.subheader("Feature Distributions")
+    # -- Feature Distribution Gallery -----------------------------------------
+    st.subheader("Feature Distributions")
 
-numeric_features = [f for f in feature_cols if f in df.columns and pd.api.types.is_numeric_dtype(df[f])]
-cat_features = [f for f in feature_cols if f in df.columns and not pd.api.types.is_numeric_dtype(df[f])]
+    numeric_features = [f for f in feature_cols if f in df.columns and pd.api.types.is_numeric_dtype(df[f])]
+    cat_features = [f for f in feature_cols if f in df.columns and not pd.api.types.is_numeric_dtype(df[f])]
 
-if regime.distribution_mode == "summary":
-    # Ultra-wide: summary-of-summaries view
-    st.caption(f"Dataset has {regime.n_features} features — showing summary statistics. Use Column Inspector to drill into individual features.")
-    if numeric_features:
-        summary_df = df[numeric_features].describe().T
-        summary_df["skew"] = df[numeric_features].skew()
-        summary_df["missing_%"] = df[numeric_features].isnull().mean() * 100
-        summary_df.index.name = "Feature"
-        table(summary_df.round(3).reset_index())
+    if regime.distribution_mode == "summary":
+        # Ultra-wide: summary-of-summaries view
+        st.caption(f"Dataset has {regime.n_features} features — showing summary statistics. Use Column Inspector to drill into individual features.")
+        if numeric_features:
+            summary_df = cached_numeric_summary(df, tuple(numeric_features))
+            summary_df.index.name = "Feature"
+            table(summary_df.round(3).reset_index())
 
-        # Distribution-of-distributions: skew histogram
-        skews = df[numeric_features].skew().dropna()
-        if len(skews) > 1:
-            fig_skew = px.histogram(skews, nbins=20, title="Distribution of Feature Skewness")
-            fig_skew.update_layout(template="plotly_white", height=250, xaxis_title="Skewness", yaxis_title="Count")
-            st.plotly_chart(fig_skew)
-else:
-    # Gallery mode: paginated 3×3 grid
-    filter_options = ["All Features"]
-    if numeric_features:
-        filter_options.append(f"Numeric ({len(numeric_features)})")
-    if cat_features:
-        filter_options.append(f"Categorical ({len(cat_features)})")
-
-    # Detect features with notable properties for filter pills
-    high_missing_features = [f for f in feature_cols if signals.missing_rate_by_col.get(f, 0) > 0.05]
-    if high_missing_features:
-        filter_options.append(f"High Missing ({len(high_missing_features)})")
-
-    selected_filter = st.pills("Filter features", filter_options, default="All Features", key="dist_filter")
-
-    if selected_filter and "Numeric" in selected_filter:
-        display_features = numeric_features
-    elif selected_filter and "Categorical" in selected_filter:
-        display_features = cat_features
-    elif selected_filter and "High Missing" in selected_filter:
-        display_features = high_missing_features
+            # Distribution-of-distributions: skew histogram
+            skews = df[numeric_features].skew().dropna()
+            if len(skews) > 1:
+                fig_skew = px.histogram(skews, nbins=20, title="Distribution of Feature Skewness")
+                fig_skew.update_layout(template="plotly_white", height=250, xaxis_title="Skewness", yaxis_title="Count")
+                st.plotly_chart(fig_skew)
     else:
-        display_features = feature_cols
+        # Gallery mode: paginated 3×3 grid
+        filter_options = ["All Features"]
+        if numeric_features:
+            filter_options.append(f"Numeric ({len(numeric_features)})")
+        if cat_features:
+            filter_options.append(f"Categorical ({len(cat_features)})")
 
-    page_size = regime.gallery_page_size
-    total_pages = max(1, ceil(len(display_features) / page_size))
+        # Detect features with notable properties for filter pills
+        high_missing_features = [f for f in feature_cols if signals.missing_rate_by_col.get(f, 0) > 0.05]
+        if high_missing_features:
+            filter_options.append(f"High Missing ({len(high_missing_features)})")
 
-    if total_pages > 1:
-        gallery_page = st.number_input(
-            f"Page (1-{total_pages})", min_value=1, max_value=total_pages,
-            value=1, key="dist_gallery_page"
-        )
-    else:
-        gallery_page = 1
+        selected_filter = st.pills("Filter features", filter_options, default="All Features", key="dist_filter")
 
-    page_features = display_features[(gallery_page - 1) * page_size: gallery_page * page_size]
-    st.caption(f"Showing {len(page_features)} of {len(display_features)} features (page {gallery_page}/{total_pages})")
+        if selected_filter and "Numeric" in selected_filter:
+            display_features = numeric_features
+        elif selected_filter and "Categorical" in selected_filter:
+            display_features = cat_features
+        elif selected_filter and "High Missing" in selected_filter:
+            display_features = high_missing_features
+        else:
+            display_features = feature_cols
 
-    for row_start in range(0, len(page_features), 3):
-        row_cols = st.columns(3)
-        for j, col_widget in enumerate(row_cols):
-            idx = row_start + j
-            if idx < len(page_features):
-                feat = page_features[idx]
-                with col_widget:
-                    if pd.api.types.is_numeric_dtype(df[feat]):
-                        fig = px.histogram(df, x=feat, nbins=30, title=feat)
-                    else:
-                        vc = df[feat].value_counts().head(10)
-                        fig = px.bar(x=vc.index.astype(str), y=vc.values, title=feat)
-                    fig.update_layout(
-                        template="plotly_white", height=220,
-                        margin=dict(l=10, r=10, t=35, b=10),
-                        showlegend=False,
-                    )
-                    st.plotly_chart(fig)
+        page_size = regime.gallery_page_size
+        total_pages = max(1, ceil(len(display_features) / page_size))
 
-                    # Inline coaching annotation
-                    if pd.api.types.is_numeric_dtype(df[feat]):
-                        feat_skew = df[feat].skew()
-                        if abs(feat_skew) > 2.0:
-                            st.caption(f"ℹ️ Skew = {feat_skew:.1f}")
-                        feat_missing = df[feat].isnull().mean()
-                        if feat_missing > 0.05:
-                            st.caption(f"⚠️ {feat_missing:.1%} missing")
+        if total_pages > 1:
+            gallery_page = st.number_input(
+                f"Page (1-{total_pages})", min_value=1, max_value=total_pages,
+                value=1, key="dist_gallery_page"
+            )
+        else:
+            gallery_page = 1
 
-# -- Outlier Overview ------------------------------------------------------
-st.subheader("Outlier Overview")
+        page_features = display_features[(gallery_page - 1) * page_size: gallery_page * page_size]
+        st.caption(f"Showing {len(page_features)} of {len(display_features)} features (page {gallery_page}/{total_pages})")
 
-if numeric_features and regime.row_regime != "tiny":
-    # Skip for tiny datasets (outlier detection on <100 rows is unreliable)
-    from ml.outliers import detect_outliers
+        for row_start in range(0, len(page_features), 3):
+            row_cols = st.columns(3)
+            for j, col_widget in enumerate(row_cols):
+                idx = row_start + j
+                if idx < len(page_features):
+                    feat = page_features[idx]
+                    with col_widget:
+                        if pd.api.types.is_numeric_dtype(df[feat]):
+                            fig = px.histogram(df, x=feat, nbins=30, title=feat)
+                        else:
+                            vc = df[feat].value_counts().head(10)
+                            fig = px.bar(x=vc.index.astype(str), y=vc.values, title=feat)
+                        fig.update_layout(
+                            template="plotly_white", height=220,
+                            margin=dict(l=10, r=10, t=35, b=10),
+                            showlegend=False,
+                        )
+                        st.plotly_chart(fig)
 
-    # Cap at 50 features for performance; show note if capped
-    _outlier_cap = 50
-    _outlier_features = numeric_features[:_outlier_cap]
+                        # Inline coaching annotation
+                        if pd.api.types.is_numeric_dtype(df[feat]):
+                            feat_skew = df[feat].skew()
+                            if abs(feat_skew) > 2.0:
+                                st.caption(f"ℹ️ Skew = {feat_skew:.1f}")
+                            feat_missing = df[feat].isnull().mean()
+                            if feat_missing > 0.05:
+                                st.caption(f"⚠️ {feat_missing:.1%} missing")
 
-    @st.cache_data
-    def _compute_outlier_heatmap(_df, _numeric_feats, methods, data_id=None):
-        """Cached outlier prevalence computation."""
-        outlier_data = {}
-        for feat in _numeric_feats:
-            feat_data = _df[feat].dropna()
-            if len(feat_data) < 10:
-                continue
-            row = {}
-            for method in methods:
-                try:
-                    mask, _ = detect_outliers(feat_data, method=method)
-                    row[method.upper()] = float(mask.sum() / len(feat_data) * 100)
-                except Exception:
-                    row[method.upper()] = 0.0
-            outlier_data[feat] = row
-        return outlier_data
+    # -- Outlier Overview ------------------------------------------------------
+    st.subheader("Outlier Overview")
 
-    outlier_data = _compute_outlier_heatmap(df, _outlier_features, ["iqr", "zscore"], data_id=_data_fingerprint)
-    if len(numeric_features) > _outlier_cap:
-        st.caption(f"Showing {_outlier_cap} of {len(numeric_features)} features. Use Column Inspector for individual features.")
+    if numeric_features and regime.row_regime != "tiny":
+        # Skip for tiny datasets (outlier detection on <100 rows is unreliable)
+        from ml.outliers import detect_outliers
 
-    if outlier_data:
-        outlier_df = pd.DataFrame(outlier_data).T
-        outlier_df = outlier_df.sort_values(outlier_df.columns[0], ascending=False)
+        # Cap at 50 features for performance; show note if capped
+        _outlier_cap = 50
+        _outlier_features = numeric_features[:_outlier_cap]
 
-        fig_outlier = go.Figure(data=go.Heatmap(
-            z=outlier_df.values,
-            x=outlier_df.columns.tolist(),
-            y=outlier_df.index.tolist(),
-            colorscale=[[0, "white"], [0.05, "#fef3c7"], [0.15, "#fbbf24"], [0.3, "#ef4444"]],
-            zmin=0, zmax=max(20, outlier_df.values.max()),
-            text=np.round(outlier_df.values, 1),
-            texttemplate="%{text}%",
-            hovertemplate="Feature: %{y}<br>Method: %{x}<br>Outlier %: %{z:.1f}%<extra></extra>",
-        ))
-        fig_outlier.update_layout(
-            title="Outlier Prevalence by Feature × Method",
-            template="plotly_white",
-            height=max(300, len(outlier_data) * 22 + 80),
-            yaxis=dict(autorange="reversed"),
-        )
-        st.plotly_chart(fig_outlier)
-        st.caption(f"Primary method for downstream: **{outlier_method.upper()}**. Change in sidebar settings.")
-elif not numeric_features:
-    st.info("No numeric features for outlier analysis.")
-elif regime.row_regime == "tiny":
-    st.caption(f"Outlier detection skipped — only {regime.n_rows} rows. Statistical outlier methods are unreliable at this sample size.")
+        @st.cache_data
+        def _compute_outlier_heatmap(_df, _numeric_feats, methods, data_id=None):
+            """Cached outlier prevalence computation."""
+            outlier_data = {}
+            for feat in _numeric_feats:
+                feat_data = _df[feat].dropna()
+                if len(feat_data) < 10:
+                    continue
+                row = {}
+                for method in methods:
+                    try:
+                        mask, _ = detect_outliers(feat_data, method=method)
+                        row[method.upper()] = float(mask.sum() / len(feat_data) * 100)
+                    except Exception:
+                        row[method.upper()] = 0.0
+                outlier_data[feat] = row
+            return outlier_data
 
-# -- Missing Data ----------------------------------------------------------
-total_missing = df[feature_cols].isnull().sum().sum()
-if total_missing > 0:
-    st.subheader("Missing Data")
-    missing_by_col = df[feature_cols].isnull().mean().sort_values(ascending=False)
-    missing_cols = missing_by_col[missing_by_col > 0]
+        outlier_data = _compute_outlier_heatmap(df, _outlier_features, ["iqr", "zscore"], data_id=_data_fingerprint)
+        if len(numeric_features) > _outlier_cap:
+            st.caption(f"Showing {_outlier_cap} of {len(numeric_features)} features. Use Column Inspector for individual features.")
 
-    fig_missing = px.bar(
-        x=missing_cols.values * 100,
-        y=missing_cols.index,
-        orientation="h",
-        title=f"Missing Data ({len(missing_cols)} columns with gaps)",
-        labels={"x": "Missing %", "y": "Column"},
-    )
-    fig_missing.update_layout(template="plotly_white", height=max(250, len(missing_cols) * 25 + 60))
-    st.plotly_chart(fig_missing)
+        if outlier_data:
+            outlier_df = pd.DataFrame(outlier_data).T
+            outlier_df = outlier_df.sort_values(outlier_df.columns[0], ascending=False)
 
-    # Co-missingness pattern matrix (if meaningful)
-    n_high_missing = sum(1 for v in missing_cols.values if v > 0.05)
-    if n_high_missing >= 2:
-        with st.expander("Co-missingness pattern matrix"):
-            missing_matrix = df[missing_cols.index[:30]].isnull().astype(int)
-            # Sample rows for visualization
-            if len(missing_matrix) > 200:
-                missing_matrix = missing_matrix.sample(200, random_state=42).sort_index()
-            fig_pattern = go.Figure(data=go.Heatmap(
-                z=missing_matrix.values.T,
-                x=list(range(len(missing_matrix))),
-                y=missing_matrix.columns.tolist(),
-                colorscale=[[0, "white"], [1, "#667eea"]],
-                showscale=False,
+            fig_outlier = go.Figure(data=go.Heatmap(
+                z=outlier_df.values,
+                x=outlier_df.columns.tolist(),
+                y=outlier_df.index.tolist(),
+                colorscale=[[0, "white"], [0.05, "#fef3c7"], [0.15, "#fbbf24"], [0.3, "#ef4444"]],
+                zmin=0, zmax=max(20, outlier_df.values.max()),
+                text=np.round(outlier_df.values, 1),
+                texttemplate="%{text}%",
+                hovertemplate="Feature: %{y}<br>Method: %{x}<br>Outlier %: %{z:.1f}%<extra></extra>",
             ))
-            fig_pattern.update_layout(
-                title="Missingness Pattern (white=present, blue=missing)",
+            fig_outlier.update_layout(
+                title="Outlier Prevalence by Feature × Method",
                 template="plotly_white",
-                height=max(250, len(missing_matrix.columns) * 20 + 60),
-                xaxis_title="Sample index",
+                height=max(300, len(outlier_data) * 22 + 80),
+                yaxis=dict(autorange="reversed"),
             )
-            st.plotly_chart(fig_pattern)
+            st.plotly_chart(fig_outlier)
+            st.caption(f"Primary method for downstream: **{outlier_method.upper()}**. Change in sidebar settings.")
+    elif not numeric_features:
+        st.info("No numeric features for outlier analysis.")
+    elif regime.row_regime == "tiny":
+        st.caption(f"Outlier detection skipped — only {regime.n_rows} rows. Statistical outlier methods are unreliable at this sample size.")
 
+    # -- Missing Data ----------------------------------------------------------
+    total_missing = df[feature_cols].isnull().sum().sum()
+    if total_missing > 0:
+        st.subheader("Missing Data")
+        missing_by_col = df[feature_cols].isnull().mean().sort_values(ascending=False)
+        missing_cols = missing_by_col[missing_by_col > 0]
 
-# ============================================================================
-# SECTION 3: RELATIONSHIPS
-# ============================================================================
-
-st.markdown("---")
-st.header("Relationships")
-st.caption("How features relate to each other and to the target.")
-
-# -- Correlation Matrix / Top Pairs ----------------------------------------
-st.subheader("Feature Correlations")
-
-if len(numeric_features) >= 2:
-    corr_method = st.pills("Method", ["Pearson", "Spearman"], default="Pearson", key="corr_method")
-    method_name = corr_method.lower() if corr_method else "pearson"
-
-    # Include numeric target so the matrix surfaces feature↔target relationships, not just feature↔feature.
-    corr_cols = list(numeric_features)
-    if _has_target and pd.api.types.is_numeric_dtype(df[target_col]) and target_col not in corr_cols:
-        corr_cols.append(target_col)
-
-    @st.cache_data
-    def _compute_corr(_df, _features, method, data_id=None):
-        return _df[_features].corr(method=method).round(3)
-
-    if regime.show_full_corr_matrix:
-        # Full heatmap for narrow/medium datasets
-        corr_matrix = _compute_corr(df, corr_cols, method_name, data_id=_data_fingerprint)
-        threshold = st.slider("Highlight threshold", 0.0, 1.0, 0.8, 0.05, key="corr_threshold")
-
-        fig_corr = px.imshow(
-            corr_matrix,
-            color_continuous_scale="RdBu_r",
-            zmin=-1, zmax=1,
-            title=f"{corr_method} Correlation Matrix",
-            aspect="auto",
+        fig_missing = px.bar(
+            x=missing_cols.values * 100,
+            y=missing_cols.index,
+            orientation="h",
+            title=f"Missing Data ({len(missing_cols)} columns with gaps)",
+            labels={"x": "Missing %", "y": "Column"},
         )
-        fig_corr.update_layout(template="plotly_white", height=max(400, len(corr_cols) * 18 + 100))
-        st.plotly_chart(fig_corr)
+        fig_missing.update_layout(template="plotly_white", height=max(250, len(missing_cols) * 25 + 60))
+        st.plotly_chart(fig_missing)
 
-        # List pairs above threshold (numpy-based)
-        corr_vals = corr_matrix.values
-        idx_upper = np.triu_indices_from(corr_vals, k=1)
-        upper_vals = corr_vals[idx_upper]
-        mask = np.abs(upper_vals) >= threshold
-        if mask.any():
-            cols_list = corr_matrix.columns.tolist()
-            pairs_above = pd.DataFrame({
-                "Feature A": [cols_list[idx_upper[0][i]] for i in np.where(mask)[0]],
-                "Feature B": [cols_list[idx_upper[1][i]] for i in np.where(mask)[0]],
-                "Correlation": [round(float(upper_vals[i]), 3) for i in np.where(mask)[0]],
-            }).sort_values("Correlation", key=abs, ascending=False)
-            st.caption(f"{len(pairs_above)} pairs above |r| ≥ {threshold}")
-            table(pairs_above)
+        # Co-missingness pattern matrix (if meaningful)
+        n_high_missing = sum(1 for v in missing_cols.values if v > 0.05)
+        if n_high_missing >= 2:
+            with st.expander("Co-missingness pattern matrix"):
+                missing_matrix = df[missing_cols.index[:30]].isnull().astype(int)
+                # Sample rows for visualization
+                if len(missing_matrix) > 200:
+                    missing_matrix = missing_matrix.sample(200, random_state=42).sort_index()
+                fig_pattern = go.Figure(data=go.Heatmap(
+                    z=missing_matrix.values.T,
+                    x=list(range(len(missing_matrix))),
+                    y=missing_matrix.columns.tolist(),
+                    colorscale=[[0, "white"], [1, "#667eea"]],
+                    showscale=False,
+                ))
+                fig_pattern.update_layout(
+                    title="Missingness Pattern (white=present, blue=missing)",
+                    template="plotly_white",
+                    height=max(250, len(missing_matrix.columns) * 20 + 60),
+                    xaxis_title="Sample index",
+                )
+                st.plotly_chart(fig_pattern)
+
+
+    # ============================================================================
+    # SECTION 3: RELATIONSHIPS
+    # ============================================================================
+
+    st.markdown("---")
+with _eda_tabs[2]:
+    st.header("Relationships")
+    st.caption("How features relate to each other and to the target.")
+
+    # -- Correlation Matrix / Top Pairs ----------------------------------------
+    st.subheader("Feature Correlations")
+
+    if len(numeric_features) >= 2:
+        corr_method = st.pills("Method", ["Pearson", "Spearman"], default="Pearson", key="corr_method")
+        method_name = corr_method.lower() if corr_method else "pearson"
+
+        # Include numeric target so the matrix surfaces feature↔target relationships, not just feature↔feature.
+        corr_cols = list(numeric_features)
+        if _has_target and pd.api.types.is_numeric_dtype(df[target_col]) and target_col not in corr_cols:
+            corr_cols.append(target_col)
+
+        @st.cache_data
+        def _compute_corr(_df, _features, method, data_id=None):
+            return _df[_features].corr(method=method).round(3)
+
+        if regime.show_full_corr_matrix:
+            # Full heatmap for narrow/medium datasets
+            corr_matrix = _compute_corr(df, corr_cols, method_name, data_id=_data_fingerprint)
+            threshold = st.slider("Highlight threshold", 0.0, 1.0, 0.8, 0.05, key="corr_threshold")
+
+            fig_corr = px.imshow(
+                corr_matrix,
+                color_continuous_scale="RdBu_r",
+                zmin=-1, zmax=1,
+                title=f"{corr_method} Correlation Matrix",
+                aspect="auto",
+            )
+            fig_corr.update_layout(template="plotly_white", height=max(400, len(corr_cols) * 18 + 100))
+            st.plotly_chart(fig_corr)
+
+            # List pairs above threshold (numpy-based)
+            corr_vals = corr_matrix.values
+            idx_upper = np.triu_indices_from(corr_vals, k=1)
+            upper_vals = corr_vals[idx_upper]
+            mask = np.abs(upper_vals) >= threshold
+            if mask.any():
+                cols_list = corr_matrix.columns.tolist()
+                pairs_above = pd.DataFrame({
+                    "Feature A": [cols_list[idx_upper[0][i]] for i in np.where(mask)[0]],
+                    "Feature B": [cols_list[idx_upper[1][i]] for i in np.where(mask)[0]],
+                    "Correlation": [round(float(upper_vals[i]), 3) for i in np.where(mask)[0]],
+                }).sort_values("Correlation", key=abs, ascending=False)
+                st.caption(f"{len(pairs_above)} pairs above |r| ≥ {threshold}")
+                table(pairs_above)
+        else:
+            # Wide/ultra-wide: top-N pairs via numpy (avoids O(n²) Python loop)
+            top_n = regime.corr_top_n
+
+            @st.cache_data
+            def _top_corr_pairs(_df, _features, method, n, data_id=None):
+                corr = _df[_features].corr(method=method).values
+                cols = _features
+                idx_upper = np.triu_indices_from(corr, k=1)
+                vals = corr[idx_upper]
+                # Get top N by absolute value
+                top_idx = np.argsort(np.abs(vals))[-n:][::-1]
+                return pd.DataFrame([
+                    {
+                        "Feature A": cols[idx_upper[0][i]],
+                        "Feature B": cols[idx_upper[1][i]],
+                        "Correlation": round(float(vals[i]), 3),
+                    }
+                    for i in top_idx
+                ])
+
+            pairs_df = _top_corr_pairs(df, corr_cols, method_name, top_n, data_id=_data_fingerprint)
+            n_total = len(corr_cols) * (len(corr_cols) - 1) // 2
+            st.caption(f"Top {top_n} correlated pairs ({method_name}) out of {n_total:,} total")
+            table(pairs_df)
     else:
-        # Wide/ultra-wide: top-N pairs via numpy (avoids O(n²) Python loop)
-        top_n = regime.corr_top_n
+        st.info("Need at least 2 numeric features for correlation analysis.")
 
-        @st.cache_data
-        def _top_corr_pairs(_df, _features, method, n, data_id=None):
-            corr = _df[_features].corr(method=method).values
-            cols = _features
-            idx_upper = np.triu_indices_from(corr, k=1)
-            vals = corr[idx_upper]
-            # Get top N by absolute value
-            top_idx = np.argsort(np.abs(vals))[-n:][::-1]
-            return pd.DataFrame([
-                {
-                    "Feature A": cols[idx_upper[0][i]],
-                    "Feature B": cols[idx_upper[1][i]],
-                    "Correlation": round(float(vals[i]), 3),
-                }
-                for i in top_idx
-            ])
+    # -- Target Relationship Gallery -------------------------------------------
+    if _has_target:
+        st.subheader("Features vs Target")
 
-        pairs_df = _top_corr_pairs(df, corr_cols, method_name, top_n, data_id=_data_fingerprint)
-        n_total = len(corr_cols) * (len(corr_cols) - 1) // 2
-        st.caption(f"Top {top_n} correlated pairs ({method_name}) out of {n_total:,} total")
-        table(pairs_df)
-else:
-    st.info("Need at least 2 numeric features for correlation analysis.")
+        target_features = [f for f in numeric_features if f != target_col]
+        # Sort by absolute correlation with target (cached)
+        if target_features and task_type_final == "regression":
+            @st.cache_data
+            def _sort_by_target_corr(_df, _features, _target, data_id=None):
+                corrs = _df[_features].corrwith(_df[_target]).abs().fillna(0)
+                return corrs.sort_values(ascending=False).index.tolist()
 
-# -- Target Relationship Gallery -------------------------------------------
-if _has_target:
-    st.subheader("Features vs Target")
+            target_features = _sort_by_target_corr(df, target_features, target_col, data_id=_data_fingerprint)
 
-    target_features = [f for f in numeric_features if f != target_col]
-    # Sort by absolute correlation with target (cached)
-    if target_features and task_type_final == "regression":
-        @st.cache_data
-        def _sort_by_target_corr(_df, _features, _target, data_id=None):
-            corrs = _df[_features].corrwith(_df[_target]).abs().fillna(0)
-            return corrs.sort_values(ascending=False).index.tolist()
+        if regime.target_relationship_top_n > 0:
+            target_features = target_features[:regime.target_relationship_top_n]
+            st.caption(f"Showing top {len(target_features)} features by correlation with target. Use Feature Explorer for others.")
 
-        target_features = _sort_by_target_corr(df, target_features, target_col, data_id=_data_fingerprint)
+        t_page_size = 9
+        t_total_pages = max(1, ceil(len(target_features) / t_page_size))
+        if t_total_pages > 1:
+            t_page = st.number_input(
+                f"Page (1-{t_total_pages})", min_value=1, max_value=t_total_pages,
+                value=1, key="target_gallery_page",
+            )
+        else:
+            t_page = 1
 
-    if regime.target_relationship_top_n > 0:
-        target_features = target_features[:regime.target_relationship_top_n]
-        st.caption(f"Showing top {len(target_features)} features by correlation with target. Use Feature Explorer for others.")
+        t_page_features = target_features[(t_page - 1) * t_page_size: t_page * t_page_size]
 
-    t_page_size = 9
-    t_total_pages = max(1, ceil(len(target_features) / t_page_size))
-    if t_total_pages > 1:
-        t_page = st.number_input(
-            f"Page (1-{t_total_pages})", min_value=1, max_value=t_total_pages,
-            value=1, key="target_gallery_page",
+        for row_start in range(0, len(t_page_features), 3):
+            row_cols = st.columns(3)
+            for j, col_widget in enumerate(row_cols):
+                idx = row_start + j
+                if idx < len(t_page_features):
+                    feat = t_page_features[idx]
+                    with col_widget:
+                        if task_type_final == "regression":
+                            sample_df = df[[feat, target_col]].dropna()
+                            if regime.needs_sampling and len(sample_df) > regime.sample_size:
+                                sample_df = sample_df.sample(regime.sample_size, random_state=42)
+                            fig = px.scatter(
+                                sample_df, x=feat, y=target_col,
+                                title=feat, trendline="lowess" if len(sample_df) > 20 else None,
+                                opacity=0.4,
+                            )
+                        else:
+                            fig = px.violin(
+                                df, x=target_col, y=feat, title=feat,
+                                box=True, points=False,
+                            )
+                        fig.update_layout(
+                            template="plotly_white", height=250,
+                            margin=dict(l=10, r=10, t=35, b=10),
+                            showlegend=False,
+                        )
+                        st.plotly_chart(fig)
+
+    # -- Feature Explorer (interactive scatter) --------------------------------
+    st.subheader("Feature Explorer")
+    st.caption("Pick any two features to visualize their relationship.")
+
+    if len(feature_cols) >= 2:
+        fe_col1, fe_col2, fe_col3 = st.columns(3)
+        with fe_col1:
+            feat_x = st.selectbox("X axis", feature_cols, index=0, key="fe_x")
+        with fe_col2:
+            default_y = 1 if len(feature_cols) > 1 else 0
+            feat_y = st.selectbox("Y axis", feature_cols, index=default_y, key="fe_y")
+        with fe_col3:
+            color_options = ["None"] + ([target_col] if _has_target else []) + feature_cols
+            color_by = st.selectbox("Color by", color_options, index=0, key="fe_color")
+
+        plot_df = df[[feat_x, feat_y]].copy()
+        if color_by != "None" and color_by in df.columns:
+            plot_df[color_by] = df[color_by]
+
+        plot_df = plot_df.dropna(subset=[feat_x, feat_y])
+        if regime.needs_sampling and len(plot_df) > regime.sample_size:
+            plot_df = plot_df.sample(regime.sample_size, random_state=42)
+
+        fig_explorer = px.scatter(
+            plot_df, x=feat_x, y=feat_y,
+            color=color_by if color_by != "None" else None,
+            opacity=0.5,
+            title=f"{feat_x} vs {feat_y}",
         )
-    else:
-        t_page = 1
+        fig_explorer.update_layout(template="plotly_white", height=450)
+        st.plotly_chart(fig_explorer)
 
-    t_page_features = target_features[(t_page - 1) * t_page_size: t_page * t_page_size]
+        # Show correlation for this pair
+        if pd.api.types.is_numeric_dtype(df[feat_x]) and pd.api.types.is_numeric_dtype(df[feat_y]):
+            r = df[feat_x].corr(df[feat_y])
+            if not np.isnan(r):
+                st.caption(f"Pearson r = {r:.3f}")
 
-    for row_start in range(0, len(t_page_features), 3):
-        row_cols = st.columns(3)
-        for j, col_widget in enumerate(row_cols):
-            idx = row_start + j
-            if idx < len(t_page_features):
-                feat = t_page_features[idx]
-                with col_widget:
-                    if task_type_final == "regression":
-                        sample_df = df[[feat, target_col]].dropna()
-                        if regime.needs_sampling and len(sample_df) > regime.sample_size:
-                            sample_df = sample_df.sample(regime.sample_size, random_state=42)
-                        fig = px.scatter(
-                            sample_df, x=feat, y=target_col,
-                            title=feat, trendline="lowess" if len(sample_df) > 20 else None,
-                            opacity=0.4,
-                        )
-                    else:
-                        fig = px.violin(
-                            df, x=target_col, y=feat, title=feat,
-                            box=True, points=False,
-                        )
-                    fig.update_layout(
-                        template="plotly_white", height=250,
-                        margin=dict(l=10, r=10, t=35, b=10),
-                        showlegend=False,
-                    )
-                    st.plotly_chart(fig)
+    # -- Suggested Interactions ------------------------------------------------
+    if _has_target and len(numeric_features) >= 4:
+        with st.expander("💡 Suggested Interactions (auto-detected)", expanded=False):
+            st.caption("Top feature pairs by mutual information with target. Click to explore.")
 
-# -- Feature Explorer (interactive scatter) --------------------------------
-st.subheader("Feature Explorer")
-st.caption("Pick any two features to visualize their relationship.")
+            @st.cache_data
+            def _compute_interactions(_df, _features, _target, _task_type, max_pairs=5, data_id=None):
+                """Compute top interaction pairs by MI gain."""
+                from sklearn.feature_selection import mutual_info_regression, mutual_info_classif
+                sample = _df.sample(min(1000, len(_df)), random_state=42) if len(_df) > 1000 else _df
+                feats = [f for f in _features if f in sample.columns][:30]
+                X = sample[feats].fillna(sample[feats].median())
+                y = sample[_target]
+                valid = ~y.isnull()
+                X, y = X[valid], y[valid]
+                if len(X) < 20:
+                    return []
 
-if len(feature_cols) >= 2:
-    fe_col1, fe_col2, fe_col3 = st.columns(3)
-    with fe_col1:
-        feat_x = st.selectbox("X axis", feature_cols, index=0, key="fe_x")
-    with fe_col2:
-        default_y = 1 if len(feature_cols) > 1 else 0
-        feat_y = st.selectbox("Y axis", feature_cols, index=default_y, key="fe_y")
-    with fe_col3:
-        color_options = ["None"] + ([target_col] if _has_target else []) + feature_cols
-        color_by = st.selectbox("Color by", color_options, index=0, key="fe_color")
+                mi_func = mutual_info_regression if _task_type == "regression" else mutual_info_classif
+                base_mi = mi_func(X, y, random_state=42)
 
-    plot_df = df[[feat_x, feat_y]].copy()
-    if color_by != "None" and color_by in df.columns:
-        plot_df[color_by] = df[color_by]
+                # Check top pairs for MI gain from interaction
+                top_singles = np.argsort(-base_mi)[:10]
+                results = []
+                for i in range(len(top_singles)):
+                    for j in range(i + 1, len(top_singles)):
+                        fi, fj = feats[top_singles[i]], feats[top_singles[j]]
+                        interaction = (X[fi] * X[fj]).values.reshape(-1, 1)
+                        mi_inter = mi_func(interaction, y, random_state=42)[0]
+                        mi_sum = base_mi[top_singles[i]] + base_mi[top_singles[j]]
+                        gain = mi_inter - max(base_mi[top_singles[i]], base_mi[top_singles[j]])
+                        if gain > 0:
+                            results.append((fi, fj, float(gain)))
+                results.sort(key=lambda x: x[2], reverse=True)
+                return results[:max_pairs]
 
-    plot_df = plot_df.dropna(subset=[feat_x, feat_y])
-    if regime.needs_sampling and len(plot_df) > regime.sample_size:
-        plot_df = plot_df.sample(regime.sample_size, random_state=42)
-
-    fig_explorer = px.scatter(
-        plot_df, x=feat_x, y=feat_y,
-        color=color_by if color_by != "None" else None,
-        opacity=0.5,
-        title=f"{feat_x} vs {feat_y}",
-    )
-    fig_explorer.update_layout(template="plotly_white", height=450)
-    st.plotly_chart(fig_explorer)
-
-    # Show correlation for this pair
-    if pd.api.types.is_numeric_dtype(df[feat_x]) and pd.api.types.is_numeric_dtype(df[feat_y]):
-        r = df[feat_x].corr(df[feat_y])
-        if not np.isnan(r):
-            st.caption(f"Pearson r = {r:.3f}")
-
-# -- Suggested Interactions ------------------------------------------------
-if _has_target and len(numeric_features) >= 4:
-    with st.expander("💡 Suggested Interactions (auto-detected)", expanded=False):
-        st.caption("Top feature pairs by mutual information with target. Click to explore.")
-
-        @st.cache_data
-        def _compute_interactions(_df, _features, _target, _task_type, max_pairs=5, data_id=None):
-            """Compute top interaction pairs by MI gain."""
-            from sklearn.feature_selection import mutual_info_regression, mutual_info_classif
-            sample = _df.sample(min(1000, len(_df)), random_state=42) if len(_df) > 1000 else _df
-            feats = [f for f in _features if f in sample.columns][:30]
-            X = sample[feats].fillna(sample[feats].median())
-            y = sample[_target]
-            valid = ~y.isnull()
-            X, y = X[valid], y[valid]
-            if len(X) < 20:
-                return []
-
-            mi_func = mutual_info_regression if _task_type == "regression" else mutual_info_classif
-            base_mi = mi_func(X, y, random_state=42)
-
-            # Check top pairs for MI gain from interaction
-            top_singles = np.argsort(-base_mi)[:10]
-            results = []
-            for i in range(len(top_singles)):
-                for j in range(i + 1, len(top_singles)):
-                    fi, fj = feats[top_singles[i]], feats[top_singles[j]]
-                    interaction = (X[fi] * X[fj]).values.reshape(-1, 1)
-                    mi_inter = mi_func(interaction, y, random_state=42)[0]
-                    mi_sum = base_mi[top_singles[i]] + base_mi[top_singles[j]]
-                    gain = mi_inter - max(base_mi[top_singles[i]], base_mi[top_singles[j]])
-                    if gain > 0:
-                        results.append((fi, fj, float(gain)))
-            results.sort(key=lambda x: x[2], reverse=True)
-            return results[:max_pairs]
-
-        try:
-            interactions = _compute_interactions(df, numeric_features, target_col, task_type_final, data_id=_data_fingerprint)
-            if interactions:
-                for a, b, gain in interactions:
-                    st.markdown(f"- **{a} × {b}** (MI gain: {gain:.4f})")
-            else:
-                st.caption("No strong interaction effects detected.")
-        except Exception as e:
-            st.caption(f"Interaction detection skipped: {str(e)[:80]}")
+            try:
+                interactions = _compute_interactions(df, numeric_features, target_col, task_type_final, data_id=_data_fingerprint)
+                if interactions:
+                    for a, b, gain in interactions:
+                        st.markdown(f"- **{a} × {b}** (MI gain: {gain:.4f})")
+                else:
+                    st.caption("No strong interaction effects detected.")
+            except Exception as e:
+                st.caption(f"Interaction detection skipped: {str(e)[:80]}")
 
 
-# ============================================================================
+    # ============================================================================
 # SECTION 4: MACRO SHAPE (≥16 features only)
 # ============================================================================
 

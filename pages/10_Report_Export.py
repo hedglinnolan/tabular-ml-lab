@@ -39,6 +39,8 @@ render_step_indicator(10, "Report Export")
 st.title("📄 Report Export")
 st.caption("This is the culmination of the workflow: package the strongest parts of your analysis into one manuscript-ready starting point.")
 render_breadcrumb("10_Report_Export")
+from utils.test_lockbox import render_lockbox_status
+render_lockbox_status("The exported report packages held-out (lockbox) results.")
 render_page_navigation("10_Report_Export")
 
 st.markdown("""
@@ -211,9 +213,15 @@ def extract_model_coefficients(model, model_key: str, feature_names: list) -> Op
             # Handle multi-class case
             if len(coef.shape) > 1:
                 coef = coef[0]  # Take first class for binary classification
-            
+
+            # A name/coefficient count mismatch means the names are from the
+            # wrong space (raw vs post-transform); positional truncation would
+            # attach real variable names to the wrong coefficients.
+            if feature_names is None or len(feature_names) != len(coef):
+                return None
+
             coef_df = pd.DataFrame({
-                'Feature': feature_names[:len(coef)],
+                'Feature': list(feature_names),
                 'Coefficient': coef
             }).sort_values('Coefficient', key=abs, ascending=False)
             
@@ -453,7 +461,67 @@ def _build_manuscript_context(
         'cohort_type': cohort_type,
         'target_stats': target_stats,
         'top_features': top_features,
+        'baseline_results': _summarize_baselines(),
+        # Sticky: a manuscript is only quarantine-clean if EVERY surviving
+        # result was computed with the lockbox on. 'exploratory_used' is set
+        # when the mode is enabled and cleared only by the downstream reset,
+        # so toggling the mode off cannot launder exploratory results.
+        'exploratory_mode': bool(st.session_state.get('exploratory_mode', False)
+                                 or st.session_state.get('exploratory_used', False)),
     }
+
+
+def _build_reproducibility_manifest() -> Dict[str, Any]:
+    """Software versions, seeds, and a content hash of the analysis data.
+
+    The LaTeX supplementary promises reviewers that the exported package
+    contains exactly these; this function is what makes that claim true.
+    """
+    import platform
+    import hashlib as _hashlib
+
+    versions: Dict[str, str] = {'python': platform.python_version()}
+    for _pkg in ('numpy', 'pandas', 'sklearn', 'scipy', 'statsmodels',
+                 'streamlit', 'torch', 'xgboost', 'lightgbm', 'shap', 'optuna'):
+        try:
+            _mod = __import__(_pkg)
+            versions[_pkg] = str(getattr(_mod, '__version__', 'unknown'))
+        except Exception:
+            pass
+
+    data_hash = None
+    n_rows = n_cols = None
+    try:
+        _active_df = get_data()
+        if _active_df is not None:
+            row_hashes = pd.util.hash_pandas_object(_active_df, index=False)
+            data_hash = _hashlib.sha256(row_hashes.values.tobytes()).hexdigest()
+            n_rows, n_cols = int(_active_df.shape[0]), int(_active_df.shape[1])
+    except Exception:
+        pass
+
+    _split_cfg = st.session_state.get('split_config')
+    return {
+        'software_versions': versions,
+        'random_seed': int(getattr(_split_cfg, 'random_state',
+                                   st.session_state.get('random_seed', 42)) or 42),
+        'data_sha256': data_hash,
+        'data_shape': {'rows': n_rows, 'columns': n_cols},
+    }
+
+
+def _summarize_baselines() -> Optional[Dict[str, Dict[str, Any]]]:
+    """Plain-metric summary of the null/simple baselines for export."""
+    baselines = st.session_state.get('baseline_results') or {}
+    out: Dict[str, Dict[str, Any]] = {}
+    for bname, bres in baselines.items():
+        if not isinstance(bres, dict):
+            continue
+        metrics = bres.get('metrics') or {}
+        summary = {k: float(v) for k, v in metrics.items() if isinstance(v, (int, float))}
+        if summary:
+            out[bname] = {'metrics': summary, 'description': bres.get('description', '')}
+    return out or None
 
 
 def _build_analysis_cohort_df() -> pd.DataFrame:
@@ -779,6 +847,10 @@ def _build_explainability_summary_for_export(manuscript_context: Dict[str, Any])
         best_model_key = manuscript_context.get('manuscript_primary_model') or manuscript_context.get('best_model_by_metric')
         if best_model_key and best_model_key in calibration_results:
             cal_data = calibration_results[best_model_key]
+            if not isinstance(cal_data, dict):
+                # Page 06 stores CalibrationResult dataclasses
+                import dataclasses
+                cal_data = dataclasses.asdict(cal_data) if dataclasses.is_dataclass(cal_data) else vars(cal_data)
             explainability_summary['calibration_metrics'] = {
                 k: v for k, v in cal_data.items()
                 if isinstance(v, (int, float)) and k not in ('model', 'timestamp')
@@ -1252,15 +1324,35 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
                 tname = v["test_name"]
                 p = v["p"]
                 sig = "Yes" if (p is not None and np.isfinite(p) and p < 0.05) else "No"
-                p_str = f"{p:.4f}" if (p is not None and np.isfinite(p)) else "—"
+                if p is not None and np.isfinite(p):
+                    p_str = "<0.001" if p < 0.001 else f"{p:.4f}"
+                else:
+                    p_str = "—"
                 report_lines.append(
                     f"| {_export_model_label(ma)} | {_export_model_label(mb)} | {mean_d:.4f} | {tname} | {p_str} | {sig} |"
                 )
             report_lines.append("")
 
+    # Baseline comparison — the "is your model better than trivial?" anchor
+    _baselines_for_report = (export_ctx.get('manuscript_context') or {}).get('baseline_results')
+    if _baselines_for_report:
+        report_lines.append("### Baseline Comparison")
+        report_lines.append("")
+        report_lines.append("Null and simple baselines, evaluated on the same held-out test set "
+                            "(original target scale):")
+        report_lines.append("")
+        _b_metric_names = sorted({m for b in _baselines_for_report.values() for m in b.get('metrics', {})})
+        report_lines.append("| Baseline | " + " | ".join(_b_metric_names) + " |")
+        report_lines.append("|---" * (len(_b_metric_names) + 1) + "|")
+        for _bname, _bdata in _baselines_for_report.items():
+            _vals = [f"{_bdata['metrics'].get(m):.4f}" if _bdata['metrics'].get(m) is not None else "—"
+                     for m in _b_metric_names]
+            report_lines.append(f"| {_bname} | " + " | ".join(_vals) + " |")
+        report_lines.append("")
+
     report_lines.append("---")
     report_lines.append("")
-    
+
     # Model-Specific Details
     report_lines.append("## Model-Specific Details")
     report_lines.append("")
@@ -1285,9 +1377,20 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
                 report_lines.append(f"- `{param_name}`: {param_value}")
             report_lines.append("")
         
-        # Linear model coefficients
+        # Linear model coefficients. Coefficients live in POST-transform space
+        # (after one-hot/scaling/PCA), so they must be labeled with the model's
+        # post-transform feature names — raw column names would silently
+        # mislabel them (e.g. PCA components labeled as clinical variables).
         if model_key in ['ridge', 'lasso', 'elasticnet', 'glm', 'huber', 'logreg']:
-            coef_df = extract_model_coefficients(model_wrapper, model_key, feature_names)
+            _post_transform_names = (st.session_state.get('feature_names_by_model') or {}).get(model_key)
+            coef_df = extract_model_coefficients(
+                model_wrapper, model_key, _post_transform_names or feature_names
+            )
+            if coef_df is None:
+                report_lines.append("_Coefficient table omitted: post-transform feature names "
+                                    "were unavailable for this model, and mislabeled coefficients "
+                                    "are worse than none._")
+                report_lines.append("")
             if coef_df is not None:
                 report_lines.append("**Model Coefficients (Top 10 by magnitude):**")
                 report_lines.append("")
@@ -1637,6 +1740,7 @@ if all_model_names:
         "Models to include in report",
         options=all_model_names,
         default=all_model_names,
+        format_func=_export_model_label,
         key="report_model_selection",
         help="Select which models' results to include in the methods/results section.",
     )
@@ -1683,6 +1787,7 @@ if selected_for_report:
         "Manuscript-primary model (optional)",
         options=primary_options,
         index=default_primary_index,
+        format_func=lambda opt: _export_model_label(opt) if opt in selected_for_report else opt,
         key="report_best_model_selection",
         help="Select a manuscript-primary model only if you want to explicitly frame one model as primary in the draft.",
     )
@@ -1885,6 +1990,13 @@ if exports_blocked:
 # REPORT PREVIEW (3 tabs)
 # ============================================================================
 st.header("📄 Report Preview")
+st.caption(
+    "Three kinds of content, three owners: **machine-owned** facts (manifest, "
+    "seed, data hash, tables), **machine-drafted** prose compiled from the "
+    "recorded workflow (Methods, Results — verify, don't rewrite from memory), "
+    "and **author-owned** interpretation (Discussion scaffolds marked "
+    "`[AUTHOR REQUIRED — …]`)."
+)
 
 _preview_tab_md, _preview_tab_latex, _preview_tab_pdf = st.tabs(["Markdown", "LaTeX Source", "PDF Preview"])
 
@@ -1918,7 +2030,8 @@ with _preview_tab_pdf:
                 f'<iframe src="data:application/pdf;base64,{_b64}" width="100%" height="800" type="application/pdf"></iframe>',
                 unsafe_allow_html=True,
             )
-            st.download_button("Download PDF", _pdf_bytes, "manuscript.pdf", "application/pdf", key="dl_pdf_preview")
+            st.download_button("Download PDF", _pdf_bytes, "manuscript.pdf", "application/pdf",
+                               key="dl_pdf_preview", disabled=exports_blocked)
         else:
             st.warning(
                 "PDF compilation requires `pdflatex` installed on the server. "
@@ -1930,14 +2043,17 @@ with _preview_tab_pdf:
 # ============================================================================
 st.header("📝 Supporting Artifacts")
 
-# Methods Section Generator
-with st.expander("📄 Auto-Generated Methods Section", expanded=False):
+# Methods Section — compiled from the recorded workflow
+with st.expander("📄 Compiled Methods & Results Draft", expanded=False):
     st.markdown(
-        "Generate a workflow-derived draft of the methods section. "
-        "Fill in the `[PLACEHOLDER]` sections with study-specific details."
+        "Compile a Methods/Results draft from the **recorded workflow**: every "
+        "quantitative statement traces to a logged event, and nothing is "
+        "written that the pipeline did not record. Passages marked "
+        "`[AUTHOR REQUIRED — …]` are yours — interpretation and context belong "
+        "to the authors, not the software."
     )
 
-    if st.button("Generate Methods Section", key="gen_methods", type="primary"):
+    if st.button("Compile Draft from Workflow", key="gen_methods", type="primary"):
         manuscript_context = _build_manuscript_context(
             selected_for_report=selected_for_report,
             selected_explain=selected_explain,
@@ -1949,13 +2065,43 @@ with st.expander("📄 Auto-Generated Methods Section", expanded=False):
         st.session_state["manuscript_export_context"] = manuscript_context
 
     if st.session_state.get("methods_section"):
+        _n_author_inputs = st.session_state["methods_section"].count("[AUTHOR REQUIRED")
+        if _n_author_inputs:
+            st.info(f"✍️ **{_n_author_inputs} author input(s) remain** — each is "
+                    "marked `[AUTHOR REQUIRED — …]` and cites the evidence it "
+                    "expects you to interpret.")
         st.markdown(st.session_state["methods_section"])
         st.download_button(
             "📥 Download Methods Section",
             st.session_state["methods_section"],
             "methods_section.md", "text/markdown",
             key="dl_methods",
+            disabled=exports_blocked,
         )
+
+# Evidence Map — the audit trail behind the draft
+with st.expander("🔎 Evidence Map (what the draft is compiled from)", expanded=False):
+    st.markdown(
+        "Per-section traceability: which recorded workflow events supplied "
+        "each part of the draft, and the key values. Sections whose sources "
+        "were never recorded say **NOT RECORDED** — the draft omits them "
+        "rather than inventing content."
+    )
+    try:
+        from utils.workflow_provenance import get_provenance as _get_prov_em
+        from ml.narrative_engine import NarrativeEngine as _NE_em
+
+        _em_engine = _NE_em(_get_prov_em(), _report_ledger)
+        _evidence_map_md = _em_engine.generate_evidence_map()
+        st.markdown(_evidence_map_md)
+        st.download_button(
+            "📥 Download Evidence Map",
+            _evidence_map_md,
+            "evidence_map.md", "text/markdown",
+            key="dl_evidence_map",
+        )
+    except Exception as _em_err:
+        st.caption(f"Evidence map unavailable: {_em_err}")
 
 # CONSORT-Style Flow Diagram
 with st.expander("📊 Sample Flow Diagram", expanded=False):
@@ -2025,14 +2171,18 @@ with st.expander("Export Configuration"):
 
 # Helper function to save plotly figures as images
 def save_plotly_fig(fig, filename: str) -> Optional[bytes]:
-    """Save plotly figure as PNG bytes."""
+    """Save plotly figure as PNG bytes.
+
+    Failures are counted for disclosure next to the ZIP download — silently
+    missing figures read as 'export worked' when it did not. (The previous
+    fallback retried the identical call and could not succeed either.)
+    """
     try:
         return fig.to_image(format="png", width=1200, height=800)
-    except Exception:
-        try:
-            return fig.to_image(format="png", width=1200, height=800, engine="kaleido")
-        except Exception:
-            return None
+    except Exception as e:
+        logger.debug("Figure export failed for %s: %s", filename, e)
+        st.session_state['_plot_export_failures'] = st.session_state.get('_plot_export_failures', 0) + 1
+        return None
 
 
 def save_matplotlib_fig(fig, filename: str) -> Optional[bytes]:
@@ -2082,6 +2232,7 @@ comparison_df = pd.DataFrame(comparison_data)
 # Get selected_model_params from session_state (needed for export)
 selected_model_params = st.session_state.get('selected_model_params', {})
 zip_buffer = io.BytesIO()
+st.session_state['_plot_export_failures'] = 0
 
 with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
     # Report
@@ -2277,6 +2428,10 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
     }
     if selected_model_params:
         manifest['model_hyperparameters'] = selected_model_params
+    # Reproducibility: the manuscript's supplementary section tells reviewers
+    # this package contains software versions, seeds, and a data hash — make
+    # that statement true.
+    manifest['reproducibility'] = _build_reproducibility_manifest()
     zip_file.writestr("manifest.json", json.dumps(manifest, indent=2, default=str))
 
     # LaTeX manuscript (if generated)
@@ -2290,7 +2445,21 @@ with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
         zip_file.writestr("manuscript.pdf", _pdf_for_zip)
 
 # ── Download buttons ──────────────────────────────────────────────────────
+_n_plot_failures = st.session_state.get('_plot_export_failures', 0)
+if _n_plot_failures:
+    st.warning(
+        f"{_n_plot_failures} figure(s) could not be rendered to PNG and are missing "
+        f"from the ZIP (static image export requires a working kaleido/Chromium). "
+        f"All tables, manuscripts, and data artifacts are unaffected."
+    )
+
 # Primary: ZIP (contains everything)
+if exports_blocked:
+    st.caption(
+        "⛔ Downloads are disabled because pre-export validation failed — open "
+        "**🔍 Pre-export Manuscript Validation** above to review the failed "
+        "checks or apply an override."
+    )
 st.download_button(
     label="Download Complete Package (ZIP)",
     data=zip_buffer.getvalue(),
@@ -2298,8 +2467,12 @@ st.download_button(
     mime="application/zip",
     type="primary",
     disabled=exports_blocked,
-    use_container_width=True,
+    width="stretch",
 )
+if not exports_blocked:
+    # Marks the final workflow step complete for the sidebar checklist —
+    # previously read-only, so the progress bar could never reach 10/10.
+    st.session_state['report_data'] = {'generated_at': datetime.now().isoformat()}
 
 # Secondary: individual exports (also in the ZIP)
 st.caption("Individual exports (also included in the ZIP above):")

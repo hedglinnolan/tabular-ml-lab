@@ -46,8 +46,8 @@ An interactive research workbench for scientists who work with tabular data and 
 | 3 | **Feature Engineering** | PCA, polynomial features, log transforms, ratios, binning, TDA features |
 | 4 | **Feature Selection** | LASSO path, RFE-CV, univariate, stability selection, consensus ranking |
 | 5 | **Preprocess** | Per-model pipelines: imputation, scaling, encoding, outlier handling, power transforms |
-| 6 | **Train & Compare** | 22 models with bootstrap CIs, baseline comparison, optional Optuna optimization |
-| 7 | **Explainability** | SHAP, permutation importance, PDP, calibration, decision curves, subgroup analysis |
+| 6 | **Train & Compare** | 22 models with bootstrap CIs, automatic baseline comparison, calibration analysis, optional Optuna optimization |
+| 7 | **Explainability** | SHAP, permutation importance, PDP, external validation, subgroup analysis |
 | 8 | **Sensitivity Analysis** | Seed robustness, feature dropout — prove your results aren't fragile |
 | 9 | **Statistical Validation** | Traditional stats for Table 1: t-tests, ANOVA, chi-square, custom hypothesis tests |
 | 10 | **Report Export** | LaTeX manuscript, markdown report, TRIPOD checklist, methodology audit log |
@@ -140,7 +140,7 @@ For preflight checks, troubleshooting, and a smoke test checklist, see [QUICKSTA
 
 This tool enforces methodological rigor so reviewers don't have to:
 
-- ✅ Proper train/validation/test splits (no data leakage)
+- ✅ Test set locked away at upload — feature engineering and selection fit on training rows only (no leakage into held-out evaluation), with an explicit, watermarked exploratory mode if you want full-data screening
 - ✅ Bootstrap confidence intervals on all reported metrics
 - ✅ Automatic comparison against null and simple baselines
 - ✅ Calibration analysis for clinical prediction models
@@ -150,7 +150,7 @@ This tool enforces methodological rigor so reviewers don't have to:
 - ✅ Methods section generated from your actual analysis choices with specific parameters
 - ✅ LaTeX manuscript template populated with your results
 
-**Your data stays private.** All processing happens in your browser session. Nothing is written to disk. No data is sent anywhere (unless you opt into cloud LLM interpretation).
+**Your data stays private.** When you run the app locally, all processing happens on your own machine and nothing is written to disk — projects, datasets, and analysis state live in memory for the duration of your browser session (saved sessions are files you download yourself). No data leaves your machine unless you opt into a cloud LLM backend, in which case column names, summary statistics, and small data excerpts are sent to that provider for interpretation. If you use the hosted demo instead of a local install, your uploads are processed on the demo server for your session.
 
 ---
 

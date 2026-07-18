@@ -32,6 +32,9 @@ from data_processor import (
     load_tabular_data, get_numeric_columns, get_selectable_columns,
     detect_file_type
 )
+from utils.perf_cache import (
+    cached_parse_upload, cached_audit_tables, cached_numeric_summary,
+)
 from ml.triage import detect_task_type, detect_cohort_structure
 from ml.eda_recommender import compute_dataset_signals
 
@@ -118,6 +121,8 @@ inject_custom_css()
 render_sidebar_workflow(current_page="01_Upload_and_Audit")
 
 st.title("📂 Upload & Audit")
+from utils.theme import render_flash
+render_flash()
 st.caption("Start here. Upload one dataset, confirm it looks right, then choose your analysis setup. Multi-file workflows are still available when you need them.")
 render_guidance(
     "<strong>Recommended first pass:</strong> 1) Upload a single dataset, 2) review the working table and audit, 3) choose your target and continue to EDA. "
@@ -331,13 +336,16 @@ if uploaded_files:
                     help="Use this if your features are in rows instead of columns"
                 )
                 
-                # Load preview with transpose setting
+                # Load preview with transpose setting. Cached on file content:
+                # this block re-executes on every rerun while the file sits in
+                # the uploader, and re-parsing a wide file each click costs
+                # seconds.
                 with st.spinner(f"Loading {uploaded_file.name}..."):
-                    df_preview = load_tabular_data(
-                        uploaded_file,
-                        filename=uploaded_file.name,
-                        transpose=transpose_this_file,
-                        excel_sheet=excel_sheet_choice if file_type == 'excel' else 0
+                    df_preview = cached_parse_upload(
+                        uploaded_file.getvalue(),
+                        uploaded_file.name,
+                        transpose_this_file,
+                        excel_sheet_choice if file_type == 'excel' else 0,
                     )
                 
                 # Reset file position for later
@@ -388,15 +396,15 @@ if uploaded_files:
                             st.error(f"Please check 'Replace existing' or change the dataset name.")
                             st.stop()
                         
-                        # Reload to ensure fresh data
-                        uploaded_file.seek(0)
+                        # Same cached parse as the preview — content-keyed, so
+                        # this returns the identical frame without re-reading.
                         sheet_param = excel_sheet_choice if file_type == 'excel' else 0
                         with st.spinner(f"Adding {dataset_name} to project..."):
-                            df = load_tabular_data(
-                                uploaded_file,
-                                filename=uploaded_file.name,
-                                transpose=transpose_this_file,
-                                excel_sheet=sheet_param
+                            df = cached_parse_upload(
+                                uploaded_file.getvalue(),
+                                uploaded_file.name,
+                                transpose_this_file,
+                                sheet_param,
                             )
                         
                         # Ensure column names are strings for merge compatibility
@@ -1123,10 +1131,18 @@ else:
     single_dataset = project_datasets[0]
     
     if single_dataset['id'] in st.session_state.datasets_registry:
-        working_df = st.session_state.datasets_registry[single_dataset['id']].copy()
-        # Ensure string column names
-        working_df.columns = [str(c) for c in working_df.columns]
-        st.session_state.working_table = working_df
+        # Rebuild the working table from the registry only when the source
+        # dataset changes — rebuilding on every rerun silently reverted any
+        # cleaning actions applied to the working table.
+        if (st.session_state.get('working_table') is None
+                or st.session_state.get('_working_table_source_id') != single_dataset['id']):
+            working_df = st.session_state.datasets_registry[single_dataset['id']].copy()
+            # Ensure string column names
+            working_df.columns = [str(c) for c in working_df.columns]
+            st.session_state.working_table = working_df
+            st.session_state['_working_table_source_id'] = single_dataset['id']
+        else:
+            working_df = st.session_state.working_table
         set_data(working_df)
         
         st.success(f"**Working Table:** {single_dataset['name']}")
@@ -1182,46 +1198,12 @@ audit_results = {}
 # -------------------------------------------------------------------------
 # CARDINALITY ANALYSIS
 # -------------------------------------------------------------------------
+_cardinality_data, _dtype_data = cached_audit_tables(df)
+
 with st.expander("Cardinality Analysis (Unique Values per Column)", expanded=True):
     st.caption("Helps identify potential ID columns, categorical variables, and constants.")
-    
-    cardinality_data = []
-    for col in df.columns:
-        n_unique = df[col].nunique()
-        n_total = len(df)
-        pct_unique = (n_unique / n_total) * 100 if n_total > 0 else 0
-        
-        # Classify cardinality
-        if n_unique == 1:
-            card_type = "Constant"
-            card_flag = "⚠️"
-        elif n_unique == 2:
-            card_type = "Binary"
-            card_flag = ""
-        elif n_unique == n_total:
-            card_type = "Unique (potential ID)"
-            card_flag = "🔑"
-        elif n_unique <= 10:
-            card_type = "Low cardinality"
-            card_flag = ""
-        elif n_unique <= 50:
-            card_type = "Moderate cardinality"
-            card_flag = ""
-        elif pct_unique > 90:
-            card_type = "High cardinality (near-unique)"
-            card_flag = ""
-        else:
-            card_type = "High cardinality"
-            card_flag = ""
-        
-        cardinality_data.append({
-            'Column': col,
-            'Unique': n_unique,
-            '% Unique': f"{pct_unique:.1f}%",
-            'Type': card_type,
-            'Flag': card_flag
-        })
-    
+
+    cardinality_data = _cardinality_data
     card_df = pd.DataFrame(cardinality_data)
     table(card_df, width="stretch", hide_index=True)
     audit_results['cardinality'] = cardinality_data
@@ -1238,41 +1220,8 @@ with st.expander("Cardinality Analysis (Unique Values per Column)", expanded=Tru
 # -------------------------------------------------------------------------
 with st.expander("Data Types & Validity Checks", expanded=False):
     st.subheader("Column Types")
-    
-    dtype_data = []
-    for col in df.columns:
-        dtype = str(df[col].dtype)
-        n_nonnull = df[col].count()
-        n_null = df[col].isnull().sum()
-        n_unique = df[col].nunique()
-        
-        # Sample values
-        sample_vals = df[col].dropna().head(3).tolist()
-        sample_str = str(sample_vals)[:50] + "..." if len(str(sample_vals)) > 50 else str(sample_vals)
-        
-        # Validity check
-        validity_issues = []
-        if n_null > 0:
-            validity_issues.append(f"{n_null} missing")
-        if dtype == 'object':
-            # Check for mixed types
-            try:
-                numeric_count = pd.to_numeric(df[col], errors='coerce').notna().sum()
-                if 0 < numeric_count < n_nonnull:
-                    validity_issues.append("mixed types")
-            except Exception:
-                pass
-        
-        dtype_data.append({
-            'Column': col,
-            'Type': dtype,
-            'Non-null': n_nonnull,
-            'Null': n_null,
-            'Unique': n_unique,
-            'Sample': sample_str,
-            'Issues': ', '.join(validity_issues) if validity_issues else 'OK'
-        })
-    
+
+    dtype_data = _dtype_data
     dtype_df = pd.DataFrame(dtype_data)
     table(dtype_df, width="stretch", hide_index=True)
     audit_results['dtypes'] = dtype_data
@@ -1326,23 +1275,26 @@ with st.expander("Duplicate Rows", expanded=False):
 numeric_cols = get_numeric_columns(df)
 if numeric_cols:
     with st.expander("Numeric Column Statistics", expanded=False):
-        numeric_stats = df[numeric_cols].describe().T
-        numeric_stats['skewness'] = df[numeric_cols].skew()
-        numeric_stats['kurtosis'] = df[numeric_cols].kurtosis()
+        numeric_stats = cached_numeric_summary(df, tuple(numeric_cols)).rename(
+            columns={"skew": "skewness"})
         numeric_stats.index.name = 'Feature'
         table(numeric_stats.round(3).reset_index(), width="stretch")
         audit_results['numeric_stats'] = numeric_stats.to_dict()
-        
-        # Flag potential outliers
+
+        # Flag potential outliers — vectorized IQR scan across all columns
         n_rows = len(df)
-        for col in numeric_cols:
-            q1 = df[col].quantile(0.25)
-            q3 = df[col].quantile(0.75)
-            iqr = q3 - q1
-            outlier_count = ((df[col] < q1 - 1.5*iqr) | (df[col] > q3 + 1.5*iqr)).sum()
-            if n_rows > 0 and outlier_count > n_rows * 0.05:  # More than 5% outliers
-                outlier_pct = (outlier_count / n_rows * 100)
-                st.info(f"**{col}**: {outlier_count} potential outliers ({outlier_pct:.1f}%)")
+        if n_rows > 0:
+            _num = df[numeric_cols]
+            _q1 = _num.quantile(0.25)
+            _q3 = _num.quantile(0.75)
+            _iqr = _q3 - _q1
+            _outlier_counts = ((_num.lt(_q1 - 1.5 * _iqr, axis=1))
+                               | (_num.gt(_q3 + 1.5 * _iqr, axis=1))).sum()
+            _flagged = _outlier_counts[_outlier_counts > n_rows * 0.05]
+            for col, cnt in _flagged.head(10).items():
+                st.info(f"**{col}**: {int(cnt)} potential outliers ({cnt / n_rows * 100:.1f}%)")
+            if len(_flagged) > 10:
+                st.caption(f"…and {len(_flagged) - 10} more columns with >5% potential outliers.")
 
 # -------------------------------------------------------------------------
 # SUGGESTED ACTIONS
@@ -1377,7 +1329,11 @@ if suggested_actions:
                         st.error("This action would result in an empty dataset. Aborted.")
                     else:
                         st.session_state.working_table = new_df
+                        # Content changed → set_data clears downstream results
+                        # (config is kept); reconcile drops any config references
+                        # to columns this action removed.
                         set_data(new_df, is_schema_change=False)
+                        reconcile_state_with_df(new_df, st.session_state)
                         log_methodology(step='Data Cleaning', action=label, details={
                             'affected_columns': cols if cols else 'all',
                             'rows_before': df.shape[0],
@@ -1399,7 +1355,10 @@ if suggested_actions:
                             )
                         except Exception:
                             pass  # Provenance recording should never break the workflow
-                        st.success(f"Applied: {label}. New shape: {new_df.shape[0]:,} rows × {new_df.shape[1]} columns")
+                        from utils.theme import flash
+                        flash("success",
+                              f"Applied: {label}. New shape: {new_df.shape[0]:,} rows × {new_df.shape[1]} columns. "
+                              f"Downstream results (splits, models, reports) were reset — they described the pre-cleaning data.")
                         st.rerun()
                 except Exception as e:
                     st.error(f"Failed to apply: {e}")
@@ -1515,7 +1474,12 @@ if task_mode == "prediction":
             if existing_features:
                 default_features = [f for f in existing_features if f in feature_options]
             else:
-                default_features = feature_options[:min(10, len(feature_options))]
+                # Default to ALL candidate features. An arbitrary first-N cap
+                # silently drops predictors on wide data (column order is not
+                # relevance order) and makes the EDA tiles describe a subset
+                # the user never chose. Narrowing is the Feature Selection
+                # page's job, on training rows only.
+                default_features = list(feature_options)
         else:
             # Widget already exists, use its current value
             default_features = [f for f in st.session_state.features_multiselect if f in feature_options]
@@ -1564,10 +1528,25 @@ if task_mode == "prediction":
                 )
                 st.session_state.task_type_detection = task_detection
         
-        # Show detection result
+        # Show detection result — confidence-aware. A confident green banner
+        # for an ambiguous detection (e.g. low-cardinality integer targets:
+        # class codes vs counts vs ratings) silently steers users into the
+        # wrong task type.
         task_det = st.session_state.task_type_detection
         if task_det.detected:
-            st.success(f"Detected task type: **{task_det.detected.title()}**")
+            _det_conf = getattr(task_det, 'confidence', None) or 'high'
+            if _det_conf == 'high':
+                st.success(f"Detected task type: **{task_det.detected.title()}**")
+            else:
+                _det_reason = ""
+                _det_reasons = getattr(task_det, 'reasons', None)
+                if _det_reasons:
+                    _det_reason = f" — {_det_reasons[-1]}"
+                st.info(
+                    f"Best guess for task type: **{task_det.detected.title()}** "
+                    f"(confidence: {_det_conf}){_det_reason} "
+                    f"Please verify, or use the override below."
+                )
         
         # Override option
         with st.expander("Override Task Type"):
@@ -1595,27 +1574,102 @@ if task_mode == "prediction":
         st.session_state.selected_features = list(selected_features)
 
         import hashlib
-        _new_hash = hashlib.md5(','.join(sorted(data_config.feature_cols)).encode()).hexdigest()[:8]
+        # Invalidation must key on everything that defines the modeling
+        # problem: the feature set, the target, and the task type. A target
+        # swap with unchanged features previously kept the old target's
+        # models/metrics/SHAP alive under the new outcome's name.
+        _config_sig = (
+            ','.join(sorted(data_config.feature_cols))
+            + f"|target={data_config.target_col}|task={data_config.task_type}"
+        )
+        _new_hash = hashlib.md5(_config_sig.encode()).hexdigest()[:8]
         _old_hash = st.session_state.get('_data_config_features_hash', '')
         if _new_hash != _old_hash:
             st.session_state['_data_config_features_hash'] = _new_hash
-            for key in [
-                'preprocessing_pipeline', 'preprocessing_config',
-                'preprocessing_pipelines_by_model', 'preprocessing_config_by_model',
-                'trained_models', 'model_results', 'fitted_estimators',
-                'fitted_preprocessing_pipelines', 'feature_names_by_model',
-                'X_train', 'X_val', 'X_test', 'y_train', 'y_val', 'y_test',
-                'train_indices', 'val_indices', 'test_indices',
-                'permutation_importance', 'partial_dependence', 'shap_results',
-                'sensitivity_seed_results', 'report_data',
-                'feature_selection_results', 'consensus_features',
-                'split_config', 'target_transformer',
-                'y_train_original', 'y_val_original', 'y_test_original',
-                'eda_results', 'eda_insights',
-            ]:
-                st.session_state.pop(key, None)
+            from utils.session_state import reset_downstream_results
+            # Keep feature engineering: page-01 selectors operate on the
+            # engineered frame, so a re-selection does not invalidate it.
+            reset_downstream_results(clear_feature_engineering=False)
             if _old_hash:  # Only warn if this isn't the first save
                 st.info('Feature configuration changed — downstream preprocessing, splits, and models have been reset.')
+
+        # Quarantine the test set NOW, before any target-aware analysis can
+        # see it. EDA target views, feature-engineering fits, and feature
+        # selection all scope to training rows via this lockbox.
+        from utils.test_lockbox import (
+            ensure_lockbox, render_lockbox_status, get_lockbox,
+            DEFAULT_TEST_FRACTION, is_exploratory,
+        )
+        _lb = ensure_lockbox(df, target_col, task_type_final)
+        if _lb is not None and get_lockbox() is not None:
+            _prev_ledger_note = st.session_state.get('_lockbox_ledger_noted')
+            if _prev_ledger_note != _lb['signature']:
+                st.session_state['_lockbox_ledger_noted'] = _lb['signature']
+                try:
+                    from utils.insight_ledger import get_ledger, Insight
+                    get_ledger().upsert(Insight(
+                        id="upload_test_lockbox",
+                        source_page="01_Upload_and_Audit",
+                        category="study_design",
+                        severity="info",
+                        finding=(f"A {_lb['fraction']:.0%} test set (n={_lb['n_test']}"
+                                 f"{', stratified' if _lb.get('stratified') else ''}) was "
+                                 f"held out at upload, before feature engineering or selection."),
+                        implication="Held-out evaluation is protected from selection and preprocessing leakage.",
+                        recommended_action="",
+                        relevant_pages=["06_Train_and_Compare"],
+                        tripod_keys=["study_design", "model_building"],
+                        resolved=True,
+                        resolved_by="Quarantined automatically at upload (seed "
+                                    f"{_lb['seed']})",
+                        resolved_on_page="01_Upload_and_Audit",
+                        resolution_details={"action_type": "test_lockbox",
+                                            "params": {"fraction": _lb['fraction'],
+                                                       "seed": _lb['seed'],
+                                                       "n_test": _lb['n_test']}},
+                    ))
+                except Exception:
+                    pass
+        def _on_exploratory_toggle():
+            # Both directions invalidate: results computed under one quarantine
+            # regime must not survive the flip — otherwise toggling exploratory
+            # off would launder full-data feature selection into an
+            # unwatermarked manuscript.
+            from utils.session_state import reset_downstream_results as _rdr
+            _rdr(clear_feature_engineering=False)
+            if st.session_state.get("exploratory_mode"):
+                st.session_state["exploratory_used"] = True
+
+        with st.expander("🔒 Test holdout settings", expanded=False):
+            st.caption(
+                "The test fraction is drawn once, here, so that no downstream "
+                "step can peek at it. Changing it (or toggling exploratory "
+                "mode in either direction) resets downstream results."
+            )
+            _lb_frac = st.slider(
+                "Held-out test fraction", 0.05, 0.40,
+                float(st.session_state.get("test_lockbox_fraction", DEFAULT_TEST_FRACTION)),
+                0.05, key="lockbox_fraction_slider",
+            )
+            if _lb_frac != st.session_state.get("test_lockbox_fraction", DEFAULT_TEST_FRACTION):
+                st.session_state["test_lockbox_fraction"] = _lb_frac
+                ensure_lockbox(df, target_col, task_type_final, fraction=_lb_frac)
+            st.checkbox(
+                "Exploratory mode (disable test-set quarantine)",
+                key="exploratory_mode",
+                on_change=_on_exploratory_toggle,
+                help="Target-aware steps see ALL rows, including the test set. "
+                     "Useful for hypothesis generation; downstream metrics and "
+                     "the manuscript are watermarked as exploratory and are not "
+                     "publishable as held-out performance. Toggling in either "
+                     "direction resets downstream results.",
+            )
+        if st.session_state.pop("_lockbox_redrawn", False):
+            st.info("🔒 Test lockbox redrawn (data, target, fraction, or seed changed) — "
+                    "downstream results were reset so nothing is evaluated against the old test set.")
+        # Chip rendered AFTER the settings expander so it always reflects the
+        # just-applied fraction rather than the pre-interaction value.
+        render_lockbox_status()
 
         # Log methodology
         log_methodology(
@@ -1643,15 +1697,9 @@ if task_mode == "prediction":
             pass  # Provenance recording should never break the workflow
 
         st.success(f"✅ Configuration saved: **{task_type_final.title()}** task with **{len(selected_features)}** features")
-        
-        # Next steps
-        st.markdown("---")
-        st.markdown("### Next Steps")
-        st.markdown("""
-        1. Go to **EDA** to explore your data
-        2. Go to **Preprocess** to build your preprocessing pipeline
-        3. Go to **Train & Compare** to train models
-        """)
+        # (Next-step guidance renders once, in the consolidated "What Happens
+        # Next?" section below — two adjacent, slightly different step lists
+        # read as contradictory.)
     else:
         st.warning("Please select a target variable and at least one feature.")
 
@@ -1672,10 +1720,15 @@ else:
     """)
 
 # ============================================================================
-# WHAT HAPPENS NEXT
+# WHAT HAPPENS NEXT — only once configuration is actually saved; the previous
+# unconditional copy claimed "You've ... selected a target variable" while the
+# warning above it said no target was selected.
 # ============================================================================
-st.markdown("---")
-st.markdown("""
+_dc_next = st.session_state.get('data_config')
+if (st.session_state.get('task_mode') == 'prediction'
+        and _dc_next is not None and getattr(_dc_next, 'target_col', None)):
+    st.markdown("---")
+    st.markdown("""
 ### What Happens Next?
 
 You've uploaded your data and selected a target variable. Here's your workflow:
@@ -1683,16 +1736,17 @@ You've uploaded your data and selected a target variable. Here's your workflow:
 1. **Explore Your Data (EDA)** — Distributions, correlations, missing patterns, Table 1
 2. **Optional: Engineer Features** — Create polynomial, ratio, or TDA features if needed
 3. **Select Features** — Identify the most predictive variables
-4. **Train Models** — Compare 18 different algorithms with bootstrap CIs
+4. **Train Models** — Compare up to 22 models with bootstrap CIs
 5. **Validate & Export** — SHAP, calibration, sensitivity, publication-ready reports
 
 👉 **Continue to Exploratory Data Analysis (EDA)**
 """)
 
 # ============================================================================
-# STATE DEBUG
+# STATE DEBUG — developer tooling; never shown on the golden path
 # ============================================================================
-with st.expander("Debug: Session State", expanded=False):
+if st.session_state.get("show_debug_panel"):
+  with st.expander("Debug: Session State", expanded=False):
     st.write(f"• Active Project: {active_project['name'] if active_project else 'None'}")
     st.write(f"• Datasets in Project: {len(project_datasets)}")
     st.write(f"• Working Table Shape: {df.shape if df is not None else 'None'}")

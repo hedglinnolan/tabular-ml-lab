@@ -1481,7 +1481,9 @@ def generate_preprocessing_insights(
             ),
             "model_scope": scale_affected,
             "relevant_pages": ["05_Preprocess"],
-            "theory_anchor": "feature_scale",
+            # 'scaling' is the key that exists in THEORY_ANCHORS; the demo
+            # previously rendered only via an accidental text match
+            "theory_anchor": "scaling",
         })
 
     # 4. Missing data — native handling differs by family
@@ -1595,6 +1597,12 @@ def _detect_prefer_simpler(
             f"Consider selecting {simple_name} as the primary model, or justify "
             "the complex model's selection based on domain-specific requirements."
         ),
+        'manuscript_text': (
+            f"the simpler {simple_name} performed within {abs(margin_pct):.1f}% of "
+            f"the more complex {complex_name} ({metric_name} {best_simple_val:.4f} "
+            f"vs {best_complex_val:.4f}), so parsimony considerations favor the "
+            "simpler specification"
+        ),
         'model_scope': [],
         'metadata': {
             'simple_best_model': best_simple_key,
@@ -1643,6 +1651,11 @@ def _detect_low_overall_performance(
                 "transforms, or domain-driven composite features. Also consider whether "
                 "additional data sources are available."
             ),
+            'manuscript_text': (
+                f"absolute predictive performance was modest (best R\u00b2 = "
+                f"{best_r2:.3f}), indicating that the available predictors capture "
+                "a limited share of outcome variance"
+            ),
             'model_scope': [],
             'metadata': {'best_r2': float(best_r2)},
         }]
@@ -1667,6 +1680,11 @@ def _detect_low_overall_performance(
             'recommended_action': (
                 "Return to Feature Engineering to explore interaction terms, "
                 "non-linear transforms, or domain-driven composite features."
+            ),
+            'manuscript_text': (
+                f"discriminative performance was weak (best AUC = {best_auc:.3f}), "
+                "indicating limited separation between outcome classes with the "
+                "available predictors"
             ),
             'model_scope': [],
             'metadata': {'best_auc': float(best_auc)},
@@ -1718,6 +1736,12 @@ def _detect_high_cv_variance(
             "Run Sensitivity Analysis (seed robustness) to verify that model "
             "rankings are stable across random seeds."
         ),
+        'manuscript_text': (
+            f"cross-validation variability (maximum fold SD = {max_cv_std:.4f}) "
+            f"exceeded half the between-model performance range "
+            f"({score_range:.4f}), so the model ranking should be interpreted "
+            "with caution"
+        ),
         'model_scope': [],
         'metadata': {
             'max_cv_std': float(max_cv_std),
@@ -1763,8 +1787,13 @@ def _detect_overfit(
             continue
 
         display_name = _model_display_name_coach(key)
-        model_family = info.get(key, info.get(key.lower(), {}))
-        family_scope = [model_family.get('group', '').lower()] if model_family.get('group') else []
+        # Use the ledger's canonical family vocabulary — the coach's display
+        # groups ('Trees', 'Boosting', 'Neural Net') don't match it, and a
+        # non-matching model_scope makes grouped coaching silently hide the
+        # warning behind '✅ no issues'.
+        from utils.insight_ledger import MODEL_TO_FAMILY as _mtf
+        _fam = _mtf.get(key, _mtf.get(str(key).lower()))
+        family_scope = [_fam] if _fam else []
 
         findings.append({
             'id': f'train_overfit_{key}',
@@ -1784,6 +1813,11 @@ def _detect_overfit(
                 f"Consider regularising {display_name} (increase regularisation "
                 "strength, reduce model complexity, or add dropout). Alternatively, "
                 "use a simpler model or collect more training data."
+            ),
+            'manuscript_text': (
+                f"{display_name} showed a marked train–test performance gap "
+                f"({metric_name} {train_val:.3f} vs {test_val:.3f}), indicating "
+                "overfitting risk for this model"
             ),
             'model_scope': family_scope,
             'metadata': {

@@ -518,7 +518,15 @@ def render_theory_link(
             from utils.theory_demos import render_inline_demo
             render_inline_demo(anchor_key, page_context=page_context, expanded=True, wrapped=False)
 
-        # Clean reference to the full Theory Reference section (no navigation link — avoids wiping session state)
-        st.caption(f"📚 Dive deeper → Theory Reference · {anchor['chapter']} · {anchor['section']}")
+        # Deep link into the full Theory Reference, preselecting the chapter —
+        # the previous plain-text breadcrumb left users to hunt for it by hand.
+        try:
+            st.session_state["theory_target_chapter"] = anchor["chapter"]
+            st.page_link(
+                "pages/11_Theory_Reference.py",
+                label=f"📚 Dive deeper → Theory Reference · {anchor['chapter']} · {anchor['section']}",
+            )
+        except Exception:
+            st.caption(f"📚 Dive deeper → Theory Reference · {anchor['chapter']} · {anchor['section']}")
 
     return True

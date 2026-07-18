@@ -68,6 +68,18 @@ MODEL_FAMILIES = (
     MODEL_FAMILY_DISTANCE, MODEL_FAMILY_MARGIN, MODEL_FAMILY_PROBABILISTIC,
 )
 
+# Producers have historically used display-group vocabulary ('Trees',
+# 'Boosting', 'Neural Net'); normalize everything to the canonical family
+# names above so scoped rendering/filtering can never silently drop insights.
+FAMILY_ALIASES = {
+    "trees": MODEL_FAMILY_TREE,
+    "boosting": MODEL_FAMILY_TREE,
+    "neural net": MODEL_FAMILY_NEURAL,
+    "neural_net": MODEL_FAMILY_NEURAL,
+    "probabilistic": MODEL_FAMILY_PROBABILISTIC,
+    "distance-based": MODEL_FAMILY_DISTANCE,
+}
+
 # Map individual model keys → family
 MODEL_TO_FAMILY = {
     "ridge": MODEL_FAMILY_LINEAR, "lasso": MODEL_FAMILY_LINEAR,
@@ -314,6 +326,15 @@ def _format_method(action_type: str, method: str, params: Dict, full_detail: Opt
         ),
         ("data_setup", None): lambda _: "Dataset configured for analysis",
         ("data_cleaning", None): lambda _: "Data cleaning operations applied",
+        ("test_lockbox", None): lambda p: (
+            f"The held-out test fraction ({p.get('fraction', 0):.0%}, n={p.get('n_test', '?')}) "
+            f"was frozen at data upload, before any feature engineering or selection "
+            f"(seed {p.get('seed', '?')})"
+        ),
+        ("target_transform", None): lambda p: (
+            f"The target variable was transformed ({p.get('method', 'power transform')}) "
+            f"before model fitting"
+        ),
     }
 
     key = (action_type, method)
@@ -542,6 +563,12 @@ class Insight:
     finding: str
     implication: str
     recommended_action: str = ""
+    # Manuscript-register phrasing of this insight for the Discussion
+    # (limitations/strengths). Coaching voice ("consider...", "a reviewer
+    # would question...") addresses the ANALYST; a manuscript addresses the
+    # REVIEWER and states facts about the study. When empty, the cleaned
+    # `finding` is used as a fallback.
+    manuscript_text: str = ""
     relevant_pages: List[str] = field(default_factory=list)
     affected_features: List[str] = field(default_factory=list)
     tripod_keys: List[str] = field(default_factory=list)
@@ -579,6 +606,13 @@ class Insight:
         # Auto-populate tripod_keys from category if not provided
         if not self.tripod_keys and self.category in TRIPOD_CATEGORY_MAP:
             self.tripod_keys = list(TRIPOD_CATEGORY_MAP[self.category])
+        # Normalize model_scope to the canonical family vocabulary so that
+        # scoped rendering/filtering can match ('Boosting' → 'tree', etc.).
+        if self.model_scope:
+            self.model_scope = [
+                FAMILY_ALIASES.get(str(f).strip().lower(), str(f).strip().lower())
+                for f in self.model_scope
+            ]
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize for session state / JSON export."""
@@ -752,6 +786,12 @@ class InsightLedger:
         for i in self._insights:
             if i.resolved or i.acknowledged:
                 continue
+            if i.severity == "blocker":
+                # Blockers are conditions a reviewer would reject outright.
+                # Passing a workflow gate is not evidence the user reviewed
+                # and accepted them — bulk-acknowledging would fabricate
+                # "accepted risk" provenance for the worst findings.
+                continue
             if source_pages and i.source_page not in source_pages:
                 continue
             i.acknowledged = True
@@ -759,6 +799,40 @@ class InsightLedger:
             i.acknowledged_at = datetime.now().isoformat()
             count += 1
         return count
+
+    def rollback_resolutions(self, resolved_on_pages: set) -> int:
+        """Un-resolve auto-generated insights whose resolving action was just
+        invalidated (its page's results were cleared by a downstream reset).
+
+        Keeps the finding itself — the observation may still hold — but drops
+        the resolution claim, because the manuscript would otherwise assert
+        actions (target transform, imputation config, training) that no longer
+        exist for the current analysis.
+        """
+        count = 0
+        for i in self._insights:
+            if i.resolved and i.auto_generated and i.resolved_on_page in resolved_on_pages:
+                i.resolved = False
+                i.resolved_by = ""
+                i.resolved_on_page = ""
+                i.resolved_at = None
+                i.resolution_details = {}
+                count += 1
+        return count
+
+    def prune_auto_generated(self, source_pages: set) -> int:
+        """Drop auto-generated insights from the given source pages entirely.
+
+        Used when the analysis those insights describe has been invalidated
+        (e.g. EDA findings after a target change) — the producer page re-detects
+        fresh insights on its next visit. Absent is better than false.
+        """
+        before = len(self._insights)
+        self._insights = [
+            i for i in self._insights
+            if not (i.auto_generated and i.source_page in source_pages)
+        ]
+        return before - len(self._insights)
 
     def get_acknowledged(self) -> List[Insight]:
         """Return acknowledged-but-not-resolved insights."""
@@ -1108,24 +1182,31 @@ class InsightLedger:
         seen_limitations = set()
 
         for i in self._insights:
+            # Manuscript-register text wins when the producer supplied one;
+            # the cleaned finding is a fallback, not the preferred source —
+            # coaching voice must never reach the manuscript verbatim.
+            text = (i.manuscript_text or "").strip() or _clean_for_manuscript(i.finding)
+            if not text:
+                continue
+
+            # Only genuine positives (eda_opportunity_*) are strengths. They are
+            # typically created already-resolved ("no action needed"), so they
+            # must be collected BEFORE the resolved-skip. Severity alone must
+            # never promote an insight: an unresolved info-level concern
+            # ("N features are heavily skewed") is not a study strength.
+            if i.id.startswith("eda_opportunity_"):
+                if text not in seen_strengths:
+                    strengths.append(text)
+                    seen_strengths.add(text)
+                continue
+
             if i.resolved:
                 continue
 
-            finding = _clean_for_manuscript(i.finding)
-            if not finding:
-                continue
-
-            is_strength = i.id.startswith("eda_opportunity_") or i.severity == "info"
-            if is_strength:
-                if finding not in seen_strengths:
-                    strengths.append(finding)
-                    seen_strengths.add(finding)
-                continue
-
             if i.acknowledged or self._is_narrative_worthy(i):
-                if finding not in seen_limitations:
-                    limitations.append(finding)
-                    seen_limitations.add(finding)
+                if text not in seen_limitations:
+                    limitations.append(text)
+                    seen_limitations.add(text)
 
         return {
             "strengths": strengths,

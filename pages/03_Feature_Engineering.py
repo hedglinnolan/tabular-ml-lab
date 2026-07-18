@@ -60,13 +60,16 @@ inject_custom_css()
 render_sidebar_workflow(current_page="03_Feature_Engineering")
 
 st.title("🧬 Feature Engineering")
+from utils.theme import render_flash
+render_flash()
 st.caption("Advanced workflow step: expand the feature space only after the quick workflow baseline tells you richer features may be worth the complexity.")
 render_breadcrumb("03_Feature_Engineering")
+from utils.test_lockbox import render_lockbox_status
+render_lockbox_status("Stateful transforms (PCA, binning, UMAP, TDA) are fit on training rows, then applied to all rows.")
 render_page_navigation("03_Feature_Engineering")
 
-if st.session_state.get("workflow_mode", "quick") == "quick":
-    st.info("🧭 **Advanced workflow step** — Complete the quick workflow first, then return here only if baseline performance suggests richer features are worth the complexity.")
-
+# (The page caption above already frames this as an advanced step — a second
+# banner repeating the same guidance was pure noise.)
 with st.expander("📚 When to use Feature Engineering", expanded=False):
     st.markdown("""
 **Feature Engineering ADDS new features** alongside originals (e.g., `Glucose` + `log_Glucose`).  
@@ -124,11 +127,12 @@ if not numeric_features:
     st.error("❌ No numeric features found. Feature engineering requires at least one numeric column.")
     st.stop()
 
-st.info(f"""
-📊 **Current dataset:**  
-- **{len(X):,} samples × {len(X.columns)} features**  
-- {len(numeric_features)} numeric, {len(categorical_features)} categorical, {len(datetime_features)} datetime
-""")
+# Status, not guidance — a caption, so info-boxes stay reserved for guidance
+st.caption(
+    f"Current dataset: **{len(X):,} samples × {len(X.columns)} features** — "
+    f"{len(numeric_features)} numeric, {len(categorical_features)} categorical, "
+    f"{len(datetime_features)} datetime."
+)
 
 # Initialize tracking - persist across reruns using session state
 # After getting selected_features, before initializing fe_work_in_progress:
@@ -257,28 +261,25 @@ Consider using Feature Selection (next step) to filter redundant interactions.
 # ============================================================================
 
 st.markdown("### 🔧 Feature Engineering Techniques")
-st.markdown("Enable the techniques you want to apply. Each creates new features alongside your originals.")
+st.markdown("Each tab below is one technique: open **💡 What & when to use** inside it, configure, and compute. New features accumulate alongside your originals — see the **Summary** at the bottom of the page.")
 
 # Progress indicator
 progress_data = []
 if len(engineered_features) > 0:
     st.success(f"✅ **{len(engineered_features)} features created so far** — Continue adding more or scroll to Summary to save.")
 
+_fe_tabs = st.tabs([
+    "➕ Polynomial", "🧮 Transforms", "➗ Ratios", "📊 Binning",
+    "🔬 TDA (advanced)", "🌀 PCA/UMAP", "🕳️ Missingness",
+])
+
 # ============================================================================
 # Section 1: Polynomial Features & Interactions
 # ============================================================================
 
-st.markdown("""
-<div style="background: linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(102,126,234,0.05) 100%); 
-            border-left: 4px solid #667eea; 
-            padding: 1rem; 
-            margin: 1.5rem 0; 
-            border-radius: 8px;">
-    <h3 style="margin: 0; color: #667eea;">1️⃣ Polynomial Features & Interactions</h3>
-</div>
-""", unsafe_allow_html=True)
-
-render_guidance("""
+with _fe_tabs[0]:
+    with st.expander("💡 What & when to use", expanded=False):
+        render_guidance("""
 **What:** Create new features by multiplying existing features together and raising them to powers.
 
 **Example:** From `[Age, BMI]` create `[Age, BMI, Age², BMI², Age×BMI]`
@@ -291,14 +292,6 @@ render_guidance("""
 
 **Scientific precedent:** Used in countless publications when linear models are preferred for simplicity.
 """)
-
-use_poly = st.checkbox(
-    "☐ Create Polynomial Features & Interactions",
-    value=False,
-    help="Generate polynomial and interaction features up to specified degree"
-)
-
-if use_poly:
     col1, col2, col3 = st.columns([1, 1, 2])
     
     with col1:
@@ -370,59 +363,51 @@ if use_poly:
                 st.error(f"❌ Error: {e}")
 
 # ---- Custom Interactions ----
-st.markdown('#### Custom Interactions')
-st.caption('Select specific feature pairs for domain-driven interactions. More surgical than generating all polynomial combinations.')
+    st.markdown('#### Custom Interactions')
+    st.caption('Select specific feature pairs for domain-driven interactions. More surgical than generating all polynomial combinations.')
 
-if len(numeric_features) >= 1:
-    _ci_col1, _ci_col2, _ci_col3 = st.columns(3)
-    with _ci_col1:
-        _feat_a = st.selectbox('Feature A', numeric_features, key='ci_feat_a')
-    with _ci_col2:
-        _feat_b = st.selectbox('Feature B', numeric_features, key='ci_feat_b')
-    with _ci_col3:
-        _ci_op = st.selectbox('Operation', ['Multiply (A × B)', 'Divide (A / B)', 'Square (A²)'], key='ci_op')
+    if len(numeric_features) >= 1:
+        _ci_col1, _ci_col2, _ci_col3 = st.columns(3)
+        with _ci_col1:
+            _feat_a = st.selectbox('Feature A', numeric_features, key='ci_feat_a')
+        with _ci_col2:
+            _feat_b = st.selectbox('Feature B', numeric_features, key='ci_feat_b')
+        with _ci_col3:
+            _ci_op = st.selectbox('Operation', ['Multiply (A × B)', 'Divide (A / B)', 'Square (A²)'], key='ci_op')
 
-    if st.button('Add Interaction', key='ci_add_btn'):
-        if _ci_op == 'Square (A²)':
-            _new_col_name = f'{_feat_a}_squared'
-            _new_values = X_engineered[_feat_a] ** 2
-        elif _ci_op == 'Multiply (A × B)':
-            _new_col_name = f'{_feat_a}_x_{_feat_b}'
-            _new_values = X_engineered[_feat_a] * X_engineered[_feat_b]
-        else:  # Divide
-            _new_col_name = f'{_feat_a}_div_{_feat_b}'
-            _den = X_engineered[_feat_b]
-            _new_values = np.where(_den != 0, X_engineered[_feat_a] / _den, np.nan)
-            _new_values = pd.Series(_new_values, index=X_engineered.index)
+        if st.button('Add Interaction', key='ci_add_btn'):
+            if _ci_op == 'Square (A²)':
+                _new_col_name = f'{_feat_a}_squared'
+                _new_values = X_engineered[_feat_a] ** 2
+            elif _ci_op == 'Multiply (A × B)':
+                _new_col_name = f'{_feat_a}_x_{_feat_b}'
+                _new_values = X_engineered[_feat_a] * X_engineered[_feat_b]
+            else:  # Divide
+                _new_col_name = f'{_feat_a}_div_{_feat_b}'
+                _den = X_engineered[_feat_b]
+                _new_values = np.where(_den != 0, X_engineered[_feat_a] / _den, np.nan)
+                _new_values = pd.Series(_new_values, index=X_engineered.index)
 
-        if _new_col_name in X_engineered.columns:
-            st.warning(f'⚠️ Feature `{_new_col_name}` already exists. Skipping to avoid duplicates.')
-        else:
-            X_engineered[_new_col_name] = _new_values
-            engineered_features.append(_new_col_name)
-            engineering_log.append(f'Custom interaction ({_ci_op}): {_new_col_name}')
-            st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
-            st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
-            st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
-            st.rerun()
-else:
-    st.info('No numeric features available for custom interactions.')
+            if _new_col_name in X_engineered.columns:
+                st.warning(f'⚠️ Feature `{_new_col_name}` already exists. Skipping to avoid duplicates.')
+            else:
+                X_engineered[_new_col_name] = _new_values
+                engineered_features.append(_new_col_name)
+                engineering_log.append(f'Custom interaction ({_ci_op}): {_new_col_name}')
+                st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
+                st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
+                st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                st.rerun()
+    else:
+        st.info('No numeric features available for custom interactions.')
 
 # ============================================================================
 # Section 2: Domain-Specific Mathematical Transforms
 # ============================================================================
 
-st.markdown("""
-<div style="background: linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(102,126,234,0.05) 100%); 
-            border-left: 4px solid #667eea; 
-            padding: 1rem; 
-            margin: 1.5rem 0; 
-            border-radius: 8px;">
-    <h3 style="margin: 0; color: #667eea;">2️⃣ Domain-Specific Transforms</h3>
-</div>
-""", unsafe_allow_html=True)
-
-render_guidance("""
+with _fe_tabs[1]:
+    with st.expander("💡 What & when to use", expanded=False):
+        render_guidance("""
 **What:** Apply mathematical functions to individual features: log, sqrt, square, etc.
 
 **Example:** `log(income)` for right-skewed financial data, `sqrt(count)` for Poisson-distributed counts.
@@ -436,15 +421,7 @@ render_guidance("""
 
 **Scientific precedent:** Log transforms are standard in biology, economics, epidemiology.
 """)
-
-st.caption("ℹ️ Transforms here create NEW columns alongside originals. In Preprocessing, they REPLACE features.")
-
-use_transforms = st.checkbox(
-    "☐ Apply Mathematical Transforms",
-    value=False
-)
-
-if use_transforms:
+    st.caption("ℹ️ Transforms here create NEW columns alongside originals. In Preprocessing, they REPLACE features.")
     st.caption("Select features to transform (numeric only):")
     
     # Pre-populate with skewed features from EDA (via ledger)
@@ -545,23 +522,14 @@ if use_transforms:
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
 
-st.markdown("---")
 
 # ============================================================================
 # Section 3: Ratio Features (Domain-Driven)
 # ============================================================================
 
-st.markdown("""
-<div style="background: linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(102,126,234,0.05) 100%); 
-            border-left: 4px solid #667eea; 
-            padding: 1rem; 
-            margin: 1.5rem 0; 
-            border-radius: 8px;">
-    <h3 style="margin: 0; color: #667eea;">3️⃣ Ratio Features</h3>
-</div>
-""", unsafe_allow_html=True)
-
-render_guidance("""
+with _fe_tabs[2]:
+    with st.expander("💡 What & when to use", expanded=False):
+        render_guidance("""
 **What:** Divide one feature by another to create meaningful ratios.
 
 **Real-world examples:**
@@ -575,13 +543,6 @@ render_guidance("""
 
 **Scientific precedent:** BMI, ratios, and normalized features are standard in clinical research.
 """)
-
-use_ratios = st.checkbox(
-    "☐ Create Ratio Features",
-    value=False
-)
-
-if use_ratios:
     st.caption("Define ratios to create:")
     
     col1, col2, col3 = st.columns([2, 2, 1])
@@ -637,17 +598,9 @@ if use_ratios:
 # Section 4: Binning / Discretization
 # ============================================================================
 
-st.markdown("""
-<div style="background: linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(102,126,234,0.05) 100%); 
-            border-left: 4px solid #667eea; 
-            padding: 1rem; 
-            margin: 1.5rem 0; 
-            border-radius: 8px;">
-    <h3 style="margin: 0; color: #667eea;">4️⃣ Binning (Discretization)</h3>
-</div>
-""", unsafe_allow_html=True)
-
-render_guidance("""
+with _fe_tabs[3]:
+    with st.expander("💡 What & when to use", expanded=False):
+        render_guidance("""
 **What:** Convert continuous numeric features into categorical bins (e.g., "low", "medium", "high").
 
 **Example:** Age (0-100) → Age groups: [0-18, 18-65, 65+]
@@ -663,13 +616,6 @@ render_guidance("""
 
 **Scientific precedent:** Common in epidemiology, clinical trials (age groups, income brackets).
 """)
-
-use_binning = st.checkbox(
-    "☐ Apply Binning / Discretization",
-    value=False
-)
-
-if use_binning:
     selected_bin_features = st.multiselect(
         "Features to bin",
         numeric_features,
@@ -698,15 +644,20 @@ if use_binning:
             with st.spinner("Creating binned features..."):
                 try:
                     new_cols = []
+                    from utils.test_lockbox import train_row_mask as _lb_mask
+                    _fit_rows = _lb_mask(X_engineered.index)
                     for feat in selected_bin_features:
                         discretizer = KBinsDiscretizer(
                             n_bins=n_bins,
                             encode='ordinal' if encode_as == 'ordinal' else 'onehot-dense',
                             strategy=strategy
                         )
-                        
+
                         feat_data = X_engineered[[feat]]
-                        binned = discretizer.fit_transform(feat_data)
+                        # Bin edges estimated on training rows only; transform
+                        # clips out-of-range test values into the edge bins.
+                        discretizer.fit(feat_data.loc[_fit_rows])
+                        binned = discretizer.transform(feat_data)
                         
                         if encode_as == 'ordinal':
                             col_name = f"{feat}_binned"
@@ -736,18 +687,9 @@ if use_binning:
 # Section 5: Topological Data Analysis (TDA) - Advanced
 # ============================================================================
 
-st.markdown("""
-<div style="background: linear-gradient(135deg, rgba(255,152,0,0.1) 0%, rgba(255,152,0,0.05) 100%); 
-            border-left: 4px solid #ff9800; 
-            padding: 1rem; 
-            margin: 1.5rem 0; 
-            border-radius: 8px;">
-    <h3 style="margin: 0; color: #ff9800;">5️⃣ Topological Data Analysis (TDA) — Advanced ⚠️</h3>
-    <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #666;">Computationally intensive — Recommended only for advanced users</p>
-</div>
-""", unsafe_allow_html=True)
-
-render_guidance("""
+with _fe_tabs[4]:
+    with st.expander("💡 What & when to use", expanded=False):
+        render_guidance("""
 **What:** TDA captures the **shape** and **structure** of your data using algebraic topology. It computes **persistent homology** 
 to find topological features (clusters, loops, voids) that persist across multiple scales.
 
@@ -774,13 +716,6 @@ And crucially: **Which of these structures persist as you zoom in/out?** Persist
 
 **Computational cost:** O(n³) for n samples. **Strongly recommend subsampling for >500 samples.**
 """)
-
-use_tda = st.checkbox(
-    "☐ Compute TDA Features (Persistent Homology)",
-    value=False
-)
-
-if use_tda:
     st.warning("⚠️ **TDA is computationally intensive.** Expect 30 seconds to several minutes depending on dataset size.")
     
     col1, col2, col3 = st.columns(3)
@@ -844,21 +779,29 @@ if use_tda:
                     st.error("❌ giotto-tda not installed. Run: `pip install giotto-tda`")
                     st.stop()
                 
+                # TDA summarizes the dataset as ONE point cloud, so its output
+                # columns are dataset-level constants — build that cloud from
+                # training rows only so test structure cannot influence them.
+                from utils.test_lockbox import train_row_mask as _lb_mask
+                _fit_rows_arr = _lb_mask(X_engineered.index).values
                 X_numeric = X_engineered[numeric_features].values
-                
+
                 if normalize_tda:
                     scaler = StandardScaler()
-                    X_numeric = scaler.fit_transform(X_numeric)
-                
+                    scaler.fit(X_numeric[_fit_rows_arr])
+                    X_numeric = scaler.transform(X_numeric)
+
+                _train_pool = X_numeric[_fit_rows_arr]
                 if subsample:
                     rng = np.random.RandomState(42)
-                    indices = rng.choice(len(X_numeric), size=subsample_size, replace=False)
-                    X_tda = X_numeric[indices]
+                    _pool_size = min(subsample_size, len(_train_pool))
+                    indices = rng.choice(len(_train_pool), size=_pool_size, replace=False)
+                    X_tda = _train_pool[indices]
                 else:
-                    X_tda = X_numeric
+                    X_tda = _train_pool
                 
-                # Treat entire dataset as one point cloud
-                X_point_cloud = X_tda.reshape(1, subsample_size if subsample else n_samples, -1)
+                # Treat the training rows as one point cloud
+                X_point_cloud = X_tda.reshape(1, len(X_tda), -1)
                 
                 vr = VietorisRipsPersistence(
                     homology_dimensions=homology_dims,
@@ -936,17 +879,9 @@ if use_tda:
 # Section 6: Dimensionality Reduction as Features
 # ============================================================================
 
-st.markdown("""
-<div style="background: linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(102,126,234,0.05) 100%); 
-            border-left: 4px solid #667eea; 
-            padding: 1rem; 
-            margin: 1.5rem 0; 
-            border-radius: 8px;">
-    <h3 style="margin: 0; color: #667eea;">6️⃣ Dimensionality Reduction as Features</h3>
-</div>
-""", unsafe_allow_html=True)
-
-render_guidance("""
+with _fe_tabs[5]:
+    with st.expander("💡 What & when to use", expanded=False):
+        render_guidance("""
 **What:** Instead of replacing features with PCA/UMAP (like in preprocessing), **add** low-dimensional embeddings 
 as supplementary features alongside originals.
 
@@ -959,17 +894,9 @@ as supplementary features alongside originals.
 
 **Scientific precedent:** Common in genomics (thousands of genes → 10 PCA components + original features).
 """)
-
-st.warning("""
+    st.warning("""
 ⚠️ **vs. Preprocessing:** Here, PCA/UMAP components are ADDED alongside originals (e.g., 10 features → 10 originals + 3 PCA = 13 total). In Preprocessing (page 5), PCA REPLACES originals (10 → 3). Use this for supplementary features, use Preprocessing for dimensionality reduction.
 """)
-
-use_dimred = st.checkbox(
-    "☐ Add PCA or UMAP Features",
-    value=False
-)
-
-if use_dimred:
     dimred_method = st.selectbox(
         "Method",
         ["PCA", "UMAP"],
@@ -988,7 +915,12 @@ if use_dimred:
                 try:
                     X_numeric = X_engineered[numeric_features]
                     pca = PCA(n_components=n_components_pca)
-                    X_pca = pca.fit_transform(X_numeric)
+                    # Fit loadings on training rows only (test rows are in the
+                    # upload lockbox); transform every row for downstream use.
+                    from utils.test_lockbox import train_row_mask as _lb_mask
+                    _fit_rows = _lb_mask(X_numeric.index)
+                    pca.fit(X_numeric.loc[_fit_rows])
+                    X_pca = pca.transform(X_numeric)
                     
                     pca_cols = [f"PCA_{i+1}" for i in range(n_components_pca)]
                     pca_df = pd.DataFrame(X_pca, columns=pca_cols, index=X_engineered.index)
@@ -1027,7 +959,15 @@ if use_dimred:
                         random_state=42,
                         n_jobs=-1
                     )
-                    X_umap = reducer.fit_transform(X_numeric)
+                    # Manifold learned from training rows only; test rows are
+                    # projected onto it afterwards.
+                    from utils.test_lockbox import train_row_mask as _lb_mask
+                    _fit_rows = _lb_mask(X_numeric.index)
+                    if bool(_fit_rows.all()):
+                        X_umap = reducer.fit_transform(X_numeric)
+                    else:
+                        reducer.fit(X_numeric.loc[_fit_rows])
+                        X_umap = reducer.transform(X_numeric)
                     
                     umap_cols = [f"UMAP_{i+1}" for i in range(n_components_umap)]
                     umap_df = pd.DataFrame(X_umap, columns=umap_cols, index=X_engineered.index)
@@ -1053,134 +993,133 @@ if use_dimred:
 # Missingness-as-Feature (Section 8)
 # ============================================================================
 
-st.markdown("---")
-st.subheader("🔍 Missingness-as-Feature")
+with _fe_tabs[6]:
 
-# Identify features with any missing values
-_missing_counts = X.isnull().sum()
-_features_with_missing = _missing_counts[_missing_counts > 0].sort_values(ascending=False)
+    # Identify features with any missing values
+    _missing_counts = X.isnull().sum()
+    _features_with_missing = _missing_counts[_missing_counts > 0].sort_values(ascending=False)
 
-if len(_features_with_missing) == 0:
-    st.info("No missing values detected in the selected features — this section is not applicable.")
-else:
-    _n_rows = len(X)
-    st.markdown(
-        f"**{len(_features_with_missing)}** feature(s) have missing values. "
-        "High missingness may be **informative** (MNAR): if a question was only asked of a "
-        "subgroup, the presence or absence of data is itself predictive."
-    )
-
-    # Show missingness table
-    _miss_df = pd.DataFrame({
-        "Feature": _features_with_missing.index,
-        "Missing": _features_with_missing.values,
-        "% Missing": [f"{100 * v / _n_rows:.1f}%" for v in _features_with_missing.values],
-    }).reset_index(drop=True)
-    st.dataframe(_miss_df, use_container_width=True, hide_index=True)
-
-    # Coaching callout for high-missingness features
-    _high_missing = _features_with_missing[_features_with_missing / _n_rows > 0.30]
-    if len(_high_missing) > 0:
-        st.warning(
-            f"**Coaching:** {len(_high_missing)} feature(s) have >30% missingness "
-            f"({', '.join(_high_missing.index[:5])}{'…' if len(_high_missing) > 5 else ''}). "
-            "A reviewer would ask whether this missingness is random (MCAR) or structural (MNAR). "
-            "If structural, create a binary `has_data` indicator — the indicator itself may be "
-            "more predictive than the imputed value."
-        )
-
-    # Threshold slider
-    _miss_threshold = st.slider(
-        "Minimum missing % to show",
-        min_value=0, max_value=100, value=5,
-        key="miss_indicator_threshold",
-        help="Only show features with at least this % missing",
-    )
-    _eligible = _features_with_missing[_features_with_missing / _n_rows >= _miss_threshold / 100]
-
-    if len(_eligible) > 0:
-        _selected_miss = st.multiselect(
-            "Select features to create `has_data` indicators for",
-            options=list(_eligible.index),
-            default=list(_eligible.index),
-            key="miss_indicator_features",
-        )
-
-        if _selected_miss:
-            # Check which indicators already exist
-            _already_created = [f for f in _selected_miss if f"{f}_has_data" in X_engineered.columns]
-            _to_create = [f for f in _selected_miss if f"{f}_has_data" not in X_engineered.columns]
-
-            if _already_created:
-                st.caption(f"Already created: {', '.join(f'`{f}_has_data`' for f in _already_created)}")
-
-            if _to_create and st.button(
-                f"🔬 Create {len(_to_create)} Missing Indicator(s)",
-                key="btn_create_miss_indicators",
-            ):
-                for feat in _to_create:
-                    col_name = f"{feat}_has_data"
-                    X_engineered[col_name] = (~X[feat].isnull()).astype(int)
-                    engineered_features.append(col_name)
-                    _pct = 100 * _missing_counts[feat] / _n_rows
-                    engineering_log.append(
-                        f"Missingness indicator: {col_name} (1 = observed, 0 = missing; "
-                        f"{_pct:.1f}% missing)"
-                    )
-
-                st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
-                st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
-                st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
-                st.success(f"✅ Created **{len(_to_create)} missingness indicator(s)**: "
-                           f"{', '.join(f'`{f}_has_data`' for f in _to_create)}")
-                st.rerun()
-
-            # Conditional ordinal encoding for categorical columns with high missingness
-            _cat_with_missing = [f for f in _selected_miss if f in categorical_features]
-            if _cat_with_missing:
-                st.markdown("---")
-                st.markdown("**Conditional Ordinal Encoding** (categorical features with high missingness)")
-                st.caption(
-                    "For partially-observed categorical features, encode as ordinal: "
-                    "missing → 0, then each category gets a sequential integer. "
-                    "This preserves the has-data / no-data distinction in a single column."
-                )
-                _selected_cat_ordinal = st.multiselect(
-                    "Select categorical features for conditional ordinal encoding",
-                    options=_cat_with_missing,
-                    default=[],
-                    key="miss_cat_ordinal_features",
-                )
-                if _selected_cat_ordinal:
-                    _already_ordinal = [f for f in _selected_cat_ordinal if f"{f}_ordinal" in X_engineered.columns]
-                    _to_encode = [f for f in _selected_cat_ordinal if f"{f}_ordinal" not in X_engineered.columns]
-
-                    if _already_ordinal:
-                        st.caption(f"Already encoded: {', '.join(f'`{f}_ordinal`' for f in _already_ordinal)}")
-
-                    if _to_encode and st.button(
-                        f"🔬 Create {len(_to_encode)} Ordinal Encoding(s)",
-                        key="btn_create_cat_ordinal",
-                    ):
-                        for feat in _to_encode:
-                            col_name = f"{feat}_ordinal"
-                            series = X[feat].copy()
-                            categories = series.dropna().unique()
-                            cat_map = {cat: i + 1 for i, cat in enumerate(sorted(categories))}
-                            X_engineered[col_name] = series.map(cat_map).fillna(0).astype(int)
-                            engineered_features.append(col_name)
-                            engineering_log.append(
-                                f"Conditional ordinal: {col_name} (0=missing, "
-                                f"{len(cat_map)} categories)"
-                            )
-
-                        st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
-                        st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
-                        st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
-                        st.success(f"✅ Created **{len(_to_encode)} ordinal encoding(s)**")
-                        st.rerun()
+    if len(_features_with_missing) == 0:
+        st.info("No missing values detected in the selected features — this section is not applicable.")
     else:
-        st.info(f"No features have ≥{_miss_threshold}% missingness. Lower the threshold to see more.")
+        _n_rows = len(X)
+        st.markdown(
+            f"**{len(_features_with_missing)}** feature(s) have missing values. "
+            "High missingness may be **informative** (MNAR): if a question was only asked of a "
+            "subgroup, the presence or absence of data is itself predictive."
+        )
+
+        # Show missingness table
+        _miss_df = pd.DataFrame({
+            "Feature": _features_with_missing.index,
+            "Missing": _features_with_missing.values,
+            "% Missing": [f"{100 * v / _n_rows:.1f}%" for v in _features_with_missing.values],
+        }).reset_index(drop=True)
+        st.dataframe(_miss_df, width="stretch", hide_index=True)
+
+        # Coaching callout for high-missingness features
+        _high_missing = _features_with_missing[_features_with_missing / _n_rows > 0.30]
+        if len(_high_missing) > 0:
+            st.warning(
+                f"**Coaching:** {len(_high_missing)} feature(s) have >30% missingness "
+                f"({', '.join(_high_missing.index[:5])}{'…' if len(_high_missing) > 5 else ''}). "
+                "A reviewer would ask whether this missingness is random (MCAR) or structural (MNAR). "
+                "If structural, create a binary `has_data` indicator — the indicator itself may be "
+                "more predictive than the imputed value."
+            )
+
+        # Threshold slider
+        _miss_threshold = st.slider(
+            "Minimum missing % to show",
+            min_value=0, max_value=100, value=5,
+            key="miss_indicator_threshold",
+            help="Only show features with at least this % missing",
+        )
+        _eligible = _features_with_missing[_features_with_missing / _n_rows >= _miss_threshold / 100]
+
+        if len(_eligible) > 0:
+            _selected_miss = st.multiselect(
+                "Select features to create `has_data` indicators for",
+                options=list(_eligible.index),
+                default=list(_eligible.index),
+                key="miss_indicator_features",
+            )
+
+            if _selected_miss:
+                # Check which indicators already exist
+                _already_created = [f for f in _selected_miss if f"{f}_has_data" in X_engineered.columns]
+                _to_create = [f for f in _selected_miss if f"{f}_has_data" not in X_engineered.columns]
+
+                if _already_created:
+                    st.caption(f"Already created: {', '.join(f'`{f}_has_data`' for f in _already_created)}")
+
+                if _to_create and st.button(
+                    f"🔬 Create {len(_to_create)} Missing Indicator(s)",
+                    key="btn_create_miss_indicators",
+                ):
+                    for feat in _to_create:
+                        col_name = f"{feat}_has_data"
+                        X_engineered[col_name] = (~X[feat].isnull()).astype(int)
+                        engineered_features.append(col_name)
+                        _pct = 100 * _missing_counts[feat] / _n_rows
+                        engineering_log.append(
+                            f"Missingness indicator: {col_name} (1 = observed, 0 = missing; "
+                            f"{_pct:.1f}% missing)"
+                        )
+
+                    st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
+                    st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
+                    st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                    st.success(f"✅ Created **{len(_to_create)} missingness indicator(s)**: "
+                               f"{', '.join(f'`{f}_has_data`' for f in _to_create)}")
+                    st.rerun()
+
+                # Conditional ordinal encoding for categorical columns with high missingness
+                _cat_with_missing = [f for f in _selected_miss if f in categorical_features]
+                if _cat_with_missing:
+                    st.markdown("---")
+                    st.markdown("**Conditional Ordinal Encoding** (categorical features with high missingness)")
+                    st.caption(
+                        "For partially-observed categorical features, encode as ordinal: "
+                        "missing → 0, then each category gets a sequential integer. "
+                        "This preserves the has-data / no-data distinction in a single column."
+                    )
+                    _selected_cat_ordinal = st.multiselect(
+                        "Select categorical features for conditional ordinal encoding",
+                        options=_cat_with_missing,
+                        default=[],
+                        key="miss_cat_ordinal_features",
+                    )
+                    if _selected_cat_ordinal:
+                        _already_ordinal = [f for f in _selected_cat_ordinal if f"{f}_ordinal" in X_engineered.columns]
+                        _to_encode = [f for f in _selected_cat_ordinal if f"{f}_ordinal" not in X_engineered.columns]
+
+                        if _already_ordinal:
+                            st.caption(f"Already encoded: {', '.join(f'`{f}_ordinal`' for f in _already_ordinal)}")
+
+                        if _to_encode and st.button(
+                            f"🔬 Create {len(_to_encode)} Ordinal Encoding(s)",
+                            key="btn_create_cat_ordinal",
+                        ):
+                            for feat in _to_encode:
+                                col_name = f"{feat}_ordinal"
+                                series = X[feat].copy()
+                                categories = series.dropna().unique()
+                                cat_map = {cat: i + 1 for i, cat in enumerate(sorted(categories))}
+                                X_engineered[col_name] = series.map(cat_map).fillna(0).astype(int)
+                                engineered_features.append(col_name)
+                                engineering_log.append(
+                                    f"Conditional ordinal: {col_name} (0=missing, "
+                                    f"{len(cat_map)} categories)"
+                                )
+
+                            st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
+                            st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
+                            st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
+                            st.success(f"✅ Created **{len(_to_encode)} ordinal encoding(s)**")
+                            st.rerun()
+        else:
+            st.info(f"No features have ≥{_miss_threshold}% missingness. Lower the threshold to see more.")
 
 # ============================================================================
 # Summary & Save
@@ -1341,14 +1280,14 @@ if new_features > 0:
             except Exception:
                 pass  # Provenance recording should never break the workflow
 
-            st.success(f"✅ Saved engineered dataset! ({len(engineered_features)} new features)")
             st.balloons()
-            st.info("""
-            👉 **Next step: Feature Selection**
-            
-            Your engineered features are now part of the working dataset.
-            Navigate to **Feature Selection** to identify the most important features.
-            """)
+            # The rerun below would destroy any banner rendered here — queue a
+            # flash so the confirmation and next-step hint survive it.
+            from utils.theme import flash
+            flash("success",
+                  f"✅ Saved engineered dataset ({len(engineered_features)} new features). "
+                  f"👉 **Next step: Feature Selection** — your engineered features are now "
+                  f"part of the working dataset.")
             # Force page rerun to show updated state
             st.rerun()
 else:

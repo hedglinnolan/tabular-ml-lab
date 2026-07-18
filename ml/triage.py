@@ -51,9 +51,17 @@ def detect_task_type(df: pd.DataFrame, target: str) -> Dict:
             confidence = 'high'
             reasons.append("Target is binary (0/1) - classification")
         elif n_unique <= 10:
+            # Low-cardinality integers are AMBIGUOUS: class codes read this
+            # way, but so do counts and 0-10 ratings, which are regression
+            # targets. Never assert this confidently — the UI prompts the
+            # user to verify or override when confidence is not 'high'.
             detected = 'classification'
-            confidence = 'med' if n_unique <= 5 else 'low'
-            reasons.append(f"Target has {n_unique} unique integer values (≤10) - classification")
+            confidence = 'low'
+            reasons.append(
+                f"Target has {n_unique} unique integer values (≤10) — this often means "
+                f"classification, but counts or ordinal scores should be treated as "
+                f"regression. Verify or override below."
+            )
         elif unique_ratio < 0.02:
             detected = 'classification'
             confidence = 'med'

@@ -520,14 +520,38 @@ def _call_ollama(context: str, system_prompt: str, model: str, url: str) -> Opti
     """
     import requests
     try:
-        # Ensure ollama is running
+        # Ensure ollama is reachable; if locally installed but stopped, try to
+        # start it and poll briefly (bounded) instead of a blind sleep.
+        tags_resp = None
         try:
-            requests.get(f"{url}/api/tags", timeout=2)
+            tags_resp = requests.get(f"{url}/api/tags", timeout=2)
         except Exception:
-            import subprocess
-            subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            import time
-            time.sleep(3)
+            try:
+                import subprocess
+                import time
+                subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                for _ in range(8):
+                    time.sleep(0.5)
+                    try:
+                        tags_resp = requests.get(f"{url}/api/tags", timeout=2)
+                        break
+                    except Exception:
+                        continue
+            except FileNotFoundError:
+                return "__unavailable__"
+        if tags_resp is None:
+            return "__unavailable__"
+
+        # Fail fast (with guidance) when the requested model isn't installed,
+        # instead of a long wait ending in a generic error.
+        try:
+            installed = [m.get("name", "") for m in tags_resp.json().get("models", [])]
+            if installed and model not in installed and not any(
+                n == model or n.startswith(f"{model}:") for n in installed
+            ):
+                return "__model_missing__:" + ", ".join(installed[:8])
+        except Exception:
+            pass
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -737,7 +761,7 @@ def _run_llm_call(context: str, plot_type: str, sk: str) -> None:
             st.session_state[sk] = "__no_key__"
             return
 
-    with st.spinner(f"🧠 Analyzing... ({model}, up to ~60s)"):
+    with st.spinner(f"🧠 Analyzing... ({model}, up to ~2 min on a cold model load)"):
         sys_prompt = _build_system_prompt(plot_type) if plot_type else INTERPRETATION_SYSTEM_PROMPT
         result = _call_llm(
             context, sys_prompt,
@@ -787,6 +811,14 @@ def render_interpretation_with_llm_button(
             "To use this feature: (1) Install Ollama from [ollama.ai](https://ollama.ai). "
             "(2) Run `ollama serve` in a terminal. "
             "(3) Pull a model: `ollama pull qwen3.5:9b`."
+        )
+    elif isinstance(res, str) and res.startswith("__model_missing__"):
+        _installed = res.split(":", 1)[1].strip() if ":" in res else ""
+        st.warning(
+            f"Ollama is running, but model `{st.session_state.get('ollama_model', DEFAULT_OLLAMA_MODEL)}` "
+            f"is not installed."
+            + (f" Installed models: {_installed}." if _installed else "")
+            + " Pull it with `ollama pull <model>` or enter an installed model in the sidebar (🤖 LLM Settings)."
         )
     elif res == "__error__":
         st.warning(

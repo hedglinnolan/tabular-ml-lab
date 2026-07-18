@@ -29,6 +29,8 @@ render_step_indicator(4, "Feature Selection")
 st.title("🎯 Feature Selection")
 st.caption("Recommended workflow: use this step to simplify the modeling problem before you start tuning preprocessing or training multiple models.")
 render_breadcrumb("04_Feature_Selection")
+from utils.test_lockbox import render_lockbox_status as _render_lockbox_chip
+_render_lockbox_chip("Selectors on this page are fit on training rows only.")
 render_page_navigation("04_Feature_Selection")
 
 # Prerequisites
@@ -56,8 +58,8 @@ render_page_coaching("04_Feature_Selection")
 # ============================================================================
 # WHY FEATURE SELECTION?
 # ============================================================================
-st.markdown("""
-### Why Feature Selection?
+with st.expander("📖 Why feature selection?", expanded=False):
+    st.markdown("""
 
 After uploading and exploring your data, you likely have many features (predictors). 
 Feature selection helps you:
@@ -117,10 +119,20 @@ if categorical_excluded:
         f"These features are retained in your dataset and can still be used for modeling."
     )
 
-# Prepare data (drop missing target)
-mask = df[target_col].notna()
+# Prepare data: drop missing targets AND quarantine the locked test rows.
+# Running selectors on all rows would let the test set vote on which
+# predictors enter the model — the classic feature-selection leakage
+# (Ambroise & McLachlan 2002; ESL §7.10.2).
+from utils.test_lockbox import train_row_mask, is_exploratory
+
+mask = df[target_col].notna() & train_row_mask(df.index)
 X = df.loc[mask, numeric_features].values
 y = df.loc[mask, target_col].values
+if not is_exploratory():
+    st.caption(
+        f"Selection methods see n={int(mask.sum())} training rows; "
+        f"held-out test rows are excluded to prevent selection leakage."
+    )
 
 # Handle NaN in features (simple imputation for feature selection)
 # Note: This temporary imputation does not affect the modeling pipeline
@@ -136,7 +148,7 @@ if _high_missing:
         f"Features with >20% missing: {', '.join(_high_missing[:5])}. "
         f"Results may be affected — preprocessing handles imputation separately during training."
     )
-else:
+elif df.loc[mask, numeric_features].isna().any().any():
     st.caption("Missing values temporarily filled with column medians for selection (does not affect modeling data).")
 
 # ============================================================================
@@ -146,12 +158,21 @@ else:
 st.header("Select Methods")
 st.caption("Run multiple methods and compare which features are consistently selected.")
 
+# RFE with step=1 fits ~p models over shrinking feature sets — measured
+# ~80s at 3000 features on this hardware, so default it off on wide data.
+_RFE_AUTO_DISABLE_FEATURES = 500
+_rfe_too_wide = len(numeric_features) > _RFE_AUTO_DISABLE_FEATURES
+
 col1, col2 = st.columns(2)
 with col1:
     run_lasso = st.checkbox("LASSO Path", value=True,
                             help="Shows how features enter/leave the model as regularization changes. Best for identifying the strongest linear predictors.")
-    run_rfe = st.checkbox("RFE-CV (Recursive Feature Elimination)", value=True,
+    run_rfe = st.checkbox("RFE-CV (Recursive Feature Elimination)", value=not _rfe_too_wide,
                           help="Iteratively removes least important features. Finds the optimal subset size via cross-validation.")
+    if _rfe_too_wide and not run_rfe:
+        st.caption(f"Off by default above {_RFE_AUTO_DISABLE_FEATURES} features "
+                   "— recursive elimination takes minutes at this width. "
+                   "Enable it if you need it.")
 with col2:
     run_univariate = st.checkbox("Univariate Screening (FDR-corrected)", value=True,
                                  help="Tests each feature individually against the target. FDR correction controls false discovery rate.")
@@ -174,7 +195,8 @@ with st.expander("⚙️ Advanced Settings", expanded=False):
 n_features = len(numeric_features)
 n_samples = len(X)
 if n_features > 200:
-    st.caption(f"⚠️ {n_features} features × {n_samples} samples — selection may take a few minutes.{' Consider disabling RFE.' if n_features > 500 else ''}")
+    _rfe_note = " RFE is the slow one — expect minutes if enabled." if run_rfe and n_features > _RFE_AUTO_DISABLE_FEATURES else ""
+    st.caption(f"⚠️ {n_features} features × {n_samples} samples — selection may take a few minutes.{_rfe_note}")
 
 if st.button("🔍 Run Feature Selection", type="primary"):
     import signal, functools
@@ -295,8 +317,11 @@ if results:
     st.header("Results")
 
     # Per-method results
-    for result in results:
-        with st.expander(f"**{result.method}** — {len(result.selected_features)}/{len(result.all_features)} features selected", expanded=True):
+    _method_tabs = st.tabs([
+        f"{r.method} · {len(r.selected_features)}/{len(r.all_features)} kept" for r in results
+    ])
+    for result, _method_tab in zip(results, _method_tabs):
+        with _method_tab:
             st.markdown(result.description)
 
             # Score table
@@ -314,12 +339,23 @@ if results:
                     import plotly.graph_objects as go
                     alphas = np.array(result.details["alphas"])
                     coefs = np.array(result.details["path_coefs"])
+                    # One trace per feature is unreadable (and a huge payload)
+                    # on wide data — keep the strongest paths only.
+                    _LASSO_PLOT_MAX_TRACES = 20
+                    _path_order = np.argsort(-np.abs(coefs).max(axis=1))
+                    _shown = _path_order[:_LASSO_PLOT_MAX_TRACES]
                     fig = go.Figure()
-                    for j, fname in enumerate(numeric_features):
+                    for j in _shown:
                         fig.add_trace(go.Scatter(
                             x=np.log10(alphas), y=coefs[j, :],
-                            mode='lines', name=fname,
+                            mode='lines', name=numeric_features[j],
                         ))
+                    if len(numeric_features) > _LASSO_PLOT_MAX_TRACES:
+                        st.caption(
+                            f"Showing the {_LASSO_PLOT_MAX_TRACES} strongest coefficient "
+                            f"paths of {len(numeric_features)} features (ranked by max "
+                            "|coefficient| along the path)."
+                        )
                     fig.add_vline(
                         x=np.log10(result.details["optimal_alpha"]),
                         line_dash="dash", line_color="red",

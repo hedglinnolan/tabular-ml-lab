@@ -36,8 +36,13 @@ def lasso_path_selection(
     identifying the most robust predictors.
     """
     if task_type == "regression":
+        import inspect
         from sklearn.linear_model import LassoCV, lasso_path
-        model = LassoCV(cv=cv_folds, n_alphas=n_alphas, random_state=random_state, max_iter=10000)
+        # sklearn >=1.9 removed n_alphas in favor of alphas accepting an int
+        if 'n_alphas' in inspect.signature(LassoCV.__init__).parameters:
+            model = LassoCV(cv=cv_folds, n_alphas=n_alphas, random_state=random_state, max_iter=10000)
+        else:
+            model = LassoCV(cv=cv_folds, alphas=n_alphas, random_state=random_state, max_iter=10000)
     else:
         from sklearn.linear_model import LogisticRegressionCV
         model = LogisticRegressionCV(

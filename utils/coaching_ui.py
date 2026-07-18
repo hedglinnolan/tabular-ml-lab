@@ -30,8 +30,27 @@ SEVERITY_STYLES = {
 
 
 def _get_selected_models() -> List[str]:
-    """Get the user's currently selected models from session state."""
-    return st.session_state.get("selected_models", [])
+    """Get the user's currently selected models from session state.
+
+    The model-selection checkboxes (train_model_<key>, shared by the
+    Preprocess and Train pages) are the source of truth; an explicit
+    'selected_models' key acts as an override for programmatic use. Nothing
+    wrote 'selected_models' before, which left model-aware coaching —
+    grouping and per-family scoping — permanently inactive.
+    """
+    explicit = st.session_state.get("selected_models")
+    if explicit:
+        return list(explicit)
+    from_checkboxes = [k.replace("train_model_", "")
+                       for k, v in st.session_state.items()
+                       if k.startswith("train_model_") and v is True]
+    if from_checkboxes:
+        return from_checkboxes
+    # train_model_* keys become widget-bound on the Train page, so Streamlit
+    # garbage-collects them when the user navigates elsewhere. Fall back to
+    # the durable record of models whose pipelines were built on Preprocess.
+    built = st.session_state.get("preprocess_built_model_keys")
+    return list(built) if built else []
 
 
 def render_page_coaching(
@@ -123,8 +142,19 @@ def _render_insights_body(
             st.caption(f"... and {len(resolved) - 5} more")
 
 
+_SEVERITY_RANK = {"blocker": 0, "warning": 1, "info": 2, "opportunity": 3}
+
+
 def _render_model_grouped(insights: List[Insight], selected_models: List[str], page_id: str = "page", shown_demos: set = None) -> None:
-    """Render insights grouped by model family."""
+    """Render insights grouped by model family.
+
+    Each insight renders exactly ONCE: universal insights first (they affect
+    every model), then one card per scoped insight under its first matched
+    family — the full applicability list is already shown by the insight's
+    italic scope chip. Rendering the same card once per matched family
+    produced two or three identical cards for a single skewness finding.
+    Clean families collapse into a single trailing reassurance line.
+    """
     families = models_to_families(selected_models)
     universal = []
     by_family = {}
@@ -135,33 +165,41 @@ def _render_model_grouped(insights: List[Insight], selected_models: List[str], p
         else:
             matched_families = [f for f in families if f in ins.model_scope]
             if matched_families:
-                for f in matched_families:
-                    display = FAMILY_DISPLAY_NAMES.get(f, f)
-                    by_family.setdefault(display, []).append(ins)
+                display = FAMILY_DISPLAY_NAMES.get(matched_families[0], matched_families[0])
+                by_family.setdefault(display, []).append(ins)
             else:
                 # Insight has model_scope but none of the user's models match
                 # This means it's irrelevant — skip it
                 pass
 
-    # Report clean families
-    all_family_displays = [FAMILY_DISPLAY_NAMES.get(f, f) for f in families]
-    dirty_families = set(by_family.keys())
-
-    # Render per-family insights
-    for family_display in all_family_displays:
-        items = by_family.get(family_display, [])
-        if items:
-            st.markdown(f"**{family_display}** ({len(items)} item{'s' if len(items) > 1 else ''})")
-            for ins in items:
-                _render_single_insight(ins, page_context=page_id, shown_demos=shown_demos)
-        else:
-            st.markdown(f"**{family_display}** — ✅ no issues")
-
-    # Universal insights (affect all models)
+    # Universal insights first — class imbalance / missing-data warnings must
+    # not render below per-family info notes.
     if universal:
+        universal = sorted(universal, key=lambda i: _SEVERITY_RANK.get(i.severity, 9))
         st.markdown(f"**All Models** ({len(universal)} item{'s' if len(universal) > 1 else ''})")
         for ins in universal:
             _render_single_insight(ins, page_context=page_id, shown_demos=shown_demos)
+
+    # Family sections, most severe contents first
+    def _section_rank(items):
+        return min((_SEVERITY_RANK.get(i.severity, 9) for i in items), default=9)
+
+    for family_display, items in sorted(by_family.items(), key=lambda kv: _section_rank(kv[1])):
+        items = sorted(items, key=lambda i: _SEVERITY_RANK.get(i.severity, 9))
+        st.markdown(f"**{family_display}** ({len(items)} item{'s' if len(items) > 1 else ''})")
+        for ins in items:
+            _render_single_insight(ins, page_context=page_id, shown_demos=shown_demos)
+
+    # Collapse clean families into one line. "Clean" = no insight's scope
+    # includes the family at all (an insight filed under its first matched
+    # family still counts for its other matched families via its scope chip).
+    matched_any = set()
+    for ins in insights:
+        if ins.model_scope:
+            matched_any.update(f for f in families if f in ins.model_scope)
+    clean = [FAMILY_DISPLAY_NAMES.get(f, f) for f in families if f not in matched_any]
+    if clean:
+        st.markdown(f"✅ No family-specific issues for {', '.join(clean)}")
 
 
 def _render_single_insight(ins: Insight, page_context: str = "coaching", shown_demos: set = None) -> None:

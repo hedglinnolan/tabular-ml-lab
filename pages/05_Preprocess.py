@@ -42,6 +42,8 @@ render_step_indicator(5, "Preprocessing")
 st.title("⚙️ Preprocess for Modeling")
 st.caption("Recommended workflow: make the data model-ready here, then move directly into training and comparison.")
 render_breadcrumb("05_Preprocess")
+from utils.test_lockbox import render_lockbox_status
+render_lockbox_status("Pipelines configured here are fit on training rows at Train & Compare.")
 render_page_navigation("05_Preprocess")
 
 st.markdown("""
@@ -108,6 +110,53 @@ numeric_features = [f for f in all_features if f in numeric_cols]
 categorical_features = [f for f in all_features if f not in numeric_cols]
 
 st.info(f"**Numeric features:** {len(numeric_features)} | **Categorical features:** {len(categorical_features)}")
+
+# ── High-cardinality one-hot guardrail ──────────────────────────
+# An ID-like categorical (hundreds+ of levels) silently explodes into that
+# many one-hot columns inside the pipeline. Warn unconditionally (both
+# smart-defaults and Advanced mode) and record it in the ledger.
+_ONEHOT_EXPLOSION_LEVELS = 50
+if categorical_features:
+    _cat_nunique = df[categorical_features].nunique()
+    _explosive = _cat_nunique[_cat_nunique > _ONEHOT_EXPLOSION_LEVELS].sort_values(ascending=False)
+    if len(_explosive) > 0:
+        _worst = ", ".join(f"`{c}` ({int(n)} levels)" for c, n in _explosive.head(5).items())
+        st.warning(
+            f"🏷️ **{len(_explosive)} high-cardinality categorical feature(s)** would "
+            f"one-hot into **{int(_explosive.sum()):,} extra columns**: {_worst}"
+            f"{' …' if len(_explosive) > 5 else ''}. If these are identifiers, drop "
+            f"them on the Upload page; otherwise use Target Encoding (Advanced mode) "
+            f"instead of One-Hot."
+        )
+        from utils.insight_ledger import Insight as _HCInsight, get_ledger as _get_hc_ledger
+        _get_hc_ledger().upsert(_HCInsight(
+            id="preprocess_high_cardinality",
+            source_page="05_Preprocess", category="data_quality", severity="warning",
+            finding=(f"{len(_explosive)} categorical feature(s) exceed "
+                     f"{_ONEHOT_EXPLOSION_LEVELS} levels (max: {_explosive.index[0]} "
+                     f"with {int(_explosive.iloc[0])})"),
+            implication=(f"One-hot encoding would add ~{int(_explosive.sum()):,} sparse "
+                         "columns, slowing training and diluting importance scores. "
+                         "ID-like columns also leak row identity."),
+            manuscript_text=(
+                f"{len(_explosive)} categorical "
+                f"{'predictor' if len(_explosive) == 1 else 'predictors'} had very "
+                f"high cardinality (maximum: {int(_explosive.iloc[0])} levels), "
+                f"substantially inflating the encoded feature space"
+            ),
+            affected_features=list(_explosive.index),
+            recommended_action="Drop identifier-like columns, or switch these to target encoding",
+            relevant_pages=["01_Upload_and_Audit", "05_Preprocess"],
+            auto_generated=True,
+        ))
+    else:
+        # Self-heal: the offending columns are gone (dropped or deselected),
+        # so the warning must not linger in the coaching layer.
+        from utils.insight_ledger import get_ledger as _get_hc_ledger
+        _get_hc_ledger().remove("preprocess_high_cardinality")
+else:
+    from utils.insight_ledger import get_ledger as _get_hc_ledger
+    _get_hc_ledger().remove("preprocess_high_cardinality")
 
 # ── Double-transformation guardrail ─────────────────────────────
 _eng_transform_map = st.session_state.get("engineered_feature_transforms", {})
@@ -269,7 +318,7 @@ for group_name in sorted(model_groups_prep.keys()):
             if st.button(
                 btn_label,
                 key=f"btn_{ck}",
-                use_container_width=True,
+                width="stretch",
                 type="primary" if is_selected else "secondary",
                 help=desc,
             ):
@@ -426,13 +475,14 @@ if use_smart_defaults:
 else:
     st.markdown("---")
     st.subheader("Per-Model Configuration")
-    st.caption("Expand each model to customize its preprocessing pipeline. Settings apply per-model so you can tailor preprocessing to each algorithm's needs.")
+    st.caption("Each tab is one model's pipeline. Settings apply per-model so you can tailor preprocessing to each algorithm's needs.")
 
     # Helper: detect high-cardinality categoricals
     _high_card_feats = [f for f in categorical_features if df[f].nunique() > 10] if categorical_features else []
 
-    for _mk in _config_keys:
-        with st.expander(f"🔧 Configure {_mk.upper()}", expanded=(len(_config_keys) == 1)):
+    _model_cfg_tabs = st.tabs([f"🔧 {mk.upper()}" for mk in _config_keys])
+    for _mk, _model_cfg_tab in zip(_config_keys, _model_cfg_tabs):
+        with _model_cfg_tab:
 
             # ── 1. 🧹 Handle Missing Data ──
             st.markdown("#### 🧹 Handle Missing Data")
@@ -1036,7 +1086,11 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
             _models_with_transform = {mk: t for mk, t in _transform_by_model.items() if t != "none"}
             _models_without = [mk for mk, t in _transform_by_model.items() if t == "none"]
             if _models_with_transform:
-                for _skew_id in ["eda_skew_individual", "eda_skew_batch", "eda_target_skew"]:
+                # eda_skew_group is the id EDA actually creates for feature skew.
+                # eda_target_skew is deliberately NOT here: it concerns the target
+                # variable, which a feature power transform does not touch — it is
+                # resolved on Train & Compare when a target transform is applied.
+                for _skew_id in ["eda_skew_group"]:
                     _ins = _pp_resolve_ledger.get(_skew_id)
                     if _ins and not _ins.resolved:
                         if _models_without:
@@ -1051,7 +1105,9 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
             _outlier_by_model = {mk: mc.get("numeric_outlier_treatment", "none") for mk, mc in configs_by_model.items()}
             _models_with_outlier = {mk: t for mk, t in _outlier_by_model.items() if t != "none"}
             if _models_with_outlier:
-                for _out_id in ["eda_outliers"]:
+                # preprocess_outlier_handling is the model-coach insight that
+                # actually exists; no insight named eda_outliers is ever created.
+                for _out_id in ["preprocess_outlier_handling"]:
                     _ins = _pp_resolve_ledger.get(_out_id)
                     if _ins and not _ins.resolved:
                         _models_no_outlier = [mk for mk, t in _outlier_by_model.items() if t == "none"]
@@ -1169,7 +1225,8 @@ if pipelines_by_model:
         st.rerun()
 
 # State Debug (Advanced)
-with st.expander("Advanced / State Debug", expanded=False):
+if st.session_state.get("show_debug_panel"):
+  with st.expander("Advanced / State Debug", expanded=False):
     st.markdown("**Current State:**")
     st.write(f"• Data shape: {df.shape if df is not None else 'None'}")
     st.write(f"• Target: {data_config.target_col if data_config else 'None'}")
