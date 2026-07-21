@@ -364,7 +364,7 @@ class TopPick:
     handles_missing: bool
 
 
-def select_top_picks(profile: Any) -> Tuple[List[TopPick], List[Tuple[str, str]], str]:
+def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], List[Tuple[str, str]], str]:
     """Select 2-3 models from the dataset's SHAPE, dominant constraint first.
 
     The old logic reacted to whatever signal it checked first (feature
@@ -374,6 +374,12 @@ def select_top_picks(profile: Any) -> Tuple[List[TopPick], List[Tuple[str, str]]
     event count could not support it. This version names the dataset's
     dominant constraint, cites the numbers, and only claims what the shape
     can back.
+
+    Args:
+        profile: DatasetProfile.
+        probe: optional ml.coach_probe.ProbeResult — measured evidence from
+            the training rows. When present, the advice cites measurements
+            instead of priors.
 
     Returns:
         (picks, skip_list, headline) — headline is one sentence naming the
@@ -423,6 +429,24 @@ def select_top_picks(profile: Any) -> Tuple[List[TopPick], List[Tuple[str, str]]
     else:
         headline = ""
 
+    # --- MEASURED EVIDENCE (outranks shape priors when available) ---
+    _gain = probe.nonlinearity_gain if probe is not None else None
+    _signal = probe.has_signal if probe is not None else None
+    if probe is not None:
+        if _signal is False and not probe.underpowered:
+            headline = (
+                f"⚠️ Evidence probe: {probe.summary()}. Expect null results — "
+                f"verify these predictors can plausibly relate to the outcome "
+                f"before investing further. " + (headline or "")).strip()
+        elif _signal is False and probe.underpowered:
+            headline = ((headline + " " if headline else "")
+                        + f"Evidence probe: {probe.summary()}.").strip()
+        elif probe.data_hungry and _signal:
+            headline = ((headline + " " if headline else "")
+                        + "Evidence probe: scores were still rising with more "
+                          "rows — collecting more data may beat tuning more "
+                          "models.").strip()
+
     # --- 1. CORE LINEAR MODEL ---
     if task_type == "regression":
         if is_wide:
@@ -470,6 +494,10 @@ def select_top_picks(profile: Any) -> Tuple[List[TopPick], List[Tuple[str, str]]
             pp_parts.append("transform skewed features")
         if task_type == "classification" and imbalanced:
             pp_parts.append("class weights")
+        if (_signal and _gain is not None and _gain < 0.02):
+            linear_why += (f" An evidence probe measured trees ≈ linear on this "
+                           f"data (Δ{probe.metric_name} = {_gain:+.2f}) — the "
+                           f"interpretable model may be all you need.")
         picks.append(TopPick(
             role="Start here", model_key=linear_key, model_name=linear_name,
             group="Linear", why=linear_why,
@@ -492,6 +520,10 @@ def select_top_picks(profile: Any) -> Tuple[List[TopPick], List[Tuple[str, str]]
             tree_key, tree_name = "rf", "Random Forest"
             tree_why = ("Robust non-linear benchmark with few hyperparameters — a fair "
                         "test of whether anything beats the linear model.")
+        if tree_key and _signal and _gain is not None and _gain > 0.04:
+            tree_why += (f" An evidence probe measured +{_gain:.2f} "
+                         f"{probe.metric_name} for shallow trees over linear — "
+                         f"non-linear structure is really there.")
         if tree_key and small_n:
             tree_why += (f" At n={n}, expect fold-to-fold variability — judge it by CV "
                          f"spread, not the single best score.")
@@ -1087,19 +1119,320 @@ def _detect_overfit(
     return findings
 
 
+
+
+def _detect_accuracy_vs_nir(
+    model_results: Dict[str, Dict[str, Any]],
+    task_type: str,
+) -> List[Dict[str, Any]]:
+    """Accuracy must be judged against the no-information rate (NIR): the
+    accuracy of always predicting the majority class. A model at or below
+    the NIR has learned nothing that plain prevalence doesn't already give."""
+    import numpy as np
+
+    if task_type != "classification" or not model_results:
+        return []
+    y_test = None
+    for r in model_results.values():
+        yt = r.get("y_test")
+        if yt is not None and len(yt) > 0:
+            y_test = np.asarray(yt)
+            break
+    if y_test is None:
+        return []
+    _, counts = np.unique(y_test, return_counts=True)
+    nir = float(counts.max() / counts.sum())
+
+    best_key, best_acc = None, -1.0
+    for key, r in model_results.items():
+        acc = r.get("metrics", {}).get("Accuracy")
+        if acc is not None and acc > best_acc:
+            best_key, best_acc = key, float(acc)
+    if best_key is None or best_acc > nir + 0.02:
+        return []
+
+    name = _model_display_name_coach(best_key)
+    return [{
+        'id': 'train_accuracy_below_nir',
+        'severity': 'warning',
+        'finding': (
+            f"Best accuracy ({best_acc:.3f}, {name}) does not beat the "
+            f"no-information rate ({nir:.3f} — always predicting the majority "
+            f"class). The models have not learned beyond prevalence."
+        ),
+        'implication': (
+            "Accuracy near the NIR usually means weak signal or an "
+            "uninformative feature set. AUROC and F1 tell the real story."
+        ),
+        'recommended_action': (
+            "Judge models by AUROC/F1, revisit predictors, and consider the "
+            "evidence probe on the Preprocess page."
+        ),
+        'manuscript_text': (
+            f"classification accuracy ({best_acc:.3f}) did not exceed the "
+            f"no-information rate ({nir:.3f}), indicating limited discriminative "
+            f"value beyond class prevalence"
+        ),
+        'model_scope': [],
+        'metadata': {'nir': nir, 'best_accuracy': best_acc, 'best_model': best_key},
+    }]
+
+
+def _detect_ci_overlap(
+    model_results: Dict[str, Dict[str, Any]],
+    task_type: str,
+    bootstrap_results: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """When bootstrap CIs exist, use them: if the top two models' intervals
+    on the primary metric overlap substantially, the ranking is not
+    established and the simpler/preferred model needs no apology."""
+    if not bootstrap_results or len(model_results) < 2:
+        return []
+    metric = "RMSE" if task_type == "regression" else "F1"
+    higher_better = task_type != "regression"
+
+    scored = []
+    for key, r in model_results.items():
+        val = r.get("metrics", {}).get(metric)
+        if val is not None:
+            scored.append((key, float(val)))
+    if len(scored) < 2:
+        return []
+    scored.sort(key=lambda kv: kv[1], reverse=higher_better)
+    (k1, v1), (k2, v2) = scored[0], scored[1]
+
+    def _ci(key):
+        cis = bootstrap_results.get(key) or {}
+        ci = cis.get(metric)
+        lo = getattr(ci, "ci_lower", None) if ci is not None else None
+        hi = getattr(ci, "ci_upper", None) if ci is not None else None
+        if lo is None and isinstance(ci, dict):
+            lo, hi = ci.get("ci_lower"), ci.get("ci_upper")
+        return (lo, hi)
+
+    lo1, hi1 = _ci(k1)
+    lo2, hi2 = _ci(k2)
+    if None in (lo1, hi1, lo2, hi2):
+        return []
+    import math
+    if any(isinstance(x, float) and math.isnan(x) for x in (lo1, hi1, lo2, hi2)):
+        return []
+    overlap = min(hi1, hi2) - max(lo1, lo2)
+    if overlap <= 0:
+        return []
+
+    n1, n2 = _model_display_name_coach(k1), _model_display_name_coach(k2)
+    return [{
+        'id': 'train_ci_overlap_top_models',
+        'severity': 'info',
+        'finding': (
+            f"The 95% bootstrap CIs of the top two models overlap on {metric}: "
+            f"{n1} [{lo1:.3f}, {hi1:.3f}] vs {n2} [{lo2:.3f}, {hi2:.3f}]. "
+            f"The ranking between them is not established."
+        ),
+        'implication': (
+            "With overlapping intervals, choosing on the point estimate alone "
+            "over-interprets noise; parsimony and interpretability are valid "
+            "tie-breakers."
+        ),
+        'recommended_action': (
+            f"Feel free to prefer the simpler of {n1}/{n2}; report both CIs."
+        ),
+        'manuscript_text': (
+            f"the bootstrap confidence intervals of the two best-performing "
+            f"models overlapped on {metric} ({n1}: {lo1:.3f}\u2013{hi1:.3f}; "
+            f"{n2}: {lo2:.3f}\u2013{hi2:.3f}), so their ranking should not be "
+            f"over-interpreted"
+        ),
+        'model_scope': [],
+        'metadata': {'metric': metric, 'top': k1, 'second': k2},
+    }]
+
+
+def _detect_heteroscedastic_residuals(
+    model_results: Dict[str, Dict[str, Any]],
+    task_type: str,
+    primary_model: str = "",
+) -> List[Dict[str, Any]]:
+    """Residual spread growing with the predicted value means single-width
+    prediction intervals are wrong and a target transform likely helps."""
+    import numpy as np
+
+    if task_type != "regression" or not model_results:
+        return []
+    key = primary_model if primary_model in model_results else next(iter(model_results))
+    r = model_results.get(key) or {}
+    y_test, y_pred = r.get("y_test"), r.get("y_test_pred")
+    if y_test is None or y_pred is None:
+        return []
+    y_test, y_pred = np.asarray(y_test, dtype=float), np.asarray(y_pred, dtype=float)
+    ok = np.isfinite(y_test) & np.isfinite(y_pred)
+    if ok.sum() < 20:
+        return []
+    resid = np.abs(y_test[ok] - y_pred[ok])
+    from scipy.stats import spearmanr
+    rho, _ = spearmanr(resid, y_pred[ok])
+    if not np.isfinite(rho) or abs(rho) < 0.3:
+        return []
+
+    name = _model_display_name_coach(key)
+    direction = "grows" if rho > 0 else "shrinks"
+    return [{
+        'id': 'train_heteroscedastic_residuals',
+        'severity': 'info',
+        'finding': (
+            f"{name}'s residual spread {direction} with the predicted value "
+            f"(Spearman \u03c1 = {rho:.2f} between |residual| and prediction)."
+        ),
+        'implication': (
+            "Errors are not uniform across the outcome range: constant-width "
+            "prediction intervals will be miscalibrated, and mean-based "
+            "metrics understate errors at one end."
+        ),
+        'recommended_action': (
+            "Consider a target transform (log / Yeo-Johnson) on the Train page "
+            "and inspect the Bland\u2013Altman plot on Explainability."
+        ),
+        'manuscript_text': (
+            f"residual variance was not constant across the predicted range "
+            f"(Spearman \u03c1 = {rho:.2f} between absolute residuals and "
+            f"predictions), so uniform-width prediction intervals would be "
+            f"miscalibrated"
+        ),
+        'model_scope': [],
+        'metadata': {'rho': float(rho), 'model': key},
+    }]
+
+
 def run_post_training_diagnostics(
     model_results: Dict[str, Dict[str, Any]],
     task_type: str,
     tolerance: float = 0.05,
+    bootstrap_results: Optional[Dict[str, Any]] = None,
+    primary_model: str = "",
 ) -> List[Dict[str, Any]]:
     """Run all post-training diagnostic checks and return a list of findings.
 
     Each finding is a dict with keys: id, severity, finding, implication,
-    recommended_action, model_scope, metadata.
+    recommended_action, manuscript_text, model_scope, metadata.
     """
     findings = []
     findings.extend(_detect_prefer_simpler(model_results, task_type, tolerance))
     findings.extend(_detect_low_overall_performance(model_results, task_type))
     findings.extend(_detect_high_cv_variance(model_results, task_type))
     findings.extend(_detect_overfit(model_results, task_type))
+    findings.extend(_detect_accuracy_vs_nir(model_results, task_type))
+    findings.extend(_detect_ci_overlap(model_results, task_type, bootstrap_results))
+    findings.extend(_detect_heteroscedastic_residuals(model_results, task_type, primary_model))
     return findings
+
+
+# ── Full-registry viability verdicts ──────────────────────────────────────
+
+def model_viability(profile: Any, probe: Any = None) -> Dict[str, Tuple[str, str]]:
+    """One evidence-bearing verdict per registry model key.
+
+    Returns {model_key: (verdict, clause)} with verdict in
+    {"good", "ok", "poor"}. Rendered under each model card on the Train
+    page so the shape reasoning is visible at the exact moment of choice.
+    The clause cites the dataset's numbers; probe evidence sharpens the
+    tree/boosting clauses when available.
+    """
+    n = profile.n_rows
+    p = profile.n_features
+    tp = profile.target_profile
+    task_type = tp.task_type if tp else "regression"
+    is_wide = profile.p_n_ratio > 1.0
+    is_high_dim = profile.p_n_ratio > 0.3
+    epv = profile.events_per_variable
+    minority = tp.minority_class_size if tp else None
+    low_epv = task_type == "classification" and epv is not None and epv < 10
+    target_outliers = bool(tp and tp.has_outliers and (tp.outlier_rate or 0) > 0.01)
+
+    _gain = probe.nonlinearity_gain if probe is not None else None
+    _signal = probe.has_signal if probe is not None else None
+    probe_tree_note = ""
+    if _signal and _gain is not None:
+        if _gain > 0.04:
+            probe_tree_note = f" (probe: +{_gain:.2f} {probe.metric_name} over linear)"
+        elif _gain < 0.02:
+            probe_tree_note = f" (probe: no gain over linear measured)"
+
+    v: Dict[str, Tuple[str, str]] = {}
+
+    def penalized_linear():
+        if is_wide:
+            return ("good", f"penalization keeps the fit identifiable at p={p:,} > n={n:,}")
+        return ("good", "stable, interpretable core model for this shape")
+
+    v["ridge"] = penalized_linear()
+    v["lasso"] = penalized_linear()
+    v["elasticnet"] = penalized_linear()
+
+    if is_wide:
+        v["glm"] = ("poor", f"unpenalized fit is not identifiable at p={p:,} ≥ n={n:,}")
+    elif profile.p_n_ratio > 0.5:
+        v["glm"] = ("poor", f"unpenalized estimates are unstable at p/n = {profile.p_n_ratio:.2f}")
+    elif n < 30:
+        v["glm"] = ("poor", f"n={n} is below a defensible minimum for unpenalized fits")
+    else:
+        v["glm"] = ("ok", "fine as a classical reference; penalized variants are safer")
+
+    if task_type == "regression" and target_outliers:
+        v["huber"] = ("good", f"outcome has outliers ({tp.outlier_rate:.0%} of values) — robust loss pays")
+    elif is_wide:
+        v["huber"] = ("poor", "no penalty — not identifiable at p≫n")
+    else:
+        v["huber"] = ("ok", "only pays when the outcome itself has outliers — yours looks clean")
+
+    if low_epv:
+        v["logreg"] = ("good", f"the defensible core at EPV={epv:.1f} — penalized, expect wide CIs")
+        v["lda"] = ("poor", f"covariance estimates unreliable at EPV={epv:.1f}")
+        v["gaussian_nb"] = ("ok", "low capacity is tolerable at this EPV; strong independence assumption")
+    else:
+        v["logreg"] = ("good", "interpretable probability baseline")
+        v["lda"] = ("ok", "different lens than logistic regression; assumes Gaussian classes")
+        v["gaussian_nb"] = ("ok", "very fast; assumes feature independence")
+
+    for k in ("knn_reg", "knn_clf"):
+        if is_high_dim or is_wide:
+            v[k] = ("poor", f"distances lose meaning at p={p:,}")
+        elif p > 20:
+            v[k] = ("ok", f"adds little over trees at p={p}")
+        else:
+            v[k] = ("ok", "simple non-parametric reference")
+
+    def tree_family(min_n, name_hint):
+        if is_wide:
+            return ("poor", f"memorizes rather than generalizes at p={p:,} > n={n:,}")
+        if low_epv:
+            return ("poor", f"EPV={epv:.1f} cannot support this capacity")
+        if n < min_n:
+            return ("poor", f"needs roughly {min_n}+ rows; you have {n:,}")
+        if n < 150:
+            return ("ok", f"viable at n={n}, but expect fold-to-fold ranking noise")
+        return ("good", f"strong non-linear learner for this shape{name_hint}")
+
+    v["rf"] = tree_family(50, probe_tree_note)
+    v["extratrees_reg"] = tree_family(50, probe_tree_note)
+    v["extratrees_clf"] = tree_family(50, probe_tree_note)
+    for k in ("histgb_reg", "histgb_clf", "xgb_reg", "xgb_clf", "lgbm_reg", "lgbm_clf"):
+        v[k] = tree_family(100, probe_tree_note)
+
+    for k in ("svr", "svc"):
+        if n > 5000:
+            v[k] = ("poor", f"kernel training scales ~n² — slow at n={n:,}")
+        elif is_wide:
+            v[k] = ("ok", "kernels tolerate p>n, but results are hard to interpret")
+        else:
+            v[k] = ("ok", "try only if the linear baseline underfits")
+
+    if n < 500 or low_epv:
+        v["nn"] = ("poor", f"needs roughly 500+ rows{f' and EPV≥10' if low_epv else ''}; you have {n:,}"
+                   + (f" (EPV={epv:.1f})" if low_epv else ""))
+    elif n < 1000:
+        v["nn"] = ("ok", f"borderline at n={n:,} — regularize heavily")
+    else:
+        v["nn"] = ("good", f"n={n:,} supports the capacity")
+
+    return v

@@ -138,7 +138,32 @@ the dataset's own numbers. Preprocessing insights now acknowledge pipeline
 defaults, carry a small-n outlier-detector caveat, and use a consistent
 native-NaN vocabulary. The parallel dead recommendation apparatus (~830
 lines never rendered by any page) was removed, closing the drift surface.
-10 new shape-awareness tests. Test count: 568 passing. (Known pre-existing:
+10 new shape-awareness tests. Test count: 568 passing.
+
+**Coach intelligence expansion (2026-07-19):** the coach gained four
+capabilities beyond shape priors. (1) An **evidence probe**
+(`ml/coach_probe.py`): seeded, lockbox-respecting cross-validation on
+training rows measuring a penalized signal floor vs permuted-target
+baseline (with an absolute chance floor — negative R² can never count as
+signal), non-linearity gain (shallow trees vs linear on the same folds;
+L1 models on wide data where a variance screen is signal-blind), and a
+learning-curve slope; small-n classification is reported as
+"underpowered/unconfirmed" rather than a false "no signal". One click on
+the Preprocess page; results sharpen the picks ("probe measured +0.73 R²
+for trees"), a no-signal result becomes a headline warning plus a ledger
+insight with manuscript register, and probe numbers are explicitly
+advisory-only. (2) **Viability verdicts** on every Train-page model card
+(✓/△/✗ with an evidence clause citing n, p, EPV) so the shape reasoning
+is visible at the moment of choice. (3) **Three new post-training
+detectors**: accuracy vs the no-information rate, bootstrap CI overlap
+between the top two models (rankings not established → parsimony is a
+valid tie-breaker), and residual heteroscedasticity on the primary model
+(Spearman ρ of |residual| vs prediction) — all with manuscript_text.
+(4) **Coach provenance**: the shortlist rationale and probe summary are
+recorded (`CoachProvenance`) and compiled into the Methods draft's model
+development section (a TRIPOD reporting item) and the evidence map, with
+screen scores explicitly framed as advisory, not results. 23 new tests in
+`tests/test_coach_intelligence.py`. Test count: 591 passing. (Known pre-existing:
 one stale pandas-3 dtype expectation in `scripts/smoke_check.py`'s
 categorical-target check — the pytest suite covering the same path is
 green.)
