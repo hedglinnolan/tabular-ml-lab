@@ -164,3 +164,132 @@ def test_immune_model_mentioned_in_recommendation():
     insights = generate_preprocessing_insights(["ridge", "rf"], profile)
     skew = [i for i in insights if i["id"] == "preprocess_skewness_transform"][0]
     assert "tree" in skew["recommended_action"].lower() or "natively" in skew["recommended_action"].lower()
+
+
+# ── Top-pick shape awareness (2026-07 coach assessment) ──────────────────
+# The old select_top_picks reacted to whatever it checked first: feature
+# outliers hijacked the pick to Huber (which addresses TARGET outliers),
+# p≫n and EPV were never mentioned, and "well-calibrated" was claimed at
+# any event count. These tests pin the shape-first behavior.
+
+def _profile_for(n, p, task="regression", target_outliers=False,
+                 feature_outliers=False, imbalance=None, seed=0):
+    import numpy as np
+    import pandas as pd
+    from ml.dataset_profile import compute_dataset_profile
+
+    rng = np.random.default_rng(seed)
+    df = pd.DataFrame(rng.normal(size=(n, p)), columns=[f"f{i}" for i in range(p)])
+    if feature_outliers:
+        for i in range(min(3, p)):
+            idx = rng.choice(n, max(2, n // 25), replace=False)
+            df.iloc[idx, i] = 15.0
+    if task == "regression":
+        y = df["f0"] * 2 + rng.normal(0, 1, n)
+        if target_outliers:
+            y.iloc[rng.choice(n, max(3, n // 15), replace=False)] = y.mean() + 20 * y.std()
+        df["y"] = y
+    else:
+        df["y"] = (rng.random(n) < (imbalance or 0.5)).astype(int)
+    feats = [c for c in df.columns if c != "y"]
+    return compute_dataset_profile(df, "y", feats, task)
+
+
+class TestTopPicksShapeAwareness:
+    def test_wide_data_gets_penalized_picks_not_huber(self):
+        from ml.model_coach import select_top_picks
+
+        profile = _profile_for(40, 200)
+        picks, skips, headline = select_top_picks(profile)
+        keys = {p.model_key for p in picks}
+        assert keys and keys <= {"lasso", "ridge", "elasticnet"}, keys
+        assert "p≫n" in headline
+        assert any("Tree ensembles" in name for name, _ in skips)
+
+    def test_feature_outliers_alone_do_not_trigger_huber(self):
+        from ml.model_coach import select_top_picks
+
+        profile = _profile_for(400, 12, feature_outliers=True)
+        picks, _, _ = select_top_picks(profile)
+        assert picks[0].model_key != "huber", (
+            "Huber addresses target outliers; feature outliers are a "
+            "preprocessing concern")
+
+    def test_target_outliers_do_trigger_huber_with_rate_cited(self):
+        from ml.model_coach import select_top_picks
+
+        profile = _profile_for(300, 8, target_outliers=True)
+        picks, _, _ = select_top_picks(profile)
+        assert picks[0].model_key == "huber"
+        assert "outcome" in picks[0].why.lower()
+        assert "%" in picks[0].why  # cites the measured rate
+
+    def test_low_epv_keeps_lineup_small_and_cites_numbers(self):
+        from ml.model_coach import select_top_picks
+
+        profile = _profile_for(400, 12, task="classification", imbalance=0.06)
+        picks, skips, headline = select_top_picks(profile)
+        assert "EPV" in headline
+        keys = {p.model_key for p in picks}
+        assert "histgb_clf" not in keys and "rf" not in keys, (
+            "low EPV must not recommend high-capacity models")
+        assert any("EPV" in reason for _, reason in skips)
+        assert "class weights" in picks[0].preprocessing
+
+    def test_calibration_claim_requires_events(self):
+        from ml.model_coach import select_top_picks
+
+        few = _profile_for(120, 10, task="classification", imbalance=0.3)
+        picks_few, _, _ = select_top_picks(few)
+        assert "well-calibrated" not in picks_few[0].why
+        assert "calibration" not in picks_few[0].why.lower() or "checkable" not in picks_few[0].why.lower()
+
+        many = _profile_for(20000, 10, task="classification", imbalance=0.5)
+        picks_many, _, _ = select_top_picks(many)
+        assert "calibration" in picks_many[0].why.lower()
+
+    def test_small_n_tree_pick_carries_cv_spread_caution(self):
+        from ml.model_coach import select_top_picks
+
+        profile = _profile_for(80, 8)
+        picks, _, headline = select_top_picks(profile)
+        tree = [p for p in picks if p.group == "Trees/Boosting"]
+        assert tree and "CV spread" in tree[0].why
+        assert "80 rows" in headline
+
+    def test_skip_reasons_carry_dataset_numbers(self):
+        from ml.model_coach import select_top_picks
+
+        profile = _profile_for(20000, 25, task="classification")
+        _, skips, _ = select_top_picks(profile)
+        svm = [r for name, r in skips if "SVM" in name]
+        assert svm and "20,000" in svm[0]
+
+    def test_unconstrained_dataset_has_no_alarmist_headline(self):
+        from ml.model_coach import select_top_picks
+
+        profile = _profile_for(2000, 15)
+        _, _, headline = select_top_picks(profile)
+        assert headline == ""
+
+
+class TestPreprocessingInsightHonesty:
+    def test_scaling_insight_acknowledges_defaults(self):
+        from ml.model_coach import generate_preprocessing_insights
+
+        profile = _profile_for(300, 10)
+        ins = generate_preprocessing_insights(["ridge", "rf"], profile)
+        scale = [i for i in ins if i["id"] == "preprocess_feature_scaling"]
+        assert scale and "default" in scale[0]["recommended_action"].lower()
+
+    def test_small_n_outlier_flags_get_detector_caveat(self):
+        from ml.model_coach import generate_preprocessing_insights
+
+        profile = _profile_for(34, 12, feature_outliers=True)
+        if not profile.features_with_outliers:
+            import pytest
+            pytest.skip("detector did not flag this draw")
+        ins = generate_preprocessing_insights(["ridge"], profile)
+        outlier = [i for i in ins if i["id"] == "preprocess_outlier_handling"]
+        if len(profile.features_with_outliers) > 0.3 * profile.n_features:
+            assert outlier and "inspect" in outlier[0]["recommended_action"].lower()

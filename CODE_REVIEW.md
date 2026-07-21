@@ -117,6 +117,32 @@ the pipeline holds no evidence — downloadable beside the draft.
 conversion, so hostile column names (`feat_0042`, "15%") compile.
 17 new tests in `tests/test_manuscript_trust.py`. Test count: 549 passing.
 
+**Model-coach assessment wave (2026-07-19):** an empirical audit (the
+coach's verbatim output across seven dataset shapes) found the visible
+coach reacting to whichever signal it checked first rather than the
+dataset's dominant constraint: feature outliers hijacked the pick to Huber
+(which is robust to TARGET outliers — a statistical confusion), a 34×300
+dataset got an unpenalized robust regression with no mention of p≫n,
+a 6%-minority classification with EPV 1.6 was told logistic regression's
+"probability outputs are well-calibrated" with zero mention of imbalance,
+the collinearity branch was dead (the profile has no such field), and the
+scaling advice told users to do what the default pipeline already does.
+`select_top_picks` was rewritten shape-first: it now returns a HEADLINE
+naming the dominant constraint with the numbers (p≫n, EPV vs the ≥10
+guideline, imbalance ratio, small-n CV-spread warning), picks penalized
+models for wide data (LASSO + Ridge comparison, trees skip-listed with an
+explanation), triggers Huber only on measured outcome outliers, keeps the
+lineup deliberately small at low EPV, claims calibration only when the
+event count supports checking it, and gives skip-list reasons that cite
+the dataset's own numbers. Preprocessing insights now acknowledge pipeline
+defaults, carry a small-n outlier-detector caveat, and use a consistent
+native-NaN vocabulary. The parallel dead recommendation apparatus (~830
+lines never rendered by any page) was removed, closing the drift surface.
+10 new shape-awareness tests. Test count: 568 passing. (Known pre-existing:
+one stale pandas-3 dtype expectation in `scripts/smoke_check.py`'s
+categorical-target check — the pytest suite covering the same path is
+green.)
+
 **Known remaining work (deliberately deferred, none demo-blocking):**
 explicit theory anchors at every EDA producer (inference fallback is
 currently benign but fragile); coaching badge counts vs scoped body

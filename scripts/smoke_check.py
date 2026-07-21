@@ -83,9 +83,8 @@ def test_import_model_registry():
 @test("Import: ml.model_coach")
 def test_import_model_coach():
     from ml.model_coach import (
-        coach_recommendations, CoachRecommendation, GROUP_DISPLAY_NAMES,
-        compute_model_recommendations, ModelRecommendation, RecommendationBucket,
-        TrainingTimeTier, CoachOutput
+        select_top_picks, generate_preprocessing_insights,
+        run_post_training_diagnostics, TopPick, TrainingTimeTier,
     )
 
 
@@ -190,51 +189,24 @@ def test_nn_architecture_params():
     assert 'grad_clip_norm' in schema, "NN should have grad_clip_norm param"
 
 
-@test("Coach: recommendations are merged by group")
-def test_coach_merging():
-    from ml.model_coach import coach_recommendations, _merge_recommendations_by_group, CoachRecommendation
-    
-    # Create test recommendations with same group
-    recs = [
-        CoachRecommendation(
-            group='Linear',
-            recommended_models=['glm'],
-            why=['Reason 1'],
-            when_not_to_use=['Caveat 1'],
-            suggested_preprocessing=['Preprocess 1'],
-            priority=1
-        ),
-        CoachRecommendation(
-            group='Linear',
-            recommended_models=['ridge'],
-            why=['Reason 2'],
-            when_not_to_use=['Caveat 2'],
-            suggested_preprocessing=['Preprocess 2'],
-            priority=2
-        ),
-    ]
-    
-    merged = _merge_recommendations_by_group(recs)
-    assert len(merged) == 1, "Should merge into single Linear recommendation"
-    assert 'glm' in merged[0].recommended_models, "Should include glm"
-    assert 'ridge' in merged[0].recommended_models, "Should include ridge"
-    assert merged[0].priority == 1, "Should use lowest priority"
 
+@test("Coach: select_top_picks is shape-aware")
+def test_coach_top_picks():
+    import numpy as np
+    import pandas as pd
+    from ml.dataset_profile import compute_dataset_profile
+    from ml.model_coach import select_top_picks
 
-@test("Coach: display_name property works")
-def test_coach_display_name():
-    from ml.model_coach import CoachRecommendation, GROUP_DISPLAY_NAMES
-    
-    rec = CoachRecommendation(
-        group='Linear',
-        recommended_models=['glm'],
-        why=['Test'],
-        when_not_to_use=[],
-        suggested_preprocessing=[],
-        priority=1
-    )
-    
-    assert rec.display_name == 'Linear Models', f"Expected 'Linear Models', got '{rec.display_name}'"
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame(rng.normal(size=(40, 200)),
+                      columns=[f"f{i}" for i in range(200)])
+    df["y"] = rng.normal(size=40)
+    profile = compute_dataset_profile(df, "y", [f"f{i}" for i in range(200)], "regression")
+    picks, skips, headline = select_top_picks(profile)
+    assert picks, "wide data should still get penalized picks"
+    keys = {p.model_key for p in picks}
+    assert keys <= {"lasso", "ridge", "elasticnet"}, f"non-penalized pick for p>>n: {keys}"
+    assert "p≫n" in headline or "predictors" in headline, "headline must name the constraint"
 
 
 @test("NN: SimpleMLP accepts activation parameter")
@@ -381,69 +353,6 @@ def test_profile_warnings():
     assert 'sample_size' in warning_categories, "Should warn about small sample"
 
 
-@test("Coach: compute_model_recommendations works with profile")
-def test_coach_with_profile():
-    import pandas as pd
-    import numpy as np
-    from ml.dataset_profile import compute_dataset_profile
-    from ml.model_coach import compute_model_recommendations, RecommendationBucket
-    
-    np.random.seed(42)
-    df = pd.DataFrame({
-        'feature1': np.random.randn(500),
-        'feature2': np.random.randn(500),
-        'target': np.random.randn(500)
-    })
-    
-    profile = compute_dataset_profile(
-        df,
-        target_col='target',
-        feature_cols=['feature1', 'feature2'],
-        task_type='regression',
-        outlier_method='iqr'
-    )
-    
-    coach_output = compute_model_recommendations(profile)
-    
-    assert coach_output is not None, "Should return coach output"
-    assert len(coach_output.recommended_models) > 0 or len(coach_output.worth_trying_models) > 0, \
-        "Should have some recommendations"
-    assert coach_output.dataset_summary, "Should have dataset summary"
-    assert coach_output.preprocessing_recommendations is not None, "Should have preprocessing recs"
-    assert coach_output.baseline_eda, "Should have baseline EDA recommendations"
-    assert coach_output.advanced_eda_by_family, "Should have advanced EDA by family"
-
-
-@test("Coach: ModelRecommendation has required fields")
-def test_model_recommendation_fields():
-    from ml.model_coach import ModelRecommendation, RecommendationBucket, TrainingTimeTier
-    
-    rec = ModelRecommendation(
-        model_key='ridge',
-        model_name='Ridge Regression',
-        group='Linear',
-        bucket=RecommendationBucket.RECOMMENDED,
-        rationale='Good for this dataset',
-        dataset_fit_summary='Good fit',
-        strengths=['Interpretable'],
-        weaknesses=[],
-        risks=[],
-        training_time=TrainingTimeTier.FAST,
-        interpretability='high',
-        requires_scaling=True,
-        requires_encoding=True,
-        handles_missing=False,
-        plain_language_summary='Ridge is a regularized linear model.',
-        when_to_use='When features are correlated',
-        when_to_avoid='When relationships are nonlinear',
-        priority=10
-    )
-    
-    assert rec.model_key == 'ridge'
-    assert rec.bucket == RecommendationBucket.RECOMMENDED
-    assert rec.training_time == TrainingTimeTier.FAST
-
-
 @test("Outliers: detect_outliers IQR")
 def test_detect_outliers_iqr():
     import pandas as pd
@@ -587,7 +496,6 @@ def test_plot_narrative():
 @test("Import: utils.llm_ui")
 def test_import_llm_ui():
     from utils.llm_ui import render_interpretation_with_llm_button
-
 
 
 @test("Upload flow: load_and_preview_csv + reconcile_state_with_df")
@@ -774,8 +682,7 @@ def run_all_tests():
     print("-" * 40)
     test_registry_structure()
     test_nn_architecture_params()
-    test_coach_merging()
-    test_coach_display_name()
+    test_coach_top_picks()
     test_nn_activation()
     test_nn_wrapper_activation()
     test_data_config()
@@ -783,8 +690,6 @@ def run_all_tests():
     test_dataset_profile()
     test_profile_classification()
     test_profile_warnings()
-    test_coach_with_profile()
-    test_model_recommendation_fields()
     test_detect_outliers_iqr()
     test_load_reference_bundle()
     test_unit_harmonizer()

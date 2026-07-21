@@ -194,11 +194,13 @@ _coach_picks = []
 if _profile:
     try:
         from ml.model_coach import select_top_picks
-        _coach_picks, _coach_skips = select_top_picks(_profile)
+        _coach_picks, _coach_skips, _coach_headline = select_top_picks(_profile)
 
         if _coach_picks:
             with st.container(border=True):
                 st.markdown("#### 🧠 Model Coach")
+                if _coach_headline:
+                    st.markdown(f"⚖️ {_coach_headline}")
                 for pick in _coach_picks:
                     st.markdown(f"**{pick.role}** · **{pick.model_name}** — {pick.why} · _Prep: {pick.preprocessing}_")
                 if _coach_skips:
