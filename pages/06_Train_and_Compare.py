@@ -698,7 +698,13 @@ if st.button("Prepare Splits", type="primary"):
         except Exception:
             logger.exception("Failed to record split provenance")
 
-        st.success(f"Splits prepared: Train={len(X_train)}, Val={len(X_val)}, Test={len(X_test)}")
+        _n_tr, _n_va, _n_te = len(X_train), len(X_val), len(X_test)
+        _n_all = max(1, _n_tr + _n_va + _n_te)
+        st.success(
+            f"✅ Splits ready — Train {_n_tr:,} ({_n_tr/_n_all:.0%}) · "
+            f"Val {_n_va:,} ({_n_va/_n_all:.0%}) · Test {_n_te:,} ({_n_te/_n_all:.0%})"
+        )
+        st.caption("Train fits each model · Validation tunes it · Test is scored once, at the end.")
         # Guardrails for small evaluation sets
         if len(X_test) < 5:
             st.error(
