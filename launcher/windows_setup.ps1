@@ -78,9 +78,22 @@ try {
 
     # -- 4. Launch --------------------------------------------------------
     Say "Starting Tabular ML Lab - your browser will open automatically."
+    Note "If it doesn't open, go to http://localhost:8501 in your browser."
     Note "Keep this window open while you work; closing it quits the app."
+    # On first run a non-headless Streamlit prompts for an email on stdin and
+    # blocks until you answer - which would hang this launcher. Pre-seed the
+    # empty credential it would otherwise write, so the prompt never appears.
+    $CredDir = Join-Path $env:USERPROFILE ".streamlit"
+    $CredFile = Join-Path $CredDir "credentials.toml"
+    if (-not (Test-Path $CredFile)) {
+        New-Item -ItemType Directory -Force -Path $CredDir | Out-Null
+        Set-Content -Path $CredFile -Value "[general]`r`nemail = `"`""
+    }
     Set-Location $Root
-    & $Py -m streamlit run (Join-Path $Root "app.py") --browser.gatherUsageStats false
+    # --server.headless false overrides headless=true in .streamlit/config.toml
+    # (that default suits server/Docker deploys); on a desktop we want Streamlit
+    # to open the browser tab itself. CLI flags win over the config file.
+    & $Py -m streamlit run (Join-Path $Root "app.py") --server.headless false --browser.gatherUsageStats false
     exit $LASTEXITCODE
 }
 catch {

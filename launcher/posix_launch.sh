@@ -128,9 +128,22 @@ if [[ "$FROM_APP" == "--from-app" ]]; then
     notify_mac "Starting Tabular ML Lab — your browser will open shortly."
 else
     say "Starting Tabular ML Lab — your browser will open automatically."
+    note "If it doesn't open, go to http://localhost:8501 in your browser."
     note "Keep this window open while you work; closing it quits the app."
 fi
 
+# On first run a non-headless Streamlit prompts for an email on stdin and
+# blocks until you answer — which would hang this launcher. Pre-seed the empty
+# credential it would otherwise write, so the prompt never appears.
+if [[ ! -f "$HOME/.streamlit/credentials.toml" ]]; then
+    mkdir -p "$HOME/.streamlit"
+    printf '[general]\nemail = ""\n' > "$HOME/.streamlit/credentials.toml"
+fi
+
 cd "$ROOT"
+# --server.headless false overrides headless=true in .streamlit/config.toml
+# (that default suits server/Docker deploys); on a desktop we want Streamlit
+# to open the browser tab itself. CLI flags win over the config file.
 exec "$VENV/bin/python" -m streamlit run "$ROOT/app.py" \
+    --server.headless false \
     --browser.gatherUsageStats false
