@@ -4,7 +4,6 @@
     <strong>From raw data to a manuscript-ready starting point. No coding required.</strong>
   </p>
   <p align="center">
-    <a href="https://app.tabularml.dev">Live Demo</a> ·
     <a href="#quick-start">Quick Start</a> ·
     <a href="#features">Features</a> ·
     <a href="https://github.com/hedglinnolan/tabular-ml-lab/issues">Report Bug</a>
@@ -32,8 +31,6 @@
 An interactive research workbench for scientists who work with tabular data and need to publish papers. Upload your CSV, and the app guides you through a complete, defensible ML workflow — from exploratory analysis to a compilable LaTeX manuscript draft with auto-generated methods, results, and structured discussion.
 
 **Built for researchers, not ML engineers.** The app does the mechanical work of writing a prediction model paper. Your only edits are domain-specific context no tool can provide.
-
-> 🌐 **Try it now:** [app.tabularml.dev](https://app.tabularml.dev) (Note: I am actively developing a new branch and I use this demo website to test out new features. Functionality may break once in a while.)
 
 ## ⬇️ Download the App (no coding, no terminal)
 
