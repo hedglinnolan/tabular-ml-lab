@@ -14,7 +14,7 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict
 
-from utils.session_state import init_session_state, get_data, DataConfig, log_methodology
+from utils.session_state import init_session_state, get_data, DataConfig, log_methodology, reset_downstream_results
 from utils.storyline import render_breadcrumb, render_page_navigation
 from utils.theme import inject_custom_css, render_guidance, render_reviewer_concern, render_step_indicator, render_sidebar_workflow
 from utils.table_export import table
@@ -440,6 +440,12 @@ if results:
             data_config.feature_cols = consensus
             st.session_state['data_config'] = data_config
             st.session_state['selected_features'] = list(consensus)
+            # The feature set changed: any preprocessing pipeline, split, or
+            # trained model built on the old set is stale and would name dropped
+            # columns at train time. Clear them (keeping this selection and its
+            # record) so Preprocess rebuilds against the new set.
+            reset_downstream_results(clear_feature_engineering=False,
+                                     clear_feature_selection=False)
             # Retrieve consensus_threshold from the analysis log
             consensus_threshold_logged = None
             for entry in st.session_state.get('methodology_log', []):
@@ -483,6 +489,10 @@ if results:
             data_config.feature_cols = manual_selection
             st.session_state['data_config'] = data_config
             st.session_state['selected_features'] = list(manual_selection)
+            # Feature set changed → clear stale pipelines/splits/models built on
+            # the old set (keeping this selection and its record).
+            reset_downstream_results(clear_feature_engineering=False,
+                                     clear_feature_selection=False)
             log_methodology(step='Feature Selection Applied', action='Applied manual feature selection', details={
                 'method': 'manual',
                 'n_features_selected': len(manual_selection),

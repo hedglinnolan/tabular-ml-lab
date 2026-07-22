@@ -323,3 +323,58 @@ Distilled from this review's confirmed defects; each rule traces to a real insta
 ---
 
 *Review conducted with parallel subagent analysis, adversarial verification, independent line-level re-verification of all critical/major findings, and dynamic AppTest execution. Two subagent findings were refuted during verification and are documented above rather than silently dropped.*
+
+---
+
+## 2026-07 · Feature-engineering state drift, split guardrail, strategy-aware CV
+
+Triggered by a real training crash on the NHANES demo dataset:
+`Training failed: Some column names are not columns of the dataframe:
+{'meds_hbp_has_data', 'meds_chol_has_data'}`.
+
+**Root cause (audited across pages 03–06 + session_state).** Engineered
+columns (here, `*_has_data` missingness indicators) can leave the data and the
+feature list while a downstream reference to them survives:
+- **Feature Selection apply** (`04:440`, `04:483`) updated `selected_features`
+  but never invalidated the per-model preprocessing pipelines built on the old
+  set. Selection drops the low-signal indicators → the split succeeds (clean
+  list) but the stored `ColumnTransformer` still names them and crashes at
+  `fit()`. *This was the reported bug.* Fixed: both handlers now call
+  `reset_downstream_results(clear_feature_engineering=False,
+  clear_feature_selection=False)` — a new flag that clears stale
+  pipelines/splits/models while preserving the selection just made.
+- **Skip** (`03`) only popped `df_engineered`, leaving `selected_features` and
+  pipelines referencing engineered columns — could crash, or worse, silently
+  train on the engineered data the user chose to discard. **Reset** never
+  restored `selected_features`. Both now route through
+  `reset_downstream_results`, restoring the pre-FE list and clearing the full
+  downstream set.
+
+**Backstop (defence in depth).** `pages/06` reconciles the feature list vs the
+data before Prepare Splits, and rebuilds any preprocessing pipeline whose
+columns drifted before `fit()` (`ml.pipeline.reconcile_pipeline_columns`) —
+loud warning, self-heal, never a cryptic crash. Any future drift path degrades
+gracefully.
+
+**Also fixed:** polynomial features skip duplicate names (running twice created
+duplicate labels that broke selection); the math-transform log line stranded
+after `st.rerun()` is recorded again.
+
+**Test-set slider guardrail.** Under the lockbox, the Train & Compare `Test %`
+slider is now disabled and pinned to the lockbox fraction (Train/Val divide the
+remainder), so a live control can never contradict the actual held-out set.
+Group/time splits (which draw their own test set) keep the slider live and say
+so.
+
+**Strategy-aware cross-validation.** CV previously used shuffled KFold
+regardless of the split. A group split (longitudinal) or time split now gets
+GroupKFold/StratifiedGroupKFold / TimeSeriesSplit, so CV can't leak across
+entities or time and inflate the score. CV still runs on training rows only;
+`cv_strategy`/`cv_groups_train` are recorded at split time and cleared with the
+split.
+
+Tests: `tests/test_feature_drift.py` (reconcile backstop + both invalidation
+contracts + the reported crash), `tests/test_cv_strategies.py` (group/time/
+standard fold schemes, fold clamping, graceful fallback). Full suite: 605
+passed, 4 skipped (the 14 `scripts/integration_test.py` errors are pre-existing
+missing-Playwright-`page`-fixture setup errors, not regressions).

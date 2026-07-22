@@ -193,29 +193,48 @@ train_size_default = int((split_config_existing.train_size * 100) if split_confi
 val_size_default = int((split_config_existing.val_size * 100) if split_config_existing and split_config_existing.val_size else 15)
 test_size_default = int((split_config_existing.test_size * 100) if split_config_existing and split_config_existing.test_size else 15)
 
+# The upload lockbox owns the test set for random/stratified splits (group and
+# time splits draw their own, disclosed at split time). When it governs, lock
+# the Test % control to the lockbox fraction so a live slider can never
+# contradict the actual held-out set — the source of a subtle "why didn't that
+# do anything?" confusion.
+from utils.test_lockbox import get_lockbox as _slider_get_lockbox, is_exploratory as _slider_is_exploratory
+_slider_lb = None if _slider_is_exploratory() else _slider_get_lockbox()
+_test_governed_by_lockbox = _slider_lb is not None and not use_group_split and not use_time_split
+
 with col1:
     train_size = st.slider("Train %", 50, 90, train_size_default, key="train_split_train_pct") / 100
 with col2:
     val_size = st.slider("Val %", 5, 30, val_size_default, key="train_split_val_pct") / 100
 with col3:
-    test_size = st.slider("Test %", 5, 30, test_size_default, key="train_split_test_pct") / 100
+    if _test_governed_by_lockbox:
+        _lb_pct = int(round(_slider_lb['fraction'] * 100))
+        st.slider("Test %", 5, 30, min(max(_lb_pct, 5), 30), disabled=True,
+                  key="train_split_test_pct_locked",
+                  help="Fixed at upload by the test-set lockbox. Change it on Upload & Audit.")
+        test_size = float(_slider_lb['fraction'])
+    else:
+        test_size = st.slider("Test %", 5, 30, test_size_default, key="train_split_test_pct") / 100
 
-# Under the lockbox the test fraction is fixed at upload; the Test % slider
-# above only matters for group/time splits (which bypass the lockbox) or when
-# no lockbox exists. Say so rather than leaving a silently dead control.
-from utils.test_lockbox import get_lockbox as _slider_get_lockbox, is_exploratory as _slider_is_exploratory
-_slider_lb = None if _slider_is_exploratory() else _slider_get_lockbox()
-if _slider_lb is not None:
+if _test_governed_by_lockbox:
     st.caption(
-        f"🔒 The held-out test fraction is governed by the upload lockbox "
-        f"({_slider_lb['fraction']:.0%}, n={_slider_lb['n_test']}) — for random/stratified "
-        f"splits the Test % slider is ignored and Train/Val set only their relative sizes. "
-        f"Change the holdout on Upload & Audit."
+        f"🔒 Test set is locked at {test_size:.0%} (n={_slider_lb['n_test']}) by the upload "
+        f"lockbox — held out since before feature engineering. Train % and Val % divide the "
+        f"remaining {1 - test_size:.0%}. Change the holdout on Upload & Audit."
     )
-
-if abs(train_size + val_size + test_size - 1.0) > 0.01:
-    st.error("Splits must sum to 100%")
-    st.stop()
+    if abs(train_size + val_size - (1.0 - test_size)) > 0.01:
+        st.error(f"With the lockbox holding out {test_size:.0%} for test, "
+                 f"Train % + Val % must sum to {1.0 - test_size:.0%}.")
+        st.stop()
+else:
+    if _slider_lb is not None:
+        st.caption(
+            f"🔒 A {_slider_lb['fraction']:.0%} lockbox test set exists, but this "
+            f"group/time split draws its own test set instead (disclosed at split time)."
+        )
+    if abs(train_size + val_size + test_size - 1.0) > 0.01:
+        st.error("Splits must sum to 100%")
+        st.stop()
 
 split_config = SplitConfig(
     train_size=train_size,
@@ -316,6 +335,26 @@ if st.button("Prepare Splits", type="primary"):
         # Get feature columns - use engineered features if applied
         target_col = data_config.target_col
         feature_cols = st.session_state.get('selected_features') or data_config.feature_cols
+
+        # Reconcile the feature list against the actual data. If features were
+        # engineered and later dropped (e.g. Feature Selection or a Reset/Skip
+        # removed an engineered column), the stored list can name columns that
+        # no longer exist — blindly indexing would raise a cryptic KeyError.
+        _missing_fc = [c for c in feature_cols if c not in df.columns]
+        if _missing_fc:
+            feature_cols = [c for c in feature_cols if c in df.columns]
+            st.warning(
+                f"⚠️ {len(_missing_fc)} selected feature(s) are no longer in the "
+                f"data and were dropped: {', '.join(map(str, _missing_fc[:8]))}"
+                f"{'…' if len(_missing_fc) > 8 else ''}. This happens when features "
+                f"were engineered and later removed. Re-visit Preprocess to reconfigure."
+            )
+        if not feature_cols:
+            st.error(
+                "None of the selected features exist in the current data. "
+                "Re-run Feature Selection (or Skip it) before training."
+            )
+            st.stop()
 
         X = df[feature_cols].copy()
         y = df[target_col].copy()
@@ -430,6 +469,13 @@ if st.button("Prepare Splits", type="primary"):
         else:
             st.session_state.pop("target_label_encoder", None)
         
+        # Record which CV scheme the fold logic must use to match this split's
+        # leakage semantics (see ml.eval.perform_cross_validation). Cross-
+        # validation runs on TRAINING ROWS ONLY, so group labels are captured
+        # for the train rows alone.
+        st.session_state['cv_strategy'] = 'standard'
+        st.session_state['cv_groups_train'] = None
+
         # Split data (group-based, time-based, or random)
         if use_group_split and entity_id_final:
             groups = to_numpy_1d(df.iloc[original_indices][entity_id_final])
@@ -437,6 +483,9 @@ if st.button("Prepare Splits", type="primary"):
 
             gss = GroupShuffleSplit(n_splits=1, test_size=(val_size + test_size), random_state=split_config.random_state)
             train_idx, temp_idx = next(gss.split(indices, y_arr, groups))
+            # Same-entity rows must stay together in CV too, or folds leak.
+            st.session_state['cv_strategy'] = 'group'
+            st.session_state['cv_groups_train'] = groups[train_idx]
 
             groups_temp = groups[temp_idx]
             rel_val = val_size / (val_size + test_size)
@@ -455,6 +504,8 @@ if st.button("Prepare Splits", type="primary"):
             n_test_groups = len(np.unique(groups[temp_idx[test_idx]]))
             st.info(f"Group-based split: {n_train_groups} train groups, {n_val_groups} val groups, {n_test_groups} test groups")
         elif split_config.use_time_split and data_config.datetime_col:
+            # Chronological split → CV must respect time order too (no shuffle).
+            st.session_state['cv_strategy'] = 'time'
             df_work = df.iloc[original_indices].copy()
             df_work["_temp_index"] = np.arange(len(df_work))
             df_work = df_work.sort_values(data_config.datetime_col)
@@ -647,7 +698,13 @@ if st.button("Prepare Splits", type="primary"):
         except Exception:
             logger.exception("Failed to record split provenance")
 
-        st.success(f"Splits prepared: Train={len(X_train)}, Val={len(X_val)}, Test={len(X_test)}")
+        _n_tr, _n_va, _n_te = len(X_train), len(X_val), len(X_test)
+        _n_all = max(1, _n_tr + _n_va + _n_te)
+        st.success(
+            f"✅ Splits ready — Train {_n_tr:,} ({_n_tr/_n_all:.0%}) · "
+            f"Val {_n_va:,} ({_n_va/_n_all:.0%}) · Test {_n_te:,} ({_n_te/_n_all:.0%})"
+        )
+        st.caption("Train fits each model · Validation tunes it · Test is scored once, at the end.")
         # Guardrails for small evaluation sets
         if len(X_test) < 5:
             st.error(
@@ -1205,6 +1262,26 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                     st.error("Preprocessing pipeline not found for this model.")
                     continue
 
+                # Backstop: a preprocessing pipeline built on a since-changed
+                # feature set still names its old columns and would crash at
+                # fit() ("Some column names are not columns of the dataframe").
+                # Rebuild it against the columns actually present, dropping the
+                # stale ones, so a state drift self-heals loudly instead of
+                # failing the whole run.
+                if isinstance(X_train, pd.DataFrame):
+                    from ml.pipeline import reconcile_pipeline_columns
+                    model_pipeline, _dropped_cols = reconcile_pipeline_columns(
+                        model_pipeline, X_train.columns
+                    )
+                    if _dropped_cols:
+                        st.warning(
+                            f"⚠️ {model_name.upper()}'s preprocessing referenced "
+                            f"features no longer in the data "
+                            f"({', '.join(map(str, _dropped_cols[:8]))}"
+                            f"{'…' if len(_dropped_cols) > 8 else ''}) and was rebuilt "
+                            f"without them. Re-run Preprocess to reconfigure intentionally."
+                        )
+
                 # Fit preprocessing on training data only
                 model_pipeline.fit(X_train)
                 X_train_model = model_pipeline.transform(X_train)
@@ -1447,7 +1524,9 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                         _cv_full = make_cv_pipeline(model_pipeline, _cv_estimator)
                         cv_results = perform_cross_validation(
                             _cv_full, X_train, _cv_y_train,
-                            cv_folds=cv_folds, task_type=data_config.task_type
+                            cv_folds=cv_folds, task_type=data_config.task_type,
+                            cv_strategy=st.session_state.get('cv_strategy', 'standard'),
+                            groups=st.session_state.get('cv_groups_train'),
                         )
                     except Exception as cv_error:
                         st.warning(f"Cross-validation failed for {model_name}: {cv_error}. Skipping CV.")

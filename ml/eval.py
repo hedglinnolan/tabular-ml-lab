@@ -100,43 +100,77 @@ def perform_cross_validation(
     y: np.ndarray,
     cv_folds: int = 5,
     task_type: str = 'regression',
-    scoring: Optional[str] = None
+    scoring: Optional[str] = None,
+    cv_strategy: str = 'standard',
+    groups: Optional[np.ndarray] = None,
 ) -> Dict[str, np.ndarray]:
     """
-    Perform k-fold cross-validation.
-    
+    Perform k-fold cross-validation, matching the fold scheme to the split.
+
+    The CV strategy must respect the same leakage semantics as the train/test
+    split, or the CV score is optimistically biased:
+    - 'group': the split kept each entity's rows together (longitudinal /
+      repeated measures). Random KFold would put the same entity on both sides
+      of a fold, so use GroupKFold (StratifiedGroupKFold for classification).
+    - 'time': the split was chronological. Random KFold would train on the
+      future to predict the past, so use TimeSeriesSplit (no shuffle). X is
+      assumed to be in chronological order (page 06 supplies it so).
+    - 'standard' (default): StratifiedKFold (classification) / KFold.
+
     Args:
         model: Model with fit/predict interface
-        X: Features
+        X: Features (training rows only — the lockbox test never enters CV)
         y: Targets
         cv_folds: Number of folds
         task_type: 'regression' or 'classification'
         scoring: Scoring metric (if None, uses default for task type)
-        
+        cv_strategy: 'standard' | 'group' | 'time'
+        groups: entity labels aligned to X rows (required for 'group')
+
     Returns:
-        Dictionary with metric arrays across folds
+        Dictionary with metric arrays across folds, plus the strategy used.
     """
     if scoring is None:
         scoring = 'neg_mean_squared_error' if task_type == 'regression' else 'accuracy'
-    
-    # Choose CV strategy
-    if task_type == 'classification':
+
+    strat = (cv_strategy or 'standard').lower()
+    cv_groups = None  # passed through to cross_val_score for group schemes
+
+    if strat == 'group' and groups is not None and len(np.unique(groups)) >= 2:
+        # Never ask for more folds than there are groups.
+        n_splits = max(2, min(cv_folds, int(len(np.unique(groups)))))
+        cv = None
+        if task_type == 'classification':
+            try:
+                from sklearn.model_selection import StratifiedGroupKFold
+                cv = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=42)
+            except ImportError:
+                cv = None
+        if cv is None:
+            from sklearn.model_selection import GroupKFold
+            cv = GroupKFold(n_splits=n_splits)
+        cv_groups = groups
+    elif strat == 'time':
+        from sklearn.model_selection import TimeSeriesSplit
+        cv = TimeSeriesSplit(n_splits=cv_folds)
+    elif task_type == 'classification':
         cv = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
     else:
         cv = KFold(n_splits=cv_folds, shuffle=True, random_state=42)
-    
-    # Perform CV
-    scores = cross_val_score(model, X, y, cv=cv, scoring=scoring, n_jobs=-1)
-    
+
+    scores = cross_val_score(model, X, y, cv=cv, scoring=scoring, n_jobs=-1,
+                             groups=cv_groups)
+
     # Convert to positive if using negative MSE
     if 'neg_' in scoring:
         scores = -scores
-    
+
     return {
         'scores': scores,
         'mean': float(np.mean(scores)),
         'std': float(np.std(scores)),
-        'folds': cv_folds
+        'folds': int(getattr(cv, 'n_splits', cv_folds)),
+        'strategy': strat,
     }
 
 

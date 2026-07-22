@@ -18,7 +18,7 @@ from sklearn.decomposition import PCA
 import warnings
 warnings.filterwarnings('ignore')
 
-from utils.session_state import get_data, init_session_state, log_methodology
+from utils.session_state import get_data, init_session_state, log_methodology, reset_downstream_results
 from utils.theme import inject_custom_css, render_guidance, render_sidebar_workflow
 from utils.storyline import render_breadcrumb, render_page_navigation
 
@@ -164,46 +164,25 @@ with col1:
     st.markdown("**Choose whether to engineer features or skip this step:**")
 with col2:
     if st.button("🔄 Reset", help="Clear all engineered features and start over", type="secondary"):
+        # Route the full cascade through the single source of truth: this drops
+        # df_engineered, restores the pre-FE feature list into BOTH selected_features
+        # and data_config.feature_cols, and clears every downstream result
+        # (pipelines, splits, models, analyses) that referenced engineered columns.
         st.session_state.fe_reset_requested = True
-        st.session_state.pop("df_engineered", None)
-        st.session_state["feature_engineering_applied"] = False
-        st.session_state.pop("engineered_feature_names", None)
-        st.session_state.pop("engineering_log", None)
+        reset_downstream_results(clear_feature_engineering=True)
         st.session_state.pop("engineered_feature_transforms", None)
-        # Restore original feature_cols so downstream pages don't
-        # reference columns that no longer exist
-        pre_fe = st.session_state.pop("pre_fe_feature_cols", None)
-        if pre_fe is not None and data_config is not None:
-            data_config.feature_cols = pre_fe
-        # Cascade: clear downstream state that may reference engineered columns
-        st.session_state.pop("feature_selection_results", None)
-        st.session_state.pop("consensus_features", None)
-        st.session_state["preprocessing_pipeline"] = None
-        st.session_state["preprocessing_config"] = None
-        st.session_state["preprocessing_pipelines_by_model"] = {}
-        st.session_state["preprocessing_config_by_model"] = {}
-        st.session_state["trained_models"] = {}
-        st.session_state["model_results"] = {}
-        st.session_state["fitted_estimators"] = {}
-        st.session_state["fitted_preprocessing_pipelines"] = {}
-        st.session_state["X_train"] = None
-        st.session_state["X_val"] = None
-        st.session_state["X_test"] = None
-        st.session_state["y_train"] = None
-        st.session_state["y_val"] = None
-        st.session_state["y_test"] = None
-        st.session_state["permutation_importance"] = {}
-        st.session_state["partial_dependence"] = {}
-        st.session_state["shap_results"] = {}
-        st.session_state.pop("sensitivity_seed_results", None)
-        st.session_state["report_data"] = None
         st.rerun()
 with col3:
     if st.button("⏭️ Skip", help="Recommended for most first passes: continue with your original features"):
         st.info("✅ Skipped feature engineering. Proceeding with your original features — this is the recommended first pass for many projects.")
-        # Make sure no engineered features are in session state
-        st.session_state.pop("df_engineered", None)
-        st.session_state["feature_engineering_applied"] = False
+        # Skip must actually revert to the original features. Previously it only
+        # popped df_engineered, leaving selected_features and any preprocessing
+        # pipeline still referencing engineered columns — which then either
+        # crashed at training or, worse, silently trained on the very engineered
+        # data the user chose to discard. Route through the canonical resetter so
+        # the original feature list is restored and all stale downstream state is
+        # cleared.
+        reset_downstream_results(clear_feature_engineering=True)
         st.success("👉 Continue to **Feature Selection** ")
         st.stop()
 
@@ -340,16 +319,26 @@ with _fe_tabs[0]:
                 X_poly = poly.fit_transform(X_numeric)
                 poly_feature_names = poly.get_feature_names_out(numeric_features)
                 
-                # Remove original features (they're duplicated)
-                new_cols = [name for name in poly_feature_names if name not in numeric_features]
-                new_indices = [i for i, name in enumerate(poly_feature_names) if name not in numeric_features]
-                
+                # Remove original features (they're duplicated), and skip any
+                # polynomial name that already exists — running this twice would
+                # otherwise create duplicate column labels that later break
+                # column-based selection (ColumnTransformer / df[cols]).
+                _existing = set(X_engineered.columns)
+                new_cols = [name for name in poly_feature_names
+                            if name not in numeric_features and name not in _existing]
+                new_indices = [i for i, name in enumerate(poly_feature_names)
+                               if name not in numeric_features and name not in _existing]
+                _skipped_dupes = sum(1 for name in poly_feature_names
+                                     if name not in numeric_features and name in _existing)
+
                 X_poly_new = X_poly[:, new_indices]
                 poly_df = pd.DataFrame(X_poly_new, columns=new_cols, index=X_engineered.index)
-                
+
                 X_engineered = pd.concat([X_engineered, poly_df], axis=1)
                 engineered_features.extend(new_cols)
                 engineering_log.append(f"Polynomial degree {poly_degree} ({'interaction-only' if interaction_only else 'full'}): +{len(new_cols)} features")
+                if _skipped_dupes:
+                    st.caption(f"Skipped {_skipped_dupes} polynomial feature(s) that already existed.")
                 
                 # Save back to session state
                 st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
@@ -492,11 +481,13 @@ with _fe_tabs[1]:
                     
                     engineered_features.extend(new_cols)
                     
+                    engineering_log.append(f"Mathematical transforms: +{len(new_cols)} features")
+
                     # Save back to session state
                     st.session_state.fe_work_in_progress["X_engineered"] = X_engineered
                     st.session_state.fe_work_in_progress["engineered_features"] = engineered_features
                     st.session_state.fe_work_in_progress["engineering_log"] = engineering_log
-                    
+
                     # Resolve skew insight if all skewed features have been transformed
                     # Resolve skew insight with structured details
                     _skew_ins = _fe_ledger.get("eda_skew_group")
@@ -515,10 +506,9 @@ with _fe_tabs[1]:
                                 },
                             )
                     
-                    st.rerun()
-                    engineering_log.append(f"Mathematical transforms: +{len(new_cols)} features")
                     st.success(f"✅ Created **{len(new_cols)} transformed features**")
-                    
+                    st.rerun()
+
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
 
