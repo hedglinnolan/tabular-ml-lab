@@ -338,11 +338,18 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
     ):
         st.session_state.pop(key, None)
 
+    # Coach evidence describes the data it was measured on — a probe verdict
+    # ("learnable signal", "no signal") must never survive a data change and
+    # keep steering picks for a dataset it never saw. Same for the one-shot
+    # auto-select flag: new data deserves fresh auto-picks.
+    st.session_state.pop("coach_probe_result", None)
+    st.session_state.pop("_coach_applied", None)
+
     # Downstream provenance sections now describe work that no longer exists
     prov = st.session_state.get("workflow_provenance")
     if prov is not None:
         for section in ("eda", "feature_selection", "split", "preprocessing",
-                        "training", "explainability"):
+                        "training", "explainability", "coach"):
             if hasattr(prov, section):
                 setattr(prov, section, None)
         if clear_feature_engineering and hasattr(prov, "feature_engineering"):
@@ -350,8 +357,11 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
 
     # The ledger must not keep asserting actions that were just invalidated:
     # roll back resolutions earned on the cleared pages (the findings remain),
-    # and drop auto-generated EDA insights outright — they were computed
-    # against data/config that changed, and EDA re-detects on its next visit.
+    # and drop auto-generated insights outright wherever their producer
+    # re-detects on its next visit/run — EDA scans, preprocess guards
+    # (high-cardinality, probe findings), and post-training diagnostics all
+    # describe data or models that no longer exist. Absent is better than
+    # false.
     ledger = st.session_state.get("insight_ledger")
     if ledger is not None:
         if hasattr(ledger, "rollback_resolutions"):
@@ -362,7 +372,9 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
                 "09_Hypothesis_Testing",
             })
         if hasattr(ledger, "prune_auto_generated"):
-            ledger.prune_auto_generated({"02_EDA"})
+            ledger.prune_auto_generated({
+                "02_EDA", "05_Preprocess", "06_Train_and_Compare",
+            })
 
     # A manuscript is only quarantine-clean if EVERY surviving result was
     # computed with the lockbox on; results computed in exploratory mode are

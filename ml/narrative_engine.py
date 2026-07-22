@@ -927,8 +927,14 @@ class NarrativeEngine:
 
         # Model-selection rationale (a TRIPOD reporting item) — compiled from
         # the coach's recorded reasoning rather than reconstructed from memory.
+        # Only cited when the trained lineup actually overlaps the shortlist:
+        # if the user ignored the coach, the Methods must not claim a
+        # rationale that the model list visibly contradicts.
+        coach_picks = self.ctx.get("coach_picks") or []
+        _pick_keys = {p.get("model_key") for p in coach_picks if isinstance(p, dict)}
+        _followed = bool(_pick_keys & set(models))
         coach_headline = (self.ctx.get("coach_headline") or "").strip()
-        if coach_headline:
+        if coach_headline and _followed:
             _rationale = coach_headline.rstrip(".")
             # strip advisory emoji/prefixes from the UI register
             _rationale = _rationale.replace("⚠️ ", "").replace("Dominant constraint: ", "")
@@ -937,7 +943,7 @@ class NarrativeEngine:
                 f"characteristics: {_rationale[0].lower() + _rationale[1:]}."
             )
         coach_probe = (self.ctx.get("coach_probe_summary") or "").strip()
-        if coach_probe:
+        if coach_probe and _followed:
             parts.append(
                 f"A preliminary cross-validated screen on the training data "
                 f"informed this shortlist ({coach_probe}); screen scores were "
