@@ -311,7 +311,8 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
     st.session_state.feature_names_by_model = {}
     for key in ("train_indices", "val_indices", "test_indices", "split_config",
                 "target_transformer", "target_label_encoder",
-                "y_train_original", "y_val_original", "y_test_original"):
+                "y_train_original", "y_val_original", "y_test_original",
+                "cv_strategy", "cv_groups_train"):
         st.session_state.pop(key, None)
 
     # Models & metrics
