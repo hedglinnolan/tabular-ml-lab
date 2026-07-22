@@ -8,6 +8,13 @@ statsmodels>=0.14.0
 matplotlib>=3.7.0
 plotly>=5.14.0
 shap>=0.42.0
+# shap pulls in numba/llvmlite transitively. numpy has no upper bound here, so
+# the resolver takes its newest release — which excludes every modern numba
+# (they cap numpy tightly) and backtracks to numba 0.53 / llvmlite 0.36, a 2021
+# build with no Python 3.12 wheel that then fails to compile on install. Floor
+# both to modern releases that ship 3.12/3.13 wheels; uv caps numpy to match.
+numba>=0.60
+llvmlite>=0.43
 kaleido>=0.2.1
 optuna>=3.0.0
 openpyxl>=3.1.0
