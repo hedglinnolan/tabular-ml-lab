@@ -263,13 +263,20 @@ def set_data(df: pd.DataFrame, is_schema_change: Optional[bool] = None):
 
 
 def reset_downstream_results(clear_feature_engineering: bool = True,
-                             restore_pre_fe_features: bool = True):
+                             restore_pre_fe_features: bool = True,
+                             clear_feature_selection: bool = True):
     """Clear every RESULT computed from the current data, keeping configuration.
 
     Single source of truth for downstream invalidation — used by
     reset_data_dependent_state() (full data change), set_data() (same-schema
     content change), and Page 01 (feature/target/task change). Any page that
     introduces a new result key must add it here.
+
+    clear_feature_selection=False preserves the feature-selection results,
+    consensus list, and its provenance/ledger entries. Feature Selection uses
+    this when it APPLIES a new selection: the pipelines/splits/models built on
+    the old feature set are stale and must go, but the selection just made (and
+    its record) must survive.
     """
     # Feature engineering (df_engineered would otherwise keep serving stale
     # data through get_data()'s precedence)
@@ -321,12 +328,14 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
     st.session_state.explainability_robustness = {}
     st.session_state.eda_results = {}
     st.session_state.eda_insights = []
-    for key in ("shap_results", "shap_matplotlib_figs", "bootstrap_results",
-                "baseline_results", "calibration_results",
-                "sensitivity_seed_results", "hypothesis_test_results",
-                "feature_selection_results", "consensus_features",
-                "table1_df", "table1_metadata", "custom_table1_tests",
-                "dataset_profile"):
+    _analysis_keys = ["shap_results", "shap_matplotlib_figs", "bootstrap_results",
+                      "baseline_results", "calibration_results",
+                      "sensitivity_seed_results", "hypothesis_test_results",
+                      "table1_df", "table1_metadata", "custom_table1_tests",
+                      "dataset_profile"]
+    if clear_feature_selection:
+        _analysis_keys += ["feature_selection_results", "consensus_features"]
+    for key in _analysis_keys:
         st.session_state.pop(key, None)
 
     # Report artifacts
@@ -348,8 +357,11 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
     # Downstream provenance sections now describe work that no longer exists
     prov = st.session_state.get("workflow_provenance")
     if prov is not None:
-        for section in ("eda", "feature_selection", "split", "preprocessing",
-                        "training", "explainability", "coach"):
+        _sections = ["eda", "split", "preprocessing",
+                     "training", "explainability", "coach"]
+        if clear_feature_selection:
+            _sections.append("feature_selection")
+        for section in _sections:
             if hasattr(prov, section):
                 setattr(prov, section, None)
         if clear_feature_engineering and hasattr(prov, "feature_engineering"):
@@ -365,12 +377,14 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
     ledger = st.session_state.get("insight_ledger")
     if ledger is not None:
         if hasattr(ledger, "rollback_resolutions"):
-            ledger.rollback_resolutions({
-                "03_Feature_Engineering", "04_Feature_Selection",
+            _rollback_pages = {
                 "05_Preprocess", "06_Train_and_Compare",
                 "07_Explainability", "08_Sensitivity_Analysis",
                 "09_Hypothesis_Testing",
-            })
+            }
+            if clear_feature_selection:
+                _rollback_pages |= {"03_Feature_Engineering", "04_Feature_Selection"}
+            ledger.rollback_resolutions(_rollback_pages)
         if hasattr(ledger, "prune_auto_generated"):
             ledger.prune_auto_generated({
                 "02_EDA", "05_Preprocess", "06_Train_and_Compare",

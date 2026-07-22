@@ -317,6 +317,26 @@ if st.button("Prepare Splits", type="primary"):
         target_col = data_config.target_col
         feature_cols = st.session_state.get('selected_features') or data_config.feature_cols
 
+        # Reconcile the feature list against the actual data. If features were
+        # engineered and later dropped (e.g. Feature Selection or a Reset/Skip
+        # removed an engineered column), the stored list can name columns that
+        # no longer exist — blindly indexing would raise a cryptic KeyError.
+        _missing_fc = [c for c in feature_cols if c not in df.columns]
+        if _missing_fc:
+            feature_cols = [c for c in feature_cols if c in df.columns]
+            st.warning(
+                f"⚠️ {len(_missing_fc)} selected feature(s) are no longer in the "
+                f"data and were dropped: {', '.join(map(str, _missing_fc[:8]))}"
+                f"{'…' if len(_missing_fc) > 8 else ''}. This happens when features "
+                f"were engineered and later removed. Re-visit Preprocess to reconfigure."
+            )
+        if not feature_cols:
+            st.error(
+                "None of the selected features exist in the current data. "
+                "Re-run Feature Selection (or Skip it) before training."
+            )
+            st.stop()
+
         X = df[feature_cols].copy()
         y = df[target_col].copy()
         mask = y.notna()
@@ -1204,6 +1224,26 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                 if model_pipeline is None:
                     st.error("Preprocessing pipeline not found for this model.")
                     continue
+
+                # Backstop: a preprocessing pipeline built on a since-changed
+                # feature set still names its old columns and would crash at
+                # fit() ("Some column names are not columns of the dataframe").
+                # Rebuild it against the columns actually present, dropping the
+                # stale ones, so a state drift self-heals loudly instead of
+                # failing the whole run.
+                if isinstance(X_train, pd.DataFrame):
+                    from ml.pipeline import reconcile_pipeline_columns
+                    model_pipeline, _dropped_cols = reconcile_pipeline_columns(
+                        model_pipeline, X_train.columns
+                    )
+                    if _dropped_cols:
+                        st.warning(
+                            f"⚠️ {model_name.upper()}'s preprocessing referenced "
+                            f"features no longer in the data "
+                            f"({', '.join(map(str, _dropped_cols[:8]))}"
+                            f"{'…' if len(_dropped_cols) > 8 else ''}) and was rebuilt "
+                            f"without them. Re-run Preprocess to reconfigure intentionally."
+                        )
 
                 # Fit preprocessing on training data only
                 model_pipeline.fit(X_train)

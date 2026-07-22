@@ -499,3 +499,59 @@ def _preprocessor_names_fallback(preprocessor, original_feature_names: List[str]
                     out.extend([f"{c}_encoded" for c in columns])
                     break
     return out
+
+
+def reconcile_pipeline_columns(pipe, available_columns):
+    """Trim a preprocessing pipeline's column selectors to columns that exist.
+
+    A stored preprocessing pipeline names its input columns explicitly (the
+    ColumnTransformer keeps ``(name, transformer, [col, ...])`` tuples). If the
+    feature set later changes — e.g. Feature Selection drops an engineered
+    ``*_has_data`` indicator after the pipeline was built — fitting that stale
+    pipeline raises ``ValueError: Some column names are not columns of the
+    dataframe``. This returns an *unfitted* copy whose selectors reference only
+    columns present in ``available_columns``, plus the list of dropped names, so
+    a caller can rebuild-and-warn instead of crashing.
+
+    Returns ``(new_pipe, dropped)``. ``new_pipe is pipe`` (unchanged) when
+    nothing needed dropping. Transformers left with no columns are removed.
+    """
+    from sklearn.base import clone
+
+    available = set(available_columns)
+    dropped: List[str] = []
+
+    def _fix_ct(ct: ColumnTransformer) -> ColumnTransformer:
+        new_transformers = []
+        for name, trans, cols in ct.transformers:
+            if isinstance(cols, (list, tuple)):
+                kept = [c for c in cols if c in available]
+                dropped.extend([c for c in cols if c not in available])
+                if kept:
+                    new_transformers.append((name, clone(trans), kept))
+                # a transformer with no surviving columns is dropped entirely
+            else:
+                new_transformers.append((name, clone(trans), cols))
+        return ColumnTransformer(
+            transformers=new_transformers,
+            remainder=ct.remainder,
+            sparse_threshold=ct.sparse_threshold,
+            n_jobs=ct.n_jobs,
+            transformer_weights=ct.transformer_weights,
+            verbose_feature_names_out=getattr(ct, "verbose_feature_names_out", True),
+        )
+
+    if isinstance(pipe, ColumnTransformer):
+        fixed = _fix_ct(pipe)
+        return (pipe, []) if not dropped else (fixed, dropped)
+
+    if isinstance(pipe, Pipeline):
+        new_steps = []
+        for sname, step in pipe.steps:
+            if isinstance(step, ColumnTransformer):
+                new_steps.append((sname, _fix_ct(step)))
+            else:
+                new_steps.append((sname, clone(step)))
+        return (pipe, []) if not dropped else (Pipeline(new_steps), dropped)
+
+    return pipe, []
