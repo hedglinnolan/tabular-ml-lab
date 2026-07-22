@@ -481,6 +481,12 @@ class NarrativeEngine:
             rows.append(("Missing Data / Preprocessing", "NOT RECORDED",
                          "section omitted or generic"))
 
+        if ctx.get("coach_headline") or ctx.get("coach_picks"):
+            _n_picks = len(ctx.get("coach_picks") or [])
+            rows.append(("Model Development — shortlist rationale", "coach record",
+                         f"{_n_picks} shortlisted pick(s); "
+                         f"{'probe: ' + ctx.get('coach_probe_summary') if ctx.get('coach_probe_summary') else 'shape-based rationale'}"))
+
         if comp.get("training"):
             models = ctx.get("models_trained") or []
             rows.append(("Model Development / Evaluation", "training record",
@@ -918,6 +924,31 @@ class NarrativeEngine:
         parts.append(
             f"The following model candidates were trained and compared: {models_str}."
         )
+
+        # Model-selection rationale (a TRIPOD reporting item) — compiled from
+        # the coach's recorded reasoning rather than reconstructed from memory.
+        # Only cited when the trained lineup actually overlaps the shortlist:
+        # if the user ignored the coach, the Methods must not claim a
+        # rationale that the model list visibly contradicts.
+        coach_picks = self.ctx.get("coach_picks") or []
+        _pick_keys = {p.get("model_key") for p in coach_picks if isinstance(p, dict)}
+        _followed = bool(_pick_keys & set(models))
+        coach_headline = (self.ctx.get("coach_headline") or "").strip()
+        if coach_headline and _followed:
+            _rationale = coach_headline.rstrip(".")
+            # strip advisory emoji/prefixes from the UI register
+            _rationale = _rationale.replace("⚠️ ", "").replace("Dominant constraint: ", "")
+            parts.append(
+                f"Candidate models were shortlisted from the dataset's "
+                f"characteristics: {_rationale[0].lower() + _rationale[1:]}."
+            )
+        coach_probe = (self.ctx.get("coach_probe_summary") or "").strip()
+        if coach_probe and _followed:
+            parts.append(
+                f"A preliminary cross-validated screen on the training data "
+                f"informed this shortlist ({coach_probe}); screen scores were "
+                f"advisory and are not reported as results."
+            )
 
         # Hyperparameters — describe per model with human-readable prose
         hyperparams = self.ctx.get("hyperparameters", {})

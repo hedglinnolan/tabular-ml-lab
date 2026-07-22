@@ -776,6 +776,17 @@ for key, spec in available_models.items():
 # Sort groups by explainability order (most explainable first)
 sorted_groups = sorted(model_groups.keys(), key=lambda g: EXPLAINABILITY_ORDER.get(g, 999))
 
+# Coach viability verdicts: shape reasoning visible at the moment of choice
+_viability = {}
+try:
+    from ml.model_coach import model_viability as _model_viability
+    _profile_tc = st.session_state.get("dataset_profile")
+    if _profile_tc:
+        _viability = _model_viability(_profile_tc, probe=st.session_state.get("coach_probe_result"))
+except Exception:
+    _viability = {}
+_VIAB_ICONS = {"good": "✓", "ok": "△", "poor": "✗"}
+
 # Display models by group, ordered by explainability — card layout
 _GROUP_ICONS_TC = {
     "Linear": "📏", "Trees": "🌳", "Distance": "📍", "Boosting": "🚀",
@@ -817,6 +828,9 @@ for group_name in sorted_groups:
             </div>
             """, unsafe_allow_html=True)
             is_selected = st.checkbox("Select", value=is_selected, key=checkbox_key, label_visibility="collapsed")
+            if model_key in _viability:
+                _verdict, _clause = _viability[model_key]
+                st.caption(f"{_VIAB_ICONS.get(_verdict, '·')} {_clause}")
 
         if is_selected:
             models_to_train.append(model_key)
@@ -1586,6 +1600,8 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
             _diagnostics = run_post_training_diagnostics(
                 model_results=model_results,
                 task_type=task_type_final_local,
+                bootstrap_results=st.session_state.get("bootstrap_results"),
+                primary_model=st.session_state.get("primary_model", ""),
             )
             for diag in _diagnostics:
                 _tc_ledger.upsert(Insight(

@@ -194,16 +194,98 @@ _coach_picks = []
 if _profile:
     try:
         from ml.model_coach import select_top_picks
-        _coach_picks, _coach_skips = select_top_picks(_profile)
+
+        _probe_result = st.session_state.get("coach_probe_result")
+        _coach_picks, _coach_skips, _coach_headline = select_top_picks(
+            _profile, probe=_probe_result)
 
         if _coach_picks:
             with st.container(border=True):
                 st.markdown("#### 🧠 Model Coach")
+                if _coach_headline:
+                    st.markdown(f"⚖️ {_coach_headline}")
                 for pick in _coach_picks:
                     st.markdown(f"**{pick.role}** · **{pick.model_name}** — {pick.why} · _Prep: {pick.preprocessing}_")
                 if _coach_skips:
                     skip_strs = [f"{name} ({reason})" for name, reason in _coach_skips[:4]]
                     st.caption(f"**Skip unless needed:** {'; '.join(skip_strs)}")
+
+                # ── Evidence probe: measure instead of guessing ──
+                if _probe_result is None:
+                    if st.button("🔬 Run evidence probe (~10 s)", key="run_coach_probe",
+                                 help="Quick seeded cross-validation on TRAINING rows only: "
+                                      "is there learnable signal, does non-linearity pay, "
+                                      "would more data help? Advisory — never a reportable result."):
+                        from ml.coach_probe import run_probe
+                        from utils.test_lockbox import train_row_mask
+
+                        _pm = df[target_col].notna() & train_row_mask(df.index)
+                        _feats_probe = [c for c in (st.session_state.get("selected_features")
+                                                    or all_features) if c in df.columns]
+                        with st.spinner("Probing training rows (seeded, advisory)…"):
+                            _pr = run_probe(df.loc[_pm, _feats_probe],
+                                            df.loc[_pm, target_col],
+                                            task_type=_profile.target_profile.task_type
+                                            if _profile.target_profile else "regression")
+                        st.session_state["coach_probe_result"] = _pr
+
+                        # Ledger: probe findings that belong in the record
+                        from utils.insight_ledger import Insight as _ProbeInsight, get_ledger as _get_probe_ledger
+                        _pl = _get_probe_ledger()
+                        if _pr.has_signal is False and not _pr.underpowered:
+                            _pl.upsert(_ProbeInsight(
+                                id="coach_probe_no_signal",
+                                source_page="05_Preprocess", category="sufficiency",
+                                severity="warning",
+                                finding=f"Evidence probe: {_pr.summary()}",
+                                implication=("If a penalized screen finds no signal, complex "
+                                             "models will fit noise. Verify the predictors can "
+                                             "plausibly relate to the outcome."),
+                                recommended_action="Revisit predictor choice before heavy modeling",
+                                manuscript_text=("a preliminary penalized screening on the "
+                                                 "training data indicated limited predictive "
+                                                 "signal for the available predictors"),
+                                relevant_pages=["05_Preprocess", "06_Train_and_Compare"],
+                                auto_generated=True,
+                            ))
+                        else:
+                            _pl.remove("coach_probe_no_signal")
+                        if _pr.data_hungry and _pr.has_signal:
+                            _pl.upsert(_ProbeInsight(
+                                id="coach_probe_data_hungry",
+                                source_page="05_Preprocess", category="sufficiency",
+                                severity="info",
+                                finding="Evidence probe: scores still rising with more rows",
+                                implication="Additional data would likely help more than additional models.",
+                                recommended_action="Consider whether more samples are obtainable",
+                                manuscript_text=("learning-curve behaviour on the training data "
+                                                 "suggested performance was not yet saturated at "
+                                                 "the available sample size"),
+                                relevant_pages=["06_Train_and_Compare"],
+                                auto_generated=True,
+                            ))
+                        else:
+                            _pl.remove("coach_probe_data_hungry")
+                        st.rerun()
+                else:
+                    st.caption(
+                        f"🔬 **Evidence probe** ({_probe_result.n_rows_used:,} training rows"
+                        f"{', ' + '; '.join(_probe_result.notes) if _probe_result.notes else ''}): "
+                        f"{_probe_result.summary()}. _Advisory only — computed on training "
+                        f"rows, never a reportable result._")
+
+                # Coach rationale becomes provenance the manuscript can cite
+                try:
+                    from utils.workflow_provenance import get_provenance as _get_coach_prov
+                    _get_coach_prov().record_coach(
+                        headline=_coach_headline,
+                        picks=[{"role": pk.role, "model_key": pk.model_key,
+                                "model_name": pk.model_name, "why": pk.why}
+                               for pk in _coach_picks],
+                        probe_summary=_probe_result.summary() if _probe_result else "",
+                    )
+                except Exception:
+                    pass
 
             # Auto-select picks in session state
             if not st.session_state.get("_coach_applied"):

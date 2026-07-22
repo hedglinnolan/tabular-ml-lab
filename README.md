@@ -35,6 +35,57 @@ An interactive research workbench for scientists who work with tabular data and 
 
 > 🌐 **Try it now:** [app.tabularml.dev](https://app.tabularml.dev) (Note: I am actively developing a new branch and I use this demo website to test out new features. Functionality may break once in a while.)
 
+## ⬇️ Download the App (no coding, no terminal)
+
+Run Tabular ML Lab on your own computer like a normal desktop app — **your data
+never leaves your machine.**
+
+<p align="center">
+  <a href="https://github.com/hedglinnolan/tabular-ml-lab/archive/refs/heads/main.zip">
+    <img src="https://img.shields.io/badge/⬇_Download_Tabular_ML_Lab-.zip_for_Windows_%26_Mac-667eea?style=for-the-badge" alt="Download Tabular ML Lab">
+  </a>
+</p>
+
+**1.** Download the zip above and unzip it anywhere you like (Desktop, Documents…).
+The unzipped folder **is** the app — don't delete it after setup.
+
+**2.** Open the folder and double-click the starter for your system:
+
+| System | Double-click | First-time security prompt (once per computer) |
+|--------|--------------|------------------------------------------------|
+| **Windows** | `Start Tabular ML Lab.bat` | SmartScreen may appear → click **More info** → **Run anyway** |
+| **Mac** | `Start Tabular ML Lab.command` | **Right-click → Open → Open** (plain double-click is blocked for downloaded files) |
+
+**3.** The first launch sets everything up **once**: it downloads a private copy
+of Python and the analysis libraries (~1–2 GB, a few minutes — the window tells
+you what's happening). Then the app opens in your browser automatically.
+
+**Coming back later:** setup never repeats. On Windows, a **Tabular ML Lab**
+icon is now on your Desktop and Start Menu; on Mac, a **Tabular ML Lab** app
+appeared inside the folder (drag it to your Dock if you like). One click starts
+the app in seconds — **no internet needed after the first launch.** The browser
+tab is just the app's window: the icon starts the app, the tab shows it, and
+closing the small console window quits it.
+
+**Updating:** download the new zip and delete the old folder — the app never
+stores your data inside its own folder, so nothing of yours is lost.
+
+**Uninstalling:** delete the folder (plus the Desktop shortcut on Windows). That's everything.
+
+<details>
+<summary>What the starter actually does (for the curious or cautious)</summary>
+
+The starter uses <a href="https://github.com/astral-sh/uv">uv</a> (a widely
+used open-source tool from Astral) to install a private Python 3.12 and the
+libraries from <code>requirements.txt</code> into hidden folders
+(<code>.tools/</code>, <code>.venv/</code>) inside the app folder — nothing is
+installed system-wide, no admin rights needed. It then runs
+<code>streamlit run app.py</code>, which serves the app only to your own
+computer (localhost) and opens your browser. The security prompts appear
+because the starters aren't code-signed — the source is fully inspectable in
+this repository.
+</details>
+
 ## Features
 
 ### 📋 10-Step Guided Workflow

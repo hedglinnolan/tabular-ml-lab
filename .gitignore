@@ -79,3 +79,8 @@ docs/plans/
 docs/reviews/
 docs/eda-redesign.md
 README_PUBLIC.md
+
+# One-click launcher artifacts (created on the user's machine at first run)
+.tools/
+Tabular ML Lab.app/
+.venv-stamp

@@ -117,6 +117,57 @@ the pipeline holds no evidence — downloadable beside the draft.
 conversion, so hostile column names (`feat_0042`, "15%") compile.
 17 new tests in `tests/test_manuscript_trust.py`. Test count: 549 passing.
 
+**Model-coach assessment wave (2026-07-19):** an empirical audit (the
+coach's verbatim output across seven dataset shapes) found the visible
+coach reacting to whichever signal it checked first rather than the
+dataset's dominant constraint: feature outliers hijacked the pick to Huber
+(which is robust to TARGET outliers — a statistical confusion), a 34×300
+dataset got an unpenalized robust regression with no mention of p≫n,
+a 6%-minority classification with EPV 1.6 was told logistic regression's
+"probability outputs are well-calibrated" with zero mention of imbalance,
+the collinearity branch was dead (the profile has no such field), and the
+scaling advice told users to do what the default pipeline already does.
+`select_top_picks` was rewritten shape-first: it now returns a HEADLINE
+naming the dominant constraint with the numbers (p≫n, EPV vs the ≥10
+guideline, imbalance ratio, small-n CV-spread warning), picks penalized
+models for wide data (LASSO + Ridge comparison, trees skip-listed with an
+explanation), triggers Huber only on measured outcome outliers, keeps the
+lineup deliberately small at low EPV, claims calibration only when the
+event count supports checking it, and gives skip-list reasons that cite
+the dataset's own numbers. Preprocessing insights now acknowledge pipeline
+defaults, carry a small-n outlier-detector caveat, and use a consistent
+native-NaN vocabulary. The parallel dead recommendation apparatus (~830
+lines never rendered by any page) was removed, closing the drift surface.
+10 new shape-awareness tests. Test count: 568 passing.
+
+**Coach intelligence expansion (2026-07-19):** the coach gained four
+capabilities beyond shape priors. (1) An **evidence probe**
+(`ml/coach_probe.py`): seeded, lockbox-respecting cross-validation on
+training rows measuring a penalized signal floor vs permuted-target
+baseline (with an absolute chance floor — negative R² can never count as
+signal), non-linearity gain (shallow trees vs linear on the same folds;
+L1 models on wide data where a variance screen is signal-blind), and a
+learning-curve slope; small-n classification is reported as
+"underpowered/unconfirmed" rather than a false "no signal". One click on
+the Preprocess page; results sharpen the picks ("probe measured +0.73 R²
+for trees"), a no-signal result becomes a headline warning plus a ledger
+insight with manuscript register, and probe numbers are explicitly
+advisory-only. (2) **Viability verdicts** on every Train-page model card
+(✓/△/✗ with an evidence clause citing n, p, EPV) so the shape reasoning
+is visible at the moment of choice. (3) **Three new post-training
+detectors**: accuracy vs the no-information rate, bootstrap CI overlap
+between the top two models (rankings not established → parsimony is a
+valid tie-breaker), and residual heteroscedasticity on the primary model
+(Spearman ρ of |residual| vs prediction) — all with manuscript_text.
+(4) **Coach provenance**: the shortlist rationale and probe summary are
+recorded (`CoachProvenance`) and compiled into the Methods draft's model
+development section (a TRIPOD reporting item) and the evidence map, with
+screen scores explicitly framed as advisory, not results. 23 new tests in
+`tests/test_coach_intelligence.py`. Test count: 591 passing. (Known pre-existing:
+one stale pandas-3 dtype expectation in `scripts/smoke_check.py`'s
+categorical-target check — the pytest suite covering the same path is
+green.)
+
 **Known remaining work (deliberately deferred, none demo-blocking):**
 explicit theory anchors at every EDA producer (inference fallback is
 currently benign but fragile); coaching badge counts vs scoped body

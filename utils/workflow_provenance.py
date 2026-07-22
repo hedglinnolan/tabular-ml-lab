@@ -175,6 +175,19 @@ class StatisticalValidationProvenance:
 # ---------------------------------------------------------------------------
 
 @dataclass
+class CoachProvenance:
+    """Model-shortlist rationale: what the coach advised and why.
+
+    Model-selection rationale is a TRIPOD reporting item; recording it here
+    lets the Methods draft cite the actual reasoning instead of the author
+    reconstructing it."""
+    headline: str = ""
+    picks: List[Dict[str, Any]] = field(default_factory=list)
+    probe_summary: str = ""
+    timestamp: str = ""
+
+
+@dataclass
 class WorkflowProvenance:
     """Single source of truth for what happened in the ML workflow.
 
@@ -192,6 +205,7 @@ class WorkflowProvenance:
     explainability: Optional[ExplainabilityProvenance] = None
     sensitivity: Optional[SensitivityProvenance] = None
     statistical_validation: Optional[StatisticalValidationProvenance] = None
+    coach: Optional[CoachProvenance] = None
 
     # Schema version for forward compatibility
     schema_version: int = 1
@@ -434,6 +448,16 @@ class WorkflowProvenance:
 
     # --- Reader methods (for consumers) ---
 
+    def record_coach(self, headline: str, picks: List[Dict[str, Any]],
+                     probe_summary: str = "") -> None:
+        """Called by the Preprocess page when the Model Coach renders."""
+        self.coach = CoachProvenance(
+            headline=headline or "",
+            picks=list(picks or []),
+            probe_summary=probe_summary or "",
+            timestamp=datetime.now().isoformat(),
+        )
+
     def get_completeness(self) -> Dict[str, bool]:
         """Returns which workflow stages have been recorded.
 
@@ -543,6 +567,11 @@ class WorkflowProvenance:
             ctx["seed_stability"] = self.sensitivity.seed_stability
             ctx["feature_dropout"] = self.sensitivity.feature_dropout
 
+        if self.coach:
+            ctx["coach_headline"] = self.coach.headline
+            ctx["coach_picks"] = self.coach.picks
+            ctx["coach_probe_summary"] = self.coach.probe_summary
+
         if self.statistical_validation:
             ctx["statistical_tests"] = self.statistical_validation.tests_run
 
@@ -616,6 +645,11 @@ class WorkflowProvenance:
             prov.statistical_validation = StatisticalValidationProvenance(**{
                 k: v for k, v in data["statistical_validation"].items()
                 if k in StatisticalValidationProvenance.__dataclass_fields__
+            })
+        if data.get("coach"):
+            prov.coach = CoachProvenance(**{
+                k: v for k, v in data["coach"].items()
+                if k in CoachProvenance.__dataclass_fields__
             })
 
         return prov

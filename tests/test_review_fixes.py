@@ -146,6 +146,9 @@ RESULT_KEYS = [
     "baseline_results", "calibration_results", "sensitivity_seed_results",
     "hypothesis_test_results", "table1_df", "table1_metadata",
     "methods_section", "manuscript_context",
+    # Coach evidence — a probe verdict must never outlive the data it
+    # measured (2026-07 layer-contract audit)
+    "coach_probe_result", "_coach_applied",
 ]
 
 
@@ -512,3 +515,76 @@ class TestUltrawideFixes:
             assert abs(pearson[col] - df[col].corr(df["y"])) < 1e-9
             assert abs(spearman[col]
                        - df[col].corr(df["y"], method="spearman")) < 1e-9
+
+
+# ── Layer-contract audit (2026-07): buses must invalidate together ───────
+
+class TestLayerContracts:
+    def setup_method(self):
+        _clear_session()
+
+    def teardown_method(self):
+        _clear_session()
+
+    def test_reset_prunes_train_and_preprocess_auto_insights(self):
+        """Auto-generated diagnostics from Preprocess and Train describe data
+        and models that a reset just destroyed; their producers re-detect on
+        the next visit/run. Absent is better than false."""
+        from utils.insight_ledger import Insight, get_ledger
+        from utils.session_state import reset_downstream_results
+
+        ledger = get_ledger()
+        for iid, page in [("train_overfit_xgb_reg", "06_Train_and_Compare"),
+                          ("coach_probe_no_signal", "05_Preprocess"),
+                          ("eda_missing_severe", "02_EDA")]:
+            ledger.upsert(Insight(
+                id=iid, source_page=page, category="model_selection",
+                severity="warning", finding="f", implication="i",
+                auto_generated=True,
+            ))
+        # a manually created (non-auto) insight must survive
+        ledger.upsert(Insight(
+            id="user_note", source_page="06_Train_and_Compare",
+            category="methodology", severity="info", finding="f",
+            implication="i", auto_generated=False,
+        ))
+        reset_downstream_results()
+        ledger = get_ledger()
+        assert ledger.get("train_overfit_xgb_reg") is None
+        assert ledger.get("coach_probe_no_signal") is None
+        assert ledger.get("eda_missing_severe") is None
+        assert ledger.get("user_note") is not None
+
+    def test_reset_clears_coach_provenance(self):
+        from utils.session_state import reset_downstream_results
+        from utils.workflow_provenance import WorkflowProvenance
+
+        prov = WorkflowProvenance()
+        prov.record_coach(headline="old data rationale", picks=[], probe_summary="s")
+        st.session_state["workflow_provenance"] = prov
+        reset_downstream_results()
+        assert st.session_state["workflow_provenance"].coach is None
+
+    def test_methods_skips_coach_rationale_when_user_ignored_picks(self):
+        """If the trained lineup shares no model with the coach's shortlist,
+        the Methods draft must not assert a shortlist rationale the model
+        list visibly contradicts."""
+        from ml.narrative_engine import NarrativeEngine
+        from utils.workflow_provenance import WorkflowProvenance
+
+        prov = WorkflowProvenance()
+        prov.record_upload(target_col="y", task_type="regression",
+                           feature_cols=["a"], n_samples=200)
+        prov.record_training(models_trained=["nn"], primary_model="nn",
+                             metrics_by_model={"nn": {"R2": 0.5}})
+        prov.record_coach(headline="Dominant constraint: something.",
+                          picks=[{"model_key": "ridge"}], probe_summary="probe text")
+        draft = NarrativeEngine(prov).generate()
+        assert "shortlisted from the dataset" not in draft.model_development
+        assert "advisory and are not reported" not in draft.model_development
+
+        # and cited when at least one pick WAS trained
+        prov.record_training(models_trained=["ridge", "nn"], primary_model="ridge",
+                             metrics_by_model={"ridge": {"R2": 0.6}})
+        draft2 = NarrativeEngine(prov).generate()
+        assert "shortlisted from the dataset" in draft2.model_development
