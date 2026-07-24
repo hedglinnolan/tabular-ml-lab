@@ -93,6 +93,31 @@ def _populated_state(state):
     ))
     state["insight_ledger"] = ledger
 
+    # Schema 2.1 recipe state: the sealed holdout (numpy labels, as the real
+    # lockbox stores them), its fraction, and the keys a restore previously lost.
+    state["test_lockbox"] = {
+        "labels": [np.int64(1), np.int64(3)],
+        "fraction": 0.25,
+        "seed": 42,
+        "n_total": 4,
+        "n_test": 2,
+        "signature": "sig-abc",
+        "stratified": False,
+    }
+    state["test_lockbox_fraction"] = 0.25
+    state["pre_fe_feature_cols"] = ["age", "bmi"]
+    state["preprocess_built_model_keys"] = ["ridge", "huber"]
+    state["engineered_feature_transforms"] = {"age_sq": "square"}
+    state["exploratory_mode"] = True  # widget key; travels via widget_state.json
+
+    from ml.coach_probe import ProbeResult
+    state["coach_probe_result"] = ProbeResult(
+        task_type="regression", n_rows_used=4, n_features_used=2,
+        subsampled=False, linear_score=0.12, permuted_score=-0.01,
+        permuted_spread=0.02, tree_score=0.10, half_data_score=0.08,
+        metric_name="R²", notes=["ok"],
+    )
+
     # Things that must NEVER be written to the save file.
     state["trained_models"] = {"rf": object()}
     state["fitted_estimators"] = {"rf": object()}
@@ -113,7 +138,7 @@ def test_save_produces_valid_zip(fake_session):
     _populated_state(fake_session)
     archive_bytes, manifest = _collect_session_data()
     assert zipfile.is_zipfile(io.BytesIO(archive_bytes))
-    assert manifest["schema_version"] == "2.0"
+    assert manifest["schema_version"] == "2.1"
     assert "data_config" in manifest["saved_keys"]
     assert "insight_ledger" in manifest["saved_keys"]
 
@@ -169,7 +194,8 @@ def test_round_trip_preserves_values(fake_session):
 
     # Simulate a fresh session by clearing + restoring.
     fake_session.clear()
-    restored_count, manifest = _restore_session_data(archive_bytes)
+    restored_count, manifest, load_warnings = _restore_session_data(archive_bytes)
+    assert load_warnings == []
     assert restored_count > 0
     assert manifest["workflow_step"] == "05_Preprocess"
 
@@ -349,3 +375,84 @@ def test_unknown_config_keys_are_ignored_not_restored(fake_session):
     # trained_models is in NEVER_PERSIST so it was cleared by
     # _clear_downstream_state; we assert it was not overwritten from the file.
     assert fake_session.get("trained_models") != {"rf": "attacker_payload"}
+
+
+# --- Schema 2.1: the recipe state a restore previously lost ----------------
+
+def _save_clear_restore(fake_session):
+    from utils.session_manager import _collect_session_data, _restore_session_data
+    _populated_state(fake_session)
+    archive_bytes, _ = _collect_session_data()
+    fake_session.clear()
+    return _restore_session_data(archive_bytes)
+
+
+def test_round_trip_restores_lockbox_with_int_labels(fake_session):
+    """The sealed holdout must survive VERBATIM. numpy int labels must come
+    back as python ints — stringified labels would silently fail membership
+    against the dataframe's integer index (an all-False test mask)."""
+    _save_clear_restore(fake_session)
+    lb = fake_session["test_lockbox"]
+    assert lb["labels"] == [1, 3]
+    assert all(type(x) is int for x in lb["labels"])
+    assert lb["fraction"] == 0.25
+    assert lb["seed"] == 42
+    assert lb["n_test"] == 2
+    # The fraction key is kept coherent with the restored lockbox so a
+    # redraw (if the data signature shifts) uses the SAME holdout percent.
+    assert fake_session["test_lockbox_fraction"] == 0.25
+
+
+def test_round_trip_restores_recipe_keys(fake_session):
+    _save_clear_restore(fake_session)
+    assert fake_session["pre_fe_feature_cols"] == ["age", "bmi"]
+    assert fake_session["preprocess_built_model_keys"] == ["ridge", "huber"]
+    assert fake_session["engineered_feature_transforms"] == {"age_sq": "square"}
+
+
+def test_round_trip_restores_coach_probe(fake_session):
+    from ml.coach_probe import ProbeResult
+    _save_clear_restore(fake_session)
+    probe = fake_session["coach_probe_result"]
+    assert isinstance(probe, ProbeResult)
+    assert probe.linear_score == 0.12
+    assert probe.metric_name == "R²"
+    assert probe.notes == ["ok"]
+
+
+def test_exploratory_mode_travels_via_widget_state(fake_session):
+    """exploratory_mode is a widget key (page 01 checkbox): it must restore
+    via the deferred widget mechanism, never by direct assignment."""
+    _save_clear_restore(fake_session)
+    assert "exploratory_mode" not in fake_session or fake_session.get(
+        "exploratory_mode") is not True  # not directly assigned
+    pending = fake_session.get("_pending_widget_state_restore", {})
+    assert pending.get("exploratory_mode") is True
+
+
+def test_legacy_2_0_archive_still_loads(fake_session):
+    """A 2.0 file (no lockbox.json / coach_probe.json) must load cleanly —
+    users' existing saves keep working after the schema bump."""
+    from utils.session_manager import _restore_session_data
+
+    members = {
+        "manifest.json": json.dumps({
+            "schema_version": "2.0",
+            "saved_at": "2026-06-01T00:00:00",
+            "workflow_step": "02_EDA",
+            "saved_keys": ["random_seed"], "skipped_keys": [], "members": [],
+        }).encode(),
+        "config.json": json.dumps({"random_seed": 7}).encode(),
+        "widget_state.json": b"{}",
+    }
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name, data in members.items():
+            zf.writestr(name, data)
+
+    restored_count, manifest, load_warnings = _restore_session_data(buf.getvalue())
+    assert restored_count >= 1
+    assert load_warnings == []
+    assert fake_session["random_seed"] == 7
+    # No lockbox member -> no lockbox key invented
+    assert "test_lockbox" not in fake_session
