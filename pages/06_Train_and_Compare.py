@@ -1988,6 +1988,29 @@ if st.session_state.get('trained_models'):
                 y_test_local = np.array(results["y_test"])
                 y_pred_local = np.array(results["y_test_pred"])
 
+                # A model whose stored predictions contain NaN/inf (diverged
+                # NN, degenerate target-transform back-mapping) must not crash
+                # the whole CI run — resample the finite pairs and say so.
+                _finite_local = np.isfinite(
+                    np.asarray(y_test_local, dtype=float)
+                ) & np.isfinite(np.asarray(y_pred_local, dtype=float))
+                if not _finite_local.all():
+                    _n_dropped = int((~_finite_local).sum())
+                    if int(_finite_local.sum()) < 10:
+                        st.warning(
+                            f"⚠️ {name.upper()}: too few finite predictions for "
+                            f"bootstrap CIs ({_n_dropped} non-finite) — skipped. "
+                            f"Inspect this model's training."
+                        )
+                        progress.progress((i + 1) / len(model_names_list))
+                        continue
+                    st.caption(
+                        f"⚠️ {name.upper()}: {_n_dropped} non-finite prediction(s) "
+                        f"excluded from bootstrap CIs."
+                    )
+                    y_test_local = y_test_local[_finite_local]
+                    y_pred_local = y_pred_local[_finite_local]
+
                 if data_config.task_type == "regression":
                     cis = bootstrap_all_regression_metrics(y_test_local, y_pred_local, n_resamples=1000)
                 else:
@@ -2003,6 +2026,13 @@ if st.session_state.get('trained_models'):
                                     y_proba_local = y_proba_local[:, 1]
                             except Exception:
                                 pass
+                    # Keep probabilities aligned with the finite-filtered labels.
+                    if (
+                        y_proba_local is not None
+                        and not _finite_local.all()
+                        and len(y_proba_local) == len(_finite_local)
+                    ):
+                        y_proba_local = np.asarray(y_proba_local)[_finite_local]
                     cis = bootstrap_all_classification_metrics(y_test_local, y_pred_local, y_proba=y_proba_local, n_resamples=1000)
 
                 bootstrap_results[name] = cis
@@ -2132,15 +2162,27 @@ if st.session_state.get('trained_models'):
                             st.caption(f"Could not compute calibration for {name}: {e}")
         else:
             for name, results in st.session_state.model_results.items():
-                from ml.calibration import calibration_regression
-                cal = calibration_regression(
-                    np.array(results["y_test"]), np.array(results["y_test_pred"]),
-                    model_name=name.upper(),
-                )
-                _calibration_by_model[name] = cal
-                st.markdown(f"**{name.upper()}:** Calibration slope = {cal.calibration_slope:.3f}, "
-                           f"Intercept = {cal.calibration_intercept:.3f} "
-                           f"(perfect: slope=1, intercept=0)")
+                # One model's bad predictions (a diverged NN emits NaN) must
+                # not crash the whole results section — mirror the per-model
+                # try/except the classification branch above already has.
+                try:
+                    from ml.calibration import calibration_regression
+                    _yt = np.asarray(results["y_test"], dtype=float)
+                    _yp = np.asarray(results["y_test_pred"], dtype=float)
+                    _n_bad = int((~(np.isfinite(_yt) & np.isfinite(_yp))).sum())
+                    cal = calibration_regression(_yt, _yp, model_name=name.upper())
+                    _calibration_by_model[name] = cal
+                    st.markdown(f"**{name.upper()}:** Calibration slope = {cal.calibration_slope:.3f}, "
+                               f"Intercept = {cal.calibration_intercept:.3f} "
+                               f"(perfect: slope=1, intercept=0)")
+                    if _n_bad:
+                        st.caption(
+                            f"⚠️ {name.upper()}: {_n_bad} non-finite prediction(s) "
+                            f"excluded from calibration — inspect this model's "
+                            f"training (it may have diverged)."
+                        )
+                except Exception as e:
+                    st.warning(f"⚠️ Could not compute calibration for {name.upper()}: {e}")
             st.caption("Calibration slope measures systematic over/under-prediction. "
                       "Slope < 1 = predictions too extreme; slope > 1 = predictions too conservative.")
         # Persist for Report Export — previously computed here but never stored,
