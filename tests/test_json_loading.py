@@ -158,5 +158,47 @@ def test_load_tabular_data_transpose_still_applies():
     assert df.shape == (2, 1)
 
 
+
+# ── defects found by adversarial stress-testing ──────────────────────────
+
+def test_nested_arrays_do_not_poison_the_frame():
+    """A list in a cell makes nunique/duplicated/hash_pandas_object raise
+    'unhashable type: list'. The app fingerprints uploads with
+    hash_pandas_object to decide when to invalidate downstream results, so one
+    list cell silently disabled that gate and let stale models outlive a data
+    change. Cells are rendered as JSON text instead."""
+    df = load_json(_b('[{"id":1,"visits":[1,2,3]},{"id":2,"visits":[4,5]}]'))
+    assert isinstance(df["visits"].iloc[0], str)
+    df.nunique()
+    df.duplicated()
+    pd.util.hash_pandas_object(df, index=False)
+
+
+def test_deeply_nested_objects_are_also_hashable():
+    df = load_json(_b('[{"id":1,"a":{"b":{"c":{"d":1}}}}]'))
+    pd.util.hash_pandas_object(df, index=False)
+
+
+def test_geojson_is_rejected_not_flattened():
+    """GeoJSON flattened into geometry fragments looks like a real table and
+    a user would try to model it."""
+    payload = ('{"type":"FeatureCollection","features":[{"type":"Feature",'
+               '"geometry":{"type":"Point","coordinates":[1,2]},"properties":{"a":1}}]}')
+    with pytest.raises(ValueError, match="GeoJSON"):
+        load_json(_b(payload))
+
+
+def test_jsonl_containing_one_array_line_is_read_as_records():
+    """A .jsonl holding an ordinary JSON array on one line previously became a
+    1-row frame whose single cell was a list of dicts."""
+    df = load_json(_b('[{"a":1},{"a":2}]'), lines=True)
+    assert df.shape == (2, 1)
+    assert df["a"].tolist() == [1, 2]
+
+
+def test_utf16_json_loads():
+    """PowerShell's ConvertTo-Json | Out-File writes UTF-16 by default."""
+    assert load_json(io.BytesIO('[{"a":1},{"a":2}]'.encode("utf-16"))).shape == (2, 1)
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))

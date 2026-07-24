@@ -115,7 +115,7 @@ def _strip_bom(text: str) -> str:
 def _json_read_text(file: Union[str, io.BytesIO], encoding: Optional[str] = None) -> str:
     """Read a JSON/JSONL source to text, tolerating common encodings."""
     if isinstance(file, str):
-        encodings = [encoding] if encoding else ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
+        encodings = [encoding] if encoding else ['utf-8', 'utf-8-sig', 'utf-16', 'latin-1', 'cp1252']
         last_err = None
         for enc in encodings:
             try:
@@ -129,7 +129,7 @@ def _json_read_text(file: Union[str, io.BytesIO], encoding: Optional[str] = None
     raw = file.read()
     if isinstance(raw, str):
         return _strip_bom(raw)
-    encodings = [encoding] if encoding else ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
+    encodings = [encoding] if encoding else ['utf-8', 'utf-8-sig', 'utf-16', 'latin-1', 'cp1252']
     last_err = None
     for enc in encodings:
         try:
@@ -155,7 +155,47 @@ def _json_lines_to_records(text: str) -> List[Any]:
             )
     if not records:
         raise ValueError("The file contains no JSON records.")
+    # A .jsonl holding one ordinary JSON array on a single line is a common
+    # mislabel. Without this it becomes a 1-row frame whose only cell is a
+    # list of dicts — technically "loaded", actually garbage.
+    if len(records) == 1 and isinstance(records[0], list):
+        return records[0]
     return records
+
+
+def _stringify_nonscalar_cells(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
+    """Render list/dict cells as compact JSON text.
+
+    pandas will happily hold a list in a cell, but such a frame is a landmine:
+    nunique(), duplicated() and hash_pandas_object() all raise "unhashable
+    type: 'list'". The app fingerprints uploads with hash_pandas_object to
+    decide when to invalidate downstream results, so a single list-valued cell
+    silently disables that gate and lets stale models outlive a data change.
+
+    Converting to text keeps the information visible and the frame safe; the
+    Import Doctor then flags the affected columns so the user is told rather
+    than left to discover it.
+    """
+    converted: List[str] = []
+    out = df
+    for col in df.columns:
+        s = df[col]
+        if s.dtype != object:
+            continue
+        try:
+            has_nonscalar = s.map(lambda v: isinstance(v, (list, dict, set, tuple))).any()
+        except Exception:
+            has_nonscalar = False
+        if not has_nonscalar:
+            continue
+        if out is df:
+            out = df.copy()
+        out[col] = s.map(
+            lambda v: json.dumps(v, ensure_ascii=False, default=str)
+            if isinstance(v, (list, dict, set, tuple)) else v
+        )
+        converted.append(str(col))
+    return out, converted
 
 
 def _json_obj_to_frame(obj: Any, records_key: Optional[str] = None,
@@ -190,6 +230,15 @@ def _json_obj_to_frame(obj: Any, records_key: Optional[str] = None,
     # --- object at the top level ------------------------------------------
     if isinstance(obj, dict):
         keys = set(obj.keys())
+
+        # GeoJSON flattens into a "table" of geometry fragments that means
+        # nothing as data. Say so rather than hand back a plausible-looking
+        # frame the user will try to model.
+        if str(obj.get("type", "")).lower() in {"featurecollection", "geometrycollection"}:
+            raise ValueError(
+                "This looks like a GeoJSON map file, not a data table. Export the "
+                "attributes you want to analyse as CSV or as a list of records."
+            )
 
         # pandas orient='split': {"columns": [...], "data": [[...]], "index": [...]}
         if {"columns", "data"} <= keys and isinstance(obj.get("data"), list):
@@ -260,7 +309,8 @@ def load_json(file: Union[str, io.BytesIO], lines: bool = False,
         raise ValueError("The JSON file is empty.")
 
     if lines:
-        return _json_obj_to_frame(_json_lines_to_records(text), records_key)
+        df = _json_obj_to_frame(_json_lines_to_records(text), records_key)
+        return _finalize_json_frame(df)
 
     try:
         obj = json.loads(text)
@@ -268,16 +318,24 @@ def load_json(file: Union[str, io.BytesIO], lines: bool = False,
         # A .json file that is really NDJSON is a very common export; try it
         # before giving up so the user isn't blocked on a naming convention.
         try:
-            return _json_obj_to_frame(_json_lines_to_records(text), records_key)
+            return _finalize_json_frame(
+                _json_obj_to_frame(_json_lines_to_records(text), records_key))
+        except ValueError:
+            raise
         except Exception:
             raise ValueError(
                 f"This file is not valid JSON ({first_err.msg} at line "
                 f"{first_err.lineno}, column {first_err.colno})."
             )
 
-    df = _json_obj_to_frame(obj, records_key)
+    return _finalize_json_frame(_json_obj_to_frame(obj, records_key))
+
+
+def _finalize_json_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Shared exit checks for every JSON parse path."""
     if df.shape[1] == 0:
         raise ValueError("This JSON produced a table with no columns.")
+    df, _converted = _stringify_nonscalar_cells(df)
     return df
 
 
