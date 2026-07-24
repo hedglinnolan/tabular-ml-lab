@@ -5,8 +5,9 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from typing import List, Tuple, Optional, Union
+from typing import Any, List, Tuple, Optional, Union
 import io
+import json
 
 
 def detect_file_type(filename: str) -> str:
@@ -18,6 +19,10 @@ def detect_file_type(filename: str) -> str:
         return 'excel'
     elif filename_lower.endswith('.parquet'):
         return 'parquet'
+    elif filename_lower.endswith(('.jsonl', '.ndjson')):
+        return 'jsonl'
+    elif filename_lower.endswith('.json'):
+        return 'json'
     elif filename_lower.endswith(('.tsv', '.txt')):
         return 'tsv'
     else:
@@ -88,6 +93,194 @@ def load_tsv(file: Union[str, io.BytesIO], encoding: Optional[str] = None) -> pd
     raise ValueError(f"Error loading TSV: {str(last_err)}")
 
 
+# Keys commonly used to wrap a records array in API-style payloads
+# ({"data": [...]}, {"results": [...]}). Ordered by how conventional they are.
+_JSON_WRAPPER_KEYS = ("data", "records", "results", "rows", "items", "entries", "values")
+
+# Nested objects are flattened this many levels by default ({"a": {"b": 1}} ->
+# column "a.b"). Deeper nesting usually means the file is not really tabular.
+_JSON_MAX_LEVEL = 2
+
+
+def _strip_bom(text: str) -> str:
+    """Drop a leading UTF-8 BOM.
+
+    Windows and Excel exports routinely include one; decoding as plain utf-8
+    leaves it as a stray \\ufeff character that makes json.loads fail on the
+    very first byte with an unhelpful error.
+    """
+    return text.lstrip('﻿') if text else text
+
+
+def _json_read_text(file: Union[str, io.BytesIO], encoding: Optional[str] = None) -> str:
+    """Read a JSON/JSONL source to text, tolerating common encodings."""
+    if isinstance(file, str):
+        encodings = [encoding] if encoding else ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
+        last_err = None
+        for enc in encodings:
+            try:
+                with open(file, 'r', encoding=enc) as fh:
+                    return _strip_bom(fh.read())
+            except Exception as e:
+                last_err = e
+        raise ValueError(f"Error reading JSON file: {last_err}")
+
+    file.seek(0)
+    raw = file.read()
+    if isinstance(raw, str):
+        return _strip_bom(raw)
+    encodings = [encoding] if encoding else ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
+    last_err = None
+    for enc in encodings:
+        try:
+            return _strip_bom(raw.decode(enc))
+        except Exception as e:
+            last_err = e
+    raise ValueError(f"Error decoding JSON file: {last_err}")
+
+
+def _json_lines_to_records(text: str) -> List[Any]:
+    """Parse JSON Lines / NDJSON text into a list of objects."""
+    records = []
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        line = line.strip().rstrip(',')
+        if not line:
+            continue
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Line {lineno} is not valid JSON ({e.msg}). JSON Lines files "
+                f"need exactly one complete JSON object per line."
+            )
+    if not records:
+        raise ValueError("The file contains no JSON records.")
+    return records
+
+
+def _json_obj_to_frame(obj: Any, records_key: Optional[str] = None,
+                       max_level: int = _JSON_MAX_LEVEL) -> pd.DataFrame:
+    """Convert a parsed JSON object into a DataFrame, or explain why it can't.
+
+    Handles the shapes researchers actually export: an array of records, a
+    wrapped payload ({"data": [...]}), pandas' own orients (split/columns/
+    index/table), and nested objects (flattened via json_normalize).
+    """
+    # Caller explicitly told us where the rows live.
+    if records_key is not None:
+        if not isinstance(obj, dict) or records_key not in obj:
+            raise ValueError(f"Key '{records_key}' was not found at the top level of this JSON.")
+        return _json_obj_to_frame(obj[records_key], None, max_level)
+
+    # --- array at the top level -------------------------------------------
+    if isinstance(obj, list):
+        if not obj:
+            raise ValueError("This JSON contains an empty list — there are no rows to load.")
+        if all(isinstance(x, dict) for x in obj):
+            return pd.json_normalize(obj, max_level=max_level)
+        if all(isinstance(x, (list, tuple)) for x in obj):
+            return pd.DataFrame(obj)
+        if all(not isinstance(x, (dict, list, tuple)) for x in obj):
+            return pd.DataFrame({"value": obj})
+        # Mixed content — normalize what we can rather than fail outright.
+        return pd.json_normalize(
+            [x if isinstance(x, dict) else {"value": x} for x in obj], max_level=max_level
+        )
+
+    # --- object at the top level ------------------------------------------
+    if isinstance(obj, dict):
+        keys = set(obj.keys())
+
+        # pandas orient='split': {"columns": [...], "data": [[...]], "index": [...]}
+        if {"columns", "data"} <= keys and isinstance(obj.get("data"), list):
+            try:
+                df = pd.DataFrame(obj["data"], columns=obj["columns"])
+                if isinstance(obj.get("index"), list) and len(obj["index"]) == len(df):
+                    df.index = obj["index"]
+                return df
+            except Exception:
+                pass  # fall through to the generic handling below
+
+        # pandas orient='table': {"schema": {...}, "data": [...]}
+        if {"schema", "data"} <= keys and isinstance(obj.get("data"), list):
+            return pd.json_normalize(obj["data"], max_level=max_level)
+
+        # API-style wrapper: {"data": [...]}, {"results": [...]}, ...
+        for wrapper in _JSON_WRAPPER_KEYS:
+            value = obj.get(wrapper)
+            if isinstance(value, list) and value:
+                return _json_obj_to_frame(value, None, max_level)
+
+        # Exactly one key holds a list of records — unambiguous enough to use.
+        list_keys = [k for k, v in obj.items() if isinstance(v, list) and v]
+        if len(list_keys) == 1:
+            return _json_obj_to_frame(obj[list_keys[0]], None, max_level)
+
+        # pandas orient='columns'/'index': {"col": {"0": v, "1": v}, ...}
+        if obj and all(isinstance(v, dict) for v in obj.values()):
+            return pd.DataFrame(obj)
+
+        # A single flat record -> a one-row table.
+        if obj and all(not isinstance(v, (dict, list)) for v in obj.values()):
+            return pd.DataFrame([obj])
+
+        if len(list_keys) > 1:
+            raise ValueError(
+                "This JSON has several possible row sets "
+                f"({', '.join(sorted(list_keys)[:6])}). Pick which key holds "
+                "your rows, or export just that part of the file."
+            )
+        raise ValueError(
+            "This JSON does not look like a table. Top-level keys: "
+            f"{', '.join(sorted(map(str, list(keys)))[:6]) or '(none)'}. "
+            "A tabular JSON is usually a list of records, e.g. "
+            '[{"age": 40, "bmi": 22.1}, ...].'
+        )
+
+    raise ValueError(
+        "This JSON is a single value, not a table. A tabular JSON is usually a "
+        'list of records, e.g. [{"age": 40, "bmi": 22.1}, ...].'
+    )
+
+
+def load_json(file: Union[str, io.BytesIO], lines: bool = False,
+              records_key: Optional[str] = None,
+              encoding: Optional[str] = None) -> pd.DataFrame:
+    """Load JSON or JSON Lines data as a DataFrame.
+
+    Args:
+        file: path or file-like object
+        lines: force JSON Lines (NDJSON) parsing — one object per line
+        records_key: top-level key holding the rows, when auto-detection is
+            ambiguous (e.g. "data")
+        encoding: override text encoding
+    """
+    text = _json_read_text(file, encoding=encoding)
+    if not text.strip():
+        raise ValueError("The JSON file is empty.")
+
+    if lines:
+        return _json_obj_to_frame(_json_lines_to_records(text), records_key)
+
+    try:
+        obj = json.loads(text)
+    except json.JSONDecodeError as first_err:
+        # A .json file that is really NDJSON is a very common export; try it
+        # before giving up so the user isn't blocked on a naming convention.
+        try:
+            return _json_obj_to_frame(_json_lines_to_records(text), records_key)
+        except Exception:
+            raise ValueError(
+                f"This file is not valid JSON ({first_err.msg} at line "
+                f"{first_err.lineno}, column {first_err.colno})."
+            )
+
+    df = _json_obj_to_frame(obj, records_key)
+    if df.shape[1] == 0:
+        raise ValueError("This JSON produced a table with no columns.")
+    return df
+
+
 def load_tabular_data(
     file: Union[str, io.BytesIO],
     filename: Optional[str] = None,
@@ -124,6 +317,10 @@ def load_tabular_data(
         df = load_parquet(file)
     elif file_type == 'tsv':
         df = load_tsv(file)
+    elif file_type == 'json':
+        df = load_json(file)
+    elif file_type == 'jsonl':
+        df = load_json(file, lines=True)
     else:
         # Fallback to CSV
         df = load_csv(file)

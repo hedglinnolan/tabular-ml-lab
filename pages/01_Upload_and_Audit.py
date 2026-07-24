@@ -280,10 +280,16 @@ st.subheader("Quick start: upload a dataset")
 st.caption("You can upload more than one file, but most analyses should begin with a single dataset.")
 
 uploaded_files = st.file_uploader(
-    "Upload data files (CSV, Excel, Parquet, TSV)",
-    type=['csv', 'xlsx', 'xls', 'parquet', 'tsv', 'txt'],
+    "Upload data files (CSV, Excel, Parquet, TSV, JSON)",
+    type=['csv', 'xlsx', 'xls', 'parquet', 'tsv', 'txt', 'json', 'jsonl', 'ndjson'],
     accept_multiple_files=True,
-    key="file_uploader"
+    key="file_uploader",
+    help=(
+        "JSON works when it holds a table: a list of records "
+        '(e.g. [{"age": 40, "bmi": 22.1}, …]), a wrapped payload like '
+        '{"data": [...]}, or JSON Lines (one record per line). Nested fields '
+        "are flattened into dotted columns (vitals.bp)."
+    ),
 )
 
 MAX_FILE_SIZE_MB = 50
