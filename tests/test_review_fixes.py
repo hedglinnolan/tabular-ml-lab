@@ -588,3 +588,29 @@ class TestLayerContracts:
                              metrics_by_model={"ridge": {"R2": 0.6}})
         draft2 = NarrativeEngine(prov).generate()
         assert "shortlisted from the dataset" in draft2.model_development
+
+
+# ── Calibration must survive non-finite predictions ──────────────────────
+
+class TestCalibrationNaNSafety:
+    """A diverged model (NN, degenerate target-transform back-mapping) stores
+    NaN predictions; metrics already drop them, so the NaNs reach the results
+    section. calibration_regression previously crashed the whole page render
+    with sklearn's 'Input X contains NaN'."""
+
+    def test_calibration_fits_on_finite_subset(self):
+        from ml.calibration import calibration_regression
+        rng = np.random.RandomState(0)
+        y_true = rng.rand(50) * 10
+        y_pred = y_true + rng.rand(50)
+        y_pred[::7] = np.nan          # a diverged model's bad rows
+        cal = calibration_regression(y_true, y_pred, model_name="TEST")
+        assert np.isfinite(cal.calibration_slope)
+        assert np.isfinite(cal.calibration_intercept)
+
+    def test_calibration_raises_clear_error_when_all_nan(self):
+        from ml.calibration import calibration_regression
+        y_true = np.arange(20.0)
+        y_pred = np.full(20, np.nan)
+        with pytest.raises(ValueError, match="finite prediction pairs"):
+            calibration_regression(y_true, y_pred, model_name="TEST")

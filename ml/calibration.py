@@ -117,8 +117,22 @@ def calibration_regression(
     from sklearn.linear_model import LinearRegression
     from sklearn.metrics import r2_score
 
-    y_true = np.asarray(y_true).ravel()
-    y_pred = np.asarray(y_pred).ravel()
+    y_true = np.asarray(y_true, dtype=float).ravel()
+    y_pred = np.asarray(y_pred, dtype=float).ravel()
+
+    # A diverged model (e.g. a neural net) can emit NaN/inf predictions;
+    # LinearRegression rejects them with a page-crashing ValueError. Fit the
+    # calibration line on the finite pairs only, and raise a clear error when
+    # there is nothing usable — callers surface it as a per-model note.
+    finite = np.isfinite(y_true) & np.isfinite(y_pred)
+    if int(finite.sum()) < 2:
+        raise ValueError(
+            f"{model_name}: fewer than 2 finite prediction pairs "
+            f"({int((~finite).sum())} non-finite of {len(y_pred)}) — "
+            "the model's predictions are unusable for calibration."
+        )
+    y_true = y_true[finite]
+    y_pred = y_pred[finite]
 
     reg = LinearRegression()
     reg.fit(y_pred.reshape(-1, 1), y_true)

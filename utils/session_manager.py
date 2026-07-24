@@ -25,6 +25,10 @@ Members:
     widget_state.json          -- safe widget keys (NO API keys)
     coaching.json              -- InsightLedger.to_list()
     provenance.json            -- WorkflowProvenance.to_dict() (if present)
+    lockbox.json               -- the sealed test-set labels + fraction/seed
+                                  (schema >= 2.1; restoring the exact holdout
+                                  keeps results comparable across sessions)
+    coach_probe.json           -- ProbeResult numbers (schema >= 2.1)
     data/<name>.parquet        -- DataFrames, one per entry
     datasets/<id>.parquet      -- entries from datasets_registry
     datasets/index.json        -- name mapping for datasets_registry
@@ -50,7 +54,10 @@ import pandas as pd
 import streamlit as st
 
 
-SAVE_SCHEMA_VERSION = "2.0"
+SAVE_SCHEMA_VERSION = "2.1"
+# Older schemas this app still loads. 2.0 files simply lack the newer members
+# (lockbox.json, coach_probe.json); everything present is restored as before.
+_ACCEPTED_SCHEMA_VERSIONS = {"2.0", "2.1"}
 SAVE_EXTENSION = "tmllab"
 
 # Upper bounds on input size -- zip-bomb defense-in-depth beyond Streamlit's
@@ -102,6 +109,11 @@ _PLAIN_KEYS: Tuple[str, ...] = (
     "workflow_mode",
     "methodology_log",
     "current_page",
+    # -- schema 2.1 additions: recipe state a restore previously lost --
+    "test_lockbox_fraction",       # non-default holdout % must survive restore
+    "pre_fe_feature_cols",         # lets FE Reset/Skip restore the original list
+    "preprocess_built_model_keys", # which models had pipelines configured
+    "engineered_feature_transforms",  # double-transform guard's map
 )
 
 # Deferred widget keys -- stored separately because Streamlit requires setting
@@ -114,6 +126,9 @@ _SAFE_WIDGET_KEYS: Set[str] = {
     "openai_model",
     "anthropic_model",
     "workflow_mode_selector",
+    # Widget-keyed checkbox on Upload & Audit; restored via the deferred
+    # mechanism so we never assign an already-instantiated widget's key.
+    "exploratory_mode",
 }
 
 _PENDING_WIDGET_RESTORE_KEY = "_pending_widget_state_restore"
@@ -260,6 +275,51 @@ def _build_archive_members() -> Dict[str, bytes]:
         except Exception:
             skipped_keys.append("workflow_provenance")
 
+    # --- Test-set lockbox (schema 2.1) ---
+    # The sealed holdout must survive a save/restore VERBATIM: re-drawing it
+    # with a lost non-default fraction would silently change the test set that
+    # every prior result was scored on. Labels are coerced to plain int/str
+    # here because json.dumps(default=str) would turn numpy ints into strings,
+    # and string labels would no longer match the dataframe's integer index on
+    # restore (a silent all-False membership).
+    lockbox = st.session_state.get("test_lockbox")
+    if isinstance(lockbox, dict) and lockbox.get("labels") is not None:
+        try:
+            def _plain_label(x: Any) -> Any:
+                if isinstance(x, bool):
+                    return str(x)
+                if isinstance(x, int):
+                    return x
+                if hasattr(x, "item"):          # numpy scalar -> python scalar
+                    v = x.item()
+                    return v if isinstance(v, int) else str(v)
+                return str(x)
+
+            encoded = {
+                "labels": [_plain_label(lbl) for lbl in lockbox["labels"]],
+                "fraction": float(lockbox.get("fraction", 0.15)),
+                "seed": int(lockbox.get("seed", 42)),
+                "n_total": int(lockbox.get("n_total", 0)),
+                "n_test": int(lockbox.get("n_test", len(lockbox["labels"]))),
+                "signature": str(lockbox.get("signature", "")),
+                "stratified": bool(lockbox.get("stratified", False)),
+            }
+            members["lockbox.json"] = json.dumps(encoded, indent=2).encode("utf-8")
+            saved_keys.append("test_lockbox")
+        except Exception:
+            skipped_keys.append("test_lockbox")
+
+    # --- Coach evidence probe (schema 2.1) ---
+    probe = st.session_state.get("coach_probe_result")
+    if probe is not None and is_dataclass(probe):
+        try:
+            members["coach_probe.json"] = json.dumps(
+                _json_safe(asdict(probe)), indent=2
+            ).encode("utf-8")
+            saved_keys.append("coach_probe_result")
+        except Exception:
+            skipped_keys.append("coach_probe_result")
+
     # --- Manifest (written last so it can reference what landed) ---
     manifest = {
         "schema_version": SAVE_SCHEMA_VERSION,
@@ -372,10 +432,13 @@ def _clear_downstream_state() -> None:
     st.session_state.pop("_working_table_source_id", None)
 
 
-def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any]]:
+def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any], list]:
     """Parse archive, validate, apply to st.session_state.
 
-    Returns (restored_count, manifest).
+    Returns (restored_count, manifest, warnings) — warnings is a list of
+    human-readable strings for members that were present but could not be
+    restored (surfaced in the sidebar; a partial restore must never be
+    silent).
     Raises SessionLoadError on any validation failure.
     """
     if len(archive_bytes) > _MAX_UPLOAD_BYTES:
@@ -406,15 +469,17 @@ def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any]]:
             raise SessionLoadError("Archive is missing manifest.json.")
         manifest = _read_json(zf, "manifest.json")
         version = str(manifest.get("schema_version", ""))
-        if version != SAVE_SCHEMA_VERSION:
+        if version not in _ACCEPTED_SCHEMA_VERSIONS:
             raise SessionLoadError(
                 f"Unsupported session schema version {version!r} "
-                f"(this app writes {SAVE_SCHEMA_VERSION!r})."
+                f"(this app writes {SAVE_SCHEMA_VERSION!r} and accepts "
+                f"{sorted(_ACCEPTED_SCHEMA_VERSIONS)})."
             )
 
         # Clear derived/trained state up front.
         _clear_downstream_state()
         restored = 0
+        warnings: list = []
 
         # --- DataFrames ---
         for key in _DATAFRAME_KEYS:
@@ -485,9 +550,57 @@ def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any]]:
                     st.session_state["workflow_provenance"] = WorkflowProvenance.from_dict(data)
                     restored += 1
                 except Exception:
-                    pass
+                    warnings.append(
+                        "Workflow record could not be restored — the manuscript "
+                        "compiler will start from what you re-run."
+                    )
 
-    return restored, manifest
+        # --- Test-set lockbox (schema 2.1; absent in 2.0 files) ---
+        if "lockbox.json" in names:
+            try:
+                data = _read_json(zf, "lockbox.json")
+                labels = data.get("labels")
+                if not isinstance(labels, list) or not labels:
+                    raise ValueError("lockbox has no labels")
+                st.session_state["test_lockbox"] = {
+                    "labels": list(labels),
+                    "fraction": float(data.get("fraction", 0.15)),
+                    "seed": int(data.get("seed", 42)),
+                    "n_total": int(data.get("n_total", 0)),
+                    "n_test": int(data.get("n_test", len(labels))),
+                    "signature": str(data.get("signature", "")),
+                    "stratified": bool(data.get("stratified", False)),
+                }
+                # Keep the fraction key coherent with the restored lockbox even
+                # if config.json predates it or disagrees.
+                st.session_state["test_lockbox_fraction"] = float(
+                    data.get("fraction", 0.15)
+                )
+                restored += 1
+            except Exception as exc:
+                warnings.append(
+                    f"Sealed test set could not be restored ({exc}) — it will "
+                    "be re-drawn from the saved seed and fraction on Upload & "
+                    "Audit."
+                )
+
+        # --- Coach evidence probe (schema 2.1) ---
+        if "coach_probe.json" in names:
+            try:
+                data = _read_json(zf, "coach_probe.json")
+                from ml.coach_probe import ProbeResult
+                valid = set(ProbeResult.__dataclass_fields__.keys())
+                st.session_state["coach_probe_result"] = ProbeResult(
+                    **{k: v for k, v in data.items() if k in valid}
+                )
+                restored += 1
+            except Exception:
+                warnings.append(
+                    "Coach probe evidence could not be restored — re-run the "
+                    "evidence probe on Preprocess (~10 s)."
+                )
+
+    return restored, manifest, warnings
 
 
 # ---------------------------------------------------------------------------
@@ -553,16 +666,33 @@ def render_session_controls() -> None:
         saved_date = saved_at[:10] if saved_at != "Unknown" else "Unknown"
         workflow_step = restore_notice.get("workflow_step", "Unknown")
         restored_count = restore_notice.get("restored_count", 0)
-        st.sidebar.success(f"""
-        ✅ **Session Restored!**
 
-        - **Saved:** {saved_date}
-        - **Items restored:** {restored_count}
-        - **Last step:** {workflow_step}
-
-        Trained models are cleared on restore -- re-run the Train page
-        to regenerate them from the restored configuration.
-        """)
+        # Resume checklist: say exactly what came back and which clicks
+        # regenerate the rest. Results are re-computed, never deserialized —
+        # that is the format's safety contract.
+        lb = st.session_state.get("test_lockbox") or {}
+        lockbox_line = (
+            f"- 🔒 **Test set restored:** the same {lb.get('fraction', 0):.0%} "
+            f"holdout (n={lb.get('n_test', 0)}) — results stay comparable\n"
+            if lb.get("labels") else
+            "- 🔒 Test set will be re-drawn from the saved seed on Upload & Audit\n"
+        )
+        built = st.session_state.get("preprocess_built_model_keys") or []
+        built_line = (
+            f"- ⚙️ Pipeline configs ready for: **{', '.join(map(str, built))}**\n"
+            if built else ""
+        )
+        st.sidebar.success(
+            f"✅ **Session Restored** (saved {saved_date}, "
+            f"{restored_count} items, last step: {workflow_step})\n\n"
+            f"{lockbox_line}"
+            f"{built_line}"
+            f"\n**To regenerate results (recomputed, not deserialized):**\n"
+            f"1. **Preprocess** → Build Pipelines (settings pre-filled)\n"
+            f"2. **Train & Compare** → Prepare Splits → Train Models\n"
+        )
+        for w in restore_notice.get("warnings", []):
+            st.sidebar.warning(f"⚠️ {w}")
 
     # --- Save ---
     if st.sidebar.button("📥 Save Progress", help="Download your current workflow state"):
@@ -614,12 +744,13 @@ def render_session_controls() -> None:
     if uploaded_session is not None:
         try:
             archive_bytes = uploaded_session.read()
-            restored_count, manifest = _restore_session_data(archive_bytes)
+            restored_count, manifest, load_warnings = _restore_session_data(archive_bytes)
             st.session_state["upload_session_file_nonce"] = uploader_nonce + 1
             st.session_state["session_restore_notice"] = {
                 "saved_at": manifest.get("saved_at", "Unknown"),
                 "restored_count": restored_count,
                 "workflow_step": manifest.get("workflow_step", "Unknown"),
+                "warnings": load_warnings,
             }
             st.rerun()
         except SessionLoadError as exc:

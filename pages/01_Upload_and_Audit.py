@@ -1646,6 +1646,27 @@ if task_mode == "prediction":
                 "step can peek at it. Changing it (or toggling exploratory "
                 "mode in either direction) resets downstream results."
             )
+            # Session restore defers widget keys via _pending_widget_state_restore;
+            # each widget's owner claims its key before instantiation. This page
+            # owns exploratory_mode — without this, a restored exploratory flag
+            # would sit in the pending dict forever and silently never apply.
+            _pending_restore = st.session_state.get("_pending_widget_state_restore", {})
+            if "exploratory_mode" in _pending_restore:
+                st.session_state["exploratory_mode"] = bool(
+                    _pending_restore.pop("exploratory_mode")
+                )
+                if _pending_restore:
+                    st.session_state["_pending_widget_state_restore"] = _pending_restore
+                else:
+                    st.session_state.pop("_pending_widget_state_restore", None)
+                if st.session_state["exploratory_mode"]:
+                    # Restored sessions in exploratory mode keep their honesty
+                    # watermark; quarantine-off must never arrive silently.
+                    st.session_state["exploratory_used"] = True
+                    st.warning(
+                        "🔓 This restored session was saved in **exploratory mode** — "
+                        "the test-set quarantine is OFF, as it was when saved."
+                    )
             _lb_frac = st.slider(
                 "Held-out test fraction", 0.05, 0.40,
                 float(st.session_state.get("test_lockbox_fraction", DEFAULT_TEST_FRACTION)),
