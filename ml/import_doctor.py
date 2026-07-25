@@ -33,19 +33,44 @@ import pandas as pd
 # Only treated as sentinels when they also sit far outside the real
 # distribution — 999 is a plausible triglyceride value but not a plausible age.
 NUMERIC_SENTINELS: Tuple[float, ...] = (
-    -9999.0, -999.0, -99.0, -9.0, -8.0, -7.0, -1.0,
-    777.0, 888.0, 999.0, 9999.0, 99999.0,
+    -9999.0, -999.0, -99.0, -88.0, -77.0, -9.0, -8.0, -7.0, -1.0,
+    7.0, 8.0, 9.0, 66.0, 77.0, 88.0, 99.0,
+    666.0, 777.0, 888.0, 999.0,
+    6666.0, 7777.0, 8888.0, 9999.0, 99999.0,
 )
 
-# Text that means "missing". Compared case-insensitively after stripping.
+# Single-digit codes (7=refused, 8=not asked, 9=don't know) are only credible
+# in a CODED variable — a short integer scale. In a continuous measurement a 9
+# is just a 9, and flagging it would be worse than missing it.
+_CODED_MAX_DISTINCT = 15
+
+# Text that unambiguously means "no value was recorded".
 TEXT_MISSING_TOKENS: Tuple[str, ...] = (
-    "", ".", "..", "-", "--", "?", "na", "n/a", "n.a.", "null", "none",
-    "missing", "unknown", "not available", "not applicable", "#n/a", "nan",
+    "", ".", "..", "-", "--", "?", "na", "n/a", "n.a.", "null",
+    "#n/a", "nan", "not available",
+)
+
+# Text that USUALLY means missing but can be a legitimate answer: "none" is a
+# real response to "which medications?", "unknown" is a real category in a
+# registry. Recoding these to missing destroys data, so they are reported at
+# low confidence and never pre-selected.
+AMBIGUOUS_MISSING_TOKENS: Tuple[str, ...] = (
+    "none", "unknown", "missing", "not applicable", "n/app", "refused",
+    "not stated", "no answer",
 )
 
 # Characters stripped when testing whether a text column is really numeric.
 _NUMERIC_NOISE = re.compile(r"[,\s%$£€]|^[<>≤≥~≈]+")
-_TRAILING_UNIT = re.compile(r"\s*[A-Za-z/µ%]+(?:/[A-Za-z]+)?\s*$")
+_KNOWN_UNITS = (
+    "mg/dl", "mmol/l", "mg/l", "g/dl", "g/l", "ug/dl", "µg/dl", "ng/ml", "pg/ml",
+    "mmhg", "kg", "g", "lb", "lbs", "cm", "m", "mm", "in", "kcal", "cal", "kj",
+    "years", "yrs", "yr", "months", "mo", "days", "iu/l", "u/l", "%", "bpm",
+    "kg/m2", "kg/m^2", "ml", "l", "sec", "s", "min", "hr", "hours",
+)
+_TRAILING_UNIT = re.compile(
+    r"\s*(?:" + "|".join(re.escape(u) for u in sorted(_KNOWN_UNITS, key=len, reverse=True)) + r")\s*$",
+    re.IGNORECASE,
+)
 # Repeated-measures suffixes: bp_1, bp.2, bpV3, bp_visit4, bp_t5
 _REPEAT_SUFFIX = re.compile(r"^(?P<stem>.+?)[._\- ]?(?:v|visit|t|time|wave|round)?(?P<n>\d{1,2})$",
                             re.IGNORECASE)
@@ -78,9 +103,35 @@ def _is_unnamed(col: Any) -> bool:
     return s.startswith("Unnamed:") or s.strip() == "" or s.lower() == "nan"
 
 
+_DECIMAL_COMMA = re.compile(r"^[+-]?\d{1,3}(?:\.\d{3})*,\d+$|^[+-]?\d+,\d{1,2}$")
+
+
+def _units_present(s: pd.Series) -> set:
+    """Distinct recognised unit suffixes appearing in a text column."""
+    found = set()
+    for v in s.dropna().astype(str).unique()[:500]:
+        m = _TRAILING_UNIT.search(v.strip())
+        if m:
+            found.add(m.group(0).strip().lower())
+    return found
+
+
+def _looks_decimal_comma(s: pd.Series) -> bool:
+    """European decimal notation: 1,5 means one-and-a-half, not fifteen."""
+    vals = s.dropna().astype(str).str.strip()
+    if vals.empty:
+        return False
+    hits = vals.map(lambda v: bool(_DECIMAL_COMMA.match(v)))
+    return bool(hits.mean() >= 0.6)
+
+
 def _clean_numeric_text(s: pd.Series) -> pd.Series:
     """Best-effort numeric coercion for text that is 'almost' numeric."""
     t = s.astype(str).str.strip()
+    if _looks_decimal_comma(s):
+        # 1.234,5 -> 1234.5 ; 1,5 -> 1.5. Stripping the comma would multiply
+        # every value by ten or more.
+        t = t.str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
     t = t.str.replace(_TRAILING_UNIT, "", regex=True)
     t = t.str.replace(_NUMERIC_NOISE, "", regex=True)
     t = t.str.replace(r"^\((.*)\)$", r"-\1", regex=True)   # (1.2) -> -1.2
@@ -251,73 +302,112 @@ def check_footer_rows(df: pd.DataFrame, max_scan: int = 5) -> List[ShapeFinding]
 
 
 def check_numeric_sentinels(df: pd.DataFrame, min_count: int = 2) -> List[ShapeFinding]:
-    """Codes like 999 / -9 that mean 'missing' but arrive as real numbers."""
+    """Codes like 999 / -9 / 7 that mean 'missing' but arrive as real numbers."""
     out: List[ShapeFinding] = []
     for col in df.select_dtypes(include=[np.number]).columns:
-        s = df[col].dropna()
+        col_s = df[col]
+        if isinstance(col_s, pd.DataFrame):
+            continue
+        s = col_s.dropna()
         if len(s) < 10:
             continue
-        hits: Dict[float, int] = {}
-        for sentinel in NUMERIC_SENTINELS:
-            n = int((s == sentinel).sum())
-            if n < min_count:
-                continue
-            rest = s[s != sentinel]
-            if rest.empty:
-                continue
-            # Only a sentinel if it sits far outside the genuine spread.
-            lo, hi = rest.min(), rest.max()
-            spread = max(abs(hi - lo), 1e-9)
-            if sentinel > hi + 0.5 * spread or sentinel < lo - 0.5 * spread:
-                hits[sentinel] = n
-        if hits:
-            vals = ", ".join(f"{int(v) if float(v).is_integer() else v} ({n}×)"
-                             for v, n in sorted(hits.items()))
-            out.append(ShapeFinding(
-                id=f"sentinel_missing__{col}",
-                severity="critical",
-                title=f"'{col}' may use numeric codes for missing values",
-                detail=(f"Found {vals} — far outside the rest of the column "
-                        f"({s[~s.isin(list(hits))].min():.4g} to "
-                        f"{s[~s.isin(list(hits))].max():.4g})."),
-                why_it_matters=("Survey and clinical exports code missing answers as 999, "
-                                "-9 and similar. Left as numbers they are averaged into "
-                                "your results and quietly wreck every model."),
-                fix_label=f"Treat {', '.join(str(int(v)) if float(v).is_integer() else str(v) for v in hits)} as missing in '{col}'",
-                fix_kind="recode_missing",
-                confidence="medium",
-                params={"column": col, "values": list(hits.keys())},
-                affected_columns=[str(col)],
-            ))
+
+        # Single-digit codes are only credible in a CODED variable (a short
+        # integer scale like 1=yes 2=no 7=refused). In a continuous measurement
+        # a 9 is just a 9.
+        try:
+            is_integral = bool(np.all(np.equal(np.mod(s.to_numpy(dtype=float), 1), 0)))
+        except Exception:
+            is_integral = False
+        coded = is_integral and s.nunique() <= _CODED_MAX_DISTINCT
+
+        present = [v for v in NUMERIC_SENTINELS
+                   if int((s == v).sum()) >= min_count
+                   and (abs(v) >= 10 or coded)]
+        if not present:
+            continue
+
+        # Every candidate must be excluded before judging the real spread, or
+        # two sentinels mask each other (7 looks in-range while 9 is present).
+        rest = s[~s.isin(present)]
+        if rest.empty:
+            continue
+        lo, hi = float(rest.min()), float(rest.max())
+        spread = max(abs(hi - lo), 1e-9)
+
+        hits = {v: int((s == v).sum()) for v in present
+                if v > hi + 0.5 * spread or v < lo - 0.5 * spread}
+        if not hits:
+            continue
+
+        def _fmt(v: float) -> str:
+            return str(int(v)) if float(v).is_integer() else str(v)
+
+        vals = ", ".join(f"{_fmt(v)} ({n}x)" for v, n in sorted(hits.items()))
+        out.append(ShapeFinding(
+            id=f"sentinel_missing__{col}",
+            severity="critical",
+            title=f"'{col}' may use numeric codes for missing values",
+            detail=(f"Found {vals} \u2014 far outside the rest of the column "
+                    f"({lo:.4g} to {hi:.4g})."),
+            why_it_matters=("Survey and clinical exports code missing answers as 999, "
+                            "-9, or 7/8/9 in coded questions. Left as numbers they are "
+                            "averaged into your results and quietly wreck every model."),
+            fix_label=f"Treat {', '.join(_fmt(v) for v in sorted(hits))} as missing in '{col}'",
+            fix_kind="recode_missing",
+            confidence="medium",
+            params={"column": col, "values": sorted(hits.keys())},
+            affected_columns=[str(col)],
+        ))
     return out
 
 
 def check_text_missing_tokens(df: pd.DataFrame) -> List[ShapeFinding]:
     out: List[ShapeFinding] = []
     for col in df.select_dtypes(include=["object", "string"]).columns:
-        s = df[col].dropna().astype(str).str.strip().str.lower()
+        s = df[col]
+        if isinstance(s, pd.DataFrame):
+            continue
+        s = s.dropna().astype(str).str.strip().str.lower()
         if s.empty:
             continue
-        found = sorted({v for v in s.unique() if v in TEXT_MISSING_TOKENS})
-        if not found:
-            continue
-        n = int(s.isin(found).sum())
-        if n == 0:
-            continue
-        shown = ", ".join(repr(v) for v in found[:5])
-        out.append(ShapeFinding(
-            id=f"text_missing__{col}",
-            severity="warning",
-            title=f"'{col}' spells missing values as text",
-            detail=f"{n:,} cell(s) contain {shown}.",
-            why_it_matters=("These read as ordinary categories, so the column looks "
-                            "complete when it is not — and missingness never gets handled."),
-            fix_label=f"Treat those as missing in '{col}'",
-            fix_kind="recode_missing",
-            confidence="high",
-            params={"column": col, "values": found, "text": True},
-            affected_columns=[str(col)],
-        ))
+        clear = sorted({v for v in s.unique() if v in TEXT_MISSING_TOKENS})
+        maybe = sorted({v for v in s.unique() if v in AMBIGUOUS_MISSING_TOKENS})
+
+        if clear:
+            n = int(s.isin(clear).sum())
+            out.append(ShapeFinding(
+                id=f"text_missing__{col}",
+                severity="warning",
+                title=f"'{col}' spells missing values as text",
+                detail=f"{n:,} cell(s) contain {', '.join(repr(v) for v in clear[:5])}.",
+                why_it_matters=("These read as ordinary categories, so the column looks "
+                                "complete when it is not — and missingness never gets handled."),
+                fix_label=f"Treat those as missing in '{col}'",
+                fix_kind="recode_missing",
+                confidence="high",
+                params={"column": col, "values": clear, "text": True},
+                affected_columns=[str(col)],
+            ))
+        if maybe:
+            n = int(s.isin(maybe).sum())
+            out.append(ShapeFinding(
+                id=f"text_missing_ambiguous__{col}",
+                severity="info",
+                title=f"'{col}' may use words that mean either 'missing' or a real answer",
+                detail=f"{n:,} cell(s) contain {', '.join(repr(v) for v in maybe[:5])}.",
+                why_it_matters=(
+                    "Only you know which it is: 'none' is a genuine answer to "
+                    "'which medications?' but means missing in a lab column. Recoding "
+                    "the wrong way silently deletes real data, so nothing is changed "
+                    "unless you say so."
+                ),
+                fix_label=f"Treat those as missing in '{col}'",
+                fix_kind="recode_missing",
+                confidence="low",
+                params={"column": col, "values": maybe, "text": True},
+                affected_columns=[str(col)],
+            ))
     return out
 
 
@@ -331,10 +421,33 @@ def check_numeric_stored_as_text(df: pd.DataFrame, min_parse: float = 0.8) -> Li
         raw_numeric = pd.to_numeric(s, errors="coerce").notna().mean()
         if raw_numeric >= 0.99:
             continue  # pandas would already have typed it numeric
+        units = _units_present(s)
+        if len(units) > 1:
+            # mg/dL and mmol/L on one scale is not a formatting problem, it is
+            # two different measurements. Coercing merges them into nonsense.
+            out.append(ShapeFinding(
+                id=f"mixed_units__{col}",
+                severity="critical",
+                title=f"'{col}' mixes different units",
+                detail=f"Found {', '.join(sorted(units))} in the same column.",
+                why_it_matters=("Converting these to plain numbers would put values "
+                                "measured on different scales side by side, which no "
+                                "model or statistic can interpret. They must be "
+                                "converted to one unit first — a decision only you "
+                                "can make."),
+                fix_label="Cannot fix automatically — convert to one unit first",
+                fix_kind="none",
+                confidence="low",
+                params={"column": col, "units": sorted(units)},
+                affected_columns=[str(col)],
+            ))
+            continue
+
         parsed = _clean_numeric_text(s)
         rate = float(parsed.notna().mean())
         if rate < min_parse:
             continue
+        n_blanked = int(parsed.isna().sum())
         offenders = s[parsed.isna()].astype(str).unique()[:3].tolist()
         examples = s[parsed.notna()].astype(str).unique()[:3].tolist()
         out.append(ShapeFinding(
@@ -346,9 +459,12 @@ def check_numeric_stored_as_text(df: pd.DataFrame, min_parse: float = 0.8) -> Li
                     + (f" Non-numeric leftovers: {', '.join(map(repr, offenders))}." if len(offenders) else "")),
             why_it_matters=("As text this column cannot be modelled, correlated, or "
                             "plotted — it will silently sit out of your analysis."),
-            fix_label=f"Convert '{col}' to numbers",
+            fix_label=(f"Convert '{col}' to numbers"
+                       + (f" (blanks {n_blanked} value(s) that cannot be read)" if n_blanked else "")),
             fix_kind="coerce_numeric",
-            confidence="high" if rate >= 0.95 else "medium",
+            # Any conversion that discards values can destroy data, so it is
+            # never pre-selected — the user must look at what would be lost.
+            confidence="high" if n_blanked == 0 else "low",
             params={"column": col},
             affected_columns=[str(col)],
         ))
@@ -516,7 +632,8 @@ def apply_fix(df: pd.DataFrame, finding: ShapeFinding) -> Tuple[pd.DataFrame, st
 
     elif kind == "drop_rows":
         positions = [i for i in p.get("positions", []) if 0 <= i < len(df)]
-        out = df.drop(index=df.index[positions]).reset_index(drop=True)
+        keep = [i for i in range(len(df)) if i not in set(positions)]
+        out = df.iloc[keep].reset_index(drop=True)
         desc = f"Dropped {len(positions)} non-data row(s) from the bottom of the file."
 
     elif kind == "recode_missing":
@@ -535,8 +652,12 @@ def apply_fix(df: pd.DataFrame, finding: ShapeFinding) -> Tuple[pd.DataFrame, st
     elif kind == "coerce_numeric":
         col = p["column"]
         out = df.copy()
+        before = out[col].notna().sum()
         out[col] = _clean_numeric_text(out[col])
-        desc = f"Converted '{col}' to numeric (removing units, separators and comparison signs)."
+        lost = int(before - out[col].notna().sum())
+        desc = (f"Converted '{col}' to numeric (removing units, separators and "
+                f"comparison signs)"
+                + (f"; {lost} value(s) could not be read and are now blank." if lost else "."))
 
     elif kind == "normalize_categories":
         col = p["column"]
@@ -555,10 +676,18 @@ def apply_fix(df: pd.DataFrame, finding: ShapeFinding) -> Tuple[pd.DataFrame, st
         families = p.get("families", {})
         value_cols = [c for v in families.values() for c in v if c in df.columns]
         id_cols = [c for c in df.columns if c not in value_cols]
+        var_name, val_name = "measurement", "value"
+        while var_name in id_cols:
+            var_name += "_"
+        while val_name in id_cols or val_name == var_name:
+            val_name += "_"
         out = df.melt(id_vars=id_cols, value_vars=value_cols,
-                      var_name="measurement", value_name="value")
+                      var_name=var_name, value_name=val_name)
         desc = (f"Reshaped {len(value_cols)} repeated-measure column(s) into long format "
                 f"(one row per measurement).")
+
+    elif kind == "none":
+        return df, "No automatic change is possible here; this needs a human decision."
 
     else:
         raise ValueError(f"Unknown fix kind: {kind!r}")

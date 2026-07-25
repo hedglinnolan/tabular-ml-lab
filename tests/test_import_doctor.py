@@ -262,5 +262,99 @@ def test_summarize_counts_by_severity():
     assert "Found" in text
 
 
+# ── the systemic rule: nothing that can destroy data is auto-suggested ───
+
+def test_no_lossy_fix_is_ever_auto_suggestable():
+    """A fix that discards or rescales values must never be pre-selected —
+    the user has to look at what would be lost first."""
+    frames = [
+        pd.DataFrame({"v": ["1", "2", "3", "abc", "5", "6", "7", "8"]}),          # blanks a value
+        pd.DataFrame({"meds": ["aspirin", "none", "none", "statin", "none", "x"]}),  # 'none' may be real
+        pd.DataFrame({"site": ["A"] * 8, "v": range(8)}),                          # constant column
+        pd.DataFrame({"id": [1, 2, 3], "bp_1": [1, 2, 3], "bp_2": [4, 5, 6], "bp_3": [7, 8, 9]}),
+    ]
+    lossy = {"coerce_numeric", "melt_repeated", "none"}
+    for df in frames:
+        for f in diagnose(df):
+            if f.fix_kind in lossy or f.id.startswith("text_missing_ambiguous") \
+                    or f.id == "constant_columns":
+                assert not f.auto_suggestable, f"{f.id} would be pre-selected"
+
+
+def test_mixed_units_are_refused_not_coerced():
+    """mg/dL and mmol/L in one column are two different measurements;
+    coercing merges them into numbers no statistic can interpret."""
+    df = pd.DataFrame({"chol": ["180 mg/dL", "5.2 mmol/L", "190 mg/dL",
+                                "4.8 mmol/L", "175 mg/dL", "200 mg/dL"]})
+    ids = {f.id for f in diagnose(df)}
+    assert any(i.startswith("mixed_units") for i in ids)
+    assert not any(i.startswith("numeric_as_text") for i in ids)
+    fix = _first(diagnose(df), "mixed_units")
+    assert fix.fix_kind == "none" and not fix.auto_suggestable
+    out, desc = apply_fix(df, fix)            # must be a safe no-op
+    pd.testing.assert_frame_equal(out, df)
+
+
+def test_european_decimal_comma_is_not_rescaled():
+    """Stripping the comma from '22,5' yields 225 — every value multiplied."""
+    from ml.import_doctor import _clean_numeric_text
+    parsed = _clean_numeric_text(pd.Series(["22,5", "28,4", "31,0", "24,5", "26,6"]))
+    assert parsed.tolist() == [22.5, 28.4, 31.0, 24.5, 26.6]
+
+
+def test_alphanumeric_ids_are_not_stripped_to_numbers():
+    """The old unit regex removed any trailing letters, collapsing A1/A2/B1."""
+    from ml.import_doctor import _clean_numeric_text
+    assert _clean_numeric_text(pd.Series(["A1", "A2", "B1"])).isna().all()
+
+
+def test_ambiguous_missing_words_are_low_confidence():
+    df = pd.DataFrame({"meds": ["aspirin", "none", "none", "statin", "none", "metformin"]})
+    f = _first(diagnose(df), "text_missing_ambiguous")
+    assert f.confidence == "low" and not f.auto_suggestable
+    assert "only you know" in f.why_it_matters.lower()
+
+
+def test_unambiguous_missing_text_stays_high_confidence():
+    df = pd.DataFrame({"lab": ["1.2", "N/A", "3.4", "n/a", "5.6", "7.8"]})
+    assert _first(diagnose(df), "text_missing__").confidence == "high"
+
+
+def test_coded_survey_sentinels_are_detected():
+    """NHANES/SPSS coded questions use 7=refused, 8=not asked, 9=don't know.
+    Two sentinels also used to mask each other's out-of-range test."""
+    df = pd.DataFrame({"smoke": [1, 2] * 8 + [7, 7, 9, 9]})
+    f = _first(diagnose(df), "sentinel_missing__smoke")
+    assert set(f.params["values"]) == {7.0, 9.0}
+
+
+def test_single_digits_in_a_continuous_column_are_not_sentinels():
+    df = pd.DataFrame({"score": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 5, 6, 7, 8, 9, 3, 4]})
+    assert not [f for f in diagnose(df) if f.id.startswith("sentinel_missing")]
+
+
+def test_lossy_conversion_reports_what_it_blanked():
+    df = pd.DataFrame({"v": ["1", "2", "3", "abc", "5", "6", "7", "8"]})
+    f = _first(diagnose(df), "numeric_as_text__v")
+    assert "blanks" in f.fix_label
+    _, desc = apply_fix(df, f)
+    assert "could not be read" in desc
+
+
+def test_drop_rows_uses_positions_not_labels():
+    """Label-based deletion destroys unrelated rows when the index repeats."""
+    df = pd.DataFrame({"id": [1, 2, 3, 4, 5, "Total"], "v": [1, 2, 3, 4, 5, None]},
+                      index=[0, 0, 1, 1, 2, 2])
+    out, _ = apply_fix(df, _first(diagnose(df), "footer_rows"))
+    assert len(out) == 5
+
+
+def test_melt_does_not_collide_with_existing_columns():
+    df = pd.DataFrame({"id": [1, 2, 3], "measurement": ["a", "b", "c"],
+                       "bp_1": [1, 2, 3], "bp_2": [4, 5, 6], "bp_3": [7, 8, 9]})
+    out, _ = apply_fix(df, _first(diagnose(df), "wide_repeated_measures"))
+    assert len(set(out.columns)) == len(out.columns)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
