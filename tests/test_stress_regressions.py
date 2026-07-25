@@ -533,3 +533,157 @@ class TestBlockingMessagesNameTheCause:
         assert not d.can_proceed
         out, _ = execute_join(left, right, "d", "d", "inner")
         assert len(out) == d.predicted_rows == 0
+
+
+# ── sentinel codes vs genuine coded scales ───────────────────────────────
+
+class TestSentinelFalsePositives:
+    """Finding 26. Excluding 7/8/9 as candidates BEFORE measuring the spread
+    manufactures the gap that condemns them: in a real 1-9 Likert scale the 7s
+    and 8s are answers, removing them leaves 1-6, and the 9 then looks like an
+    outlier in a distribution it belongs to.
+
+    A false positive here is worse than a miss. The user accepts the fix, real
+    answers become NaN, and nothing about the result looks wrong.
+    """
+
+    @pytest.mark.parametrize("label,vals", [
+        ("Likert 1-9 where 9 is a real answer", list(range(1, 10)) * 22),
+        ("counts 0-9", list(range(10)) * 20),
+        ("age including a 9-year-old", [9, 25, 31, 44, 52, 63, 71, 38, 29, 55] * 20),
+        ("percentages reaching 99", list(range(90, 101)) * 10),
+        ("a 1-7 scale", list(range(1, 8)) * 20),
+        ("0/1 binary", [0, 1] * 50),
+        ("months 1-12", list(range(1, 13)) * 20),
+    ])
+    def test_genuine_data_is_not_flagged(self, label, vals):
+        assert check_numeric_sentinels(pd.DataFrame({"q": vals})) == [], label
+
+    @pytest.mark.parametrize("label,vals,expected", [
+        ("1-5 with 9 = refused", [1, 2, 3, 4, 5] * 39 + [9] * 5, [9]),
+        ("1-5 with a 7/8/9 code block", [1, 2, 3, 4, 5] * 39 + [7, 8, 9] * 3, [7, 8, 9]),
+        ("1-5 with 99", [1, 2, 3, 4, 5] * 39 + [99] * 5, [99]),
+        ("triglycerides with 999",
+         [120, 150, 180, 210, 145, 167, 190, 175, 160, 155] * 20 + [999] * 4, [999]),
+        ("BMI with 99",
+         [18.0, 22.5, 27.1, 31.4, 24.8, 29.9, 33.2, 20.1, 26.7, 35.0] * 20 + [99] * 3, [99]),
+        ("survey -9 = don't know", [1, 2, 3, 4, 5] * 39 + [-9] * 5, [-9]),
+        ("age with 999", [25, 31, 44, 52, 63, 71, 38, 29, 55, 47] * 20 + [999] * 3, [999]),
+        ("1-4 with both -9 and 999", [1, 2, 3, 4] * 49 + [-9] * 3 + [999] * 3, [-9, 999]),
+    ])
+    def test_real_sentinels_still_fire(self, label, vals, expected):
+        found = check_numeric_sentinels(pd.DataFrame({"q": vals}))
+        assert found, f"{label}: nothing flagged"
+        assert sorted(int(v) for v in found[0].params["values"]) == expected, label
+
+    def test_a_code_block_is_never_split_down_the_middle(self):
+        """Distance alone left the 7 behind and recoded only 8 and 9 — which
+        would silently keep 'refused' in the data as the number seven."""
+        found = check_numeric_sentinels(
+            pd.DataFrame({"q": [1, 2, 3, 4, 5] * 39 + [7, 8, 9] * 3}))
+        assert sorted(int(v) for v in found[0].params["values"]) == [7, 8, 9]
+
+    def test_sentinel_findings_are_never_auto_applied(self):
+        found = check_numeric_sentinels(
+            pd.DataFrame({"q": [1, 2, 3, 4, 5] * 39 + [9] * 5}))
+        assert not found[0].auto_suggestable
+
+
+class TestLossyFixesAreNeverPreSelected:
+    """Findings 34 and 36: a fix that discards values must say so and must not
+    be pre-selected. Re-verified rather than assumed."""
+
+    def test_coercion_that_blanks_values_is_low_confidence(self):
+        df = pd.DataFrame({"sodium": ["140 mmol/L"] * 96 + ["not measured"] * 4})
+        found = [f for f in diagnose(df) if f.fix_kind == "coerce_numeric"]
+        assert found and found[0].confidence == "low"
+        assert not found[0].auto_suggestable
+        assert "4" in found[0].fix_label          # the loss is stated up front
+
+    def test_the_description_records_what_was_lost(self):
+        df = pd.DataFrame({"sodium": ["140 mmol/L"] * 96 + ["not measured"] * 4})
+        found = [f for f in diagnose(df) if f.fix_kind == "coerce_numeric"][0]
+        out, desc = apply_fix(df, found)
+        assert "could not be read" in desc
+        assert int(out["sodium"].notna().sum()) == 96
+
+    def test_none_as_a_real_answer_is_a_question_not_a_recommendation(self):
+        from ml.import_doctor import check_text_missing_tokens
+        df = pd.DataFrame({"medication": ["None", "Statin", None, "None", "Beta-blocker",
+                                          "None", "Statin", None, "None", "Metformin",
+                                          "None", "Statin"]})
+        found = check_text_missing_tokens(df)
+        assert found and found[0].confidence == "low"
+        assert not found[0].auto_suggestable
+
+
+# ── decimal comma vs thousands separator ─────────────────────────────────
+
+class TestCommaReading:
+    """Finding 44, and a regression I introduced fixing it.
+
+    The original bug stripped the comma from European decimals, turning 22,5
+    into 225. The fix over-corrected: _DECIMAL_COMMA's dot-thousands branch
+    used `*`, so it matched a plain "45,000" with zero dot groups and claimed
+    every US thousands-separated number as a European decimal — $45,000 became
+    45.0, a 1000x under-scale, at 'high' confidence and pre-selected, with a
+    description that never mentioned an interpretation had been chosen.
+
+    Strictly worse than the original: bigger error, commoner format.
+    """
+
+    def _convert(self, vals):
+        df = pd.DataFrame({"v": vals})
+        found = [f for f in diagnose(df) if f.fix_kind == "coerce_numeric"]
+        assert found, f"not flagged: {vals[:3]}"
+        out, _ = apply_fix(df, found[0])
+        return found[0], list(out["v"])
+
+    @pytest.mark.parametrize("vals,expected", [
+        (["45,000", "52,000", "61,500", "38,000", "72,000", "55,000"],
+         [45000, 52000, 61500, 38000, 72000, 55000]),
+        (["450,000", "512,000", "615,000", "380,000", "720,000", "550,000"],
+         [450000, 512000, 615000, 380000, 720000, 550000]),
+    ])
+    def test_us_thousands_are_not_rescaled(self, vals, expected):
+        _, got = self._convert(vals)
+        assert got == expected
+
+    @pytest.mark.parametrize("vals,expected", [
+        (["22,5", "28,4", "31,0", "24,5", "19,8", "27,1"],
+         [22.5, 28.4, 31.0, 24.5, 19.8, 27.1]),
+        (["5,55", "6,10", "4,98", "7,25", "5,04", "6,33"],
+         [5.55, 6.10, 4.98, 7.25, 5.04, 6.33]),
+        (["1.234,5", "2.100,7", "980,3", "1.050,25", "3.400,0", "2.750,8"],
+         [1234.5, 2100.7, 980.3, 1050.25, 3400.0, 2750.8]),
+    ])
+    def test_european_decimals_still_convert(self, vals, expected):
+        _, got = self._convert(vals)
+        assert got == pytest.approx(expected)
+
+    def test_an_undecidable_comma_is_not_pre_selected(self):
+        finding, _ = self._convert(["45,000", "52,000", "61,500",
+                                    "38,000", "72,000", "55,000"])
+        assert finding.confidence == "low"
+        assert not finding.auto_suggestable
+
+    def test_the_assumption_is_stated_in_the_finding(self):
+        finding, _ = self._convert(["45,000", "52,000", "61,500",
+                                    "38,000", "72,000", "55,000"])
+        assert "thousands" in finding.detail and "decimals" in finding.detail
+
+    def test_unambiguous_european_is_still_high_confidence(self):
+        finding, _ = self._convert(["22,5", "28,4", "31,0", "24,5", "19,8", "27,1"])
+        assert finding.confidence == "high" and finding.auto_suggestable
+
+    def test_a_column_with_a_settling_value_is_not_called_ambiguous(self):
+        from ml.import_doctor import comma_reading_is_ambiguous
+        # "1.234,5" proves the whole column is European, so "5,555" is decimal.
+        s = pd.Series(["1.234,5", "5,555", "2.100,7", "980,3", "3,141", "2,718"])
+        assert not comma_reading_is_ambiguous(s)
+
+    def test_units_are_unaffected(self):
+        finding, got = self._convert(["140 mmol/L", "138 mmol/L", "142 mmol/L",
+                                      "139 mmol/L", "141 mmol/L", "137 mmol/L"])
+        assert got == [140, 138, 142, 139, 141, 137]
+        assert finding.confidence == "high"

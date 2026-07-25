@@ -145,7 +145,20 @@ def _is_unnamed(col: Any) -> bool:
     return s.startswith("Unnamed:") or s.strip() == "" or s.lower() == "nan"
 
 
-_DECIMAL_COMMA = re.compile(r"^[+-]?\d{1,3}(?:\.\d{3})*,\d+$|^[+-]?\d+,\d{1,2}$")
+# European decimal notation. Two unambiguous shapes only:
+#   1.234,5   dot-thousands AND a decimal comma — the dot group is REQUIRED (+),
+#             because with * this branch also matched a plain "45,000" and
+#             claimed every US thousands-separated number as a European decimal,
+#             turning $45,000 into 45.0.
+#   22,5      one or two digits after the comma, which no thousands separator
+#             ever produces.
+_DECIMAL_COMMA = re.compile(r"^[+-]?\d{1,3}(?:\.\d{3})+,\d+$|^[+-]?\d+,\d{1,2}$")
+
+# Exactly three digits after a single comma. "5,555" is five-point-five-five-five
+# in Bonn and five thousand five hundred fifty-five in Boston, and nothing in the
+# value settles it. The module's contract forbids guessing silently, so this
+# shape is read the common way (thousands) but reported as an assumption.
+_AMBIGUOUS_COMMA = re.compile(r"^[+-]?\d{1,3},\d{3}$")
 
 
 def _units_present(s: pd.Series) -> set:
@@ -165,6 +178,23 @@ def _looks_decimal_comma(s: pd.Series) -> bool:
         return False
     hits = vals.map(lambda v: bool(_DECIMAL_COMMA.match(v)))
     return bool(hits.mean() >= 0.6)
+
+
+def comma_reading_is_ambiguous(s: pd.Series) -> bool:
+    """True when the commas in this column could be either decimal or thousands.
+
+    Only fires for the genuinely undecidable shape — a single comma followed by
+    exactly three digits — and only when the column has no unambiguous values to
+    settle it. A column holding both "1.234,5" and "5,555" is European
+    throughout; one holding "22,5" is too.
+    """
+    vals = s.dropna().astype(str).str.strip()
+    vals = vals[vals != ""]
+    if vals.empty:
+        return False
+    if bool(vals.map(lambda v: bool(_DECIMAL_COMMA.match(v))).any()):
+        return False              # something in the column settles it
+    return bool(vals.map(lambda v: bool(_AMBIGUOUS_COMMA.match(v))).mean() >= 0.6)
 
 
 _LEADING_ZERO = re.compile(r"^[+-]?0\d")
@@ -436,6 +466,42 @@ def check_numeric_sentinels(df: pd.DataFrame, min_count: int = 2) -> List[ShapeF
 
         hits = {v: int((s == v).sum()) for v in present
                 if v > hi + 0.5 * spread or v < lo - 0.5 * spread}
+
+        # On a DENSE integer scale, a code is only a code if the data stops
+        # before it. Excluding 7/8/9 as candidates before measuring the spread
+        # manufactures a gap: in a genuine 1-9 Likert scale the 7s and 8s are
+        # real answers, removing them leaves 1-6, and the 9 then looks like it
+        # sits far outside a distribution it is actually part of.
+        #
+        # So for a dense scale the RAW values are split into runs of
+        # consecutive integers. One unbroken run is a scale and nothing in it
+        # is a code; where the data breaks, whichever run holds the most
+        # OBSERVATIONS is the real scale and the rest are codes. That reads
+        # 1-5 plus 7,8,9 correctly without mistaking 1-9 for it.
+        #
+        # Sparse data (lab values, ages) never forms runs, so it keeps the
+        # distance test above, which is the right question there.
+        observed = np.sort(s.unique().astype(float))
+        span = float(observed[-1] - observed[0]) + 1.0
+        dense = is_integral and len(observed) / max(span, 1.0) >= 0.5
+        if dense:
+            counts = s.value_counts()
+            runs: List[List[float]] = [[float(observed[0])]]
+            for v in observed[1:]:
+                if float(v) - runs[-1][-1] <= 1.0:
+                    runs[-1].append(float(v))
+                else:
+                    runs.append([float(v)])
+            if len(runs) == 1:
+                hits = {}
+            else:
+                main = set(max(runs, key=lambda r: sum(int(counts.get(v, 0)) for v in r)))
+                # Judge every candidate by run membership rather than by the
+                # distance test, which under-reports the near edge of a code
+                # block: with a 1-5 scale plus 7,8,9, the 7 sits just inside the
+                # distance threshold and would be left behind while 8 and 9 are
+                # recoded — splitting one block of codes down the middle.
+                hits = {v: int((s == v).sum()) for v in present if v not in main}
         if not hits:
             continue
 
@@ -572,21 +638,38 @@ def check_numeric_stored_as_text(df: pd.DataFrame, min_parse: float = 0.8) -> Li
         n_blanked = int(parsed.isna().sum())
         offenders = s[parsed.isna()].astype(str).unique()[:3].tolist()
         examples = s[parsed.notna()].astype(str).unique()[:3].tolist()
+
+        # "5,555" is 5.555 in Bonn and 5555 in Boston. Reading it the common way
+        # is fine; reading it the common way SILENTLY is not, because the wrong
+        # guess is a 1000x rescale that nothing downstream will look odd about.
+        ambiguous = comma_reading_is_ambiguous(s)
+        assumption = ""
+        if ambiguous:
+            sample = next((v for v in examples if _AMBIGUOUS_COMMA.match(str(v))),
+                          examples[0] if examples else "5,555")
+            assumption = (f" The commas here could mark thousands or decimals — "
+                          f"'{sample}' is read as "
+                          f"{_clean_numeric_text(pd.Series([sample])).iloc[0]:,.0f} "
+                          f"(thousands separator). If these are European decimals, "
+                          f"convert them in your source file instead.")
         out.append(ShapeFinding(
             id=f"numeric_as_text__{col}",
             severity="warning",
             title=f"'{col}' looks numeric but is stored as text",
             detail=(f"{rate:.0%} of values parse as numbers after removing units, "
                     f"commas and comparison signs (e.g. {', '.join(map(repr, examples))})."
-                    + (f" Non-numeric leftovers: {', '.join(map(repr, offenders))}." if len(offenders) else "")),
+                    + (f" Non-numeric leftovers: {', '.join(map(repr, offenders))}." if len(offenders) else "")
+                    + assumption),
             why_it_matters=("As text this column cannot be modelled, correlated, or "
                             "plotted — it will silently sit out of your analysis."),
             fix_label=(f"Convert '{col}' to numbers"
                        + (f" (blanks {n_blanked} value(s) that cannot be read)" if n_blanked else "")),
             fix_kind="coerce_numeric",
             # Any conversion that discards values can destroy data, so it is
-            # never pre-selected — the user must look at what would be lost.
-            confidence="high" if n_blanked == 0 else "low",
+            # never pre-selected — the user must look at what would be lost. An
+            # undecidable comma is the same kind of risk: getting it wrong
+            # rescales the column by 1000 and nothing downstream looks wrong.
+            confidence="low" if (n_blanked or ambiguous) else "high",
             params={"column": col},
             affected_columns=[str(col)],
         ))
