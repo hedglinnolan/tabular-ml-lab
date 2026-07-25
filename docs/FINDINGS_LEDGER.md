@@ -40,7 +40,7 @@ published.
 | C4 | Several wrapper keys present → resolved by `_JSON_WRAPPER_KEYS` iteration order, silently | major | FIXED | `TestJsonRowSetChoice::test_a_wrapper_guess_is_disclosed` |
 | NEW | `__source_file_demo` / `__source_file_labs` leaked into the feature pool after stack-then-link, because reservation matched exactly rather than by prefix | major | FIXED | `TestSourceColumnIsNeverAPredictor` |
 | NEW | A failing check reported nothing at all, so an uninspectable file looked clean | major | FIXED | `TestDuplicateLabels::test_a_failed_check_is_disclosed_not_swallowed` |
-| NEW | Truncated JSON reported "read as JSON Lines" because the fallback was assumed, not attempted | minor | FIXED | `TestJsonRowSetChoice::test_truncated_json_is_not_mislabelled_as_json_lines` |
+| NEW | Truncated JSON reported "read as JSON Lines" because the fallback was assumed, not attempted | minor | FIXED | `TestJsonRowSetChoice::test_truncated_json_is_not_mislabeled_as_json_lines` |
 
 ---
 

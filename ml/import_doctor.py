@@ -7,7 +7,7 @@ columns named bp_1/bp_2/bp_3, and footers that say "Total".
 
 The app cannot deterministically PARSE that variety, and pretending otherwise
 is how tools silently corrupt someone's analysis. So this module offers a
-different contract, the same one the modeling coach already honours:
+different contract, the same one the modeling coach already honors:
 
     never silently guess — diagnose visibly, propose reversibly, record it.
 
@@ -162,7 +162,7 @@ _AMBIGUOUS_COMMA = re.compile(r"^[+-]?\d{1,3},\d{3}$")
 
 
 def _units_present(s: pd.Series) -> set:
-    """Distinct recognised unit suffixes appearing in a text column."""
+    """Distinct recognized unit suffixes appearing in a text column."""
     found = set()
     for v in s.dropna().astype(str).unique()[:500]:
         m = _TRAILING_UNIT.search(v.strip())
@@ -359,7 +359,7 @@ def check_duplicate_columns(df: pd.DataFrame) -> List[ShapeFinding]:
         title=f"{len(dupes)} column name(s) appear more than once",
         detail=f"Repeated names: {', '.join(map(str, dupes[:5]))}{'…' if len(dupes) > 5 else ''}.",
         why_it_matters=("Selecting a duplicated name returns several columns at once, "
-                        "which breaks preprocessing and modelling in confusing ways."),
+                        "which breaks preprocessing and modeling in confusing ways."),
         fix_label="Make duplicate names unique",
         fix_kind="dedupe_columns",
         confidence="high",
@@ -599,7 +599,7 @@ def check_numeric_stored_as_text(df: pd.DataFrame, min_parse: float = 0.8) -> Li
                 detail=(f"Every value is a plain number (e.g. "
                         f"{', '.join(map(repr, examples))}) but the column is typed "
                         f"as text."),
-                why_it_matters=("As text this column cannot be modelled, correlated "
+                why_it_matters=("As text this column cannot be modeled, correlated "
                                 "or plotted — it will silently sit out of your "
                                 "analysis while appearing perfectly fine."),
                 fix_label=f"Convert '{col}' to numbers",
@@ -660,7 +660,7 @@ def check_numeric_stored_as_text(df: pd.DataFrame, min_parse: float = 0.8) -> Li
                     f"commas and comparison signs (e.g. {', '.join(map(repr, examples))})."
                     + (f" Non-numeric leftovers: {', '.join(map(repr, offenders))}." if len(offenders) else "")
                     + assumption),
-            why_it_matters=("As text this column cannot be modelled, correlated, or "
+            why_it_matters=("As text this column cannot be modeled, correlated, or "
                             "plotted — it will silently sit out of your analysis."),
             fix_label=(f"Convert '{col}' to numbers"
                        + (f" (blanks {n_blanked} value(s) that cannot be read)" if n_blanked else "")),
@@ -910,7 +910,7 @@ def apply_fix(df: pd.DataFrame, finding: ShapeFinding) -> Tuple[pd.DataFrame, st
         for value in counts.index:
             canonical.setdefault(str(value).lower(), str(value))
         out.loc[mask, col] = out.loc[mask, col].map(lambda v: canonical.get(str(v).lower(), v))
-        desc = f"Merged spacing/capitalisation variants in '{col}'."
+        desc = f"Merged spacing/capitalization variants in '{col}'."
 
     elif kind == "melt_repeated":
         families = p.get("families", {})

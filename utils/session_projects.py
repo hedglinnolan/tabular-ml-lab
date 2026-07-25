@@ -128,7 +128,7 @@ class SessionProjectManager:
         )
 
     def rename_dataset(self, dataset_id: int, new_name: str) -> bool:
-        """Give a dataset a name the researcher recognises.
+        """Give a dataset a name the researcher recognizes.
 
         Uploads arrive named after the file ("nhanes_export_final_v3"), which
         is not what anyone calls it when choosing which file to combine.

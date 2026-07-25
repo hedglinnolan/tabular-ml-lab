@@ -685,7 +685,7 @@ def generate_preprocessing_insights(
                 ),
                 "recommended_action": (
                     f"For your {_family_list(affected)}, apply Yeo-Johnson or log transform "
-                    f"to stabilise the feature distributions.{immune_msg}"
+                    f"to stabilize the feature distributions.{immune_msg}"
                 ),
                 "model_scope": affected,
                 "relevant_pages": ["05_Preprocess"],
@@ -711,7 +711,7 @@ def generate_preprocessing_insights(
             if n_rows is not None and n_rows < 50 and len(outlier_feats) > 0.3 * p_total:
                 detector_caveat = (
                     f" Note: with only {n_rows} rows, IQR-based detection flags "
-                    f"features easily — inspect a few of these before winsorising "
+                    f"features easily — inspect a few of these before winsorizing "
                     f"wholesale."
                 )
             insights.append({
@@ -724,10 +724,10 @@ def generate_preprocessing_insights(
                     f"({', '.join(outlier_feats[:3])}{'…' if len(outlier_feats) > 3 else ''})."
                 ),
                 "implication": (
-                    f"Outliers can inflate loss and destabilise {_family_list(affected)}."
+                    f"Outliers can inflate loss and destabilize {_family_list(affected)}."
                 ),
                 "recommended_action": (
-                    f"For your {_family_list(affected)}, consider Winsorising or "
+                    f"For your {_family_list(affected)}, consider Winsorizing or "
                     f"robust scaling.{immune_msg}{detector_caveat}"
                 ),
                 "model_scope": affected,
@@ -1087,8 +1087,8 @@ def _detect_overfit(
             'finding': (
                 f"{display_name} shows signs of overfitting: train {metric_name} = "
                 f"{train_val:.3f} vs test {metric_name} = {test_val:.3f} "
-                f"(gap: {gap:.3f}). The model memorises training data patterns "
-                "that don't generalise."
+                f"(gap: {gap:.3f}). The model memorizes training data patterns "
+                "that don't generalize."
             ),
             'implication': (
                 "Overfitting inflates apparent performance. A reviewer would note "
@@ -1096,7 +1096,7 @@ def _detect_overfit(
                 "learning signal or noise."
             ),
             'recommended_action': (
-                f"Consider regularising {display_name} (increase regularisation "
+                f"Consider regularizing {display_name} (increase regularization "
                 "strength, reduce model complexity, or add dropout). Alternatively, "
                 "use a simpler model or collect more training data."
             ),

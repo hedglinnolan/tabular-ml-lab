@@ -1,6 +1,6 @@
 """Choosing, showing, and comparing cohort runs on screen.
 
-The engine in utils/cohorts.py decides what is analysable. This decides what a
+The engine in utils/cohorts.py decides what is analyzable. This decides what a
 researcher sees, and the whole design rests on one distinction that is easy to
 state and easy to get wrong:
 
@@ -53,7 +53,7 @@ def _cell_table(plan: CohortPlan, target_col: str) -> pd.DataFrame:
             "To train on": f"{c.n_train:,}",
             "Held out": f"{c.n_test:,}",
             "Rarer outcome": _rarer_outcome(c, target_col),
-            "Can be analysed on its own": "yes" if c.viable else f"no — {c.blocked_reason}",
+            "Can be analyzed on its own": "yes" if c.viable else f"no — {c.blocked_reason}",
         })
     return pd.DataFrame(rows)
 
@@ -69,7 +69,7 @@ def render_cohort_chooser(df: pd.DataFrame, target_col: str, task_type: str,
     from utils.test_lockbox import train_row_mask
 
     st.markdown("---")
-    st.subheader("Step 5: Analyse one group at a time (optional)")
+    st.subheader("Step 5: Analyze one group at a time (optional)")
     st.caption(
         "By default the app builds one model from everyone. That is usually "
         "right. Choose a group here only if your question is about a "
@@ -120,7 +120,7 @@ def render_cohort_chooser(df: pd.DataFrame, target_col: str, task_type: str,
                 f"(**{active['column']} = {active['label']}**, "
                 f"{active['n_rows']:,} of {active['n_total']:,} rows)."
             )
-            if st.button("Go back to analysing everyone", key="cohort_clear_btn"):
+            if st.button("Go back to analyzing everyone", key="cohort_clear_btn"):
                 _switch_to(None)
         return
 
@@ -177,10 +177,10 @@ def render_cohort_chooser(df: pd.DataFrame, target_col: str, task_type: str,
         st.success(
             f"✅ This run is **{column} = {choice}** — {active['n_rows']:,} of "
             f"{active['n_total']:,} rows. Every page below works on these people.")
-        if st.button("Go back to analysing everyone", key="cohort_clear_btn2"):
+        if st.button("Go back to analyzing everyone", key="cohort_clear_btn2"):
             _switch_to(None)
     else:
-        if st.button(f"Analyse {choice} only  ({cell.n_rows:,} rows)",
+        if st.button(f"Analyze {choice} only  ({cell.n_rows:,} rows)",
                      type="primary", key="cohort_start_btn"):
             _switch_to((df, plan, cell, target_col, [c for c, _ in lost]))
 
@@ -270,7 +270,7 @@ def render_next_cohort(task_type: str, metrics: Optional[Dict[str, Any]] = None)
     remaining = [lb for lb in run.get("order", []) if lb not in done_labels]
 
     st.markdown("---")
-    st.subheader(f"👥 Cohort runs — split by `{run['column']}`")
+    st.subheader(f"👥 One group at a time — split by `{run['column']}`")
 
     if len(done) >= 2:
         st.dataframe(_runs_table(done), width="stretch", hide_index=True)
@@ -283,7 +283,7 @@ def render_next_cohort(task_type: str, metrics: Optional[Dict[str, Any]] = None)
 
     if not remaining:
         st.success(
-            f"Every group of `{run['column']}` has been analysed. Report all "
+            f"Every group of `{run['column']}` has been analyzed. Report all "
             f"{len(done_labels)}, not the one that worked.")
         return
 
@@ -331,7 +331,7 @@ def _advance_to(column: str, label: str) -> None:
                         train_mask=train_row_mask(full.index))
     cell = next((c for c in plan.viable if c.label == label), None)
     if cell is None:
-        st.error(f"'{label}' can no longer be analysed on its own.")
+        st.error(f"'{label}' can no longer be analyzed on its own.")
         return
     lost = features_that_lose_variance(
         full, cohort_mask(full, column, cell.value),

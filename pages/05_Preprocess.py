@@ -258,7 +258,7 @@ if _profile:
                                 finding="Evidence probe: scores still rising with more rows",
                                 implication="Additional data would likely help more than additional models.",
                                 recommended_action="Consider whether more samples are obtainable",
-                                manuscript_text=("learning-curve behaviour on the training data "
+                                manuscript_text=("learning-curve behavior on the training data "
                                                  "suggested performance was not yet saturated at "
                                                  "the available sample size"),
                                 relevant_pages=["06_Train_and_Compare"],

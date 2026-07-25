@@ -32,7 +32,7 @@ import pandas as pd
 from ml.join_doctor import normalize_key
 from utils.combine import SOURCE_COLUMN
 
-# Where a column in the result came from. Used for colour and for the legend.
+# Where a column in the result came from. Used for color and for the legend.
 FROM_KEY = "key"          # the identifier the files were linked on
 FROM_LEFT = "left"
 FROM_RIGHT = "right"
@@ -243,7 +243,7 @@ def _join_consequences(cm: ChangeMap, left, right, lcounts, rcounts, matched,
         out.append(
             f"**Both files had columns with the same name**, so they are kept side "
             f"by side rather than one overwriting the other: {names}. Check which "
-            f"one you actually want before modelling.")
+            f"one you actually want before modeling.")
     return out
 
 
@@ -350,7 +350,7 @@ def blank_cell_mask(result: pd.DataFrame, cm: ChangeMap) -> pd.DataFrame:
     would invent data.
 
     Flagging every NaN — which is what this used to do — does not distinguish
-    them, so it was worse than useless: it lent the wrong reading a colour.
+    them, so it was worse than useless: it lent the wrong reading a color.
     """
     mask = pd.DataFrame(False, index=result.index, columns=result.columns)
     by_origin = {c.name: c.origin for c in cm.columns}

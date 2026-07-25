@@ -195,4 +195,4 @@ def test_overfit_finding_has_recommended_action():
     }
     findings = _detect_overfit(results, 'regression')
     assert len(findings) == 1
-    assert 'regularis' in findings[0]['recommended_action'].lower()
+    assert 'regulariz' in findings[0]['recommended_action'].lower()

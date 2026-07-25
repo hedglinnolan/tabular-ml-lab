@@ -247,7 +247,7 @@ class TestJsonRowSetChoice:
 
     For an ambiguous payload it raised "Pick which key holds your rows", but
     records_key was never wired to a widget and cached_parse_upload had no
-    parameter to carry it. And when several recognised wrapper keys were
+    parameter to carry it. And when several recognized wrapper keys were
     present it silently took whichever came first in _JSON_WRAPPER_KEYS.
     """
 
@@ -319,12 +319,12 @@ class TestJsonRowSetChoice:
         raw = _json.dumps({"type": "FeatureCollection", "features": []}).encode()
         assert "GeoJSON" in inspect_json(io.BytesIO(raw)).error
 
-    def test_truncated_json_is_not_mislabelled_as_json_lines(self):
+    def test_truncated_json_is_not_mislabeled_as_json_lines(self):
         from data_processor import inspect_json
         layout = inspect_json(io.BytesIO(b'{"a": [1,2'))
         assert layout.kind == "not_tabular"
 
-    def test_real_json_lines_is_still_recognised(self):
+    def test_real_json_lines_is_still_recognized(self):
         from data_processor import inspect_json
         raw = b'{"a": 1}\n{"a": 2}\n{"a": 3}\n'
         layout = inspect_json(io.BytesIO(raw))
@@ -358,7 +358,7 @@ class TestMixedRelationships:
                                        "glucose": RNG.normal(100, 20, 100)}),
         }
 
-    def test_the_shape_is_recognised(self):
+    def test_the_shape_is_recognized(self):
         from utils.combine import plan_combination
         assert plan_combination(self._two_by_two()).shape == "stack_then_link"
 
@@ -629,7 +629,7 @@ class TestCommaReading:
     45.0, a 1000x under-scale, at 'high' confidence and pre-selected, with a
     description that never mentioned an interpretation had been chosen.
 
-    Strictly worse than the original: bigger error, commoner format.
+    Strictly worse than the original: bigger error, more common format.
     """
 
     def _convert(self, vals):

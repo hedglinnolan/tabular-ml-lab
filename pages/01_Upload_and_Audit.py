@@ -311,7 +311,7 @@ if uploaded_files and len(uploaded_files) > 1:
                         st.session_state.get(f"records_key_{_fk}", "") or "",
                     )
                     _frame.columns = [str(c) for c in _frame.columns]
-                    # Honour fixes already applied in the review below.
+                    # Honor fixes already applied in the review below.
                     _frame = repaired_frame(_frame, _fk)
                     _name = st.session_state.get(f"name_{_fk}") or _uf.name.rsplit('.', 1)[0]
                     ok, msg = _commit_dataset(_frame, _name, _uf.name, _ft,

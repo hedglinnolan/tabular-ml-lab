@@ -263,7 +263,7 @@ def _json_obj_to_frame(obj: Any, records_key: Optional[str] = None,
         if str(obj.get("type", "")).lower() in {"featurecollection", "geometrycollection"}:
             raise ValueError(
                 "This looks like a GeoJSON map file, not a data table. Export the "
-                "attributes you want to analyse as CSV or as a list of records."
+                "attributes you want to analyze as CSV or as a list of records."
             )
 
         # pandas orient='split': {"columns": [...], "data": [[...]], "index": [...]}
@@ -324,7 +324,7 @@ class JsonLayout:
     The loader used to resolve two kinds of uncertainty on its own: when a
     payload had several candidate row sets it raised "pick which key holds your
     rows" — advice the UI gave no way to follow — and when it had several
-    recognised wrapper keys it took whichever came first in _JSON_WRAPPER_KEYS,
+    recognized wrapper keys it took whichever came first in _JSON_WRAPPER_KEYS,
     silently. Both are guesses, and this app does not guess silently.
 
     So the reader reports what it found. The UI turns `candidates` into a

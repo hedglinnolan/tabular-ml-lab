@@ -653,7 +653,7 @@ class TestGroupAwareLockbox:
         assert lb["group_col"] == "id"
         assert lb["n_test_groups"] and lb["n_test_groups"] >= 1
 
-    def test_declared_entity_id_is_honoured(self):
+    def test_declared_entity_id_is_honored(self):
         from utils.test_lockbox import ensure_lockbox
         df = self._repeated_measures()
         lb = ensure_lockbox(df, "glucose", "regression", group_col="id")

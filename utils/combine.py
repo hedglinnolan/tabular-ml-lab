@@ -4,7 +4,7 @@ Researchers arrive with files that relate in exactly two ways, and the app
 previously supported only one of them:
 
   STACK  — the same measurements on different people. NHANES cycles
-           1999-2000, 2001-2002, …; sites in a multi-centre study; years of a
+           1999-2000, 2001-2002, …; sites in a multi-center study; years of a
            registry. The columns line up; the rows add up.
   LINK   — different measurements on the same people. Demographics + diet +
            labs, all keyed by SEQN. The rows line up; the columns add up.
@@ -182,7 +182,7 @@ def relationship_hint(frames: Dict[str, pd.DataFrame]) -> str:
 
 
 def reserved_columns() -> List[str]:
-    """Columns the modelling feature pool must never offer as predictors."""
+    """Columns the modeling feature pool must never offer as predictors."""
     return [SOURCE_COLUMN]
 
 

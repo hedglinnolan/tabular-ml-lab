@@ -139,7 +139,7 @@ def test_predicted_row_count_matches_reality():
         assert d.predicted_rows == len(merged), f"{how}: said {d.predicted_rows}, got {len(merged)}"
 
 
-# ── FAILURE 5: whitespace / capitalisation in key VALUES ─────────────────
+# ── FAILURE 5: whitespace / capitalization in key VALUES ─────────────────
 
 def test_whitespace_and_case_variants_still_match():
     left = pd.DataFrame({"id": [f"A{i:02d}" for i in range(1, 21)], "age": range(20)})
@@ -271,7 +271,7 @@ def test_missing_ids_are_reported_to_the_user():
 
 
 def test_large_integer_ids_are_not_collided_by_float_precision():
-    """Canonicalising through float64 collapses IDs above 2^53 — a false merge
+    """Canonicalizing through float64 collapses IDs above 2^53 — a false merge
     of two distinct subjects, the worst outcome this module can produce."""
     tokens = normalize_key(pd.Series([9007199254740993, 9007199254740992])).tolist()
     assert tokens[0] != tokens[1]

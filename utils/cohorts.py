@@ -1,12 +1,12 @@
-"""Analysing one cohort at a time — same question, different people.
+"""Analyzing one cohort at a time — same question, different people.
 
 Researchers ask for this constantly: "model the men, then model the women."
-The app already had a button labelled subgroup analysis, but it answers a
+The app already had a button labeled subgroup analysis, but it answers a
 DIFFERENT question, and the two get conflated with real consequences:
 
     Does my model work equally well for men and women?
         -> train on everyone, evaluate the one model within each group.
-           A fairness / generalisation check. This is what page 07 does.
+           A fairness / generalization check. This is what page 07 does.
 
     Is the relationship between predictors and outcome DIFFERENT in men
     and women?
@@ -54,7 +54,7 @@ NEAR_CONSTANT_SHARE = 0.99
 
 @dataclass
 class CohortCell:
-    """One level of the grouping variable, and whether it can be modelled."""
+    """One level of the grouping variable, and whether it can be modeled."""
     label: str
     value: Any
     n_rows: int
@@ -64,7 +64,7 @@ class CohortCell:
     viable: bool = True
     blocked_reason: str = ""
     # Rows in this cohort including those with no outcome. n_rows counts only
-    # the rows that can actually be modelled.
+    # the rows that can actually be modeled.
     n_rows_total: int = 0
     class_counts: Dict[Any, int] = field(default_factory=dict)
 
@@ -101,16 +101,20 @@ class CohortPlan:
 
     def summary(self) -> str:
         if not self.cells:
-            return f"'{self.column}' has no usable levels."
+            return f"'{self.column}' has no usable values."
         parts = ", ".join(f"{c.label} ({c.n_rows:,})" for c in self.viable)
-        out = (f"Analysing separately by **{self.column}**: {len(self.viable)} "
-               f"cohort(s) — {parts}.")
+        n = len(self.viable)
+        out = (f"Analyzing separately by **{self.column}**: "
+               f"{n} group{'' if n == 1 else 's'} — {parts}.")
         if self.blocked:
-            out += (f" {len(self.blocked)} level(s) are too small to model and "
-                    f"are not offered.")
+            k = len(self.blocked)
+            out += (f" {k} {'group is' if k == 1 else 'groups are'} too small "
+                    f"to model, and {'is' if k == 1 else 'they are'} not offered.")
         if self.n_excluded_missing:
-            out += (f" {self.n_excluded_missing:,} row(s) have no "
-                    f"'{self.column}' recorded and are in none of them.")
+            m = self.n_excluded_missing
+            out += (f" {m:,} row{'' if m == 1 else 's'} "
+                    f"{'has' if m == 1 else 'have'} no '{self.column}' recorded "
+                    f"and {'is' if m == 1 else 'are'} in none of them.")
         return out
 
 
@@ -140,7 +144,7 @@ def plan_cohorts(df: pd.DataFrame, column: str, target_col: str,
     if column == target_col:
         plan.blocking.append(
             f"'{column}' is what you are predicting. Splitting the study by the "
-            f"outcome would leave each cohort with only one answer in it.")
+            f"outcome would leave each group with only one answer in it.")
         return plan
 
     levels = df[column].dropna().unique()
@@ -152,7 +156,7 @@ def plan_cohorts(df: pd.DataFrame, column: str, target_col: str,
     if len(levels) > 20:
         plan.blocking.append(
             f"'{column}' has {len(levels):,} different values. Splitting the "
-            f"study that many ways leaves nothing in each cohort — pick a "
+            f"study that many ways leaves almost nobody in each group — pick a "
             f"variable with a handful of categories.")
         return plan
 
@@ -212,9 +216,9 @@ def plan_cohorts(df: pd.DataFrame, column: str, target_col: str,
     plan.warnings = _cohort_warnings(plan, task_type)
     if len(plan.viable) < 2:
         plan.blocking.append(
-            f"Only {len(plan.viable)} level of '{column}' is big enough to model "
-            f"on its own, so there is nothing to compare. Keep everyone together "
-            f"and add '{column}' as a predictor instead.")
+            f"Only one group in '{column}' is big enough to model on its own, "
+            f"so there is nothing to compare it with. Keep everyone together and "
+            f"add '{column}' as a predictor instead.")
     return plan
 
 
@@ -225,7 +229,7 @@ def _cohort_warnings(plan: CohortPlan, task_type: str) -> List[str]:
 
     if len(viable) > MAX_SENSIBLE_CELLS:
         out.append(
-            f"**{len(viable)} separate analyses is a lot.** Every extra cohort is "
+            f"**{len(viable)} separate analyses is a lot.** Every extra group is "
             f"another chance for one of them to look significant by accident. If "
             f"you report the one that worked, that is the multiple-comparisons "
             f"problem, and it needs disclosing.")
@@ -235,7 +239,7 @@ def _cohort_warnings(plan: CohortPlan, task_type: str) -> List[str]:
         largest = max(viable, key=lambda c: c.n_rows)
         if largest.n_rows >= 3 * max(smallest.n_rows, 1):
             out.append(
-                f"**The cohorts are very different sizes** — {largest.label} has "
+                f"**The groups are very different sizes** — {largest.label} has "
                 f"{largest.n_rows:,} rows and {smallest.label} has "
                 f"{smallest.n_rows:,}. The smaller model will look worse partly "
                 f"because it had less to learn from, which is not the same as the "
@@ -250,7 +254,7 @@ def _cohort_warnings(plan: CohortPlan, task_type: str) -> List[str]:
             hi = max(rates, key=rates.get)
             lo = min(rates, key=rates.get)
             out.append(
-                f"**The outcome is much commoner in one cohort** ({hi}: "
+                f"**The outcome is much more common in one group** ({hi}: "
                 f"{rates[hi]:.0%}, {lo}: {rates[lo]:.0%}). Accuracy and AUC are "
                 f"not directly comparable across groups with different rates — a "
                 f"difference between them can be case mix rather than model "
@@ -269,7 +273,7 @@ def _cohort_warnings(plan: CohortPlan, task_type: str) -> List[str]:
     if plan.blocked:
         names = ", ".join(f"{c.label} ({c.blocked_reason})" for c in plan.blocked[:3])
         out.append(
-            f"**Some levels cannot be modelled on their own:** {names}. They stay "
+            f"**Some groups are too small to model on their own:** {names}. They stay "
             f"in your data — they are simply not offered as separate analyses, "
             f"because a number computed from that few people would mislead you.")
     return out
@@ -311,17 +315,17 @@ def features_that_lose_variance(df: pd.DataFrame, mask: pd.Series,
         s = sub[col]
         nn = s.dropna()
         if nn.empty:
-            out.append((col, "has no values at all in this cohort"))
+            out.append((col, "has no values at all in this group"))
             continue
         try:
             counts = nn.value_counts()
         except TypeError:
             continue
         if len(counts) == 1:
-            out.append((col, f"is always {_show(counts.index[0])} in this cohort"))
+            out.append((col, f"is always {_show(counts.index[0])} in this group"))
         elif counts.iloc[0] / len(nn) >= NEAR_CONSTANT_SHARE:
             out.append((col, f"is {counts.iloc[0] / len(nn):.0%} the same value "
-                             f"({_show(counts.index[0])}) in this cohort"))
+                             f"({_show(counts.index[0])}) in this group"))
     return out
 
 
@@ -340,7 +344,7 @@ class CohortRun:
 
 
 def runs_remaining(plan: CohortPlan, done: Sequence[str]) -> List[CohortCell]:
-    """Cohorts still to analyse, in order. Drives the 'now do the men' button."""
+    """Cohorts still to analyze, in order. Drives the 'now do the men' button."""
     seen = set(done)
     return [c for c in plan.viable if c.label not in seen]
 
@@ -380,7 +384,7 @@ def cohort_candidates(df: pd.DataFrame, target_col: str,
 #
 # Held as index LABELS, not as a column filter. Feature engineering may one-hot
 # `sex` out of existence, and a filter that silently stopped applying would let
-# a run labelled "women" quietly train on everyone — the exact failure this
+# a run labeled "women" quietly train on everyone — the exact failure this
 # whole feature exists to prevent. Labels survive every row-preserving step,
 # which is the same invariant the test lockbox already depends on.
 
@@ -390,7 +394,7 @@ _BROKEN_KEY = "_cohort_filter_broken"
 
 
 def active_cohort() -> Optional[Dict[str, Any]]:
-    """The run in progress, or None when the study is being analysed whole."""
+    """The run in progress, or None when the study is being analyzed whole."""
     import streamlit as st
     run = st.session_state.get(_ACTIVE_KEY)
     return run if isinstance(run, dict) and run.get("labels") else None
@@ -500,20 +504,20 @@ def comparison_caveats(runs: Sequence[CohortRun], task_type: str) -> List[str]:
     sizes = [r.n_train for r in done]
     if max(sizes) >= 3 * max(min(sizes), 1):
         out.append(
-            "The cohorts trained on very different numbers of rows, so the "
+            "The groups trained on very different numbers of rows, so the "
             "smaller model is handicapped before the comparison starts. A worse "
             "score there is not evidence that the relationship is weaker.")
     if task_type == "classification":
         out.append(
             "Accuracy and AUC depend on how common the outcome is. Comparing "
-            "them across cohorts with different outcome rates compares two "
+            "them across groups with different outcome rates compares two "
             "different things.")
     out.append(
-        f"You fitted this model in {len(done)} cohorts. Report all "
+        f"You fitted this model in {len(done)} groups. Report all "
         f"{len(done)}, not the one that worked — otherwise the result is a "
-        f"multiple-comparisons artefact, and a reviewer will ask.")
+        f"multiple-comparisons artifact, and a reviewer will ask.")
     out.append(
-        "Whether the difference between cohorts is REAL is a question these "
+        "Whether the difference between the groups is REAL is a question these "
         "separate fits cannot answer. That needs one model on everyone with an "
         "interaction term, which tests the difference directly.")
     return out

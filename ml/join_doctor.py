@@ -12,12 +12,12 @@ actually reproduced against this app:
 3. One file has several rows per subject. The join silently multiplies the
    cohort and every later "n =" in the manuscript is wrong.
 4. An inner join keeps half the cohort and nothing says so.
-5. The IDs differ only by stray whitespace or capitalisation.
+5. The IDs differ only by stray whitespace or capitalization.
 
 None of that is discoverable by looking at column names, which is all the
 previous helpers did. This module looks at the VALUES: it proposes keys by
 measuring how well they actually overlap, explains what a join will do in
-plain language BEFORE it runs, and offers reversible normalisations for the
+plain language BEFORE it runs, and offers reversible normalizations for the
 three mechanical mismatches (type, whitespace, case).
 
 Nothing here mutates the caller's frames, and nothing is applied
@@ -33,7 +33,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-# Upper bound on DISTINCT key values canonicalised per column (guards pathological
+# Upper bound on DISTINCT key values canonicalized per column (guards pathological
 # wide/long files without ever comparing two different random subsets).
 _MAX_DISTINCT = 200_000
 # A key must identify rows, not group them: at least this share of values must
@@ -59,7 +59,7 @@ _DECIMAL_RE = re.compile(r"^[+-]?\d+\.\d*$")
 def _canon_scalar(v: Any) -> Optional[str]:
     """Canonical token for one key value, or None when it identifies nobody.
 
-    Integers are canonicalised with exact arbitrary-precision arithmetic, NOT
+    Integers are canonicalized with exact arbitrary-precision arithmetic, NOT
     through float: passing IDs through float64 silently collides values above
     2^53 (9007199254740993 and ...992 become the same subject), which is a
     false merge — the worst outcome this module can produce.
@@ -269,7 +269,7 @@ class KeyCandidate:
                     f"until that is fixed ({self.n_matched:,} would match after fixing).")
         if self.needs_normalization:
             return (f"'{self.left_col}' and '{self.right_col}' match after ignoring "
-                    f"capitalisation and stray spaces ({self.n_matched:,} IDs).")
+                    f"capitalization and stray spaces ({self.n_matched:,} IDs).")
         return (f"'{self.left_col}' and '{self.right_col}' share {self.n_matched:,} IDs "
                 f"({self.coverage_left:.0%} of {left_name}, {self.coverage_right:.0%} of {right_name}).")
 
@@ -307,7 +307,7 @@ def _key_tokens(df: pd.DataFrame, col: str) -> Optional[pd.Series]:
     two different random subsets, so on files above the sample size the
     measured overlap collapses toward zero and the true key stops being
     proposed exactly when the data is large enough to matter. Instead we cheaply
-    reject columns that cannot identify rows, then canonicalise only the
+    reject columns that cannot identify rows, then canonicalize only the
     distinct values of the survivors.
     """
     try:
@@ -700,7 +700,7 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
             f"and {len(right):,} — every matching row on one side is paired with "
             f"every matching row on the other. That is far more data than either "
             f"file contains and will not finish on a laptop. Usually it means "
-            f"'{left_key}' identifies a group rather than a person: summarise one "
+            f"'{left_key}' identifies a group rather than a person: summarize one "
             f"file to one row per subject first, or pick a column that is unique "
             f"in at least one file."
         )
@@ -708,7 +708,7 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
     # --- things to understand first ---------------------------------------
     # A preserving join keeps rows that matched nothing, and every column from
     # the other file arrives blank for them. Silence here is how a researcher
-    # ends up modelling a variable that is 50% missing by construction and
+    # ends up modeling a variable that is 50% missing by construction and
     # blames the data.
     if how in ("left", "outer") and unmatched_left_rows:
         d.warnings.append(
@@ -726,7 +726,7 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
         )
     if needs_norm:
         d.warnings.append(
-            f"Some IDs are written differently in the two files — capitalisation, "
+            f"Some IDs are written differently in the two files — capitalization, "
             f"stray spaces, or a trailing '.0'. Cleaning them up matches "
             f"{len(matched):,} IDs instead of fewer."
         )
@@ -734,7 +734,7 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
         d.warnings.append(
             f"Both files have several rows per ID, so every combination is produced: "
             f"{len(matched):,} shared IDs become {matched_rows:,} rows. This is usually a "
-            f"mistake — check whether one file should be summarised to one row per subject "
+            f"mistake — check whether one file should be summarized to one row per subject "
             f"first."
         )
     elif dup_left or dup_right:
@@ -802,8 +802,8 @@ def repair_keys(left: pd.DataFrame, right: pd.DataFrame,
     l2.loc[l2[left_key] == "", left_key] = np.nan
     r2.loc[r2[right_key] == "", right_key] = np.nan
     return l2, r2, (
-        f"Standardised the join keys ('{left_key}', '{right_key}') so that IDs written "
-        f"differently (leading zeros, decimals, capitalisation, stray spaces) refer to the "
+        f"Standardized the join keys ('{left_key}', '{right_key}') so that IDs written "
+        f"differently (leading zeros, decimals, capitalization, stray spaces) refer to the "
         f"same subject."
     )
 

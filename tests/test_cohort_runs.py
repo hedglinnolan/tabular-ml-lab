@@ -6,7 +6,7 @@ are about that seam — get_data(), the lockbox ordering, and the ways a filter
 can silently stop applying.
 
 The failure this file exists to prevent: a page headed "women" that quietly
-trained on everyone. Wherever the filter cannot be honoured, the app must show
+trained on everyone. Wherever the filter cannot be honored, the app must show
 NOTHING rather than everything.
 """
 from __future__ import annotations
@@ -57,7 +57,7 @@ def begin(df, column="sex", label="Female", target="diabetes"):
 
 # ── the filter actually reaches the pages ────────────────────────────────
 
-class TestGetDataHonoursTheRun:
+class TestGetDataHonorsTheRun:
 
     def test_no_cohort_means_everyone(self):
         df = study()
@@ -102,7 +102,7 @@ class TestTheFilterCannotBeLostQuietly:
         """One-hot encoding `sex` must not un-filter the run.
 
         A column-based filter would find nothing to match and fall through to
-        everyone — a run labelled Female reporting the whole study.
+        everyone — a run labeled Female reporting the whole study.
         """
         df = study()
         st.session_state["raw_data"] = df
@@ -120,7 +120,7 @@ class TestTheFilterCannotBeLostQuietly:
         assert set(seen["sex"].unique()) == {"Female"}
         assert (seen["age"] >= 40).all()
 
-    def test_unrecognisable_rows_yield_nothing_not_everything(self):
+    def test_unrecognizable_rows_yield_nothing_not_everything(self):
         """The one case where being wrong would be publishable."""
         df = study()
         st.session_state["raw_data"] = df

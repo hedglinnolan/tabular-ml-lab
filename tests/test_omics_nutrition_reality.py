@@ -136,7 +136,7 @@ class TestWideOmicsMatrices:
 
 class TestHierarchicalIdentifiers:
 
-    def test_tcga_patient_to_aliquot_is_recognised(self):
+    def test_tcga_patient_to_aliquot_is_recognized(self):
         """Clinical is patient-level (TCGA-02-0001); assays are aliquot-level
         (TCGA-02-0001-01A-21R-1898-07). Zero exact overlap, and every TCGA
         study needs this join."""
@@ -149,7 +149,7 @@ class TestHierarchicalIdentifiers:
         assert "start" in blob or "prefix" in blob or "longer" in blob, (
             "the app says nothing about one ID being the start of the other")
 
-    def test_versioned_ensembl_ids_are_recognised(self):
+    def test_versioned_ensembl_ids_are_recognized(self):
         """ENSG00000141510.16 and ENSG00000141510 are the same gene."""
         from ml.join_doctor import diagnose_join
         left = pd.DataFrame({"gene": [f"ENSG{i:011d}.{RNG.randint(1,9)}" for i in range(200)],

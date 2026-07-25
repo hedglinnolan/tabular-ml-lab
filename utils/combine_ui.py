@@ -55,16 +55,16 @@ from utils.combine_preview import (
     ChangeMap, blank_cell_mask, describe_join, describe_stack,
 )
 
-# One colour per origin, used identically in the column map and the preview so
+# One color per origin, used identically in the column map and the preview so
 # the two read as one picture.
-_ORIGIN_COLOUR = {
+_ORIGIN_COLOR = {
     FROM_KEY: "#667eea",
     FROM_LEFT: "#0ea5e9",
     FROM_RIGHT: "#22c55e",
     FROM_SHARED: "#667eea",
     FROM_ADDED: "#94a3b8",
 }
-_OUTCOME_COLOUR = {"kept": "#22c55e", "blanked": "#f59e0b", "dropped": "#cbd5e1"}
+_OUTCOME_COLOR = {"kept": "#22c55e", "blanked": "#f59e0b", "dropped": "#cbd5e1"}
 _MAX_PREVIEW_COLS = 12
 
 
@@ -77,7 +77,7 @@ def _row_ledger(cm: ChangeMap) -> None:
     total = sum(g.n for g in cm.row_groups) or 1
     segments = "".join(
         f'<div title="{_esc(g.label)}" style="width:{100 * g.n / total:.2f}%;'
-        f'background:{_OUTCOME_COLOUR.get(g.outcome, "#cbd5e1")};"></div>'
+        f'background:{_OUTCOME_COLOR.get(g.outcome, "#cbd5e1")};"></div>'
         for g in cm.row_groups if g.n
     )
     st.markdown(
@@ -90,7 +90,7 @@ def _row_ledger(cm: ChangeMap) -> None:
         st.markdown(
             f'<div style="font-size:0.86rem;margin:0.1rem 0;">'
             f'<span style="display:inline-block;width:10px;height:10px;border-radius:2px;'
-            f'background:{_OUTCOME_COLOUR[g.outcome]};margin-right:0.5rem;"></span>'
+            f'background:{_OUTCOME_COLOR[g.outcome]};margin-right:0.5rem;"></span>'
             f'<strong>{g.n:,}</strong> {_esc(g.label)} — <em>{verb}</em>'
             f'<span style="color:#64748b;"> · {_esc(g.detail)}</span></div>',
             unsafe_allow_html=True)
@@ -143,7 +143,7 @@ def _preview_table(result: pd.DataFrame, cm: ChangeMap) -> None:
 
     ths = "".join(
         f'<th style="padding:5px 8px;text-align:left;font-size:0.78rem;'
-        f'border-bottom:2px solid {_ORIGIN_COLOUR.get(origin.get(str(c)), "#cbd5e1")};'
+        f'border-bottom:2px solid {_ORIGIN_COLOR.get(origin.get(str(c)), "#cbd5e1")};'
         f'white-space:nowrap;">{_esc(str(c))}</th>' for c in cols)
     trs = []
     for n, (_, row) in enumerate(head.iterrows()):
@@ -165,7 +165,7 @@ def _preview_table(result: pd.DataFrame, cm: ChangeMap) -> None:
     for label, key in (("the ID", FROM_KEY), (cm.before[0][0], FROM_LEFT),
                        (cm.before[-1][0] if cm.operation == "link" else "in every file",
                         FROM_RIGHT if cm.operation == "link" else FROM_SHARED)):
-        legend.append(f'<span style="border-bottom:2px solid {_ORIGIN_COLOUR[key]};">'
+        legend.append(f'<span style="border-bottom:2px solid {_ORIGIN_COLOR[key]};">'
                       f'{_esc(str(label))}</span>')
     note = " · ".join(legend)
     if bool(merge_blanks.to_numpy().any()):
@@ -176,7 +176,7 @@ def _preview_table(result: pd.DataFrame, cm: ChangeMap) -> None:
         note += ' · <span style="color:#667eea;">the line is where the second file begins</span>'
     if trimmed:
         note += f" · showing {len(cols)} of {result.shape[1]} columns"
-    st.caption(f"Column colours: {note}", unsafe_allow_html=True)
+    st.caption(f"Column colors: {note}", unsafe_allow_html=True)
 
 
 def _column_map(cm: ChangeMap) -> None:
@@ -186,7 +186,7 @@ def _column_map(cm: ChangeMap) -> None:
                      + (f" — {len(renamed)} renamed to avoid a clash" if renamed else "")):
         for c in cm.columns:
             chip = (f'<span style="display:inline-block;width:8px;height:8px;'
-                    f'border-radius:2px;background:{_ORIGIN_COLOUR.get(c.origin, "#cbd5e1")};'
+                    f'border-radius:2px;background:{_ORIGIN_COLOR.get(c.origin, "#cbd5e1")};'
                     f'margin-right:0.5rem;"></span>')
             note = (f' <span style="color:#b45309;">(renamed from '
                     f'<code>{_esc(c.renamed_from)}</code> — both files had one)</span>'
@@ -289,7 +289,7 @@ def _render_link(frames: Dict[str, pd.DataFrame],
         # The change map below accounts for every row visually and states the
         # consequence for the analysis, so repeating the engine's row-counting
         # warnings here would say the same thing twice in weaker words. Warnings
-        # the map does NOT cover — capitalisation, spacing — still surface.
+        # the map does NOT cover — capitalization, spacing — still surface.
         for w in diag.warnings:
             if "have no match" in w or "have no ID at all" in w:
                 continue

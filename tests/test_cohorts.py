@@ -204,7 +204,7 @@ class TestFeaturesLosingVariance:
     def test_values_read_as_a_person_would_write_them(self):
         df = pd.DataFrame({"g": ["a"] * 100 + ["b"] * 100, "flag": [0] * 200})
         lost = features_that_lose_variance(df, cohort_mask(df, "g", "a"), ["flag"])
-        assert lost[0][1] == "is always 0 in this cohort"
+        assert lost[0][1] == "is always 0 in this group"
 
     def test_a_varying_feature_is_left_alone(self):
         df = _cohort()
