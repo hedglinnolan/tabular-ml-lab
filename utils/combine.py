@@ -148,6 +148,16 @@ def execute_stack(frames: Dict[str, pd.DataFrame],
     for n in names:
         part = frames[n].copy()
         if add_source_column:
+            # A frame the app itself produced and the user re-uploaded already
+            # carries __source_file. Overwriting it destroys the record of
+            # where those rows came from, silently, on the one column whose
+            # entire job is provenance.
+            if SOURCE_COLUMN in part.columns:
+                keep = f"{SOURCE_COLUMN}_before"
+                i = 2
+                while keep in part.columns:
+                    keep, i = f"{SOURCE_COLUMN}_before_{i}", i + 1
+                part = part.rename(columns={SOURCE_COLUMN: keep})
             part[SOURCE_COLUMN] = n
         parts.append(part)
 

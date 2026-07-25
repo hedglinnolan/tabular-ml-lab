@@ -975,7 +975,16 @@ def execute_join(left: pd.DataFrame, right: pd.DataFrame,
     )
 
     extras: List[pd.DataFrame] = []
-    overlap = (set(l.columns) & set(r.columns)) - {left_key, right_key}
+    # Subtracting BOTH key names is wrong when they differ. A right-hand column
+    # merely NAMED like the left key (demographics keyed on SEQN, labs keyed on
+    # pid but also carrying its own SEQN notes column) is a genuine collision:
+    # pandas suffixes it, so `SEQN` stops existing in the result, the drop of
+    # right_key removes the other one, and the restore step's
+    # `left_key in merged.columns` is False — the key column the researcher
+    # joined on is simply gone from their data.
+    overlap = (set(l.columns) & set(r.columns)) - {left_key} - {right_key}
+    if left_key != right_key and left_key in r.columns:
+        overlap.add(left_key)
     if how in ("left", "outer") and len(l_blank):
         extras.append(l_blank.rename(columns={c: f"{c}{suffixes[0]}" for c in overlap}))
     if how in ("right", "outer") and len(r_blank):
@@ -988,6 +997,12 @@ def execute_join(left: pd.DataFrame, right: pd.DataFrame,
 
     if left_key != right_key and right_key in merged.columns:
         merged = merged.drop(columns=[right_key])
+    # pandas suffixed the left key too when the right file carried that name;
+    # put it back so the column the user joined on is present and unambiguous.
+    if left_key not in merged.columns:
+        suffixed = f"{left_key}{suffixes[0]}"
+        if suffixed in merged.columns:
+            merged = merged.rename(columns={suffixed: left_key})
 
     if repair:
         # Restore the originals. On an outer join a row may have come from

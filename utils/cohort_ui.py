@@ -200,6 +200,13 @@ def _switch_to(payload) -> None:
     the previous cohort's numbers under this cohort's heading.
     """
     from utils.session_state import reset_downstream_results
+    # filtered_data is a row subset of the PREVIOUS cohort. reset_downstream_results
+    # does not clear it (a row filter is not a fitted result), so after switching
+    # to Male it still held the Female frame — apply_cohort found no Male labels
+    # in it, fell through to the column path, and returned an EMPTY frame with no
+    # broken flag set, because the fallback had "worked".
+    import streamlit as _st
+    _st.session_state.pop("filtered_data", None)
     if payload is None:
         clear_cohort()
     else:
@@ -350,6 +357,7 @@ def _advance_to(column: str, label: str) -> None:
     lost = features_that_lose_variance(
         full, cohort_mask(full, column, cell.value),
         list(getattr(dc, "feature_cols", []) or []))
+    st.session_state.pop("filtered_data", None)   # see _switch_to
     start_cohort(full, plan, cell, target_col,
                  dropped_features=[c for c, _ in lost])
     try:

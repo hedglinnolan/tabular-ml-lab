@@ -208,6 +208,27 @@ def plan_cohorts(df: pd.DataFrame, column: str, target_col: str,
             elif cell.n_events is not None and cell.n_events < MIN_PER_CLASS:
                 reasons.append(f"only {cell.n_events} in the smaller outcome group "
                                f"(needs {MIN_PER_CLASS})")
+            else:
+                # The constant above says "in train AND test", but the count was
+                # pooled ACROSS the lockbox boundary. A cohort holding exactly
+                # MIN_PER_CLASS events passed while its held-out slice — the
+                # slice every reported metric is computed on — held one event or
+                # none, because the lockbox is stratified on the study-wide
+                # outcome, not within each cohort.
+                y_here = df.loc[usable, target_col] if target_col in df.columns else None
+                if y_here is not None and len(y_here):
+                    tr = df.loc[usable & train_mask, target_col]
+                    te = df.loc[usable & ~train_mask, target_col]
+                    for slice_name, ys in (("to train on", tr), ("held out", te)):
+                        if len(ys) == 0:
+                            continue
+                        counts = ys.value_counts()
+                        rarest = int(counts.min()) if len(counts) > 1 else 0
+                        if rarest < 2:
+                            reasons.append(
+                                f"its {slice_name} rows hold {rarest} of the rarer "
+                                f"outcome, so a score computed there means nothing")
+                            break
         if reasons:
             cell.viable = False
             cell.blocked_reason = "; ".join(reasons)
@@ -471,7 +492,14 @@ def apply_cohort(df: pd.DataFrame) -> pd.DataFrame:
         return df.loc[hit]
     col, value = run.get("column"), run.get("value")
     if col and col in df.columns:
-        return df.loc[cohort_mask(df, col, value)]
+        by_value = df.loc[cohort_mask(df, col, value)]
+        if len(by_value) or df.empty:
+            return by_value
+        # The column exists but holds nobody from this cohort — the frame
+        # belongs to a DIFFERENT run. Returning it empty without saying so is
+        # the silent-zero-rows case; flag it so the banner offers a way out.
+        st.session_state[_BROKEN_KEY] = True
+        return by_value
     st.session_state[_BROKEN_KEY] = True
     return df.iloc[0:0]
 
@@ -525,10 +553,24 @@ def record_run(metrics: Optional[Dict[str, Any]] = None) -> Optional[CohortRun]:
     test_labels = set(lb["labels"]) if lb else set()
     in_cohort = set(run["labels"])
     _col, _target, _task, _fp = _current_question(run["column"])
+    del _col
+    # Rows with no outcome cannot be trained on. CohortCell.n_train excludes
+    # them and the chooser shows that number as "To train on"; banking the
+    # unfiltered count meant the manuscript's n and the number the researcher
+    # was shown when choosing the cohort disagreed.
+    modelable = in_cohort
+    try:
+        raw = st.session_state.get("raw_data")
+        target = run.get("target_col") or _target
+        if raw is not None and target and target in raw.columns:
+            has_y = set(raw.index[raw[target].notna()])
+            modelable = in_cohort & has_y
+    except Exception:
+        pass
     entry = CohortRun(
         column=run["column"], label=run["label"],
-        n_train=len(in_cohort - test_labels),
-        n_test=len(in_cohort & test_labels),
+        n_train=len(modelable - test_labels),
+        n_test=len(modelable & test_labels),
         dropped_features=list(run.get("dropped_features") or []),
         completed=True, metrics=dict(metrics or {}),
         target_col=_target, task_type=_task, data_fingerprint=_fp,
