@@ -245,6 +245,30 @@ def _join_consequences(cm: ChangeMap, left, right, lcounts, rcounts, matched,
 
 # ── stacking ─────────────────────────────────────────────────────────────
 
+# NHANES-style survey weights: WTMEC2YR, WTINT2YR, WTDRD1, WTSAF2YR. Matched
+# narrowly ON PURPOSE. A body-weight column (BMXWT, weight_kg, birth_weight)
+# must never trigger this, and neither must 'sample_weight' — in -omics and
+# food chemistry that is the physical mass of a specimen, and telling someone
+# to divide it by the number of cycles would be nonsense.
+_SURVEY_WEIGHT = __import__("re").compile(
+    r"^(WT[A-Z]{2,6}\d?YR\d?|WTDRD\d|WTDR\d?D?\d?|"
+    r"(survey|sampling|analysis|person)_?weight|pweight|perweight)$",
+    __import__("re").IGNORECASE)
+
+
+def survey_weight_columns(frames: Dict[str, pd.DataFrame]) -> List[str]:
+    """Columns that look like complex-survey sampling weights."""
+    seen: List[str] = []
+    for f in frames.values():
+        if f is None:
+            continue
+        for c in f.columns:
+            name = str(c)
+            if _SURVEY_WEIGHT.match(name) and name not in seen:
+                seen.append(name)
+    return seen
+
+
 def describe_stack(frames: Dict[str, pd.DataFrame]) -> ChangeMap:
     """What stacking these files does, row by row and column by column."""
     names = [n for n, f in frames.items() if f is not None]
@@ -288,6 +312,19 @@ def describe_stack(frames: Dict[str, pd.DataFrame]) -> ChangeMap:
             f"cells are blank for the files that lack the column. The blank means "
             f"'not collected here', not 'measured and missing', and treating the "
             f"two the same will distort any missingness summary.")
+    weights = survey_weight_columns(frames)
+    if weights and len(names) > 1:
+        cm.consequences.append(
+            f"**These files carry survey weights ({', '.join(weights[:4])}), and "
+            f"stacking them does not combine the weights.** A 2-year NHANES "
+            f"weight represents the population for ITS cycle only; using it "
+            f"across {len(names)} stacked cycles counts the US population "
+            f"{len(names)} times over. CDC's rule is to divide each 2-year "
+            f"weight by the number of cycles you combined — here {len(names)} — "
+            f"before any weighted analysis. (1999-2000 is the exception: it uses "
+            f"a different population base, so NCHS publishes a 4-year weight to "
+            f"use instead of dividing.)")
+
     cm.consequences.append(
         f"**Stacking creates a batch variable.** Rows now come from {len(names)} "
         f"different files, and differences between those files — collection year, "

@@ -338,6 +338,49 @@ def _key_tokens(df: pd.DataFrame, col: str) -> Optional[pd.Series]:
         return None
 
 
+# Column names researchers give the thing that identifies a participant.
+_ID_NAME_HINT = re.compile(
+    r"(^|[^a-z])(id|seqn|subject|participant|patient|pid|mrn|record|sample|"
+    r"specimen|barcode|accession|usubjid|respondent|person|case)([^a-z]|$)",
+    re.IGNORECASE)
+
+
+def _columns_worth_testing(df: pd.DataFrame, other: pd.DataFrame,
+                           limit: int) -> List[Any]:
+    """Which columns to test as keys, when there are more than we can afford.
+
+    This used to be `list(df.columns)[:limit]`, which is fine for a clinical
+    export and useless for -omics: a transcriptomics matrix is samples by
+    twenty thousand genes, and if the sample ID sits after a block of
+    annotation columns it was never inspected at all. The join then failed on
+    a study whose key was sitting right there.
+
+    Ordering by how likely a column is to BE an identifier costs nothing and
+    fixes it. A column sharing a name with one in the other file comes first —
+    that is the cheapest and strongest signal there is — then names that look
+    like identifiers, then non-float columns, and only then position.
+    """
+    cols = list(df.columns)
+    if len(cols) <= limit:
+        return cols
+
+    shared = {str(c) for c in other.columns}
+
+    def rank(col: Any) -> tuple:
+        name = str(col)
+        in_both = name in shared
+        id_like = bool(_ID_NAME_HINT.search(name))
+        try:
+            # A float column is almost never an identifier; measurements are
+            # floats and IDs are text or whole numbers.
+            floaty = pd.api.types.is_float_dtype(df[col])
+        except Exception:
+            floaty = False
+        return (not in_both, not id_like, floaty)
+
+    return sorted(cols, key=rank)[:limit]
+
+
 def find_key_candidates(left: pd.DataFrame, right: pd.DataFrame,
                         max_columns: int = 60,
                         min_coverage: float = _MIN_COVERAGE) -> List[KeyCandidate]:
@@ -349,8 +392,8 @@ def find_key_candidates(left: pd.DataFrame, right: pd.DataFrame,
     if left is None or right is None or left.empty or right.empty:
         return []
 
-    lcols = list(left.columns)[:max_columns]
-    rcols = list(right.columns)[:max_columns]
+    lcols = _columns_worth_testing(left, right, max_columns)
+    rcols = _columns_worth_testing(right, left, max_columns)
 
     # Precompute normalized value sets once per column.
     lnorm: Dict[str, pd.Series] = {}
@@ -448,6 +491,77 @@ def resolve_column(df: pd.DataFrame, key: Any) -> Any:
         f"The column '{key}' is not in this file. Its columns are: "
         f"{', '.join(map(str, list(df.columns)[:8]))}"
         + ("…" if df.shape[1] > 8 else ""))
+
+
+def detect_nested_ids(left: pd.Series, right: pd.Series) -> Optional[str]:
+    """One file's IDs are the START of the other's — say so, in plain language.
+
+    Two shapes dominate the -omics data researchers bring:
+
+      TCGA-02-0001              clinical, one row per patient
+      TCGA-02-0001-01A-21R-...  the assay, one row per aliquot
+      ENSG00000141510           a gene
+      ENSG00000141510.16        the same gene, with an annotation version
+
+    Neither pair shares a single exact value, so the honest verdict is "nothing
+    to join on" — true, and completely unhelpful, because the relationship is
+    obvious to a human. This does not perform the join; it names the
+    relationship and says what to change, because deriving a key silently is
+    exactly the guess this module refuses to make.
+
+    Examples quote the values as the USER wrote them. Matching happens on the
+    case-folded form, and echoing that back shows a TCGA researcher
+    'tcga-02-0001' for an ID their file spells in capitals.
+    """
+    def _pairs(s: pd.Series):
+        raw = s.dropna().astype(str)
+        norm = normalize_key(s).dropna().astype(str)
+        both = pd.DataFrame({"norm": norm, "raw": raw.reindex(norm.index)})
+        both = both.drop_duplicates(subset="norm").head(2000)
+        return dict(zip(both["norm"], both["raw"]))
+
+    lmap, rmap = _pairs(left), _pairs(right)
+    if len(lmap) < 5 or len(rmap) < 5:
+        return None
+    if set(lmap) & set(rmap):
+        return None                      # they already match; nothing to explain
+
+    if len(next(iter(lmap))) <= len(next(iter(rmap))):
+        short, long_, short_side, long_side = lmap, rmap, "first", "second"
+    else:
+        short, long_, short_side, long_side = rmap, lmap, "second", "first"
+    sset = set(short)
+
+    # A version or sample suffix after the last separator.
+    for sep in (".", "_", "-"):
+        trimmed = {v.rsplit(sep, 1)[0]: v for v in long_ if sep in v}
+        hit = set(trimmed) & sset
+        if trimmed and len(hit) >= 0.8 * min(len(sset), len(trimmed)):
+            example_key = next(iter(hit))
+            return (f"The IDs in the {long_side} file carry an extra piece after "
+                    f"the last '{sep}' — for example "
+                    f"'{long_[trimmed[example_key]]}' against "
+                    f"'{short[example_key]}'. They are the same identifier with a "
+                    f"version or sample suffix on one side. Remove everything "
+                    f"after the last '{sep}' in your source file and they match.")
+
+    # A fixed-length prefix, as with a TCGA patient barcode.
+    widths = {len(v) for v in list(sset)[:200]}
+    if len(widths) == 1:
+        width = widths.pop()
+        if width >= 6:
+            heads = {v[:width]: v for v in long_}
+            hit = set(heads) & sset
+            if len(hit) >= 0.8 * min(len(sset), len(heads)):
+                example_key = next(iter(hit))
+                return (f"Every ID in the {long_side} file begins with an ID from "
+                        f"the {short_side} file — the first {width} characters "
+                        f"match, for example '{long_[heads[example_key]]}' starts "
+                        f"with '{short[example_key]}'. One file identifies people "
+                        f"and the other identifies samples taken from them. Add a "
+                        f"column holding just the first {width} characters and "
+                        f"join on that.")
+    return None
 
 
 def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
@@ -562,6 +676,10 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
                 why = (" These are both dates. If one file stores a time of day and "
                        "the other stores midnight, no two values will be equal — "
                        "compare on the date alone.")
+        if not why:
+            nested = detect_nested_ids(ls, rs)
+            if nested:
+                why = " " + nested
         d.blocking.append(
             f"None of the values in '{left_key}' appear in '{right_key}', so there is nothing "
             f"to join on.{why or ' Check you picked the right columns.'}"
