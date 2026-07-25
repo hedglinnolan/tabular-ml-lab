@@ -33,9 +33,22 @@ def _get_sklearn_splits():
     from sklearn.model_selection import train_test_split, GroupShuffleSplit, GroupKFold
     return train_test_split, GroupShuffleSplit, GroupKFold
 
+def torch_available() -> bool:
+    """Is the optional neural-network dependency installed?"""
+    import importlib.util
+    return importlib.util.find_spec("torch") is not None
+
+
 def _get_model_wrappers():
-    """Lazy import model wrappers - these load torch/sklearn models."""
-    from models.nn_whuber import NNWeightedHuberWrapper
+    """Lazy import model wrappers - these load torch/sklearn models.
+
+    torch is optional (~1.1 GB for one model), so the NN wrapper is allowed to
+    be absent: everything else must still train.
+    """
+    try:
+        from models.nn_whuber import NNWeightedHuberWrapper
+    except ImportError:
+        NNWeightedHuberWrapper = None
     from models.glm import GLMWrapper
     from models.huber_glm import HuberGLMWrapper
     from models.rf import RFWrapper
@@ -1143,6 +1156,11 @@ def optimize_model_hyperparameters(model_name, spec, X_train_transformed, y_trai
             else:
                 hidden_layers = [layer_width] * num_layers
             
+            if NNWeightedHuberWrapper is None:
+                raise RuntimeError(
+                    "The neural network needs the optional 'torch' package. "
+                    "Install it with:  uv pip install torch"
+                )
             model = NNWeightedHuberWrapper(
                 hidden_layers=hidden_layers,
                 dropout=params.get('dropout', 0.1),
@@ -1340,6 +1358,11 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                     
                     status_text.text(f"Architecture: {hidden_layers} ({pattern})")
                     
+                    if NNWeightedHuberWrapper is None:
+                        raise RuntimeError(
+                            "The neural network needs the optional 'torch' package. "
+                            "Install it with:  uv pip install torch"
+                        )
                     model = NNWeightedHuberWrapper(
                         hidden_layers=hidden_layers,
                         dropout=params.get('dropout', model_config.nn_dropout),

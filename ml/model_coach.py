@@ -1329,6 +1329,11 @@ def run_post_training_diagnostics(
 
 # ── Full-registry viability verdicts ──────────────────────────────────────
 
+def _nn_available() -> bool:
+    import importlib.util
+    return importlib.util.find_spec("torch") is not None
+
+
 def model_viability(profile: Any, probe: Any = None) -> Dict[str, Tuple[str, str]]:
     """One evidence-bearing verdict per registry model key.
 

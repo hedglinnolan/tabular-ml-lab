@@ -1,0 +1,70 @@
+# Build a downloadable release asset.
+#
+# The README used to link /archive/refs/heads/main.zip, which GitHub serves
+# from codeload.github.com — a hostname many institutional proxies do not
+# allowlist, and an archive that carries .bat/.ps1/.command/.sh files that
+# enterprise web filters quarantine when they scan inside archives.
+#
+# A release asset is served from a different host and can be built from a
+# filtered file list, so it fails for different reasons than the branch
+# archive. Neither is guaranteed on a locked-down network, which is exactly
+# why the README offers several independent paths.
+
+name: Build release asset
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g. v1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build the app bundle
+        run: |
+          set -euo pipefail
+          NAME="TabularMLLab-${{ steps.ver.outputs.tag }}"
+          mkdir -p "build/$NAME"
+          # Ship the application, not the development scaffolding. Tests, CI
+          # config and git metadata are not useful to a researcher and only
+          # add surface for archive scanners to object to.
+          rsync -a \
+            --exclude '.git' --exclude '.github' --exclude 'tests' \
+            --exclude 'scripts' --exclude '.venv' --exclude '.tools' \
+            --exclude '__pycache__' --exclude '*.pyc' --exclude '.pytest_cache' \
+            ./ "build/$NAME/"
+          cd build
+          zip -qr "../$NAME.zip" "$NAME"
+          cd ..
+          ls -lh "$NAME.zip"
+          sha256sum "$NAME.zip" > "$NAME.zip.sha256"
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          files: |
+            TabularMLLab-${{ steps.ver.outputs.tag }}.zip
+            TabularMLLab-${{ steps.ver.outputs.tag }}.zip.sha256
+          body: |
+            Download **TabularMLLab-${{ steps.ver.outputs.tag }}.zip** below, unzip it,
+            and double-click the starter for your system.
+
+            If your institution blocks this download, see the "If the download
+            is blocked" section of the README for other ways to install.
+          generate_release_notes: true
