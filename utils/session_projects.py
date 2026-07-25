@@ -127,6 +127,26 @@ class SessionProjectManager:
             reverse=True,
         )
 
+    def rename_dataset(self, dataset_id: int, new_name: str) -> bool:
+        """Give a dataset a name the researcher recognises.
+
+        Uploads arrive named after the file ("nhanes_export_final_v3"), which
+        is not what anyone calls it when choosing which file to combine.
+        """
+        new_name = (new_name or "").strip()
+        if not new_name:
+            return False
+        for p in _projects().values():
+            if dataset_id in p["datasets"]:
+                taken = {d["name"] for did, d in p["datasets"].items()
+                         if did != dataset_id}
+                if new_name in taken:
+                    return False
+                p["datasets"][dataset_id]["name"] = new_name
+                p["updated_at"] = datetime.now(timezone.utc).isoformat()
+                return True
+        return False
+
     def delete_dataset(self, dataset_id: int) -> bool:
         for p in _projects().values():
             if dataset_id in p["datasets"]:

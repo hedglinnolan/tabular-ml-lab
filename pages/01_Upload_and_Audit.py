@@ -27,6 +27,7 @@ from utils.session_projects import get_project_manager
 from utils.column_utils import make_unique_columns
 from utils.theme import inject_custom_css, render_guidance, render_sidebar_workflow
 from utils.table_export import table
+from utils.import_ui import render_import_doctor, repaired_frame
 from data_processor import (
     load_tabular_data, get_numeric_columns, get_selectable_columns,
     detect_file_type
@@ -171,7 +172,12 @@ if not active_project:
 # ============================================================================
 st.markdown("---")
 st.header("Step 1: Add Your Data")
-st.caption("Fastest path: upload one clean dataset and move straight into review + analysis setup. If your study spans multiple files, you can still upload them here and combine them afterward.")
+st.caption(
+    "Bring one file or bring all of them. If your study lives in several files "
+    "that you have never combined — demographics here, labs there, diet in a "
+    "third — that is exactly what this page is for. Add them all, and Step 2 "
+    "combines them for you."
+)
 
 # Initialize datasets registry for this project
 if 'datasets_registry' not in st.session_state:
@@ -181,39 +187,50 @@ if 'datasets_registry' not in st.session_state:
 project_datasets = db.get_project_datasets(active_project['id'])
 
 if project_datasets:
-    with st.expander("Review uploaded datasets", expanded=len(project_datasets) == 1):
-        dataset_summary = []
-        for d in project_datasets:
-            in_memory = d['id'] in st.session_state.datasets_registry
-            dataset_summary.append({
-                'Name': d['name'],
-                'Filename': d['filename'],
-                'Rows': f"{d['shape_rows']:,}",
-                'Columns': d['shape_cols'],
-                'Status': "Ready" if in_memory else "Missing"
-            })
-        
-        table(pd.DataFrame(dataset_summary), width="stretch", hide_index=True)
-        
-        # Dataset actions
-        with st.expander("Manage uploaded datasets"):
-            delete_dataset = st.selectbox(
-                "Select dataset to delete",
-                options=[''] + [d['name'] for d in project_datasets],
-                key="delete_dataset_select"
+    # A visible roster, not a buried table. When someone is assembling a study
+    # from several files, "what have I added so far" is the question they ask
+    # after every single upload — it should never take two clicks to answer.
+    st.markdown(f"**In this project ({len(project_datasets)})**")
+    for d in sorted(project_datasets, key=lambda x: x.get('upload_timestamp', '')):
+        in_memory = d['id'] in st.session_state.datasets_registry
+        c1, c2, c3 = st.columns([5, 2, 1])
+        with c1:
+            icon = "📄" if in_memory else "⚠️"
+            st.markdown(f"{icon} **{d['name']}** — {d['shape_rows']:,} rows × "
+                        f"{d['shape_cols']} columns")
+            if not in_memory:
+                st.caption("Not loaded in this session — re-upload the file below "
+                           "to use it.")
+        with c2:
+            new_name = st.text_input(
+                "Rename", value=d['name'], key=f"rename_{d['id']}",
+                label_visibility="collapsed",
             )
-            if delete_dataset and st.button("Delete Selected Dataset", type="secondary"):
-                for d in project_datasets:
-                    if d['name'] == delete_dataset:
-                        db.delete_dataset(d['id'])
-                        if d['id'] in st.session_state.datasets_registry:
-                            del st.session_state.datasets_registry[d['id']]
-                        st.success(f"Deleted '{delete_dataset}'")
-                        st.rerun()
+            if new_name and new_name != d['name']:
+                if new_name in [o['name'] for o in project_datasets]:
+                    st.caption("Name already used.")
+                elif st.button("Save name", key=f"rename_go_{d['id']}"):
+                    db.rename_dataset(d['id'], new_name)
+                    st.rerun()
+        with c3:
+            if st.button("Remove", key=f"del_{d['id']}", type="secondary"):
+                db.delete_dataset(d['id'])
+                st.session_state.datasets_registry.pop(d['id'], None)
+                # The working table was built from a set of files that no
+                # longer exists; forcing a recombine is the only honest move.
+                st.session_state.pop("working_table", None)
+                st.session_state.pop("_combine_signature", None)
+                st.rerun()
+    st.markdown("---")
 
 # File upload
-st.subheader("Quick start: upload a dataset")
-st.caption("You can upload more than one file, but most analyses should begin with a single dataset.")
+if project_datasets:
+    st.subheader("Add another file")
+    st.caption("Drop in as many as you like — they are combined in Step 2.")
+else:
+    st.subheader("Upload your data")
+    st.caption("One file or several. If your study spans multiple files, add "
+               "them all now and combine them in the next step.")
 
 uploaded_files = st.file_uploader(
     "Upload data files (CSV, Excel, Parquet, TSV, JSON)",
@@ -230,11 +247,89 @@ uploaded_files = st.file_uploader(
 
 MAX_FILE_SIZE_MB = 50
 
+
+def _file_key_for(name: str, idx: int) -> str:
+    return f"{name.replace('.', '_').replace(' ', '_')}_{idx}"
+
+
+def _commit_dataset(df, dataset_name, filename, file_type, transposed, replace=True):
+    """Register one frame as a dataset in the active project.
+
+    Shared by the per-file 'Add' button and the 'Add all' button so both paths
+    commit exactly the frame the user reviewed — including any Import Doctor
+    fixes — rather than a fresh re-parse of the original file.
+    """
+    existing = db.get_project_datasets(active_project['id'])
+    for d in existing:
+        if d['name'] == dataset_name:
+            if not replace:
+                return False, f"A dataset named '{dataset_name}' already exists."
+            db.delete_dataset(d['id'])
+            st.session_state.datasets_registry.pop(d['id'], None)
+            break
+
+    df = df.copy()
+    df.columns = [str(c) for c in df.columns]
+    dataset_id = db.add_dataset(
+        project_id=active_project['id'],
+        name=dataset_name,
+        filename=filename,
+        file_type=file_type,
+        shape_rows=df.shape[0],
+        shape_cols=df.shape[1],
+        columns=[str(c) for c in df.columns],
+        column_types={str(c): str(df[c].dtype) for c in df.columns},
+        is_transposed=transposed,
+    )
+    st.session_state.datasets_registry[dataset_id] = df
+    # A new file changes what "combined" means, so any table built from the
+    # previous set of files must not survive as the working table.
+    st.session_state.pop("working_table", None)
+    st.session_state.pop("_combine_signature", None)
+    return True, dataset_name
+
+
+if uploaded_files and len(uploaded_files) > 1:
+    # Four files should not cost four trips to a button. Someone assembling a
+    # study from separate exports wants them all in, then wants Step 2.
+    st.info(f"**{len(uploaded_files)} files ready.** Add them all at once, or "
+            f"open any file below to rename it, transpose it, or fix structural "
+            f"problems first.")
+    if st.button(f"Add all {len(uploaded_files)} files to project",
+                 type="primary", key="add_all_files"):
+        added, failed = [], []
+        with st.spinner("Adding files…"):
+            for _idx, _uf in enumerate(uploaded_files):
+                _fk = _file_key_for(_uf.name, _idx)
+                try:
+                    _ft = detect_file_type(_uf.name)
+                    _frame = cached_parse_upload(
+                        _uf.getvalue(), _uf.name,
+                        st.session_state.get(f"transpose_{_fk}", False),
+                        st.session_state.get(f"excel_sheet_{_fk}", 0) if _ft == 'excel' else 0,
+                    )
+                    _frame.columns = [str(c) for c in _frame.columns]
+                    # Honour fixes already applied in the review below.
+                    _frame = repaired_frame(_frame, _fk)
+                    _name = st.session_state.get(f"name_{_fk}") or _uf.name.rsplit('.', 1)[0]
+                    ok, msg = _commit_dataset(_frame, _name, _uf.name, _ft,
+                                              st.session_state.get(f"transpose_{_fk}", False))
+                    (added if ok else failed).append(msg)
+                except Exception as exc:
+                    failed.append(f"{_uf.name}: {exc}")
+        if added:
+            st.success(f"Added {len(added)} file{'s' if len(added) != 1 else ''}: "
+                       + ", ".join(added))
+        for msg in failed:
+            st.error(msg)
+        if added:
+            st.rerun()
+
 if uploaded_files:
     for file_idx, uploaded_file in enumerate(uploaded_files):
         file_type = detect_file_type(uploaded_file.name)
-        file_key = f"{uploaded_file.name.replace('.', '_').replace(' ', '_')}_{file_idx}"
-        
+        file_key = _file_key_for(uploaded_file.name, file_idx)
+
         with st.expander(f"Configure: {uploaded_file.name}", expanded=True):
             try:
                 # Large file warning
@@ -295,16 +390,21 @@ if uploaded_files:
                 
                 # Ensure column names are strings for merging compatibility
                 df_preview.columns = [str(c) for c in df_preview.columns]
-                
+
+                # Structural review, before anything is committed. The doctor
+                # returns the frame with the user's applied fixes, and that —
+                # not a re-parse — is what gets added to the project.
+                df_preview = render_import_doctor(df_preview, file_key)
+
                 col1, col2 = st.columns([2, 1])
-                
+
                 with col1:
                     preview_rows = min(5, len(df_preview))
                     table(df_preview.head(5), width="stretch")
                     st.caption(f"Shape: {df_preview.shape[0]:,} rows × {df_preview.shape[1]} columns. Showing first {preview_rows} of {len(df_preview):,} rows.")
                     if transpose_this_file:
                         st.info("Preview shows transposed data (original rows are now columns)")
-                
+
                 with col2:
                     dataset_name = st.text_input(
                         "Dataset Name",
@@ -326,53 +426,23 @@ if uploaded_files:
                         replace_existing = False
                     
                     if st.button(f"Add to Project", key=f"add_{file_key}", type="primary"):
-                        # Delete existing if replacing
-                        if name_exists and replace_existing:
-                            for d in project_datasets:
-                                if d['name'] == dataset_name:
-                                    db.delete_dataset(d['id'])
-                                    if d['id'] in st.session_state.datasets_registry:
-                                        del st.session_state.datasets_registry[d['id']]
-                                    break
-                        elif name_exists and not replace_existing:
-                            st.error(f"Please check 'Replace existing' or change the dataset name.")
+                        if name_exists and not replace_existing:
+                            st.error("Please check 'Replace existing' or change the dataset name.")
                             st.stop()
-                        
-                        # Same cached parse as the preview — content-keyed, so
-                        # this returns the identical frame without re-reading.
-                        sheet_param = excel_sheet_choice if file_type == 'excel' else 0
+
+                        # df_preview already carries any Import Doctor fixes,
+                        # so committing it is what keeps "what I reviewed" and
+                        # "what got added" the same frame.
                         with st.spinner(f"Adding {dataset_name} to project..."):
-                            df = cached_parse_upload(
-                                uploaded_file.getvalue(),
-                                uploaded_file.name,
-                                transpose_this_file,
-                                sheet_param,
+                            ok, msg = _commit_dataset(
+                                df_preview, dataset_name, uploaded_file.name,
+                                file_type, transpose_this_file, replace=True,
                             )
-                        
-                        # Ensure column names are strings for merge compatibility
-                        df.columns = [str(c) for c in df.columns]
-                        
-                        # Get column types
-                        col_types = {str(col): str(df[col].dtype) for col in df.columns}
-                        
-                        # Add to database
-                        dataset_id = db.add_dataset(
-                            project_id=active_project['id'],
-                            name=dataset_name,
-                            filename=uploaded_file.name,
-                            file_type=file_type,
-                            shape_rows=df.shape[0],
-                            shape_cols=df.shape[1],
-                            columns=[str(c) for c in df.columns],
-                            column_types=col_types,
-                            is_transposed=transpose_this_file
-                        )
-                        
-                        # Store DataFrame in registry
-                        st.session_state.datasets_registry[dataset_id] = df
-                        
-                        st.success(f"Added '{dataset_name}' to project!")
-                        st.rerun()
+                        if not ok:
+                            st.error(msg)
+                        else:
+                            st.success(f"Added '{dataset_name}' to project!")
+                            st.rerun()
                         
             except Exception as e:
                 st.error(f"Error loading file: {e}")
