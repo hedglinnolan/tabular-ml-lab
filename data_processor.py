@@ -30,6 +30,32 @@ def detect_file_type(filename: str) -> str:
         return 'csv'
 
 
+def flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Collapse a MultiIndex column header into single readable names.
+
+    Parquet round-trips MultiIndex columns, and an Excel sheet read with a
+    two-row header produces them too. Downstream everything assumes one level:
+    pandas refuses to merge a 2-level frame against a 1-level one ("Not allowed
+    to merge between different levels"), and a column reported to the user as
+    "('demo', 'age')" cannot be looked up by that printed name.
+
+    ('demo', 'age') becomes 'demo_age'; blank sub-levels are dropped, so
+    ('SEQN', '') becomes 'SEQN'.
+    """
+    if not isinstance(df.columns, pd.MultiIndex):
+        return df
+    out = df.copy()
+    names = []
+    for tup in df.columns:
+        parts = [str(p).strip() for p in tup
+                 if p is not None and str(p).strip() != ""
+                 and not str(p).startswith("Unnamed:")]
+        names.append("_".join(parts) if parts else "column")
+    from utils.column_utils import make_unique_columns
+    out.columns = make_unique_columns(names)
+    return out
+
+
 def transpose_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """Transpose a DataFrame (rows ↔ columns)."""
     return df.T
@@ -499,10 +525,15 @@ def load_tabular_data(
         # Fallback to CSV
         df = load_csv(file)
     
+    # A two-level column header cannot survive the rest of the app: pandas
+    # refuses to merge frames whose column indexes have different depths.
+    df = flatten_columns(df)
+
     # Transpose if requested
     if transpose:
         df = transpose_dataframe(df)
-    
+        df = flatten_columns(df)
+
     return df
 
 

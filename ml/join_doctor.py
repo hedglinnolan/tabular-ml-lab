@@ -407,6 +407,30 @@ def find_key_candidates(left: pd.DataFrame, right: pd.DataFrame,
     return out
 
 
+def resolve_column(df: pd.DataFrame, key: Any) -> Any:
+    """Return the real column label that `key` names.
+
+    find_key_candidates reports a column by its PRINTED form, because that is
+    what a person reads in a dropdown. For a frame with tuple labels — a
+    parquet file that round-tripped MultiIndex columns, or an Excel sheet read
+    with a two-row header — the printed form is "('key', 'SEQN')" and looking
+    it up raises KeyError even though the column is sitting right there.
+    """
+    try:
+        if key in df.columns:
+            return key
+    except Exception:
+        pass
+    target = str(key)
+    for c in df.columns:
+        if str(c) == target:
+            return c
+    raise ValueError(
+        f"The column '{key}' is not in this file. Its columns are: "
+        f"{', '.join(map(str, list(df.columns)[:8]))}"
+        + ("…" if df.shape[1] > 8 else ""))
+
+
 def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
                   left_key: str, right_key: str, how: str = "inner",
                   left_name: str = "the first file",
@@ -417,6 +441,7 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
     every mechanical blocker, and says out loud how much of each cohort is
     about to be dropped.
     """
+    left_key, right_key = resolve_column(left, left_key), resolve_column(right, right_key)
     ls, rs = left[left_key], right[right_key]
     if isinstance(ls, pd.DataFrame) or isinstance(rs, pd.DataFrame):
         raise ValueError(
@@ -485,9 +510,34 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
             f"Fixing this matches {len(matched):,} IDs."
         )
     elif not matched:
+        # "Check you picked the right columns" is the wrong advice when the
+        # columns ARE right and something invisible is stopping the match. Two
+        # date columns that look identical on screen but carry different
+        # timezones is the common one, and the generic message sends the user
+        # hunting for a mistake they did not make.
+        why = ""
+        l_dt = pd.api.types.is_datetime64_any_dtype(ls)
+        r_dt = pd.api.types.is_datetime64_any_dtype(rs)
+        if l_dt and r_dt:
+            l_tz = getattr(getattr(ls, "dt", None), "tz", None)
+            r_tz = getattr(getattr(rs, "dt", None), "tz", None)
+            if (l_tz is None) != (r_tz is None):
+                with_tz = left_name if l_tz is not None else right_name
+                without = right_name if l_tz is not None else left_name
+                why = (f" These are both dates, but the ones in {with_tz} carry a "
+                       f"timezone and the ones in {without} do not, so they never "
+                       f"count as equal even where they show the same day. Export "
+                       f"both without a timezone, or as plain YYYY-MM-DD text.")
+            elif str(l_tz) != str(r_tz):
+                why = (f" These are both dates, but recorded in different timezones "
+                       f"({l_tz} and {r_tz}), so the same instant is written two ways.")
+            else:
+                why = (" These are both dates. If one file stores a time of day and "
+                       "the other stores midnight, no two values will be equal — "
+                       "compare on the date alone.")
         d.blocking.append(
             f"None of the values in '{left_key}' appear in '{right_key}', so there is nothing "
-            f"to join on. Check you picked the right columns."
+            f"to join on.{why or ' Check you picked the right columns.'}"
         )
 
     # --- things to understand first ---------------------------------------
@@ -561,6 +611,7 @@ def repair_keys(left: pd.DataFrame, right: pd.DataFrame,
     Writes a canonical string form into both key columns so that "001", 1 and
     1.0 — or "A01 " and "a01" — refer to the same subject.
     """
+    left_key, right_key = resolve_column(left, left_key), resolve_column(right, right_key)
     l2, r2 = left.copy(), right.copy()
     l2[left_key] = normalize_key(l2[left_key])
     r2[right_key] = normalize_key(r2[right_key])
@@ -578,6 +629,18 @@ def execute_join(left: pd.DataFrame, right: pd.DataFrame,
                  left_name: str = "left", right_name: str = "right",
                  repair: bool = True) -> Tuple[pd.DataFrame, str]:
     """Perform the join safely. Returns (frame, methods-ready description)."""
+    # pandas will not merge frames whose column indexes have different depths,
+    # and a two-level header reaches here from parquet. Flatten first — but
+    # resolve the keys by POSITION across the rename, because flattening turns
+    # ('key', 'SEQN') into 'key_SEQN' and the caller is holding the old name.
+    if isinstance(left.columns, pd.MultiIndex) or isinstance(right.columns, pd.MultiIndex):
+        from data_processor import flatten_columns
+        li = list(left.columns).index(resolve_column(left, left_key))
+        ri = list(right.columns).index(resolve_column(right, right_key))
+        left, right = flatten_columns(left), flatten_columns(right)
+        left_key, right_key = left.columns[li], right.columns[ri]
+    left_key = resolve_column(left, left_key)
+    right_key = resolve_column(right, right_key)
     steps: List[str] = []
     l, r = left, right
     if repair:

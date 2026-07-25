@@ -433,3 +433,103 @@ class TestSourceColumnIsNeverAPredictor:
     def test_ordinary_columns_are_not_reserved(self, name):
         from utils.combine import is_reserved_column
         assert not is_reserved_column(name)
+
+
+# ── two-level column headers ─────────────────────────────────────────────
+
+class TestMultiIndexColumns:
+    """Parquet round-trips MultiIndex columns and Excel two-row headers make
+    them. diagnose_join raised KeyError on "('key', 'SEQN')" — the printed
+    form of a tuple label — and pandas refuses to merge a 2-level frame
+    against a 1-level one.
+    """
+
+    def _frames(self):
+        return (pd.DataFrame({("key", "SEQN"): range(100), ("demo", "age"): range(100)}),
+                pd.DataFrame({"SEQN": range(100), "glucose": RNG.rand(100)}))
+
+    def test_diagnose_does_not_raise(self):
+        from ml.join_doctor import diagnose_join, find_key_candidates
+        a, b = self._frames()
+        cand = [c for c in find_key_candidates(a, b) if "SEQN" in c.left_col][0]
+        assert diagnose_join(a, b, cand.left_col, cand.right_col).matched_keys == 100
+
+    def test_join_delivers_what_it_promised(self):
+        from ml.join_doctor import diagnose_join, execute_join, find_key_candidates
+        a, b = self._frames()
+        cand = [c for c in find_key_candidates(a, b) if "SEQN" in c.left_col][0]
+        d = diagnose_join(a, b, cand.left_col, cand.right_col)
+        out, _ = execute_join(a, b, cand.left_col, cand.right_col, "inner")
+        assert len(out) == d.predicted_rows == 100
+
+    def test_loading_flattens_a_multiindex_parquet(self):
+        from data_processor import load_tabular_data
+        a, _ = self._frames()
+        buf = io.BytesIO()
+        a.to_parquet(buf)
+        buf.seek(0)
+        loaded = load_tabular_data(buf, filename="x.parquet")
+        assert not isinstance(loaded.columns, pd.MultiIndex)
+        assert list(loaded.columns) == ["key_SEQN", "demo_age"]
+
+    def test_blank_and_unnamed_sublevels_collapse(self):
+        from data_processor import flatten_columns
+        m = pd.DataFrame({("SEQN", ""): range(5), ("demo", "age"): range(5),
+                          ("Unnamed: 2_level_0", "bmi"): range(5)})
+        assert list(flatten_columns(m).columns) == ["SEQN", "demo_age", "bmi"]
+
+    def test_a_flat_frame_is_untouched(self):
+        from data_processor import flatten_columns
+        df = pd.DataFrame({"a": [1], "b": [2]})
+        assert list(flatten_columns(df).columns) == ["a", "b"]
+
+
+# ── blockers must name the real obstacle ─────────────────────────────────
+
+class TestBlockingMessagesNameTheCause:
+    """"Check you picked the right columns" is wrong advice when the columns
+    ARE right and something invisible stops the match."""
+
+    def test_timezone_mismatch_is_named(self):
+        from ml.join_doctor import diagnose_join
+        left = pd.DataFrame({"visit_date": pd.to_datetime(["2020-01-01", "2020-01-02"]),
+                             "a": [1, 2]})
+        right = pd.DataFrame({"visit_date": pd.to_datetime(
+            ["2020-01-01", "2020-01-02"]).tz_localize("UTC"), "b": [7, 8]})
+        msg = diagnose_join(left, right, "visit_date", "visit_date",
+                            "inner", "clinic.csv", "labs.csv").blocking[0]
+        assert "timezone" in msg
+        assert "labs.csv" in msg and "clinic.csv" in msg
+        assert "Check you picked the right columns" not in msg
+
+    def test_differing_timezones_are_named(self):
+        from ml.join_doctor import diagnose_join
+        base = pd.to_datetime(["2020-01-01", "2020-01-02"])
+        left = pd.DataFrame({"d": base.tz_localize("Europe/London"), "a": [1, 2]})
+        right = pd.DataFrame({"d": base.tz_localize("UTC").tz_convert("America/New_York"),
+                              "b": [7, 8]})
+        msg = diagnose_join(left, right, "d", "d").blocking[0]
+        assert "timezone" in msg.lower()
+
+    def test_non_date_mismatch_keeps_the_original_advice(self):
+        from ml.join_doctor import diagnose_join
+        x = pd.DataFrame({"id": ["a", "b"], "v": [1, 2]})
+        y = pd.DataFrame({"id": ["x", "y"], "w": [1, 2]})
+        assert "Check you picked the right columns" in diagnose_join(x, y, "id", "id").blocking[0]
+
+    def test_a_genuinely_absent_column_says_so(self):
+        from ml.join_doctor import diagnose_join
+        x = pd.DataFrame({"id": ["a", "b"], "v": [1, 2]})
+        y = pd.DataFrame({"id": ["x", "y"], "w": [1, 2]})
+        with pytest.raises(ValueError, match="is not in this file"):
+            diagnose_join(x, y, "nope", "id")
+
+    def test_date_vs_text_blocks_and_predicts_zero(self):
+        """Finding 7: diagnose used to green-light a pair execute could not merge."""
+        from ml.join_doctor import diagnose_join, execute_join
+        left = pd.DataFrame({"d": pd.to_datetime(["2020-01-01", "2020-01-02"]), "a": [1, 2]})
+        right = pd.DataFrame({"d": ["2020-01-01", "2020-01-02"], "b": [7, 8]})
+        d = diagnose_join(left, right, "d", "d")
+        assert not d.can_proceed
+        out, _ = execute_join(left, right, "d", "d", "inner")
+        assert len(out) == d.predicted_rows == 0
