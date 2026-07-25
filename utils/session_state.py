@@ -211,9 +211,25 @@ def get_data(full_study: bool = False) -> Optional[pd.DataFrame]:
         df_filt = st.session_state.get('filtered_data')
         df = df_filt if df_filt is not None else st.session_state.get('raw_data')
 
-    if df is None or full_study:
+    from utils.cohorts import active_cohort, apply_cohort
+    if df is None:
         return df
-    from utils.cohorts import apply_cohort
+    if full_study:
+        # "The whole study" cannot be recovered by skipping ONE filter. Feature
+        # engineering and preprocess row-filters write df_engineered and
+        # filtered_data from whatever get_data() handed them, so inside a run
+        # those frames are themselves cohort-sized — and full_study=True was
+        # returning one cohort's rows while its two callers, the test lockbox
+        # and the cohort chooser, both documented that they need all of them.
+        # The lockbox was then redrawn on that subset and rows sealed since
+        # upload became trainable.
+        #
+        # Starting a run clears df_engineered, so any narrowed frame that
+        # exists during a run was built inside it. The study is therefore the
+        # data as uploaded (raw_data tracks cleaning actions via set_data).
+        if active_cohort() is not None:
+            return st.session_state.get('raw_data', df)
+        return df
     return apply_cohort(df)
 
 

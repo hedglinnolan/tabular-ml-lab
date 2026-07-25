@@ -1163,6 +1163,15 @@ if task_mode == "prediction":
                      "publishable as held-out performance. Toggling in either "
                      "direction resets downstream results.",
             )
+        _refused = st.session_state.pop("_lockbox_redraw_refused", None)
+        if _refused:
+            st.info(
+                f"🔒 The held-out set was **not** re-drawn. You are working in "
+                f"one group (**{_refused['column']} = {_refused['label']}**), and "
+                f"every run shares the single split made before the study was "
+                f"divided — that is what lets your runs be compared. To draw a "
+                f"new one, go back to analyzing everyone first."
+            )
         if st.session_state.pop("_lockbox_redrawn", False):
             st.info("🔒 Test lockbox redrawn (data, target, fraction, or seed changed) — "
                     "downstream results were reset so nothing is evaluated against the old test set.")

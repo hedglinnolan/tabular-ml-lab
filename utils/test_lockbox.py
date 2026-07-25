@@ -140,6 +140,20 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
     if existing and existing.get("signature") == sig:
         return existing
 
+    # Every cohort run inherits its slice of ONE split, drawn before the study
+    # was ever divided. Redrawing mid-run silently re-partitions the study: rows
+    # sealed since upload become trainable, and two runs can no longer be
+    # compared because run 2's test people may have been run 1's training
+    # people. Refuse, and let the page say so rather than proceeding quietly.
+    if existing is not None:
+        from utils.cohorts import active_cohort
+        run = active_cohort()
+        if run is not None:
+            st.session_state["_lockbox_redraw_refused"] = {
+                "column": run["column"], "label": run["label"],
+            }
+            return existing
+
     from sklearn.model_selection import train_test_split
 
     def _build_stratum():
