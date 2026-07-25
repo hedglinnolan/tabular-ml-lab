@@ -33,8 +33,9 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-# Rows sampled when scoring candidate keys on wide/long files.
-_SAMPLE_ROWS = 5000
+# Upper bound on DISTINCT key values canonicalised per column (guards pathological
+# wide/long files without ever comparing two different random subsets).
+_MAX_DISTINCT = 200_000
 # A key must identify rows, not group them: at least this share of values must
 # be distinct on one side, or "sex" would look like a perfect key.
 _MIN_UNIQUENESS = 0.5
@@ -42,28 +43,78 @@ _MIN_UNIQUENESS = 0.5
 _MIN_COVERAGE = 0.05
 
 
-def normalize_key(s: pd.Series) -> pd.Series:
+# Text that means "no identifier". These must NEVER match each other: two
+# subjects whose ID is "unknown" are not the same subject.
+_KEY_MISSING_TOKENS = {"", "nan", "none", "null", "na", "n/a", "n.a.", ".", "-",
+                       "--", "?", "missing", "unknown", "not available"}
+
+_INT_RE = re.compile(r"^[+-]?\d+$")
+_DECIMAL_RE = re.compile(r"^[+-]?\d+\.\d*$")
+
+
+def _canon_scalar(v: Any) -> Optional[str]:
+    """Canonical token for one key value, or None when it identifies nobody.
+
+    Integers are canonicalised with exact arbitrary-precision arithmetic, NOT
+    through float: passing IDs through float64 silently collides values above
+    2^53 (9007199254740993 and ...992 become the same subject), which is a
+    false merge — the worst outcome this module can produce.
+    """
+    if v is None:
+        return None
+    if isinstance(v, float) and np.isnan(v):
+        return None
+    if v is pd.NaT:
+        return None
+    try:
+        if pd.isna(v):
+            return None
+    except (TypeError, ValueError):
+        pass
+
+    if isinstance(v, bool):
+        return "true" if v else "false"
+
+    s = str(v).strip()
+    if s.lower() in _KEY_MISSING_TOKENS:
+        return None
+
+    # "007" and 7 are the same subject; 9007199254740993 keeps every digit.
+    if _INT_RE.match(s):
+        return str(int(s))
+    # "3.0" is the integer 3; "3.50" and "3.5" are the same value.
+    if _DECIMAL_RE.match(s):
+        whole, _, frac = s.partition(".")
+        frac = frac.rstrip("0")
+        sign = "-" if whole.startswith("-") else ""
+        digits = whole.lstrip("+-").lstrip("0") or "0"
+        base = f"{sign}{int(digits)}"
+        return base if not frac else f"{base}.{frac}"
+    return s
+
+
+def normalize_key(s: pd.Series, fold_case: Optional[bool] = None) -> pd.Series:
     """Canonical comparison form for a key column.
 
-    Numeric-looking values are compared as numbers so that "001", 1 and 1.0
-    are the same subject; everything else is trimmed and lower-cased. This is
-    used for DIAGNOSIS and for the optional repair — never applied silently.
+    Missing values become NaN and never match anything — two rows with no ID
+    are not the same subject, and pandas' merge (unlike SQL) would otherwise
+    pair every blank with every blank.
+
+    Case folding is applied only when it does not itself merge distinct IDs;
+    if a column genuinely contains both "abc" and "ABC" they are kept apart.
+    Pass fold_case explicitly to override the automatic choice.
     """
     if s is None:
         return pd.Series(dtype="object")
-    if pd.api.types.is_numeric_dtype(s):
-        out = pd.to_numeric(s, errors="coerce")
-        # 1 and 1.0 must land on the same token.
-        return out.map(lambda v: "" if pd.isna(v) else
-                       (str(int(v)) if float(v).is_integer() else str(float(v))))
-    t = s.astype(str).str.strip()
-    as_num = pd.to_numeric(t, errors="coerce")
-    numeric_share = float(as_num.notna().mean()) if len(t) else 0.0
-    if numeric_share >= 0.95:
-        # Zero-padded IDs from CSV ("001") vs integers from Excel (1).
-        return as_num.map(lambda v: "" if pd.isna(v) else
-                          (str(int(v)) if float(v).is_integer() else str(float(v))))
-    return t.str.lower()
+    out = s.map(_canon_scalar)
+
+    if fold_case is None:
+        text = out.dropna().astype(str)
+        # Folding is safe only if it does not reduce the number of distinct IDs.
+        fold_case = bool(len(text) == 0 or text.str.lower().nunique() == text.nunique())
+    if fold_case:
+        out = out.map(lambda v: v.lower() if isinstance(v, str) else v)
+    return out.astype("object")
 
 
 def _name_similarity(a: str, b: str) -> float:
@@ -186,11 +237,36 @@ class JoinDiagnosis:
         return not self.blocking
 
 
-def _prep(df: pd.DataFrame, col: str, sample: bool = True) -> pd.Series:
-    s = df[col]
-    if sample and len(s) > _SAMPLE_ROWS:
-        s = s.sample(_SAMPLE_ROWS, random_state=42)
-    return s
+def _key_tokens(df: pd.DataFrame, col: str) -> Optional[pd.Series]:
+    """Canonical tokens for a column's DISTINCT values, or None if it cannot
+    be a key.
+
+    Deliberately NOT a row sample. Sampling each file independently compares
+    two different random subsets, so on files above the sample size the
+    measured overlap collapses toward zero and the true key stops being
+    proposed exactly when the data is large enough to matter. Instead we cheaply
+    reject columns that cannot identify rows, then canonicalise only the
+    distinct values of the survivors.
+    """
+    try:
+        s = df[col]
+        if isinstance(s, pd.DataFrame):      # duplicated column label
+            return None
+        n = len(s)
+        if n == 0:
+            return None
+        try:
+            n_unique = int(s.nunique(dropna=True))
+        except TypeError:
+            return None                       # unhashable cells
+        if n_unique == 0 or n_unique / n < _MIN_UNIQUENESS:
+            return None                       # groups rows, does not identify them
+        uniques = s.dropna().drop_duplicates()
+        if len(uniques) > _MAX_DISTINCT:
+            uniques = uniques.iloc[:_MAX_DISTINCT]
+        return normalize_key(uniques).dropna()
+    except Exception:
+        return None
 
 
 def find_key_candidates(left: pd.DataFrame, right: pd.DataFrame,
@@ -211,15 +287,13 @@ def find_key_candidates(left: pd.DataFrame, right: pd.DataFrame,
     lnorm: Dict[str, pd.Series] = {}
     rnorm: Dict[str, pd.Series] = {}
     for c in lcols:
-        try:
-            lnorm[c] = normalize_key(_prep(left, c)).replace("", np.nan).dropna()
-        except Exception:
-            continue
+        t = _key_tokens(left, c)
+        if t is not None and not t.empty:
+            lnorm[c] = t
     for c in rcols:
-        try:
-            rnorm[c] = normalize_key(_prep(right, c)).replace("", np.nan).dropna()
-        except Exception:
-            continue
+        t = _key_tokens(right, c)
+        if t is not None and not t.empty:
+            rnorm[c] = t
 
     out: List[KeyCandidate] = []
     for lc, ls in lnorm.items():
@@ -241,31 +315,32 @@ def find_key_candidates(left: pd.DataFrame, right: pd.DataFrame,
             cov_r = len(matched) / len(rset)
             if max(cov_l, cov_r) < min_coverage:
                 continue
-            # A key must identify rows rather than group them.
-            uniq = max(len(lset) / max(1, len(ls)), len(rset) / max(1, len(rs)))
-            if uniq < _MIN_UNIQUENESS:
-                continue
-
             lraw, rraw = left[lc], right[rc]
+            if isinstance(lraw, pd.DataFrame) or isinstance(rraw, pd.DataFrame):
+                continue                      # duplicated column label
             dtype_mismatch = (
                 pd.api.types.is_numeric_dtype(lraw) != pd.api.types.is_numeric_dtype(rraw)
             )
             # Whitespace/case only matters when both sides are text.
             needs_norm = False
             if not dtype_mismatch and not pd.api.types.is_numeric_dtype(lraw):
-                raw_match = set(lraw.astype(str).dropna().unique()) & set(rraw.astype(str).dropna().unique())
-                needs_norm = len(raw_match) < len(matched)
+                try:
+                    raw_match = (set(lraw.dropna().astype(str).unique())
+                                 & set(rraw.dropna().astype(str).unique()))
+                    needs_norm = len(raw_match) < len(matched)
+                except Exception:
+                    needs_norm = False
 
             out.append(KeyCandidate(
                 left_col=str(lc), right_col=str(rc),
                 coverage_left=cov_l, coverage_right=cov_r,
                 n_matched=len(matched),
                 left_unique=len(lset), right_unique=len(rset),
-                left_rows=len(ls), right_rows=len(rs),
+                left_rows=max(len(left), len(lset)), right_rows=max(len(right), len(rset)),
                 dtype_mismatch=dtype_mismatch,
                 needs_normalization=needs_norm,
-                left_has_duplicates=bool(ls.duplicated().any()),
-                right_has_duplicates=bool(rs.duplicated().any()),
+                left_has_duplicates=bool(len(lset) < len(left)),
+                right_has_duplicates=bool(len(rset) < len(right)),
                 name_similarity=_name_similarity(lc, rc),
                 index_like=_looks_like_row_index(lraw) and _looks_like_row_index(rraw),
             ))
@@ -285,8 +360,14 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
     about to be dropped.
     """
     ls, rs = left[left_key], right[right_key]
+    if isinstance(ls, pd.DataFrame) or isinstance(rs, pd.DataFrame):
+        raise ValueError(
+            f"The column '{left_key}' appears more than once in one of these files. "
+            f"Rename or remove the duplicate before joining."
+        )
     ln, rn = normalize_key(ls), normalize_key(rs)
-    lvalid, rvalid = ln[ln != ""], rn[rn != ""]
+    n_missing_left, n_missing_right = int(ln.isna().sum()), int(rn.isna().sum())
+    lvalid, rvalid = ln.dropna(), rn.dropna()
     lset, rset = set(lvalid.unique()), set(rvalid.unique())
     matched = lset & rset
 
@@ -305,14 +386,17 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
     unmatched_left_rows = int(sum(lcounts.get(k, 0) for k in (lset - matched)))
     unmatched_right_rows = int(sum(rcounts.get(k, 0) for k in (rset - matched)))
 
+    # Rows whose ID is blank match nobody, but a left/right/outer join still
+    # keeps them on the side being preserved.
     if how == "inner":
         predicted = matched_rows
     elif how == "left":
-        predicted = matched_rows + unmatched_left_rows
+        predicted = matched_rows + unmatched_left_rows + n_missing_left
     elif how == "right":
-        predicted = matched_rows + unmatched_right_rows
+        predicted = matched_rows + unmatched_right_rows + n_missing_right
     else:  # outer
-        predicted = matched_rows + unmatched_left_rows + unmatched_right_rows
+        predicted = (matched_rows + unmatched_left_rows + unmatched_right_rows
+                     + n_missing_left + n_missing_right)
 
     collisions = [str(c) for c in (set(left.columns) & set(right.columns))
                   if str(c) not in {str(left_key), str(right_key)}]
@@ -378,6 +462,18 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
         )
     if how == "inner" and unmatched_right_rows:
         d.notes.append(f"{unmatched_right_rows:,} row(s) of {right_name} have no match and will be dropped.")
+    if n_missing_left or n_missing_right:
+        parts = []
+        if n_missing_left:
+            parts.append(f"{n_missing_left:,} in {left_name}")
+        if n_missing_right:
+            parts.append(f"{n_missing_right:,} in {right_name}")
+        kept = how in ("left", "outer") and n_missing_left or how in ("right", "outer") and n_missing_right
+        d.warnings.append(
+            f"{' and '.join(parts)} row(s) have no ID at all (blank or 'unknown'). "
+            + ("They are kept but will have no matching information attached."
+               if kept else "They cannot be matched and will be dropped.")
+        )
     if collisions:
         d.warnings.append(
             f"Both files have column(s) named {', '.join(collisions[:5])}"
@@ -431,7 +527,34 @@ def execute_join(left: pd.DataFrame, right: pd.DataFrame,
         steps.append(desc)
 
     suffixes = (f"_{_slug(left_name)}", f"_{_slug(right_name)}")
-    merged = l.merge(r, left_on=left_key, right_on=right_key, how=how, suffixes=suffixes)
+
+    # pandas merges NaN to NaN, so a plain merge pairs every ID-less row on the
+    # left with every ID-less row on the right — fabricating participants that
+    # carry real measurements. Rows without an ID are therefore held out of the
+    # merge entirely and re-attached afterwards on whichever side the join type
+    # preserves (SQL's semantics, which is what a researcher expects).
+    # Use the canonical notion of "missing" so an empty string or "unknown"
+    # counts as no-ID even when the keys were not repaired — otherwise the
+    # diagnosis and the merge disagree about which rows can match.
+    lmask = normalize_key(l[left_key]).isna()
+    rmask = normalize_key(r[right_key]).isna()
+    l_blank, r_blank = l[lmask], r[rmask]
+    merged = l[~lmask].merge(
+        r[~rmask], left_on=left_key, right_on=right_key, how=how, suffixes=suffixes
+    )
+
+    extras: List[pd.DataFrame] = []
+    overlap = (set(l.columns) & set(r.columns)) - {left_key, right_key}
+    if how in ("left", "outer") and len(l_blank):
+        extras.append(l_blank.rename(columns={c: f"{c}{suffixes[0]}" for c in overlap}))
+    if how in ("right", "outer") and len(r_blank):
+        rb = r_blank.rename(columns={c: f"{c}{suffixes[1]}" for c in overlap})
+        if left_key != right_key:
+            rb = rb.rename(columns={right_key: left_key})
+        extras.append(rb)
+    if extras:
+        merged = pd.concat([merged] + extras, ignore_index=True)
+
     if left_key != right_key and right_key in merged.columns:
         merged = merged.drop(columns=[right_key])
 

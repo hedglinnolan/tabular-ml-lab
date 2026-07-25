@@ -222,5 +222,95 @@ def test_execute_join_description_is_methods_ready():
     assert "demographics" in desc and "labs" in desc and "inner join" in desc
 
 
+# ── defects found by the 8-family adversarial stress campaign ────────────
+
+BLANK_KEY_CASES = {
+    "blanks_both_sides": (pd.DataFrame({"k": [1, 2, 3, np.nan, np.nan], "a": [1, 2, 3, 4, 5]}),
+                          pd.DataFrame({"k": [1, 2, 3, np.nan, np.nan, np.nan], "b": [1, 2, 3, 4, 5, 6]})),
+    "blanks_one_side":   (pd.DataFrame({"k": [1, 2, np.nan], "a": [1, 2, 3]}),
+                          pd.DataFrame({"k": [1, 2, 3], "b": [9, 8, 7]})),
+    "all_blank":         (pd.DataFrame({"k": [np.nan] * 5, "a": range(5)}),
+                          pd.DataFrame({"k": [np.nan] * 5, "b": range(5)})),
+    "text_blanks":       (pd.DataFrame({"k": ["A1", "A2", "", ""], "a": [1, 2, 3, 4]}),
+                          pd.DataFrame({"k": ["A1", "A2", "", ""], "b": [5, 6, 7, 8]})),
+    "missing_tokens":    (pd.DataFrame({"k": ["A1", "unknown", "NA"], "a": [1, 2, 3]}),
+                          pd.DataFrame({"k": ["A1", "unknown", "NA"], "b": [4, 5, 6]})),
+    "fanout_plus_blank": (pd.DataFrame({"k": [1, 2, np.nan], "a": [1, 2, 3]}),
+                          pd.DataFrame({"k": [1, 1, 2, np.nan], "b": [1, 2, 3, 4]})),
+    "collisions":        (pd.DataFrame({"k": [1, 2, np.nan], "bmi": [22.0, 28.0, 31.0]}),
+                          pd.DataFrame({"k": [1, 2, 3], "bmi": [22.5, 28.5, 31.5]})),
+}
+
+
+@pytest.mark.parametrize("case", sorted(BLANK_KEY_CASES))
+@pytest.mark.parametrize("how", ["inner", "left", "right", "outer"])
+@pytest.mark.parametrize("repair", [True, False])
+def test_predicted_equals_actual_with_missing_keys(case, how, repair):
+    """pandas matches NaN to NaN, so rows with no ID were cross-joined into
+    fabricated participants carrying real measurements — while the preview
+    promised a smaller, different number. Trailing blank rows in an Excel
+    export were enough to trigger it."""
+    left, right = BLANK_KEY_CASES[case]
+    d = diagnose_join(left, right, "k", "k", how)
+    merged, _ = execute_join(left, right, "k", "k", how, repair=repair)
+    assert d.predicted_rows == len(merged)
+
+
+def test_missing_ids_never_match_each_other():
+    left = pd.DataFrame({"k": [1, 2, 3, np.nan, np.nan], "age": [40, 55, 61, 70, 22]})
+    right = pd.DataFrame({"k": [1, 2, 3, np.nan, np.nan, np.nan], "glucose": [95, 102, 110, 88, 90, 91]})
+    merged, _ = execute_join(left, right, "k", "k", "inner")
+    assert len(merged) == 3
+    assert merged["k"].notna().all()
+
+
+def test_missing_ids_are_reported_to_the_user():
+    left = pd.DataFrame({"k": [1, 2, np.nan], "a": [1, 2, 3]})
+    right = pd.DataFrame({"k": [1, 2, 3], "b": [9, 8, 7]})
+    assert any("no ID" in w for w in diagnose_join(left, right, "k", "k").warnings)
+
+
+def test_large_integer_ids_are_not_collided_by_float_precision():
+    """Canonicalising through float64 collapses IDs above 2^53 — a false merge
+    of two distinct subjects, the worst outcome this module can produce."""
+    tokens = normalize_key(pd.Series([9007199254740993, 9007199254740992])).tolist()
+    assert tokens[0] != tokens[1]
+
+
+def test_case_sensitive_ids_are_not_merged():
+    """Unconditional lower-casing merged genuinely distinct IDs."""
+    assert normalize_key(pd.Series(["abc", "ABC"])).nunique() == 2
+
+
+def test_case_folding_still_applies_when_it_is_safe():
+    assert normalize_key(pd.Series(["A01", "B02"])).tolist() == ["a01", "b02"]
+
+
+def test_text_missing_codes_are_not_a_shared_identity():
+    """Two subjects whose ID reads 'unknown' are not the same subject."""
+    a = pd.DataFrame({"id": ["A1", "unknown", "unknown"], "x": [1, 2, 3]})
+    b = pd.DataFrame({"id": ["A1", "unknown", "unknown"], "y": [4, 5, 6]})
+    assert diagnose_join(a, b, "id", "id").matched_keys == 1
+
+
+def test_key_detection_survives_large_files():
+    """Sampling each side independently compared two different random subsets,
+    so the true key stopped being found exactly when files got big."""
+    n = 20000
+    seqn = np.arange(500000, 500000 + n)
+    left = pd.DataFrame({"SEQN": seqn, "age": RNG.randint(18, 80, n)})
+    right = pd.DataFrame({"patient_id": seqn, "glucose": RNG.normal(100, 20, n)})
+    c = suggest_best(left, right)
+    assert c is not None and {c.left_col, c.right_col} == {"SEQN", "patient_id"}
+    assert c.coverage_left > 0.99
+
+
+def test_duplicate_key_column_name_is_explained_not_crashed():
+    df = pd.DataFrame(np.arange(9).reshape(3, 3), columns=["k", "a", "k"])
+    other = pd.DataFrame({"k": [0, 3, 6], "b": [1, 2, 3]})
+    with pytest.raises(ValueError, match="more than once"):
+        diagnose_join(df, other, "k", "k")
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
