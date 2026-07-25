@@ -16,7 +16,7 @@ Methodological contract (split-first workflow):
 The lockbox stores index LABELS (not positions) so membership survives
 feature engineering and row filtering, which preserve the original index.
 """
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -102,7 +102,8 @@ def detect_repeated_subjects(df: pd.DataFrame,
 def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
                    fraction: Optional[float] = None,
                    seed: Optional[int] = None,
-                   group_col: Optional[str] = None) -> Optional[Dict[str, Any]]:
+                   group_col: Optional[str] = None,
+                   stratify_cols: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
     """Create or refresh the lockbox; rebuild only when its inputs change.
 
     Returns the lockbox dict, or None when a lockbox cannot be drawn
@@ -133,20 +134,47 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
     if group_col and group_col not in df.columns:
         group_col = None
 
-    sig = _lockbox_signature(df, target_col, task_type, fraction, seed, group_col)
+    sig = _lockbox_signature(df, target_col, task_type, fraction, seed,
+                            f"{group_col}|{'+'.join(sorted(stratify_cols or []))}")
     existing = get_lockbox()
     if existing and existing.get("signature") == sig:
         return existing
 
     from sklearn.model_selection import train_test_split
 
+    # What the held-out set should be representative OF. The outcome always —
+    # a test set that happens to contain twice the event rate makes every
+    # metric meaningless. Plus any demographic the researcher named, because a
+    # test set that is 70% men when the cohort is 50% men will report a number
+    # that does not describe the study population. This is ordinary good
+    # practice and nobody should have to know to ask for it.
     stratify = None
-    if task_type == "classification" and not group_col:
-        y_eligible = y.loc[eligible]
-        counts = y_eligible.value_counts()
-        # Stratification needs >=2 members per class and >=1 expected per class
-        if counts.min() >= 2 and (counts * fraction).min() >= 1:
-            stratify = y_eligible
+    strata_used: List[str] = []
+    if not group_col:
+        parts: List[pd.Series] = []
+        if task_type == "classification":
+            parts.append(y.loc[eligible].astype(str))
+            strata_used.append(target_col)
+        for col in (stratify_cols or []):
+            if col in df.columns and col != target_col:
+                parts.append(df.loc[eligible, col].astype(str))
+                strata_used.append(col)
+        # Every extra variable multiplies the number of cells, and one cell with
+        # a single member makes the whole split impossible. So drop the least
+        # important variable until it fits rather than failing or, worse,
+        # silently falling back to an unstratified split.
+        while parts:
+            combined = parts[0]
+            for extra in parts[1:]:
+                combined = combined.str.cat(extra, sep="|")
+            counts = combined.value_counts()
+            if counts.min() >= 2 and (counts * fraction).min() >= 1:
+                stratify = combined
+                break
+            parts.pop()
+            strata_used.pop()
+        if stratify is None:
+            strata_used = []
 
     grouped = False
     test_labels = None
@@ -183,6 +211,7 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
         "n_test": int(len(test_labels)),
         "signature": sig,
         "stratified": stratify is not None,
+        "strata": list(strata_used),
         "group_col": group_col if grouped else None,
         "n_test_groups": (int(df.loc[test_labels, group_col].nunique())
                           if grouped else None),
