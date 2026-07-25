@@ -217,6 +217,9 @@ class KeyCandidate:
     right_has_duplicates: bool = False
     name_similarity: float = 0.0
     index_like: bool = False    # both sides are plain row counters
+    # True when the key space had to be sampled to stay tractable. The counts
+    # are then ESTIMATES, and the app must not assert an estimate as fact.
+    sampled: bool = False
 
     @property
     def repeats_on_both_sides(self) -> bool:
@@ -287,6 +290,9 @@ class KeyCandidate:
           genuinely list the same people in the same order.
         - A column that repeats on both sides, which is a measurement.
         """
+        if self.sampled:
+            # An estimate must never reach the tier the UI pre-selects.
+            return "medium"
         if self.index_like:
             # Offered, never asserted: the app still cannot PROVE that two
             # contiguous runs describe the same people, so "medium" (visible,
@@ -316,6 +322,13 @@ class KeyCandidate:
         if self.needs_normalization:
             return (f"'{self.left_col}' and '{self.right_col}' match after ignoring "
                     f"capitalization and stray spaces ({self.n_matched:,} IDs).")
+        if self.sampled:
+            return (f"'{self.left_col}' and '{self.right_col}' share about "
+                    f"{self.n_matched:,} IDs — an estimate, because these files "
+                    f"hold more than {_MAX_DISTINCT:,} distinct IDs and a "
+                    f"representative slice of them was compared "
+                    f"({self.coverage_left:.0%} of {left_name}, "
+                    f"{self.coverage_right:.0%} of {right_name}).")
         return (f"'{self.left_col}' and '{self.right_col}' share {self.n_matched:,} IDs "
                 f"({self.coverage_left:.0%} of {left_name}, {self.coverage_right:.0%} of {right_name}).")
 
@@ -378,10 +391,46 @@ def _key_tokens(df: pd.DataFrame, col: str) -> Optional[pd.Series]:
         # find_key_candidates, where the pair is known.
         uniques = s.dropna().drop_duplicates()
         if len(uniques) > _MAX_DISTINCT:
-            uniques = uniques.iloc[:_MAX_DISTINCT]
+            # `.iloc[:_MAX_DISTINCT]` was a POSITIONAL head-truncation, applied
+            # independently to each side — precisely what the docstring above
+            # promises this function never does. Two files listing the same
+            # subjects in different row orders had their overlap measured
+            # between two disjoint slices, so coverage collapsed toward zero
+            # and at ~2x the cap find_key_candidates returned nothing at all.
+            #
+            # Keep a VALUE-determined subset instead: a stable hash of the
+            # value decides membership, so both sides retain the same region of
+            # the key space and the measured overlap is an unbiased estimate of
+            # the real one. Callers are told it is an estimate via
+            # _tokens_were_sampled below.
+            keep = _MAX_DISTINCT / len(uniques)
+            digest = pd.util.hash_array(uniques.to_numpy())
+            uniques = uniques[digest < np.uint64(keep * float(np.iinfo(np.uint64).max))]
         return normalize_key(uniques).dropna()
     except Exception:
         return None
+
+
+def _full_distinct(df: pd.DataFrame, col: Any, fallback: int) -> int:
+    """Distinct values in the WHOLE column, however few tokens were sampled."""
+    try:
+        s = df[col]
+        if isinstance(s, pd.DataFrame):
+            return fallback
+        return int(s.nunique(dropna=True))
+    except Exception:
+        return fallback
+
+
+def _tokens_were_sampled(df: pd.DataFrame, col: str) -> bool:
+    """True when _key_tokens had to sample, so its counts are estimates."""
+    try:
+        s = df[col]
+        if isinstance(s, pd.DataFrame):
+            return False
+        return int(s.nunique(dropna=True)) > _MAX_DISTINCT
+    except Exception:
+        return False
 
 
 # Column names researchers give the thing that identifies a participant.
@@ -471,6 +520,8 @@ def find_key_candidates(left: pd.DataFrame, right: pd.DataFrame,
                 continue
             cov_l = len(matched) / len(lset)
             cov_r = len(matched) / len(rset)
+            sampled_pair = (_tokens_were_sampled(left, lc)
+                            or _tokens_were_sampled(right, rc))
             if max(cov_l, cov_r) < min_coverage:
                 continue
             lraw, rraw = left[lc], right[rc]
@@ -492,15 +543,29 @@ def find_key_candidates(left: pd.DataFrame, right: pd.DataFrame,
             candidate = KeyCandidate(
                 left_col=str(lc), right_col=str(rc),
                 coverage_left=cov_l, coverage_right=cov_r,
-                n_matched=len(matched),
-                left_unique=len(lset), right_unique=len(rset),
+                # Scale back to the real key space. Reporting the sampled count
+                # would tell a researcher their two 2,000-person files share
+                # 521 IDs.
+                n_matched=(len(matched) if not sampled_pair else
+                           int(round(len(matched)
+                                     * max(_full_distinct(left, lc, len(lset)), 1)
+                                     / max(len(lset), 1)))),
+                # Uniqueness must come from the FULL column, not the token
+                # set. Above _MAX_DISTINCT the tokens are a value-determined
+                # sample, so len(lset)/len(left) reads as 0.25 on a perfectly
+                # unique key and the "at least one side identifies subjects"
+                # test rejected it — the true key stopped being proposed
+                # exactly when the file was large enough to matter.
+                left_unique=_full_distinct(left, lc, len(lset)),
+                right_unique=_full_distinct(right, rc, len(rset)),
                 left_rows=max(len(left), len(lset)), right_rows=max(len(right), len(rset)),
                 dtype_mismatch=dtype_mismatch,
                 needs_normalization=needs_norm,
-                left_has_duplicates=bool(len(lset) < len(left)),
-                right_has_duplicates=bool(len(rset) < len(right)),
+                left_has_duplicates=bool(_full_distinct(left, lc, len(lset)) < len(left)),
+                right_has_duplicates=bool(_full_distinct(right, rc, len(rset)) < len(right)),
                 name_similarity=_name_similarity(lc, rc),
                 index_like=_looks_like_row_index(lraw) and _looks_like_row_index(rraw),
+                sampled=sampled_pair,
             )
             # At least ONE side must actually identify subjects. This is what
             # separates a real key from a shared category: 'sex' matches 'sex'
@@ -883,8 +948,14 @@ def execute_join(left: pd.DataFrame, right: pd.DataFrame,
         # retyping, and in the second case CORRUPTING, the researcher's
         # identifier. Match on the canonical form; hand back what they gave us.
         l, r = l.copy(), r.copy()
-        l[_ORIGINAL_KEY] = left[left_key].values
-        r[_ORIGINAL_KEY] = right[right_key].values
+        # Stash as plain objects. A Categorical key kept its dtype here, and
+        # the restore step below (`merged[lo].where(notna, merged[ro])`) then
+        # raised on a right/outer join, because merged[ro] holds right-only
+        # values that are not in the left column's category list. Parquet
+        # round-trips produce Categorical keys routinely, and the raw pandas
+        # error is exactly the failure this module exists to eliminate.
+        l[_ORIGINAL_KEY] = np.asarray(left[left_key].astype(object).values)
+        r[_ORIGINAL_KEY] = np.asarray(right[right_key].astype(object).values)
 
     suffixes = (f"_{_slug(left_name)}", f"_{_slug(right_name)}")
 

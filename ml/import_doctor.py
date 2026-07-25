@@ -620,19 +620,41 @@ def check_numeric_stored_as_text(df: pd.DataFrame, min_parse: float = 0.8) -> Li
             if lossy:
                 continue                  # an identifier: leaving it as text is correct
             examples = s.astype(str).unique()[:3].tolist()
+            # The gate is >= 0.99, not == 1.0, so "every value parses" is false
+            # for any rate in [0.99, 1.0) — and this branch never counted the
+            # casualties, so a fix that blanks real values was labeled "high"
+            # (the tier the UI pre-selects) with no count in the button. The
+            # SAME situation at a 90% parse rate was correctly reported as low
+            # confidence with the count shown: the safety logic was inverted
+            # exactly where the data looks cleanest.
+            n_blanked = int((~pd.to_numeric(s, errors="coerce").notna()).sum())
+            if n_blanked:
+                unreadable = (s[pd.to_numeric(s, errors="coerce").isna()]
+                              .astype(str).unique()[:3].tolist())
+                detail = (f"Almost every value is a plain number (e.g. "
+                          f"{', '.join(map(repr, examples))}), but {n_blanked:,} "
+                          f"cannot be read as one (e.g. "
+                          f"{', '.join(map(repr, unreadable))}).")
+                fix_label = (f"Convert '{col}' to numbers "
+                             f"(blanks {n_blanked:,} value(s) that cannot be read)")
+                confidence = "low"
+            else:
+                detail = (f"Every value is a plain number (e.g. "
+                          f"{', '.join(map(repr, examples))}) but the column is typed "
+                          f"as text.")
+                fix_label = f"Convert '{col}' to numbers"
+                confidence = "high"       # nothing is lost: every value parses
             out.append(ShapeFinding(
                 id=f"numeric_as_text__{col}",
                 severity="warning",
                 title=f"'{col}' holds numbers but is stored as text",
-                detail=(f"Every value is a plain number (e.g. "
-                        f"{', '.join(map(repr, examples))}) but the column is typed "
-                        f"as text."),
+                detail=detail,
                 why_it_matters=("As text this column cannot be modeled, correlated "
                                 "or plotted — it will silently sit out of your "
                                 "analysis while appearing perfectly fine."),
-                fix_label=f"Convert '{col}' to numbers",
+                fix_label=fix_label,
                 fix_kind="coerce_numeric",
-                confidence="high",        # nothing is lost: every value parses
+                confidence=confidence,
                 params={"column": col},
                 affected_columns=[str(col)],
             ))

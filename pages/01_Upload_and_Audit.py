@@ -1152,7 +1152,14 @@ if task_mode == "prediction":
             )
             if _lb_frac != st.session_state.get("test_lockbox_fraction", DEFAULT_TEST_FRACTION):
                 st.session_state["test_lockbox_fraction"] = _lb_frac
-                ensure_lockbox(df, target_col, task_type_final, fraction=_lb_frac)
+                # Same arguments as the steady-state call above. Omitting
+                # group_col here silently downgraded a subject-level split to a
+                # row-wise one — subjects landed on both sides, the chip lost
+                # its "no subject appears on both sides" clause and gained
+                # ", stratified", which reads as an upgrade, and the redraw
+                # notice said only that the fraction had changed.
+                ensure_lockbox(df, target_col, task_type_final,
+                               fraction=_lb_frac, group_col=_entity_col)
             st.checkbox(
                 "Exploratory mode (disable test-set quarantine)",
                 key="exploratory_mode",
