@@ -35,7 +35,8 @@ from utils.combine import (
     SOURCE_COLUMN, execute_stack, plan_combination, plan_stack, relationship_hint,
 )
 from ml.join_doctor import (
-    KeyCandidate, diagnose_join, execute_join, find_key_candidates, plain_summary,
+    KeyCandidate, _slug, diagnose_join, execute_join, find_key_candidates,
+    plain_summary,
 )
 
 # How the four join types read to someone who has never used a database.
@@ -226,7 +227,8 @@ def _file_cards(frames: Dict[str, pd.DataFrame]) -> None:
             st.dataframe(df.head(5), width="stretch")
 
 
-def _render_link(frames: Dict[str, pd.DataFrame]) -> Optional[Tuple[pd.DataFrame, str]]:
+def _render_link(frames: Dict[str, pd.DataFrame],
+                 running_label: Optional[str] = None) -> Optional[Tuple[pd.DataFrame, str]]:
     """Different measurements on the same people — link them by a shared ID."""
     names = list(frames)
     base_name = st.selectbox(
@@ -246,6 +248,11 @@ def _render_link(frames: Dict[str, pd.DataFrame]) -> Optional[Tuple[pd.DataFrame
     how = LINK_MODES[mode_label]
 
     result = frames[base_name]
+    # What to call the frame as it accumulates. "your data so far" was a
+    # placeholder that leaked into the headline as though it were a filename,
+    # so a user who had just named their group "demographics" was shown
+    # "your data so far (600 rows) + labs (480 rows)".
+    running = running_label or base_name
     steps: List[str] = []
     blocked = False
 
@@ -255,7 +262,7 @@ def _render_link(frames: Dict[str, pd.DataFrame]) -> Optional[Tuple[pd.DataFrame
         usable = [c for c in cands if c.confidence != "low"]
         if not usable:
             st.warning(
-                f"No shared ID was found between your data so far and **{other}**. "
+                f"No shared ID was found between **{running}** and **{other}**. "
                 f"These files may not describe the same people — or the ID columns "
                 f"may hold different things. You can pick the columns yourself below."
             )
@@ -273,10 +280,10 @@ def _render_link(frames: Dict[str, pd.DataFrame]) -> Optional[Tuple[pd.DataFrame
             options, key=f"combine_key_{other}",
         )
         chosen: KeyCandidate = usable[options.index(chosen_label)]
-        st.caption(chosen.headline("your data so far", other))
+        st.caption(chosen.headline(running, other))
 
         diag = diagnose_join(result, frames[other], chosen.left_col, chosen.right_col,
-                             how, "your data so far", other)
+                             how, running, other)
         for b in diag.blocking:
             st.error(f"🛑 {b}")
         # The change map below accounts for every row visually and states the
@@ -300,7 +307,7 @@ def _render_link(frames: Dict[str, pd.DataFrame]) -> Optional[Tuple[pd.DataFrame
             # join runs now so the preview below is the REAL result, not a
             # description of one — nothing is committed until the button.
             change = describe_join(result, frames[other], chosen.left_col,
-                                   chosen.right_col, how, "your data so far", other)
+                                   chosen.right_col, how, running, other)
             preview, desc = execute_join(
                 result, frames[other], chosen.left_col, chosen.right_col, how,
                 base_name, other,
@@ -401,13 +408,21 @@ def _render_grouped(frames: Dict[str, pd.DataFrame]) -> Optional[Tuple[pd.DataFr
         if not plan_s.can_proceed:
             return None
         st.caption(plan_s.summary())
-        stacked[label], desc = execute_stack(subset)
+        group_frame, desc = execute_stack(subset)
+        # Name the bookkeeping column after the group. Two stacked groups both
+        # carrying "__source_file" collide when linked, and the app then warned
+        # the user about a name clash in a column the APP invented, telling them
+        # to "check which one you actually want".
+        if SOURCE_COLUMN in group_frame.columns:
+            group_frame = group_frame.rename(
+                columns={SOURCE_COLUMN: f"{SOURCE_COLUMN}_{_slug(label)}"})
+        stacked[label] = group_frame
         steps.append(desc)
 
     # ── then link the stacked results ────────────────────────────────────
     st.markdown("---")
     st.markdown(f"**Linking {len(stacked)} combined tables**")
-    outcome = _render_link(stacked)
+    outcome = _render_link(stacked, running_label=list(stacked)[0])
     if outcome is None:
         return None
     result, link_desc = outcome

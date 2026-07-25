@@ -60,10 +60,11 @@ render_sidebar_workflow(current_page="01_Upload_and_Audit")
 st.title("📂 Upload & Audit")
 from utils.theme import render_flash
 render_flash()
-st.caption("Start here. Upload one dataset, confirm it looks right, then choose your analysis setup. Multi-file workflows are still available when you need them.")
+st.caption("Start here. Add your data — one file or several — confirm it looks right, then choose your analysis setup.")
 render_guidance(
-    "<strong>Recommended first pass:</strong> 1) Upload a single dataset, 2) review the working table and audit, 3) choose your target and continue to EDA. "
-    "If your study truly depends on linking files, upload them now and use the combine workflow below.",
+    "<strong>How this page works:</strong> 1) add your file or files, 2) combine them if there is more than one — "
+    "the app proposes how and shows you the result first, 3) review the working table and audit, "
+    "4) choose your target and continue to EDA.",
     icon="🧭"
 )
 render_breadcrumb("01_Upload_and_Audit")
@@ -76,7 +77,7 @@ render_page_navigation("01_Upload_and_Audit")
 # ============================================================================
 with st.sidebar:
     st.subheader("Session & Data")
-    st.caption("Most users should start with a single dataset. Multi-dataset setup is available when you actually need it.")
+    st.caption("Add one file or several. If you bring more than one, the app combines them for you.")
     
     # Get database stats
     db_stats = db.get_database_stats()
@@ -443,10 +444,25 @@ if uploaded_files:
                     existing_names = [d['name'] for d in project_datasets] if project_datasets else []
                     name_exists = dataset_name in existing_names
                     
-                    if name_exists:
-                        st.warning(f"A dataset named '{dataset_name}' already exists in this project.")
+                    # A file stays in the uploader after it has been added, so
+                    # this collision fired for every file the user had just
+                    # successfully added — four alarming warnings for an action
+                    # that worked. Same name AND same shape means it IS this
+                    # file, so confirm it instead of warning about it.
+                    already_added = next(
+                        (d for d in (project_datasets or [])
+                         if d['name'] == dataset_name
+                         and d['shape_rows'] == df_preview.shape[0]
+                         and d['shape_cols'] == df_preview.shape[1]), None)
+                    if already_added:
+                        st.success("✓ Added to your project.")
+                        replace_existing = True
+                    elif name_exists:
+                        st.warning(
+                            f"A different dataset is already called "
+                            f"'{dataset_name}'. Rename this one, or replace it.")
                         replace_existing = st.checkbox(
-                            f"Replace existing '{dataset_name}'", 
+                            f"Replace existing '{dataset_name}'",
                             key=f"replace_{file_key}"
                         )
                     else:

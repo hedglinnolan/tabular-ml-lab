@@ -622,8 +622,12 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
         predicted = (matched_rows + unmatched_left_rows + unmatched_right_rows
                      + n_missing_left + n_missing_right)
 
+    # Columns the app itself adds while combining are its own bookkeeping;
+    # warning the user about a clash in one of them reads as a problem with
+    # their data and invites them to "decide" about a column they never made.
     collisions = [str(c) for c in (set(left.columns) & set(right.columns))
-                  if str(c) not in {str(left_key), str(right_key)}]
+                  if str(c) not in {str(left_key), str(right_key)}
+                  and not str(c).startswith("__source_file")]
 
     # Fan-out is about SUBJECTS being duplicated, not about total row counts:
     # 3 subjects joined to 6 visits yields 6 rows, which is not larger than

@@ -234,8 +234,12 @@ def _join_consequences(cm: ChangeMap, left, right, lcounts, rcounts, matched,
             f"blank for them. That missingness is a fact about the merge, not about "
             f"the measurement, and imputing it would invent data.")
 
-    if cm.renamed_columns:
-        names = ", ".join(f"`{c.renamed_from}` → `{c.name}`" for c in cm.renamed_columns[:4])
+    # A clash in a column the APP added is the app's problem, not something to
+    # hand back to the researcher as a decision.
+    user_renamed = [c for c in cm.renamed_columns
+                    if not str(c.renamed_from).startswith(SOURCE_COLUMN)]
+    if user_renamed:
+        names = ", ".join(f"`{c.renamed_from}` → `{c.name}`" for c in user_renamed[:4])
         out.append(
             f"**Both files had columns with the same name**, so they are kept side "
             f"by side rather than one overwriting the other: {names}. Check which "
