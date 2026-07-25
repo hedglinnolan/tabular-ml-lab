@@ -17,6 +17,28 @@ from ml.publication import (
 from ml.latex_report import generate_latex_report
 
 
+@pytest.fixture(autouse=True)
+def _isolated_session_state():
+    """Every test here gets the session state it set up, and nothing else.
+
+    These tests read st.session_state (methodology_log, workflow_provenance,
+    pre_fe_feature_cols, engineered_feature_names ...) but each saved and
+    restored only the two or three keys it knew about, so a key left behind by
+    any earlier test changed the methods text they assert on. Under a shuffled
+    collection order that made a different test in this file fail on almost
+    every seed — on origin/main as well as here, so this is long-standing
+    rather than new.
+    """
+    import streamlit as st
+    before = dict(st.session_state)
+    st.session_state.clear()          # start clean: each test sets what it needs
+    try:
+        yield
+    finally:
+        st.session_state.clear()      # and leave other modules as we found them
+        st.session_state.update(before)
+
+
 def test_tripod_tracker():
     tracker = TRIPODTracker()
     done, total = tracker.get_progress()
