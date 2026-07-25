@@ -126,6 +126,21 @@ def _name_similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, ca, cb).ratio()
 
 
+def _base_is_numeric(s: pd.Series) -> bool:
+    """Is the key numeric UNDERNEATH its container?
+
+    pandas reports a Categorical of integers as non-numeric, which made a
+    perfectly good category-vs-number join look like text-vs-numbers and get
+    blocked with an explanation that was simply untrue.
+    """
+    try:
+        if isinstance(s.dtype, pd.CategoricalDtype):
+            return bool(pd.api.types.is_numeric_dtype(s.cat.categories))
+    except Exception:
+        pass
+    return bool(pd.api.types.is_numeric_dtype(s))
+
+
 def _looks_like_row_index(raw: pd.Series) -> bool:
     """True for 0..N-1 / 1..N style counters.
 
@@ -454,13 +469,21 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
     lset, rset = set(lvalid.unique()), set(rvalid.unique())
     matched = lset & rset
 
-    dtype_mismatch = (
-        pd.api.types.is_numeric_dtype(ls) != pd.api.types.is_numeric_dtype(rs)
-    )
-    needs_norm = False
-    if not dtype_mismatch and not pd.api.types.is_numeric_dtype(ls):
-        raw_match = set(ls.astype(str).dropna().unique()) & set(rs.astype(str).dropna().unique())
-        needs_norm = len(raw_match) < len(matched)
+    # A type problem is one the user CANNOT SEE: the values print identically
+    # and still refuse to match, as with "001" against 1. Judging it from the
+    # pandas dtypes instead was wrong in both directions — a Categorical of
+    # integers is not "numeric", so a working category-vs-number join was
+    # blocked with the false claim that one file stores the key as text; and
+    # when two columns share no values at all the type message fired ahead of
+    # the real problem and told the user that fixing the types would "match 0
+    # IDs", which is advice to do something pointless.
+    # Compare the UNDERLYING type, not the container. A Categorical of integers
+    # is not "numeric" by pandas' test, so a working category-vs-number join was
+    # blocked with the false claim that one file stores the key as text.
+    dtype_mismatch = bool(matched) and _base_is_numeric(ls) != _base_is_numeric(rs)
+    raw_matched = len(set(ls.dropna().astype(str).unique())
+                      & set(rs.dropna().astype(str).unique()))
+    needs_norm = bool(matched) and raw_matched < len(matched) and not dtype_mismatch
 
     # Predict rows, accounting for fan-out when a key repeats.
     lcounts = lvalid.value_counts()
@@ -504,8 +527,8 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
     # --- blocking problems -------------------------------------------------
     if dtype_mismatch:
         d.blocking.append(
-            f"'{left_key}' is stored as {'numbers' if pd.api.types.is_numeric_dtype(ls) else 'text'} "
-            f"in {left_name} but as {'numbers' if pd.api.types.is_numeric_dtype(rs) else 'text'} in "
+            f"'{left_key}' is stored as {'numbers' if _base_is_numeric(ls) else 'text'} "
+            f"in {left_name} but as {'numbers' if _base_is_numeric(rs) else 'text'} in "
             f"{right_name}. They look identical on screen but will not match. "
             f"Fixing this matches {len(matched):,} IDs."
         )
@@ -540,11 +563,46 @@ def diagnose_join(left: pd.DataFrame, right: pd.DataFrame,
             f"to join on.{why or ' Check you picked the right columns.'}"
         )
 
+    # A join that multiplies into millions of rows will not finish on the
+    # laptop this app runs on — it exhausts memory and the browser tab simply
+    # stops responding, which reads as "the app is broken" rather than "that
+    # join was wrong". Refuse it, and say what to do instead.
+    _BLOWUP_ROWS = 5_000_000
+    if predicted > _BLOWUP_ROWS and predicted > 20 * max(len(left), len(right), 1):
+        d.blocking.append(
+            f"This join would produce about {predicted:,} rows from {len(left):,} "
+            f"and {len(right):,} — every matching row on one side is paired with "
+            f"every matching row on the other. That is far more data than either "
+            f"file contains and will not finish on a laptop. Usually it means "
+            f"'{left_key}' identifies a group rather than a person: summarise one "
+            f"file to one row per subject first, or pick a column that is unique "
+            f"in at least one file."
+        )
+
     # --- things to understand first ---------------------------------------
+    # A preserving join keeps rows that matched nothing, and every column from
+    # the other file arrives blank for them. Silence here is how a researcher
+    # ends up modelling a variable that is 50% missing by construction and
+    # blames the data.
+    if how in ("left", "outer") and unmatched_left_rows:
+        d.warnings.append(
+            f"{unmatched_left_rows:,} row(s) of {left_name} "
+            f"({unmatched_left_rows / max(len(left), 1):.0%}) have no match in "
+            f"{right_name}. They are kept, but every column coming from "
+            f"{right_name} will be blank for them."
+        )
+    if how in ("right", "outer") and unmatched_right_rows:
+        d.warnings.append(
+            f"{unmatched_right_rows:,} row(s) of {right_name} "
+            f"({unmatched_right_rows / max(len(right), 1):.0%}) have no match in "
+            f"{left_name}. They are kept, but every column coming from "
+            f"{left_name} will be blank for them."
+        )
     if needs_norm:
         d.warnings.append(
-            f"Some IDs differ only by capitalisation or stray spaces. Cleaning them up "
-            f"matches {len(matched):,} IDs instead of fewer."
+            f"Some IDs are written differently in the two files — capitalisation, "
+            f"stray spaces, or a trailing '.0'. Cleaning them up matches "
+            f"{len(matched):,} IDs instead of fewer."
         )
     if dup_left and dup_right:
         d.warnings.append(

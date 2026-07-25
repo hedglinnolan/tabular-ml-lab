@@ -687,3 +687,115 @@ class TestCommaReading:
                                       "139 mmol/L", "141 mmol/L", "137 mmol/L"])
         assert got == [140, 138, 142, 139, 141, 137]
         assert finding.confidence == "high"
+
+
+# ── the join diagnosis must name the real problem ────────────────────────
+
+class TestDtypeMismatchIsJudgedOnTheUnderlyingType:
+    """Findings 4 and 40. `is_numeric_dtype` was asked about the CONTAINER.
+
+    A Categorical of integers is not "numeric" by that test, so a working
+    category-vs-number join was blocked with the false claim that one file
+    stores the key as text (4). And when two columns shared no values at all
+    the type blocker fired ahead of the real problem, telling the user that
+    fixing the types would "match 0 IDs" — advice to do something pointless
+    (40).
+    """
+
+    def _diag(self, left, right):
+        from ml.join_doctor import diagnose_join
+        return diagnose_join(left, right, "id", "id", "inner", "fileA", "fileB")
+
+    def test_category_of_ints_against_ints_is_not_a_mismatch(self):
+        d = self._diag(pd.DataFrame({"id": pd.Categorical([1, 2, 3] * 10), "a": range(30)}),
+                       pd.DataFrame({"id": [1, 2, 3] * 10, "b": range(30)}))
+        assert not d.dtype_mismatch and not d.blocking and d.matched_keys == 3
+
+    def test_float_against_int_is_not_a_type_problem(self):
+        d = self._diag(pd.DataFrame({"id": [1.0, 2.0, 3.0], "a": [1, 2, 3]}),
+                       pd.DataFrame({"id": [1, 2, 3], "b": [7, 8, 9]}))
+        assert not d.dtype_mismatch
+
+    @pytest.mark.parametrize("left_ids", [["001", "002", "003"], ["1000", "1001", "1002"]])
+    def test_text_against_numbers_is_still_caught(self, left_ids):
+        right_ids = [int(v) for v in left_ids]
+        d = self._diag(pd.DataFrame({"id": left_ids, "a": [1, 2, 3]}),
+                       pd.DataFrame({"id": right_ids, "b": [7, 8, 9]}))
+        assert d.dtype_mismatch
+        assert "text" in d.blocking[0] and "numbers" in d.blocking[0]
+
+    def test_zero_overlap_is_not_blamed_on_the_types(self):
+        d = self._diag(pd.DataFrame({"id": ["a01", "a02", "a03"], "a": [1, 2, 3]}),
+                       pd.DataFrame({"id": [999, 998, 997], "b": [7, 8, 9]}))
+        assert not d.dtype_mismatch
+        assert "nothing to join on" in d.blocking[0]
+        assert "matches 0 IDs" not in d.blocking[0]
+
+    def test_case_and_spacing_is_reported_as_spacing(self):
+        d = self._diag(
+            pd.DataFrame({"id": [f"A{i:02d}" for i in range(1, 21)], "a": range(20)}),
+            pd.DataFrame({"id": [f"a{i:02d} " for i in range(1, 21)], "b": range(20)}))
+        assert d.needs_normalization and not d.dtype_mismatch
+        assert d.matched_keys == 20
+
+
+class TestBlowUpIsRefused:
+    """Finding 23. A predicted 25,000,000-row many-to-many was allowed through
+    with only a warning. On the laptop this app runs on that exhausts memory
+    and the tab stops responding, which reads as 'the app is broken'."""
+
+    def test_a_cartesian_blow_up_blocks(self):
+        from ml.join_doctor import diagnose_join
+        x = pd.DataFrame({"k": [1] * 5000, "a": range(5000)})
+        y = pd.DataFrame({"k": [1] * 5000, "b": range(5000)})
+        d = diagnose_join(x, y, "k", "k")
+        assert d.predicted_rows == 25_000_000
+        assert not d.can_proceed
+        assert "will not finish" in d.blocking[0]
+
+    def test_the_message_says_what_to_do_instead(self):
+        from ml.join_doctor import diagnose_join
+        x = pd.DataFrame({"k": [1] * 5000, "a": range(5000)})
+        y = pd.DataFrame({"k": [1] * 5000, "b": range(5000)})
+        msg = diagnose_join(x, y, "k", "k").blocking[0]
+        assert "one row per subject" in msg
+
+    @pytest.mark.parametrize("visits", [3, 10, 25])
+    def test_a_legitimate_one_to_many_is_not_blocked(self, visits):
+        from ml.join_doctor import diagnose_join
+        s = pd.DataFrame({"SEQN": range(83732, 83782), "age": RNG.randint(18, 80, 50)})
+        v = pd.DataFrame({"SEQN": np.repeat(range(83732, 83782), visits),
+                          "bp": RNG.normal(120, 10, 50 * visits)})
+        d = diagnose_join(s, v, "SEQN", "SEQN")
+        assert d.can_proceed and d.predicted_rows == 50 * visits
+
+
+class TestBlankFillIsDisclosed:
+    """Finding 41. A left join where half the rows match nothing produced no
+    warning at all — the researcher gets a variable that is 50% missing by
+    construction and blames the data."""
+
+    def _frames(self):
+        return (pd.DataFrame({"id": range(100), "x": RNG.rand(100)}),
+                pd.DataFrame({"id": range(50, 100), "y": RNG.rand(50)}))
+
+    @pytest.mark.parametrize("how", ["left", "outer"])
+    def test_unmatched_left_rows_are_disclosed(self, how):
+        from ml.join_doctor import diagnose_join
+        left, right = self._frames()
+        d = diagnose_join(left, right, "id", "id", how, "demographics", "labs")
+        blob = " ".join(d.warnings)
+        assert "50" in blob and "blank" in blob and "labs" in blob
+
+    def test_an_inner_join_still_says_rows_are_dropped(self):
+        from ml.join_doctor import diagnose_join
+        left, right = self._frames()
+        d = diagnose_join(left, right, "id", "id", "inner", "demographics", "labs")
+        assert "dropped" in " ".join(d.warnings)
+
+    def test_a_complete_match_warns_about_nothing(self):
+        from ml.join_doctor import diagnose_join
+        left = pd.DataFrame({"id": range(100), "x": RNG.rand(100)})
+        right = pd.DataFrame({"id": range(100), "y": RNG.rand(100)})
+        d = diagnose_join(left, right, "id", "id", "left", "a", "b")
+        assert not d.warnings
