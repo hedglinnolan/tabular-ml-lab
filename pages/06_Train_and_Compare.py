@@ -846,6 +846,41 @@ for key, spec in available_models.items():
 # Sort groups by explainability order (most explainable first)
 sorted_groups = sorted(model_groups.keys(), key=lambda g: EXPLAINABILITY_ORDER.get(g, 999))
 
+def _torch_ready() -> bool:
+    """Is the optional neural-network engine installed?"""
+    from utils.optional_deps import is_available
+    return is_available("torch")
+
+
+# One-click install of an optional add-on, run here so progress appears on the
+# page the user was already looking at.
+if st.session_state.pop("_install_addon", None) == "torch":
+    from utils.optional_deps import ADDONS, install
+    _spec = ADDONS["torch"]
+    st.info(f"Installing the {_spec['label'].lower()} — {_spec['size_hint']}. "
+            f"This happens once. Please leave this tab open.")
+    _log_box = st.empty()
+    _recent: List[str] = []
+
+    def _on_log(line: str) -> None:
+        _recent.append(line)
+        _log_box.code("\n".join(_recent[-8:]), language=None)
+
+    with st.spinner("Downloading and installing… this can take a few minutes."):
+        _res = install("torch", on_log=_on_log)
+    if _res.ok:
+        st.success(f"✅ {_res.message}")
+    else:
+        st.error(f"❌ {_res.message}")
+        st.caption(
+            "You can keep working — every other model still trains without this. "
+            "If it keeps failing, someone can also install it for you by running "
+            "`uv pip install torch` in the app's folder."
+        )
+        if _res.log:
+            with st.expander("Technical details"):
+                st.code(_res.log, language=None)
+
 # Coach viability verdicts: shape reasoning visible at the moment of choice
 _viability = {}
 try:
@@ -897,7 +932,25 @@ for group_name in sorted_groups:
                 {"<br/><span style='font-size:0.78rem; color:#64748b;'>" + notes + "</span>" if notes else ""}
             </div>
             """, unsafe_allow_html=True)
-            is_selected = st.checkbox("Select", value=is_selected, key=checkbox_key, label_visibility="collapsed")
+            # The neural network is the one model whose dependency is optional
+            # (torch is ~1.1 GB for this model alone). Rather than let someone
+            # select it and hit an error at training time, offer to install it
+            # right here — one button, no terminal.
+            _needs_addon = model_key == "nn" and not _torch_ready()
+            if _needs_addon:
+                st.checkbox("Select", value=False, key=checkbox_key,
+                            disabled=True, label_visibility="collapsed")
+                is_selected = False
+                st.caption("⬇️ Not installed yet — adds about 1.1 GB")
+                if st.button("Enable neural network", key="enable_nn_addon",
+                             help="Downloads the neural-network engine into this app "
+                                  "(about 1.1 GB, a few minutes). Nothing is installed "
+                                  "system-wide."):
+                    st.session_state["_install_addon"] = "torch"
+                    st.rerun()
+            else:
+                is_selected = st.checkbox("Select", value=is_selected, key=checkbox_key,
+                                          label_visibility="collapsed")
             if model_key in _viability:
                 _verdict, _clause = _viability[model_key]
                 st.caption(f"{_VIAB_ICONS.get(_verdict, '·')} {_clause}")

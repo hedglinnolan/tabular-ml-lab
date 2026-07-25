@@ -110,16 +110,17 @@ astral.sh
 zip on a USB stick or shared drive works exactly the same. Only the first
 launch needs internet, to fetch Python and the libraries.
 
-### Want the neural network?
+### The neural network add-on
 
-The neural-network model needs `torch`, which is about 1.1 GB on its own —
-more than the rest of the app combined. It is **not installed by default**, so
-the download stays small. Everything else (22 other models, the full workflow,
-the manuscript generator) works without it. To add it later:
+All 22 models are available. One of them — the neural network — runs on an
+engine (`torch`) that is about 1.1 GB by itself, more than the rest of the app
+combined, so it is **not downloaded up front**.
 
-```bash
-uv pip install torch
-```
+You do not need a terminal to add it. Open **Train & Compare**, and the neural
+network card has an **Enable neural network** button: one click, it downloads
+into the app's own folder while showing progress, and the model becomes
+selectable. Nothing is installed system-wide, and every other model works
+immediately without it.
 
 <details>
 <summary>What the starter actually does (for the curious or cautious)</summary>
@@ -146,7 +147,7 @@ this repository.
 | 3 | **Feature Engineering** | PCA, polynomial features, log transforms, ratios, binning, TDA features |
 | 4 | **Feature Selection** | LASSO path, RFE-CV, univariate, stability selection, consensus ranking |
 | 5 | **Preprocess** | Per-model pipelines: imputation, scaling, encoding, outlier handling, power transforms |
-| 6 | **Train & Compare** | 22 models with bootstrap CIs, automatic baseline comparison, calibration analysis, optional Optuna optimization |
+| 6 | **Train & Compare** | 22 models (the neural network enables with one click) with bootstrap CIs, automatic baseline comparison, calibration analysis, optional Optuna optimization |
 | 7 | **Explainability** | SHAP, permutation importance, PDP, external validation, subgroup analysis |
 | 8 | **Sensitivity Analysis** | Seed robustness, feature dropout — prove your results aren't fragile |
 | 9 | **Statistical Validation** | Traditional stats for Table 1: t-tests, ANOVA, chi-square, custom hypothesis tests |
