@@ -57,6 +57,33 @@ def _lockbox_signature(df: pd.DataFrame, target_col: str, task_type: str,
             f"{fraction:.4f}|{seed}|{group_col or ''}")
 
 
+# Whole-token names for a subject identifier. A bare substring test — "id" in
+# name — matches uric_acid, folic_acid, linoleic_acid, lipid, oxidized,
+# residual, and NHANES's entire RID* family including RIDAGEYR, which is age in
+# years. Grouping the held-out set by one of those splits the study by a
+# covariate: every test row then holds a value the model never trained on.
+_SUBJECT_ID_TOKENS = frozenset({
+    "id", "ids", "seqn", "subject", "subjid", "usubjid", "subjectid",
+    "participant", "participantid", "patient", "patientid", "pid", "sid",
+    "record", "recordid", "case", "caseid", "person", "personid", "mrn",
+    "studyid", "sampleid", "specimenid", "respondent", "respondentid",
+    "enrollmentid", "uid", "guid",
+})
+
+
+def _name_looks_like_a_subject_id(col: Any) -> bool:
+    """Whole-token match, so `uric_acid` and `RIDAGEYR` are not subject IDs."""
+    import re as _re
+    name = str(col)
+    # Split on separators AND camelCase, so SubjectID and subject_id both work.
+    spaced = _re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name)
+    tokens = [t for t in _re.split(r"[^A-Za-z0-9]+", spaced.lower()) if t]
+    if any(t in _SUBJECT_ID_TOKENS for t in tokens):
+        return True
+    # A single run-together token is an ID only if the whole thing is one.
+    return "".join(tokens) in _SUBJECT_ID_TOKENS
+
+
 def detect_repeated_subjects(df: pd.DataFrame,
                              candidate_cols: Optional[list] = None
                              ) -> Optional[Tuple[str, int, int]]:
@@ -88,13 +115,15 @@ def detect_repeated_subjects(df: pd.DataFrame,
         rows_per = n / k
         if rows_per < 1.5 or rows_per > 50:
             continue
-        name = str(col).lower()
-        looks_like_id = any(t in name for t in
-                            ("id", "seqn", "subject", "participant", "patient",
-                             "record", "case", "person"))
-        if not looks_like_id:
+        if not _name_looks_like_a_subject_id(col):
             continue
-        if best is None or k > best[1]:
+        # Rank by FEWEST distinct values, i.e. the COARSEST grouping. Ranking by
+        # most distinct is backwards for an ID heuristic: a near-continuous lab
+        # value outranks the actual subject ID sitting next to it, and the
+        # split is then grouped by a covariate. Coarser is also the safe
+        # direction — grouping by a unit that contains the subject can only
+        # keep more of a person on one side, never split one across both.
+        if best is None or k < best[1]:
             best = (str(col), k, n)
     return best
 
@@ -223,9 +252,14 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
                 eligible, test_size=fraction, random_state=seed
             )
 
+    # GroupShuffleSplit's test_size is a fraction of GROUPS, so the row
+    # fraction it lands on differs from the one requested — the audit measured
+    # 17.1% held out while the lockbox reported 15%. Report what was held out.
+    _actual_fraction = (len(test_labels) / len(eligible)) if len(eligible) else fraction
     lockbox = {
         "labels": list(test_labels),
-        "fraction": fraction,
+        "fraction": float(_actual_fraction),
+        "fraction_requested": float(fraction),
         "seed": seed,
         "n_total": int(len(eligible)),
         "n_test": int(len(test_labels)),

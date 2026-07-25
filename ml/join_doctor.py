@@ -145,6 +145,41 @@ def _base_is_numeric(s: pd.Series) -> bool:
     return bool(pd.api.types.is_numeric_dtype(s))
 
 
+# Generic counter names carry no identity: two unrelated exports both called
+# "Unnamed: 0" overlap 100% by construction. A named identifier is different —
+# a study numbering its participants 1..N, or this app's own execute_stack
+# producing SEQN 1..200 from two stacked cycles, is a REAL key that merely
+# happens to be contiguous.
+# "id" itself belongs here. Almost every CSV export carries one, so two
+# unrelated files both holding id 1..50 is a coincidence, not evidence — the
+# exemption below needs a SPECIFIC name (SEQN, subject_id, USUBJID), not the
+# bare word. This line is the difference between rescuing a real study's
+# participant numbers and merging a survey file into a GDP file.
+_ROW_COUNTER_NAMES = frozenset({
+    "", "id", "ids", "key", "index", "idx", "row", "rows", "rowid", "row_id",
+    "rownum", "row_number", "rownumber", "n", "no", "num", "number", "seq",
+    "level_0",
+})
+
+
+def _is_generic_counter_name(col: Any) -> bool:
+    name = str(col).strip().lower()
+    return (name in _ROW_COUNTER_NAMES
+            or name.startswith("unnamed")
+            or name.replace(" ", "").replace("_", "") in _ROW_COUNTER_NAMES)
+
+
+def _named_identifier_pair(left_col: Any, right_col: Any) -> bool:
+    """Both sides carry the SAME specific identifier name."""
+    from utils.combine import _looks_like_an_id_name
+    if _is_generic_counter_name(left_col) or _is_generic_counter_name(right_col):
+        return False
+    if not (_looks_like_an_id_name(left_col) and _looks_like_an_id_name(right_col)):
+        return False
+    norm = lambda c: str(c).strip().lower().replace("_", "").replace(" ", "")
+    return norm(left_col) == norm(right_col)
+
+
 def _looks_like_row_index(raw: pd.Series) -> bool:
     """True for 0..N-1 / 1..N style counters.
 
@@ -227,7 +262,13 @@ class KeyCandidate:
         )
         s = overlap * 0.45 + uniq * 0.10 + self.name_similarity * 0.45
         if self.index_like:
-            s *= 0.15   # a coincidental counter overlap, not a real key
+            # _looks_like_row_index's own docstring says such columns "are only
+            # credible as keys when the column NAMES also agree" — that
+            # exemption was documented and never implemented. Without it a
+            # study numbering participants 1..N had its correct SEQN<->SEQN key
+            # scored 0.15/"low", dropped from the dropdown by combine_ui, and a
+            # measurement column pre-selected in its place.
+            s *= 0.6 if _named_identifier_pair(self.left_col, self.right_col) else 0.15
         if self.repeats_on_both_sides:
             s *= 0.25   # a measurement that happens to overlap
         return s
@@ -247,7 +288,12 @@ class KeyCandidate:
         - A column that repeats on both sides, which is a measurement.
         """
         if self.index_like:
-            return "low"
+            # Offered, never asserted: the app still cannot PROVE that two
+            # contiguous runs describe the same people, so "medium" (visible,
+            # user-confirmed) is the ceiling even when the names agree.
+            return ("medium"
+                    if _named_identifier_pair(self.left_col, self.right_col)
+                    else "low")
         if self.repeats_on_both_sides:
             return "low"
         if self.name_similarity >= 0.85 and min(self.coverage_left, self.coverage_right) >= 0.5:
