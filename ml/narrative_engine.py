@@ -621,6 +621,12 @@ class NarrativeEngine:
                 f"A {task_type} analysis was performed on a dataset of "
                 f"{n_total:,} observations."
             )
+            # Immediately, not in a footnote: without it this N reads as the
+            # study population when it is one group's.
+            from utils.workflow_provenance import cohort_restriction_sentence
+            _restriction = cohort_restriction_sentence()
+            if _restriction:
+                parts.append(_restriction)
         if target:
             parts.append(f"The outcome variable was {target}.")
 

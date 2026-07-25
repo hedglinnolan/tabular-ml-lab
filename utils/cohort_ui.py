@@ -205,6 +205,14 @@ def _switch_to(payload) -> None:
     else:
         df, plan, cell, target_col, dropped = payload
         start_cohort(df, plan, cell, target_col, dropped_features=dropped)
+    # The restriction has to reach the manuscript, not just the sidebar. A chip
+    # inside the running app does not leave with the export, and every exported
+    # artifact otherwise reports this group's N as the study's.
+    try:
+        from utils.workflow_provenance import get_provenance
+        get_provenance().record_cohort_restriction()
+    except Exception:
+        pass
     reset_downstream_results(clear_feature_engineering=True)
     st.rerun()
 
@@ -338,5 +346,10 @@ def _advance_to(column: str, label: str) -> None:
         list(getattr(dc, "feature_cols", []) or []))
     start_cohort(full, plan, cell, target_col,
                  dropped_features=[c for c, _ in lost])
+    try:
+        from utils.workflow_provenance import get_provenance
+        get_provenance().record_cohort_restriction()
+    except Exception:
+        pass
     reset_downstream_results(clear_feature_engineering=True)
     st.rerun()

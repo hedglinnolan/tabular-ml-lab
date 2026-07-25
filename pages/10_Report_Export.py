@@ -1639,7 +1639,20 @@ def generate_report(export_ctx: Dict[str, Any], title: str = "Tabular ML Lab Rep
     strength_items = []
     analysis_total = manuscript_context.get('population_counts', {}).get('analysis_total') or len(df)
     if analysis_total > 0:
-        strength_items.append(f"Sample size of {analysis_total:,} observations")
+        from utils.workflow_provenance import get_provenance as _gp
+        try:
+            _up = getattr(_gp(), "upload", None)
+        except Exception:
+            _up = None
+        if _up is not None and getattr(_up, "cohort_column", ""):
+            # Listing a restricted sample as a plain strength invites the reader
+            # to treat it as the study's size. Name the group it is a sample of.
+            strength_items.append(
+                f"Sample size of {analysis_total:,} observations within "
+                f"{_up.cohort_column} = {_up.cohort_value} "
+                f"(the analysis was restricted to this group)")
+        else:
+            strength_items.append(f"Sample size of {analysis_total:,} observations")
     if export_ctx.get('bootstrap_results'):
         strength_items.append("Bootstrap confidence intervals for uncertainty quantification")
     if export_ctx.get('shap_results'):
