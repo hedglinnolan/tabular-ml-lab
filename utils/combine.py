@@ -184,3 +184,171 @@ def relationship_hint(frames: Dict[str, pd.DataFrame]) -> str:
 def reserved_columns() -> List[str]:
     """Columns the modelling feature pool must never offer as predictors."""
     return [SOURCE_COLUMN]
+
+
+def is_reserved_column(name: Any) -> bool:
+    """True for any bookkeeping column added while combining files.
+
+    Matches on PREFIX, not equality. Stacking two groups and then linking them
+    produces '__source_file_demo' and '__source_file_labs' — the join suffixes
+    the collision — and an exact-match check would let both through into the
+    feature pool. A model that can see which file a row came from will predict
+    the batch, which is leakage wearing a lab coat.
+    """
+    return str(name).startswith(SOURCE_COLUMN)
+
+
+# ── files that need BOTH operations ──────────────────────────────────────
+#
+# The two-way question (stack or link?) has no right answer for the shape most
+# survey research actually arrives in:
+#
+#     demo_2017  demo_2019  labs_2017  labs_2019
+#
+# That is two cycles of two domains, and it needs stacking WITHIN a domain and
+# linking ACROSS domains. Asked to pick one operation for all four files, the
+# researcher gets 400 rows that are half empty, or a join proposed on `age`.
+# Neither is their table, and both look plausible enough to keep working with.
+#
+# So the files are grouped first: files holding the same measurements form a
+# group, groups are stacked internally, and the stacked results are linked.
+
+_TOKEN_SPLIT = __import__("re").compile(r"[^A-Za-z0-9]+")
+
+
+@dataclass
+class FileGroup:
+    """Files holding the same measurements on different people."""
+    label: str
+    members: List[str]
+
+    @property
+    def is_stack(self) -> bool:
+        return len(self.members) > 1
+
+
+@dataclass
+class CombinationPlan:
+    """How a whole set of files becomes one table."""
+    groups: List[FileGroup]
+    shape: str                       # single|stack|link|stack_then_link
+    notes: List[str] = field(default_factory=list)
+
+    @property
+    def needs_stacking(self) -> bool:
+        return any(g.is_stack for g in self.groups)
+
+    @property
+    def needs_linking(self) -> bool:
+        return len(self.groups) > 1
+
+    def describe(self) -> str:
+        """The plan in the researcher's language, before anything runs."""
+        if self.shape == "single":
+            return "There is only one file, so it becomes your table directly."
+        if self.shape == "stack":
+            return (f"These {len(self.groups[0].members)} files hold the same "
+                    f"measurements on different people, so their rows are added "
+                    f"together into one table.")
+        if self.shape == "link":
+            return (f"These {len(self.groups)} files hold different measurements "
+                    f"on the same people, so they are linked side by side by a "
+                    f"shared ID.")
+        stacked = [g for g in self.groups if g.is_stack]
+        return (
+            f"These files are {len(self.groups)} kinds of measurement collected "
+            f"across several files each. First the files of each kind are stacked "
+            f"("
+            + "; ".join(f"{' + '.join(g.members)} → {g.label}" for g in stacked)
+            + f"), then the {len(self.groups)} results are linked by a shared ID."
+        )
+
+
+def _column_overlap(a: pd.DataFrame, b: pd.DataFrame) -> float:
+    """Jaccard overlap of two frames' column names."""
+    sa, sb = set(map(str, a.columns)), set(map(str, b.columns))
+    if not sa or not sb:
+        return 0.0
+    return len(sa & sb) / len(sa | sb)
+
+
+def _group_label(members: List[str]) -> str:
+    """A name for a stack group, taken from what its members have in common.
+
+    demo_2017 + demo_2019 -> 'demo'. Falls back to listing them.
+    """
+    if len(members) == 1:
+        return members[0]
+    token_lists = [[t for t in _TOKEN_SPLIT.split(m) if t] for m in members]
+    common: List[str] = []
+    for parts in zip(*token_lists):
+        if len(set(parts)) == 1:
+            common.append(parts[0])
+        else:
+            break
+    if common:
+        return "_".join(common)
+    return " + ".join(members[:2]) + ("…" if len(members) > 2 else "")
+
+
+def group_files(frames: Dict[str, pd.DataFrame],
+                threshold: float = 0.8) -> List[List[str]]:
+    """Cluster files whose schemas match closely enough to be stacked.
+
+    Union-find over pairwise column overlap, so a chain of near-identical
+    cycles ends up in one group even when the first and last differ slightly.
+    """
+    names = [n for n, f in frames.items() if f is not None]
+    parent = {n: n for n in names}
+
+    def find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            if _column_overlap(frames[a], frames[b]) >= threshold:
+                ra, rb = find(a), find(b)
+                if ra != rb:
+                    parent[ra] = rb
+
+    clusters: Dict[str, List[str]] = {}
+    for n in names:
+        clusters.setdefault(find(n), []).append(n)
+    order = {n: i for i, n in enumerate(names)}
+    out = [sorted(v, key=lambda m: order[m]) for v in clusters.values()]
+    return sorted(out, key=lambda g: order[g[0]])
+
+
+def plan_combination(frames: Dict[str, pd.DataFrame],
+                     threshold: float = 0.8) -> CombinationPlan:
+    """Propose how this whole set of files becomes one table.
+
+    A hint, not a decision — the UI shows it and lets the user move files
+    between groups before anything runs.
+    """
+    live = {n: f for n, f in frames.items() if f is not None}
+    if len(live) < 2:
+        only = list(live)
+        return CombinationPlan(
+            groups=[FileGroup(label=only[0], members=only)] if only else [],
+            shape="single")
+
+    clusters = group_files(live, threshold=threshold)
+    groups = [FileGroup(label=_group_label(c), members=c) for c in clusters]
+
+    if len(groups) == 1:
+        shape = "stack"
+    elif not any(g.is_stack for g in groups):
+        shape = "link"
+    else:
+        shape = "stack_then_link"
+
+    notes: List[str] = []
+    if shape == "stack_then_link":
+        notes.append(
+            "Grouped by how much the files' columns overlap. If a file is in the "
+            "wrong group, move it — nothing runs until you confirm.")
+    return CombinationPlan(groups=groups, shape=shape, notes=notes)

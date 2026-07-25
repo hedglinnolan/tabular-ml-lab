@@ -31,7 +31,7 @@ import pandas as pd
 import streamlit as st
 
 from utils.combine import (
-    SOURCE_COLUMN, execute_stack, plan_stack, relationship_hint,
+    SOURCE_COLUMN, execute_stack, plan_combination, plan_stack, relationship_hint,
 )
 from ml.join_doctor import (
     KeyCandidate, diagnose_join, execute_join, find_key_candidates, plain_summary,
@@ -171,6 +171,76 @@ def _render_stack(frames: Dict[str, pd.DataFrame]) -> Optional[Tuple[pd.DataFram
     return execute_stack(subset)
 
 
+def _render_grouped(frames: Dict[str, pd.DataFrame]) -> Optional[Tuple[pd.DataFrame, str]]:
+    """Several kinds of measurement, each split across files.
+
+    Two cycles of demographics and two of labs need stacking WITHIN a kind and
+    linking ACROSS kinds. Asked to pick one operation for all four files, the
+    researcher gets 400 half-empty rows or a join proposed on 'age' — both
+    wrong, both plausible enough to keep working with.
+    """
+    plan = plan_combination(frames)
+    labels = [g.label for g in plan.groups]
+
+    st.markdown("**What each file holds**")
+    st.caption("Files holding the same measurements get stacked together first, "
+               "then the results are linked by a shared ID.")
+
+    # The grouping is a proposal. Anything the app inferred, the user can move.
+    assignment: Dict[str, str] = {}
+    default_for = {m: g.label for g in plan.groups for m in g.members}
+    for name in frames:
+        c1, c2 = st.columns([3, 2])
+        with c1:
+            st.markdown(f"📄 {name}")
+        with c2:
+            choice = st.selectbox(
+                f"group for {name}", labels,
+                index=labels.index(default_for.get(name, labels[0])),
+                key=f"combine_group_{name}", label_visibility="collapsed",
+            )
+        assignment[name] = choice
+
+    grouped: Dict[str, List[str]] = {}
+    for name, label in assignment.items():
+        grouped.setdefault(label, []).append(name)
+
+    if len(grouped) < 2:
+        st.warning("Everything is in one group, so there is nothing to link. "
+                   "Choose **The same measurements on different people** above "
+                   "to just stack them.")
+        return None
+
+    # ── stack within each group ──────────────────────────────────────────
+    stacked: Dict[str, pd.DataFrame] = {}
+    steps: List[str] = []
+    for label, members in grouped.items():
+        if len(members) == 1:
+            stacked[label] = frames[members[0]]
+            continue
+        subset = {m: frames[m] for m in members}
+        plan_s = plan_stack(subset)
+        st.markdown(f"##### Stacking into **{label}**")
+        for b in plan_s.blocking:
+            st.error(f"🛑 {b}")
+        for w in plan_s.warnings:
+            st.warning(f"⚠️ {w}")
+        if not plan_s.can_proceed:
+            return None
+        st.caption(plan_s.summary())
+        stacked[label], desc = execute_stack(subset)
+        steps.append(desc)
+
+    # ── then link the stacked results ────────────────────────────────────
+    st.markdown("---")
+    st.markdown(f"**Linking {len(stacked)} combined tables**")
+    outcome = _render_link(stacked)
+    if outcome is None:
+        return None
+    result, link_desc = outcome
+    return result, " ".join(steps + [link_desc])
+
+
 def render_combine_step(frames: Dict[str, pd.DataFrame]) -> Optional[pd.DataFrame]:
     """Render Step 2 and return the combined table once the user confirms.
 
@@ -187,21 +257,26 @@ def render_combine_step(frames: Dict[str, pd.DataFrame]) -> Optional[pd.DataFram
     _file_cards(frames)
     st.markdown("---")
 
-    hint = relationship_hint(frames)
+    # The app groups the files by how much their columns overlap and proposes
+    # a shape. Its guess picks the default answer; the user always decides.
+    plan = plan_combination(frames)
     choices = [
         "Different measurements on the same people",
         "The same measurements on different people",
+        "Both — several kinds of measurement, each split across files",
         "Just use one file for now",
     ]
-    default_idx = {"link": 0, "stack": 1}.get(hint, 0)
+    default_idx = {"link": 0, "stack": 1, "stack_then_link": 2}.get(plan.shape, 0)
 
     st.markdown("**How do these files relate?**")
-    if hint == "stack":
+    if plan.shape == "stack":
         st.caption("💡 These look like the **same measurements on different people** — "
                    "they share nearly all of their columns.")
-    elif hint == "link":
+    elif plan.shape == "link":
         st.caption("💡 These look like **different measurements on the same people** — "
                    "they have mostly different columns, so they probably link by an ID.")
+    elif plan.shape == "stack_then_link":
+        st.caption(f"💡 {plan.describe()}")
 
     relation = st.radio(
         "How do these files relate?", choices, index=default_idx,
@@ -212,12 +287,14 @@ def render_combine_step(frames: Dict[str, pd.DataFrame]) -> Optional[pd.DataFram
                     "participants. The columns add up.",
         choices[1]: "For example: survey cycles, study sites, or different years of the "
                     "same measurements. The rows add up.",
-        choices[2]: "Continue with a single file; the others stay uploaded for later.",
+        choices[2]: "For example: two survey cycles of demographics AND two of labs. "
+                    "Each kind is stacked first, then the kinds are linked by ID.",
+        choices[3]: "Continue with a single file; the others stay uploaded for later.",
     }[relation])
 
     st.markdown("---")
 
-    if relation == choices[2]:
+    if relation == choices[3]:
         pick = st.selectbox("Which file?", list(frames), key="combine_single_pick")
         st.caption(f"{len(frames[pick]):,} rows × {frames[pick].shape[1]} columns")
         if st.button("Use this file", type="primary", key="combine_use_single"):
@@ -225,8 +302,12 @@ def render_combine_step(frames: Dict[str, pd.DataFrame]) -> Optional[pd.DataFram
             return frames[pick]
         return None
 
-    outcome = (_render_link(frames) if relation == choices[0]
-               else _render_stack(frames))
+    if relation == choices[0]:
+        outcome = _render_link(frames)
+    elif relation == choices[1]:
+        outcome = _render_stack(frames)
+    else:
+        outcome = _render_grouped(frames)
     if outcome is None:
         return None
 

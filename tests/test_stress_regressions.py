@@ -329,3 +329,107 @@ class TestJsonRowSetChoice:
         raw = b'{"a": 1}\n{"a": 2}\n{"a": 3}\n'
         layout = inspect_json(io.BytesIO(raw))
         assert layout.kind == "lines" and "3" in layout.note
+
+
+# ── files that need BOTH operations ──────────────────────────────────────
+
+class TestMixedRelationships:
+    """Step 2 asked ONE question for ALL files, and the NHANES shape — two
+    cycles of two domains — has no right answer among the two it offered.
+
+        relationship_hint said: link          (the wrong operation)
+        stack everything -> 400 rows, correct answer is 200, every column ~50% null
+        link everything  -> proposes joining two cycles on `age`
+
+    This is the shape of the project's own demo dataset.
+    """
+
+    def _two_by_two(self):
+        return {
+            "demo_2017": pd.DataFrame({"SEQN": range(1000, 1100),
+                                       "age": RNG.randint(18, 80, 100),
+                                       "sex": RNG.randint(1, 3, 100)}),
+            "demo_2019": pd.DataFrame({"SEQN": range(1100, 1200),
+                                       "age": RNG.randint(18, 80, 100),
+                                       "sex": RNG.randint(1, 3, 100)}),
+            "labs_2017": pd.DataFrame({"SEQN": range(1000, 1100),
+                                       "glucose": RNG.normal(100, 20, 100)}),
+            "labs_2019": pd.DataFrame({"SEQN": range(1100, 1200),
+                                       "glucose": RNG.normal(100, 20, 100)}),
+        }
+
+    def test_the_shape_is_recognised(self):
+        from utils.combine import plan_combination
+        assert plan_combination(self._two_by_two()).shape == "stack_then_link"
+
+    def test_files_are_grouped_by_what_they_measure(self):
+        from utils.combine import plan_combination
+        groups = {g.label: set(g.members) for g in plan_combination(self._two_by_two()).groups}
+        assert groups == {"demo": {"demo_2017", "demo_2019"},
+                          "labs": {"labs_2017", "labs_2019"}}
+
+    def test_the_plan_is_described_in_plain_language(self):
+        from utils.combine import plan_combination
+        text = plan_combination(self._two_by_two()).describe().lower()
+        assert "stacked" in text and "linked" in text
+        for jargon in ("inner join", "outer join", "union all", "cardinality"):
+            assert jargon not in text
+
+    def test_grouping_uses_columns_not_filenames(self):
+        from utils.combine import plan_combination
+        frames = {
+            "file_A": pd.DataFrame({"SEQN": range(50), "age": range(50)}),
+            "export final(2)": pd.DataFrame({"SEQN": range(50, 100), "age": range(50)}),
+            "bloods": pd.DataFrame({"SEQN": range(100), "glucose": RNG.rand(100)}),
+        }
+        groups = [set(g.members) for g in plan_combination(frames).groups]
+        assert {"file_A", "export final(2)"} in groups
+        assert {"bloods"} in groups
+
+    def test_three_domains_by_three_cycles(self):
+        from utils.combine import plan_combination
+        frames = {}
+        for dom, cols in [("demo", ["age", "sex"]), ("labs", ["glucose", "chol"]),
+                          ("diet", ["kcal", "fiber"])]:
+            for i, yr in enumerate(["2015", "2017", "2019"]):
+                frames[f"{dom}_{yr}"] = pd.DataFrame(
+                    {"SEQN": range(i * 100, i * 100 + 100),
+                     **{c: RNG.rand(100) for c in cols}})
+        plan = plan_combination(frames)
+        assert plan.shape == "stack_then_link"
+        assert sorted(len(g.members) for g in plan.groups) == [3, 3, 3]
+
+    @pytest.mark.parametrize("frames_fn,expected", [
+        (lambda: {"1999-2000": pd.DataFrame({"SEQN": range(100), "age": range(100)}),
+                  "2001-2002": pd.DataFrame({"SEQN": range(100, 230), "age": range(130)})},
+         "stack"),
+        (lambda: {"demographics": pd.DataFrame({"SEQN": range(200), "age": range(200)}),
+                  "labs": pd.DataFrame({"SEQN": range(200), "glucose": RNG.rand(200)}),
+                  "diet": pd.DataFrame({"SEQN": range(200), "kcal": range(200)})},
+         "link"),
+        (lambda: {"only": pd.DataFrame({"x": [1, 2, 3]})}, "single"),
+    ])
+    def test_the_shapes_that_already_worked_are_unchanged(self, frames_fn, expected):
+        from utils.combine import plan_combination
+        assert plan_combination(frames_fn()).shape == expected
+
+
+class TestSourceColumnIsNeverAPredictor:
+    """Stacking two groups then linking them produces '__source_file_demo' and
+    '__source_file_labs' — the join suffixes the collision — and the feature
+    pool's exact-match check let both through. A model that can see which file
+    a row came from predicts the batch.
+    """
+
+    @pytest.mark.parametrize("name", [
+        "__source_file", "__source_file_demo", "__source_file_labs",
+        "__source_file_x", "__source_file_1",
+    ])
+    def test_every_suffixed_variant_is_reserved(self, name):
+        from utils.combine import is_reserved_column
+        assert is_reserved_column(name)
+
+    @pytest.mark.parametrize("name", ["age", "source_file", "sex", "SEQN", "file_source"])
+    def test_ordinary_columns_are_not_reserved(self, name):
+        from utils.combine import is_reserved_column
+        assert not is_reserved_column(name)

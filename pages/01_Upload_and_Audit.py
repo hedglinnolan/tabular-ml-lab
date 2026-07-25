@@ -873,9 +873,9 @@ if task_mode == "prediction":
         # Bookkeeping columns added when files are combined (e.g. which file a
         # row came from) must never be offered as predictors: a model would
         # happily "predict" the source file, which is batch leakage, not science.
-        from utils.combine import reserved_columns as _reserved_cols
-        _reserved = set(_reserved_cols())
-        feature_options = [c for c in all_cols if c != target_col and c not in _reserved]
+        from utils.combine import is_reserved_column as _is_reserved
+        feature_options = [c for c in all_cols
+                           if c != target_col and not _is_reserved(c)]
         n_available_features = len(feature_options)
         
         st.markdown(f"**Feature Variables** ({n_available_features} available)")

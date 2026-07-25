@@ -84,8 +84,7 @@ def test_the_question_is_asked_in_plain_language(kind):
     join type they want."""
     at = _app(_scenario(kind))
     at.run()
-    relation = [r for r in at.radio if len(r.options) == 3
-                and any("people" in o for o in r.options)]
+    relation = [r for r in at.radio if any("people" in o for o in r.options)]
     assert relation, "the relationship question is missing"
     opts = " ".join(relation[0].options).lower()
     assert "same measurements on different people" in opts
