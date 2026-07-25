@@ -16,7 +16,7 @@ Methodological contract (split-first workflow):
 The lockbox stores index LABELS (not positions) so membership survives
 feature engineering and row filtering, which preserve the original index.
 """
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -24,6 +24,8 @@ import streamlit as st
 
 DEFAULT_TEST_FRACTION = 0.15
 _MIN_ROWS_FOR_LOCKBOX = 10
+# Splitting by subject needs enough subjects for the fraction to be meaningful.
+_MIN_GROUPS_FOR_GROUPED_LOCKBOX = 8
 
 
 def is_exploratory() -> bool:
@@ -39,17 +41,68 @@ def get_lockbox() -> Optional[Dict[str, Any]]:
 
 
 def _lockbox_signature(df: pd.DataFrame, target_col: str, task_type: str,
-                       fraction: float, seed: int) -> str:
+                       fraction: float, seed: int, group_col: Optional[str] = None) -> str:
     try:
         content = int(pd.util.hash_pandas_object(df, index=False).sum())
     except Exception:
-        content = df.shape
-    return f"{content}|{df.shape}|{target_col}|{task_type}|{fraction:.4f}|{seed}"
+        # Unhashable cells (e.g. a list from nested JSON) must not silently
+        # collapse the signature to something stable — that would stop the
+        # lockbox from ever being redrawn. Fall back to a coarse but
+        # content-sensitive descriptor.
+        try:
+            content = f"{df.shape}|{tuple(df.columns)}|{df.notna().sum().sum()}"
+        except Exception:
+            content = str(df.shape)
+    return (f"{content}|{df.shape}|{target_col}|{task_type}|"
+            f"{fraction:.4f}|{seed}|{group_col or ''}")
+
+
+def detect_repeated_subjects(df: pd.DataFrame,
+                             candidate_cols: Optional[list] = None
+                             ) -> Optional[Tuple[str, int, int]]:
+    """Find a column that looks like a subject ID appearing on several rows.
+
+    Returns (column, n_subjects, n_rows) or None. Used to catch the case that
+    silently defeats the quarantine: a merge with repeated measures puts the
+    SAME subject in both the training rows and the sealed test rows, so the
+    "held-out" set was already trained on.
+    """
+    if df is None or df.empty:
+        return None
+    n = len(df)
+    cols = candidate_cols if candidate_cols is not None else list(df.columns)
+    best = None
+    for col in cols:
+        if col not in df.columns:
+            continue
+        s = df[col]
+        if isinstance(s, pd.DataFrame):
+            continue
+        try:
+            k = int(s.nunique(dropna=True))
+        except TypeError:
+            continue
+        if k < 2 or k >= n:
+            continue                     # unique per row => no repetition
+        # An identifier repeats a handful of times; a category repeats hundreds.
+        rows_per = n / k
+        if rows_per < 1.5 or rows_per > 50:
+            continue
+        name = str(col).lower()
+        looks_like_id = any(t in name for t in
+                            ("id", "seqn", "subject", "participant", "patient",
+                             "record", "case", "person"))
+        if not looks_like_id:
+            continue
+        if best is None or k > best[1]:
+            best = (str(col), k, n)
+    return best
 
 
 def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
                    fraction: Optional[float] = None,
-                   seed: Optional[int] = None) -> Optional[Dict[str, Any]]:
+                   seed: Optional[int] = None,
+                   group_col: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Create or refresh the lockbox; rebuild only when its inputs change.
 
     Returns the lockbox dict, or None when a lockbox cannot be drawn
@@ -69,7 +122,18 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
     if len(eligible) < _MIN_ROWS_FOR_LOCKBOX:
         return get_lockbox()
 
-    sig = _lockbox_signature(df, target_col, task_type, fraction, seed)
+    # If the caller did not name a subject column, look for one anyway: a
+    # merge with repeated measures otherwise splits the SAME subject across
+    # train and test, so the "held-out" rows were already trained on and the
+    # quarantine is silently worthless.
+    if not group_col:
+        detected = detect_repeated_subjects(df)
+        if detected:
+            group_col = detected[0]
+    if group_col and group_col not in df.columns:
+        group_col = None
+
+    sig = _lockbox_signature(df, target_col, task_type, fraction, seed, group_col)
     existing = get_lockbox()
     if existing and existing.get("signature") == sig:
         return existing
@@ -77,21 +141,39 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
     from sklearn.model_selection import train_test_split
 
     stratify = None
-    if task_type == "classification":
+    if task_type == "classification" and not group_col:
         y_eligible = y.loc[eligible]
         counts = y_eligible.value_counts()
         # Stratification needs >=2 members per class and >=1 expected per class
         if counts.min() >= 2 and (counts * fraction).min() >= 1:
             stratify = y_eligible
 
-    try:
-        _, test_labels = train_test_split(
-            eligible, test_size=fraction, random_state=seed, stratify=stratify
-        )
-    except ValueError:
-        _, test_labels = train_test_split(
-            eligible, test_size=fraction, random_state=seed
-        )
+    grouped = False
+    test_labels = None
+    if group_col:
+        groups = df.loc[eligible, group_col]
+        n_groups = int(groups.nunique(dropna=False))
+        if n_groups >= _MIN_GROUPS_FOR_GROUPED_LOCKBOX:
+            from sklearn.model_selection import GroupShuffleSplit
+            try:
+                gss = GroupShuffleSplit(n_splits=1, test_size=fraction, random_state=seed)
+                _, test_pos = next(gss.split(eligible, groups=groups))
+                test_labels = eligible[test_pos]
+                grouped = True
+            except Exception:
+                test_labels = None
+        if test_labels is None:
+            group_col = None            # too few groups to split by subject
+
+    if test_labels is None:
+        try:
+            _, test_labels = train_test_split(
+                eligible, test_size=fraction, random_state=seed, stratify=stratify
+            )
+        except ValueError:
+            _, test_labels = train_test_split(
+                eligible, test_size=fraction, random_state=seed
+            )
 
     lockbox = {
         "labels": list(test_labels),
@@ -101,6 +183,9 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
         "n_test": int(len(test_labels)),
         "signature": sig,
         "stratified": stratify is not None,
+        "group_col": group_col if grouped else None,
+        "n_test_groups": (int(df.loc[test_labels, group_col].nunique())
+                          if grouped else None),
     }
 
     if existing is not None and existing.get("labels") != lockbox["labels"]:
@@ -142,8 +227,16 @@ def render_lockbox_status(context: str = "") -> None:
     if lb is None:
         return
     extra = f" {context}" if context else ""
-    st.caption(
-        f"🔒 Test set: {lb['fraction']:.0%} (n={lb['n_test']}"
-        f"{', stratified' if lb.get('stratified') else ''}) held out since upload — "
-        f"opened once at Train & Compare.{extra}"
-    )
+    if lb.get("group_col"):
+        st.caption(
+            f"🔒 Test set: {lb['fraction']:.0%} (n={lb['n_test']} rows from "
+            f"{lb.get('n_test_groups', '?')} subjects, split by '{lb['group_col']}' so no "
+            f"subject appears on both sides) held out since upload — opened once at "
+            f"Train & Compare.{extra}"
+        )
+    else:
+        st.caption(
+            f"🔒 Test set: {lb['fraction']:.0%} (n={lb['n_test']}"
+            f"{', stratified' if lb.get('stratified') else ''}) held out since upload — "
+            f"opened once at Train & Compare.{extra}"
+        )
