@@ -890,11 +890,23 @@ for group_name in sorted_groups:
 
         with cols[idx % len(cols)]:
             is_selected = st.session_state[checkbox_key]
-            model_has_preprocessing = model_key in _prep_built
+            # The badge must describe the pipeline this model will ACTUALLY be
+            # trained with, which line ~1286 resolves as
+            # `get_preprocessing_pipeline(model_key) or pipeline`. Reporting
+            # only the per-model dict told every model "No pipeline" whenever
+            # Preprocess had built the shared default — which is what it builds
+            # on a first pass, because it can only tune per model for models
+            # already picked HERE. The user was sent back to Preprocess to fix
+            # something that was not broken, and Preprocess built the same
+            # shared pipeline again.
+            if model_key in _prep_built:
+                prep_badge, prep_color = "✅ Tuned for this model", "#22c55e"
+            elif pipeline is not None:
+                prep_badge, prep_color = "✅ Shared pipeline", "#22c55e"
+            else:
+                prep_badge, prep_color = "⚠️ No pipeline", "#f59e0b"
             border = "#667eea" if is_selected else "#e2e8f0"
             bg = "#f0f0ff" if is_selected else "#fff"
-            prep_badge = "✅ Preprocessed" if model_has_preprocessing else "⚠️ No pipeline"
-            prep_color = "#22c55e" if model_has_preprocessing else "#f59e0b"
             notes = "; ".join(spec.capabilities.notes) if spec.capabilities.notes else ""
             st.markdown(f"""
             <div style="border: 2px solid {border}; border-radius: 10px; padding: 0.75rem;

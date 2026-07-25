@@ -412,9 +412,20 @@ for group_name in sorted(model_groups_prep.keys()):
 
 selected_models = [k.replace("train_model_", "") for k, v in st.session_state.items() if k.startswith("train_model_") and v]
 if selected_models:
-    st.success(f"✅ **{len(selected_models)} model(s) selected:** {', '.join(m.upper() for m in selected_models)}")
+    n_sel = len(selected_models)
+    st.success(
+        f"✅ **{n_sel} model{'' if n_sel == 1 else 's'} selected:** "
+        f"{', '.join(m.upper() for m in selected_models)} — each gets its own "
+        f"preprocessing pipeline.")
 else:
-    st.info("Select at least one model above. Each gets its own preprocessing pipeline.")
+    # This used to read "Select at least one model above", which is not a
+    # requirement and not possible on a first pass: models are chosen on Train
+    # & Compare, which comes AFTER this page. Selecting none is the normal
+    # first-pass path and produces one shared pipeline.
+    st.info(
+        "Picking models here is optional. It is how you get preprocessing "
+        "tuned per model; leave it alone and one shared pipeline is built for "
+        "all of them.")
 
 # ============================================================================
 # 2. PREPROCESSING CONFIGURATION
@@ -464,7 +475,7 @@ if use_smart_defaults:
         st.markdown(f"- Outlier treatment: **{_auto_outlier}**")
         st.markdown(f"- Feature augmentation: **none**")
 
-    st.caption("These defaults are applied to all selected models. Model-specific adjustments (e.g., enabling scaling for SVM) are handled automatically.")
+    st.caption("These defaults are applied to every model you train. Model-specific adjustments (e.g., enabling scaling for SVM) are handled automatically.")
 
 # Interpretability preference (both modes)
 _imode_opts = ["high", "balanced", "performance"]
@@ -792,6 +803,18 @@ else:
 
 # Pipeline summary before building
 st.markdown("---")
+if not selected_models:
+    # Per-model tuning can only run for models chosen on Train & Compare, and
+    # the recommended order puts this page FIRST — so on a first pass there is
+    # nothing to tune for, and the page previously just showed a bare button.
+    st.info(
+        "**No models have been chosen yet, so one shared pipeline will be "
+        "built.** It applies to every model you train, and it is the right "
+        "choice for a first pass. If you later want preprocessing tuned per "
+        "model — different scaling for a neural net than for a random forest, "
+        "say — pick your models on **Train & Compare** and come back here.",
+        icon="🔨",
+    )
 if use_smart_defaults and selected_models:
     st.markdown("**📋 Pipeline Summary** — what will be built:")
     _summary_cols = st.columns(min(len(selected_models), 4))
@@ -1107,11 +1130,21 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
             _pp_resolve_ledger.upsert(Insight(
                 id="preprocess_summary",
                 source_page="05_Preprocess", category="methodology", severity="info",
-                finding=f"Pipelines built for {len(pipelines_by_model)} model(s): {', '.join(m.upper() for m in pipelines_by_model.keys())}.",
-                implication="Use Train & Compare to train models; preprocessing is applied per model.",
+                finding=(
+                    "One shared preprocessing pipeline was built. It is applied "
+                    "to every model trained."
+                    if not _built else
+                    f"Preprocessing was tuned for "
+                    f"{len(_built)} model{'' if len(_built) == 1 else 's'}: "
+                    f"{', '.join(m.upper() for m in _built)}."
+                ),
+                implication=("Use Train & Compare to train models; every model "
+                             "is preprocessed before it is fitted."),
                 relevant_pages=["06_Train_and_Compare", "10_Report_Export"],
                 resolved=True,
-                resolved_by=f"Built {len(pipelines_by_model)} preprocessing pipeline(s)",
+                resolved_by=("Built one shared preprocessing pipeline" if not _built
+                             else f"Built {len(_built)} preprocessing "
+                                  f"pipeline{'' if len(_built) == 1 else 's'}"),
                 resolved_on_page="05_Preprocess",
                 resolution_details={
                     "action_type": "preprocessing",
