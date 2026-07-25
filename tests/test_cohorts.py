@@ -239,3 +239,77 @@ class TestRunSequencing:
         runs = [CohortRun("sex", "M", 600, 100, completed=True),
                 CohortRun("sex", "F", 500, 90, completed=True)]
         assert any("interaction term" in c for c in comparison_caveats(runs, "classification"))
+
+
+# ── defects found by re-auditing this feature after it was written ───────
+
+class TestAuditFindings:
+    """Five problems the first pass shipped with. Each of them produced a
+    plausible-looking result, which is why none of them failed a test."""
+
+    def test_stratification_survives_a_grouped_split_falling_back(self):
+        """A group column with too few subjects fell back to an ordinary split
+        carrying NO stratification, because stratification was decided before
+        the fallback. The one case producing a test set unrepresentative of
+        both the outcome AND the demographics — silently."""
+        rng = np.random.RandomState(0)
+        n = 300
+        df = pd.DataFrame({"subj": np.repeat(range(3), 100),   # below the group floor
+                           "sex": rng.choice(["M", "F"], n, p=[0.7, 0.3]),
+                           "outcome": rng.choice([0, 1], n, p=[0.8, 0.2])})
+        st.session_state.clear()
+        lb = ensure_lockbox(df, "outcome", "classification", fraction=0.2, seed=1,
+                            group_col="subj", stratify_cols=["sex"])
+        assert lb["group_col"] is None            # it did fall back
+        assert lb["strata"] == ["outcome", "sex"]  # and still stratified
+        test = df.loc[lb["labels"]]
+        assert abs(test["outcome"].mean() - df["outcome"].mean()) < 0.05
+
+    def test_a_genuinely_grouped_split_still_groups(self):
+        rng = np.random.RandomState(1)
+        df = pd.DataFrame({"subj": np.repeat(range(50), 6),
+                           "sex": rng.choice(["M", "F"], 300),
+                           "outcome": rng.choice([0, 1], 300, p=[0.7, 0.3])})
+        st.session_state.clear()
+        lb = ensure_lockbox(df, "outcome", "classification", fraction=0.2, seed=1,
+                            group_col="subj", stratify_cols=["sex"])
+        assert lb["group_col"] == "subj"
+        test_subjects = set(df.loc[lb["labels"], "subj"])
+        train_subjects = set(df.loc[~df.index.isin(lb["labels"]), "subj"])
+        assert not (test_subjects & train_subjects)
+
+    def test_rows_with_no_grouping_value_are_counted_and_disclosed(self):
+        """They belong to no cohort and vanish from every run. Saying nothing
+        is exactly the silent exclusion this app exists to prevent."""
+        rng = np.random.RandomState(0)
+        df = pd.DataFrame({"sex": rng.choice(["M", "F", None], 1000, p=[0.6, 0.25, 0.15]),
+                           "outcome": rng.choice([0, 1], 1000, p=[0.8, 0.2])})
+        plan = plan_cohorts(df, "sex", "outcome", "classification")
+        assert plan.n_excluded_missing == int(df["sex"].isna().sum())
+        assert "no 'sex' recorded" in plan.summary()
+        assert any("selected sample" in w for w in plan.warnings)
+
+    def test_a_couple_of_missing_values_are_not_nagged_about(self):
+        df = pd.DataFrame({"g": ["a"] * 499 + ["b"] * 499 + [None] * 2,
+                           "outcome": list(np.resize([0, 0, 0, 1], 1000))})
+        plan = plan_cohorts(df, "g", "outcome", "classification")
+        assert not any("selected sample" in w for w in plan.warnings)
+
+    def test_rows_without_an_outcome_do_not_inflate_viability(self):
+        """100 rows of which 65 have no outcome is a 35-row cohort wearing a
+        big number, and it was passing the size check on the big number."""
+        df = pd.DataFrame({"g": ["a"] * 100 + ["b"] * 100,
+                           "outcome": [0] * 20 + [1] * 15 + [None] * 65
+                                      + [0] * 60 + [1] * 40})
+        plan = plan_cohorts(df, "g", "outcome", "classification")
+        a = [c for c in plan.cells if c.label == "a"][0]
+        assert a.n_rows == 35 and a.n_rows_total == 100
+        assert not a.viable and "with an outcome recorded" in a.blocked_reason
+
+    def test_a_train_mask_from_another_frame_cannot_corrupt_the_counts(self):
+        df = pd.DataFrame({"g": ["a"] * 100 + ["b"] * 100,
+                           "outcome": list(np.resize([0, 1], 200))})
+        stray = pd.Series(True, index=range(500, 700))     # wrong index entirely
+        plan = plan_cohorts(df, "g", "outcome", "classification", train_mask=stray)
+        for cell in plan.cells:
+            assert cell.n_train + cell.n_test == cell.n_rows

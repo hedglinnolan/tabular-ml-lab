@@ -51,7 +51,7 @@ from html import escape as _esc
 
 from utils.combine_preview import (
     FROM_ADDED, FROM_KEY, FROM_LEFT, FROM_RIGHT, FROM_SHARED,
-    ChangeMap, describe_join, describe_stack,
+    ChangeMap, blank_cell_mask, describe_join, describe_stack,
 )
 
 # One colour per origin, used identically in the column map and the preview so
@@ -126,11 +126,17 @@ def _preview_table(result: pd.DataFrame, cm: ChangeMap) -> None:
         seam_after = -1
 
     head = result.iloc[idx][cols] if idx else result.iloc[:0][cols]
+    # Two different blanks that look identical in a table and mean opposite
+    # things: "we never measured this person" versus "this person was not in
+    # that file". Only the second is caused by the combine.
+    merge_blanks = blank_cell_mask(result, cm)
 
-    def _cell(v: Any) -> str:
+    def _cell(v: Any, from_merge: bool) -> str:
         if v is None or (isinstance(v, float) and np.isnan(v)) or v is pd.NaT:
-            return ('<span style="color:#b45309;background:#fef3c7;padding:0 4px;'
-                    'border-radius:3px;font-size:0.78rem;">blank</span>')
+            if from_merge:
+                return ('<span style="color:#b45309;background:#fef3c7;padding:0 4px;'
+                        'border-radius:3px;font-size:0.78rem;">no match</span>')
+            return '<span style="color:#94a3b8;">—</span>'
         text = str(v)
         return _esc(text if len(text) <= 22 else text[:21] + "…")
 
@@ -142,8 +148,11 @@ def _preview_table(result: pd.DataFrame, cm: ChangeMap) -> None:
     for n, (_, row) in enumerate(head.iterrows()):
         border = ("border-top:3px solid #667eea;" if n == seam_after + 1 and seam_after >= 0
                   else "")
-        tds = "".join(f'<td style="padding:4px 8px;font-size:0.82rem;{border}'
-                      f'white-space:nowrap;">{_cell(row[c])}</td>' for c in cols)
+        tds = "".join(
+            f'<td style="padding:4px 8px;font-size:0.82rem;{border}'
+            f'white-space:nowrap;">'
+            f'{_cell(row[c], bool(merge_blanks.at[row.name, c]) if c in merge_blanks.columns else False)}'
+            f"</td>" for c in cols)
         trs.append(f"<tr>{tds}</tr>")
     st.markdown(
         f'<div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px;'
@@ -158,6 +167,10 @@ def _preview_table(result: pd.DataFrame, cm: ChangeMap) -> None:
         legend.append(f'<span style="border-bottom:2px solid {_ORIGIN_COLOUR[key]};">'
                       f'{_esc(str(label))}</span>')
     note = " · ".join(legend)
+    if bool(merge_blanks.to_numpy().any()):
+        note += ('  ·  <span style="color:#b45309;background:#fef3c7;padding:0 4px;'
+                 'border-radius:3px;">no match</span> = blank because of this '
+                 'combine, not a missing measurement')
     if cm.operation == "stack" and seam_after >= 0:
         note += ' · <span style="color:#667eea;">the line is where the second file begins</span>'
     if trimmed:

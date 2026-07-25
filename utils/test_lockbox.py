@@ -142,39 +142,36 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
 
     from sklearn.model_selection import train_test_split
 
-    # What the held-out set should be representative OF. The outcome always —
-    # a test set that happens to contain twice the event rate makes every
-    # metric meaningless. Plus any demographic the researcher named, because a
-    # test set that is 70% men when the cohort is 50% men will report a number
-    # that does not describe the study population. This is ordinary good
-    # practice and nobody should have to know to ask for it.
-    stratify = None
-    strata_used: List[str] = []
-    if not group_col:
+    def _build_stratum():
+        """Composite stratum for the split, and the columns it ended up using.
+
+        The outcome always — a test set holding twice the event rate makes every
+        metric meaningless. Plus any demographic the researcher named, because a
+        test set that is 75% men when the cohort is 71% men reports a number that
+        does not describe the study population.
+        """
         parts: List[pd.Series] = []
+        used: List[str] = []
         if task_type == "classification":
             parts.append(y.loc[eligible].astype(str))
-            strata_used.append(target_col)
+            used.append(target_col)
         for col in (stratify_cols or []):
             if col in df.columns and col != target_col:
                 parts.append(df.loc[eligible, col].astype(str))
-                strata_used.append(col)
-        # Every extra variable multiplies the number of cells, and one cell with
-        # a single member makes the whole split impossible. So drop the least
-        # important variable until it fits rather than failing or, worse,
-        # silently falling back to an unstratified split.
+                used.append(col)
+        # Every extra variable multiplies the cells, and one singleton cell makes
+        # the split impossible. Drop the least important variable until it fits,
+        # rather than failing or silently falling back to no stratification.
         while parts:
             combined = parts[0]
             for extra in parts[1:]:
                 combined = combined.str.cat(extra, sep="|")
             counts = combined.value_counts()
             if counts.min() >= 2 and (counts * fraction).min() >= 1:
-                stratify = combined
-                break
+                return combined, used
             parts.pop()
-            strata_used.pop()
-        if stratify is None:
-            strata_used = []
+            used.pop()
+        return None, []
 
     grouped = False
     test_labels = None
@@ -193,12 +190,21 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
         if test_labels is None:
             group_col = None            # too few groups to split by subject
 
+    # Stratification is decided AFTER the grouped attempt resolves. Deciding it
+    # earlier meant that a group column with too few subjects to split by fell
+    # back to an ordinary split carrying NO stratification at all — the one
+    # case that produced a test set unrepresentative of both the outcome and
+    # the demographics, silently.
+    stratify: Optional[pd.Series] = None
+    strata_used: List[str] = []
     if test_labels is None:
+        stratify, strata_used = _build_stratum()
         try:
             _, test_labels = train_test_split(
                 eligible, test_size=fraction, random_state=seed, stratify=stratify
             )
         except ValueError:
+            stratify, strata_used = None, []
             _, test_labels = train_test_split(
                 eligible, test_size=fraction, random_state=seed
             )

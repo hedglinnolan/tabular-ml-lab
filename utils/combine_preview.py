@@ -77,6 +77,11 @@ class ChangeMap:
     columns: List[ColumnMove] = field(default_factory=list)
     consequences: List[str] = field(default_factory=list)
     key_label: str = ""
+    # Enough to tell "this person was never measured" from "this person was not
+    # in that file" — identical in a table, completely different in meaning.
+    left_only_keys: set = field(default_factory=set)    # link: blank on the RIGHT
+    right_only_keys: set = field(default_factory=set)   # link: blank on the LEFT
+    missing_from: Dict[str, List[str]] = field(default_factory=dict)  # stack: col -> files
 
     @property
     def rows_dropped(self) -> int:
@@ -95,10 +100,10 @@ class ChangeMap:
         return f"{before}  →  {self.after_rows:,} rows × {self.after_cols} columns"
 
 
-def _slug(name: str) -> str:
-    """Mirror of join_doctor._slug, so predicted names match delivered ones."""
-    import re
-    return re.sub(r"[^A-Za-z0-9]+", "_", str(name)).strip("_")[:20] or "file"
+# Imported, never re-implemented: a private copy drifted from the real one on
+# non-ASCII and empty names, so a predicted column name could disagree with the
+# delivered one for a file called "é$@".
+from ml.join_doctor import _slug
 
 
 # ── linking ──────────────────────────────────────────────────────────────
@@ -181,6 +186,7 @@ def describe_join(left: pd.DataFrame, right: pd.DataFrame,
         before=[(left_name, len(left), left.shape[1]),
                 (right_name, len(right), right.shape[1])],
         row_groups=groups, columns=cols, key_label=str(left_key),
+        left_only_keys=set(lset - matched), right_only_keys=set(rset - matched),
     )
     cm.consequences = _join_consequences(cm, left, right, lcounts, rcounts,
                                          matched, left_name, right_name, how)
@@ -255,19 +261,21 @@ def describe_stack(frames: Dict[str, pd.DataFrame]) -> ChangeMap:
               for n in names]
 
     cols: List[ColumnMove] = []
+    missing_from: Dict[str, List[str]] = {}
     for c in union:
         present = [n for n in names if c in col_sets[n]]
         if len(present) == len(names):
             cols.append(ColumnMove(c, FROM_SHARED, "every file"))
         else:
             cols.append(ColumnMove(c, FROM_LEFT, ", ".join(present)))
+            missing_from[c] = [n for n in names if c not in col_sets[n]]
     cols.append(ColumnMove(SOURCE_COLUMN, FROM_ADDED, "added by the app"))
 
     total = sum(len(frames[n]) for n in names)
     cm = ChangeMap(
         operation="stack", after_rows=total, after_cols=len(cols),
         before=[(n, len(frames[n]), frames[n].shape[1]) for n in names],
-        row_groups=groups, columns=cols,
+        row_groups=groups, columns=cols, missing_from=missing_from,
     )
 
     partial = [c for c in cols if c.origin == FROM_LEFT]
@@ -292,19 +300,38 @@ def describe_stack(frames: Dict[str, pd.DataFrame]) -> ChangeMap:
 # ── which cells the preview should mark ──────────────────────────────────
 
 def blank_cell_mask(result: pd.DataFrame, cm: ChangeMap) -> pd.DataFrame:
-    """True where a cell is blank BECAUSE of the combine.
+    """True where a cell is blank BECAUSE of the combine, not because the
+    measurement was missing.
 
-    Distinguishes "this measurement was never taken for this person" from "this
-    person was not in that file at all" — which look identical in the table and
-    mean completely different things.
+    The two are identical on screen and mean completely different things: one
+    is "we never measured this person", the other is "this person was not in
+    that file at all". The second is a fact about the merge, and imputing it
+    would invent data.
+
+    Flagging every NaN — which is what this used to do — does not distinguish
+    them, so it was worse than useless: it lent the wrong reading a colour.
     """
     mask = pd.DataFrame(False, index=result.index, columns=result.columns)
     by_origin = {c.name: c.origin for c in cm.columns}
-    for col in result.columns:
-        origin = by_origin.get(str(col))
-        if origin in (FROM_LEFT, FROM_RIGHT, FROM_SHARED):
-            try:
-                mask[col] = result[col].isna()
-            except Exception:
-                continue
+
+    if cm.operation == "link":
+        if not cm.key_label or cm.key_label not in result.columns:
+            return mask
+        keys = normalize_key(result[cm.key_label])
+        unmatched_right = keys.isin(cm.left_only_keys)   # left-only row
+        unmatched_left = keys.isin(cm.right_only_keys)   # right-only row
+        for col in result.columns:
+            origin = by_origin.get(str(col))
+            if origin == FROM_RIGHT:
+                mask[col] = unmatched_right & result[col].isna()
+            elif origin == FROM_LEFT:
+                mask[col] = unmatched_left & result[col].isna()
+        return mask
+
+    if SOURCE_COLUMN not in result.columns:
+        return mask
+    src = result[SOURCE_COLUMN]
+    for col, absent_in in cm.missing_from.items():
+        if col in result.columns:
+            mask[col] = src.isin(absent_in) & result[col].isna()
     return mask

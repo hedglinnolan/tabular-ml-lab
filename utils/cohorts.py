@@ -63,6 +63,9 @@ class CohortCell:
     n_test: int
     viable: bool = True
     blocked_reason: str = ""
+    # Rows in this cohort including those with no outcome. n_rows counts only
+    # the rows that can actually be modelled.
+    n_rows_total: int = 0
     class_counts: Dict[Any, int] = field(default_factory=dict)
 
     @property
@@ -80,6 +83,9 @@ class CohortPlan:
     cells: List[CohortCell] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     blocking: List[str] = field(default_factory=list)
+    # Rows that belong to NO cohort because the grouping value is missing.
+    # They vanish from every run, so they have to be counted and said out loud.
+    n_excluded_missing: int = 0
 
     @property
     def viable(self) -> List[CohortCell]:
@@ -102,6 +108,9 @@ class CohortPlan:
         if self.blocked:
             out += (f" {len(self.blocked)} level(s) are too small to model and "
                     f"are not offered.")
+        if self.n_excluded_missing:
+            out += (f" {self.n_excluded_missing:,} row(s) have no "
+                    f"'{self.column}' recorded and are in none of them.")
         return out
 
 
@@ -149,6 +158,12 @@ def plan_cohorts(df: pd.DataFrame, column: str, target_col: str,
 
     if train_mask is None:
         train_mask = pd.Series(True, index=df.index)
+    elif not train_mask.index.equals(df.index):
+        # A mask built against a different frame would align by index and
+        # silently produce nonsense counts.
+        train_mask = train_mask.reindex(df.index, fill_value=True)
+
+    plan.n_excluded_missing = int(df[column].isna().sum())
 
     for value in sorted(levels, key=lambda v: str(v)):
         mask = cohort_mask(df, column, value)
@@ -157,10 +172,17 @@ def plan_cohorts(df: pd.DataFrame, column: str, target_col: str,
         in_test = mask & ~train_mask
         n_subjects = (int(rows[group_col].nunique())
                       if group_col and group_col in df.columns else int(mask.sum()))
+        # A row with no outcome cannot be trained on or scored, so counting it
+        # toward viability overstates what the cohort can support: 100 rows of
+        # which 65 have no outcome is a 35-row cohort wearing a big number.
+        has_y = (df[target_col].notna() if target_col in df.columns
+                 else pd.Series(True, index=df.index))
+        usable = mask & has_y
         cell = CohortCell(
-            label=str(value), value=value, n_rows=int(mask.sum()),
-            n_subjects=n_subjects, n_train=int(in_train.sum()),
-            n_test=int(in_test.sum()),
+            label=str(value), value=value, n_rows=int(usable.sum()),
+            n_subjects=n_subjects, n_train=int((in_train & has_y).sum()),
+            n_test=int((in_test & has_y).sum()),
+            n_rows_total=int(mask.sum()),
         )
 
         if task_type == "classification" and target_col in df.columns:
@@ -169,7 +191,10 @@ def plan_cohorts(df: pd.DataFrame, column: str, target_col: str,
 
         reasons: List[str] = []
         if cell.n_rows < MIN_ROWS_PER_COHORT:
-            reasons.append(f"only {cell.n_rows} rows (needs {MIN_ROWS_PER_COHORT})")
+            shortfall = (f"only {cell.n_rows} rows with an outcome recorded"
+                         if cell.n_rows_total > cell.n_rows
+                         else f"only {cell.n_rows} rows")
+            reasons.append(f"{shortfall} (needs {MIN_ROWS_PER_COHORT})")
         elif cell.n_train < MIN_ROWS_PER_COHORT // 2:
             reasons.append(f"only {cell.n_train} rows left to train on once the "
                            f"held-out set is set aside")
@@ -230,6 +255,16 @@ def _cohort_warnings(plan: CohortPlan, task_type: str) -> List[str]:
                 f"not directly comparable across groups with different rates — a "
                 f"difference between them can be case mix rather than model "
                 f"quality.")
+
+    total = sum(c.n_rows_total for c in plan.cells) + plan.n_excluded_missing
+    if plan.n_excluded_missing and total:
+        share = plan.n_excluded_missing / total
+        if share >= 0.02:
+            out.append(
+                f"**{plan.n_excluded_missing:,} row(s) ({share:.0%}) have no "
+                f"'{plan.column}' recorded**, so they appear in none of these "
+                f"analyses. If who is missing that value is related to your "
+                f"outcome, every cohort here is a selected sample.")
 
     if plan.blocked:
         names = ", ".join(f"{c.label} ({c.blocked_reason})" for c in plan.blocked[:3])

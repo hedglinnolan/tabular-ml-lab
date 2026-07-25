@@ -48,6 +48,10 @@ _MIN_COVERAGE = 0.05
 _KEY_MISSING_TOKENS = {"", "nan", "none", "null", "na", "n/a", "n.a.", ".", "-",
                        "--", "?", "missing", "unknown", "not available"}
 
+# Hidden column carrying the user's ORIGINAL key values through the merge,
+# so matching can use the canonical form without the output inheriting it.
+_ORIGINAL_KEY = "__original_key__"
+
 _INT_RE = re.compile(r"^[+-]?\d+$")
 _DECIMAL_RE = re.compile(r"^[+-]?\d+\.\d*$")
 
@@ -704,6 +708,15 @@ def execute_join(left: pd.DataFrame, right: pd.DataFrame,
     if repair:
         l, r, desc = repair_keys(left, right, left_key, right_key)
         steps.append(desc)
+        # repair_keys writes the CANONICAL form into the key column so the two
+        # sides compare equal. That form is text with leading zeros stripped,
+        # so a numeric SEQN came back as "1","10","2" and sorted lexically ever
+        # after, and subject "001" came back as "1" — the app silently
+        # retyping, and in the second case CORRUPTING, the researcher's
+        # identifier. Match on the canonical form; hand back what they gave us.
+        l, r = l.copy(), r.copy()
+        l[_ORIGINAL_KEY] = left[left_key].values
+        r[_ORIGINAL_KEY] = right[right_key].values
 
     suffixes = (f"_{_slug(left_name)}", f"_{_slug(right_name)}")
 
@@ -736,6 +749,33 @@ def execute_join(left: pd.DataFrame, right: pd.DataFrame,
 
     if left_key != right_key and right_key in merged.columns:
         merged = merged.drop(columns=[right_key])
+
+    if repair:
+        # Restore the originals. On an outer join a row may have come from
+        # either side, so take whichever side actually supplied it.
+        lo = f"{_ORIGINAL_KEY}{suffixes[0]}"
+        ro = f"{_ORIGINAL_KEY}{suffixes[1]}"
+        restored = None
+        if lo in merged.columns and ro in merged.columns:
+            restored = merged[lo].where(merged[lo].notna(), merged[ro])
+        elif lo in merged.columns:
+            restored = merged[lo]
+        elif ro in merged.columns:
+            restored = merged[ro]
+        elif _ORIGINAL_KEY in merged.columns:
+            restored = merged[_ORIGINAL_KEY]
+        drop = [c for c in (lo, ro, _ORIGINAL_KEY) if c in merged.columns]
+        if drop:
+            merged = merged.drop(columns=drop)
+        if restored is not None and left_key in merged.columns:
+            merged[left_key] = restored.values
+            if pd.api.types.is_numeric_dtype(left[left_key]):
+                # Whole numbers before the merge stay whole numbers after it,
+                # even where an outer join introduced blanks.
+                try:
+                    merged[left_key] = pd.to_numeric(merged[left_key], errors="coerce")
+                except Exception:
+                    pass
 
     steps.append(
         f"Merged {left_name} ({len(left):,} rows) with {right_name} ({len(right):,} rows) "

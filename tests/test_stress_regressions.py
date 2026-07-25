@@ -939,3 +939,135 @@ class TestSamePeopleDecidesGrouping:
     def test_id_name_detection(self, name, expected):
         from utils.combine import _looks_like_an_id_name
         assert _looks_like_an_id_name(name) is expected
+
+
+class TestBlankCellsAreToldApart:
+    """The preview claimed to distinguish "we never measured this person" from
+    "this person was not in that file". It did not — the mask flagged every
+    NaN, and the renderer never called it at all. Two things that look
+    identical on screen and mean opposite things."""
+
+    def test_a_pre_existing_gap_is_not_blamed_on_the_merge(self):
+        from ml.join_doctor import execute_join
+        from utils.combine_preview import blank_cell_mask, describe_join
+        left = pd.DataFrame({"SEQN": range(10),
+                             "age": [1, 2, None, 4, 5, 6, 7, 8, 9, 10]})
+        right = pd.DataFrame({"SEQN": range(5), "glucose": range(5)})
+        cm = describe_join(left, right, "SEQN", "SEQN", "left", "demo", "labs")
+        out, _ = execute_join(left, right, "SEQN", "SEQN", "left", "demo", "labs")
+        mask = blank_cell_mask(out, cm)
+        assert not bool(mask["age"].iloc[2])       # missing before the merge
+        assert bool(mask["glucose"].iloc[5])       # blank because of the merge
+
+    def test_matched_rows_carry_no_merge_blanks(self):
+        from ml.join_doctor import execute_join
+        from utils.combine_preview import blank_cell_mask, describe_join
+        left = pd.DataFrame({"SEQN": range(10), "age": range(10)})
+        right = pd.DataFrame({"SEQN": range(5), "glucose": range(5)})
+        cm = describe_join(left, right, "SEQN", "SEQN", "left", "demo", "labs")
+        out, _ = execute_join(left, right, "SEQN", "SEQN", "left", "demo", "labs")
+        assert not bool(blank_cell_mask(out, cm).iloc[:5].to_numpy().any())
+
+    def test_an_outer_join_attributes_blanks_to_the_right_side(self):
+        from ml.join_doctor import execute_join
+        from utils.combine_preview import blank_cell_mask, describe_join
+        left = pd.DataFrame({"SEQN": [1, 2, 3], "age": [10, 20, 30]})
+        right = pd.DataFrame({"SEQN": [3, 4, 5], "glucose": [7, 8, 9]})
+        cm = describe_join(left, right, "SEQN", "SEQN", "outer", "demo", "labs")
+        out, _ = execute_join(left, right, "SEQN", "SEQN", "outer", "demo", "labs")
+        mask = blank_cell_mask(out, cm)
+        by_id = {out["SEQN"].iloc[i]: i for i in range(len(out))}
+        assert bool(mask["glucose"].iloc[by_id[1]])   # left-only row
+        assert bool(mask["age"].iloc[by_id[4]])       # right-only row
+        assert not bool(mask["age"].iloc[by_id[3]])   # matched row
+
+    def test_stacking_marks_a_column_the_file_never_had(self):
+        from utils.combine import execute_stack
+        from utils.combine_preview import blank_cell_mask, describe_stack
+        frames = {"c17": pd.DataFrame({"SEQN": range(4), "age": [1, None, 3, 4],
+                                       "glucose": [5, 6, 7, 8]}),
+                  "c19": pd.DataFrame({"SEQN": range(4, 8), "age": [9, 10, 11, 12]})}
+        cm = describe_stack(frames)
+        out, _ = execute_stack(frames)
+        mask = blank_cell_mask(out, cm)
+        assert not bool(mask["age"].iloc[1])      # a genuine gap in c17
+        assert bool(mask["glucose"].iloc[4])      # c19 never had glucose
+
+    def test_slug_is_not_duplicated(self):
+        from ml.join_doctor import _slug as real
+        from utils.combine_preview import _slug as used
+        assert used is real
+
+
+class TestTheJoinDoesNotRetypeYourIdentifier:
+    """repair_keys writes the CANONICAL key form into the key column so the two
+    sides compare equal. That form is text with leading zeros stripped, so the
+    join silently retyped — and in one case CORRUPTED — the researcher's ID:
+
+        SEQN  1, 2, 10   ->  "1", "10", "2"    (sorts lexically ever after)
+        pid   "001"      ->  "1"               (a different participant)
+    """
+
+    def _join(self, left, right, how="inner", key="id"):
+        from ml.join_doctor import execute_join
+        out, _ = execute_join(left, right, key, key, how, "x", "y")
+        return out
+
+    @pytest.mark.parametrize("how", ["inner", "left", "right", "outer"])
+    def test_a_numeric_id_stays_numeric(self, how):
+        left = pd.DataFrame({"id": [1, 2, 3, 10, 11], "a": range(5)})
+        right = pd.DataFrame({"id": [3, 10, 11, 4, 5], "b": range(5)})
+        out = self._join(left, right, how)
+        assert pd.api.types.is_numeric_dtype(out["id"])
+
+    def test_numeric_ids_sort_numerically(self):
+        left = pd.DataFrame({"id": [1, 2, 3, 10, 11], "a": range(5)})
+        right = pd.DataFrame({"id": [1, 2, 3, 10, 11], "b": range(5)})
+        got = sorted(self._join(left, right)["id"].tolist())
+        assert got == [1, 2, 3, 10, 11]
+
+    def test_leading_zero_ids_are_not_corrupted(self):
+        left = pd.DataFrame({"id": ["001", "002", "003"], "a": [1, 2, 3]})
+        right = pd.DataFrame({"id": ["001", "002", "004"], "b": [7, 8, 9]})
+        out = self._join(left, right, "outer")
+        assert sorted(out["id"].dropna().tolist()) == ["001", "002", "003", "004"]
+
+    def test_cross_type_matching_still_works(self):
+        """The repair exists so "001" finds 1. That must keep working — the
+        output simply keeps the form the user supplied."""
+        left = pd.DataFrame({"id": ["001", "002", "003"], "a": [1, 2, 3]})
+        right = pd.DataFrame({"id": [1, 2, 3], "b": [7, 8, 9]})
+        out = self._join(left, right)
+        assert len(out) == 3
+        assert out["id"].tolist() == ["001", "002", "003"]
+
+    def test_case_and_space_repair_still_matches(self):
+        left = pd.DataFrame({"id": [f"A{i:02d}" for i in range(1, 6)], "a": range(5)})
+        right = pd.DataFrame({"id": [f"a{i:02d} " for i in range(1, 6)], "b": range(5)})
+        out = self._join(left, right)
+        assert len(out) == 5
+        assert out["id"].tolist() == [f"A{i:02d}" for i in range(1, 6)]
+
+    def test_blank_ids_still_never_match_each_other(self):
+        from ml.join_doctor import diagnose_join
+        left = pd.DataFrame({"id": ["a1", "a2", None, None], "a": [1, 2, 3, 4]})
+        right = pd.DataFrame({"id": ["a1", None, None], "b": [7, 8, 9]})
+        d = diagnose_join(left, right, "id", "id", "outer")
+        assert len(self._join(left, right, "outer")) == d.predicted_rows
+
+    def test_differently_named_keys_keep_the_left_name_and_type(self):
+        left = pd.DataFrame({"SEQN": [1, 2, 3], "a": [1, 2, 3]})
+        right = pd.DataFrame({"patient_id": [2, 3, 4], "b": [7, 8, 9]})
+        from ml.join_doctor import execute_join
+        out, _ = execute_join(left, right, "SEQN", "patient_id", "outer", "x", "y")
+        assert "patient_id" not in out.columns
+        assert pd.api.types.is_numeric_dtype(out["SEQN"])
+        assert sorted(out["SEQN"].dropna().tolist()) == [1.0, 2.0, 3.0, 4.0]
+
+    def test_the_hidden_carrier_column_never_survives(self):
+        from ml.join_doctor import _ORIGINAL_KEY
+        left = pd.DataFrame({"id": [1, 2, 3], "a": [1, 2, 3]})
+        right = pd.DataFrame({"id": [2, 3, 4], "b": [7, 8, 9]})
+        for how in ("inner", "left", "right", "outer"):
+            out = self._join(left, right, how)
+            assert not any(_ORIGINAL_KEY in str(c) for c in out.columns)
