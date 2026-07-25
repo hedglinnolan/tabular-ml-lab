@@ -37,11 +37,47 @@ ADDONS = {
 }
 
 
+# One package name per line. Read by the launcher after it (re)installs
+# requirements.txt, so enabled add-ons survive an app update.
+ADDONS_FILE = ".addons"
+
+
 @dataclass
 class InstallResult:
     ok: bool
     message: str
     log: str = ""
+
+
+def _app_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
+def _remember_addon(package: str) -> None:
+    """Record an enabled add-on so the launcher reinstalls it after updates."""
+    try:
+        path = _app_root() / ADDONS_FILE
+        existing = []
+        if path.exists():
+            existing = [ln.strip() for ln in path.read_text().splitlines() if ln.strip()]
+        if package not in existing:
+            existing.append(package)
+            path.write_text("\n".join(existing) + "\n")
+    except Exception:
+        # Losing the record only costs the user one extra click later; it must
+        # never turn a successful install into a failure.
+        pass
+
+
+def remembered_addons() -> List[str]:
+    """Add-ons the user has enabled, in the order they enabled them."""
+    try:
+        path = _app_root() / ADDONS_FILE
+        if not path.exists():
+            return []
+        return [ln.strip() for ln in path.read_text().splitlines() if ln.strip()]
+    except Exception:
+        return []
 
 
 def is_available(module: str) -> bool:
@@ -158,6 +194,12 @@ def install(module: str, on_log: Optional[Callable[[str], None]] = None,
         elif any(w in low for w in ("network", "resolve", "connection", "timed out", "ssl")):
             hint = " This looks like a connection problem — check your internet and try again."
         return InstallResult(False, f"The install did not finish.{hint}", tail)
+
+    # Remember the choice. The launcher rebuilds the environment whenever
+    # requirements.txt changes (i.e. on an app update), and add-ons are not in
+    # requirements.txt — without this record the user would silently lose the
+    # neural network after updating and have to notice and re-enable it.
+    _remember_addon(spec["package"])
 
     # Newly written packages are not visible to an interpreter that already
     # cached a failed import, so invalidate before re-checking.

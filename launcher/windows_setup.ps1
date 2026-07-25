@@ -2,7 +2,7 @@
 #
 # 1. Downloads uv (the environment manager) into .\.tools (first run, ~35 MB).
 # 2. Creates a private Python 3.12 environment in .\.venv and installs the
-#    app's libraries (first run, ~1-2 GB, several minutes).
+#    app's libraries (first run, ~600 MB, several minutes).
 # 3. Creates "Tabular ML Lab" shortcuts (Desktop + Start Menu) with the app
 #    icon, so future launches are one double-click.
 # 4. Starts the app; the default browser opens automatically.
@@ -45,12 +45,25 @@ try {
     $stampOk = (Test-Path $Stamp) -and ((Get-Content $Stamp -Raw).Trim() -eq $reqHash)
     if (-not (Test-Path $Py) -or -not $stampOk) {
         Say "First-time setup 2/2: installing Python and the analysis libraries..."
-        Note "This downloads ~1-2 GB and takes a few minutes - ONE TIME ONLY."
+        Note "This downloads about 600 MB and takes a few minutes - ONE TIME ONLY."
         Note "Every launch after this one takes seconds and works offline."
         & $Uv venv --python 3.12 $Venv
         if ($LASTEXITCODE -ne 0) { throw "Python environment creation failed." }
         & $Uv pip install --python $Py -r $Reqs
         if ($LASTEXITCODE -ne 0) { throw "Library installation failed - check your internet connection and re-run." }
+        # Optional add-ons enabled inside the app (e.g. the neural network) are
+        # not in requirements.txt; reinstall them so an app update does not
+        # silently remove them.
+        $AddonsFile = Join-Path $Root ".addons"
+        if (Test-Path $AddonsFile) {
+            Say "Restoring the add-ons you enabled..."
+            foreach ($addon in (Get-Content $AddonsFile | Where-Object { $_.Trim() })) {
+                & $Uv pip install --python $Py $addon.Trim()
+                if ($LASTEXITCODE -ne 0) {
+                    Note "Could not restore '$addon' - you can re-enable it in the app."
+                }
+            }
+        }
         Set-Content -Path $Stamp -Value $reqHash -NoNewline
         Say "Setup complete."
     }

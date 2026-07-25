@@ -76,5 +76,51 @@ def test_failure_messages_are_written_for_a_non_programmer():
         assert jargon not in res.message
 
 
+# ── enabled add-ons must survive relaunches AND app updates ──────────────
+
+def test_enabling_is_recorded_and_idempotent(tmp_path, monkeypatch):
+    """The launcher rebuilds the environment whenever requirements.txt changes.
+    Add-ons are not in requirements.txt, so without a record the user would
+    silently lose the neural network after updating the app."""
+    import utils.optional_deps as od
+    monkeypatch.setattr(od, "_app_root", lambda: tmp_path)
+
+    assert od.remembered_addons() == []
+    od._remember_addon("torch")
+    assert od.remembered_addons() == ["torch"]
+    od._remember_addon("torch")
+    assert od.remembered_addons() == ["torch"]          # no duplicate
+    od._remember_addon("something_else")
+    assert od.remembered_addons() == ["torch", "something_else"]
+
+
+def test_recording_failure_never_breaks_a_successful_install(monkeypatch):
+    """Losing the record costs one extra click later; it must not turn a
+    completed install into a reported failure."""
+    import utils.optional_deps as od
+    monkeypatch.setattr(od, "_app_root", lambda: (_ for _ in ()).throw(OSError("nope")))
+    od._remember_addon("torch")        # must not raise
+    assert od.remembered_addons() == []
+
+
+def test_addons_file_is_not_committed():
+    """It is per-machine state, like .venv."""
+    gitignore = os.path.join(PROJECT_ROOT, ".gitignore")
+    assert ".addons" in open(gitignore).read()
+
+
+@pytest.mark.parametrize("launcher,needle", [
+    ("launcher/posix_launch.sh", ".addons"),
+    ("launcher/windows_setup.ps1", ".addons"),
+])
+def test_launchers_restore_enabled_addons_after_a_rebuild(launcher, needle):
+    text = open(os.path.join(PROJECT_ROOT, launcher)).read()
+    assert needle in text
+    # The restore must run AFTER requirements are installed, or the rebuild
+    # would overwrite it.
+    assert text.index("requirements.txt") < text.index(needle) or \
+        text.index("$Reqs") < text.index(needle)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
