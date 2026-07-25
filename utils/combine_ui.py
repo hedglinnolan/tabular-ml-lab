@@ -25,8 +25,9 @@ pure and unit-tested. This module is only presentation and state.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -44,6 +45,158 @@ LINK_MODES = {
     "Keep everyone from every file": "outer",
 }
 _MODE_BY_HOW = {v: k for k, v in LINK_MODES.items()}
+
+
+from html import escape as _esc
+
+from utils.combine_preview import (
+    FROM_ADDED, FROM_KEY, FROM_LEFT, FROM_RIGHT, FROM_SHARED,
+    ChangeMap, describe_join, describe_stack,
+)
+
+# One colour per origin, used identically in the column map and the preview so
+# the two read as one picture.
+_ORIGIN_COLOUR = {
+    FROM_KEY: "#667eea",
+    FROM_LEFT: "#0ea5e9",
+    FROM_RIGHT: "#22c55e",
+    FROM_SHARED: "#667eea",
+    FROM_ADDED: "#94a3b8",
+}
+_OUTCOME_COLOUR = {"kept": "#22c55e", "blanked": "#f59e0b", "dropped": "#cbd5e1"}
+_MAX_PREVIEW_COLS = 12
+
+
+def _row_ledger(cm: ChangeMap) -> None:
+    """Every row accounted for, as one proportional bar.
+
+    A researcher's first question is not "how many rows" but "did I lose
+    anybody" — and a bar answers that before any number is read.
+    """
+    total = sum(g.n for g in cm.row_groups) or 1
+    segments = "".join(
+        f'<div title="{_esc(g.label)}" style="width:{100 * g.n / total:.2f}%;'
+        f'background:{_OUTCOME_COLOUR.get(g.outcome, "#cbd5e1")};"></div>'
+        for g in cm.row_groups if g.n
+    )
+    st.markdown(
+        f'<div style="display:flex;height:14px;border-radius:7px;overflow:hidden;'
+        f'margin:0.35rem 0 0.6rem 0;">{segments}</div>', unsafe_allow_html=True)
+    for g in cm.row_groups:
+        if not g.n:
+            continue
+        verb = {"kept": "kept", "blanked": "kept, partly blank", "dropped": "dropped"}[g.outcome]
+        st.markdown(
+            f'<div style="font-size:0.86rem;margin:0.1rem 0;">'
+            f'<span style="display:inline-block;width:10px;height:10px;border-radius:2px;'
+            f'background:{_OUTCOME_COLOUR[g.outcome]};margin-right:0.5rem;"></span>'
+            f'<strong>{g.n:,}</strong> {_esc(g.label)} — <em>{verb}</em>'
+            f'<span style="color:#64748b;"> · {_esc(g.detail)}</span></div>',
+            unsafe_allow_html=True)
+
+
+def _preview_table(result: pd.DataFrame, cm: ChangeMap) -> None:
+    """The result itself, with the seam the combine created marked on it.
+
+    For a link the seam runs between columns — everything left of it came from
+    one file, everything right of it from the other. For a stack it runs
+    between rows. Showing the rows either side of that line is the difference
+    between "450 rows" and understanding what happened.
+    """
+    origin = {c.name: c.origin for c in cm.columns}
+    cols = [c for c in result.columns]
+    trimmed = False
+    if len(cols) > _MAX_PREVIEW_COLS:
+        # Keep the seam visible: some from each side rather than the first N.
+        left_cols = [c for c in cols if origin.get(str(c)) in (FROM_KEY, FROM_LEFT, FROM_SHARED)]
+        right_cols = [c for c in cols if origin.get(str(c)) in (FROM_RIGHT, FROM_ADDED)]
+        half = _MAX_PREVIEW_COLS // 2
+        cols = left_cols[:half] + right_cols[:_MAX_PREVIEW_COLS - half]
+        trimmed = True
+
+    if cm.operation == "stack":
+        # Show the last rows of the first file and the first rows of the next,
+        # so the join between them is literally on screen.
+        counts = [g.n for g in cm.row_groups]
+        seam = counts[0] if counts else 0
+        idx = list(range(max(0, seam - 2), min(len(result), seam + 2)))
+        seam_after = 1 if seam >= 2 else 0
+    else:
+        idx = list(range(min(5, len(result))))
+        seam_after = -1
+
+    head = result.iloc[idx][cols] if idx else result.iloc[:0][cols]
+
+    def _cell(v: Any) -> str:
+        if v is None or (isinstance(v, float) and np.isnan(v)) or v is pd.NaT:
+            return ('<span style="color:#b45309;background:#fef3c7;padding:0 4px;'
+                    'border-radius:3px;font-size:0.78rem;">blank</span>')
+        text = str(v)
+        return _esc(text if len(text) <= 22 else text[:21] + "…")
+
+    ths = "".join(
+        f'<th style="padding:5px 8px;text-align:left;font-size:0.78rem;'
+        f'border-bottom:2px solid {_ORIGIN_COLOUR.get(origin.get(str(c)), "#cbd5e1")};'
+        f'white-space:nowrap;">{_esc(str(c))}</th>' for c in cols)
+    trs = []
+    for n, (_, row) in enumerate(head.iterrows()):
+        border = ("border-top:3px solid #667eea;" if n == seam_after + 1 and seam_after >= 0
+                  else "")
+        tds = "".join(f'<td style="padding:4px 8px;font-size:0.82rem;{border}'
+                      f'white-space:nowrap;">{_cell(row[c])}</td>' for c in cols)
+        trs.append(f"<tr>{tds}</tr>")
+    st.markdown(
+        f'<div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px;'
+        f'padding:0.25rem 0.5rem;"><table style="border-collapse:collapse;width:100%;">'
+        f"<thead><tr>{ths}</tr></thead><tbody>{''.join(trs)}</tbody></table></div>",
+        unsafe_allow_html=True)
+
+    legend = []
+    for label, key in (("the ID", FROM_KEY), (cm.before[0][0], FROM_LEFT),
+                       (cm.before[-1][0] if cm.operation == "link" else "in every file",
+                        FROM_RIGHT if cm.operation == "link" else FROM_SHARED)):
+        legend.append(f'<span style="border-bottom:2px solid {_ORIGIN_COLOUR[key]};">'
+                      f'{_esc(str(label))}</span>')
+    note = " · ".join(legend)
+    if cm.operation == "stack" and seam_after >= 0:
+        note += ' · <span style="color:#667eea;">the line is where the second file begins</span>'
+    if trimmed:
+        note += f" · showing {len(cols)} of {result.shape[1]} columns"
+    st.caption(f"Column colours: {note}", unsafe_allow_html=True)
+
+
+def _column_map(cm: ChangeMap) -> None:
+    """Where every column in the result came from."""
+    renamed = cm.renamed_columns
+    with st.expander(f"Where your {cm.after_cols} columns come from"
+                     + (f" — {len(renamed)} renamed to avoid a clash" if renamed else "")):
+        for c in cm.columns:
+            chip = (f'<span style="display:inline-block;width:8px;height:8px;'
+                    f'border-radius:2px;background:{_ORIGIN_COLOUR.get(c.origin, "#cbd5e1")};'
+                    f'margin-right:0.5rem;"></span>')
+            note = (f' <span style="color:#b45309;">(renamed from '
+                    f'<code>{_esc(c.renamed_from)}</code> — both files had one)</span>'
+                    if c.was_renamed else "")
+            st.markdown(f'{chip}<code>{_esc(c.name)}</code> '
+                        f'<span style="color:#64748b;font-size:0.85rem;">'
+                        f'{_esc(c.source_file)}</span>{note}', unsafe_allow_html=True)
+
+
+def render_change_map(cm: ChangeMap, result: Optional[pd.DataFrame] = None) -> None:
+    """Before → after, in the three registers a researcher needs.
+
+    WHO happens to the rows, WHERE the columns go, and SO WHAT it means for
+    the study. The last one is the reason this exists: the app could always
+    predict the row count, and a row count does not tell anybody whether their
+    cohort just became a selected subsample.
+    """
+    st.markdown(f"##### {cm.headline()}")
+    _row_ledger(cm)
+    if result is not None and len(result.columns):
+        _preview_table(result, cm)
+    _column_map(cm)
+    for line in cm.consequences:
+        st.warning(line)
 
 
 def _file_cards(frames: Dict[str, pd.DataFrame]) -> None:
@@ -113,7 +266,13 @@ def _render_link(frames: Dict[str, pd.DataFrame]) -> Optional[Tuple[pd.DataFrame
                              how, "your data so far", other)
         for b in diag.blocking:
             st.error(f"🛑 {b}")
+        # The change map below accounts for every row visually and states the
+        # consequence for the analysis, so repeating the engine's row-counting
+        # warnings here would say the same thing twice in weaker words. Warnings
+        # the map does NOT cover — capitalisation, spacing — still surface.
         for w in diag.warnings:
+            if "have no match" in w or "have no ID at all" in w:
+                continue
             st.warning(f"⚠️ {w}")
         for n in diag.notes:
             st.caption(f"ℹ️ {n}")
@@ -122,14 +281,19 @@ def _render_link(frames: Dict[str, pd.DataFrame]) -> Optional[Tuple[pd.DataFrame
             blocked = True
             continue
 
-        st.markdown(plain_summary(diag, "your data so far", other))
         try:
             # A type mismatch is repaired as part of the combine, which is why
-            # a blocked-but-repairable diagnosis is allowed through here.
-            result, desc = execute_join(
+            # a blocked-but-repairable diagnosis is allowed through here. The
+            # join runs now so the preview below is the REAL result, not a
+            # description of one — nothing is committed until the button.
+            change = describe_join(result, frames[other], chosen.left_col,
+                                   chosen.right_col, how, "your data so far", other)
+            preview, desc = execute_join(
                 result, frames[other], chosen.left_col, chosen.right_col, how,
                 base_name, other,
             )
+            render_change_map(change, preview)
+            result = preview
             steps.append(desc)
         except Exception as exc:
             st.error(f"Could not attach **{other}**: {exc}")
@@ -162,13 +326,9 @@ def _render_stack(frames: Dict[str, pd.DataFrame]) -> Optional[Tuple[pd.DataFram
     if not plan.can_proceed:
         return None
 
-    st.markdown(plan.summary())
-    if plan.partial_columns:
-        with st.expander(f"Which columns are missing from which file "
-                         f"({len(plan.partial_columns)})"):
-            for col, missing in plan.partial_columns.items():
-                st.caption(f"**{col}** — not in: {', '.join(missing)}")
-    return execute_stack(subset)
+    stacked, desc = execute_stack(subset)
+    render_change_map(describe_stack(subset), stacked)
+    return stacked, desc
 
 
 def _render_grouped(frames: Dict[str, pd.DataFrame]) -> Optional[Tuple[pd.DataFrame, str]]:

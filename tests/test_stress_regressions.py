@@ -799,3 +799,143 @@ class TestBlankFillIsDisclosed:
         right = pd.DataFrame({"id": range(100), "y": RNG.rand(100)})
         d = diagnose_join(left, right, "id", "id", "left", "a", "b")
         assert not d.warnings
+
+
+# ── before/after: does the map match what actually happens? ──────────────
+
+class TestChangeMapMatchesReality:
+    """The map is only worth showing if it is true. Every field is checked
+    against the frame the engine actually produces — a map that disagrees with
+    the result would be worse than no map at all."""
+
+    def _frames(self):
+        return (pd.DataFrame({"SEQN": range(1000, 1200), "age": RNG.randint(18, 80, 200),
+                              "site": ["A"] * 200}),
+                pd.DataFrame({"SEQN": range(1050, 1230), "glucose": RNG.normal(100, 20, 180),
+                              "site": ["B"] * 180}))
+
+    @pytest.mark.parametrize("how", ["inner", "left", "right", "outer"])
+    def test_predicted_rows_and_columns_match_the_result(self, how):
+        from ml.join_doctor import execute_join
+        from utils.combine_preview import describe_join
+        left, right = self._frames()
+        cm = describe_join(left, right, "SEQN", "SEQN", how, "demographics", "labs")
+        out, _ = execute_join(left, right, "SEQN", "SEQN", how, "demographics", "labs")
+        assert cm.after_rows == len(out)
+        assert cm.after_cols == out.shape[1]
+
+    @pytest.mark.parametrize("how", ["inner", "left", "right", "outer"])
+    def test_predicted_column_names_match_the_result(self, how):
+        from ml.join_doctor import execute_join
+        from utils.combine_preview import describe_join
+        left, right = self._frames()
+        cm = describe_join(left, right, "SEQN", "SEQN", how, "demographics", "labs")
+        out, _ = execute_join(left, right, "SEQN", "SEQN", how, "demographics", "labs")
+        assert [c.name for c in cm.columns] == [str(c) for c in out.columns]
+
+    def test_every_row_is_accounted_for(self):
+        from utils.combine_preview import describe_join
+        left, right = self._frames()
+        cm = describe_join(left, right, "SEQN", "SEQN", "inner", "demographics", "labs")
+        # 150 matched + 50 left-only + 30 right-only = everything brought in.
+        assert sum(g.n for g in cm.row_groups) == 200 + 180 - 150
+
+    def test_a_collision_is_reported_with_its_new_name(self):
+        from utils.combine_preview import describe_join
+        left, right = self._frames()
+        cm = describe_join(left, right, "SEQN", "SEQN", "inner", "demographics", "labs")
+        renamed = {c.renamed_from: c.name for c in cm.renamed_columns}
+        assert renamed == {"site": "site_demographics", "site": "site_labs"} or \
+            set(renamed.values()) == {"site_demographics", "site_labs"}
+
+    def test_stack_map_matches_the_stacked_frame(self):
+        from utils.combine import execute_stack
+        from utils.combine_preview import describe_stack
+        frames = {"c17": pd.DataFrame({"SEQN": range(100), "age": RNG.randint(18, 80, 100),
+                                       "glucose": RNG.rand(100)}),
+                  "c19": pd.DataFrame({"SEQN": range(100, 230), "age": RNG.randint(18, 80, 130)})}
+        cm = describe_stack(frames)
+        out, _ = execute_stack(frames)
+        assert cm.after_rows == len(out)
+        assert cm.after_cols == out.shape[1]
+        assert [c.name for c in cm.columns] == [str(c) for c in out.columns]
+
+
+class TestConsequencesAreAboutTheStudy:
+    """The point of the map. A row count is mechanically true and analytically
+    useless; these say what the merge does to the ANALYSIS."""
+
+    def test_fanout_says_n_is_no_longer_people(self):
+        from utils.combine_preview import describe_join
+        subj = pd.DataFrame({"SEQN": range(1000, 1050), "age": RNG.randint(18, 80, 50)})
+        visits = pd.DataFrame({"SEQN": np.repeat(range(1000, 1050), 3),
+                               "bp": RNG.normal(120, 10, 150)})
+        cm = describe_join(subj, visits, "SEQN", "SEQN", "inner", "subjects", "visits")
+        assert any("no longer the number of people" in c for c in cm.consequences)
+
+    def test_dropping_rows_says_the_cohort_is_selected(self):
+        from utils.combine_preview import describe_join
+        left = pd.DataFrame({"SEQN": range(200), "age": RNG.randint(18, 80, 200)})
+        right = pd.DataFrame({"SEQN": range(100, 200), "g": RNG.rand(100)})
+        cm = describe_join(left, right, "SEQN", "SEQN", "inner", "demographics", "labs")
+        assert any("subsample" in c and "biased" in c for c in cm.consequences)
+
+    def test_blank_filling_is_named_as_missing_by_construction(self):
+        from utils.combine_preview import describe_join
+        left = pd.DataFrame({"SEQN": range(200), "age": RNG.randint(18, 80, 200)})
+        right = pd.DataFrame({"SEQN": range(100, 200), "g": RNG.rand(100)})
+        cm = describe_join(left, right, "SEQN", "SEQN", "left", "demographics", "labs")
+        assert any("missing by construction" in c for c in cm.consequences)
+
+    def test_stacking_names_the_batch_variable(self):
+        from utils.combine_preview import describe_stack
+        frames = {"a": pd.DataFrame({"SEQN": range(50), "x": RNG.rand(50)}),
+                  "b": pd.DataFrame({"SEQN": range(50, 100), "x": RNG.rand(50)})}
+        cm = describe_stack(frames)
+        assert any("batch variable" in c for c in cm.consequences)
+
+    def test_a_clean_one_to_one_join_says_nothing_alarming(self):
+        from utils.combine_preview import describe_join
+        left = pd.DataFrame({"SEQN": range(200), "age": RNG.randint(18, 80, 200)})
+        right = pd.DataFrame({"SEQN": range(200), "g": RNG.rand(200)})
+        cm = describe_join(left, right, "SEQN", "SEQN", "inner", "a", "b")
+        assert cm.consequences == []
+
+
+class TestSamePeopleDecidesGrouping:
+    """Column-name overlap was the only signal, so two cycles that both gained
+    a column (0.67 overlap, under the 0.8 threshold) were classed as different
+    measurements on the same people — and the app proposed linking two cycles
+    that share no participants at all."""
+
+    AGE = staticmethod(lambda n: RNG.randint(18, 80, n))
+
+    def test_cycles_with_schema_drift_still_stack(self):
+        from utils.combine import plan_combination
+        frames = {"cycle_2017": pd.DataFrame({"SEQN": range(1000, 1100),
+                                              "age": self.AGE(100), "glucose": RNG.rand(100)}),
+                  "cycle_2019": pd.DataFrame({"SEQN": range(1100, 1230), "age": self.AGE(130)})}
+        assert plan_combination(frames).shape == "stack"
+
+    def test_same_ids_means_link_not_stack(self):
+        from utils.combine import plan_combination
+        frames = {"demographics": pd.DataFrame({"SEQN": range(200), "age": self.AGE(200)}),
+                  "labs": pd.DataFrame({"SEQN": range(200), "glucose": RNG.rand(200)})}
+        assert plan_combination(frames).shape == "link"
+
+    def test_an_id_named_column_outvotes_a_coincidental_match(self):
+        from utils.combine import _same_people
+        # SEQN is disjoint; `age` happens to be unique and identical. The ID
+        # column decides — otherwise every pair of cycles reads as one cohort.
+        a = pd.DataFrame({"SEQN": range(0, 50), "age": range(50)})
+        b = pd.DataFrame({"SEQN": range(50, 100), "age": range(50)})
+        assert _same_people(a, b) is False
+
+    @pytest.mark.parametrize("name,expected", [
+        ("SEQN", True), ("subject_id", True), ("participant", True), ("MRN", True),
+        ("pid", True), ("record_id", True), ("usubjid", True),
+        ("age", False), ("bmi", False), ("glucose", False), ("site", False),
+    ])
+    def test_id_name_detection(self, name, expected):
+        from utils.combine import _looks_like_an_id_name
+        assert _looks_like_an_id_name(name) is expected

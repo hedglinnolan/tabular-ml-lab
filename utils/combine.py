@@ -272,6 +272,66 @@ def _column_overlap(a: pd.DataFrame, b: pd.DataFrame) -> float:
     return len(sa & sb) / len(sa | sb)
 
 
+# Names researchers actually give the column that identifies a participant.
+_ID_NAME_TOKENS = ("id", "seqn", "subject", "participant", "patient", "pid",
+                   "mrn", "record", "respondent", "person", "case", "study_id",
+                   "usubjid", "sid", "uid")
+
+
+def _looks_like_an_id_name(col: Any) -> bool:
+    """Does this column's NAME claim to identify a person?"""
+    import re
+    name = re.sub(r"[^a-z0-9]+", "", str(col).lower())
+    return any(tok.replace("_", "") in name for tok in _ID_NAME_TOKENS)
+
+
+def _same_people(a: pd.DataFrame, b: pd.DataFrame) -> Optional[bool]:
+    """Do these two files describe the same people? None if it cannot be told.
+
+    Column names are a weak signal for this and were the only one being used.
+    Two survey cycles that both gained a column sit at 0.67 overlap, under the
+    0.8 threshold, and were classed as "different measurements on the same
+    people" — so the app proposed linking two cycles that share no participants
+    at all.
+
+    The strong signal is the ID VALUES. demo_2017 and demo_2019 both have a
+    SEQN column and not one participant in common: different people, stack
+    them. demographics and labs have the same SEQN values: same people, link
+    them. That distinction is what the researcher is actually being asked, and
+    it is right there in the data.
+    """
+    from ml.join_doctor import normalize_key
+
+    shared = [c for c in a.columns if str(c) in {str(x) for x in b.columns}]
+    # When two shared columns disagree — a disjoint SEQN and a coincidentally
+    # identical age — believe the one that is named like an identifier. Without
+    # this, any unique overlapping column outvotes the real ID and two cycles
+    # are declared to be about the same participants.
+    id_named = [c for c in shared if _looks_like_an_id_name(c)]
+    if id_named:
+        shared = id_named
+    best: Optional[float] = None
+    for col in shared:
+        try:
+            av = set(normalize_key(a[col]).dropna().unique())
+            bv = set(normalize_key(b[col]).dropna().unique())
+        except Exception:
+            continue
+        if len(av) < 5 or len(bv) < 5:
+            continue
+        # Only a near-unique column can answer "same people". The bar is high
+        # deliberately: at anything looser, `age` qualifies as an identifier in
+        # a small cohort, its values overlap between any two files, and every
+        # pair of cycles is declared to be about the same participants.
+        if len(av) < 0.95 * len(a) or len(bv) < 0.95 * len(b):
+            continue
+        overlap = len(av & bv) / max(1, min(len(av), len(bv)))
+        best = overlap if best is None else max(best, overlap)
+    if best is None:
+        return None
+    return best >= 0.5
+
+
 def _group_label(members: List[str]) -> str:
     """A name for a stack group, taken from what its members have in common.
 
@@ -309,7 +369,19 @@ def group_files(frames: Dict[str, pd.DataFrame],
 
     for i, a in enumerate(names):
         for b in names[i + 1:]:
-            if _column_overlap(frames[a], frames[b]) >= threshold:
+            cols = _column_overlap(frames[a], frames[b])
+            same = _same_people(frames[a], frames[b])
+            # Different people who were measured the same way belong together.
+            # Schema drift between cycles is normal — one year adds a question —
+            # so a shared identifier with no values in common outweighs a column
+            # list that does not quite line up.
+            if same is False and cols >= 0.4:
+                stack_together = True
+            elif same is True:
+                stack_together = False          # same people: these LINK
+            else:
+                stack_together = cols >= threshold
+            if stack_together:
                 ra, rb = find(a), find(b)
                 if ra != rb:
                     parent[ra] = rb
