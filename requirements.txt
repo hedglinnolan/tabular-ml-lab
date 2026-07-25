@@ -30,10 +30,7 @@ joblib>=1.3.0
 xgboost>=2.0.0
 lightgbm>=4.0.0
 
-# ── Optional: neural network model ───────────────────────────────────────
-# torch is ~1.1 GB installed — roughly two-thirds of this app's entire
-# footprint — and is needed ONLY for the neural-network model. Everything
-# else (22 other models, the full workflow, the manuscript) runs without it.
-# Install it only if you want the NN:
-#     uv pip install torch
-# torch>=2.0.0
+# Neural network model. Large (~1.1 GB installed), but every model in this app
+# must work on first launch — an installed app that cannot run one of the
+# things it offers is worse than a bigger download.
+torch>=2.0.0

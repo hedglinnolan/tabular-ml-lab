@@ -110,18 +110,6 @@ astral.sh
 zip on a USB stick or shared drive works exactly the same. Only the first
 launch needs internet, to fetch Python and the libraries.
 
-### The neural network add-on
-
-All 22 models are available. One of them — the neural network — runs on an
-engine (`torch`) that is about 1.1 GB by itself, more than the rest of the app
-combined, so it is **not downloaded up front**.
-
-You do not need a terminal to add it. Open **Train & Compare**, and the neural
-network card has an **Enable neural network** button: one click, it downloads
-into the app's own folder while showing progress, and the model becomes
-selectable. Nothing is installed system-wide, and every other model works
-immediately without it.
-
 <details>
 <summary>What the starter actually does (for the curious or cautious)</summary>
 

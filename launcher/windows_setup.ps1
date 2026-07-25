@@ -51,19 +51,6 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Python environment creation failed." }
         & $Uv pip install --python $Py -r $Reqs
         if ($LASTEXITCODE -ne 0) { throw "Library installation failed - check your internet connection and re-run." }
-        # Optional add-ons enabled inside the app (e.g. the neural network) are
-        # not in requirements.txt; reinstall them so an app update does not
-        # silently remove them.
-        $AddonsFile = Join-Path $Root ".addons"
-        if (Test-Path $AddonsFile) {
-            Say "Restoring the add-ons you enabled..."
-            foreach ($addon in (Get-Content $AddonsFile | Where-Object { $_.Trim() })) {
-                & $Uv pip install --python $Py $addon.Trim()
-                if ($LASTEXITCODE -ne 0) {
-                    Note "Could not restore '$addon' - you can re-enable it in the app."
-                }
-            }
-        }
         Set-Content -Path $Stamp -Value $reqHash -NoNewline
         Say "Setup complete."
     }

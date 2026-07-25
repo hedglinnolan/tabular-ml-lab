@@ -84,17 +84,6 @@ if [[ ! -x "$VENV/bin/python" || ! -f "$STAMP" || "$(cat "$STAMP")" != "$CURRENT
     notify_mac "One-time setup in progress — this takes a few minutes."
     "$UV" venv --python "$PY_SPEC" "$VENV"
     "$UV" pip install --python "$VENV/bin/python" -r "$ROOT/requirements.txt"
-    # Optional add-ons the user enabled in the app (e.g. the neural network)
-    # are not in requirements.txt, so reinstall them here — otherwise an app
-    # update would silently take the neural network away again.
-    if [[ -s "$ROOT/.addons" ]]; then
-        say "Restoring the add-ons you enabled…"
-        while IFS= read -r addon; do
-            [[ -n "$addon" ]] || continue
-            "$UV" pip install --python "$VENV/bin/python" "$addon" || \
-                note "Could not restore '$addon' — you can re-enable it in the app."
-        done < "$ROOT/.addons"
-    fi
     printf '%s' "$CURRENT_HASH" > "$STAMP"
     say "Setup complete."
 fi
