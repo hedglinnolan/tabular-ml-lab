@@ -25,6 +25,18 @@ from ml.join_doctor import find_key_candidates, suggest_best
 
 RNG = np.random.RandomState(0)
 
+@pytest.fixture(autouse=True)
+def _deterministic_test_data():
+    """Reseed the shared RNG before every test in this module.
+
+    Without this, every test draws from one advancing stream, so the data a
+    test sees depends on how many tests ran before it — and the suite is green
+    only for the collection order it happens to run in. Two tests in this
+    branch genuinely failed once the order was shuffled.
+    """
+    RNG.seed(0)
+
+
 
 # ── a measurement is not an identifier ───────────────────────────────────
 

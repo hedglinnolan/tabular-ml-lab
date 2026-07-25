@@ -30,6 +30,18 @@ import pytest
 RNG = np.random.RandomState(7)
 
 
+@pytest.fixture(autouse=True)
+def _deterministic_test_data():
+    """Reseed the shared RNG before every test in this module.
+
+    Without this, every test draws from one advancing stream, so the data a
+    test sees depends on how many tests ran before it — and the suite is green
+    only for the collection order it happens to run in.
+    """
+    RNG.seed(7)
+
+
+
 # ── fixtures that look like the real thing ───────────────────────────────
 
 def expression_matrix(n_genes=2000, n_samples=60):

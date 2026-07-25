@@ -266,6 +266,11 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
         "signature": sig,
         "stratified": stratify is not None,
         "strata": list(strata_used),
+        # What was ASKED for, so a silently-dropped stratum can be named. The
+        # composite is trimmed until the split is possible, and a researcher who
+        # asked for a sex-balanced holdout was previously told only "stratified".
+        "strata_requested": [c for c in ([target_col] if task_type == "classification" else [])
+                             + list(stratify_cols or []) if c],
         "group_col": group_col if grouped else None,
         "n_test_groups": (int(df.loc[test_labels, group_col].nunique())
                           if grouped else None),
@@ -326,6 +331,21 @@ def render_lockbox_status(context: str = "") -> None:
             f"Train & Compare.{extra}"
         )
         return
+
+    _asked = [c for c in (lb.get("strata_requested") or [])]
+    _got = [c for c in (lb.get("strata") or [])]
+    _dropped = [c for c in _asked if c not in _got]
+    if _dropped:
+        st.warning(
+            f"⚖️ The held-out set could not be balanced on "
+            f"{', '.join(f'`{c}`' for c in _dropped)} — too few people in some "
+            f"combination of those groups to put any in both halves. It IS "
+            f"balanced on {', '.join(f'`{c}`' for c in _got) if _got else 'nothing'}. "
+            f"Check that the test set still resembles your study before "
+            f"reporting performance by subgroup."
+        )
+    elif len(_got) > 1:
+        st.caption(f"⚖️ Held-out set balanced on {', '.join(f'`{c}`' for c in _got)}.")
 
     if lb.get("group_col"):
         st.caption(
