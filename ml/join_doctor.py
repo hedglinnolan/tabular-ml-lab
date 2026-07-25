@@ -165,6 +165,34 @@ class KeyCandidate:
     index_like: bool = False    # both sides are plain row counters
 
     @property
+    def repeats_on_both_sides(self) -> bool:
+        """True when the column has duplicate values in BOTH files.
+
+        An identifier is allowed to repeat on one side — one subject with many
+        visits is an ordinary 1:many link. But a column that repeats on BOTH
+        sides cannot identify anybody: every left copy pairs with every right
+        copy, which is a Cartesian product, not a link.
+
+        'age' matching 'age' across two survey cycles is the classic trap. It
+        presents as a 77%-coverage, identically-named key and is a measurement.
+        """
+        return self.left_has_duplicates and self.right_has_duplicates
+
+    @property
+    def distinctness(self) -> float:
+        """Share of rows carrying a distinct value, on the better side.
+
+        A real identifier is near 1.0 on at least ONE side. The other side is
+        free to repeat — that is just a 1:many link, one subject with several
+        visits. Taking the worse side here would reject every repeated-measures
+        design, which is most of longitudinal nutrition research.
+        """
+        return max(
+            self.left_unique / max(1, self.left_rows),
+            self.right_unique / max(1, self.right_rows),
+        )
+
+    @property
     def score(self) -> float:
         """Rank by how well the key actually links the two files.
 
@@ -179,18 +207,33 @@ class KeyCandidate:
             self.right_unique / max(1, self.right_rows),
         )
         s = overlap * 0.45 + uniq * 0.10 + self.name_similarity * 0.45
-        if self.index_like and self.name_similarity < 0.85:
+        if self.index_like:
             s *= 0.15   # a coincidental counter overlap, not a real key
+        if self.repeats_on_both_sides:
+            s *= 0.25   # a measurement that happens to overlap
         return s
 
     @property
     def confidence(self) -> str:
-        """How safely a UI may present this — never auto-apply 'low'."""
-        if self.index_like and self.name_similarity < 0.85:
+        """How safely a UI may present this — never auto-apply 'low'.
+
+        'high' is the tier the UI is allowed to pre-select, so 'high' means the
+        app is ASSERTING this is the right key. Two things must therefore never
+        reach it, however good their overlap looks:
+
+        - A plain row counter (0..N-1 / 1..N). Matching names do not rescue it:
+          two unrelated exports both called 'Unnamed: 0' or 'row' overlap 100%
+          by construction, and the app cannot tell that from two files that
+          genuinely list the same people in the same order.
+        - A column that repeats on both sides, which is a measurement.
+        """
+        if self.index_like:
+            return "low"
+        if self.repeats_on_both_sides:
             return "low"
         if self.name_similarity >= 0.85 and min(self.coverage_left, self.coverage_right) >= 0.5:
             return "high"
-        if max(self.coverage_left, self.coverage_right) >= 0.8 and not self.index_like:
+        if max(self.coverage_left, self.coverage_right) >= 0.8:
             return "high" if self.name_similarity >= 0.6 else "medium"
         return "medium" if max(self.coverage_left, self.coverage_right) >= 0.5 else "low"
 
@@ -259,8 +302,15 @@ def _key_tokens(df: pd.DataFrame, col: str) -> Optional[pd.Series]:
             n_unique = int(s.nunique(dropna=True))
         except TypeError:
             return None                       # unhashable cells
-        if n_unique == 0 or n_unique / n < _MIN_UNIQUENESS:
-            return None                       # groups rows, does not identify them
+        if n_unique < 2:
+            return None                       # constant: identifies nothing
+        # NOTE: deliberately no per-column uniqueness floor here. A long-format
+        # file repeats its subject ID on every visit — three visits per person
+        # puts uniqueness at 0.33 — and rejecting that column outright made
+        # every repeated-measures design unjoinable, which is most of
+        # longitudinal nutrition research. The real rule ("at least ONE side
+        # must identify subjects") needs both files, so it lives in
+        # find_key_candidates, where the pair is known.
         uniques = s.dropna().drop_duplicates()
         if len(uniques) > _MAX_DISTINCT:
             uniques = uniques.iloc[:_MAX_DISTINCT]
@@ -331,7 +381,7 @@ def find_key_candidates(left: pd.DataFrame, right: pd.DataFrame,
                 except Exception:
                     needs_norm = False
 
-            out.append(KeyCandidate(
+            candidate = KeyCandidate(
                 left_col=str(lc), right_col=str(rc),
                 coverage_left=cov_l, coverage_right=cov_r,
                 n_matched=len(matched),
@@ -343,7 +393,15 @@ def find_key_candidates(left: pd.DataFrame, right: pd.DataFrame,
                 right_has_duplicates=bool(len(rset) < len(right)),
                 name_similarity=_name_similarity(lc, rc),
                 index_like=_looks_like_row_index(lraw) and _looks_like_row_index(rraw),
-            ))
+            )
+            # At least ONE side must actually identify subjects. This is what
+            # separates a real key from a shared category: 'sex' matches 'sex'
+            # perfectly in every pair of files and identifies nobody, while a
+            # subject ID is near-unique on the side that has one row per person
+            # even when the other side repeats it once per visit.
+            if candidate.distinctness < _MIN_UNIQUENESS:
+                continue
+            out.append(candidate)
 
     out.sort(key=lambda c: c.score, reverse=True)
     return out

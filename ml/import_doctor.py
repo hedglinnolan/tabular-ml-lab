@@ -98,6 +98,48 @@ class ShapeFinding:
 
 # ── helpers ──────────────────────────────────────────────────────────────
 
+def has_duplicate_labels(df: pd.DataFrame) -> bool:
+    """True when two columns share a name.
+
+    Real exports do this constantly — two 'bp' columns, three blank headers —
+    and it breaks label indexing in a way that is easy to miss: df['bp']
+    returns a two-column DataFrame, so `df['bp'].nunique() == 1` is a Series
+    comparison and `if` on it raises "truth value of a Series is ambiguous".
+    """
+    try:
+        return bool(pd.Index(df.columns).duplicated().any())
+    except Exception:
+        return False
+
+
+def _each_column(df: pd.DataFrame):
+    """Yield (label, Series) for every column, duplicates included.
+
+    Iterates by POSITION, so a repeated label yields each of its columns
+    separately as a real Series instead of collapsing them into a DataFrame.
+    """
+    for i in range(df.shape[1]):
+        try:
+            yield df.columns[i], df.iloc[:, i]
+        except Exception:
+            continue
+
+
+def _each_column_matching(df: pd.DataFrame, selector) -> Any:
+    """_each_column filtered by a predicate on the Series (dtype tests, etc.)."""
+    for label, s in _each_column(df):
+        try:
+            if selector(s):
+                yield label, s
+        except Exception:
+            continue
+
+
+def _is_text(s: pd.Series) -> bool:
+    return s.dtype == object or isinstance(s.dtype, pd.StringDtype) or \
+        pd.api.types.is_string_dtype(s)
+
+
 def _is_unnamed(col: Any) -> bool:
     s = str(col)
     return s.startswith("Unnamed:") or s.strip() == "" or s.lower() == "nan"
@@ -125,6 +167,65 @@ def _looks_decimal_comma(s: pd.Series) -> bool:
     return bool(hits.mean() >= 0.6)
 
 
+_LEADING_ZERO = re.compile(r"^[+-]?0\d")
+_PLAIN_INT = re.compile(r"^[+-]?\d+$")
+
+
+def numeric_conversion_would_lose(s: pd.Series) -> Optional[str]:
+    """Why turning this text column into numbers would destroy meaning, or None.
+
+    Two cases, both everywhere in research exports and both invisible until a
+    merge quietly fails:
+
+    - Leading zeros are part of the value. Subject '007' is not subject 7, and
+      a zip code '02139' is not 2139.
+    - Integers beyond 2**53 cannot be held exactly in float64, so a long
+      barcode or an NHS/MRN number silently changes digits.
+    """
+    vals = s.dropna().astype(str).str.strip()
+    vals = vals[vals != ""]
+    if vals.empty:
+        return None
+    if bool(vals.map(lambda v: bool(_LEADING_ZERO.match(v))).any()):
+        return "leading zeros that are part of the identifier"
+    ints = vals[vals.map(lambda v: bool(_PLAIN_INT.match(v)))]
+    if not ints.empty:
+        try:
+            if bool(ints.map(lambda v: abs(int(v)) > 2 ** 53).any()):
+                return "more digits than a number can store exactly"
+        except Exception:
+            return None
+    return None
+
+
+def reinfer_types(df: pd.DataFrame) -> pd.DataFrame:
+    """Give a frame the dtypes a correct read would have produced.
+
+    Promoting a header builds the frame out of rows pandas had already read as
+    text, so every column arrives as object even when it holds nothing but
+    numbers. Left alone, the file passes every check while every number in it
+    sits out of the analysis — `age.mean()` raises and `age` gets treated as a
+    category with sixty levels.
+
+    Columns that would lose information by converting are left as text.
+    """
+    out = df.copy()
+    for i in range(out.shape[1]):
+        s = out.iloc[:, i]
+        if not _is_text(s):
+            continue
+        nonnull = s.dropna()
+        if nonnull.empty:
+            continue
+        parsed = pd.to_numeric(nonnull.astype(str).str.strip(), errors="coerce")
+        if parsed.notna().mean() < 1.0:
+            continue                      # not purely numeric; leave it alone
+        if numeric_conversion_would_lose(s):
+            continue                      # an identifier, not a measurement
+        out.isetitem(i, pd.to_numeric(s.astype(str).str.strip(), errors="coerce"))
+    return out
+
+
 def _clean_numeric_text(s: pd.Series) -> pd.Series:
     """Best-effort numeric coercion for text that is 'almost' numeric."""
     t = s.astype(str).str.strip()
@@ -149,7 +250,7 @@ def check_unnamed_columns(df: pd.DataFrame) -> List[ShapeFinding]:
     # further down the sheet; that is a different (and better) fix.
     if frac >= 0.5:
         return []
-    empty = [c for c in unnamed if df[c].notna().sum() == 0]
+    empty = [c for c, s in _each_column(df) if _is_unnamed(c) and s.notna().sum() == 0]
     return [ShapeFinding(
         id="unnamed_columns",
         severity="warning" if empty else "info",
@@ -239,7 +340,8 @@ def check_duplicate_columns(df: pd.DataFrame) -> List[ShapeFinding]:
 
 def check_empty_rows_and_columns(df: pd.DataFrame) -> List[ShapeFinding]:
     out: List[ShapeFinding] = []
-    empty_cols = [c for c in df.columns if df[c].notna().sum() == 0 and not _is_unnamed(c)]
+    empty_cols = [c for c, s in _each_column(df)
+                  if s.notna().sum() == 0 and not _is_unnamed(c)]
     if empty_cols:
         out.append(ShapeFinding(
             id="empty_columns",
@@ -304,10 +406,7 @@ def check_footer_rows(df: pd.DataFrame, max_scan: int = 5) -> List[ShapeFinding]
 def check_numeric_sentinels(df: pd.DataFrame, min_count: int = 2) -> List[ShapeFinding]:
     """Codes like 999 / -9 / 7 that mean 'missing' but arrive as real numbers."""
     out: List[ShapeFinding] = []
-    for col in df.select_dtypes(include=[np.number]).columns:
-        col_s = df[col]
-        if isinstance(col_s, pd.DataFrame):
-            continue
+    for col, col_s in _each_column_matching(df, pd.api.types.is_numeric_dtype):
         s = col_s.dropna()
         if len(s) < 10:
             continue
@@ -364,10 +463,7 @@ def check_numeric_sentinels(df: pd.DataFrame, min_count: int = 2) -> List[ShapeF
 
 def check_text_missing_tokens(df: pd.DataFrame) -> List[ShapeFinding]:
     out: List[ShapeFinding] = []
-    for col in df.select_dtypes(include=["object", "string"]).columns:
-        s = df[col]
-        if isinstance(s, pd.DataFrame):
-            continue
+    for col, s in _each_column_matching(df, _is_text):
         s = s.dropna().astype(str).str.strip().str.lower()
         if s.empty:
             continue
@@ -414,13 +510,39 @@ def check_text_missing_tokens(df: pd.DataFrame) -> List[ShapeFinding]:
 def check_numeric_stored_as_text(df: pd.DataFrame, min_parse: float = 0.8) -> List[ShapeFinding]:
     """Columns typed as text only because of commas, units, or '<0.01'."""
     out: List[ShapeFinding] = []
-    for col in df.select_dtypes(include=["object", "string"]).columns:
-        s = df[col].dropna()
+    for col, s in _each_column_matching(df, _is_text):
+        s = s.dropna()
         if len(s) < 5:
             continue
         raw_numeric = pd.to_numeric(s, errors="coerce").notna().mean()
         if raw_numeric >= 0.99:
-            continue  # pandas would already have typed it numeric
+            # Pure numeric text. A fresh read_csv WOULD have typed this numeric,
+            # which is why this used to be skipped — but a frame built by
+            # promoting a header, or loaded from JSON, or read from an Excel
+            # sheet whose cells are text-formatted, arrives as object. Skipping
+            # it there hands back a clean bill of health on a file where every
+            # number sits out of the analysis.
+            lossy = numeric_conversion_would_lose(s)
+            if lossy:
+                continue                  # an identifier: leaving it as text is correct
+            examples = s.astype(str).unique()[:3].tolist()
+            out.append(ShapeFinding(
+                id=f"numeric_as_text__{col}",
+                severity="warning",
+                title=f"'{col}' holds numbers but is stored as text",
+                detail=(f"Every value is a plain number (e.g. "
+                        f"{', '.join(map(repr, examples))}) but the column is typed "
+                        f"as text."),
+                why_it_matters=("As text this column cannot be modelled, correlated "
+                                "or plotted — it will silently sit out of your "
+                                "analysis while appearing perfectly fine."),
+                fix_label=f"Convert '{col}' to numbers",
+                fix_kind="coerce_numeric",
+                confidence="high",        # nothing is lost: every value parses
+                params={"column": col},
+                affected_columns=[str(col)],
+            ))
+            continue
         units = _units_present(s)
         if len(units) > 1:
             # mg/dL and mmol/L on one scale is not a formatting problem, it is
@@ -474,8 +596,8 @@ def check_numeric_stored_as_text(df: pd.DataFrame, min_parse: float = 0.8) -> Li
 def check_categorical_variants(df: pd.DataFrame, max_levels: int = 50) -> List[ShapeFinding]:
     """'Male', 'male ', 'MALE' are one category typed three ways."""
     out: List[ShapeFinding] = []
-    for col in df.select_dtypes(include=["object", "string"]).columns:
-        s = df[col].dropna().astype(str)
+    for col, s in _each_column_matching(df, _is_text):
+        s = s.dropna().astype(str)
         if s.empty or s.nunique() > max_levels:
             continue
         groups: Dict[str, set] = {}
@@ -504,8 +626,8 @@ def check_categorical_variants(df: pd.DataFrame, max_levels: int = 50) -> List[S
 
 
 def check_constant_columns(df: pd.DataFrame) -> List[ShapeFinding]:
-    const = [c for c in df.columns
-             if df[c].notna().sum() > 0 and df[c].nunique(dropna=True) == 1]
+    const = [c for c, s in _each_column(df)
+             if s.notna().sum() > 0 and s.nunique(dropna=True) == 1]
     if not const:
         return []
     return [ShapeFinding(
@@ -580,16 +702,47 @@ def diagnose(df: pd.DataFrame) -> List[ShapeFinding]:
     if header:
         return header
 
+    # Duplicate labels are the same kind of masking problem as a misplaced
+    # header. Every per-column fix names its target by label — "recode 999 in
+    # bp" — and with two columns called 'bp' that instruction is ambiguous:
+    # apply_fix would hit both, or neither. So the rename is reported on its
+    # own, and the full per-column diagnosis runs once labels are unique.
+    if has_duplicate_labels(df):
+        out = list(check_duplicate_columns(df))
+        for check in (check_empty_rows_and_columns, check_footer_rows):
+            try:
+                out.extend(check(df))          # frame-level: no label needed
+            except Exception:
+                continue
+        out.sort(key=lambda f: (_SEVERITY_ORDER.get(f.severity, 3), f.id))
+        return out
+
     findings: List[ShapeFinding] = []
+    failed: List[str] = []
     for check in ALL_CHECKS:
         if check is check_header_in_later_row:
             continue
         try:
             findings.extend(check(df))
         except Exception:
-            # A malformed frame must never crash the upload page; a check that
-            # cannot run simply reports nothing.
-            continue
+            # A malformed frame must never crash the upload page. But silently
+            # reporting nothing would show a clean bill of health on a file the
+            # app could not actually inspect, so the gap is disclosed instead.
+            failed.append(getattr(check, "__name__", "a check")
+                          .replace("check_", "").replace("_", " "))
+    if failed:
+        findings.append(ShapeFinding(
+            id="checks_failed",
+            severity="warning",
+            title=f"{len(failed)} structural check(s) could not run on this file",
+            detail=f"Could not check: {', '.join(sorted(failed))}.",
+            why_it_matters=("Something about this file's shape stopped part of the "
+                            "review from running, so treat a clean result here as "
+                            "incomplete rather than as a guarantee."),
+            fix_label="",
+            fix_kind="none",
+            confidence="low",
+        ))
     findings.sort(key=lambda f: (_SEVERITY_ORDER.get(f.severity, 3), f.id))
     return findings
 
@@ -612,6 +765,10 @@ def apply_fix(df: pd.DataFrame, finding: ShapeFinding) -> Tuple[pd.DataFrame, st
         from utils.column_utils import make_unique_columns
         out = df.iloc[row + 1:].reset_index(drop=True)
         out.columns = make_unique_columns(new_cols)
+        # Everything below the old header was read as text. Re-infer, so the
+        # frame ends up as it would have been had the file been read correctly
+        # in the first place — otherwise every numeric column stays a string.
+        out = reinfer_types(out)
         desc = f"Promoted row {row + 1} to column headers and dropped the {row + 1} row(s) above it."
 
     elif kind == "drop_columns":
