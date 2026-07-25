@@ -612,8 +612,11 @@ else:
         """)
         st.stop()
 
-# Get working table
-df = get_data()
+# Get working table. This page deliberately works on the WHOLE study even when
+# a cohort run is active: the audit describes the data, the lockbox must be
+# drawn across all groups, and the target and feature list are fixed across runs
+# — that is what makes two runs the same question asked of different people.
+df = get_data(full_study=True)
 
 if df is None:
     st.warning("Please complete the merge step or load a single dataset to continue.")
@@ -628,6 +631,10 @@ if len(df) == 0 or len(df.columns) == 0:
 # ============================================================================
 st.markdown("---")
 st.header("Step 3: Data Audit")
+
+from utils.cohort_ui import render_cohort_note as _cohort_note
+_cohort_note("The audit below covers the whole study, which is what it should "
+             "describe — the run filter applies from the EDA page onward.")
 
 # Quick summary metrics at top
 col1, col2, col3, col4, col5 = st.columns(5)
@@ -1189,6 +1196,14 @@ if task_mode == "prediction":
             pass  # Provenance recording should never break the workflow
 
         st.success(f"✅ Configuration saved: **{task_type_final.title()}** task with **{len(selected_features)}** features")
+
+        # Cohort runs come LAST, after the lockbox exists and the configuration
+        # is saved: every run inherits its slice of that ONE split, and the
+        # target and features above stay fixed across runs. Both facts depend on
+        # this ordering, and the reading order should match it.
+        from utils.cohort_ui import render_cohort_chooser
+        render_cohort_chooser(df, target_col, task_type_final, selected_features,
+                              group_col=_entity_col)
         # (Next-step guidance renders once, in the consolidated "What Happens
         # Next?" section below — two adjacent, slightly different step lists
         # read as contradictory.)

@@ -2287,6 +2287,23 @@ if st.session_state.get('trained_models'):
     except Exception:
         pass
 
+    # ── same question, next group ────────────────────────────────────────
+    # Only renders when a cohort run is active. Banks this run's headline
+    # number so the next group can be put beside it, with the caveats that
+    # stop two AUCs 0.04 apart from being read as a finding.
+    _cohort_metrics = {}
+    try:
+        _cm = ('ROC-AUC' if 'ROC-AUC' in comparison_df.columns else 'Accuracy') \
+            if task_type_final == 'classification' else 'R2'
+        if _cm in comparison_df.columns and len(comparison_df) > 0:
+            _best_row = comparison_df.nlargest(1, _cm).iloc[0]
+            _cohort_metrics = {"Best model": str(_best_row['Model']),
+                               _cm: float(_best_row[_cm])}
+    except Exception:
+        _cohort_metrics = {}
+    from utils.cohort_ui import render_next_cohort
+    render_next_cohort(task_type_final, _cohort_metrics)
+
     # Helper function for complexity description
     def get_model_complexity(model_name: str) -> str:
         """Return human-readable complexity description."""

@@ -191,19 +191,30 @@ def init_session_state():
         st.session_state.insight_ledger = InsightLedger()
 
 
-def get_data() -> Optional[pd.DataFrame]:
-    """Get active data from session state. 
-    Priority: df_engineered (if feature engineering was applied) > filtered_data > raw_data"""
+def get_data(full_study: bool = False) -> Optional[pd.DataFrame]:
+    """Get active data from session state.
+    Priority: df_engineered (if feature engineering was applied) > filtered_data > raw_data
+
+    When a cohort run is active ("same question, different people"), the rows of
+    that cohort are ALL any page sees — the filter is applied here, once, rather
+    than in each of the nine pages that would each have to remember. Pass
+    full_study=True for the two things that must span the whole study: drawing
+    the test lockbox (every cohort inherits its slice of ONE split) and choosing
+    the target and features (fixed across runs, which is what makes the runs
+    comparable at all).
+    """
     # Explicitly check for None to avoid DataFrame boolean ambiguity
     df_eng = st.session_state.get('df_engineered')
     if df_eng is not None:
-        return df_eng
-    
-    df_filt = st.session_state.get('filtered_data')
-    if df_filt is not None:
-        return df_filt
-    
-    return st.session_state.get('raw_data')
+        df = df_eng
+    else:
+        df_filt = st.session_state.get('filtered_data')
+        df = df_filt if df_filt is not None else st.session_state.get('raw_data')
+
+    if df is None or full_study:
+        return df
+    from utils.cohorts import apply_cohort
+    return apply_cohort(df)
 
 
 def _content_fingerprint(df: pd.DataFrame) -> Optional[int]:
@@ -255,10 +266,17 @@ def set_data(df: pd.DataFrame, is_schema_change: Optional[bool] = None):
     if is_schema_change is None:
         is_schema_change = (old_cols is not None and old_cols != new_cols)
 
+    # A cohort is a set of row labels in the PREVIOUS data, so genuinely new
+    # data must drop it — it would either match nobody or, worse, match
+    # different people. Re-setting the SAME frame must not, which is what page
+    # 01 does on every visit while restoring its working table: clearing there
+    # would end the run the moment the researcher looked at the upload page.
     if is_schema_change:
-        reset_data_dependent_state()
+        reset_data_dependent_state()      # clears the cohort itself
     elif (old_df is not None and old_fp is not None and new_fp is not None
           and old_fp != new_fp):
+        from utils.cohorts import clear_cohort
+        clear_cohort()
         reset_downstream_results()
 
 
@@ -407,6 +425,9 @@ def reset_data_dependent_state():
     # as they are workflow-level, not dataset-specific
 
     st.session_state.pop("filtered_data", None)
+    from utils.cohorts import clear_cohort
+    clear_cohort()
+    st.session_state.pop("cohort_runs_done", None)
     st.session_state.selected_features = []
     st.session_state.use_cv = False
     st.session_state.cv_folds = 5

@@ -345,6 +345,146 @@ def runs_remaining(plan: CohortPlan, done: Sequence[str]) -> List[CohortCell]:
     return [c for c in plan.viable if c.label not in seen]
 
 
+def cohort_candidates(df: pd.DataFrame, target_col: str,
+                      max_levels: int = 20) -> List[str]:
+    """Columns it would make sense to split the study by.
+
+    A grouping variable is a handful of categories that describe PEOPLE. A
+    subject ID has one row each and a lab value has hundreds of levels; neither
+    is a cohort, and offering them buries the two or three columns that are.
+    """
+    out: List[str] = []
+    if df is None or df.empty:
+        return out
+    n = len(df)
+    for col in df.columns:
+        if col == target_col or str(col).startswith("__source_file"):
+            continue
+        s = df[col]
+        if isinstance(s, pd.DataFrame):     # duplicate column labels
+            continue
+        try:
+            k = int(s.nunique(dropna=True))
+        except TypeError:
+            continue
+        if k < 2 or k > max_levels:
+            continue
+        # A column with as many levels as rows is an identifier, not a group.
+        if k >= max(n * 0.5, 2):
+            continue
+        out.append(str(col))
+    return out
+
+
+# ── the active run: what "different people" currently means ──────────────
+#
+# Held as index LABELS, not as a column filter. Feature engineering may one-hot
+# `sex` out of existence, and a filter that silently stopped applying would let
+# a run labelled "women" quietly train on everyone — the exact failure this
+# whole feature exists to prevent. Labels survive every row-preserving step,
+# which is the same invariant the test lockbox already depends on.
+
+_ACTIVE_KEY = "cohort_run"
+_DONE_KEY = "cohort_runs_done"
+_BROKEN_KEY = "_cohort_filter_broken"
+
+
+def active_cohort() -> Optional[Dict[str, Any]]:
+    """The run in progress, or None when the study is being analysed whole."""
+    import streamlit as st
+    run = st.session_state.get(_ACTIVE_KEY)
+    return run if isinstance(run, dict) and run.get("labels") else None
+
+
+def clear_cohort() -> None:
+    import streamlit as st
+    st.session_state.pop(_ACTIVE_KEY, None)
+    st.session_state.pop(_BROKEN_KEY, None)
+
+
+def start_cohort(df: pd.DataFrame, plan: CohortPlan, cell: CohortCell,
+                 target_col: str, dropped_features: Optional[Sequence[str]] = None,
+                 ) -> Dict[str, Any]:
+    """Make `cell` the rows every downstream page works on."""
+    import streamlit as st
+    mask = cohort_mask(df, plan.column, cell.value)
+    order = [c.label for c in plan.viable]
+    run = {
+        "column": plan.column,
+        "value": cell.value,
+        "label": cell.label,
+        "labels": list(df.index[mask]),
+        "n_rows": int(mask.sum()),
+        "n_total": int(len(df)),
+        "position": order.index(cell.label) + 1 if cell.label in order else 1,
+        "of": len(order),
+        "order": order,
+        "target_col": target_col,
+        "dropped_features": list(dropped_features or []),
+    }
+    st.session_state[_ACTIVE_KEY] = run
+    st.session_state.pop(_BROKEN_KEY, None)
+    return run
+
+
+def apply_cohort(df: pd.DataFrame) -> pd.DataFrame:
+    """Restrict a frame to the active run. Idempotent; no-op when none is set.
+
+    If neither the labels nor the grouping column can be found, this returns
+    NOTHING rather than everything. An empty table is a visible failure the
+    banner offers a way out of; a full table under a heading that says "women"
+    is a result the researcher would publish.
+    """
+    import streamlit as st
+    run = active_cohort()
+    if run is None or df is None:
+        return df
+    labels = set(run["labels"])
+    hit = df.index.isin(labels)
+    if hit.any():
+        return df.loc[hit]
+    col, value = run.get("column"), run.get("value")
+    if col and col in df.columns:
+        return df.loc[cohort_mask(df, col, value)]
+    st.session_state[_BROKEN_KEY] = True
+    return df.iloc[0:0]
+
+
+def cohort_filter_broken() -> bool:
+    import streamlit as st
+    return bool(st.session_state.get(_BROKEN_KEY))
+
+
+def completed_runs() -> List[CohortRun]:
+    import streamlit as st
+    raw = st.session_state.get(_DONE_KEY) or []
+    return [r for r in raw if isinstance(r, CohortRun)]
+
+
+def record_run(metrics: Optional[Dict[str, Any]] = None) -> Optional[CohortRun]:
+    """Bank the run in progress so the next cohort can be compared to it."""
+    import streamlit as st
+    run = active_cohort()
+    if run is None:
+        return None
+    from utils.test_lockbox import get_lockbox
+    lb = get_lockbox()
+    test_labels = set(lb["labels"]) if lb else set()
+    in_cohort = set(run["labels"])
+    entry = CohortRun(
+        column=run["column"], label=run["label"],
+        n_train=len(in_cohort - test_labels),
+        n_test=len(in_cohort & test_labels),
+        dropped_features=list(run.get("dropped_features") or []),
+        completed=True, metrics=dict(metrics or {}),
+    )
+    done = [r for r in completed_runs()
+            if not (r.column == entry.column and r.label == entry.label)]
+    done.append(entry)
+    st.session_state[_DONE_KEY] = done
+    return entry
+
+
 def comparison_caveats(runs: Sequence[CohortRun], task_type: str) -> List[str]:
     """What NOT to conclude from putting two cohort runs side by side.
 

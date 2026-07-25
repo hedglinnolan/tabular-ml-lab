@@ -707,6 +707,13 @@ def render_sidebar_workflow(current_page: str = ""):
             </div>
         </div>
         """, unsafe_allow_html=True)
+
+    # A run filter you cannot see is a run filter you forget, and every number
+    # on every page below is then quietly about a subset.
+    from utils.cohort_ui import render_cohort_chip
+    render_cohort_chip()
+
+    with st.sidebar:
         st.markdown("---")
 
         pending_widget_restore = st.session_state.get("_pending_widget_state_restore", {})

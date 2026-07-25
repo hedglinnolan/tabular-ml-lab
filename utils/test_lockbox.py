@@ -262,6 +262,23 @@ def render_lockbox_status(context: str = "") -> None:
     if lb is None:
         return
     extra = f" {context}" if context else ""
+
+    # A cohort run works on a subset, and the study-wide n is then simply not
+    # this run's test set: "n=135" beside a 490-row run is a number the
+    # researcher would write down and be wrong about.
+    from utils.cohorts import active_cohort
+    run = active_cohort()
+    if run is not None:
+        n_here = len(set(lb["labels"]) & set(run["labels"]))
+        st.caption(
+            f"🔒 Test set for this run ({run['column']} = {run['label']}): "
+            f"n={n_here:,} — this run's share of the {lb['n_test']:,} rows drawn "
+            f"once at upload, before the study was split, so every run is "
+            f"evaluated against the same held-out people. Opened once at "
+            f"Train & Compare.{extra}"
+        )
+        return
+
     if lb.get("group_col"):
         st.caption(
             f"🔒 Test set: {lb['fraction']:.0%} (n={lb['n_test']} rows from "
