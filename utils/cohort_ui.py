@@ -273,8 +273,14 @@ def render_next_cohort(task_type: str, metrics: Optional[Dict[str, Any]] = None)
         return
 
     record_run(metrics)
-    done = completed_runs()
-    done_labels = [r.label for r in done if r.column == run["column"]]
+    # Scoped to THIS grouping variable and this question. The table used to
+    # render every banked run: split by sex, run Female and Male, then split by
+    # smoker and run 'never', and the header said "split by smoker" above a
+    # table listing Female / Male / never — three overlapping row sets whose
+    # "Trained on" counts double-count the same people, under a caveat
+    # announcing "you fitted this model in 3 groups".
+    done = completed_runs(run["column"])
+    done_labels = [r.label for r in done]
     remaining = [lb for lb in run.get("order", []) if lb not in done_labels]
 
     st.markdown("---")

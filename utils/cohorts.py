@@ -333,7 +333,14 @@ def features_that_lose_variance(df: pd.DataFrame, mask: pd.Series,
 
 @dataclass
 class CohortRun:
-    """One completed pass of the same analysis over one cohort."""
+    """One completed pass of the same analysis over one cohort.
+
+    A run carries the QUESTION it answered, not just the group it answered it
+    for. Without that, a banked number cannot be invalidated when the question
+    changes and cannot be excluded when a different question is being asked —
+    and the comparison table is precisely where a stale number turns into a
+    published sentence.
+    """
     column: str
     label: str
     n_train: int
@@ -341,6 +348,15 @@ class CohortRun:
     dropped_features: List[str] = field(default_factory=list)
     completed: bool = False
     metrics: Dict[str, Any] = field(default_factory=dict)
+    # The question. Same target, same task, same data — otherwise these runs
+    # are not comparable and must not appear beside each other.
+    target_col: str = ""
+    task_type: str = ""
+    data_fingerprint: str = ""
+
+    @property
+    def question(self) -> Tuple[str, str, str, str]:
+        return (self.column, self.target_col, self.task_type, self.data_fingerprint)
 
 
 def runs_remaining(plan: CohortPlan, done: Sequence[str]) -> List[CohortCell]:
@@ -459,10 +475,37 @@ def cohort_filter_broken() -> bool:
     return bool(st.session_state.get(_BROKEN_KEY))
 
 
-def completed_runs() -> List[CohortRun]:
+def _current_question(column: str = "") -> Tuple[str, str, str, str]:
+    """(grouping column, target, task, data fingerprint) as things stand now."""
+    import streamlit as st
+    dc = st.session_state.get("data_config")
+    run = active_cohort()
+    return (
+        column or (run["column"] if run else ""),
+        str(getattr(dc, "target_col", "") or ""),
+        str(getattr(dc, "task_type", "") or ""),
+        str(st.session_state.get("_raw_data_fingerprint", "")),
+    )
+
+
+def all_recorded_runs() -> List[CohortRun]:
+    """Everything ever banked, including runs of other questions."""
     import streamlit as st
     raw = st.session_state.get(_DONE_KEY) or []
     return [r for r in raw if isinstance(r, CohortRun)]
+
+
+def completed_runs(column: str = "") -> List[CohortRun]:
+    """Runs that answered the question being asked RIGHT NOW.
+
+    Filtered at read time rather than cleared on every path that could
+    invalidate them: banked runs used to survive a corrected re-upload and a
+    target swap, so a women's AUC computed on the old data — or on a different
+    outcome entirely — sat in the comparison table beside a men's AUC computed
+    on the new one, with nothing to distinguish them. Filtering here cannot be
+    forgotten by a reset path that does not exist yet.
+    """
+    return [r for r in all_recorded_runs() if r.question == _current_question(column)]
 
 
 def record_run(metrics: Optional[Dict[str, Any]] = None) -> Optional[CohortRun]:
@@ -475,15 +518,20 @@ def record_run(metrics: Optional[Dict[str, Any]] = None) -> Optional[CohortRun]:
     lb = get_lockbox()
     test_labels = set(lb["labels"]) if lb else set()
     in_cohort = set(run["labels"])
+    _col, _target, _task, _fp = _current_question(run["column"])
     entry = CohortRun(
         column=run["column"], label=run["label"],
         n_train=len(in_cohort - test_labels),
         n_test=len(in_cohort & test_labels),
         dropped_features=list(run.get("dropped_features") or []),
         completed=True, metrics=dict(metrics or {}),
+        target_col=_target, task_type=_task, data_fingerprint=_fp,
     )
-    done = [r for r in completed_runs()
-            if not (r.column == entry.column and r.label == entry.label)]
+    # Replace by (question, group), so re-running the same group under the same
+    # question updates it while a run of a DIFFERENT question is left alone —
+    # it simply stops being returned by completed_runs().
+    done = [r for r in all_recorded_runs()
+            if not (r.question == entry.question and r.label == entry.label)]
     done.append(entry)
     st.session_state[_DONE_KEY] = done
     return entry
