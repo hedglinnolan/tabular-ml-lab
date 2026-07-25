@@ -450,9 +450,16 @@ def check_numeric_sentinels(df: pd.DataFrame, min_count: int = 2) -> List[ShapeF
             is_integral = False
         coded = is_integral and s.nunique() <= _CODED_MAX_DISTINCT
 
+        # Single-digit codes are only credible in a coded variable — EXCEPT
+        # negative ones. -9 and -8 are standard survey missing codes (NHANES
+        # uses them), and a negative value in a column of positive measurements
+        # is never a real observation. Requiring abs(v) >= 10 meant a column of
+        # 0-100 scores containing -9 sailed through and the -9s were averaged
+        # into every result. Safe to relax now that a candidate must also lie
+        # beyond every real value to be reported.
         present = [v for v in NUMERIC_SENTINELS
                    if int((s == v).sum()) >= min_count
-                   and (abs(v) >= 10 or coded)]
+                   and (abs(v) >= 10 or coded or v < 0)]
         if not present:
             continue
 
@@ -502,8 +509,29 @@ def check_numeric_sentinels(df: pd.DataFrame, min_count: int = 2) -> List[ShapeF
                 # distance threshold and would be left behind while 8 and 9 are
                 # recoded — splitting one block of codes down the middle.
                 hits = {v: int((s == v).sum()) for v in present if v not in main}
+        # Whatever the tests above concluded, a missing-value code sits BEYOND
+        # the observations, never among them. If real values exist on both
+        # sides of a candidate, it is an observation — 77 in an age column that
+        # also holds 78 and 80 is a 77-year-old, and 88 in a systolic column
+        # reaching 174 is a blood pressure.
+        #
+        # Without this gate the run test misfired on ordinary clinical columns:
+        # integer ages and blood pressures have natural gaps at n=300-500, the
+        # run splits, the smaller run is called "codes", and a CRITICAL finding
+        # appeared on a clean file offering a one-click button that recodes real
+        # measurements to missing. It fired on 13 of 40 clean NHANES-shaped
+        # files. The detail sentence it printed — "far outside the rest of the
+        # column (18 to 80)" about the value 77 — was contradicted by the same
+        # page's own numeric summary.
+        real = s[~s.isin(list(hits))]
+        if real.empty:
+            continue
+        real_lo, real_hi = float(real.min()), float(real.max())
+        hits = {v: n for v, n in hits.items() if v > real_hi or v < real_lo}
         if not hits:
             continue
+        # Describe the range the codes are actually outside of.
+        lo, hi = real_lo, real_hi
 
         def _fmt(v: float) -> str:
             return str(int(v)) if float(v).is_integer() else str(v)

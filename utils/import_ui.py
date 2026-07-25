@@ -37,8 +37,25 @@ _CONFIDENCE_NOTE = {
 
 
 def _frame_signature(df: pd.DataFrame) -> str:
-    """Cheap identity for the frame as it was read, to reset stale repairs."""
-    return f"{df.shape[0]}x{df.shape[1]}:{hash(tuple(map(str, df.columns)))}"
+    """Identity for the frame as it was read, to reset stale repairs.
+
+    CONTENT is part of the identity. Keying on shape and column names alone
+    meant a corrected re-upload with the same dimensions matched the old
+    signature, so repaired_frame() handed back version 1 — and version 1 is
+    what page 01 committed to the project, the working table, the audit and the
+    lockbox. The preview showed the old numbers too, so nothing was visible to
+    notice. Same reasoning as the lockbox signature, and the same fallback for
+    frames holding unhashable cells.
+    """
+    try:
+        content = int(pd.util.hash_pandas_object(df, index=False).sum())
+    except Exception:
+        try:
+            content = f"{int(df.notna().sum().sum())}|{df.dtypes.astype(str).tolist()}"
+        except Exception:
+            content = "?"
+    return (f"{df.shape[0]}x{df.shape[1]}:"
+            f"{hash(tuple(map(str, df.columns)))}:{content}")
 
 
 def _state(key_prefix: str) -> Tuple[str, str, str]:
