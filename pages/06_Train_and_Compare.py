@@ -825,6 +825,19 @@ selected_model_params = st.session_state.get('selected_model_params', {})
 _prep_built = st.session_state.get("preprocess_built_model_keys", [])
 _has_preprocessing = len(_prep_built) > 0 or pipeline is not None
 
+# Training resolves `get_preprocessing_pipeline(model_key) or pipeline`, and
+# that fallback is NOT generic: set_preprocessing_pipelines() takes the
+# 'default' entry if Preprocess built one, and otherwise the FIRST model's
+# pipeline. So a model added here but never prepared on Preprocess is trained
+# with another model's preprocessing — PCA and all — which then makes page 07
+# explain PC1 and PC2 for a model the researcher believes saw raw features.
+# Naming the owner is the difference between an informed choice and a silent one.
+_prep_by_model = st.session_state.get("preprocessing_pipelines_by_model", {}) or {}
+_prep_is_generic = "default" in _prep_by_model
+_prep_fallback_owner = (
+    None if _prep_is_generic or not _prep_by_model else next(iter(_prep_by_model))
+)
+
 # Warning banner for unprocessed data
 if not _has_preprocessing:
     st.warning("⚠️ **Warning:** You are about to train models with unprocessed data. It is recommended to preprocess your data first in the Preprocess page to ensure optimal model performance.")
@@ -890,19 +903,18 @@ for group_name in sorted_groups:
 
         with cols[idx % len(cols)]:
             is_selected = st.session_state[checkbox_key]
-            # The badge must describe the pipeline this model will ACTUALLY be
-            # trained with, which line ~1286 resolves as
-            # `get_preprocessing_pipeline(model_key) or pipeline`. Reporting
-            # only the per-model dict told every model "No pipeline" whenever
-            # Preprocess had built the shared default — which is what it builds
-            # on a first pass, because it can only tune per model for models
-            # already picked HERE. The user was sent back to Preprocess to fix
-            # something that was not broken, and Preprocess built the same
-            # shared pipeline again.
+            # The badge describes the pipeline this model will ACTUALLY be
+            # trained with, in the four states that resolution can be in.
+            # "Preprocessed"/"No pipeline" collapsed the middle two, so
+            # borrowing another model's preprocessing looked identical to
+            # having none, and a generic shared pipeline looked like a problem.
             if model_key in _prep_built:
                 prep_badge, prep_color = "✅ Tuned for this model", "#22c55e"
-            elif pipeline is not None:
+            elif _prep_is_generic:
                 prep_badge, prep_color = "✅ Shared pipeline", "#22c55e"
+            elif _prep_fallback_owner:
+                prep_badge = f"⚠️ Would use {_prep_fallback_owner.upper()}'s"
+                prep_color = "#f59e0b"
             else:
                 prep_badge, prep_color = "⚠️ No pipeline", "#f59e0b"
             border = "#667eea" if is_selected else "#e2e8f0"
@@ -1783,6 +1795,31 @@ if task_type_final == 'classification':
 # Training section with two buttons
 st.markdown("---")
 st.header("Train Models")
+
+# Training a model that was never prepared on Preprocess is allowed on purpose
+# — but it silently borrows the first prepared model's pipeline, so if that one
+# had PCA or a log transform, this model gets it too and page 07 will explain
+# the wrong features. Say whose preprocessing it would use, before it runs.
+_borrowers = [m for m in models_to_train
+              if m not in _prep_built and _prep_fallback_owner]
+if _borrowers:
+    _names = ", ".join(m.upper() for m in _borrowers[:6])
+    st.warning(
+        f"**{len(_borrowers)} selected "
+        f"model{'' if len(_borrowers) == 1 else 's'} "
+        f"({_names}) {'has' if len(_borrowers) == 1 else 'have'} no "
+        f"preprocessing of {'its' if len(_borrowers) == 1 else 'their'} own.** "
+        f"{'It' if len(_borrowers) == 1 else 'They'} will be trained with "
+        f"**{_prep_fallback_owner.upper()}'s** pipeline, including any transform "
+        f"chosen for that model specifically — a PCA or log step meant for "
+        f"{_prep_fallback_owner.upper()} would be applied here too, and "
+        f"Explainability would then describe those components rather than your "
+        f"predictors. To give {'it' if len(_borrowers) == 1 else 'them'} "
+        f"{'its' if len(_borrowers) == 1 else 'their'} own, select "
+        f"{'it' if len(_borrowers) == 1 else 'them'} on **Preprocess** and "
+        f"rebuild.",
+        icon="🔀",
+    )
 
 # Wide-feature advisory: training itself stays fast, but downstream
 # explainability (permutation importance) scales with feature count, and

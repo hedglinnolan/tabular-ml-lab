@@ -418,14 +418,14 @@ if selected_models:
         f"{', '.join(m.upper() for m in selected_models)} — each gets its own "
         f"preprocessing pipeline.")
 else:
-    # This used to read "Select at least one model above", which is not a
-    # requirement and not possible on a first pass: models are chosen on Train
-    # & Compare, which comes AFTER this page. Selecting none is the normal
-    # first-pass path and produces one shared pipeline.
+    # "Select at least one model above" read as a hard requirement, but
+    # selecting none is a legal path that builds one shared pipeline. State
+    # what each choice does instead of implying the page is blocked.
     st.info(
-        "Picking models here is optional. It is how you get preprocessing "
-        "tuned per model; leave it alone and one shared pipeline is built for "
-        "all of them.")
+        "**Choose the models you plan to train.** Each one gets a pipeline "
+        "tuned to it, and they arrive already selected on Train & Compare. "
+        "Choose none and a single shared pipeline is built and used for every "
+        "model instead.")
 
 # ============================================================================
 # 2. PREPROCESSING CONFIGURATION
@@ -808,11 +808,11 @@ if not selected_models:
     # the recommended order puts this page FIRST — so on a first pass there is
     # nothing to tune for, and the page previously just showed a bare button.
     st.info(
-        "**No models have been chosen yet, so one shared pipeline will be "
-        "built.** It applies to every model you train, and it is the right "
-        "choice for a first pass. If you later want preprocessing tuned per "
-        "model — different scaling for a neural net than for a random forest, "
-        "say — pick your models on **Train & Compare** and come back here.",
+        "**No models are selected, so one shared pipeline will be built.** It "
+        "is used for every model you train, which is a reasonable first pass. "
+        "For preprocessing tuned per model — different scaling for a neural "
+        "net than for a random forest, say — select those models above before "
+        "you build.",
         icon="🔨",
     )
 if use_smart_defaults and selected_models:
