@@ -30,7 +30,7 @@ from utils.table_export import table
 from utils.import_ui import render_import_doctor, repaired_frame
 from data_processor import (
     load_tabular_data, get_numeric_columns, get_selectable_columns,
-    detect_file_type
+    detect_file_type, inspect_json
 )
 from utils.perf_cache import (
     cached_parse_upload, cached_audit_tables, cached_numeric_summary,
@@ -307,6 +307,7 @@ if uploaded_files and len(uploaded_files) > 1:
                         _uf.getvalue(), _uf.name,
                         st.session_state.get(f"transpose_{_fk}", False),
                         st.session_state.get(f"excel_sheet_{_fk}", 0) if _ft == 'excel' else 0,
+                        st.session_state.get(f"records_key_{_fk}", "") or "",
                     )
                     _frame.columns = [str(c) for c in _frame.columns]
                     # Honour fixes already applied in the review below.
@@ -364,6 +365,31 @@ if uploaded_files:
                     except Exception:
                         excel_sheet_choice = 0
                     uploaded_file.seek(0)
+
+                # JSON: say where the rows are being read from, and let the
+                # user correct it. The loader used to raise "pick which key
+                # holds your rows" with no way to pick, and to resolve a
+                # payload holding several wrapper keys by iteration order.
+                records_key_choice = ""
+                if file_type in ('json', 'jsonl'):
+                    uploaded_file.seek(0)
+                    layout = inspect_json(uploaded_file, lines=(file_type == 'jsonl'))
+                    uploaded_file.seek(0)
+                    if layout.error:
+                        st.error(layout.error)
+                        continue
+                    if layout.candidates:
+                        default_idx = (layout.candidates.index(layout.chosen_key)
+                                       if layout.chosen_key in layout.candidates else 0)
+                        records_key_choice = st.selectbox(
+                            "Which part of this file holds your rows?",
+                            layout.candidates, index=default_idx,
+                            key=f"records_key_{file_key}",
+                            help="This JSON wraps its table inside a key. Pick the "
+                                 "one holding your records.",
+                        )
+                    if layout.note:
+                        st.caption(f"ℹ️ {layout.note}")
                 
                 # Per-file transpose option
                 transpose_this_file = st.checkbox(
@@ -383,6 +409,7 @@ if uploaded_files:
                         uploaded_file.name,
                         transpose_this_file,
                         excel_sheet_choice if file_type == 'excel' else 0,
+                        records_key_choice,
                     )
                 
                 # Reset file position for later

@@ -20,7 +20,8 @@ import streamlit as st
 
 @st.cache_data(show_spinner="Parsing uploaded file…", max_entries=8)
 def cached_parse_upload(file_bytes: bytes, filename: str,
-                        transpose: bool, excel_sheet: int) -> pd.DataFrame:
+                        transpose: bool, excel_sheet: int,
+                        records_key: str = "") -> pd.DataFrame:
     """Parse an uploaded file once per (content, options) combination.
 
     The upload page re-renders while a file sits in the uploader; without
@@ -30,6 +31,7 @@ def cached_parse_upload(file_bytes: bytes, filename: str,
     return load_tabular_data(
         io.BytesIO(file_bytes), filename=filename,
         transpose=transpose, excel_sheet=excel_sheet,
+        records_key=records_key or None,
     )
 
 

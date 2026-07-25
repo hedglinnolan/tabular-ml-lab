@@ -238,3 +238,94 @@ class TestNumericStoredAsText:
         assert len(found) == 1 and found[0].confidence == "high"
         out, _ = apply_fix(df, found[0])
         assert pd.api.types.is_numeric_dtype(out["glucose"])
+
+
+# ── JSON: where the rows are must be answerable, never guessed ───────────
+
+class TestJsonRowSetChoice:
+    """The loader told users to do something the app gave them no way to do.
+
+    For an ambiguous payload it raised "Pick which key holds your rows", but
+    records_key was never wired to a widget and cached_parse_upload had no
+    parameter to carry it. And when several recognised wrapper keys were
+    present it silently took whichever came first in _JSON_WRAPPER_KEYS.
+    """
+
+    PAYLOAD = {
+        "patients": [{"id": 1, "age": 40}, {"id": 2, "age": 55}],
+        "visits": [{"id": 1, "bp": 120}, {"id": 1, "bp": 118}, {"id": 2, "bp": 130}],
+        "meta": [{"exported": "2026-01-01"}],
+    }
+
+    def _bytes(self, obj):
+        import json as _json
+        return io.BytesIO(_json.dumps(obj).encode())
+
+    def test_candidates_are_reported(self):
+        from data_processor import inspect_json
+        layout = inspect_json(self._bytes(self.PAYLOAD))
+        assert layout.needs_a_choice
+        assert layout.candidates == ["meta", "patients", "visits"]
+
+    @pytest.mark.parametrize("key,rows,cols", [
+        ("patients", 2, ["id", "age"]),
+        ("visits", 3, ["id", "bp"]),
+        ("meta", 1, ["exported"]),
+    ])
+    def test_each_candidate_is_loadable(self, key, rows, cols):
+        from data_processor import load_json
+        df = load_json(self._bytes(self.PAYLOAD), records_key=key)
+        assert len(df) == rows and list(df.columns) == cols
+
+    def test_records_key_reaches_through_load_tabular_data(self):
+        from data_processor import load_tabular_data
+        df = load_tabular_data(self._bytes(self.PAYLOAD), filename="x.json",
+                               records_key="visits")
+        assert len(df) == 3
+
+    def test_records_key_reaches_through_the_upload_cache(self):
+        import json as _json
+        from utils.perf_cache import cached_parse_upload
+        raw = _json.dumps(self.PAYLOAD).encode()
+        df = cached_parse_upload(raw, "x.json", False, 0, "patients")
+        assert len(df) == 2 and "age" in df.columns
+
+    def test_a_wrapper_guess_is_disclosed(self):
+        from data_processor import inspect_json
+        layout = inspect_json(self._bytes({"data": [{"a": 1}], "results": [{"b": 2}]}))
+        assert layout.chosen_key == "data"
+        assert layout.candidates == ["data", "results"]
+        assert "data" in layout.note and "change it" in layout.note
+
+    def test_an_unambiguous_wrapper_still_says_what_it_did(self):
+        from data_processor import inspect_json
+        layout = inspect_json(self._bytes({"data": [{"a": 1}, {"a": 2}]}))
+        assert layout.chosen_key == "data" and not layout.needs_a_choice
+        assert "data" in layout.note
+
+    @pytest.mark.parametrize("raw,expect", [
+        (b"", "empty"),
+        (b'{"a": [1,2', "not valid JSON"),
+        (b"42", "single value"),
+    ])
+    def test_bad_input_returns_a_message_not_an_exception(self, raw, expect):
+        from data_processor import inspect_json
+        layout = inspect_json(io.BytesIO(raw))
+        assert expect in layout.error
+
+    def test_geojson_is_named_as_such(self):
+        import json as _json
+        from data_processor import inspect_json
+        raw = _json.dumps({"type": "FeatureCollection", "features": []}).encode()
+        assert "GeoJSON" in inspect_json(io.BytesIO(raw)).error
+
+    def test_truncated_json_is_not_mislabelled_as_json_lines(self):
+        from data_processor import inspect_json
+        layout = inspect_json(io.BytesIO(b'{"a": [1,2'))
+        assert layout.kind == "not_tabular"
+
+    def test_real_json_lines_is_still_recognised(self):
+        from data_processor import inspect_json
+        raw = b'{"a": 1}\n{"a": 2}\n{"a": 3}\n'
+        layout = inspect_json(io.BytesIO(raw))
+        assert layout.kind == "lines" and "3" in layout.note

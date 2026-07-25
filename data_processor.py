@@ -292,6 +292,118 @@ def _json_obj_to_frame(obj: Any, records_key: Optional[str] = None,
     )
 
 
+class JsonLayout:
+    """How a JSON payload is laid out, and which choices the reader made.
+
+    The loader used to resolve two kinds of uncertainty on its own: when a
+    payload had several candidate row sets it raised "pick which key holds your
+    rows" — advice the UI gave no way to follow — and when it had several
+    recognised wrapper keys it took whichever came first in _JSON_WRAPPER_KEYS,
+    silently. Both are guesses, and this app does not guess silently.
+
+    So the reader reports what it found. The UI turns `candidates` into a
+    selectbox and `note` into a caption, and passes the answer back as
+    `records_key`.
+    """
+
+    def __init__(self, kind: str, chosen_key: Optional[str] = None,
+                 candidates: Optional[List[str]] = None, note: str = "",
+                 error: str = ""):
+        self.kind = kind                  # records|wrapped|lines|split|table|columns|single|ambiguous|not_tabular
+        self.chosen_key = chosen_key
+        self.candidates = candidates or []
+        self.note = note
+        self.error = error
+
+    @property
+    def needs_a_choice(self) -> bool:
+        """More than one place the rows could plausibly be."""
+        return len(self.candidates) > 1
+
+    def __repr__(self) -> str:            # pragma: no cover - debugging aid
+        return (f"JsonLayout(kind={self.kind!r}, chosen_key={self.chosen_key!r}, "
+                f"candidates={self.candidates!r})")
+
+
+def inspect_json(file: Union[str, io.BytesIO], lines: bool = False,
+                 encoding: Optional[str] = None) -> JsonLayout:
+    """Describe a JSON payload's shape without raising and without committing.
+
+    Safe to call for a preview: any failure comes back as a JsonLayout with an
+    `error` message rather than an exception.
+    """
+    try:
+        text = _json_read_text(file, encoding=encoding)
+    except Exception as exc:
+        return JsonLayout("not_tabular", error=str(exc))
+    if not text.strip():
+        return JsonLayout("not_tabular", error="The JSON file is empty.")
+
+    if lines:
+        return JsonLayout("lines", note="Read as JSON Lines: one record per line.")
+    try:
+        obj = json.loads(text)
+    except json.JSONDecodeError as err:
+        # A .json file that is really NDJSON is a common export, so that is
+        # tried — but only claimed if it actually parses. Reporting "read as
+        # JSON Lines" for a truncated file would send the user looking for the
+        # wrong problem.
+        try:
+            records = _json_lines_to_records(text)
+        except Exception:
+            return JsonLayout(
+                "not_tabular",
+                error=(f"This file is not valid JSON ({err.msg} at line "
+                       f"{err.lineno}, column {err.colno}), and it is not "
+                       f"JSON Lines either."))
+        return JsonLayout("lines",
+                          note=f"Not a single JSON document; read as JSON Lines "
+                               f"({len(records):,} records, one per line).")
+
+    if isinstance(obj, list):
+        return JsonLayout("records", note=f"A list of {len(obj):,} records.")
+    if not isinstance(obj, dict):
+        return JsonLayout("not_tabular",
+                          error="This JSON is a single value, not a table.")
+
+    keys = set(obj.keys())
+    if str(obj.get("type", "")).lower() in {"featurecollection", "geometrycollection"}:
+        return JsonLayout("not_tabular",
+                          error="This looks like a GeoJSON map file, not a data table.")
+    if {"columns", "data"} <= keys and isinstance(obj.get("data"), list):
+        return JsonLayout("split", note="Read as a pandas 'split' export "
+                                        "(columns + data).")
+    if {"schema", "data"} <= keys and isinstance(obj.get("data"), list):
+        return JsonLayout("table", note="Read as a pandas 'table' export "
+                                        "(schema + data).")
+
+    # Every top-level key holding a non-empty list is somewhere the rows could be.
+    list_keys = [k for k, v in obj.items() if isinstance(v, list) and v]
+    if list_keys:
+        wrappers = [w for w in _JSON_WRAPPER_KEYS if w in list_keys]
+        chosen = wrappers[0] if wrappers else (list_keys[0] if len(list_keys) == 1 else None)
+        if chosen and len(list_keys) > 1:
+            note = (f"Several keys hold lists ({', '.join(sorted(map(str, list_keys))[:6])}). "
+                    f"Reading rows from '{chosen}' — change it below if that is wrong.")
+        elif chosen:
+            note = f"Reading rows from the '{chosen}' key."
+        else:
+            note = (f"Several keys hold lists "
+                    f"({', '.join(sorted(map(str, list_keys))[:6])}). "
+                    f"Choose which one holds your rows.")
+        return JsonLayout("wrapped" if chosen else "ambiguous",
+                          chosen_key=chosen, candidates=sorted(map(str, list_keys)),
+                          note=note)
+
+    if obj and all(isinstance(v, dict) for v in obj.values()):
+        return JsonLayout("columns", note="Read as a column-keyed object.")
+    if obj and all(not isinstance(v, (dict, list)) for v in obj.values()):
+        return JsonLayout("single", note="A single record; read as a one-row table.")
+    return JsonLayout("not_tabular",
+                      error="This JSON does not look like a table. Top-level keys: "
+                            + ", ".join(sorted(map(str, list(keys)))[:6]))
+
+
 def load_json(file: Union[str, io.BytesIO], lines: bool = False,
               records_key: Optional[str] = None,
               encoding: Optional[str] = None) -> pd.DataFrame:
@@ -343,7 +455,8 @@ def load_tabular_data(
     file: Union[str, io.BytesIO],
     filename: Optional[str] = None,
     transpose: bool = False,
-    excel_sheet: Optional[Union[str, int]] = 0
+    excel_sheet: Optional[Union[str, int]] = 0,
+    records_key: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Load tabular data from various formats (CSV, Excel, Parquet, TSV).
@@ -353,6 +466,9 @@ def load_tabular_data(
         filename: Original filename (used to detect file type if file is BytesIO)
         transpose: Whether to transpose the data after loading
         excel_sheet: Sheet name or index for Excel files (default: first sheet)
+        records_key: for JSON, the top-level key holding the rows when the
+            payload wraps them (e.g. "data"). Chosen by the user in the UI when
+            more than one key could plausibly hold the table.
     
     Returns:
         Loaded DataFrame, optionally transposed
@@ -376,9 +492,9 @@ def load_tabular_data(
     elif file_type == 'tsv':
         df = load_tsv(file)
     elif file_type == 'json':
-        df = load_json(file)
+        df = load_json(file, records_key=records_key or None)
     elif file_type == 'jsonl':
-        df = load_json(file, lines=True)
+        df = load_json(file, lines=True, records_key=records_key or None)
     else:
         # Fallback to CSV
         df = load_csv(file)
