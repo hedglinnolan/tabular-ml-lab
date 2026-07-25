@@ -230,8 +230,15 @@ with col3:
         test_size = st.slider("Test %", 5, 30, test_size_default, key="train_split_test_pct") / 100
 
 if _test_governed_by_lockbox:
+    # In a cohort run the study-wide n is not this run's test set, and printing
+    # it here put two different numbers on one screen.
+    from utils.cohorts import active_cohort as _slider_cohort
+    _run = _slider_cohort()
+    _n_test_here = (len(set(_slider_lb["labels"]) & set(_run["labels"]))
+                    if _run is not None else _slider_lb["n_test"])
+    _whose = f" for {_run['column']} = {_run['label']}" if _run is not None else ""
     st.caption(
-        f"🔒 Test set is locked at {test_size:.0%} (n={_slider_lb['n_test']}) by the upload "
+        f"🔒 Test set is locked at {test_size:.0%} (n={_n_test_here:,}{_whose}) by the upload "
         f"lockbox — held out since before feature engineering. Train % and Val % divide the "
         f"remaining {1 - test_size:.0%}. Change the holdout on Upload & Audit."
     )
@@ -2287,23 +2294,6 @@ if st.session_state.get('trained_models'):
     except Exception:
         pass
 
-    # ── same question, next group ────────────────────────────────────────
-    # Only renders when a cohort run is active. Banks this run's headline
-    # number so the next group can be put beside it, with the caveats that
-    # stop two AUCs 0.04 apart from being read as a finding.
-    _cohort_metrics = {}
-    try:
-        _cm = ('ROC-AUC' if 'ROC-AUC' in comparison_df.columns else 'Accuracy') \
-            if task_type_final == 'classification' else 'R2'
-        if _cm in comparison_df.columns and len(comparison_df) > 0:
-            _best_row = comparison_df.nlargest(1, _cm).iloc[0]
-            _cohort_metrics = {"Best model": str(_best_row['Model']),
-                               _cm: float(_best_row[_cm])}
-    except Exception:
-        _cohort_metrics = {}
-    from utils.cohort_ui import render_next_cohort
-    render_next_cohort(task_type_final, _cohort_metrics)
-
     # Helper function for complexity description
     def get_model_complexity(model_name: str) -> str:
         """Return human-readable complexity description."""
@@ -2417,6 +2407,23 @@ if st.session_state.get('trained_models'):
             st.info("Train multiple models to see comparison and recommendations.")
     else:
         st.info("Train models to see selection guidance.")
+
+    # ── same question, next group ────────────────────────────────────────
+    # Only renders when a cohort run is active. Banks this run's headline
+    # number so the next group can be put beside it, with the caveats that
+    # stop two AUCs 0.04 apart from being read as a finding.
+    _cohort_metrics = {}
+    try:
+        _cm = ('ROC-AUC' if 'ROC-AUC' in comparison_df.columns else 'Accuracy') \
+            if task_type_final == 'classification' else 'R2'
+        if _cm in comparison_df.columns and len(comparison_df) > 0:
+            _best_row = comparison_df.nlargest(1, _cm).iloc[0]
+            _cohort_metrics = {"Best model": str(_best_row['Model']),
+                               _cm: float(_best_row[_cm])}
+    except Exception:
+        _cohort_metrics = {}
+    from utils.cohort_ui import render_next_cohort
+    render_next_cohort(task_type_final, _cohort_metrics)
 
     # ================================================================
     # DIAGNOSTIC ASSISTANT FOR POOR PERFORMANCE
