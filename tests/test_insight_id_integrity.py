@@ -20,19 +20,48 @@ import os
 import pytest
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCAN_DIRS = ["pages", "utils", "ml"]
+
+# Every directory that may produce or reference an insight id. `turbotab` is
+# here because the migration moves code into it: a scanner that keeps looking
+# only at the old directories keeps passing while the ids it was written to
+# guard walk out from under it.
+SCAN_DIRS = ["pages", "utils", "ml", "models", "turbotab"]
+
+# Directories that must exist for this scan to mean anything. If one is renamed
+# or emptied the scan silently shrinks, so absence is an error rather than a
+# `continue`. This is the failure the whole file is about, applied to itself.
+REQUIRED_SCAN_DIRS = ["pages", "utils", "ml"]
+
+# Floors, not targets. They exist so that a scan which collapses to nothing —
+# after a rename, a move, or an AST change that stops matching — fails loudly
+# instead of reporting a clean bill of health over an empty set. Raise them when
+# the real counts grow well past these; never lower them to make a run pass.
+MIN_FILES_SCANNED = 40
+MIN_PRODUCED_IDS = 30
+MIN_REFERENCED_IDS = 5
+
 LEDGER_METHODS = {"resolve", "acknowledge", "get", "remove"}
+
+_SCANNED_FILES = []
 
 
 def _iter_source_files():
+    _SCANNED_FILES.clear()
     for d in SCAN_DIRS:
         base = os.path.join(PROJECT_ROOT, d)
         if not os.path.isdir(base):
             continue
         for root, _dirs, files in os.walk(base):
+            # Virtualenvs and caches live under some of these directories and
+            # are not this project's source.
+            if any(part in root for part in (".venv", "venv", "__pycache__",
+                                             "site-packages", "node_modules")):
+                continue
             for fn in files:
                 if fn.endswith(".py"):
-                    yield os.path.join(root, fn)
+                    path = os.path.join(root, fn)
+                    _SCANNED_FILES.append(path)
+                    yield path
 
 
 def _receiver_mentions_ledger(node) -> bool:
@@ -47,7 +76,10 @@ def collect_ids():
 
     for path in _iter_source_files():
         rel = os.path.relpath(path, PROJECT_ROOT)
-        with open(path) as f:
+        # Explicit encoding: the default is cp1252 on Windows, and this tree
+        # contains sources it cannot decode — without this the module raises
+        # UnicodeDecodeError at *collection*, taking the whole tier-1 run with it.
+        with open(path, encoding="utf-8") as f:
             try:
                 tree = ast.parse(f.read())
             except SyntaxError:  # pragma: no cover
@@ -125,6 +157,33 @@ PRODUCED_EXACT, PRODUCED_PREFIXES, REFERENCED_EXACT, REFERENCED_PREFIXES = colle
 
 
 class TestInsightIdIntegrity:
+    def test_the_scan_actually_scanned_something(self):
+        """The non-vacuity floor.
+
+        Every other assertion in this file is of the form "nothing referenced is
+        missing", which an empty scan satisfies perfectly. After a rename-heavy
+        migration that is exactly what happens: the ids move, the scan finds
+        none of them, and a green test reports that no id is orphaned because no
+        id was looked at.
+
+        So the counts are asserted first, and the scanned directories are
+        required to exist rather than skipped when absent.
+        """
+        for d in REQUIRED_SCAN_DIRS:
+            assert os.path.isdir(os.path.join(PROJECT_ROOT, d)), (
+                f"SCAN_DIRS names '{d}' but it does not exist. If it moved, update "
+                "SCAN_DIRS — otherwise this file guards an empty set.")
+
+        assert len(_SCANNED_FILES) >= MIN_FILES_SCANNED, (
+            f"scanned only {len(_SCANNED_FILES)} files, expected at least "
+            f"{MIN_FILES_SCANNED} — the scan has lost its source tree")
+        assert len(PRODUCED_EXACT) >= MIN_PRODUCED_IDS, (
+            f"found only {len(PRODUCED_EXACT)} produced insight ids, expected at least "
+            f"{MIN_PRODUCED_IDS} — the producer pattern has stopped matching")
+        assert len(REFERENCED_EXACT) >= MIN_REFERENCED_IDS, (
+            f"found only {len(REFERENCED_EXACT)} referenced insight ids, expected at "
+            f"least {MIN_REFERENCED_IDS} — the consumer pattern has stopped matching")
+
     def test_scan_finds_known_producers(self):
         """Guard against the scanner itself silently breaking."""
         for known in ("eda_sufficiency_insufficient", "eda_sufficiency_borderline",
