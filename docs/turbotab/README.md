@@ -6,7 +6,10 @@ asks one question at a time, the answers accumulate into a document, and that do
 
 This folder is the design and transition record. **Nothing here has been implemented.**
 No application code has been written, moved, or deleted. Every file is analysis,
-specification, or a clickable prototype.
+specification, or a clickable prototype driven by synthetic data.
+
+To get from here to something runnable, see [`LOOP.md`](LOOP.md) §"Loop 3 — the walking
+skeleton". The ledger loops verify and fix; only Loop 3 builds.
 
 Baseline for all analysis: `origin/main` @ `24c3446` (PR #145 merged).
 
@@ -20,7 +23,7 @@ Baseline for all analysis: `origin/main` @ `24c3446` (PR #145 merged).
 | [`TRANSITION_PLAN.md`](TRANSITION_PLAN.md) | The delicate parts, named. Live bugs, structural facts, landmine classes, and a gated sequence. |
 | [`FINDINGS_LEDGER.md`](FINDINGS_LEDGER.md) | All 385 findings, tracked to completion. Nothing closes without a regression test named after it. |
 | [`prototypes/interview-feed.html`](prototypes/interview-feed.html) | Open in a browser. The interaction model, working, with synthetic data. |
-| [`LOOP.md`](LOOP.md) | **How to run this as an unsupervised agent loop.** Prompts, guardrails, and how to audit the result. |
+| [`LOOP.md`](LOOP.md) | **How to run this as an unsupervised agent loop.** Three loops: verify the ledger, fix the live bugs, or build the walking skeleton — the last is the one that produces a running app. |
 | [`METHODOLOGY.md`](METHODOLOGY.md) | Provenance: what was measured, what was verified by hand, what must still be re-checked. |
 
 ## Prototypes

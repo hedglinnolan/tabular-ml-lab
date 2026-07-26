@@ -14,7 +14,7 @@ Baseline: `origin/main` @ `24c3446`.
 
 | Layer | Files | Lines | Streamlit-coupled | Verdict |
 |---|---:|---:|---:|---|
-| `ml/` | 35 | 17,735 | 3 | **core.** Only `eda_actions` (4 refs), `macro_shape` (5), `publication` (32) touch `st.` |
+| `ml/` | 35 | 17,735 | 4 direct + 3 transitive | **core.** See the correction below — grep understates this |
 | `models/` | 7 | 1,000 | 0 | **core.** `BaseModelWrapper` already defines a clean contract |
 | `visualizations.py` | 1 | ~700 | 0 | **core.** Returns figure objects; never calls `st.pyplot`/`st.plotly_chart` |
 | `utils/` — domain | 9 | 1,227 | 0 | **core.** `combine`, `combine_preview`, `persistence`, `reconcile`, `datasets`, `column_utils` |
@@ -34,6 +34,46 @@ Proportions: **18,735 lines portable core · ~8,000 coupled · 19,835 page layer
 | `test_lockbox.py` | 295 | 8 | Reads `exploratory_mode`, `test_lockbox`, `test_lockbox_fraction`, `random_seed`; writes the sealed lockbox back. Only `render_lockbox_status()` is true UI | easy |
 | `insight_ledger.py` | 1,406 | 7 | 1,400 lines of pure domain logic, then a `get_ledger()` singleton at the bottom | trivial |
 | `workflow_provenance.py` | 672 | 5 | 13 dataclasses and a recorder, then a `get_provenance()` singleton | trivial |
+
+### Correction: coupling is transitive, and grep understates it
+
+The line counts above measure *direct* references. An import-blocker test — importing every core
+module with `streamlit` forced to fail — found the real figure:
+
+| | Count | Modules |
+|---|---:|---|
+| Directly coupled | 4 | `ml.eda_actions`, `ml.macro_shape`, `ml.narrative_engine`, `ml.publication` |
+| **Transitively coupled** | **3** | `ml.model_coach` → `utils.insight_ledger` · `ml.manuscript_validator` → `ml.narrative_engine` · `ml.latex_report` → `ml.publication` |
+| Genuinely headless-clean | 35 | everything else in `ml/`, `models/`, `visualizations`, `data_processor` |
+
+**7 of 42 core modules cannot be imported today without Streamlit installed** — 17%, not 3 files.
+The engine is still overwhelmingly portable, but two of the tainted modules matter
+disproportionately:
+
+- **`ml.model_coach` is tainted**, and it is the basis of the Router. It imports
+  `utils.insight_ledger`, whose only coupling is the `get_ledger()` singleton at the bottom of the
+  file.
+- **The whole manuscript chain is tainted** — `narrative_engine` and `publication` directly,
+  `manuscript_validator` and `latex_report` through them.
+
+This *strengthens* the case for cutting the record singletons early rather than late: deleting
+~10 lines from `insight_ledger.py` detaints `model_coach` and unblocks Router work. The
+`narrative_engine` / `publication` coupling is direct and needs the logic/delivery split, which is
+larger.
+
+Reproduce:
+
+```bash
+python - <<'EOF'
+import sys, importlib
+class B:
+    def find_module(self, n, p=None):
+        if n == "streamlit" or n.startswith("streamlit."): return self
+    def load_module(self, n): raise ImportError(f"BLOCKED: {n}")
+sys.meta_path.insert(0, B())
+importlib.import_module("ml.model_coach")   # ImportError today
+EOF
+```
 
 ### Structural facts
 

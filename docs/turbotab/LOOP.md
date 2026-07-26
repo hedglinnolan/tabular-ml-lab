@@ -65,7 +65,8 @@ safe to run unattended. Paste this:
 
 ## Loop 2 — the live bugs
 
-Only after Loop 1 finishes, and only if you want code changed while you are away. Three
+Only after Loop 1 finishes, and only if you want existing app code changed while you are away.
+(If what you want is a *new app* to look at, skip to Loop 3.) Three
 well-specified bugs, each with a clear gate. See `TRANSITION_PLAN.md` §01.
 
 > On branch `TurboTab`, fix the three live bugs in `docs/turbotab/TRANSITION_PLAN.md` §01
@@ -79,6 +80,76 @@ well-specified bugs, each with a clear gate. See `TRANSITION_PLAN.md` §01.
 > Reproduce the bug first and say so in the commit message — do not fix from the description alone.
 >
 > Do not touch anything in the freeze list in `TRANSITION_PLAN.md` §05.
+
+---
+
+## Loop 3 — the walking skeleton (this is how you get an app)
+
+**Loops 1 and 2 do not produce an application.** Loop 1 produces a verified backlog; Loop 2 fixes
+three bugs in the *existing* Streamlit app. Neither writes a line of TurboTab.
+
+If the goal is to see the new design running against real data, that is a different job: a
+**walking skeleton** — the thinnest end-to-end slice that uses the real engine, real uploaded data,
+and the new interface, proving the architecture works before any of it is built out.
+
+This is greenfield. It creates new files under `turbotab/` and touches no existing application
+code, which makes it **safer to run unattended than Loop 2**, not riskier.
+
+### Scope
+
+One vertical slice: **upload a CSV → real structural diagnosis → real profile → real ranked
+findings → recorded decisions**. No training, no jobs, no manuscript. Those come later; they are
+not needed to prove the shape.
+
+```
+turbotab/
+  engine.py     thin adapter over the real ml/ functions — import_doctor.diagnose,
+                dataset_profile, triage.detect_task_type. No logic of its own.
+  project.py    minimal AnalysisProject: dataframe handle, target, decisions[], findings[].
+                Index LABELS as row identity (see TRANSITION_PLAN.md §02.2). Serializable.
+  api.py        FastAPI: POST /project (upload), GET /project/{id},
+                POST /project/{id}/decision, GET /project/{id}/findings
+  web/index.html  the prototype, rewired to fetch from the API instead of its synthetic constants
+  test_skeleton.py  upload a real CSV, assert findings come back non-empty and match a direct
+                    engine call
+```
+
+### The prompt
+
+> On branch `TurboTab`, build the walking skeleton described in `docs/turbotab/LOOP.md` §"Loop 3".
+> Read `PRODUCT_VISION.md` and `ARCHITECTURE.md` first, and open
+> `prototypes/interview-feed.html` in a browser to see the target interaction.
+>
+> Build it in this order, committing each step:
+>
+> 1. `turbotab/engine.py` — call the real `ml/` functions. Confirm first that they import with
+>    Streamlit blocked (see the reproduce snippet in `ARCHITECTURE.md` §01). `ml.model_coach` is
+>    transitively tainted via `utils/insight_ledger.py`'s `get_ledger()` singleton; cut that
+>    singleton if you need the coach, and record it against `T0-*` in the ledger.
+> 2. `turbotab/project.py` — minimal serializable project. Row identity is index **labels**.
+> 3. `turbotab/test_skeleton.py` — a real CSV in, real findings out, asserted against a direct
+>    engine call. Write this before the API.
+> 4. `turbotab/api.py` — FastAPI over the project.
+> 5. `turbotab/web/index.html` — copy the prototype and replace its synthetic constants with
+>    `fetch()` calls. Keep the design language exactly; only the data source changes.
+>
+> **Gate:** I can start the server, drop my own CSV on it, and see real findings about *my* data
+> rendered in the new interface. Put the exact run command in `turbotab/README.md`.
+>
+> Do not implement training, jobs, or manuscript generation. Do not modify anything outside
+> `turbotab/` except the `insight_ledger` singleton if step 1 requires it. If the engine fights
+> you, stop and write `docs/turbotab/BLOCKED.md` — that is a finding, not a failure.
+
+### Why this is the right first build
+
+- It **validates the riskiest assumption** — that the engine runs headless — with real code
+  rather than a claim. The import test already found 7 tainted modules that grep missed.
+- It is **demoable**. You can drop a real CSV on it and see the new design respond to your data.
+- It **throws nothing away**: `engine.py`, `project.py` and the rewired frontend are all first
+  drafts of production components, not scaffolding.
+- It **finds the contract problems early**, while they cost a day instead of a month.
+
+Expect it to be ugly and incomplete. That is the point of a skeleton — it walks, it does not run.
 
 ---
 
