@@ -124,8 +124,14 @@ class Step:
         return ", ".join(parts)
 
     def shape_sentence(self) -> str:
-        return (f"{self.rows_before:,} × {self.cols_before} "
-                f"→ {self.rows_after:,} × {self.cols_after}")
+        """An arrow only where something actually moved.
+
+        "412 × 6 → 412 × 6" is a strange way to say a file was opened.
+        """
+        after = f"{self.rows_after:,} × {self.cols_after}"
+        if (self.rows_before, self.cols_before) == (self.rows_after, self.cols_after):
+            return after
+        return f"{self.rows_before:,} × {self.cols_before} → {after}"
 
 
 # ── identity ─────────────────────────────────────────────────────────────

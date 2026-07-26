@@ -43,19 +43,23 @@ from ml.eda_recommender import compute_dataset_signals
 logger = logging.getLogger(__name__)
 
 
-def _applied_fix_notes(dataset) -> list:
-    """Import Doctor repairs applied to the file this table came from.
+def _origin_notes(dataset_ids) -> list:
+    """What was done to each file BEFORE it became part of the working table.
 
-    They happen per-file, before the working table exists, so they are carried
-    onto the step that adopts the file rather than lost between the two.
+    Transposing a file and recoding its missing-value codes both change the
+    shape or the values of everything downstream, and both happen per-file
+    while the working table does not yet exist. Carried onto the step that
+    adopts the files so they appear in the account rather than nowhere.
     """
     notes = []
-    try:
-        for _key in (dataset.get('id'), dataset.get('filename'), dataset.get('name')):
-            if _key:
-                notes.extend(applied_fixes(str(_key)))
-    except Exception:
-        pass
+    origins = st.session_state.get("_dataset_origin") or {}
+    for _id in dataset_ids:
+        info = origins.get(_id) or {}
+        name = info.get("filename") or _id
+        if info.get("transposed"):
+            notes.append(f"{name}: transposed (rows and columns swapped on import)")
+        for fix in info.get("repairs") or []:
+            notes.append(f"{name}: {fix}")
     return notes
 
 
@@ -301,12 +305,19 @@ def _log_import_repairs(file_key, dataset_name):
         pass          # recording must never block the upload
 
 
-def _commit_dataset(df, dataset_name, filename, file_type, transposed, replace=True):
+def _commit_dataset(df, dataset_name, filename, file_type, transposed,
+                    replace=True, file_key=None):
     """Register one frame as a dataset in the active project.
 
     Shared by the per-file 'Add' button and the 'Add all' button so both paths
     commit exactly the frame the user reviewed — including any Import Doctor
     fixes — rather than a fresh re-parse of the original file.
+
+    `file_key` is the Import Doctor's session key for this upload. It is taken
+    here because it is the LAST moment the two identities coexist: the Doctor
+    keys its work by "demographics_csv_0" and everything downstream knows the
+    file only by its dataset id, so a repair not carried across right here is
+    invisible from then on.
     """
     existing = db.get_project_datasets(active_project['id'])
     for d in existing:
@@ -331,6 +342,11 @@ def _commit_dataset(df, dataset_name, filename, file_type, transposed, replace=T
         is_transposed=transposed,
     )
     st.session_state.datasets_registry[dataset_id] = df
+    st.session_state.setdefault("_dataset_origin", {})[dataset_id] = {
+        "repairs": list(applied_fixes(file_key)) if file_key else [],
+        "transposed": bool(transposed),
+        "filename": filename,
+    }
     # A new file changes what "combined" means, so any table built from the
     # previous set of files must not survive as the working table.
     st.session_state.pop("working_table", None)
@@ -364,7 +380,8 @@ if uploaded_files and len(uploaded_files) > 1:
                     _name = st.session_state.get(f"name_{_fk}") or _uf.name.rsplit('.', 1)[0]
                     _log_import_repairs(_fk, _name)
                     ok, msg = _commit_dataset(_frame, _name, _uf.name, _ft,
-                                              st.session_state.get(f"transpose_{_fk}", False))
+                                              st.session_state.get(f"transpose_{_fk}", False),
+                                              file_key=_fk)
                     (added if ok else failed).append(msg)
                 except Exception as exc:
                     failed.append(f"{_uf.name}: {exc}")
@@ -530,6 +547,7 @@ if uploaded_files:
                             ok, msg = _commit_dataset(
                                 df_preview, dataset_name, uploaded_file.name,
                                 file_type, transpose_this_file, replace=True,
+                                file_key=file_key,
                             )
                         if not ok:
                             st.error(msg)
@@ -642,10 +660,14 @@ if len(project_datasets) > 1:
         # researcher most wants to know and the join preview only says in
         # passing: how many of the people you brought are still in the table.
         _primary = next(iter(dataframes.values())) if dataframes else None
+        _origin = _origin_notes([d['id'] for d in project_datasets])
         _ledger.record(
             action=f"Combined {len(dataframes)} files",
             kind=_ledger.COMBINE, before=_primary, after=_combined,
-            detail=st.session_state.get("_combine_description", ""),
+            detail=" ".join(filter(None, [
+                st.session_state.get("_combine_description", ""),
+                ("Before combining — " + "; ".join(_origin) + ".") if _origin else "",
+            ])),
         )
         st.session_state.working_table = _combined
         st.session_state.last_merge_columns = list(_combined.columns)
@@ -683,7 +705,7 @@ else:
             _ledger.record(
                 action=f"Started from {single_dataset['name']}",
                 kind=_ledger.ADD, before=None, after=working_df,
-                detail=" · ".join(_applied_fix_notes(single_dataset)),
+                detail=" · ".join(_origin_notes([single_dataset['id']])),
             )
         else:
             working_df = st.session_state.working_table
@@ -691,7 +713,11 @@ else:
         
         st.success(f"**Working Table:** {single_dataset['name']}")
         table(working_df.head(10), width="stretch")
-        st.caption(f"Shape: {working_df.shape[0]:,} rows × {working_df.shape[1]} columns")
+        # The shape is stated once, in the card below, so that there is exactly
+        # one place on this page that answers "what have I got". Repeating it
+        # here invited the two to drift, which is how a stale "× 10 columns"
+        # once sat directly above a live "× 9 columns".
+        st.caption("First 10 rows. What this table holds is summarized below.")
     else:
         st.error("""
         **Dataset not in memory.** 

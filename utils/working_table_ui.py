@@ -139,12 +139,36 @@ def _surprises(df: pd.DataFrame, subj_col: Optional[str]) -> list:
 
     n_sub = ledger.count_subjects(df, subj_col)
     if n_sub is not None and n_sub < rows:
-        out.append(
-            f"**Your n is {n_sub:,}, not {rows:,}.** `{subj_col}` repeats — each "
-            f"person contributes about {rows / max(n_sub, 1):.1f} rows. Anything "
-            f"averaged over rows weights people by how many measurements they "
-            f"have, and the held-out set is split by person for the same reason."
-        )
+        per = rows / max(n_sub, 1)
+        # What separates a repeated-measures design from a few stray duplicates
+        # is not the average rows per person — 1.2 can mean "every subject has
+        # 1.2 visits", which is impossible, or "a fifth of them are duplicated",
+        # which is a data problem. It is whether repetition is systematic.
+        try:
+            counts = df[subj_col].value_counts()
+            share_repeating = float((counts > 1).sum()) / max(len(counts), 1)
+        except Exception:
+            share_repeating = 1.0 if per >= 1.2 else 0.0
+        if share_repeating >= 0.5:
+            # A genuine repeated-measures design.
+            out.append(
+                f"**Your n is {n_sub:,}, not {rows:,}.** `{subj_col}` repeats — "
+                f"each person contributes about {per:.1f} rows. Anything averaged "
+                f"over rows weights people by how many measurements they have, "
+                f"and the held-out set is split by person for the same reason."
+            )
+        else:
+            # A handful of repeats. Saying "each person contributes about 1.0
+            # rows" is noise, and the duplicate-row line below tells the real
+            # story — but the count still matters, because it is what makes the
+            # split subject-aware.
+            extra = rows - n_sub
+            out.append(
+                f"**{extra:,} row{'' if extra == 1 else 's'} share a "
+                f"`{subj_col}` with another row**, so this table holds {n_sub:,} "
+                f"people in {rows:,} rows. The held-out set is split by person, "
+                f"not by row, because of it."
+            )
 
     net = ledger.net_change()
     if net and net["subjects_before"] and net["subjects_after"] is not None:
@@ -184,6 +208,36 @@ def _surprises(df: pd.DataFrame, subj_col: Optional[str]) -> list:
     dupes = int(df.duplicated().sum())
     if dupes:
         out.append(f"**{dupes:,} rows are exact duplicates** of another row.")
+
+    # Two choices made per-file, before this table existed, that change what
+    # every number here means. A transpose inverts the table outright; a
+    # recode rewrites values in place and leaves the shape untouched, so
+    # neither shows up in any before/after count.
+    origins = st.session_state.get("_dataset_origin") or {}
+    transposed = [i.get("filename") or k for k, i in origins.items()
+                  if i.get("transposed")]
+    if transposed:
+        one = len(transposed) == 1
+        out.append(
+            f"**{'A file was' if one else f'{len(transposed)} files were'} "
+            f"transposed on import** ("
+            + ", ".join(f"`{f}`" for f in transposed[:4])
+            + f"). {'Its' if one else 'Their'} rows and columns were swapped, so "
+              f"what is now a participant was a column in the original file. "
+              f"Check the preview above shows one row per participant."
+        )
+
+    repairs = [(i.get("filename") or k, fx) for k, i in origins.items()
+               for fx in (i.get("repairs") or [])]
+    if repairs:
+        out.append(
+            f"**{len(repairs)} value-level repair(s) were applied at import**, "
+            f"before anything else saw the data: "
+            + "; ".join(f"`{f}` — {fx}" for f, fx in repairs[:4])
+            + ("…" if len(repairs) > 4 else "")
+            + ". These changed values, not counts, so they appear in no "
+              "before/after number on this page."
+        )
 
     return out
 

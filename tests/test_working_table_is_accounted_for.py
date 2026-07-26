@@ -240,6 +240,82 @@ def test_the_account_survives_a_save_and_restore():
         "undo snapshots are session-local and must not claim otherwise")
 
 
+# ── what happened to the files before the table existed ──────────────────
+
+def test_a_transpose_and_a_repair_reach_the_sign_off():
+    """Both happen per-file, and neither shows up in any before/after count.
+
+    A transpose inverts the table; a recode rewrites values in place. The
+    first version looked repairs up by dataset id, filename and name — but the
+    Import Doctor keys its work by "demographics_csv_0", so nothing ever
+    matched and both were invisible from the moment the file was committed.
+    """
+    from utils.working_table_ui import _surprises
+    df = enrolled()
+    st.session_state["_dataset_origin"] = {
+        "d1": {"filename": "ffq_wide.csv", "transposed": True, "repairs": []},
+        "d2": {"filename": "survey.csv", "transposed": False,
+               "repairs": ["Recoded 999999 to missing in `income`"]},
+    }
+    notes = " ".join(_surprises(df, "subject_id"))
+    assert "transposed on import" in notes and "ffq_wide.csv" in notes
+    assert "value-level repair" in notes and "income" in notes
+
+
+def test_the_commit_carries_the_import_doctor_key():
+    """The last moment the file key and the dataset id coexist."""
+    import ast
+    src = open("pages/01_Upload_and_Audit.py").read()
+    tree = ast.parse(src)
+    fn = next(n for n in ast.walk(tree)
+              if isinstance(n, ast.FunctionDef) and n.name == "_commit_dataset")
+    assert any(a.arg == "file_key" for a in fn.args.args + fn.args.kwonlyargs), (
+        "_commit_dataset cannot record repairs it is never told about")
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+             and getattr(n.func, "id", "") == "_commit_dataset"]
+    upload_calls = [c for c in calls if any(k.arg == "file_key" for k in c.keywords)]
+    assert len(upload_calls) >= 2, (
+        f"{len(upload_calls)} of {len(calls)} commit sites pass a file key; both "
+        f"upload paths must")
+
+
+# ── one place answers "what have I got" ──────────────────────────────────
+
+def test_only_the_card_states_the_shape():
+    """Two places invited the drift this whole change exists to end."""
+    page = open("pages/01_Upload_and_Audit.py").read()
+    combine = open("utils/combine_ui.py").read()
+    assert "Combined table ready" not in combine, (
+        "the combine summary restates the shape beside the card")
+    assert 'st.caption(f"Shape: {working_df.shape[0]:,} rows' not in page, (
+        "Step 2 restates the shape beside the card")
+
+
+def test_a_step_that_changed_nothing_does_not_draw_an_arrow():
+    demo = enrolled()
+    L.clear()
+    step = L.record("Started from study.csv", L.ADD, before=None, after=demo)
+    assert "→" not in step.shape_sentence()
+    assert step.shape_sentence() == "60 × 3"
+
+
+def test_a_handful_of_repeats_is_not_reported_as_repeated_measures():
+    """"each person contributes about 1.0 rows" is noise, not information."""
+    from utils.working_table_ui import _surprises
+    demo = enrolled()
+    with_dupes = pd.concat([demo, demo.iloc[:12]], ignore_index=True)
+    notes = " ".join(_surprises(with_dupes, "subject_id"))
+    assert "1.0 rows" not in notes
+    assert "share a `subject_id` with another row" in notes
+
+
+def test_a_real_repeated_measures_design_still_says_so():
+    from utils.working_table_ui import _surprises
+    after = joined_to_visits(enrolled())
+    notes = " ".join(_surprises(after, "subject_id"))
+    assert "Your n is 52, not 156" in notes and "3.0 rows" in notes
+
+
 # ── the page wiring ──────────────────────────────────────────────────────
 
 def test_the_committed_combine_step_stops_rendering_as_a_control():
