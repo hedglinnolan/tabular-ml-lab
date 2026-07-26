@@ -1214,13 +1214,29 @@ if task_mode == "prediction":
             )
         _refused = st.session_state.pop("_lockbox_redraw_refused", None)
         if _refused:
-            st.info(
-                f"🔒 The held-out set was **not** re-drawn. You are working in "
-                f"one group (**{_refused['column']} = {_refused['label']}**), and "
-                f"every run shares the single split made before the study was "
-                f"divided — that is what lets your runs be compared. To draw a "
-                f"new one, go back to analyzing everyone first."
-            )
+            if _refused.get("target_changed"):
+                # Changing the outcome mid-run is the one refusal that leaves the
+                # sealed set partly unusable: it was drawn among the rows that
+                # had a value for the OLD outcome.
+                st.warning(
+                    f"⚠️ You changed the outcome to **{_refused['target']}**, but "
+                    f"the held-out set was sealed for **{_refused['drawn_for']}** "
+                    f"and is **not** re-drawn during a one-group run "
+                    f"(**{_refused['column']} = {_refused['label']}**) — every run "
+                    f"shares one split, which is what lets them be compared. "
+                    f"{_refused['n_scoreable']:,} of its {_refused['n_sealed']:,} "
+                    f"rows have a value for **{_refused['target']}**, so that is "
+                    f"how many you can score against. To hold out a set drawn for "
+                    f"this outcome, go back to analyzing everyone first."
+                )
+            else:
+                st.info(
+                    f"🔒 The held-out set was **not** re-drawn. You are working in "
+                    f"one group (**{_refused['column']} = {_refused['label']}**), and "
+                    f"every run shares the single split made before the study was "
+                    f"divided — that is what lets your runs be compared. To draw a "
+                    f"new one, go back to analyzing everyone first."
+                )
         if st.session_state.pop("_lockbox_redrawn", False):
             st.info("🔒 Test lockbox redrawn (data, target, fraction, or seed changed) — "
                     "downstream results were reset so nothing is evaluated against the old test set.")

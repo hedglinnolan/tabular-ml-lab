@@ -100,38 +100,12 @@ if df is None:
 # the switch; the fits did not. Re-execute it here on the new group's rows,
 # refitting anything stateful on that group's TRAINING rows so the held-out set
 # stays sealed through a replay exactly as it does through the original.
-_pending_replay = _replay.pending()
-if _pending_replay and _pending_replay.get("steps") and st.session_state.get("df_engineered") is None:
-    from utils.test_lockbox import train_row_mask as _replay_train_mask
+if _replay.pending():
     with st.spinner("Rebuilding your engineered features for this group..."):
-        _rebuilt, _made, _missed = _replay.replay_onto(
-            df, _pending_replay["steps"], _replay_train_mask(df.index))
-    if _made:
-        st.session_state["df_engineered"] = _rebuilt
-        st.session_state["engineered_feature_names"] = list(_made)
-        st.session_state["feature_engineering_applied"] = True
-        _dc = st.session_state.get("data_config")
-        _base = list(st.session_state.get("pre_fe_feature_cols")
-                     or getattr(_dc, "feature_cols", []) or [])
-        # Setting selected_features without this leaves Reset/Skip with nothing
-        # to restore — reopening a defect this repo already fixed once.
-        st.session_state.setdefault("pre_fe_feature_cols", list(_base))
-        st.session_state["selected_features"] = _base + [c for c in _made if c not in _base]
-        if _dc is not None:
-            _dc.feature_cols = list(st.session_state["selected_features"])
-        df = _rebuilt
-        # Without a log the Methods section says feature engineering was
-        # performed and lists none of it.
-        st.session_state["engineering_log"] = [
-            f"Replayed for this group: {st.session_state.get('_replay_step_desc', '')}".strip()
-        ] + [s_.describe() for s_ in _pending_replay["steps"]]
-    _unrecorded = list(_pending_replay.get("unrecorded") or [])
-    _summary = _replay.replay_summary(_made, _missed, _unrecorded)
-    if _missed or _unrecorded:
-        st.warning(f"🔁 {_summary}")
-    elif _made:
-        st.success(f"🔁 {_summary}")
-    _replay.clear_pending()
+        _replay_result = _replay.run_pending_replay(df)
+    _replay.render_replay_result(_replay_result)
+    if _replay_result:
+        df = _replay_result["frame"]
 
 # Get data configuration
 data_config = st.session_state.get('data_config')

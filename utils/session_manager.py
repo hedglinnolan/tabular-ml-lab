@@ -324,6 +324,24 @@ def _build_archive_members() -> Dict[str, bytes]:
                 "n_test": int(lockbox.get("n_test", len(lockbox["labels"]))),
                 "signature": str(lockbox.get("signature", "")),
                 "stratified": bool(lockbox.get("stratified", False)),
+                # Everything the chip reports. Saving only the labels meant a
+                # restored session forgot that the split was drawn by subject,
+                # which outcome it was drawn for, and which strata it had to
+                # drop — so the disclosures on every page went quiet while the
+                # split they describe was still in force.
+                "fraction_requested": float(lockbox.get("fraction_requested",
+                                                        lockbox.get("fraction", 0.15))),
+                "target_col": str(lockbox.get("target_col") or ""),
+                "strata": [str(c) for c in (lockbox.get("strata") or [])],
+                "strata_requested": [str(c) for c in (lockbox.get("strata_requested") or [])],
+                "group_col": (str(lockbox["group_col"])
+                              if lockbox.get("group_col") else None),
+                "group_kind": (str(lockbox["group_kind"])
+                               if lockbox.get("group_kind") else None),
+                "group_noun": (str(lockbox["group_noun"])
+                               if lockbox.get("group_noun") else None),
+                "n_test_groups": (int(lockbox["n_test_groups"])
+                                  if lockbox.get("n_test_groups") is not None else None),
             }
             members["lockbox.json"] = json.dumps(encoded, indent=2).encode("utf-8")
             saved_keys.append("test_lockbox")
@@ -517,6 +535,29 @@ def _clear_downstream_state() -> None:
     # spurious downstream reset on the next set_data call.
     st.session_state.pop("_raw_data_fingerprint", None)   # recomputed below
     st.session_state.pop("_working_table_source_id", None)
+
+
+def _mark_working_table_as_current() -> None:
+    """Tell page 01 the restored working table is already up to date.
+
+    _clear_downstream_state drops _working_table_source_id, which is right for
+    a stale one and wrong once the session's own working_table has been
+    restored beside it. Without this, the first visit to Upload & Audit sees
+    "no source id" and rebuilds the working table from the ORIGINAL uploaded
+    file — throwing away every cleaning action — then calls set_data() with it.
+    Same columns, different content, so set_data clears the active cohort run
+    and moves the data fingerprint, which also makes every banked run fail the
+    read-time question filter and vanish from the comparison table. All of it
+    silent, and all of it on the app's home page.
+    """
+    try:
+        if st.session_state.get("working_table") is None:
+            return
+        registry = st.session_state.get("datasets_registry") or {}
+        if len(registry) == 1:
+            st.session_state["_working_table_source_id"] = next(iter(registry))
+    except Exception:
+        pass
 
 
 def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any], list]:
@@ -735,6 +776,15 @@ def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any], li
                     "n_test": int(data.get("n_test", len(labels))),
                     "signature": str(data.get("signature", "")),
                     "stratified": bool(data.get("stratified", False)),
+                    "fraction_requested": float(data.get("fraction_requested",
+                                                         data.get("fraction", 0.15))),
+                    "target_col": data.get("target_col") or None,
+                    "strata": list(data.get("strata") or []),
+                    "strata_requested": list(data.get("strata_requested") or []),
+                    "group_col": data.get("group_col") or None,
+                    "group_kind": data.get("group_kind") or None,
+                    "group_noun": data.get("group_noun") or None,
+                    "n_test_groups": data.get("n_test_groups"),
                 }
                 # Keep the fraction key coherent with the restored lockbox even
                 # if config.json predates it or disagrees.
@@ -765,6 +815,7 @@ def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any], li
                     "evidence probe on Preprocess (~10 s)."
                 )
 
+    _mark_working_table_as_current()
     return restored, manifest, warnings
 
 

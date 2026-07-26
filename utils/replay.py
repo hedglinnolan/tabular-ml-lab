@@ -320,6 +320,66 @@ def replay_onto(df: pd.DataFrame, steps: Sequence[Step],
     return out, created, skipped
 
 
+def run_pending_replay(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """Execute a staged replay onto `df`, if one is waiting. Idempotent.
+
+    Lives here rather than on Feature Engineering because the switch button is
+    on Train & Compare and the promise it makes — "the features you engineered
+    are rebuilt from their formulas on this group's rows" — has to hold for a
+    researcher who presses Train straight away. While this only ran on page 03,
+    walking to that page was the difference between comparing two runs with the
+    same predictors and comparing two runs with different ones, silently.
+
+    Returns None when there was nothing to do, otherwise a dict with the
+    rebuilt frame and the three name lists the caller should report.
+    """
+    import streamlit as st
+    p = pending()
+    if not p or not p.get("steps") or st.session_state.get("df_engineered") is not None:
+        return None
+    from utils.test_lockbox import train_row_mask
+
+    rebuilt, made, missed = replay_onto(df, p["steps"], train_row_mask(df.index))
+    if made:
+        st.session_state["df_engineered"] = rebuilt
+        st.session_state["engineered_feature_names"] = list(made)
+        st.session_state["feature_engineering_applied"] = True
+        dc = st.session_state.get("data_config")
+        base = list(st.session_state.get("pre_fe_feature_cols")
+                    or getattr(dc, "feature_cols", []) or [])
+        # Setting selected_features without this leaves Reset/Skip with nothing
+        # to restore — reopening a defect this repo already fixed once.
+        st.session_state.setdefault("pre_fe_feature_cols", list(base))
+        st.session_state["selected_features"] = base + [c for c in made if c not in base]
+        if dc is not None:
+            dc.feature_cols = list(st.session_state["selected_features"])
+        # Without a log the Methods section says feature engineering was
+        # performed and lists none of it.
+        st.session_state["engineering_log"] = [
+            f"Replayed for this group: {st.session_state.get('_replay_step_desc', '')}".strip()
+        ] + [s.describe() for s in p["steps"]]
+    unrecorded = list(p.get("unrecorded") or [])
+    clear_pending()
+    return {
+        "frame": rebuilt if made else df,
+        "created": list(made),
+        "skipped": list(missed),
+        "unrecorded": unrecorded,
+        "summary": replay_summary(made, missed, unrecorded),
+    }
+
+
+def render_replay_result(result: Optional[Dict[str, Any]]) -> None:
+    """Say what the replay did. A rebuild the researcher cannot see is a guess."""
+    if not result or not result.get("summary"):
+        return
+    import streamlit as st
+    if result["skipped"] or result["unrecorded"]:
+        st.warning(f"🔁 {result['summary']}")
+    else:
+        st.success(f"🔁 {result['summary']}")
+
+
 def replay_summary(created: Sequence[str], skipped: Sequence[str],
                    unrecorded: Sequence[str] = ()) -> str:
     """One paragraph a researcher can read before trusting the comparison."""

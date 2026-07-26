@@ -278,8 +278,21 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
         from utils.cohorts import active_cohort
         run = active_cohort()
         if run is not None:
+            # The refusal fires on ANY change of inputs, including a change of
+            # OUTCOME. The sealed rows were chosen among those with a value for
+            # the OLD outcome; if the new one was assayed on a sub-sample —
+            # ordinary in nutrition and omics — most of them cannot be scored at
+            # all, and the chip would still report the old count. Carry the real
+            # number so the page can state it.
+            _sealed = [lbl for lbl in existing["labels"] if lbl in df.index]
             st.session_state["_lockbox_redraw_refused"] = {
                 "column": run["column"], "label": run["label"],
+                "drawn_for": existing.get("target_col"),
+                "target": target_col,
+                "target_changed": bool(existing.get("target_col")
+                                       and existing.get("target_col") != target_col),
+                "n_sealed": int(len(existing["labels"])),
+                "n_scoreable": int(y.loc[_sealed].notna().sum()) if _sealed else 0,
             }
             return existing
 
@@ -375,6 +388,9 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
         "n_total": int(len(eligible)),
         "n_test": int(len(test_labels)),
         "signature": sig,
+        # The outcome the split was drawn for. Eligibility is `y.notna()`, so a
+        # lockbox is only meaningful for the outcome it was drawn on.
+        "target_col": target_col,
         "stratified": stratify is not None,
         "strata": list(strata_used),
         # What was ASKED for, so a silently-dropped stratum can be named. The
@@ -417,6 +433,27 @@ def train_row_mask(index: pd.Index) -> pd.Series:
     return pd.Series([lbl not in test_set for lbl in index], index=index)
 
 
+def _scoreable_here(labels) -> Optional[int]:
+    """How many of `labels` have a value for the outcome now configured.
+
+    None when the question cannot be answered (no target, no frame) — silence
+    is right there; a guessed count is not.
+    """
+    try:
+        dc = st.session_state.get("data_config")
+        target = getattr(dc, "target_col", None) if dc else None
+        if not target:
+            return None
+        from utils.session_state import get_data
+        df = get_data(full_study=True)
+        if df is None or target not in df.columns:
+            return None
+        present = [lbl for lbl in labels if lbl in df.index]
+        return int(df.loc[present, target].notna().sum())
+    except Exception:
+        return None
+
+
 def render_lockbox_status(context: str = "") -> None:
     """The quiet, consistent status chip shown on workflow pages."""
     if is_exploratory():
@@ -438,7 +475,25 @@ def render_lockbox_status(context: str = "") -> None:
     from utils.cohorts import active_cohort
     run = active_cohort()
     if run is not None:
-        n_here = len(set(lb["labels"]) & set(run["labels"]))
+        here = set(lb["labels"]) & set(run["labels"])
+        n_here = len(here)
+        # Held out is not the same as scoreable. If the outcome changed since
+        # the split was sealed — and the lockbox refuses to re-draw mid-run —
+        # the rows without a value for the CURRENT outcome cannot be scored, and
+        # reporting the sealed count is a number a researcher would write down
+        # and be wrong about.
+        n_scoreable = _scoreable_here(here)
+        if n_scoreable is not None and n_scoreable < n_here:
+            st.warning(
+                f"⚖️ Test set for this run ({run['column']} = {run['label']}): "
+                f"**{n_scoreable:,} of {n_here:,}** held-out rows have a value for "
+                f"the current outcome. The split was sealed for "
+                f"`{lb.get('target_col')}`, and it is not re-drawn during a "
+                f"one-group run, so performance will be measured on "
+                f"{n_scoreable:,} rows — not {n_here:,}. To hold out a set drawn "
+                f"for this outcome, go back to analyzing everyone first."
+            )
+            return
         st.caption(
             f"🔒 Test set for this run ({run['column']} = {run['label']}): "
             f"n={n_here:,} — this run's share of the {lb['n_test']:,} rows drawn "

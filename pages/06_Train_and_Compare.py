@@ -131,6 +131,19 @@ if len(df) == 0 or len(df.columns) == 0:
     st.warning("Your dataset is empty. Please upload data with at least one row and one column.")
     st.stop()
 
+# ── the next group's run inherits this one's decisions ───────────────────
+# The switch button is on THIS page and promises the engineered features are
+# rebuilt on the new group's rows. Do it here too, or a researcher who presses
+# Train straight after switching compares two runs with different predictor
+# sets and nothing on screen says so.
+from utils import replay as _replay
+if _replay.pending():
+    with st.spinner("Rebuilding your engineered features for this group..."):
+        _replay_result = _replay.run_pending_replay(df)
+    _replay.render_replay_result(_replay_result)
+    if _replay_result:
+        df = _replay_result["frame"]
+
 # Guardrail: Training is only for prediction mode
 task_mode = st.session_state.get('task_mode')
 if task_mode != 'prediction':
