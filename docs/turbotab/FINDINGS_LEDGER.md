@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**5 of 395 closed.**
+**6 of 397 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `UNVERIFIED` | 370 |
-| `OPEN` | 18 |
+| `OPEN` | 19 |
 | `PARTIAL` | 2 |
-| `FIXED` | 5 |
+| `FIXED` | 6 |
 
 ---
 
-## OPEN — 18
+## OPEN — 19
 
 
-### Verified against main — 18
+### Verified against main — 19
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -55,6 +55,7 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-002` | medium | setup.py python_requires '>=3.8,<3.10' against a 3.12 repo — uninstallable | `setup.py` | verified on main |
 | `T0-ENG-001` | medium | The diagnose -> profile -> detect path needs only pandas and numpy — no sklearn, scipy or torch | `turbotab/engine.py import surface; verified by the L3 test suite` | Confirmed by building the vertical: turbotab/ installs pandas, numpy, fastapi, uvicorn, python-multipart and nothing else, and the three engine entry points (import_doctor.diagnose |
 | `T0-PAGES-001` | medium | Duplicate-row detection has no engine home — it is inline in pages/01 | `pages/01_Upload_and_Audit.py (inline)` | Extract to the engine when pages/01 unfreezes; register the capability meanwhile. |
+| `T0-STATE-001` | medium | reset_downstream_results clears keys three different ways — pop, = None, and = {} — so 'cleared' has three observable meanings | `utils/session_state.py reset_downstream_results; L5 gate probe (agent report at 4366b23)` | Normalize to one idiom (pop) inside the production function when pages/03 is reconciled onto it; the DAG's live list of forgotten keys is the checklist for that same change. |
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
@@ -487,10 +488,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 5
+## FIXED — 6
 
 
-### Verified against main — 5
+### Verified against main — 6
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -499,3 +500,4 @@ Nothing is closed without a regression test named after it.
 | `T0-DOC-002` | high | The ARCHITECTURE.md reproduce snippet could not fail — it used find_module, removed in Python 3.12, and passed vacuously without Streamlit installed | `docs/turbotab/ARCHITECTURE.md §01 (previous revision)` | **test:** `docs/turbotab/ARCHITECTURE.md §01 self-check (`blocker is not working` guard)` — Found by the walking-skeleton loop. A test that cannot fail proves nothing — the guard n |
 | `T0-TOOL-001` | high | ledger.py regen destroyed FINDINGS_LEDGER.md on Windows, and check reported success over the wreckage | `docs/turbotab/tools/ledger.py load/save/regen` | **test:** `docs/turbotab/tools/ledger.py check (markdown-currency guard; verified by emptying the file)` — Reported by the build agent, who recovered from git and used PYTHONUTF8=1 |
 | `T0-DOC-003` | high | ARCHITECTURE.md inverted the persistence contract, creating a false conflict with the door-switch gate | `utils/session_manager.py:23-34,138,531; docs/turbotab/ARCHITECTURE.md §02 (previous revision); turbotab/projec` | **test:** `docs/turbotab/ARCHITECTURE.md §02 (corrected); L5 gate now names session_manager as prior art` — Third documentation error found by the build agent's runtime checking. P |
+| `T0-PROC-001` | high | Branch merge blind-copied an older FEATURE_PARITY.md over the newer one, silently destroying the Data & Target feature register | `git: 9211566 (register added) vs b4bff25 (register gone); flagged by the build agent at 4366b23` | **test:** `tools/register.py check (artifact-currency + BUILT_STEPS coverage; verified by deleting the markdown)` — Process rule going forward: on any merge, tracked artifacts are  |

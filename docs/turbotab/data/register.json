@@ -1,0 +1,202 @@
+[
+ {
+  "id": "ingest-single-file",
+  "step": "data-target",
+  "capability": "Single delimited file upload",
+  "classic": "st.file_uploader (Step 1)",
+  "state": "both",
+  "reason": "engine.read_table, plain pandas inference to match what the doctor expects"
+ },
+ {
+  "id": "ingest-multi-roster",
+  "step": "data-target",
+  "capability": "Multi-file upload + roster (rename / remove / replace)",
+  "classic": "Step 1",
+  "state": "classic-only",
+  "reason": "Multi-file path frozen pending the open ledger tail (TRANSITION_PLAN §05). Deliberate, not forgotten."
+ },
+ {
+  "id": "ingest-excel-sheets",
+  "step": "data-target",
+  "capability": "Excel .xlsx + sheet selection",
+  "classic": "Step 1",
+  "state": "classic-only",
+  "reason": "RESUME.md names Excel-sheet × transpose as untested; exposing it in Guided first would build on that gap."
+ },
+ {
+  "id": "ingest-json-records",
+  "step": "data-target",
+  "capability": "JSON + records-key selection",
+  "classic": "Step 1",
+  "state": "classic-only",
+  "reason": "Same door as multi-file import; frozen with it."
+ },
+ {
+  "id": "ingest-transpose",
+  "step": "data-target",
+  "capability": "Transpose on import",
+  "classic": "Step 1",
+  "state": "classic-only",
+  "reason": "Belongs with the Excel path above."
+ },
+ {
+  "id": "ingest-large-file-guard",
+  "step": "data-target",
+  "capability": "Large-file guard ('Load anyway')",
+  "classic": "Step 1",
+  "state": "classic-only",
+  "reason": "Guided uses a hard 64 MB ceiling instead — frame is held in memory, never spooled. Different mechanism, same intent."
+ },
+ {
+  "id": "ingest-practice-data",
+  "step": "data-target",
+  "capability": "Built-in practice datasets",
+  "classic": "Step 1",
+  "state": "classic-only",
+  "reason": "Guided ships one messy sample table (turbotab/sample_data/)."
+ },
+ {
+  "id": "ingest-repair-ledger-log",
+  "step": "data-target",
+  "capability": "Import-repair logging to the insight ledger",
+  "classic": "_log_import_repairs",
+  "state": "classic-only",
+  "reason": "Guided records decisions; the ledger singleton is not cut yet (L7)."
+ },
+ {
+  "id": "ingest-multi-join",
+  "step": "data-target",
+  "capability": "Multi-file join + key detection",
+  "classic": "Step 2, join_doctor",
+  "state": "classic-only",
+  "reason": "Frozen (§05)."
+ },
+ {
+  "id": "audit-diagnosis",
+  "step": "data-target",
+  "capability": "Structural diagnosis",
+  "classic": "import_doctor.diagnose",
+  "state": "both",
+  "reason": "Same function, same findings — asserted field-for-field by test_findings_match_a_direct_engine_call"
+ },
+ {
+  "id": "audit-apply-repair",
+  "step": "data-target",
+  "capability": "Apply a proposed repair",
+  "classic": "'Suggested Actions'",
+  "state": "both",
+  "reason": "import_doctor.apply_fix, same nine fix kinds"
+ },
+ {
+  "id": "audit-preview",
+  "step": "data-target",
+  "capability": "Preview before apply",
+  "classic": "(none)",
+  "state": "guided-only",
+  "reason": "Classic applies straight from a button — the blind consent PRODUCT_VISION §04 argues against. Debt owed to Classic: T0-CLASSIC-001."
+ },
+ {
+  "id": "audit-undo",
+  "step": "data-target",
+  "capability": "Undo an applied repair",
+  "classic": "(none)",
+  "state": "guided-only",
+  "reason": "Engine always supported it (apply_fix never mutates); Classic never exposed it. Owed to Classic with the preview."
+ },
+ {
+  "id": "audit-profile",
+  "step": "data-target",
+  "capability": "Dataset profile (types, missingness, cardinality, numeric stats)",
+  "classic": "Step 3 expanders",
+  "state": "both",
+  "reason": "compute_dataset_profile; rendered as one ranked stack rather than six expanders"
+ },
+ {
+  "id": "audit-duplicate-rows",
+  "step": "data-target",
+  "capability": "Duplicate-row detection",
+  "classic": "Step 3 expander (inline)",
+  "state": "classic-only",
+  "reason": "No engine home — computed inline in pages/01, orchestration still trapped (T0-PAGES-001)."
+ },
+ {
+  "id": "audit-cardinality-table",
+  "step": "data-target",
+  "capability": "Cardinality table, per column",
+  "classic": "Step 3 expander",
+  "state": "classic-only",
+  "reason": "Guided surfaces the high-cardinality finding but not the full table. Pull-based exploration, deferred."
+ },
+ {
+  "id": "target-selection",
+  "step": "data-target",
+  "capability": "Target column selection",
+  "classic": "Step 4",
+  "state": "both",
+  "reason": ""
+ },
+ {
+  "id": "target-task-detection",
+  "step": "data-target",
+  "capability": "Task-type detection",
+  "classic": "triage.detect_task_type",
+  "state": "both",
+  "reason": ""
+ },
+ {
+  "id": "target-task-override",
+  "step": "data-target",
+  "capability": "Task-type override",
+  "classic": "'Override Task Type' expander",
+  "state": "both",
+  "reason": "Added because this register found it missing — offered whenever confidence is below high; detection and answer both recorded."
+ },
+ {
+  "id": "target-goal-selection",
+  "step": "data-target",
+  "capability": "Goal selection (Prediction vs Hypothesis Testing)",
+  "classic": "Step 4",
+  "state": "classic-only",
+  "reason": "Guided assumes prediction; the hypothesis-testing branch is a different interview."
+ },
+ {
+  "id": "target-feature-picklist",
+  "step": "data-target",
+  "capability": "Feature selection (select all / clear)",
+  "classic": "Step 4",
+  "state": "classic-only",
+  "reason": "Not yet asked in Guided."
+ },
+ {
+  "id": "target-lockbox-settings",
+  "step": "data-target",
+  "capability": "Test-holdout / lockbox settings",
+  "classic": "Step 4 expander",
+  "state": "classic-only",
+  "reason": "Updated after L5: the project now OWNS a lockbox — sealing raises the identity barrier and the apply path refuses pre-barrier repairs — but the fraction/seed settings and the act of sealing are not yet asked in the Guided interview. Half-watched, no longer unmodelled."
+ },
+ {
+  "id": "core-readiness-model",
+  "step": "cross-step",
+  "capability": "Step-completion / readiness model (ten predicates + quick/advanced)",
+  "classic": "utils/theme.py:685 render_sidebar_workflow",
+  "state": "core",
+  "reason": "Extracted to turbotab/readiness.py in L6; the page asks instead of computing, and a test asserts the expressions are gone. The Router's first real input."
+ },
+ {
+  "id": "core-invalidation-dag",
+  "step": "cross-step",
+  "capability": "Downstream invalidation cascade",
+  "classic": "utils/session_state.py reset_downstream_results",
+  "state": "core",
+  "reason": "L5 DAG reproduces the production cascade key-for-key across all four flag combinations; carries a live list of the 15 keys pages/03's hand-rolled version forgets."
+ },
+ {
+  "id": "core-lockbox-barrier",
+  "step": "cross-step",
+  "capability": "Lockbox + identity barrier",
+  "classic": "utils/test_lockbox.py (no barrier)",
+  "state": "core",
+  "reason": "L5: sealing raises the barrier; promote_header/melt_repeated unreachable behind it, enforced at the API apply path. Guided-ahead-of-Classic on the barrier itself."
+ }
+]

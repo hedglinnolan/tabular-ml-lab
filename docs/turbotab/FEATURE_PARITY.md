@@ -113,8 +113,16 @@ tells the user to *verify or override*; Classic offers that override, Guided did
 register works because it forces that comparison — but only if `classic-only` is treated as a
 claim to be justified, never as a shrug.
 
-- Building any Guided step **starts** by listing what the corresponding Classic page can do, and
-  **ends** by recording each item as `both` or `classic-only` with a reason.
+**The register lives at [`FEATURE_REGISTER.md`](FEATURE_REGISTER.md), generated from
+`data/register.json` via `tools/register.py` — never hand-edited.** It earned that structure the
+hard way: the first register, written as a markdown table in this file, was destroyed by a branch
+merge that blind-copied an older revision over it. The ledger survived the same merge because it
+is data worked through a tool; the register now is too, with a `check` that fails when a built
+step has no rows or the markdown goes stale.
+
+- Building any Guided step **starts** by listing what the corresponding Classic page can do
+  (`register.py add` per capability), and **ends** with every item dispositioned — and the step
+  added to `BUILT_STEPS` so an empty step is a failure, not a silence.
 - The parity harness covers `both` rows. `classic-only` rows are excluded from parity *by
   explicit entry*, never by omission — so the exclusion list is readable and arguable.
 - "We forgot" stops being possible, because a capability with no row fails the register check.
