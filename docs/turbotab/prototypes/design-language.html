@@ -1,0 +1,706 @@
+<title>Tabular ML Lab — Design Language</title>
+<style>
+  :root {
+    --ground: #F7F8F6;
+    --surface: #FFFFFF;
+    --surface-2: #EFF3F1;
+    --ink: #1C2B29;
+    --muted: #5B6B68;
+    --faint: #8A9997;
+    --line: #DCE3E0;
+    --accent: #0E7368;
+    --accent-ink: #0A5A51;
+    --accent-tint: #E9F2F0;
+    --ok: #2F7D46;
+    --ok-tint: #E9F2EB;
+    --warn: #9A6B0F;
+    --warn-tint: #FBF3DE;
+    --warn-line: #EAD9AC;
+    --stale-veil: rgba(247,248,246,.55);
+    --shadow: 0 1px 2px rgba(28,43,41,.05), 0 4px 14px rgba(28,43,41,.06);
+    --shadow-lift: 0 2px 4px rgba(28,43,41,.08), 0 10px 26px rgba(28,43,41,.10);
+    --serif: "Charter", "Iowan Old Style", "Source Serif Pro", Georgia, serif;
+    --sans: "Seravek", "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "Consolas", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #111917; --surface: #19231F; --surface-2: #202C28;
+      --ink: #E7EEEB; --muted: #9BABA7; --faint: #6E807C; --line: #2A3733;
+      --accent: #45BFAF; --accent-ink: #6FD4C6; --accent-tint: #1B2E2A;
+      --ok: #5CB877; --ok-tint: #1C2E22;
+      --warn: #E0B45C; --warn-tint: #2B2415; --warn-line: #4A3D1C;
+      --stale-veil: rgba(17,25,23,.55);
+      --shadow: 0 1px 2px rgba(0,0,0,.25), 0 4px 14px rgba(0,0,0,.28);
+      --shadow-lift: 0 2px 4px rgba(0,0,0,.3), 0 10px 26px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #F7F8F6; --surface: #FFFFFF; --surface-2: #EFF3F1;
+    --ink: #1C2B29; --muted: #5B6B68; --faint: #8A9997; --line: #DCE3E0;
+    --accent: #0E7368; --accent-ink: #0A5A51; --accent-tint: #E9F2F0;
+    --ok: #2F7D46; --ok-tint: #E9F2EB;
+    --warn: #9A6B0F; --warn-tint: #FBF3DE; --warn-line: #EAD9AC;
+    --stale-veil: rgba(247,248,246,.55);
+    --shadow: 0 1px 2px rgba(28,43,41,.05), 0 4px 14px rgba(28,43,41,.06);
+    --shadow-lift: 0 2px 4px rgba(28,43,41,.08), 0 10px 26px rgba(28,43,41,.10);
+  }
+  :root[data-theme="dark"] {
+    --ground: #111917; --surface: #19231F; --surface-2: #202C28;
+    --ink: #E7EEEB; --muted: #9BABA7; --faint: #6E807C; --line: #2A3733;
+    --accent: #45BFAF; --accent-ink: #6FD4C6; --accent-tint: #1B2E2A;
+    --ok: #5CB877; --ok-tint: #1C2E22;
+    --warn: #E0B45C; --warn-tint: #2B2415; --warn-line: #4A3D1C;
+    --stale-veil: rgba(17,25,23,.55);
+    --shadow: 0 1px 2px rgba(0,0,0,.25), 0 4px 14px rgba(0,0,0,.28);
+    --shadow-lift: 0 2px 4px rgba(0,0,0,.3), 0 10px 26px rgba(0,0,0,.4);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--ground); color: var(--ink);
+    font-family: var(--sans); font-size: 15px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent-ink); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  button { font-family: inherit; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  code { font-family: var(--mono); font-size: .88em; background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
+
+  .page { max-width: 1020px; margin: 0 auto; padding: 56px 32px 96px; }
+
+  /* ————— Document typography ————— */
+  .doc-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--accent-ink); margin: 0 0 10px; }
+  h1 { font-family: var(--serif); font-size: 42px; line-height: 1.12; font-weight: 700; margin: 0 0 14px; text-wrap: balance; }
+  .lede { font-size: 17px; color: var(--muted); max-width: 62ch; margin: 0 0 8px; }
+  .lede strong { color: var(--ink); }
+  h2 { font-family: var(--serif); font-size: 26px; font-weight: 700; margin: 72px 0 8px; text-wrap: balance; }
+  h2 .no { font-family: var(--mono); font-size: 13px; color: var(--faint); font-weight: 400; margin-right: 10px; }
+  .h2-sub { color: var(--muted); font-size: 14.5px; max-width: 68ch; margin: 0 0 24px; }
+  h3 { font-size: 13px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin: 34px 0 12px; }
+
+  /* ————— Principles ————— */
+  .principles { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-top: 24px; }
+  .principle { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 18px 16px; box-shadow: var(--shadow); }
+  .principle .pt { font-family: var(--serif); font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+  .principle p { margin: 0; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+
+  /* ————— Demo frame ————— */
+  .demo-frame {
+    margin-top: 28px;
+    background: var(--ground);
+    border: 1px solid var(--line); border-radius: 16px;
+    box-shadow: var(--shadow-lift);
+    overflow: clip;
+  }
+  .demo-chrome {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface); border-bottom: 1px solid var(--line);
+    padding: 10px 16px; font-size: 12px; color: var(--faint);
+  }
+  .demo-chrome .dots { display: flex; gap: 5px; }
+  .demo-chrome .dots span { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
+  .demo-chrome .t { margin-left: 8px; }
+  .demo-body { display: flex; gap: 0; }
+
+  /* rail */
+  .rail-col { flex: 0 0 218px; border-right: 1px solid var(--line); background: var(--surface); padding: 20px 16px; }
+  .rail-sticky { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 20px; }
+  .brand-name { font-family: var(--serif); font-size: 16px; font-weight: 700; }
+  .brand-sub { font-size: 10.5px; color: var(--faint); letter-spacing: .02em; }
+  .map { position: relative; display: flex; flex-direction: column; }
+  .map .track { position: absolute; left: 8px; top: 14px; bottom: 12px; width: 1.5px; background: var(--line); }
+  .map-step { position: relative; z-index: 1; display: flex; gap: 10px; align-items: center; padding: 5px 4px; font-size: 12.5px; color: var(--faint); border-radius: 6px; }
+  .map-step .md { flex: 0 0 10px; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--line); background: var(--surface); }
+  .map-step.done { color: var(--muted); }
+  .map-step.done .md { border-color: var(--ok); background: var(--ok); }
+  .map-step.now { color: var(--ink); font-weight: 650; }
+  .map-step.now .md { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+  .map-step.is-stale { color: var(--warn); }
+  .map-step.is-stale .md { border-color: var(--warn); background: var(--warn-tint); }
+
+  .evidence-tally { font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px; }
+  .evidence-tally .n { font-family: var(--mono); color: var(--accent-ink); font-weight: 700; }
+
+  /* ledger dock */
+  .ledger { border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); padding: 10px 11px; }
+  .ledger-head { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--warn); }
+  .ledger-head .ct { font-family: var(--mono); background: var(--warn-tint); border: 1px solid var(--warn-line); border-radius: 10px; padding: 0 7px; font-size: 10.5px; }
+  .ledger-items { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .ledger-items li { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+  .ledger-items .to { font-family: var(--mono); font-size: 10px; color: var(--warn); }
+  .ledger-empty { font-size: 11.5px; color: var(--faint); margin-top: 6px; }
+
+  /* job chip */
+  .job-chip {
+    display: none; align-items: center; gap: 8px;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+    padding: 8px 10px; font-size: 11.5px; color: var(--muted);
+  }
+  .job-chip.on { display: flex; }
+  .job-chip .spin {
+    width: 12px; height: 12px; border-radius: 50%;
+    border: 2px solid var(--accent-tint); border-top-color: var(--accent);
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* feed */
+  .feed { flex: 1; min-width: 0; padding: 30px 34px 46px; display: flex; flex-direction: column; gap: 22px; }
+
+  .sect { position: relative; transition: opacity .25s ease, filter .25s ease; }
+  .sect-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+  .sect-kicker { font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--faint); }
+  .sect-state { font-family: var(--mono); font-size: 10px; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--line); color: var(--faint); }
+  .sect.recorded .sect-state { color: var(--ok); border-color: var(--ok); background: var(--ok-tint); }
+  .sect.live .sect-state { color: var(--accent-ink); border-color: var(--accent); background: var(--accent-tint); }
+
+  /* decision sentence — the app speaks in serif */
+  .decision {
+    background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--ok);
+    border-radius: 10px; padding: 14px 18px;
+    display: flex; gap: 14px; align-items: baseline;
+    box-shadow: var(--shadow);
+  }
+  .decision .prose { font-family: var(--serif); font-size: 16px; line-height: 1.55; flex: 1; }
+  .decision .prose .v { font-family: var(--mono); font-size: 13px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
+  .chg { flex: 0 0 auto; border: 0; background: none; font-size: 12px; color: var(--faint); text-decoration: underline; text-underline-offset: 2px; padding: 0; }
+  .chg:hover { color: var(--accent-ink); }
+
+  /* question block */
+  .question {
+    background: var(--surface); border: 1.5px solid var(--accent); border-radius: 12px;
+    padding: 20px 22px 18px; box-shadow: var(--shadow-lift);
+  }
+  .question .q { font-family: var(--serif); font-size: 19px; line-height: 1.4; margin: 0 0 6px; text-wrap: balance; }
+  .question .q-why { font-size: 13px; color: var(--muted); margin: 0 0 14px; }
+  .question .q-why .v { font-family: var(--mono); font-size: 12px; }
+  .answers { display: flex; flex-wrap: wrap; gap: 8px; }
+  .answer {
+    border: 1.5px solid var(--line); background: var(--surface); color: var(--ink);
+    border-radius: 9px; padding: 9px 16px; font-size: 13.5px; font-weight: 600;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .answer:hover { border-color: var(--accent); background: var(--accent-tint); }
+  .answer.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+  :root[data-theme="dark"] .answer.primary { color: #08201C; }
+  @media (prefers-color-scheme: dark) { .answer.primary { color: #08201C; } }
+  :root[data-theme="light"] .answer.primary { color: #fff; }
+  .answer.primary:hover { filter: brightness(1.06); background: var(--accent); }
+
+  /* finding cards */
+  .findings { display: flex; flex-direction: column; gap: 12px; }
+  .finding {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 15px 17px 13px; box-shadow: var(--shadow);
+    display: grid; grid-template-columns: 96px 1fr; gap: 16px;
+    transition: opacity .25s ease;
+  }
+  .finding .thumb {
+    align-self: start;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px;
+    height: 72px; overflow: hidden;
+  }
+  .finding .thumb svg { width: 100%; height: 100%; display: block; }
+  .f-title { font-family: var(--serif); font-size: 15.5px; font-weight: 700; margin: 0 0 3px; }
+  .f-title .v { font-family: var(--mono); font-size: 12.5px; font-weight: 400; background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; }
+  .f-because { font-size: 13px; color: var(--muted); margin: 0 0 10px; line-height: 1.5; }
+  .f-because .v { font-family: var(--mono); font-size: 12px; }
+  .f-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .f-act {
+    border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+    font-size: 12px; font-weight: 600; border-radius: 7px; padding: 5px 11px;
+  }
+  .f-act:hover { border-color: var(--accent); color: var(--accent-ink); }
+  .f-act.warn-act { border-color: var(--warn-line); background: var(--warn-tint); color: var(--warn); }
+  .f-act.warn-act:hover { filter: brightness(.98); border-color: var(--warn); }
+  .flag {
+    margin-left: auto; border: 1px solid var(--line); background: var(--surface);
+    border-radius: 7px; padding: 5px 10px; font-size: 12px; color: var(--faint); font-weight: 600;
+  }
+  .flag[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-tint); color: var(--accent-ink); }
+  .deferred-chip {
+    display: none; font-family: var(--mono); font-size: 10.5px; color: var(--warn);
+    background: var(--warn-tint); border: 1px solid var(--warn-line); border-radius: 10px; padding: 1px 8px;
+  }
+  .finding.deferred .deferred-chip { display: inline-block; }
+  .finding.deferred .f-act.defer-btn { display: none; }
+  .finding.dismissed { display: none; }
+  .dismissed-row {
+    display: none; font-size: 12.5px; color: var(--faint);
+    padding: 8px 14px; border: 1px dashed var(--line); border-radius: 10px;
+  }
+  .dismissed-row.on { display: flex; align-items: center; gap: 10px; }
+  .dismissed-row button { border: 0; background: none; color: var(--accent-ink); font-size: 12px; text-decoration: underline; text-underline-offset: 2px; padding: 0; }
+
+  .explore-pull {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    font-size: 12.5px; color: var(--faint); padding: 4px 2px 0;
+  }
+  .explore-pull .pill { border: 1px dashed var(--line); background: none; color: var(--muted); border-radius: 20px; padding: 4px 12px; font-size: 12px; }
+  .explore-pull .pill:hover { border-color: var(--accent); color: var(--accent-ink); border-style: solid; }
+
+  /* stale */
+  .sect.stale { pointer-events: none; }
+  .sect.stale .sect-body { opacity: .45; filter: saturate(.35); }
+  .sect.stale::after {
+    content: ""; position: absolute; inset: 26px 0 0 0;
+    background: var(--stale-veil); border-radius: 12px;
+  }
+  .stale-tag {
+    display: none; z-index: 2; position: relative;
+    margin-bottom: 8px;
+    font-family: var(--mono); font-size: 10.5px; color: var(--warn);
+    background: var(--warn-tint); border: 1px solid var(--warn-line);
+    border-radius: 10px; padding: 2px 9px; width: fit-content;
+  }
+  .sect.stale .stale-tag { display: block; }
+
+  /* upcoming stub */
+  .stub {
+    border: 1.5px dashed var(--line); border-radius: 12px; padding: 14px 18px;
+    color: var(--faint); font-size: 13px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .stub .queued {
+    display: none; font-family: var(--mono); font-size: 10.5px; color: var(--warn);
+    background: var(--warn-tint); border: 1px solid var(--warn-line); border-radius: 10px; padding: 1px 8px;
+  }
+  .stub .queued.on { display: inline-block; }
+
+  /* re-answer panel */
+  .reanswer { display: none; margin-top: 10px; }
+  .reanswer.on { display: block; }
+
+  .arrive { animation: arrive .3s ease-out; }
+  @keyframes arrive { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  /* ————— Spec tables ————— */
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .swatch { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 13px; box-shadow: var(--shadow); }
+  .swatch .chip-row { display: flex; gap: 6px; margin-bottom: 9px; }
+  .swatch .cs { height: 34px; flex: 1; border-radius: 7px; border: 1px solid var(--line); }
+  .swatch .nm { font-family: var(--mono); font-size: 11.5px; color: var(--ink); }
+  .swatch .hex { font-family: var(--mono); font-size: 10px; color: var(--faint); margin: 2px 0 4px; }
+  .swatch .use { font-size: 12px; color: var(--muted); line-height: 1.45; }
+
+  .typerow { display: grid; grid-template-columns: 150px 1fr; gap: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 10px; box-shadow: var(--shadow); }
+  .typerow .role { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); padding-top: 4px; }
+  .typerow .role small { display: block; font-family: var(--mono); font-size: 10px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--faint); margin-top: 4px; }
+  .typerow .sample { min-width: 0; }
+  .typerow .sample .big { margin: 0 0 4px; }
+  .typerow .sample .note { font-size: 12.5px; color: var(--muted); }
+
+  .rules { display: flex; flex-direction: column; gap: 10px; padding: 0; margin: 0; list-style: none; counter-reset: rule; }
+  .rules li { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 13px 16px 13px 46px; position: relative; font-size: 13.5px; color: var(--muted); box-shadow: var(--shadow); }
+  .rules li::before {
+    counter-increment: rule; content: counter(rule, decimal-leading-zero);
+    position: absolute; left: 15px; top: 13px;
+    font-family: var(--mono); font-size: 11px; color: var(--accent-ink);
+  }
+  .rules li strong { color: var(--ink); }
+
+  .comp-table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); }
+  .comp-wrap { overflow-x: auto; border-radius: 10px; }
+  .comp-table th { text-align: left; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+  .comp-table td { padding: 11px 14px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); vertical-align: top; }
+  .comp-table td:first-child { font-weight: 650; color: var(--ink); white-space: nowrap; }
+  .comp-table tr:last-child td { border-bottom: 0; }
+  .comp-table .st { font-family: var(--mono); font-size: 11px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+  @media (max-width: 820px) {
+    .rail-col { display: none; }
+    .page { padding: 40px 18px 72px; }
+    h1 { font-size: 32px; }
+    .finding { grid-template-columns: 1fr; }
+    .finding .thumb { height: 64px; width: 120px; }
+    .typerow { grid-template-columns: 1fr; gap: 8px; }
+  }
+</style>
+
+<div class="page">
+  <p class="doc-eyebrow">Tabular ML Lab · Design language v1</p>
+  <h1>The document is the interface.</h1>
+  <p class="lede">A predictive-modeling analysis, rendered as a living interview: the app asks, the user answers, and the transcript that accumulates <strong>is</strong> the manuscript in embryo. This page is both the specification and the proof — the demo below runs on the same rules the spec writes down.</p>
+
+  <!-- ═══════════ PRINCIPLES ═══════════ -->
+  <h2><span class="no">01</span>Principles</h2>
+  <p class="h2-sub">Five commitments, ordered. When two collide, the earlier one wins.</p>
+  <div class="principles">
+    <div class="principle"><div class="pt">Never assert falsely.</div><p>Inherited from the codebase's governing rule. The UI may be silent or may refuse, but every rendered statement traces to a recorded decision or a computed fact. Confidence below "high" never pre-selects.</p></div>
+    <div class="principle"><div class="pt">The transcript is the artifact.</div><p>Answered questions collapse into prose sentences. Scrolling up is reading your methods section backward. Export is a formalization of what's already on screen, never a surprise.</p></div>
+    <div class="principle"><div class="pt">Push the notable, pull the rest.</div><p>The app opens each section already oriented: ranked findings, ranked recommendations. The user is never asked "what do you want to see?" — they're shown what matters and offered more.</p></div>
+    <div class="principle"><div class="pt">The past is editable, never silently destroyed.</div><p>Changing an earlier answer marks downstream work stale — visible, veiled, recoverable — and recomputation is an explicit, observable job. Nothing vanishes behind the user's back.</p></div>
+    <div class="principle"><div class="pt">Only consequences move.</div><p>Motion exists to show cause and effect: sections settle when answered, arrive when opened, propagate when invalidated. No ambient animation, ever.</p></div>
+  </div>
+
+  <!-- ═══════════ DEMO ═══════════ -->
+  <h2><span class="no">02</span>The feed, live</h2>
+  <p class="h2-sub">A working slice of the interview: two recorded decisions, an open EDA section, the next branch, and the step after it waiting. Everything is operable — change a past answer, defer a finding to the ledger, mark evidence for the manuscript, answer the feature-engineering question.</p>
+
+  <div class="demo-frame">
+    <div class="demo-chrome"><span class="dots"><span></span><span></span><span></span></span><span class="t">Tabular ML Lab — heart_failure study</span></div>
+    <div class="demo-body">
+
+      <!-- rail -->
+      <aside class="rail-col">
+        <div class="rail-sticky">
+          <div><div class="brand-name">Tabular ML Lab</div><div class="brand-sub">Publication-grade ML for research</div></div>
+          <nav class="map" aria-label="Analysis map">
+            <div class="track" aria-hidden="true"></div>
+            <span class="map-step done" data-map="s1"><span class="md"></span>Data</span>
+            <span class="map-step done" data-map="s2"><span class="md"></span>Target &amp; lockbox</span>
+            <span class="map-step now" data-map="s3"><span class="md"></span>Explore</span>
+            <span class="map-step" data-map="s4"><span class="md"></span>Features</span>
+            <span class="map-step" data-map="s5"><span class="md"></span>Preprocess</span>
+            <span class="map-step"><span class="md"></span>Train &amp; compare</span>
+            <span class="map-step"><span class="md"></span>Report</span>
+          </nav>
+          <div class="ledger" id="ledger">
+            <div class="ledger-head">Coach ledger <span class="ct" id="ledgerCount">0</span></div>
+            <div class="ledger-empty" id="ledgerEmpty">Noticings you defer wait here, and resurface at the step they belong to.</div>
+            <ul class="ledger-items" id="ledgerItems"></ul>
+          </div>
+          <div class="job-chip" id="jobChip"><span class="spin" aria-hidden="true"></span><span id="jobText">Recomputing…</span></div>
+          <div class="evidence-tally">Marked for manuscript: <span class="n" id="evCount">1</span></div>
+        </div>
+      </aside>
+
+      <!-- feed -->
+      <div class="feed">
+
+        <!-- S1 — recorded decision -->
+        <section class="sect recorded" id="s1">
+          <div class="sect-head"><span class="sect-kicker">Data</span><span class="sect-state">recorded</span></div>
+          <span class="stale-tag">stale — upstream changed</span>
+          <div class="sect-body">
+            <div class="decision">
+              <p class="prose">Two files, joined. <span class="v">patients.csv</span> (918 rows) and <span class="v">labs.csv</span> (2,741 rows) were linked one-to-many on <span class="v">patient_id</span>, keeping each patient's most recent lab values — 918 rows, 14 features.</p>
+              <button class="chg" type="button">change</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- S2 — recorded decision with change demo -->
+        <section class="sect recorded" id="s2">
+          <div class="sect-head"><span class="sect-kicker">Target &amp; lockbox</span><span class="sect-state">recorded</span></div>
+          <span class="stale-tag">stale — upstream changed</span>
+          <div class="sect-body">
+            <div class="decision">
+              <p class="prose">Predicting <span class="v">HeartDisease</span> — binary classification, class balance <span class="v">55 : 45</span>. Before anything was explored, <span class="v">184</span> rows (20%) were sealed in the test lockbox.</p>
+              <button class="chg" id="changeS2" type="button">change</button>
+            </div>
+            <div class="reanswer" id="reanswerS2">
+              <div class="question">
+                <p class="q">Change the prediction target?</p>
+                <p class="q-why">Everything below this point was computed for <span class="v">HeartDisease</span>. A new target re-seals the lockbox and re-runs exploration.</p>
+                <div class="answers">
+                  <button class="answer primary" id="keepTarget" type="button">Keep HeartDisease</button>
+                  <button class="answer" type="button">Choose a different column…</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- S3 — live EDA -->
+        <section class="sect live" id="s3">
+          <div class="sect-head"><span class="sect-kicker">Explore</span><span class="sect-state">open</span></div>
+          <span class="stale-tag">stale — upstream changed</span>
+          <div class="sect-body">
+            <div class="question" style="border-width:1px; border-color:var(--line); box-shadow:var(--shadow); margin-bottom:12px;">
+              <p class="q">Three things stand out in this dataset.</p>
+              <p class="q-why">Ranked by likely downstream impact. Each carries its consequence and can act now, wait, or leave.</p>
+            </div>
+
+            <div class="findings">
+              <!-- finding 1 -->
+              <article class="finding" id="f1">
+                <div class="thumb" aria-hidden="true">
+                  <svg viewBox="0 0 96 72"><g fill="var(--accent)" opacity=".75"><rect x="8" y="34" width="7" height="30"/><rect x="17" y="18" width="7" height="46"/><rect x="26" y="10" width="7" height="54"/><rect x="35" y="22" width="7" height="42"/><rect x="44" y="38" width="7" height="26"/><rect x="53" y="48" width="7" height="16"/><rect x="62" y="55" width="7" height="9"/><rect x="71" y="59" width="7" height="5"/><rect x="80" y="61" width="7" height="3"/></g></svg>
+                </div>
+                <div>
+                  <p class="f-title"><span class="v">creatinine</span> is strongly right-skewed</p>
+                  <p class="f-because">Skew <span class="v">2.8</span> with a long upper tail. Linear models and distance-based methods will over-weight the tail; a <span class="v">log</span> transform at Preprocess usually corrects it.</p>
+                  <div class="f-row">
+                    <button class="f-act warn-act defer-btn" data-defer="Log-transform creatinine" data-target="Preprocess" type="button">Remind me at Preprocess</button>
+                    <button class="f-act" type="button">Fix now</button>
+                    <span class="deferred-chip">deferred → Preprocess</span>
+                    <button class="flag" aria-pressed="true" type="button">⚑ Marked for manuscript</button>
+                  </div>
+                </div>
+              </article>
+
+              <!-- finding 2 -->
+              <article class="finding" id="f2">
+                <div class="thumb" aria-hidden="true">
+                  <svg viewBox="0 0 96 72"><g stroke="var(--accent)" opacity=".7" fill="none"><circle cx="18" cy="52" r="2.4"/><circle cx="26" cy="46" r="2.4"/><circle cx="33" cy="41" r="2.4"/><circle cx="41" cy="35" r="2.4"/><circle cx="49" cy="30" r="2.4"/><circle cx="56" cy="26" r="2.4"/><circle cx="64" cy="20" r="2.4"/><circle cx="72" cy="15" r="2.4"/><circle cx="80" cy="11" r="2.4"/><circle cx="30" cy="50" r="2.4"/><circle cx="60" cy="31" r="2.4"/></g><line x1="12" y1="58" x2="86" y2="7" stroke="var(--faint)" stroke-dasharray="3 3"/></svg>
+                </div>
+                <div>
+                  <p class="f-title"><span class="v">hematocrit</span> and <span class="v">hemoglobin</span> move together</p>
+                  <p class="f-because">Correlation <span class="v">r = 0.91</span> — expected physiology, but keeping both destabilizes coefficients and splits importance. Feature Selection can retain one.</p>
+                  <div class="f-row">
+                    <button class="f-act warn-act defer-btn" data-defer="Drop one of hematocrit / hemoglobin" data-target="Features" type="button">Remind me at Feature Selection</button>
+                    <button class="f-act" type="button">Fix now</button>
+                    <span class="deferred-chip">deferred → Features</span>
+                    <button class="flag" aria-pressed="false" type="button">⚑ Mark for manuscript</button>
+                  </div>
+                </div>
+              </article>
+
+              <!-- finding 3 -->
+              <article class="finding" id="f3">
+                <div class="thumb" aria-hidden="true">
+                  <svg viewBox="0 0 96 72"><g fill="var(--faint)" opacity=".55"><rect x="10" y="10" width="76" height="7" rx="2"/><rect x="10" y="21" width="76" height="7" rx="2"/><rect x="10" y="43" width="76" height="7" rx="2"/><rect x="10" y="54" width="76" height="7" rx="2"/></g><g fill="var(--warn)"><rect x="10" y="32" width="49" height="7" rx="2"/><rect x="63" y="32" width="10" height="7" rx="2" opacity=".45"/><rect x="77" y="32" width="9" height="7" rx="2" opacity=".45"/></g></svg>
+                </div>
+                <div>
+                  <p class="f-title"><span class="v">ferritin</span> is missing in a pattern, not at random</p>
+                  <p class="f-because"><span class="v">34%</span> missing, concentrated in non-ICU admissions — the gap itself may carry signal. A missingness indicator at Preprocess preserves it.</p>
+                  <div class="f-row">
+                    <button class="f-act warn-act defer-btn" data-defer="Missingness indicator for ferritin" data-target="Preprocess" type="button">Remind me at Preprocess</button>
+                    <button class="f-act" id="dismissF3" type="button">Dismiss</button>
+                    <span class="deferred-chip">deferred → Preprocess</span>
+                    <button class="flag" aria-pressed="false" type="button">⚑ Mark for manuscript</button>
+                  </div>
+                </div>
+              </article>
+              <div class="dismissed-row" id="dismissedF3">
+                <span>Dismissed: <em>ferritin missingness pattern</em> — kept in the record, out of the way.</span>
+                <button id="undoF3" type="button">Undo</button>
+              </div>
+            </div>
+
+            <div class="explore-pull" style="margin-top:12px;">
+              <span>Want more?</span>
+              <button class="pill" type="button">Distributions — all 14</button>
+              <button class="pill" type="button">Correlation matrix</button>
+              <button class="pill" type="button">Target vs. each feature</button>
+              <button class="pill" type="button">Table One</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- S4 — next branch -->
+        <section class="sect live" id="s4">
+          <div class="sect-head"><span class="sect-kicker">Features</span><span class="sect-state">next</span></div>
+          <span class="stale-tag">stale — upstream changed</span>
+          <div class="sect-body" id="s4body">
+            <div class="question" id="s4question">
+              <p class="q">A quick probe suggests one engineered feature is worth having. Add it?</p>
+              <p class="q-why">The interaction <span class="v">age × creatinine</span> raised probe AUC by <span class="v">+0.014</span> on training folds only — the lockbox stayed sealed. You can add it, open the full workshop, or skip ahead.</p>
+              <div class="answers">
+                <button class="answer primary" data-s4="add" type="button">Add the interaction</button>
+                <button class="answer" data-s4="workshop" type="button">Open feature workshop</button>
+                <button class="answer" data-s4="skip" type="button">Skip — go to Preprocess</button>
+              </div>
+            </div>
+            <div class="decision" id="s4decision" style="display:none;">
+              <p class="prose" id="s4prose"></p>
+              <button class="chg" type="button">change</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- S5 — upcoming stub -->
+        <section class="sect" id="s5">
+          <div class="sect-head"><span class="sect-kicker">Preprocess</span><span class="sect-state">waiting</span></div>
+          <span class="stale-tag">stale — upstream changed</span>
+          <div class="sect-body">
+            <div class="stub">
+              <span>Opens after Features. Imputation, scaling, and per-model pipelines are decided here.</span>
+              <span class="queued" id="s5queued">0 reminders queued</span>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ COLOR ═══════════ -->
+  <h2><span class="no">03</span>Color: every hue is a claim</h2>
+  <p class="h2-sub">Four meanings, four hues, no exceptions. If a color appears, the user may rely on what it asserts. Values listed light / dark; all pairs meet WCAG AA on their grounds.</p>
+  <div class="swatches">
+    <div class="swatch"><div class="chip-row"><div class="cs" style="background:#0E7368"></div><div class="cs" style="background:#45BFAF"></div></div><div class="nm">--accent</div><div class="hex">#0E7368 / #45BFAF</div><div class="use"><strong>Now.</strong> The open question, the primary action, the current position. One accent moment per viewport.</div></div>
+    <div class="swatch"><div class="chip-row"><div class="cs" style="background:#2F7D46"></div><div class="cs" style="background:#5CB877"></div></div><div class="nm">--ok</div><div class="hex">#2F7D46 / #5CB877</div><div class="use"><strong>Recorded.</strong> Sealed, decided, provenance-backed. The left keyline of every decision sentence.</div></div>
+    <div class="swatch"><div class="chip-row"><div class="cs" style="background:#9A6B0F"></div><div class="cs" style="background:#E0B45C"></div></div><div class="nm">--warn</div><div class="hex">#9A6B0F / #E0B45C</div><div class="use"><strong>The coach's voice.</strong> Noticings, deferrals, staleness. Advisory only — never used for errors or decoration.</div></div>
+    <div class="swatch"><div class="chip-row"><div class="cs" style="background:#1C2B29"></div><div class="cs" style="background:#E7EEEB"></div></div><div class="nm">--ink / --ground</div><div class="hex">#1C2B29 on #F7F8F6</div><div class="use"><strong>The page.</strong> Teal-biased neutrals — cool paper, not default grey. Muted <code>#5B6B68</code>, hairlines <code>#DCE3E0</code>.</div></div>
+  </div>
+
+  <!-- ═══════════ TYPE ═══════════ -->
+  <h2><span class="no">04</span>Type: three voices, three planes</h2>
+  <p class="h2-sub">The rule that makes the whole system legible: <strong>if the app is speaking, it's serif. If the user is acting, it's sans. If the data is speaking, it's mono.</strong> A reader can tell narrative from control from evidence without reading a word.</p>
+  <div class="typerow">
+    <div class="role">Voice<small>Charter · Iowan Old Style · Georgia</small></div>
+    <div class="sample"><p class="big" style="font-family:var(--serif); font-size:19px;">Predicting <code>HeartDisease</code> — before anything was explored, 184 rows were sealed away.</p><div class="note">Questions, recorded decisions, finding titles — the narrative plane. 19px questions, 16px decisions, weight 700 for titles only.</div></div>
+  </div>
+  <div class="typerow">
+    <div class="role">Action<small>Seravek · Avenir Next · Segoe UI</small></div>
+    <div class="sample"><p class="big" style="font-size:13.5px; font-weight:600;">Add the interaction &nbsp;·&nbsp; Remind me at Preprocess &nbsp;·&nbsp; change</p><div class="note">Buttons, chips, labels, rationale text — everything operable or explanatory. 13–14px, weight 600 on controls; uppercase kickers at 10.5px with .09em tracking.</div></div>
+  </div>
+  <div class="typerow">
+    <div class="role">Data<small>SF Mono · Cascadia · Consolas</small></div>
+    <div class="sample"><p class="big" style="font-family:var(--mono); font-size:13px;">creatinine · r = 0.91 · 55 : 45 · 184 rows · +0.014</p><div class="note">Column names, values, counts, state tags — always <code>tabular-nums</code>, always in a bordered chip when inline with serif prose.</div></div>
+  </div>
+
+  <!-- ═══════════ COMPONENTS ═══════════ -->
+  <h2><span class="no">05</span>The component vocabulary</h2>
+  <p class="h2-sub">Eight components build every screen. Each owns its states; no page-specific variants.</p>
+  <div class="comp-wrap"><table class="comp-table">
+    <tr><th>Component</th><th>Job</th><th>States</th></tr>
+    <tr><td>Question block</td><td>A branch point. Serif question, one line of rationale, 2–4 answer chips. Exactly one is visually primary when the coach has a recommendation.</td><td class="st">open · answered → collapses to Decision sentence</td></tr>
+    <tr><td>Decision sentence</td><td>An answered question as one serif sentence with mono values inline and a green keyline. The unit of the transcript — and of the future methods section.</td><td class="st">recorded · stale · reopened</td></tr>
+    <tr><td>Finding card</td><td>A coach noticing: thumbnail, serif claim, consequence, actions (act now / defer / dismiss) and an evidence flag.</td><td class="st">open · deferred · dismissed (undoable) · resolved</td></tr>
+    <tr><td>Coach ledger</td><td>Docked queue of deferred noticings. Never interrupts; badge count only. Items resurface inside the step they target.</td><td class="st">empty · queued(n)</td></tr>
+    <tr><td>Analysis map</td><td>Sticky rail: one dot per section, tracks scroll, doubles as navigation. Carries the evidence tally.</td><td class="st">done · now · waiting · stale</td></tr>
+    <tr><td>Stale veil</td><td>Downstream sections after a past edit: desaturated, veiled, tagged, non-interactive — visibly recoverable, never deleted.</td><td class="st">stale → recomputing → fresh</td></tr>
+    <tr><td>Job chip</td><td>Every computation over ~1s is a visible job: spinner, plain-language label, elapsed estimate. Lives in the rail; the page never freezes silently.</td><td class="st">running · done (auto-clears)</td></tr>
+    <tr><td>Evidence flag</td><td>One-click "this goes in the paper." Flagged items accrue to the manuscript tally and pre-populate Report Export.</td><td class="st">unmarked · marked</td></tr>
+  </table></div>
+
+  <!-- ═══════════ MOTION ═══════════ -->
+  <h2><span class="no">06</span>Motion: cause and effect only</h2>
+  <ol class="rules">
+    <li><strong>Settle.</strong> An answered question collapses into its decision sentence in 250ms ease-out. The collapse is the visual receipt that the choice was recorded.</li>
+    <li><strong>Arrive.</strong> New sections grow downward from the point of consequence (300ms, 6px rise). The viewport never auto-scrolls; the user's scroll position is theirs.</li>
+    <li><strong>Propagate.</strong> Staleness sweeps downstream in document order, fast (≤150ms per section), so the user watches their edit's blast radius draw itself.</li>
+    <li><strong>Work is visible.</strong> Anything over ~1 second shows a job chip immediately — named in plain language ("Recomputing exploration…"), never a bare spinner.</li>
+    <li><strong>Nothing else moves.</strong> No ambient animation, no hover theatrics beyond elevation, and <code>prefers-reduced-motion</code> collapses everything to instant state changes.</li>
+  </ol>
+
+  <!-- ═══════════ VOICE ═══════════ -->
+  <h2><span class="no">07</span>Voice: how the app talks</h2>
+  <ol class="rules">
+    <li><strong>Questions are single and concrete.</strong> One decision per question block, named values, no compound asks. "Add the interaction <code>age × creatinine</code>?" — never "Configure feature engineering."</li>
+    <li><strong>Decisions are past-tense and exact.</strong> "184 rows were sealed" — a count, a verb, no adjectives. If the sentence couldn't appear in a methods section, it isn't a decision sentence.</li>
+    <li><strong>The coach observes; it does not command.</strong> Noticings state the evidence, the consequence, and the option — then wait. Amber text never says "you should"; it says "this usually means."</li>
+    <li><strong>Uncertainty is stated as uncertainty.</strong> Probe results say "on training folds only"; suggestions carry their basis. The UI never borrows confidence the math doesn't have.</li>
+    <li><strong>The app never speaks in the user's name.</strong> Analysis choices are recorded as the app's observations of the user's decisions; interpretive claims are left as authored gaps — the manuscript's <code>[AUTHOR REQUIRED]</code> rule, applied to the interface.</li>
+  </ol>
+</div>
+
+<script>
+  // ——— evidence flags ———
+  const evCount = document.getElementById('evCount');
+  function tallyEvidence() {
+    evCount.textContent = document.querySelectorAll('.flag[aria-pressed="true"]').length;
+  }
+  document.querySelectorAll('.flag').forEach(f => {
+    f.addEventListener('click', () => {
+      const on = f.getAttribute('aria-pressed') === 'true';
+      f.setAttribute('aria-pressed', on ? 'false' : 'true');
+      f.textContent = on ? '⚑ Mark for manuscript' : '⚑ Marked for manuscript';
+      tallyEvidence();
+    });
+  });
+  tallyEvidence();
+
+  // ——— coach ledger + defer ———
+  const ledgerItems = document.getElementById('ledgerItems');
+  const ledgerCount = document.getElementById('ledgerCount');
+  const ledgerEmpty = document.getElementById('ledgerEmpty');
+  const s5queued = document.getElementById('s5queued');
+  let queuedForPreprocess = 0;
+  function refreshLedger() {
+    const n = ledgerItems.children.length;
+    ledgerCount.textContent = n;
+    ledgerEmpty.style.display = n ? 'none' : 'block';
+    s5queued.textContent = queuedForPreprocess + ' reminder' + (queuedForPreprocess === 1 ? '' : 's') + ' queued';
+    s5queued.classList.toggle('on', queuedForPreprocess > 0);
+  }
+  document.querySelectorAll('.defer-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      b.closest('.finding').classList.add('deferred');
+      const li = document.createElement('li');
+      li.innerHTML = '<span class="to">→ ' + b.dataset.target + '</span><br>' + b.dataset.defer;
+      ledgerItems.appendChild(li);
+      if (b.dataset.target === 'Preprocess') queuedForPreprocess++;
+      refreshLedger();
+    });
+  });
+  refreshLedger();
+
+  // ——— dismiss / undo ———
+  const f3 = document.getElementById('f3'), dRow = document.getElementById('dismissedF3');
+  document.getElementById('dismissF3').addEventListener('click', () => {
+    f3.classList.add('dismissed'); dRow.classList.add('on');
+  });
+  document.getElementById('undoF3').addEventListener('click', () => {
+    f3.classList.remove('dismissed'); dRow.classList.remove('on');
+  });
+
+  // ——— S4 branch ———
+  const s4q = document.getElementById('s4question');
+  const s4d = document.getElementById('s4decision');
+  const s4prose = document.getElementById('s4prose');
+  const s4sect = document.getElementById('s4');
+  const S4_TEXT = {
+    add: 'One feature engineered. The interaction <span class="v">age × creatinine</span> was added on probe evidence (<span class="v">+0.014</span> AUC, training folds only) — now <span class="v">15</span> features.',
+    workshop: 'Feature workshop opened — engineered features will be recorded here as they are added.',
+    skip: 'Feature engineering was skipped for this pass. The probe suggestion stays in the record and can be revisited.'
+  };
+  document.querySelectorAll('[data-s4]').forEach(b => {
+    b.addEventListener('click', () => {
+      s4prose.innerHTML = S4_TEXT[b.dataset.s4];
+      s4q.style.display = 'none';
+      s4d.style.display = 'flex'; s4d.classList.add('arrive');
+      s4sect.classList.remove('live'); s4sect.classList.add('recorded');
+      s4sect.querySelector('.sect-state').textContent = 'recorded';
+      document.querySelector('[data-map="s4"]').classList.add('done');
+      document.querySelector('[data-map="s5"]').classList.add('now');
+      document.getElementById('s5').querySelector('.sect-state').textContent = 'next';
+    });
+  });
+  s4d.querySelector('.chg').addEventListener('click', () => {
+    s4q.style.display = 'block'; s4q.classList.add('arrive');
+    s4d.style.display = 'none';
+    s4sect.classList.add('live'); s4sect.classList.remove('recorded');
+    s4sect.querySelector('.sect-state').textContent = 'next';
+  });
+
+  // ——— stale cascade on S2 change ———
+  const downstream = ['s3', 's4', 's5'];
+  const reanswer = document.getElementById('reanswerS2');
+  const jobChip = document.getElementById('jobChip');
+  const jobText = document.getElementById('jobText');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.getElementById('changeS2').addEventListener('click', () => {
+    reanswer.classList.add('on');
+    downstream.forEach((id, i) => {
+      setTimeout(() => {
+        document.getElementById(id).classList.add('stale');
+        const m = document.querySelector('[data-map="' + id + '"]');
+        if (m) m.classList.add('is-stale');
+      }, reduced ? 0 : i * 130);
+    });
+  });
+  document.getElementById('keepTarget').addEventListener('click', () => {
+    reanswer.classList.remove('on');
+    jobText.textContent = 'Recomputing 3 sections…';
+    jobChip.classList.add('on');
+    setTimeout(() => {
+      downstream.forEach(id => {
+        document.getElementById(id).classList.remove('stale');
+        const m = document.querySelector('[data-map="' + id + '"]');
+        if (m) m.classList.remove('is-stale');
+      });
+      jobChip.classList.remove('on');
+    }, reduced ? 60 : 1100);
+  });
+
+  // ——— rail tracks scroll ———
+  const observed = ['s1', 's2', 's3', 's4', 's5'];
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (!e.isIntersecting) return;
+        const m = document.querySelector('[data-map="' + e.target.id + '"]');
+        if (!m || m.classList.contains('now')) return;
+      });
+    }, { rootMargin: '-40% 0px -50% 0px' });
+    observed.forEach(id => { const el = document.getElementById(id); if (el) io.observe(el); });
+  }
+</script>

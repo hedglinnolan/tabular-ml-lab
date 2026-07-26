@@ -1,0 +1,359 @@
+{
+ "visualizations.py": [],
+ "setup.py": [],
+ "app.py": [
+  "utils.session_state",
+  "utils.theme"
+ ],
+ "data_processor.py": [
+  "utils.column_utils"
+ ],
+ "models/huber_glm.py": [
+  "models.base"
+ ],
+ "models/base.py": [],
+ "models/__init__.py": [],
+ "models/glm.py": [
+  "models.base"
+ ],
+ "models/nn_whuber.py": [
+  "models.base"
+ ],
+ "models/rf.py": [
+  "models.base"
+ ],
+ "models/registry_wrappers.py": [
+  "models.base"
+ ],
+ "ml/latex_report.py": [
+  "ml.publication",
+  "utils.insight_ledger"
+ ],
+ "ml/feature_steps.py": [],
+ "ml/model_registry.py": [
+  "models.glm",
+  "models.huber_glm",
+  "models.nn_whuber",
+  "models.rf"
+ ],
+ "ml/calibration.py": [],
+ "ml/model_coach.py": [
+  "utils.insight_ledger"
+ ],
+ "ml/clinical_units.py": [],
+ "ml/__init__.py": [],
+ "ml/bootstrap.py": [],
+ "ml/triage.py": [],
+ "ml/table_one.py": [],
+ "ml/regime.py": [],
+ "ml/join_doctor.py": [
+  "data_processor"
+ ],
+ "ml/preprocess_operators.py": [],
+ "ml/splits.py": [],
+ "ml/plot_narrative.py": [],
+ "ml/dataset_profile.py": [
+  "ml.clinical_units",
+  "ml.outliers",
+  "ml.physiology_reference"
+ ],
+ "ml/eda_recommender.py": [
+  "ml.clinical_units",
+  "ml.outliers",
+  "ml.physiology_reference"
+ ],
+ "ml/baseline_models.py": [
+  "ml.bootstrap"
+ ],
+ "ml/import_doctor.py": [
+  "utils.column_utils"
+ ],
+ "ml/eda_actions.py": [
+  "ml.clinical_units",
+  "ml.eval",
+  "ml.outliers",
+  "ml.physiology_reference",
+  "ml.stats_tests",
+  "utils.storyline"
+ ],
+ "ml/publication.py": [
+  "ml.bootstrap",
+  "utils.insight_ledger"
+ ],
+ "ml/nn_recommender.py": [
+  "ml.dataset_profile"
+ ],
+ "ml/macro_shape.py": [],
+ "ml/narrative_engine.py": [
+  "utils.insight_ledger",
+  "utils.workflow_provenance"
+ ],
+ "ml/eval.py": [
+  "ml.stats_tests"
+ ],
+ "ml/sensitivity.py": [],
+ "ml/compat.py": [],
+ "ml/manuscript_validator.py": [
+  "ml.narrative_engine"
+ ],
+ "ml/outliers.py": [],
+ "ml/physiology_reference.py": [
+  "ml.clinical_units"
+ ],
+ "ml/stats_tests.py": [],
+ "ml/estimator_utils.py": [],
+ "ml/pipeline.py": [
+  "ml.clinical_units",
+  "ml.feature_steps",
+  "ml.physiology_reference",
+  "ml.preprocess_operators"
+ ],
+ "ml/feature_selection.py": [],
+ "ml/coach_probe.py": [],
+ "utils/theme.py": [
+  "utils.cohort_ui",
+  "utils.llm_ui",
+  "utils.session_manager",
+  "utils.session_state"
+ ],
+ "utils/combine_ui.py": [
+  "ml.join_doctor",
+  "utils.combine",
+  "utils.combine_preview"
+ ],
+ "utils/column_utils.py": [],
+ "utils/perf_cache.py": [
+  "data_processor"
+ ],
+ "utils/persistence.py": [],
+ "utils/llm_ui.py": [],
+ "utils/datasets.py": [],
+ "utils/insight_ledger.py": [
+  "ml.publication"
+ ],
+ "utils/test_lockbox.py": [
+  "utils.cohorts",
+  "utils.session_state"
+ ],
+ "utils/theory_anchors.py": [
+  "utils.theory_demos"
+ ],
+ "utils/storyline.py": [],
+ "utils/session_projects.py": [],
+ "utils/__init__.py": [],
+ "utils/state_reconcile.py": [
+  "utils.session_state"
+ ],
+ "utils/reconcile.py": [],
+ "utils/workflow_provenance.py": [],
+ "utils/dataset_db.py": [],
+ "utils/coaching_ui.py": [
+  "utils.insight_ledger",
+  "utils.theory_anchors"
+ ],
+ "utils/seed.py": [],
+ "utils/combine_preview.py": [
+  "ml.join_doctor",
+  "utils.combine"
+ ],
+ "utils/widget_helpers.py": [],
+ "utils/session_state.py": [
+  "utils.cohorts",
+  "utils.insight_ledger"
+ ],
+ "utils/table_export.py": [],
+ "utils/cohorts.py": [
+  "utils.test_lockbox"
+ ],
+ "utils/combine.py": [
+  "ml.join_doctor"
+ ],
+ "utils/theory_demos.py": [],
+ "utils/cohort_ui.py": [
+  "utils.cohorts",
+  "utils.session_state",
+  "utils.test_lockbox"
+ ],
+ "utils/import_ui.py": [
+  "ml.import_doctor"
+ ],
+ "utils/session_manager.py": [
+  "ml.coach_probe",
+  "utils.insight_ledger",
+  "utils.session_state",
+  "utils.workflow_provenance"
+ ],
+ "pages/09_Hypothesis_Testing.py": [
+  "data_processor",
+  "ml.stats_tests",
+  "utils.coaching_ui",
+  "utils.llm_ui",
+  "utils.session_state",
+  "utils.storyline",
+  "utils.table_export",
+  "utils.test_lockbox",
+  "utils.theme",
+  "utils.workflow_provenance"
+ ],
+ "pages/__init__.py": [],
+ "pages/05_Preprocess.py": [
+  "data_processor",
+  "ml.coach_probe",
+  "ml.model_coach",
+  "ml.model_registry",
+  "ml.pipeline",
+  "utils.coaching_ui",
+  "utils.insight_ledger",
+  "utils.session_state",
+  "utils.storyline",
+  "utils.table_export",
+  "utils.test_lockbox",
+  "utils.theme",
+  "utils.widget_helpers",
+  "utils.workflow_provenance"
+ ],
+ "pages/06_Train_and_Compare.py": [
+  "ml.baseline_models",
+  "ml.bootstrap",
+  "ml.calibration",
+  "ml.eval",
+  "ml.model_coach",
+  "ml.model_registry",
+  "ml.nn_recommender",
+  "ml.pipeline",
+  "ml.plot_narrative",
+  "ml.splits",
+  "models.glm",
+  "models.huber_glm",
+  "models.nn_whuber",
+  "models.registry_wrappers",
+  "models.rf",
+  "utils.coaching_ui",
+  "utils.cohort_ui",
+  "utils.cohorts",
+  "utils.insight_ledger",
+  "utils.llm_ui",
+  "utils.seed",
+  "utils.session_state",
+  "utils.storyline",
+  "utils.table_export",
+  "utils.test_lockbox",
+  "utils.theme",
+  "utils.workflow_provenance",
+  "visualizations"
+ ],
+ "pages/07_Explainability.py": [
+  "data_processor",
+  "ml.bootstrap",
+  "ml.estimator_utils",
+  "ml.eval",
+  "ml.model_registry",
+  "ml.pipeline",
+  "ml.plot_narrative",
+  "ml.publication",
+  "utils.coaching_ui",
+  "utils.insight_ledger",
+  "utils.llm_ui",
+  "utils.session_state",
+  "utils.storyline",
+  "utils.table_export",
+  "utils.test_lockbox",
+  "utils.theme",
+  "utils.workflow_provenance",
+  "visualizations"
+ ],
+ "pages/08_Sensitivity_Analysis.py": [
+  "utils.coaching_ui",
+  "utils.llm_ui",
+  "utils.session_state",
+  "utils.storyline",
+  "utils.table_export",
+  "utils.test_lockbox",
+  "utils.theme",
+  "utils.workflow_provenance"
+ ],
+ "pages/10_Report_Export.py": [
+  "ml.eval",
+  "ml.latex_report",
+  "ml.manuscript_validator",
+  "ml.model_registry",
+  "ml.narrative_engine",
+  "ml.pipeline",
+  "ml.publication",
+  "ml.table_one",
+  "utils.insight_ledger",
+  "utils.session_state",
+  "utils.storyline",
+  "utils.table_export",
+  "utils.test_lockbox",
+  "utils.theme",
+  "utils.workflow_provenance"
+ ],
+ "pages/03_Feature_Engineering.py": [
+  "ml.compat",
+  "utils.insight_ledger",
+  "utils.session_state",
+  "utils.storyline",
+  "utils.test_lockbox",
+  "utils.theme",
+  "utils.workflow_provenance"
+ ],
+ "pages/02_EDA.py": [
+  "data_processor",
+  "ml",
+  "ml.dataset_profile",
+  "ml.eda_recommender",
+  "ml.macro_shape",
+  "ml.outliers",
+  "ml.physiology_reference",
+  "ml.plot_narrative",
+  "ml.regime",
+  "ml.table_one",
+  "utils.insight_ledger",
+  "utils.llm_ui",
+  "utils.perf_cache",
+  "utils.session_state",
+  "utils.storyline",
+  "utils.table_export",
+  "utils.test_lockbox",
+  "utils.theme",
+  "utils.workflow_provenance"
+ ],
+ "pages/04_Feature_Selection.py": [
+  "data_processor",
+  "ml.feature_selection",
+  "utils.coaching_ui",
+  "utils.llm_ui",
+  "utils.session_state",
+  "utils.storyline",
+  "utils.table_export",
+  "utils.test_lockbox",
+  "utils.theme",
+  "utils.workflow_provenance"
+ ],
+ "pages/11_Theory_Reference.py": [
+  "utils.theme"
+ ],
+ "pages/01_Upload_and_Audit.py": [
+  "data_processor",
+  "ml.eda_recommender",
+  "ml.triage",
+  "utils.cohort_ui",
+  "utils.column_utils",
+  "utils.combine",
+  "utils.combine_ui",
+  "utils.datasets",
+  "utils.import_ui",
+  "utils.insight_ledger",
+  "utils.perf_cache",
+  "utils.reconcile",
+  "utils.session_projects",
+  "utils.session_state",
+  "utils.state_reconcile",
+  "utils.storyline",
+  "utils.table_export",
+  "utils.test_lockbox",
+  "utils.theme",
+  "utils.workflow_provenance"
+ ]
+}

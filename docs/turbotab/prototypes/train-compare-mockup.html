@@ -1,0 +1,561 @@
+<title>Train &amp; Compare — hierarchy mockup</title>
+<style>
+  :root {
+    --ground: #F7F8F6;
+    --surface: #FFFFFF;
+    --surface-2: #F0F3F1;
+    --ink: #1C2B29;
+    --muted: #5B6B68;
+    --faint: #8A9997;
+    --line: #DCE3E0;
+    --accent: #0E7368;
+    --accent-ink: #0A5A51;
+    --accent-tint: #E9F2F0;
+    --accent-tint-2: #D8EAE6;
+    --ok: #2F7D46;
+    --ok-tint: #E8F2EA;
+    --warn: #9A6B0F;
+    --warn-tint: #FBF3DE;
+    --warn-line: #EAD9AC;
+    --pin: #4A5FA5;
+    --pin-ink: #FFFFFF;
+    --shadow: 0 1px 2px rgba(28,43,41,.05), 0 4px 14px rgba(28,43,41,.06);
+    --shadow-lift: 0 2px 4px rgba(28,43,41,.07), 0 10px 26px rgba(28,43,41,.10);
+    --serif: "Charter", "Iowan Old Style", "Source Serif Pro", Georgia, serif;
+    --sans: "Seravek", "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "Consolas", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #111917;
+      --surface: #19231F;
+      --surface-2: #1F2B27;
+      --ink: #E7EEEB;
+      --muted: #9BABA7;
+      --faint: #6E807C;
+      --line: #2A3733;
+      --accent: #45BFAF;
+      --accent-ink: #6FD4C6;
+      --accent-tint: #1B2E2A;
+      --accent-tint-2: #21403A;
+      --ok: #5CB877;
+      --ok-tint: #1C2E22;
+      --warn: #E0B45C;
+      --warn-tint: #2B2415;
+      --warn-line: #4A3D1C;
+      --pin: #8CA0E8;
+      --pin-ink: #141A2E;
+      --shadow: 0 1px 2px rgba(0,0,0,.25), 0 4px 14px rgba(0,0,0,.28);
+      --shadow-lift: 0 2px 4px rgba(0,0,0,.3), 0 10px 26px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #F7F8F6; --surface: #FFFFFF; --surface-2: #F0F3F1;
+    --ink: #1C2B29; --muted: #5B6B68; --faint: #8A9997; --line: #DCE3E0;
+    --accent: #0E7368; --accent-ink: #0A5A51; --accent-tint: #E9F2F0; --accent-tint-2: #D8EAE6;
+    --ok: #2F7D46; --ok-tint: #E8F2EA;
+    --warn: #9A6B0F; --warn-tint: #FBF3DE; --warn-line: #EAD9AC;
+    --pin: #4A5FA5; --pin-ink: #FFFFFF;
+    --shadow: 0 1px 2px rgba(28,43,41,.05), 0 4px 14px rgba(28,43,41,.06);
+    --shadow-lift: 0 2px 4px rgba(28,43,41,.07), 0 10px 26px rgba(28,43,41,.10);
+  }
+  :root[data-theme="dark"] {
+    --ground: #111917; --surface: #19231F; --surface-2: #1F2B27;
+    --ink: #E7EEEB; --muted: #9BABA7; --faint: #6E807C; --line: #2A3733;
+    --accent: #45BFAF; --accent-ink: #6FD4C6; --accent-tint: #1B2E2A; --accent-tint-2: #21403A;
+    --ok: #5CB877; --ok-tint: #1C2E22;
+    --warn: #E0B45C; --warn-tint: #2B2415; --warn-line: #4A3D1C;
+    --pin: #8CA0E8; --pin-ink: #141A2E;
+    --shadow: 0 1px 2px rgba(0,0,0,.25), 0 4px 14px rgba(0,0,0,.28);
+    --shadow-lift: 0 2px 4px rgba(0,0,0,.3), 0 10px 26px rgba(0,0,0,.4);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent-ink); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  button { font-family: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+  .app { display: flex; min-height: 100vh; }
+
+  /* ————— Sidebar: one rail ————— */
+  .side {
+    width: 236px; flex: 0 0 236px;
+    background: var(--surface);
+    border-right: 1px solid var(--line);
+    padding: 22px 18px;
+    display: flex; flex-direction: column; gap: 22px;
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  }
+  .brand { display: flex; flex-direction: column; gap: 2px; }
+  .brand-name { font-family: var(--serif); font-size: 18px; font-weight: 700; letter-spacing: .01em; }
+  .brand-sub { font-size: 11px; color: var(--muted); letter-spacing: .02em; }
+
+  .mode {
+    display: grid; grid-template-columns: 1fr 1fr;
+    background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 3px; gap: 3px;
+  }
+  .mode button {
+    border: 0; background: transparent; color: var(--muted);
+    font-size: 12px; font-weight: 600; padding: 5px 0; border-radius: 6px; cursor: pointer;
+  }
+  .mode button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+
+  .rail { position: relative; display: flex; flex-direction: column; }
+  .rail-label {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .step {
+    position: relative; display: flex; align-items: flex-start; gap: 10px;
+    padding: 7px 8px 7px 6px; border-radius: 8px; text-decoration: none; color: var(--muted);
+  }
+  .step:hover { background: var(--surface-2); }
+  .step .dot {
+    flex: 0 0 18px; width: 18px; height: 18px; border-radius: 50%;
+    display: grid; place-items: center; margin-top: 1px;
+    border: 1.5px solid var(--line); background: var(--surface);
+    font-size: 10px; position: relative; z-index: 1;
+  }
+  .step .lbl { font-size: 13px; line-height: 1.35; padding-top: 1px; }
+  .step .sub { display: block; font-size: 11px; color: var(--faint); }
+  .step.done .dot { border-color: var(--ok); background: var(--ok-tint); color: var(--ok); }
+  .step.done .lbl { color: var(--muted); }
+  .step.current { background: var(--accent-tint); }
+  .step.current .dot { border-color: var(--accent); background: var(--accent); }
+  .step.current .dot::after { content:""; width: 6px; height: 6px; border-radius: 50%; background: var(--surface); }
+  .step.current .lbl { color: var(--ink); font-weight: 650; }
+  .rail .track {
+    position: absolute; left: 14.5px; top: 34px; bottom: 14px;
+    width: 1.5px; background: var(--line);
+  }
+  .step { z-index: 1; }
+
+  .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 14px; }
+  .side-foot a { font-size: 12px; color: var(--muted); text-decoration: none; padding: 3px 6px; border-radius: 6px; }
+  .side-foot a:hover { background: var(--surface-2); color: var(--ink); }
+
+  /* ————— Main ————— */
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .content { width: 100%; max-width: 900px; margin: 0 auto; padding: 36px 40px 0; flex: 1; }
+
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--accent-ink); margin: 0 0 6px;
+  }
+  h1 {
+    font-family: var(--serif); font-size: 30px; font-weight: 700; letter-spacing: .005em;
+    margin: 0 0 12px; text-wrap: balance;
+  }
+  .context {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+    font-size: 12.5px; color: var(--muted); margin-bottom: 6px;
+  }
+  .context .num { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+  .context .file { font-family: var(--mono); font-size: 12px; background: var(--surface-2); border: 1px solid var(--line); padding: 1px 7px; border-radius: 6px; color: var(--ink); }
+  .context .sep { color: var(--line); }
+  .coachline { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+  .coachline strong { color: var(--ink); font-weight: 650; }
+
+  .tier { margin-top: 34px; position: relative; }
+  .tier-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; position: relative; }
+  .tier-title { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .tier-why { font-size: 12.5px; color: var(--faint); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+
+  /* Cards: whole card is the control */
+  .card {
+    position: relative;
+    background: var(--surface);
+    border: 1.5px solid var(--line);
+    border-radius: 12px;
+    padding: 16px 16px 14px;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+    transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+    display: flex; flex-direction: column; gap: 9px;
+  }
+  .card:hover { box-shadow: var(--shadow-lift); border-color: var(--faint); }
+  .card[aria-checked="true"] {
+    border-color: var(--accent);
+    background: linear-gradient(0deg, var(--accent-tint), var(--accent-tint));
+  }
+  .card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .card-name { font-size: 15px; font-weight: 700; letter-spacing: .005em; }
+  .check {
+    flex: 0 0 20px; width: 20px; height: 20px; border-radius: 6px;
+    border: 1.5px solid var(--line); background: var(--surface);
+    display: grid; place-items: center; transition: all .15s ease;
+  }
+  .check svg { width: 12px; height: 12px; stroke: var(--surface); stroke-width: 3; fill: none; opacity: 0; }
+  .card[aria-checked="true"] .check { background: var(--accent); border-color: var(--accent); }
+  .card[aria-checked="true"] .check svg { opacity: 1; }
+  .reason { font-size: 13px; line-height: 1.45; color: var(--ink); }
+  .reason .q { color: var(--muted); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .01em;
+    color: var(--muted); background: var(--surface-2);
+    border: 1px solid var(--line); border-radius: 20px; padding: 2.5px 9px;
+    white-space: nowrap;
+  }
+  .card[aria-checked="true"] .chip { background: var(--surface); }
+  .chip .k { color: var(--faint); }
+  .chip.good::before { content:""; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+  .chip.mid::before { content:""; width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
+
+  .advisory {
+    display: flex; gap: 9px; align-items: flex-start;
+    background: var(--warn-tint); border: 1px solid var(--warn-line);
+    border-radius: 8px; padding: 9px 11px;
+    font-size: 12.5px; line-height: 1.45; color: var(--ink);
+    position: relative;
+  }
+  .advisory .mark { flex: 0 0 auto; color: var(--warn); font-weight: 800; font-size: 13px; margin-top: 1px; }
+  .advisory a { color: inherit; font-weight: 650; }
+
+  /* compact tier */
+  .grid.compact { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .grid.compact .card { padding: 13px 14px 12px; }
+  .grid.compact .card-name { font-size: 14px; }
+  .grid.compact .reason { font-size: 12.5px; color: var(--muted); }
+
+  /* set-aside rows */
+  .aside-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+  .aside-row {
+    display: flex; align-items: baseline; gap: 12px; padding: 12px 16px;
+    border-top: 1px solid var(--line); font-size: 13px;
+  }
+  .aside-row:first-child { border-top: 0; }
+  .aside-row .nm { font-weight: 650; color: var(--muted); flex: 0 0 170px; }
+  .aside-row .why { color: var(--faint); flex: 1; min-width: 0; }
+  .aside-row .inc { flex: 0 0 auto; font-size: 12px; white-space: nowrap; color: var(--muted); }
+
+  /* ————— Action bar ————— */
+  .actionbar-wrap { position: sticky; bottom: 0; margin-top: 40px; z-index: 5; }
+  .actionbar {
+    max-width: 900px; margin: 0 auto; padding: 14px 40px 18px;
+  }
+  .actionbar-inner {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: var(--shadow-lift);
+    padding: 14px 16px;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    position: relative;
+  }
+  .selsum { flex: 1; min-width: 220px; }
+  .selsum .n { font-weight: 700; }
+  .selsum .models { color: var(--muted); font-size: 12.5px; }
+  .selsum .est { font-family: var(--mono); font-size: 11.5px; color: var(--faint); }
+  .btn {
+    border-radius: 9px; padding: 10px 18px; font-size: 14px; font-weight: 650;
+    cursor: pointer; border: 1.5px solid transparent; transition: filter .12s ease;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  :root[data-theme="dark"] .btn-primary, .btn-primary.on-dark { color: #08201C; }
+  @media (prefers-color-scheme: dark) { .btn-primary { color: #08201C; } }
+  :root[data-theme="light"] .btn-primary { color: #fff; }
+  .btn-primary:hover { filter: brightness(1.06); }
+  .btn-ghost { background: transparent; border-color: var(--line); color: var(--muted); }
+  .btn-ghost:hover { border-color: var(--faint); color: var(--ink); }
+
+  /* ————— Annotation layer ————— */
+  .pin {
+    position: absolute;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--pin); color: var(--pin-ink);
+    font-size: 12px; font-weight: 800; font-family: var(--mono);
+    display: grid; place-items: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    z-index: 8; pointer-events: none;
+  }
+  .legend {
+    position: fixed; right: 18px; bottom: 18px; z-index: 20;
+    width: 292px; max-width: calc(100vw - 36px);
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: var(--shadow-lift);
+    padding: 13px 14px 12px;
+    font-size: 12px;
+  }
+  .legend h2 {
+    margin: 0 0 8px; font-size: 11px; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--pin);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .legend button {
+    border: 0; background: var(--surface-2); color: var(--muted);
+    font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 6px; cursor: pointer;
+  }
+  .legend ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .legend li { display: flex; gap: 8px; align-items: flex-start; color: var(--muted); line-height: 1.4; }
+  .legend .lp {
+    flex: 0 0 17px; width: 17px; height: 17px; border-radius: 50%; margin-top: 1px;
+    background: var(--pin); color: var(--pin-ink);
+    font-size: 10px; font-weight: 800; font-family: var(--mono);
+    display: grid; place-items: center;
+  }
+  .hide-pins .pin { display: none; }
+  .hide-pins .legend ol { display: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+  @media (max-width: 760px) {
+    .side { display: none; }
+    .content, .actionbar { padding-left: 18px; padding-right: 18px; }
+    .aside-row { flex-wrap: wrap; }
+    .aside-row .nm { flex-basis: 100%; }
+  }
+</style>
+
+<div class="app" id="app">
+  <!-- ═══ Sidebar: one rail (fix 6) ═══ -->
+  <nav class="side" aria-label="Workflow">
+    <div class="brand">
+      <div class="brand-name">Tabular ML Lab</div>
+      <div class="brand-sub">Publication-grade ML for research</div>
+    </div>
+
+    <div class="mode" role="group" aria-label="Workflow mode">
+      <button aria-pressed="true">Quick</button>
+      <button aria-pressed="false">Advanced</button>
+    </div>
+
+    <div class="rail">
+      <div class="rail-label">Your analysis</div>
+      <div class="track" aria-hidden="true"></div>
+      <span class="pin" style="top:-4px; right:-6px;">6</span>
+      <a class="step done" href="#"><span class="dot">✓</span><span class="lbl">Upload &amp; configure</span></a>
+      <a class="step done" href="#"><span class="dot">✓</span><span class="lbl">Explore (EDA)</span></a>
+      <a class="step done" href="#"><span class="dot">✓</span><span class="lbl">Select features<span class="sub">12 kept of 18</span></span></a>
+      <a class="step done" href="#"><span class="dot">✓</span><span class="lbl">Preprocess<span class="sub">1 pipeline built</span></span></a>
+      <a class="step current" href="#" aria-current="page"><span class="dot"></span><span class="lbl">Train &amp; compare</span></a>
+      <a class="step" href="#"><span class="dot"></span><span class="lbl">Explain &amp; validate</span></a>
+      <a class="step" href="#"><span class="dot"></span><span class="lbl">Export report</span></a>
+    </div>
+
+    <div class="side-foot">
+      <a href="#">Theory reference</a>
+      <a href="#">LLM settings</a>
+    </div>
+  </nav>
+
+  <!-- ═══ Main ═══ -->
+  <main class="main">
+    <div class="content">
+      <p class="eyebrow">Step 5 of 7 · Modeling</p>
+      <h1>Train and compare</h1>
+
+      <div class="context">
+        <span class="file">heart_failure.csv</span>
+        <span class="sep">·</span>
+        <span><span class="num">918</span> rows</span>
+        <span class="sep">·</span>
+        <span><span class="num">12</span> features</span>
+        <span class="sep">·</span>
+        <span>Binary classification — target <span class="num">HeartDisease</span></span>
+        <span class="sep">·</span>
+        <span>balance <span class="num">55 : 45</span></span>
+        <span class="sep">·</span>
+        <span><span class="num">8%</span> missing</span>
+      </div>
+
+      <p class="coachline"><strong>Ranked for this dataset.</strong> Small sample, mixed feature types, moderate missingness — tree ensembles lead; data-hungry models are set aside below. <a href="#">How ranking works</a></p>
+
+      <!-- ─── Tier 1: Recommended (fix 1) ─── -->
+      <section class="tier">
+        <div class="tier-head">
+          <span class="tier-title">Recommended</span>
+          <span class="tier-why">best fit for 918 rows with missing values</span>
+          <span class="pin" style="top:-8px; left:118px;">1</span>
+        </div>
+        <div class="grid">
+
+          <div class="card" role="checkbox" aria-checked="true" tabindex="0" data-name="Random Forest" data-est="5">
+            <div class="card-top">
+              <span class="card-name">Random Forest</span>
+              <span class="check" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3 8.5 6.5 12 13 4"/></svg></span>
+            </div>
+            <p class="reason">Your current baseline — robust at this sample size, and its preprocessing pipeline is already built.</p>
+            <div class="chips">
+              <span class="chip good">trains ~5 s</span>
+              <span class="chip good">missing: native</span>
+              <span class="chip good">explainability: high</span>
+            </div>
+          </div>
+
+          <div class="card" role="checkbox" aria-checked="true" tabindex="0" data-name="XGBoost" data-est="10">
+            <span class="pin" style="top:52px; right:-8px;">2</span>
+            <div class="card-top">
+              <span class="card-name">XGBoost</span>
+              <span class="check" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3 8.5 6.5 12 13 4"/></svg></span>
+            </div>
+            <p class="reason">Usually the accuracy leader on data like yours; built-in regularization suits a small sample.</p>
+            <div class="chips">
+              <span class="chip good">trains ~10 s</span>
+              <span class="chip good">missing: native</span>
+              <span class="chip mid">explainability: medium</span>
+              <span class="pin" style="bottom:-10px; left:-8px;">3</span>
+            </div>
+            <div class="advisory">
+              <span class="mark">!</span>
+              <span>Will train with <strong>Random Forest's</strong> preprocessing, including its log transform. <a href="#">Build XGBoost its own pipeline →</a></span>
+              <span class="pin" style="top:-10px; right:-8px;">4</span>
+            </div>
+          </div>
+
+          <div class="card" role="checkbox" aria-checked="false" tabindex="0" data-name="LightGBM" data-est="6">
+            <div class="card-top">
+              <span class="card-name">LightGBM</span>
+              <span class="check" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3 8.5 6.5 12 13 4"/></svg></span>
+            </div>
+            <p class="reason">Near-identical accuracy to XGBoost, faster and lighter. <span class="q">Pick one of the two unless you're comparing.</span></p>
+            <div class="chips">
+              <span class="chip good">trains ~6 s</span>
+              <span class="chip good">missing: native</span>
+              <span class="chip mid">explainability: medium</span>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ─── Tier 2: Worth trying ─── -->
+      <section class="tier">
+        <div class="tier-head">
+          <span class="tier-title">Worth trying</span>
+          <span class="tier-why">adds a different perspective to the comparison</span>
+        </div>
+        <div class="grid compact">
+
+          <div class="card" role="checkbox" aria-checked="false" tabindex="0" data-name="Penalized GLM" data-est="3">
+            <div class="card-top">
+              <span class="card-name">Penalized GLM (elastic net)</span>
+              <span class="check" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3 8.5 6.5 12 13 4"/></svg></span>
+            </div>
+            <p class="reason">Fully interpretable linear baseline — reviewers often ask for one.</p>
+            <div class="chips">
+              <span class="chip good">trains ~3 s</span>
+              <span class="chip good">explainability: high</span>
+            </div>
+          </div>
+
+          <div class="card" role="checkbox" aria-checked="false" tabindex="0" data-name="Histogram GB" data-est="8">
+            <div class="card-top">
+              <span class="card-name">Histogram Gradient Boosting</span>
+              <span class="check" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3 8.5 6.5 12 13 4"/></svg></span>
+            </div>
+            <p class="reason">scikit-learn's booster; overlaps with XGBoost but tunes differently.</p>
+            <div class="chips">
+              <span class="chip good">trains ~8 s</span>
+              <span class="chip good">missing: native</span>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ─── Tier 3: Set aside ─── -->
+      <section class="tier">
+        <div class="tier-head">
+          <span class="tier-title">Set aside for this dataset</span>
+          <span class="tier-why">available, but unlikely to earn their cost here</span>
+        </div>
+        <div class="aside-list">
+          <div class="aside-row">
+            <span class="nm">Support Vector Classification</span>
+            <span class="why">Tuning cost grows steeply with sample size, and gains over boosting on tabular data are rare.</span>
+            <a class="inc" href="#">Include anyway</a>
+          </div>
+          <div class="aside-row">
+            <span class="nm">Neural Network</span>
+            <span class="why">918 rows is well below the ~10,000 where neural nets start to beat tree ensembles.</span>
+            <a class="inc" href="#">Include anyway</a>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ─── Action bar (fix 5) ─── -->
+    <div class="actionbar-wrap">
+      <div class="actionbar">
+        <div class="actionbar-inner">
+          <span class="pin" style="top:-10px; left:18px;">5</span>
+          <div class="selsum">
+            <div><span class="n" id="selCount">2 models selected</span> <span class="est" id="selEst">· est. ~15 s</span></div>
+            <div class="models" id="selNames">Random Forest + XGBoost</div>
+          </div>
+          <button class="btn btn-ghost">Tune hyperparameters first</button>
+          <button class="btn btn-primary" id="trainBtn">Train 2 models</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ═══ Annotation legend ═══ -->
+<aside class="legend" aria-label="Mockup annotations">
+  <h2>Hierarchy fixes <button id="pinToggle">Hide pins</button></h2>
+  <ol>
+    <li><span class="lp">1</span>Layout renders the coach's judgment — tiers by fit, not model taxonomy.</li>
+    <li><span class="lp">2</span>The whole card is the control; selected state is unmistakable. Try clicking.</li>
+    <li><span class="lp">3</span>Attributes as scannable chips, not semicolon prose.</li>
+    <li><span class="lp">4</span>Warnings sit on the thing they warn about, in plain words, fix one click away.</li>
+    <li><span class="lp">5</span>The primary action is the loudest element and restates the choice.</li>
+    <li><span class="lp">6</span>One sidebar rail: navigation and progress are the same thing.</li>
+  </ol>
+</aside>
+
+<script>
+  // Card selection — whole card is the click target
+  const cards = document.querySelectorAll('.card[role="checkbox"]');
+  const selCount = document.getElementById('selCount');
+  const selNames = document.getElementById('selNames');
+  const selEst = document.getElementById('selEst');
+  const trainBtn = document.getElementById('trainBtn');
+
+  function refresh() {
+    const sel = [...cards].filter(c => c.getAttribute('aria-checked') === 'true');
+    const n = sel.length;
+    const est = sel.reduce((s, c) => s + (+c.dataset.est || 0), 0);
+    selCount.textContent = n === 1 ? '1 model selected' : n + ' models selected';
+    selNames.textContent = n ? sel.map(c => c.dataset.name).join(' + ') : 'Choose at least one model above';
+    selEst.textContent = n ? '· est. ~' + est + ' s' : '';
+    trainBtn.textContent = n ? 'Train ' + n + ' model' + (n > 1 ? 's' : '') : 'Train';
+    trainBtn.disabled = !n;
+    trainBtn.style.opacity = n ? 1 : .5;
+  }
+  cards.forEach(c => {
+    const toggle = () => {
+      c.setAttribute('aria-checked', c.getAttribute('aria-checked') === 'true' ? 'false' : 'true');
+      refresh();
+    };
+    c.addEventListener('click', e => { if (e.target.closest('a')) return; toggle(); });
+    c.addEventListener('keydown', e => {
+      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(); }
+    });
+  });
+  refresh();
+
+  // Annotation pins toggle
+  const pinToggle = document.getElementById('pinToggle');
+  pinToggle.addEventListener('click', () => {
+    const root = document.getElementById('app').parentElement === document.body ? document.body : document.body;
+    document.body.classList.toggle('hide-pins');
+    pinToggle.textContent = document.body.classList.contains('hide-pins') ? 'Show pins' : 'Hide pins';
+  });
+</script>

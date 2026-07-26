@@ -1,0 +1,362 @@
+{
+ "utils/session_state.py": [
+  "app.py",
+  "pages/01_Upload_and_Audit.py",
+  "pages/02_EDA.py",
+  "pages/03_Feature_Engineering.py",
+  "pages/04_Feature_Selection.py",
+  "pages/05_Preprocess.py",
+  "pages/06_Train_and_Compare.py",
+  "pages/07_Explainability.py",
+  "pages/08_Sensitivity_Analysis.py",
+  "pages/09_Hypothesis_Testing.py",
+  "pages/10_Report_Export.py",
+  "utils/cohort_ui.py",
+  "utils/session_manager.py",
+  "utils/state_reconcile.py",
+  "utils/test_lockbox.py",
+  "utils/theme.py"
+ ],
+ "utils/theme.py": [
+  "app.py",
+  "pages/01_Upload_and_Audit.py",
+  "pages/02_EDA.py",
+  "pages/03_Feature_Engineering.py",
+  "pages/04_Feature_Selection.py",
+  "pages/05_Preprocess.py",
+  "pages/06_Train_and_Compare.py",
+  "pages/07_Explainability.py",
+  "pages/08_Sensitivity_Analysis.py",
+  "pages/09_Hypothesis_Testing.py",
+  "pages/10_Report_Export.py",
+  "pages/11_Theory_Reference.py"
+ ],
+ "utils/column_utils.py": [
+  "data_processor.py",
+  "ml/import_doctor.py",
+  "pages/01_Upload_and_Audit.py"
+ ],
+ "models/base.py": [
+  "models/glm.py",
+  "models/huber_glm.py",
+  "models/nn_whuber.py",
+  "models/registry_wrappers.py",
+  "models/rf.py"
+ ],
+ "ml/publication.py": [
+  "ml/latex_report.py",
+  "pages/07_Explainability.py",
+  "pages/10_Report_Export.py",
+  "utils/insight_ledger.py"
+ ],
+ "utils/insight_ledger.py": [
+  "ml/latex_report.py",
+  "ml/model_coach.py",
+  "ml/narrative_engine.py",
+  "ml/publication.py",
+  "pages/01_Upload_and_Audit.py",
+  "pages/02_EDA.py",
+  "pages/03_Feature_Engineering.py",
+  "pages/05_Preprocess.py",
+  "pages/06_Train_and_Compare.py",
+  "pages/07_Explainability.py",
+  "pages/10_Report_Export.py",
+  "utils/coaching_ui.py",
+  "utils/session_manager.py",
+  "utils/session_state.py"
+ ],
+ "models/glm.py": [
+  "ml/model_registry.py",
+  "pages/06_Train_and_Compare.py"
+ ],
+ "models/rf.py": [
+  "ml/model_registry.py",
+  "pages/06_Train_and_Compare.py"
+ ],
+ "models/nn_whuber.py": [
+  "ml/model_registry.py",
+  "pages/06_Train_and_Compare.py"
+ ],
+ "models/huber_glm.py": [
+  "ml/model_registry.py",
+  "pages/06_Train_and_Compare.py"
+ ],
+ "data_processor.py": [
+  "ml/join_doctor.py",
+  "pages/01_Upload_and_Audit.py",
+  "pages/02_EDA.py",
+  "pages/04_Feature_Selection.py",
+  "pages/05_Preprocess.py",
+  "pages/07_Explainability.py",
+  "pages/09_Hypothesis_Testing.py",
+  "utils/perf_cache.py"
+ ],
+ "ml/physiology_reference.py": [
+  "ml/dataset_profile.py",
+  "ml/eda_actions.py",
+  "ml/eda_recommender.py",
+  "ml/pipeline.py",
+  "pages/02_EDA.py"
+ ],
+ "ml/outliers.py": [
+  "ml/dataset_profile.py",
+  "ml/eda_actions.py",
+  "ml/eda_recommender.py",
+  "pages/02_EDA.py"
+ ],
+ "ml/clinical_units.py": [
+  "ml/dataset_profile.py",
+  "ml/eda_actions.py",
+  "ml/eda_recommender.py",
+  "ml/physiology_reference.py",
+  "ml/pipeline.py"
+ ],
+ "ml/bootstrap.py": [
+  "ml/baseline_models.py",
+  "ml/publication.py",
+  "pages/06_Train_and_Compare.py",
+  "pages/07_Explainability.py"
+ ],
+ "ml/stats_tests.py": [
+  "ml/eda_actions.py",
+  "ml/eval.py",
+  "pages/09_Hypothesis_Testing.py"
+ ],
+ "ml/eval.py": [
+  "ml/eda_actions.py",
+  "pages/06_Train_and_Compare.py",
+  "pages/07_Explainability.py",
+  "pages/10_Report_Export.py"
+ ],
+ "utils/storyline.py": [
+  "ml/eda_actions.py",
+  "pages/01_Upload_and_Audit.py",
+  "pages/02_EDA.py",
+  "pages/03_Feature_Engineering.py",
+  "pages/04_Feature_Selection.py",
+  "pages/05_Preprocess.py",
+  "pages/06_Train_and_Compare.py",
+  "pages/07_Explainability.py",
+  "pages/08_Sensitivity_Analysis.py",
+  "pages/09_Hypothesis_Testing.py",
+  "pages/10_Report_Export.py"
+ ],
+ "ml/dataset_profile.py": [
+  "ml/nn_recommender.py",
+  "pages/02_EDA.py"
+ ],
+ "utils/workflow_provenance.py": [
+  "ml/narrative_engine.py",
+  "pages/01_Upload_and_Audit.py",
+  "pages/02_EDA.py",
+  "pages/03_Feature_Engineering.py",
+  "pages/04_Feature_Selection.py",
+  "pages/05_Preprocess.py",
+  "pages/06_Train_and_Compare.py",
+  "pages/07_Explainability.py",
+  "pages/08_Sensitivity_Analysis.py",
+  "pages/09_Hypothesis_Testing.py",
+  "pages/10_Report_Export.py",
+  "utils/session_manager.py"
+ ],
+ "ml/narrative_engine.py": [
+  "ml/manuscript_validator.py",
+  "pages/10_Report_Export.py"
+ ],
+ "ml/feature_steps.py": [
+  "ml/pipeline.py"
+ ],
+ "ml/preprocess_operators.py": [
+  "ml/pipeline.py"
+ ],
+ "utils/llm_ui.py": [
+  "pages/02_EDA.py",
+  "pages/04_Feature_Selection.py",
+  "pages/06_Train_and_Compare.py",
+  "pages/07_Explainability.py",
+  "pages/08_Sensitivity_Analysis.py",
+  "pages/09_Hypothesis_Testing.py",
+  "utils/theme.py"
+ ],
+ "utils/session_manager.py": [
+  "utils/theme.py"
+ ],
+ "utils/cohort_ui.py": [
+  "pages/01_Upload_and_Audit.py",
+  "pages/06_Train_and_Compare.py",
+  "utils/theme.py"
+ ],
+ "utils/combine.py": [
+  "pages/01_Upload_and_Audit.py",
+  "utils/combine_preview.py",
+  "utils/combine_ui.py"
+ ],
+ "utils/combine_preview.py": [
+  "utils/combine_ui.py"
+ ],
+ "ml/join_doctor.py": [
+  "utils/combine.py",
+  "utils/combine_preview.py",
+  "utils/combine_ui.py"
+ ],
+ "utils/cohorts.py": [
+  "pages/06_Train_and_Compare.py",
+  "utils/cohort_ui.py",
+  "utils/session_state.py",
+  "utils/test_lockbox.py"
+ ],
+ "utils/theory_demos.py": [
+  "utils/theory_anchors.py"
+ ],
+ "utils/theory_anchors.py": [
+  "utils/coaching_ui.py"
+ ],
+ "utils/test_lockbox.py": [
+  "pages/01_Upload_and_Audit.py",
+  "pages/02_EDA.py",
+  "pages/03_Feature_Engineering.py",
+  "pages/04_Feature_Selection.py",
+  "pages/05_Preprocess.py",
+  "pages/06_Train_and_Compare.py",
+  "pages/07_Explainability.py",
+  "pages/08_Sensitivity_Analysis.py",
+  "pages/09_Hypothesis_Testing.py",
+  "pages/10_Report_Export.py",
+  "utils/cohort_ui.py",
+  "utils/cohorts.py"
+ ],
+ "ml/import_doctor.py": [
+  "utils/import_ui.py"
+ ],
+ "ml/coach_probe.py": [
+  "pages/05_Preprocess.py",
+  "utils/session_manager.py"
+ ],
+ "utils/coaching_ui.py": [
+  "pages/04_Feature_Selection.py",
+  "pages/05_Preprocess.py",
+  "pages/06_Train_and_Compare.py",
+  "pages/07_Explainability.py",
+  "pages/08_Sensitivity_Analysis.py",
+  "pages/09_Hypothesis_Testing.py"
+ ],
+ "utils/table_export.py": [
+  "pages/01_Upload_and_Audit.py",
+  "pages/02_EDA.py",
+  "pages/04_Feature_Selection.py",
+  "pages/05_Preprocess.py",
+  "pages/06_Train_and_Compare.py",
+  "pages/07_Explainability.py",
+  "pages/08_Sensitivity_Analysis.py",
+  "pages/09_Hypothesis_Testing.py",
+  "pages/10_Report_Export.py"
+ ],
+ "ml/pipeline.py": [
+  "pages/05_Preprocess.py",
+  "pages/06_Train_and_Compare.py",
+  "pages/07_Explainability.py",
+  "pages/10_Report_Export.py"
+ ],
+ "ml/model_registry.py": [
+  "pages/05_Preprocess.py",
+  "pages/06_Train_and_Compare.py",
+  "pages/07_Explainability.py",
+  "pages/10_Report_Export.py"
+ ],
+ "ml/model_coach.py": [
+  "pages/05_Preprocess.py",
+  "pages/06_Train_and_Compare.py"
+ ],
+ "utils/widget_helpers.py": [
+  "pages/05_Preprocess.py"
+ ],
+ "models/registry_wrappers.py": [
+  "pages/06_Train_and_Compare.py"
+ ],
+ "ml/splits.py": [
+  "pages/06_Train_and_Compare.py"
+ ],
+ "ml/calibration.py": [
+  "pages/06_Train_and_Compare.py"
+ ],
+ "ml/baseline_models.py": [
+  "pages/06_Train_and_Compare.py"
+ ],
+ "ml/plot_narrative.py": [
+  "pages/02_EDA.py",
+  "pages/06_Train_and_Compare.py",
+  "pages/07_Explainability.py"
+ ],
+ "visualizations.py": [
+  "pages/06_Train_and_Compare.py",
+  "pages/07_Explainability.py"
+ ],
+ "ml/nn_recommender.py": [
+  "pages/06_Train_and_Compare.py"
+ ],
+ "utils/seed.py": [
+  "pages/06_Train_and_Compare.py"
+ ],
+ "ml/estimator_utils.py": [
+  "pages/07_Explainability.py"
+ ],
+ "ml/table_one.py": [
+  "pages/02_EDA.py",
+  "pages/10_Report_Export.py"
+ ],
+ "ml/manuscript_validator.py": [
+  "pages/10_Report_Export.py"
+ ],
+ "ml/latex_report.py": [
+  "pages/10_Report_Export.py"
+ ],
+ "ml/compat.py": [
+  "pages/03_Feature_Engineering.py"
+ ],
+ "ml/eda_recommender.py": [
+  "pages/01_Upload_and_Audit.py",
+  "pages/02_EDA.py"
+ ],
+ "utils/perf_cache.py": [
+  "pages/01_Upload_and_Audit.py",
+  "pages/02_EDA.py"
+ ],
+ "ml/regime.py": [
+  "pages/02_EDA.py"
+ ],
+ "ml/macro_shape.py": [
+  "pages/02_EDA.py"
+ ],
+ "ml/feature_selection.py": [
+  "pages/04_Feature_Selection.py"
+ ],
+ "utils/import_ui.py": [
+  "pages/01_Upload_and_Audit.py"
+ ],
+ "utils/combine_ui.py": [
+  "pages/01_Upload_and_Audit.py"
+ ],
+ "ml/triage.py": [
+  "pages/01_Upload_and_Audit.py"
+ ],
+ "utils/datasets.py": [
+  "pages/01_Upload_and_Audit.py"
+ ],
+ "utils/reconcile.py": [
+  "pages/01_Upload_and_Audit.py"
+ ],
+ "utils/state_reconcile.py": [
+  "pages/01_Upload_and_Audit.py"
+ ],
+ "utils/session_projects.py": [
+  "pages/01_Upload_and_Audit.py"
+ ],
+ "setup.py": [],
+ "models/__init__.py": [],
+ "ml/__init__.py": [],
+ "ml/eda_actions.py": [],
+ "ml/sensitivity.py": [],
+ "utils/persistence.py": [],
+ "utils/__init__.py": [],
+ "utils/dataset_db.py": []
+}
