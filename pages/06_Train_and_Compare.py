@@ -1144,23 +1144,32 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
     slow_models = {'nn', 'extratrees', 'svc', 'svr'}
     has_slow = any(m in slow_models for m in models_to_train)
     
-    # Initialize cancel flag in session state
-    if 'cancel_training' not in st.session_state:
-        st.session_state.cancel_training = False
-    
+    # T0-LIVE-002: there used to be a "Cancel Training" button here. It set
+    # st.session_state.cancel_training, which nothing in the repository read, so
+    # training ran to completion regardless.
+    #
+    # It has been removed rather than wired, because wiring it would still have
+    # overstated the control. Streamlit runs one script per session on one
+    # thread: while this loop is training, the script is blocked, no widget is
+    # interactive, and the button cannot be clicked at all. Checking the flag
+    # between models would make the code look answerable without making the
+    # button reachable.
+    #
+    # Real cancellation needs something that owns the work — turbotab/jobs.py,
+    # where cancel sets a token the worker checks, and a job that ignores it is
+    # reported as finished rather than as cancelled. That is the component whose
+    # absence caused the migration (PRODUCT_VISION.md §05).
+    #
+    # A button that claims control it does not have is the app asserting
+    # something false, which outranks the convenience of appearing to offer it.
     if has_slow or use_optimization:
-        col_warn, col_cancel = st.columns([4, 1])
-        with col_warn:
-            st.warning("""
-            ⏱️ **Training in progress.** Some models (Neural Networks, ExtraTrees, SVM) or hyperparameter 
-            optimization may take several minutes. Training progress shown below.
-            """)
-        with col_cancel:
-            if st.button("🛑 Cancel Training", type="secondary", key="cancel_training_btn"):
-                st.session_state.cancel_training = True
-                st.warning("Training canceled. Trained models saved. Refresh page to train again.")
-                st.stop()
-    
+        st.warning("""
+        ⏱️ **Training in progress.** Some models (Neural Networks, ExtraTrees, SVM) or hyperparameter
+        optimization may take several minutes. Training progress is shown below.
+
+        This cannot be interrupted once started — close the tab to abandon the run.
+        """)
+
     for model_name in models_to_train:
         with progress_container:
             if use_optimization:

@@ -21,9 +21,11 @@
   "detail": "",
   "ev": "pages/06_Train_and_Compare.py:1289-1301 (grep returns only these 4 lines)",
   "act": "",
-  "status": "OPEN",
-  "note": "verified on main",
-  "verified_against": "origin/main @ 24c3446"
+  "status": "FIXED",
+  "note": "Resolved both ways, as the two doors need. Guided gets real cancellation: turbotab/jobs.py sets a token the worker checks, and a job that ignores its token is reported DONE with a message saying the work was not stopped — the queue never claims a stop it did not achieve. Classic's button is REMOVED rather than wired, and the reasoning matters: wiring the flag into the training loop would still have overstated, because Streamlit runs one script per session on one thread, so while the loop trains no widget is interactive and the button cannot be clicked at all. Checking the flag between models would have made the code look answerable without making the button reachable. The page now says plainly that a run cannot be interrupted.",
+  "verified_against": "origin/main @ 24c3446",
+  "test": "turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor",
+  "verified_ev": "turbotab/jobs.py JobQueue.cancel · pages/06_Train_and_Compare.py:1148"
  },
  {
   "id": "T0-LIVE-003",
