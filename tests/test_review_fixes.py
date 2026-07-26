@@ -290,7 +290,7 @@ class TestStrengthsClassification:
 
 class TestWiringPins:
     def _read(self, rel):
-        with open(os.path.join(PROJECT_ROOT, rel)) as f:
+        with open(os.path.join(PROJECT_ROOT, rel), encoding='utf-8') as f:
             return f.read()
 
     def test_record_split_called_by_train_page(self):
@@ -422,7 +422,7 @@ class TestLedgerInvalidation:
 
 class TestUltrawideFixes:
     def _read(self, rel):
-        with open(os.path.join(PROJECT_ROOT, rel)) as f:
+        with open(os.path.join(PROJECT_ROOT, rel), encoding='utf-8') as f:
             return f.read()
 
     def test_features_default_is_all_not_first_ten(self):

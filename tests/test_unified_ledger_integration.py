@@ -624,7 +624,7 @@ def test_no_legacy_leaks(r: TestResults):
         if not page_file.endswith('.py'):
             continue
         filepath = os.path.join(pages_dir, page_file)
-        with open(filepath, 'r') as f:
+        with open(filepath, 'r', encoding='utf-8') as f:
             content = f.read()
         for pattern_name, pattern in legacy_patterns.items():
             matches = re.findall(pattern, content)

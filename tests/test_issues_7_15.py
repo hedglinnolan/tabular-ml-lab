@@ -90,7 +90,7 @@ class TestIssue11_ReportText:
 
     def test_report_text_before_export(self):
         import ast
-        with open('pages/10_Report_Export.py', 'r') as f:
+        with open('pages/10_Report_Export.py', 'r', encoding='utf-8') as f:
             source = f.read()
 
         # report_text = generate_report(...) should appear before "Export Options"
@@ -192,7 +192,7 @@ class TestIssue15_ZipPlots:
 
     def test_export_section_exists_in_code(self):
         """Report export should contain plot directory structure."""
-        with open('pages/10_Report_Export.py', 'r') as f:
+        with open('pages/10_Report_Export.py', 'r', encoding='utf-8') as f:
             source = f.read()
 
         assert 'plots/train/' in source
@@ -216,7 +216,7 @@ class TestIssue1_BestModelState:
     """best_model_state should be initialized before training loop."""
 
     def test_best_model_state_initialized(self):
-        with open('models/nn_whuber.py', 'r') as f:
+        with open('models/nn_whuber.py', 'r', encoding='utf-8') as f:
             source = f.read()
 
         # Snapshot must be initialized before the loop AND deep-clone the
@@ -238,7 +238,7 @@ class TestIssue2_LabelEncoding:
     """Explainability should encode string labels before permutation importance."""
 
     def test_label_encoder_reference(self):
-        with open('pages/07_Explainability.py', 'r') as f:
+        with open('pages/07_Explainability.py', 'r', encoding='utf-8') as f:
             source = f.read()
 
         assert 'target_label_encoder' in source

@@ -32,7 +32,7 @@ def compile_latex_to_pdf(latex_source: str, timeout: int = 30) -> Optional[bytes
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             tex_path = os.path.join(tmpdir, "manuscript.tex")
-            with open(tex_path, "w") as f:
+            with open(tex_path, "w", encoding="utf-8") as f:
                 f.write(latex_source)
             for _ in range(2):
                 subprocess.run(
