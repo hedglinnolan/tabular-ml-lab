@@ -18,6 +18,7 @@ from sklearn.decomposition import PCA
 import warnings
 warnings.filterwarnings('ignore')
 
+from utils import replay as _replay
 from utils.session_state import get_data, init_session_state, log_methodology, reset_downstream_results
 from utils.theme import inject_custom_css, render_guidance, render_sidebar_workflow
 from utils.storyline import render_breadcrumb, render_page_navigation
@@ -93,6 +94,35 @@ df = get_data()
 if df is None:
     st.info("👈 Please upload data first in Upload & Audit")
     st.stop()
+
+# ── the other group's run inherits THIS run's decisions ──────────────────
+# "Run the same analysis on Male" means the same analysis. The recipe crossed
+# the switch; the fits did not. Re-execute it here on the new group's rows,
+# refitting anything stateful on that group's TRAINING rows so the held-out set
+# stays sealed through a replay exactly as it does through the original.
+_pending_replay = _replay.pending()
+if _pending_replay and _pending_replay.get("steps") and st.session_state.get("df_engineered") is None:
+    from utils.test_lockbox import train_row_mask as _replay_train_mask
+    with st.spinner("Rebuilding your engineered features for this group..."):
+        _rebuilt, _made, _missed = _replay.replay_onto(
+            df, _pending_replay["steps"], _replay_train_mask(df.index))
+    if _made:
+        st.session_state["df_engineered"] = _rebuilt
+        st.session_state["engineered_feature_names"] = list(_made)
+        st.session_state["feature_engineering_applied"] = True
+        _dc = st.session_state.get("data_config")
+        _base = list(st.session_state.get("pre_fe_feature_cols")
+                     or getattr(_dc, "feature_cols", []) or [])
+        st.session_state["selected_features"] = _base + [c for c in _made if c not in _base]
+        if _dc is not None:
+            _dc.feature_cols = list(st.session_state["selected_features"])
+        df = _rebuilt
+    _summary = _replay.replay_summary(_made, _missed)
+    if _missed:
+        st.warning(f"🔁 {_summary}")
+    elif _made:
+        st.success(f"🔁 {_summary}")
+    _replay.clear_pending()
 
 # Get data configuration
 data_config = st.session_state.get('data_config')
@@ -337,6 +367,11 @@ with _fe_tabs[0]:
                 X_engineered = pd.concat([X_engineered, poly_df], axis=1)
                 engineered_features.extend(new_cols)
                 engineering_log.append(f"Polynomial degree {poly_degree} ({'interaction-only' if interaction_only else 'full'}): +{len(new_cols)} features")
+                _replay.record("polynomial",
+                               {"columns": list(numeric_features),
+                                "degree": int(poly_degree),
+                                "interaction_only": bool(interaction_only)},
+                               new_cols, _replay.PURE)
                 if _skipped_dupes:
                     st.caption(f"Skipped {_skipped_dupes} polynomial feature(s) that already existed.")
                 
@@ -383,6 +418,12 @@ with _fe_tabs[0]:
                 X_engineered[_new_col_name] = _new_values
                 engineered_features.append(_new_col_name)
                 engineering_log.append(f'Custom interaction ({_ci_op}): {_new_col_name}')
+                _replay.record("interaction",
+                               {"left": _feat_a, "right": _feat_b,
+                                "op": {"Square (A\u00b2)": "square",
+                                       "Multiply (A \u00d7 B)": "*",
+                                       "Divide (A / B)": "/"}.get(_ci_op, "*")},
+                               [_new_col_name], _replay.PURE)
                 st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
                 st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
                 st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
@@ -572,6 +613,9 @@ with _fe_tabs[2]:
                     
                     if new_cols:
                         engineering_log.append(f"Ratio features: +{len(new_cols)} features")
+                        _replay.record("ratio",
+                                       {"pairs": [list(pr) for pr in st.session_state.ratio_list]},
+                                       new_cols, _replay.PURE)
                         
                         # Save back to session state
                         st.session_state.fe_work_in_progress['X_engineered'] = X_engineered

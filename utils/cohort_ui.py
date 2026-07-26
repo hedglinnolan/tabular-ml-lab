@@ -206,7 +206,13 @@ def _switch_to(payload) -> None:
     # in it, fell through to the column path, and returned an EMPTY frame with no
     # broken flag set, because the fallback had "worked".
     import streamlit as _st
+    from utils import replay as _replay
     _st.session_state.pop("filtered_data", None)
+    # "Run the same analysis on the other group" means the same analysis. Take
+    # the DECISIONS across the reset — the engineering recipe and the
+    # preprocessing choices — while every FIT is left behind to be redone on
+    # the new rows.
+    _replay.stage_for_replay(reason="cohort switch")
     if payload is None:
         clear_cohort()
     else:
@@ -221,6 +227,9 @@ def _switch_to(payload) -> None:
     except Exception:
         pass
     reset_downstream_results(clear_feature_engineering=True)
+    _restored = _replay.restore_decisions()
+    if _restored:
+        st.session_state["_replay_note"] = ", ".join(_restored)
     st.rerun()
 
 
@@ -314,14 +323,16 @@ def render_next_cohort(task_type: str, metrics: Optional[Dict[str, Any]] = None)
         f"models you picked stay exactly as they are; only the people change."
     )
     st.info(
-        f"**You will need to rebuild two things for {nxt}, and that is the "
-        f"point.** Any engineered features and preprocessing you set up were "
-        f"fitted on this group's rows — a scaler's mean, an imputer's median, "
-        f"a transform's parameters all come from these people. Carrying them "
-        f"across would leak this group into {nxt}'s results and produce a "
-        f"number you could not reproduce. So Feature Engineering and Preprocess "
-        f"start clean for {nxt}; make the SAME choices there and the two runs "
-        f"stay comparable.",
+        f"**Your decisions come with you; nothing fitted does.** The features "
+        f"you engineered are rebuilt from their formulas on {nxt}'s rows, and "
+        f"your preprocessing choices are carried over — so the two runs really "
+        f"do answer the same question. What is NOT carried is anything with a "
+        f"number learned from these people: a scaler's mean, an imputer's "
+        f"median, a PCA's components. Those are refit on {nxt}'s own training "
+        f"rows, because reusing them would leak this group into {nxt}'s results "
+        f"and give you a number nobody could reproduce. Anything that cannot "
+        f"be rebuilt automatically is named on the Feature Engineering page "
+        f"rather than dropped in silence.",
         icon="🔁",
     )
     if st.button(f"Now run the same analysis on {nxt}", type="primary",
@@ -367,6 +378,8 @@ def _advance_to(column: str, label: str) -> None:
         full, cohort_mask(full, column, cell.value),
         list(getattr(dc, "feature_cols", []) or []))
     st.session_state.pop("filtered_data", None)   # see _switch_to
+    from utils import replay as _replay
+    _replay.stage_for_replay(reason="cohort switch")
     start_cohort(full, plan, cell, target_col,
                  dropped_features=[c for c, _ in lost])
     try:
@@ -375,4 +388,7 @@ def _advance_to(column: str, label: str) -> None:
     except Exception:
         pass
     reset_downstream_results(clear_feature_engineering=True)
+    _restored = _replay.restore_decisions()
+    if _restored:
+        st.session_state["_replay_note"] = ", ".join(_restored)
     st.rerun()

@@ -219,13 +219,19 @@ class TestWhatActuallySurvivesACohortSwitch:
         assert not st.session_state.get("trained_models")
         assert not st.session_state.get("preprocessing_config_by_model")
         assert not st.session_state.get("preprocess_built_model_keys"), (
-            "a model would be badged 'Tuned for this model' with nothing behind it")
+            "a model would be badged 'Tuned for this model' with nothing behind "
+            "it — and note the replay staging must not carry this key either")
         assert st.session_state.get("df_engineered") is None
 
-    def test_the_button_does_not_promise_predictors_are_unchanged(self):
+    def test_the_button_describes_replay_rather_than_unchanged_predictors(self):
+        """It once claimed predictors stay put while engineering was cleared.
+
+        They are now genuinely rebuilt from their formulas, and the text says
+        that plus what is refit and why.
+        """
         import inspect
         import utils.cohort_ui as cu
         src = inspect.getsource(cu.render_next_cohort)
-        assert "the predictors and the" not in src, (
-            "the text claimed predictors stay while engineering is cleared")
-        assert "rebuild" in src.lower()
+        assert "the predictors and the" not in src
+        assert "rebuilt from their formulas" in src
+        assert "refit on" in src
