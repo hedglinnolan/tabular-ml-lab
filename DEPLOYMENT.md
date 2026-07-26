@@ -36,17 +36,14 @@ docker run -p 8501:8501 tabular-ml-lab
 
 ## University / Institutional Deployment
 
-For institutions that need authentication, on-premises hosting, or managed LLM backends, see the dedicated deployment branches:
+For on-premises hosting or a managed LLM backend, see
+[`UNIVERSITY_DEPLOYMENT.md`](UNIVERSITY_DEPLOYMENT.md). The `Dockerfile` and
+`docker-compose.yml` live here on `main` — there is no separate deployment branch.
 
-### [`university-docker`](https://github.com/hedglinnolan/tabular-ml-lab/tree/university-docker)
-
-Flexible Docker-based deployment for any university compute environment:
-
-- Docker Compose setup with configurable resource profiles
-- OIDC authentication (KeyCloak, Shibboleth, or institutional SSO)
-- Optional Ollama integration for local LLM interpretation
-- Works on departmental servers, institutional cloud, or VMs
-- See [`UNIVERSITY_DEPLOYMENT.md`](https://github.com/hedglinnolan/tabular-ml-lab/blob/university-docker/UNIVERSITY_DEPLOYMENT.md) on that branch
+- Docker Compose setup that works on departmental servers, institutional cloud or VMs
+- Optional Ollama sidecar for local LLM interpretation, so no data leaves your network
+- Access control is your institution's single sign-on placed in front of the
+  container; the app itself has no logins
 
 ## Environment Variables
 

@@ -1,0 +1,44 @@
+# Virtual environments
+venv/
+.venv/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dev/test artifacts
+.cache/
+*.log
+/tmp/
+htmlcov/
+
+# Docker (don't copy Docker files into the image)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation (not needed at runtime)
+ARCHITECTURE.md
+QUICKSTART.md
+DEPLOYMENT.md
+UNIVERSITY_DEPLOYMENT.md
+DOCKER_DEPLOYMENT.md
+COMPUTE_PROFILES.md
+docs/
