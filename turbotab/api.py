@@ -210,6 +210,10 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         # here: it computes on a copy and throws the copy away.
         try:
             live = engine.find_shape_finding(engine.diagnose(project.df), decision.subject)
+            # The identity barrier (T0-ID-001). Refused here rather than
+            # detected afterwards: once the lockbox is sealed there is no way to
+            # recover which rows its labels meant.
+            project.check_repair_allowed(live.fix_kind)
             prev = engine.preview_fix(project.df, live)
             if not prev.get("applicable"):
                 raise HTTPException(

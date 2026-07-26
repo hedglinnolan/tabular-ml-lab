@@ -740,37 +740,35 @@ def render_sidebar_workflow(current_page: str = ""):
         )
         st.markdown("<div style='margin-top: 0.4rem;'></div>", unsafe_allow_html=True)
 
-        data_uploaded = get_data() is not None
-        data_configured = (st.session_state.get('data_config') is not None
-                           and getattr(st.session_state.get('data_config'), 'target_col', None) is not None)
-        features_selected = st.session_state.get('feature_selection_results') is not None
-        pipeline_built = st.session_state.get('preprocessing_pipeline') is not None
-        models_trained = bool(st.session_state.get('trained_models'))
-        explainability_run = len(st.session_state.get('permutation_importance', {})) > 0 or len(st.session_state.get('shap_results', {})) > 0
-        sensitivity_run = st.session_state.get('sensitivity_seed_results') is not None
-        report_generated = st.session_state.get('report_data') is not None
-        stat_validation_run = (
-            st.session_state.get('hypothesis_test_results') is not None
-            or len(st.session_state.get('custom_table1_tests', [])) > 0
-        )
+        # The step-completion model lives in turbotab/readiness.py, not here.
+        # It is the Router's readiness function (ARCHITECTURE.md §05) and it had
+        # been sitting in a styling module between two blocks of HTML, where
+        # deleting theme.py as "just CSS" would have taken it along.
+        #
+        # Both doors ask the same predicates. Computing them separately is the
+        # failure Decision C names — not two UIs, but two implementations that
+        # drift until they disagree about which step comes next.
+        from turbotab import readiness as _readiness
 
-        # Check if feature engineering was applied
-        feature_engineering_applied = st.session_state.get('feature_engineering_applied', False)
+        _pages = {
+            "upload": "01_Upload_and_Audit", "eda": "02_EDA",
+            "features": "04_Feature_Selection", "preprocess": "05_Preprocess",
+            "train": "06_Train_and_Compare", "explain": "07_Explainability",
+            "report": "10_Report_Export", "engineering": "03_Feature_Engineering",
+            "sensitivity": "08_Sensitivity_Analysis", "stats": "09_Hypothesis_Testing",
+        }
+        # `get_data()` applies the active cohort filter; the shared predicate
+        # reads whatever the host calls the working table.
+        _state = dict(st.session_state)
+        _state["working_data"] = get_data()
+        _ready = _readiness.assess(_state, workflow_mode)
 
-        core_items = [
-            ("Upload & Configure", data_uploaded, "01", "01_Upload_and_Audit"),
-            ("Explore (EDA)", data_configured, "02", "02_EDA"),
-            ("Select Features", features_selected, "04", "04_Feature_Selection"),
-            ("Preprocess", pipeline_built, "05", "05_Preprocess"),
-            ("Train Models", models_trained, "06", "06_Train_and_Compare"),
-            ("Explain & Validate", explainability_run, "07", "07_Explainability"),
-            ("Export Report", report_generated, "10", "10_Report_Export"),
-        ]
-        advanced_items = [
-            ("Feature Engineering", feature_engineering_applied, "03", "03_Feature_Engineering"),
-            ("Sensitivity Analysis", sensitivity_run, "08", "08_Sensitivity_Analysis"),
-            ("Statistical Validation", stat_validation_run, "09", "09_Hypothesis_Testing"),
-        ]
+        def _items(steps):
+            return [(s.label, _ready.is_done(s.key), s.page_id, _pages[s.key])
+                    for s in steps]
+
+        core_items = _items(_readiness.CORE_STEPS)
+        advanced_items = _items(_readiness.ADVANCED_STEPS)
 
         def _render_sidebar_items(items):
             for item, completed, page_id, page_file in items:

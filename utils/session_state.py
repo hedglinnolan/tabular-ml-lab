@@ -360,7 +360,13 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
     st.session_state.y_test = None
     st.session_state.feature_names = None
     st.session_state.feature_names_by_model = {}
-    for key in ("train_indices", "val_indices", "test_indices", "split_config",
+    for key in ("train_indices", "val_indices", "test_indices",
+                # Row LABELS alongside the positions. Added with the split
+                # extraction (L6); they describe the same partition, so they go
+                # stale with it. Registered here because a result key that is
+                # not in this function survives every invalidation silently.
+                "train_row_labels", "val_row_labels", "test_row_labels",
+                "split_config",
                 "target_transformer", "target_label_encoder",
                 "y_train_original", "y_val_original", "y_test_original",
                 "cv_strategy", "cv_groups_train"):
