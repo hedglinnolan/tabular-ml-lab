@@ -20,6 +20,8 @@ Baseline for all analysis: `origin/main` @ `24c3446` (PR #145 merged).
 | [`TRANSITION_PLAN.md`](TRANSITION_PLAN.md) | The delicate parts, named. Live bugs, structural facts, landmine classes, and a gated sequence. |
 | [`FINDINGS_LEDGER.md`](FINDINGS_LEDGER.md) | All 385 findings, tracked to completion. Nothing closes without a regression test named after it. |
 | [`prototypes/interview-feed.html`](prototypes/interview-feed.html) | Open in a browser. The interaction model, working, with synthetic data. |
+| [`LOOP.md`](LOOP.md) | **How to run this as an unsupervised agent loop.** Prompts, guardrails, and how to audit the result. |
+| [`METHODOLOGY.md`](METHODOLOGY.md) | Provenance: what was measured, what was verified by hand, what must still be re-checked. |
 
 ## Prototypes
 
@@ -103,7 +105,15 @@ The ledger has two tiers:
 
 **The first loop iteration is verifying Tier 1 against main** and dispositioning each row as
 `OPEN` / `FIXED` / `NOT-A-DEFECT` / `WONTFIX`. That converts a research artifact into a real
-backlog. Work `data/findings.json`, not the markdown, and regenerate the markdown from it.
+backlog. See [`LOOP.md`](LOOP.md) for the prompt to hand an agent.
+
+Work `data/findings.json` through `tools/ledger.py`; `FINDINGS_LEDGER.md` is generated.
+
+```bash
+python docs/turbotab/tools/ledger.py stats     # progress
+python docs/turbotab/tools/ledger.py next --n 15
+python docs/turbotab/tools/ledger.py check     # schema guard; run before every commit
+```
 
 Suggested order after that, from `TRANSITION_PLAN.md` §06:
 
