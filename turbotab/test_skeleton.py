@@ -302,3 +302,115 @@ def test_project_serializes_without_the_frame(df: pd.DataFrame):
     assert d["row_identity"] == "index_labels"
     assert len(d["row_labels"]) == len(df)
     assert d["n_rows"] == len(df)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The same findings, over HTTP
+#
+# These were written after the four above and assert the API adds nothing: the
+# JSON a browser receives has to carry the same findings the engine produced.
+# ═══════════════════════════════════════════════════════════════════════════
+
+@pytest.fixture(scope="module")
+def client():
+    from fastapi.testclient import TestClient
+    from turbotab.api import app
+    return TestClient(app)
+
+
+@pytest.fixture()
+def uploaded(client, raw: bytes) -> str:
+    r = client.post("/project", files={"file": ("clinic_visits.csv", raw, "text/csv")})
+    assert r.status_code == 200, r.text
+    return r.json()["id"]
+
+
+def test_upload_returns_a_diagnosed_project(client, raw: bytes):
+    body = client.post("/project",
+                       files={"file": ("clinic_visits.csv", raw, "text/csv")}).json()
+    assert body["n_rows"] == 140
+    assert body["row_identity"] == "index_labels"
+    assert body["findings"], "upload produced no findings"
+    # The section opens already answered — no target has been chosen yet and the
+    # structural diagnosis is nonetheless present.
+    assert body["target"] is None
+    assert body["sample"]["labels"][:3] == [0, 1, 2]
+
+
+def test_http_findings_are_the_engine_findings(client, uploaded: str, df: pd.DataFrame):
+    """What the browser gets is what `ml/` said. No drift in between."""
+    over_http = client.get(f"/project/{uploaded}/findings").json()
+    direct = engine.rank_findings(engine.diagnose(df), engine.profile(df, None, None))
+
+    assert over_http["count"] == len(direct)
+    assert [f["id"] for f in over_http["findings"]] == [f["id"] for f in direct]
+    assert [f["title"] for f in over_http["findings"]] == [f["title"] for f in direct]
+    assert [f["severity"] for f in over_http["findings"]] == [f["severity"] for f in direct]
+
+
+def test_choosing_a_target_detects_the_task_and_records_it(client, uploaded: str):
+    body = client.post(f"/project/{uploaded}/decision",
+                       json={"kind": "set_target", "payload": {"column": TARGET}}).json()
+    assert body["target"] == TARGET
+    assert body["task_type"] == "classification"
+    assert body["task_confidence"] == "high"
+    assert body["task_reasons"], "a detection with no stated reason"
+    assert any(d["kind"] == "set_target" for d in body["decisions"])
+
+
+def test_decisions_accumulate_over_http(client, uploaded: str):
+    fid = client.get(f"/project/{uploaded}/findings").json()["findings"][0]["id"]
+    for kind in ("defer", "flag", "dismiss"):
+        body = client.post(f"/project/{uploaded}/decision",
+                           json={"kind": kind, "subject": fid}).json()
+    kinds = [d["kind"] for d in body["decisions"]]
+    assert kinds.count("defer") == 1 and kinds.count("flag") == 1
+    assert kinds.count("dismiss") == 1
+    # The sentence quotes the finding rather than paraphrasing it.
+    title = client.get(f"/project/{uploaded}/findings").json()["findings"][0]["title"]
+    assert any(title in d["text"] for d in body["decisions"])
+
+
+def test_retarget_over_http_marks_stale_then_clears(client, uploaded: str):
+    client.post(f"/project/{uploaded}/decision",
+                json={"kind": "set_target", "payload": {"column": TARGET}})
+    body = client.post(f"/project/{uploaded}/decision",
+                       json={"kind": "set_target", "payload": {"column": "hba1c"}}).json()
+    assert body["target"] == "hba1c"
+    assert body["task_type"] == "regression"
+    # Recompute happens in the same request, so the findings are current again.
+    assert body["findings_stale"] is False
+    assert len([d for d in body["decisions"] if d["kind"] == "set_target"]) == 2
+
+
+def test_api_refuses_a_bad_target(client, uploaded: str):
+    r = client.post(f"/project/{uploaded}/decision",
+                    json={"kind": "set_target", "payload": {"column": "not_a_column"}})
+    assert r.status_code == 400
+    assert "not_a_column" in r.text
+
+
+def test_api_refuses_an_unknown_decision_kind(client, uploaded: str):
+    r = client.post(f"/project/{uploaded}/decision", json={"kind": "delete_everything"})
+    assert r.status_code == 400
+
+
+def test_missing_project_is_404(client):
+    assert client.get("/project/deadbeef").status_code == 404
+    assert client.get("/project/deadbeef/findings").status_code == 404
+
+
+def test_empty_and_unreadable_uploads_are_refused(client):
+    assert client.post("/project", files={"file": ("empty.csv", b"", "text/csv")}
+                       ).status_code == 400
+    r = client.post("/project", files={"file": ("junk.csv", b"\x00\x01\x02", "text/csv")})
+    assert r.status_code == 400
+
+
+def test_http_responses_contain_no_nan(client, uploaded: str):
+    """Starlette renders with `allow_nan=False`; a raw NaN would 500 right here."""
+    for url in (f"/project/{uploaded}", f"/project/{uploaded}/findings"):
+        r = client.get(url)
+        assert r.status_code == 200
+        assert "NaN" not in r.text
+        json.loads(r.text)
