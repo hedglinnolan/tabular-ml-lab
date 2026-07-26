@@ -42,7 +42,7 @@ test.
 turbotab\.venv\Scripts\python.exe -m pytest turbotab\test_skeleton.py -v
 ```
 
-31 tests, about two seconds. They need no server running.
+44 tests, about three seconds. They need no server running.
 
 ---
 
@@ -55,6 +55,17 @@ Met. Verified in Chromium against a real upload: the structural findings render,
 opens Explore with the real profile, deferring and flagging fill the rail docks from the server's
 record, and there are no console errors in either colour scheme.
 
+**Preview slice, second gate:**
+
+> The preview for a finding on a real CSV shows real changed cells, and declining leaves the
+> project byte-identical.
+
+Met. "Show me what this means" opens a before/after of the two real frames with only the cells that
+actually differ highlighted — `male → Male`, `female → Female`, 47 of them, each quoted from the
+frame it came from. Applying is a separate press; `revert` restores the table byte-for-byte, and
+`test_declining_a_preview_leaves_the_project_byte_identical` previews every structural finding over
+HTTP and asserts a content hash of values, row labels and dtypes is unchanged.
+
 ---
 
 ## What is actually here
@@ -63,17 +74,22 @@ record, and there are no console errors in either colour scheme.
 |---|---|
 | `engine.py` | The whole adapter. `import_doctor.diagnose`, `compute_dataset_profile`, `triage.detect_task_type`, plus JSON-safety and a merge of the two finding streams. It computes nothing. |
 | `project.py` | `AnalysisProject`: a dataframe handle, the target, append-only decisions, findings. Row identity is the index **label**. Imports no engine code. |
-| `api.py` | The four endpoints, and the static mount for the frontend. |
+| `api.py` | The endpoints, and the static mount for the frontend. Orchestrates; computes nothing. |
 | `web/index.html` | The prototype, with its synthetic constants replaced by `fetch()`. The stylesheet is carried across byte for byte. |
 | `test_skeleton.py` | Real CSV in, real findings out, compared against direct engine calls. |
 | `sample_data/` | One messy table to try it on. |
 
 ```
-POST /project                 upload a table, get a diagnosis
-GET  /project/{id}            what is currently true
-POST /project/{id}/decision   record one answer
-GET  /project/{id}/findings   the ranked findings
+POST /project                              upload a table, get a diagnosis
+GET  /project/{id}                         what is currently true
+POST /project/{id}/decision                record one answer
+GET  /project/{id}/findings                the ranked findings
+GET  /project/{id}/finding/{fid}/preview   what a repair would change, without changing it
 ```
+
+Decision kinds: `set_target` · `set_task_type` · `apply` · `revert` · `defer` · `dismiss` ·
+`undismiss` · `flag` · `unflag` · `note`. `apply` is the only one that changes the working table,
+and `revert` puts it back byte-for-byte.
 
 Projects live in memory. There is no disk path, because `ARCHITECTURE.md` §02 records a
 `_NEVER_PERSIST` contract and §04 lists persistence as an open question — a skeleton that quietly
@@ -84,7 +100,7 @@ correct behaviour for now, not an oversight.
 
 ## What this build found
 
-Four things worth carrying forward. The first two were corrections to the transition documents and
+Five things worth carrying forward. The first two were corrections to the transition documents and
 **have since been fixed upstream** (`docs/turbotab/ARCHITECTURE.md`, commit `47c9f1b`); they are
 kept here as the record of how the skeleton earned its keep. The third is a live bug, now tracked
 as `T0-LIVE-004`.
@@ -133,8 +149,7 @@ Not a TurboTab issue — it is shipping in the current app.
 
 `ml/triage.py:41` decides task type with `if target_series.dtype in ['object', 'category', 'bool']`.
 pandas 3.0 makes `str` the default dtype for text columns, so a text target matches none of the
-branches and falls through to the fallback at line 91: **`regression`, low confidence.** Measured on
-the same frame:
+branches and falls through to the fallback at line 91: **`regression`, low confidence.**
 
 Measured stage by stage on `sample_data/clinic_visits.csv`, across both majors:
 
@@ -172,7 +187,30 @@ answer.
 > functions. Any change to the pandas or numpy bound in either file belongs in the same commit as
 > the change to the other.
 
-### 4 · The diagnose → profile → detect path needs only pandas and numpy
+### 4 · Four of the nine fix kinds renumber your rows
+
+Found by building the preview engine. `promote_header`, `drop_empty_rows` and `drop_rows` all end
+in `.reset_index(drop=True)`, and `melt_repeated` rebuilds the index outright. This project keys
+rows by **index label**, so those repairs silently repoint every label stored before them — a
+sealed lockbox would survive the repair and afterwards name different rows.
+
+This is `TRANSITION_PLAN.md` §02.2 reached from a new direction. §02.2 is about two *components*
+disagreeing on a convention; this is one *repair* invalidating the convention mid-analysis, which
+no amount of agreement between components would prevent.
+
+The preview reports it rather than working around it, and detects it by content rather than by fix
+kind: the surviving labels are looked up in the original frame and the untouched columns compared.
+Dropping trailing footer rows from a clean `RangeIndex` renumbers nothing that matters and is
+correctly reported safe; dropping from the middle is not, and neither is any drop on a frame that
+has already been filtered once.
+
+> A first version of that check asked whether *any* column still lined up. A constant column lines
+> up under every renumbering there is, so it would have waved through exactly the corruption the
+> check exists to catch. It now requires every untouched column to agree, and
+> `test_row_identity_check_is_not_fooled_by_a_constant_column` builds a frame with a constant
+> column in it to keep that honest.
+
+### 5 · The diagnose → profile → detect path needs only pandas and numpy
 
 No scikit-learn, no scipy, no statsmodels, no torch. The portability claim is not just true, it is
 stronger than the census suggests — this slice installs in seconds.
@@ -181,10 +219,6 @@ stronger than the census suggests — this slice installs in seconds.
 
 ## What it deliberately does not do
 
-- **No fix is ever applied.** The interface records what you decide and says so on every panel.
-  `import_doctor.apply_fix` exists and returns a reversible `(frame, description)`, so the
-  preview/diff engine is a small next slice — but inventing a before/after here would have meant
-  fabricating the numbers on both sides of it.
 - **No training, jobs, or manuscript.** Out of scope by instruction, and the job queue is the
   component whose absence caused the migration; it deserves its own slice.
 - **Only one file at a time.** Multi-file joining is a different set of questions, and
