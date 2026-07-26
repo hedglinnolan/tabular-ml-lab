@@ -3887,8 +3887,9 @@
   "ev": "ml/triage.py:41; requirements.txt:2; plus 10 further sites listed in detail",
   "act": "Pin `pandas<3` in requirements.txt now (one line, prevents wrong science on fresh installs), then replace every string-dtype identity check with pandas type predicates (pd.api.types.is_string_dtype / is_bool_dtype / is_integer_dtype / is_float_dtype). Regression test: a text target detects classification/high under both pandas 2 and 3.",
   "status": "OPEN",
-  "note": "Found by the walking-skeleton loop; verified in this repo at HEAD. More severe than T0-LIVE-001..003 because it changes the SCIENCE, not the rendering \u2014 a regression model on a categorical outcome is a wrong paper.",
-  "verified_against": "origin/main @ 24c3446"
+  "note": "Measured stage by stage on turbotab/sample_data/clinic_visits.csv under 2.3.3 and 3.0.5. Sharper than first reported in two ways. (1) diagnose is NOT affected \u2014 import_doctor's structural findings are identical across both majors, so the import path is out of this class. (2) compute_dataset_profile is not independently broken either; it is correct when given the right task_type. The real shape is one wrong answer poisoning the next call: detect_task_type returns regression for a text target, the profiler takes the regression branch, and float(valid.mean()) on a string column raises TypeError: Cannot perform reduction 'mean' with string dtype (dataset_profile.py:243). The exception names the dtype, not the misdetection, so in Classic it surfaces as an unhandled error on the EDA page pointing at the wrong cause. Ceiling applied in both requirements.txt files (pandas<3) and enforced by turbotab/test_skeleton.py::test_a_text_target_is_read_as_classification, which fails if the cap is lifted without the repair. Still OPEN: the cap is not the fix. The fix is pd.api.types predicates at all eleven sites plus a test passing under both majors.",
+  "verified_against": "origin/main @ 24c3446",
+  "verified_ev": "ml/triage.py:41,91 \u00b7 ml/dataset_profile.py:243"
  },
  {
   "id": "T0-DOC-001",
@@ -3923,6 +3924,8 @@
   "ev": "turbotab/engine.py import surface; verified by the L3 test suite",
   "act": "Consider splitting requirements into core / training extras so the exploration path installs light.",
   "status": "OPEN",
-  "verified_against": "origin/main @ 24c3446"
+  "verified_against": "origin/main @ 24c3446",
+  "note": "Confirmed by building the vertical: turbotab/ installs pandas, numpy, fastapi, uvicorn, python-multipart and nothing else, and the three engine entry points (import_doctor.diagnose, compute_dataset_profile, triage.detect_task_type) import and run against that alone \u2014 no scikit-learn, scipy, statsmodels or torch. Verified from a clean venv against turbotab/requirements.txt, tests green. Consequence for deployment: a Guided door that stops before training has a tiny footprint, which makes a slim container or an All of Us Workbench install plausible and moves torch to a training-time concern rather than a startup one.",
+  "verified_ev": "turbotab/requirements.txt"
  }
 ]
