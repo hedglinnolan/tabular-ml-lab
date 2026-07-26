@@ -27,7 +27,9 @@ from utils.session_projects import get_project_manager
 from utils.column_utils import make_unique_columns
 from utils.theme import inject_custom_css, render_guidance, render_sidebar_workflow
 from utils.table_export import table
-from utils.import_ui import render_import_doctor, repaired_frame
+from utils.import_ui import render_import_doctor, repaired_frame, applied_fixes
+from utils import table_ledger as _ledger
+from utils.working_table_ui import render_working_table_card, render_exit_assurance
 from data_processor import (
     load_tabular_data, get_numeric_columns, get_selectable_columns,
     detect_file_type, inspect_json
@@ -39,6 +41,22 @@ from ml.triage import detect_task_type, detect_cohort_structure
 from ml.eda_recommender import compute_dataset_signals
 
 logger = logging.getLogger(__name__)
+
+
+def _applied_fix_notes(dataset) -> list:
+    """Import Doctor repairs applied to the file this table came from.
+
+    They happen per-file, before the working table exists, so they are carried
+    onto the step that adopts the file rather than lost between the two.
+    """
+    notes = []
+    try:
+        for _key in (dataset.get('id'), dataset.get('filename'), dataset.get('name')):
+            if _key:
+                notes.extend(applied_fixes(str(_key)))
+    except Exception:
+        pass
+    return notes
 
 
 # =============================================================================
@@ -592,9 +610,43 @@ if len(project_datasets) > 1:
     if st.session_state.get("_combine_signature") != _combo_signature:
         st.session_state.pop("working_table", None)
         st.session_state["_combine_signature"] = _combo_signature
+        _ledger.clear()          # a different set of files is a different table
 
-    _combined = render_combine_step(dataframes)
+    # Once a table has been committed, the combine step is HISTORY, not a
+    # control. Re-rendering the full preview on every rerun left its headline
+    # ("→ 156 rows × 10 columns") on screen describing the inputs, directly
+    # above a table that a later cleaning action had reduced to 9 columns —
+    # two different answers to the same question, both looking current.
+    _REOPEN = "_combine_reopen"
+    _committed = (st.session_state.get("working_table") is not None
+                  and not st.session_state.get(_REOPEN))
+    if _committed:
+        st.header("Step 2: Combine your files")
+        _desc = st.session_state.get("_combine_description")
+        st.success(f"**Combined — {len(dataframes)} files into one table.**")
+        if _desc:
+            st.caption(_desc)
+        st.caption("Reopen this only if you want a different join or a different "
+                   "set of files — the table as it stands, including anything "
+                   "you have changed since, is stated in Step 3.")
+        if st.button("Change how these files are combined", key="combine_reopen_btn"):
+            st.session_state[_REOPEN] = True
+            st.rerun()
+        _combined = None
+    else:
+        _combined = render_combine_step(dataframes)
     if _combined is not None:
+        st.session_state.pop(_REOPEN, None)
+        # The account of how this table came to be starts here. `before` is the
+        # file the others were attached to, so the ledger can state the thing a
+        # researcher most wants to know and the join preview only says in
+        # passing: how many of the people you brought are still in the table.
+        _primary = next(iter(dataframes.values())) if dataframes else None
+        _ledger.record(
+            action=f"Combined {len(dataframes)} files",
+            kind=_ledger.COMBINE, before=_primary, after=_combined,
+            detail=st.session_state.get("_combine_description", ""),
+        )
         st.session_state.working_table = _combined
         st.session_state.last_merge_columns = list(_combined.columns)
         set_data(_combined)
@@ -627,6 +679,12 @@ else:
             working_df.columns = [str(c) for c in working_df.columns]
             st.session_state.working_table = working_df
             st.session_state['_working_table_source_id'] = single_dataset['id']
+            _ledger.clear()
+            _ledger.record(
+                action=f"Started from {single_dataset['name']}",
+                kind=_ledger.ADD, before=None, after=working_df,
+                detail=" · ".join(_applied_fix_notes(single_dataset)),
+            )
         else:
             working_df = st.session_state.working_table
         set_data(working_df)
@@ -663,6 +721,16 @@ if len(df) == 0 or len(df.columns) == 0:
 # ============================================================================
 st.markdown("---")
 st.header("Step 3: Data Audit")
+
+# What is being audited, stated where the auditing happens. Without this the
+# only account of the table sat above two committed join previews that still
+# read as live controls, so the most prominent shape on screen could be one the
+# table no longer had.
+_undo_note = st.session_state.pop("_working_table_undo_note", None)
+if _undo_note:
+    st.success(f"↩️ {_undo_note}")
+render_working_table_card(
+    df, "Everything below describes this table, as it stands now.")
 
 from utils.cohort_ui import render_cohort_note as _cohort_note
 _cohort_note("The audit below covers the whole study, which is what it should "
@@ -821,6 +889,10 @@ if suggested_actions:
                     if len(new_df) == 0 or len(new_df.columns) == 0:
                         st.error("This action would result in an empty dataset. Aborted.")
                     else:
+                        _ledger.record(action=label, kind=_ledger.CLEAN,
+                                       before=df, after=new_df,
+                                       detail=(f"Applied to: {', '.join(cols)}"
+                                               if cols else ""))
                         st.session_state.working_table = new_df
                         # Content changed → set_data clears downstream results
                         # (config is kept); reconcile drops any config references
@@ -858,6 +930,16 @@ if suggested_actions:
                     logger.exception(e)
 
 st.session_state.data_audit = audit_results
+
+# ============================================================================
+# SIGN-OFF — the page's closing statement about the DATA, before any question
+# is asked of it. It sits here rather than at the foot of the page because the
+# foot is unreachable until an analysis type is chosen, and the researcher who
+# has not chosen one yet is exactly the one who needs to know what their table
+# holds. Everything earlier on this page is prospective — it explains a
+# decision before you commit to it. Nothing restated the result afterwards.
+# ============================================================================
+render_exit_assurance(get_data(full_study=True))
 
 # ============================================================================
 # SECTION 5: TASK MODE & FIELD SELECTION
