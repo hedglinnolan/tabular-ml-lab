@@ -3975,5 +3975,17 @@
   "status": "OPEN",
   "note": "Convergence is bidirectional — the register needs a guided-only state to express this.",
   "verified_against": "TurboTab @ 92ca877"
+ },
+ {
+  "id": "T0-DOC-003",
+  "area": "TIER0",
+  "sev": "high",
+  "item": "ARCHITECTURE.md inverted the persistence contract, creating a false conflict with the door-switch gate",
+  "detail": "The doc said 'nothing is written to disk' and called _NEVER_PERSIST a contract stronger than its documentation. The opposite is true: utils/session_manager.py already saves sessions as a zip of manifest/config/widget_state/coaching/provenance/lockbox/cohort/cohort_runs/fe_recipe/coach_probe JSON, refusing pickles. _NEVER_PERSIST is a DROP-LIST of derived artifacts — trained models, fitted pipelines, splits, metrics, profiles — dropped because they are unsafe to pickle or cheap to regenerate. The real invariant is 'persist decisions and inputs, regenerate derivatives'. The build agent hit this as an apparent requirement-versus-constraint deadlock on L5's stretch gate; there was never a deadlock, and turbotab/project.py was written around the wrong statement.",
+  "ev": "utils/session_manager.py:23-34,138,531; docs/turbotab/ARCHITECTURE.md §02 (previous revision); turbotab/project.py:24",
+  "act": "Corrected in ARCHITECTURE.md §02 and ROADMAP L5. Port session_manager's archive schema rather than redesigning it. Add a guard test: no cell value from the loaded frame appears in a serialized project.",
+  "status": "FIXED",
+  "test": "docs/turbotab/ARCHITECTURE.md §02 (corrected); L5 gate now names session_manager as prior art",
+  "note": "Third documentation error found by the build agent's runtime checking. Pattern worth naming: every time my static reading and the agent's execution disagreed, execution was right."
  }
 ]

@@ -20,7 +20,7 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**3 of 393 closed.**
+**4 of 394 closed.**
 
 
 | Status | Count |
@@ -28,7 +28,7 @@ Nothing is closed without a regression test named after it.
 | `UNVERIFIED` | 370 |
 | `OPEN` | 17 |
 | `PARTIAL` | 3 |
-| `FIXED` | 3 |
+| `FIXED` | 4 |
 
 ---
 
@@ -487,13 +487,14 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 3
+## FIXED — 4
 
 
-### Verified against main — 3
+### Verified against main — 4
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `T0-DOC-001` | high | ARCHITECTURE.md over-reported Streamlit coupling: static analysis counted function-level imports as module-level | `ml/model_coach.py:634,1080; docs/turbotab/ARCHITECTURE.md §01` | **test:** `docs/turbotab/ARCHITECTURE.md §01 runtime blocker snippet` — Corrected 2026-07; the empirical run had already disagreed with the static pass and the static pass was publ |
 | `T0-DOC-002` | high | The ARCHITECTURE.md reproduce snippet could not fail — it used find_module, removed in Python 3.12, and passed vacuously without Streamlit installed | `docs/turbotab/ARCHITECTURE.md §01 (previous revision)` | **test:** `docs/turbotab/ARCHITECTURE.md §01 self-check (`blocker is not working` guard)` — Found by the walking-skeleton loop. A test that cannot fail proves nothing — the guard n |
 | `T0-TOOL-001` | high | ledger.py regen destroyed FINDINGS_LEDGER.md on Windows, and check reported success over the wreckage | `docs/turbotab/tools/ledger.py load/save/regen` | **test:** `docs/turbotab/tools/ledger.py check (markdown-currency guard; verified by emptying the file)` — Reported by the build agent, who recovered from git and used PYTHONUTF8=1 |
+| `T0-DOC-003` | high | ARCHITECTURE.md inverted the persistence contract, creating a false conflict with the door-switch gate | `utils/session_manager.py:23-34,138,531; docs/turbotab/ARCHITECTURE.md §02 (previous revision); turbotab/projec` | **test:** `docs/turbotab/ARCHITECTURE.md §02 (corrected); L5 gate now names session_manager as prior art` — Third documentation error found by the build agent's runtime checking. P |

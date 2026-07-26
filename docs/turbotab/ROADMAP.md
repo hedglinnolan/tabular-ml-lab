@@ -235,6 +235,20 @@ one in `pages/03`, and round-trips through `to_dict`/`from_dict` with no loss. S
 the one that proves the architecture: **a project started in one door can be opened in the other,
 mid-analysis, with no loss of state or change in results.**
 
+**On the stretch gate and persistence — there is no conflict, and prior art exists.** Two
+requirements were conflated:
+
+- *Switching doors mid-analysis* needs no persistence at all. Both doors are views over one
+  running core, so the project is in memory and switching is opening a different view of it.
+- *Resuming tomorrow* needs durability — and `utils/session_manager.py` already does it correctly:
+  a zip of decisions and inputs (config, widget state, ledger, provenance, **lockbox labels**,
+  cohorts, FE recipe, probe results), with pickles refused and derived artifacts dropped.
+
+`_NEVER_PERSIST` is that drop-list, not a no-disk rule. **Port the archive schema; do not redesign
+it.** Add one test that turns the invariant into a guard: *no cell value from the loaded frame
+appears anywhere in a serialized project.* That is what "never persist participant data" means
+operationally, and it is checkable.
+
 ### L6 · Extract the split block and the step state machine — autonomous, needs L4
 
 `pages/06:380-760` becomes a real `ml/splits.py`. `utils/theme.py:685`'s ten predicates become the
