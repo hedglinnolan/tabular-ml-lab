@@ -407,6 +407,41 @@ def test_empty_and_unreadable_uploads_are_refused(client):
     assert r.status_code == 400
 
 
+def test_the_frontend_is_served(client):
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "TurboTab walking skeleton" in r.text
+
+
+def test_the_stylesheet_is_the_prototype_stylesheet_verbatim():
+    """"Keep the design language exactly; only the data source changes."
+
+    The prototype's `<style>` block is compared byte for byte. Anything that
+    drifts — a colour nudged, a radius rounded — fails here rather than being
+    noticed three screens later.
+    """
+    proto = (REPO_ROOT / "docs" / "turbotab" / "prototypes" /
+             "interview-feed.html").read_text(encoding="utf-8")
+    page = (REPO_ROOT / "turbotab" / "web" / "index.html").read_text(encoding="utf-8")
+    css = proto[proto.index("<style>"):proto.index("</style>") + len("</style>")]
+    assert css in page, "the prototype stylesheet was edited rather than carried over"
+
+
+def test_the_frontend_has_no_synthetic_constants_left():
+    """The rewire is the point: no invented number may survive in the page.
+
+    Each name below is a synthetic constant from the prototype — the model
+    scoreboard, the seeded RNG, the fabricated correlation matrix, the
+    hard-coded 918-row dataset. If one reappears, something is being drawn from
+    a literal instead of from the engine.
+    """
+    page = (REPO_ROOT / "turbotab" / "web" / "index.html").read_text(encoding="utf-8")
+    body = page[page.index("</style>"):]
+    for ghost in ("918", "CORRM", "CORRVARS", "HISTS", "RANGES",
+                  "var MODELS", "PREVIEWS", "NOTES", "1664525", "0.934"):
+        assert ghost not in body, f"synthetic constant {ghost!r} survived the rewire"
+
+
 def test_http_responses_contain_no_nan(client, uploaded: str):
     """Starlette renders with `allow_nan=False`; a raw NaN would 500 right here."""
     for url in (f"/project/{uploaded}", f"/project/{uploaded}/findings"):
