@@ -253,6 +253,36 @@ def _file_key_for(name: str, idx: int) -> str:
     return f"{name.replace('.', '_').replace(' ', '_')}_{idx}"
 
 
+def _log_import_repairs(file_key, dataset_name):
+    """Put the Import Doctor's repairs in the record, not just on the screen.
+
+    The audit's Suggested Actions already call log_methodology and
+    record_cleaning; the Doctor's fixes went nowhere, so a manuscript said
+    nothing about a column whose sentinel codes had been recoded or whose type
+    had been changed before anything else saw the data. ml/publication.py
+    builds its data-preparation paragraph from exactly those records.
+    """
+    try:
+        from utils.import_ui import applied_fixes
+        fixes = applied_fixes(file_key)
+        if not fixes:
+            return
+        for fix in fixes:
+            log_methodology(step='Data Cleaning',
+                            action=f"{dataset_name}: {fix}",
+                            details={'source': 'import_doctor',
+                                     'dataset': dataset_name, 'fix': fix})
+        from utils.workflow_provenance import get_provenance
+        prov = get_provenance()
+        for fix in fixes:
+            prov.record_cleaning(action=f"Import repair — {fix}",
+                                 rows_before=0, rows_after=0,
+                                 details={'dataset': dataset_name,
+                                          'source': 'import_doctor'})
+    except Exception:
+        pass          # recording must never block the upload
+
+
 def _commit_dataset(df, dataset_name, filename, file_type, transposed, replace=True):
     """Register one frame as a dataset in the active project.
 
@@ -313,6 +343,7 @@ if uploaded_files and len(uploaded_files) > 1:
                     _frame.columns = [str(c) for c in _frame.columns]
                     # Honor fixes already applied in the review below.
                     _frame = repaired_frame(_frame, _fk)
+                    _log_import_repairs(_fk, _name)
                     _name = st.session_state.get(f"name_{_fk}") or _uf.name.rsplit('.', 1)[0]
                     ok, msg = _commit_dataset(_frame, _name, _uf.name, _ft,
                                               st.session_state.get(f"transpose_{_fk}", False))
@@ -477,6 +508,7 @@ if uploaded_files:
                         # so committing it is what keeps "what I reviewed" and
                         # "what got added" the same frame.
                         with st.spinner(f"Adding {dataset_name} to project..."):
+                            _log_import_repairs(file_key, dataset_name)
                             ok, msg = _commit_dataset(
                                 df_preview, dataset_name, uploaded_file.name,
                                 file_type, transpose_this_file, replace=True,

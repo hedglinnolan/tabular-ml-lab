@@ -292,22 +292,65 @@ class TestCandidates:
 # ── the chooser as page 01 calls it ──────────────────────────────────────
 
 class TestChooserRenders:
+    """These were three smoke tests that asserted nothing.
 
-    def test_chooser_runs_against_a_real_frame(self):
-        """Smoke test in bare mode: the widgets must at least construct."""
-        from utils.cohort_ui import render_cohort_chooser
+    The audit's mutation run confirmed the cost: stubbing render_cohort_chooser
+    to a no-op left them green, because in bare mode Streamlit widget calls are
+    largely no-ops and "it did not raise" is nearly free. They now assert on the
+    DECISIONS the chooser makes, which is the part that can be wrong.
+    """
+
+    def test_the_chooser_offers_the_groups_the_plan_found_viable(self):
+        from utils.cohort_ui import _cell_table, _n_for
         df = study()
         st.session_state["raw_data"] = df
-        render_cohort_chooser(df, "diabetes", "classification",
-                              ["age", "bmi", "sex", "smoker"])
+        plan = plan_cohorts(df, "sex", "diabetes", "classification")
+        table = _cell_table(plan, "diabetes")
+        assert list(table["Group"]) == [c.label for c in plan.cells]
+        assert all(_n_for(plan, c.label) == c.n_rows for c in plan.cells)
 
-    def test_chip_is_silent_with_no_run(self):
-        from utils.cohort_ui import render_cohort_chip
-        render_cohort_chip()
+    def test_the_table_marks_a_group_that_cannot_be_modeled(self):
+        from utils.cohort_ui import _cell_table
+        df = study(n=400)
+        df.loc[df.index[:395], "sex"] = "Male"      # 5 Females: far too few
+        plan = plan_cohorts(df, "sex", "diabetes", "classification")
+        table = _cell_table(plan, "diabetes")
+        row = table[table["Group"] == "Female"].iloc[0]
+        assert row["Can be analyzed on its own"].startswith("no —")
 
-    def test_chip_renders_for_an_active_run(self):
+    def test_the_rarer_outcome_names_the_target_and_its_value(self):
+        from utils.cohort_ui import _rarer_outcome
+        df = study()
+        plan = plan_cohorts(df, "sex", "diabetes", "classification")
+        cell = plan.cells[0]
+        text = _rarer_outcome(cell, "diabetes")
+        assert "diabetes =" in text, (
+            "a bare count cannot say whether it is cases or non-cases")
+        assert str(cell.n_events) in text.replace(",", "")
+
+    def test_the_chip_states_the_run_and_both_denominators(self):
         from utils.cohort_ui import render_cohort_chip
         df = study()
         st.session_state["raw_data"] = df
-        begin(df)
-        render_cohort_chip()
+        run = begin(df)
+        html = []
+        real = st.sidebar.markdown
+        st.sidebar.markdown = lambda body, **kw: html.append(str(body))
+        try:
+            render_cohort_chip()
+        finally:
+            st.sidebar.markdown = real
+        blob = " ".join(html)
+        assert "sex" in blob and "Female" in blob
+        assert f"{run['n_rows']:,}" in blob and f"{run['n_total']:,}" in blob
+
+    def test_the_chip_says_nothing_when_no_run_is_active(self):
+        from utils.cohort_ui import render_cohort_chip
+        html = []
+        real = st.sidebar.markdown
+        st.sidebar.markdown = lambda body, **kw: html.append(str(body))
+        try:
+            render_cohort_chip()
+        finally:
+            st.sidebar.markdown = real
+        assert not html

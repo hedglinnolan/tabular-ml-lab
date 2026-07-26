@@ -131,7 +131,9 @@ def test_recoding_sentinels_produces_missing_values():
     at = _app(df).run()
     fixes = [b for b in at.button if "Undo" not in b.label]
     if not fixes:
-        pytest.skip("no sentinel fix offered for this distribution")
+        pytest.fail(
+            "no sentinel fix was offered — skipping here converts the exact "
+            "failure this test exists to catch into a silent pass")
     fixes[0].click().run()
     assert not at.exception
     out = at.session_state["_test_out"]

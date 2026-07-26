@@ -835,6 +835,34 @@ class NarrativeEngine:
 
         return " ".join(parts)
 
+    def _borrowed_pipeline_note(self) -> str:
+        """Models trained with another model's preprocessing, named.
+
+        Training resolves `get_preprocessing_pipeline(key) or pipeline`, and
+        that fallback is the FIRST prepared model's pipeline — so a model
+        selected on Train & Compare but never prepared really is trained
+        through another model's PCA or power transform. The methods section
+        described only the prepared models, leaving a reader no way to know.
+        """
+        try:
+            import streamlit as st
+            by_model = st.session_state.get("preprocessing_pipelines_by_model") or {}
+            built = set(st.session_state.get("preprocess_built_model_keys") or [])
+            trained = set((st.session_state.get("model_results") or {}).keys())
+            borrowers = sorted(m for m in trained if m not in built)
+            if not borrowers or not by_model:
+                return ""
+            owner = "default" if "default" in by_model else next(iter(by_model))
+            if owner == "default":
+                return (f"{', '.join(m.upper() for m in borrowers)} used the "
+                        f"shared preprocessing pipeline.")
+            return (f"{', '.join(m.upper() for m in borrowers)} had no "
+                    f"preprocessing configured and were trained using the "
+                    f"pipeline built for {owner.upper()}, including any "
+                    f"transform chosen specifically for that model.")
+        except Exception:
+            return ""
+
     def _gen_missing_data(self) -> str:
         """Missing data handling."""
         pp = self.ctx.get("preprocessing_per_model", {})
@@ -915,6 +943,15 @@ class NarrativeEngine:
                     parts.append(
                         f"**{model_label}**: default preprocessing (no additional transformations)."
                     )
+
+        # A model trained through ANOTHER model's pipeline is described here or
+        # nowhere. Leaving it out let a methods section name every prepared
+        # model's transforms while saying nothing about the model that borrowed
+        # them — including a PCA a reader would need to know about to interpret
+        # the explainability at all.
+        _borrowed = self._borrowed_pipeline_note()
+        if _borrowed:
+            parts.append(_borrowed)
 
         return " ".join(parts)
 

@@ -131,7 +131,12 @@ class TestRepeatedMeasuresAreJoinable:
         a = pd.DataFrame({"SEQN": range(83732, 83832), "age": RNG.randint(18, 80, 100)})
         b = pd.DataFrame({"patient_id": range(83732, 83832), "g": RNG.normal(100, 20, 100)})
         best = suggest_best(a, b)
-        assert best is not None and best.right_col == "patient_id"
+        # Assert the PAIRING. Checking only right_col passed while the engine
+        # returned age <-> patient_id — a measurement joined to an ID, which
+        # fabricates participants.
+        assert best is not None
+        assert (best.left_col, best.right_col) == ("SEQN", "patient_id"), (
+            f"picked {best.left_col} <-> {best.right_col}")
 
 
 # ── duplicate column labels ──────────────────────────────────────────────
