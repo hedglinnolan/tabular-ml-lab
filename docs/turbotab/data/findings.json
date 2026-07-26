@@ -3877,5 +3877,52 @@
   "ev": "ml/__init__.py:1; utils/__init__.py:1; pages/__init__.py:1",
   "act": "engine (ml, utils); drop (pages)",
   "status": "UNVERIFIED"
+ },
+ {
+  "id": "T0-LIVE-004",
+  "area": "TIER0",
+  "sev": "critical",
+  "item": "pandas 3 silently turns a classification target into a regression one \u2014 dtype identity checks compare against legacy string names",
+  "detail": "ml/triage.py:41 tests `target_series.dtype in ['object','category','bool']`. pandas 3 makes `str` the default dtype for text columns, so a text target matches nothing, falls through to the numeric branches, and is detected as REGRESSION at low confidence. Same frame on pandas 2.3.3 detects classification at high confidence. requirements.txt pins `pandas>=2.0.0` with no ceiling, so a fresh install today gets the wrong answer silently. BLAST RADIUS IS WIDER THAN triage:41 \u2014 the same string-dtype comparison class appears at ml/triage.py:47,75,165,166,170,189 (feature typing), ml/dataset_profile.py:189 (is_id_like), ml/eda_recommender.py:98,106,137 (which analyses are offered), models/registry_wrappers.py:44 (model selection). Each degrades quietly rather than raising.",
+  "ev": "ml/triage.py:41; requirements.txt:2; plus 10 further sites listed in detail",
+  "act": "Pin `pandas<3` in requirements.txt now (one line, prevents wrong science on fresh installs), then replace every string-dtype identity check with pandas type predicates (pd.api.types.is_string_dtype / is_bool_dtype / is_integer_dtype / is_float_dtype). Regression test: a text target detects classification/high under both pandas 2 and 3.",
+  "status": "OPEN",
+  "note": "Found by the walking-skeleton loop; verified in this repo at HEAD. More severe than T0-LIVE-001..003 because it changes the SCIENCE, not the rendering \u2014 a regression model on a categorical outcome is a wrong paper.",
+  "verified_against": "origin/main @ 24c3446"
+ },
+ {
+  "id": "T0-DOC-001",
+  "area": "TIER0",
+  "sev": "high",
+  "item": "ARCHITECTURE.md over-reported Streamlit coupling: static analysis counted function-level imports as module-level",
+  "detail": "The doc listed ml.model_coach as transitively tainted via utils.insight_ledger. It is not \u2014 model_coach imports the ledger lazily inside two functions (:634, :1080) and its module-level imports are only dataclasses/typing/enum. Correct figures, counting module-level imports only: 2 direct (eda_actions, macro_shape), 2 transitive (narrative_engine, manuscript_validator), 38 clean. 4 of 42, not 7. The Router's basis is NOT blocked.",
+  "ev": "ml/model_coach.py:634,1080; docs/turbotab/ARCHITECTURE.md \u00a701",
+  "act": "Corrected in ARCHITECTURE.md. Keep the runtime check as the source of truth over static import analysis.",
+  "status": "FIXED",
+  "test": "docs/turbotab/ARCHITECTURE.md \u00a701 runtime blocker snippet",
+  "note": "Corrected 2026-07; the empirical run had already disagreed with the static pass and the static pass was published anyway."
+ },
+ {
+  "id": "T0-DOC-002",
+  "area": "TIER0",
+  "sev": "high",
+  "item": "The ARCHITECTURE.md reproduce snippet could not fail \u2014 it used find_module, removed in Python 3.12, and passed vacuously without Streamlit installed",
+  "detail": "The published blocker defined find_module/load_module, a protocol the import system stopped consulting in 3.12, so on a modern interpreter it reported success regardless of coupling. Separately, on a machine with no Streamlit installed the import fails for the wrong reason and the test passes without proving anything.",
+  "ev": "docs/turbotab/ARCHITECTURE.md \u00a701 (previous revision)",
+  "act": "Replaced with a MetaPathFinder.find_spec blocker that stubs streamlit onto sys.modules first and asserts the blocker bites before importing anything from the engine.",
+  "status": "FIXED",
+  "test": "docs/turbotab/ARCHITECTURE.md \u00a701 self-check (`blocker is not working` guard)",
+  "note": "Found by the walking-skeleton loop. A test that cannot fail proves nothing \u2014 the guard now self-verifies."
+ },
+ {
+  "id": "T0-ENG-001",
+  "area": "TIER0",
+  "sev": "medium",
+  "item": "The diagnose -> profile -> detect path needs only pandas and numpy \u2014 no sklearn, scipy or torch",
+  "detail": "Measured by the walking-skeleton loop. The whole ingestion-and-exploration vertical runs on two dependencies. This matters for deployment: a Guided front door that stops before training has a tiny dependency footprint, which makes an All of Us Workbench or a slim container deployment far easier, and makes the ~1.1 GB torch requirement a training-time concern rather than a startup one.",
+  "ev": "turbotab/engine.py import surface; verified by the L3 test suite",
+  "act": "Consider splitting requirements into core / training extras so the exploration path installs light.",
+  "status": "OPEN",
+  "verified_against": "origin/main @ 24c3446"
  }
 ]

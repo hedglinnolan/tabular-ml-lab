@@ -229,4 +229,11 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except BrokenPipeError:
+        # piping into `head` closes stdout early; not an error worth a traceback
+        try:
+            sys.stdout.close()
+        finally:
+            raise SystemExit(0)

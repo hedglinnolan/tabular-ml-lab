@@ -35,45 +35,72 @@ Proportions: **18,735 lines portable core · ~8,000 coupled · 19,835 page layer
 | `insight_ledger.py` | 1,406 | 7 | 1,400 lines of pure domain logic, then a `get_ledger()` singleton at the bottom | trivial |
 | `workflow_provenance.py` | 672 | 5 | 13 dataclasses and a recorder, then a `get_provenance()` singleton | trivial |
 
-### Correction: coupling is transitive, and grep understates it
+### Correction (twice): what "coupled" actually means here
 
-The line counts above measure *direct* references. An import-blocker test — importing every core
-module with `streamlit` forced to fail — found the real figure:
+**This section was wrong, and the walking-skeleton loop caught it.** Both corrections are worth
+keeping visible, because both were methodology errors rather than typos.
+
+**First error — I counted function-level imports as if they were module-level.** A static pass
+over all `import` statements reported `ml.model_coach` as transitively tainted through
+`utils.insight_ledger`. It is not: `model_coach` imports the ledger *lazily, inside two
+functions* (`ml/model_coach.py:634`, `:1080`), and its only module-level imports are
+`dataclasses`, `typing` and `enum`. It loads clean with Streamlit blocked. My own empirical run
+had already shown `model_coach` importing successfully; I published the static analysis over the
+measurement, which is exactly backwards.
+
+Counting **module-level imports only**, the real figure:
 
 | | Count | Modules |
 |---|---:|---|
-| Directly coupled | 4 | `ml.eda_actions`, `ml.macro_shape`, `ml.narrative_engine`, `ml.publication` |
-| **Transitively coupled** | **3** | `ml.model_coach` → `utils.insight_ledger` · `ml.manuscript_validator` → `ml.narrative_engine` · `ml.latex_report` → `ml.publication` |
-| Genuinely headless-clean | 35 | everything else in `ml/`, `models/`, `visualizations`, `data_processor` |
+| Directly coupled | 2 | `ml.eda_actions`, `ml.macro_shape` |
+| Transitively coupled | 2 | `ml.narrative_engine` → `utils.insight_ledger` · `ml.manuscript_validator` → `narrative_engine` → `insight_ledger` |
+| Headless-clean | 38 | everything else in `ml/`, `models/`, `visualizations`, `data_processor` |
 
-**7 of 42 core modules cannot be imported today without Streamlit installed** — 17%, not 3 files.
-The engine is still overwhelmingly portable, but two of the tainted modules matter
-disproportionately:
+So **4 of 42 core modules cannot import without Streamlit, not 7** — and the Router's basis,
+`ml.model_coach`, is not one of them. The manuscript chain is the real cluster, and all of it
+traces to one module-level `import streamlit` at `utils/insight_ledger.py:46` (note: the singleton
+at the bottom of that file is *not* its only coupling — the top-level import is).
 
-- **`ml.model_coach` is tainted**, and it is the basis of the Router. It imports
-  `utils.insight_ledger`, whose only coupling is the `get_ledger()` singleton at the bottom of the
-  file.
-- **The whole manuscript chain is tainted** — `narrative_engine` and `publication` directly,
-  `manuscript_validator` and `latex_report` through them.
+**Second error — the reproduce snippet did not reproduce anything.** It defined
+`find_module`/`load_module`, a finder protocol Python stopped consulting in 3.12. Run as printed
+on a modern interpreter it reports success whether or not a module is coupled. And on a machine
+without Streamlit installed the whole test passes vacuously, because the import fails for the
+wrong reason.
 
-This *strengthens* the case for cutting the record singletons early rather than late: deleting
-~10 lines from `insight_ledger.py` detaints `model_coach` and unblocks Router work. The
-`narrative_engine` / `publication` coupling is direct and needs the logic/delivery split, which is
-larger.
+A blocker that actually bites:
 
-Reproduce:
+```python
+import importlib, importlib.abc, importlib.machinery, sys, types
 
-```bash
-python - <<'EOF'
-import sys, importlib
-class B:
-    def find_module(self, n, p=None):
-        if n == "streamlit" or n.startswith("streamlit."): return self
-    def load_module(self, n): raise ImportError(f"BLOCKED: {n}")
-sys.meta_path.insert(0, B())
-importlib.import_module("ml.model_coach")   # ImportError today
-EOF
+# 1. Make sure a *real* streamlit is importable, so the test cannot pass vacuously.
+if "streamlit" not in sys.modules:
+    try:
+        importlib.import_module("streamlit")
+    except ImportError:
+        sys.modules["streamlit"] = types.ModuleType("streamlit")  # stub stands in
+
+class Blocker(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path=None, target=None):      # 3.12+ protocol
+        if name == "streamlit" or name.startswith("streamlit."):
+            raise ImportError(f"BLOCKED: {name}")
+
+for k in [k for k in sys.modules if k == "streamlit" or k.startswith("streamlit.")]:
+    del sys.modules[k]
+sys.meta_path.insert(0, Blocker())
+
+# 2. Prove the blocker bites before trusting any result from it.
+try:
+    importlib.import_module("streamlit")
+    raise SystemExit("blocker is not working — results would be meaningless")
+except ImportError:
+    pass
+
+importlib.import_module("ml.model_coach")   # clean at HEAD
 ```
+
+**The lesson, which generalises to the whole ledger:** static analysis over-reports coupling, and
+a test that cannot fail proves nothing. Prefer the runtime check, and always assert the guard is
+active before trusting what it says.
 
 ### Structural facts
 

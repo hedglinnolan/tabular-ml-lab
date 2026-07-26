@@ -20,21 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**0 of 385 closed.**
+**2 of 389 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `UNVERIFIED` | 370 |
-| `OPEN` | 13 |
+| `OPEN` | 15 |
 | `PARTIAL` | 2 |
+| `FIXED` | 2 |
 
 ---
 
-## OPEN — 13
+## OPEN — 15
 
 
-### Verified against main — 13
+### Verified against main — 15
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -44,12 +45,14 @@ Nothing is closed without a regression test named after it.
 | `T0-TEST-001` | critical | tests/integration/conftest.py injects a bare sklearn Ridge where the app stores wrapper objects | `tests/integration/conftest.py:82,98` | verified on main |
 | `T0-TEST-002` | critical | test_insight_id_integrity.py is an AST scanner keyed on SCAN_DIRS=['pages','utils','ml'] and the literal name Insight; passes vacuously after rename | `tests/test_insight_id_integrity.py:23` | verified on main |
 | `T0-TEST-003` | critical | No test calls the production reset_downstream_results(); three re-implementations test themselves | `utils/session_state.py; tests/test_cascade_invalidation.py` |  |
+| `T0-LIVE-004` | critical | pandas 3 silently turns a classification target into a regression one — dtype identity checks compare against legacy string names | `ml/triage.py:41; requirements.txt:2; plus 10 further sites listed in detail` | Found by the walking-skeleton loop; verified in this repo at HEAD. More severe than T0-LIVE-001..003 because it changes the SCIENCE, not the rendering — a regression model on a cat |
 | `T0-LIVE-002` | high | Cancel Training writes st.session_state.cancel_training; nothing ever reads it | `pages/06_Train_and_Compare.py:1289-1301 (grep returns only these 4 lines)` | verified on main |
 | `T0-LIVE-003` | high | SklearnCompatible NN fit() marks fitted without training; clone-and-refit yields a silently untrained model that still predicts | `models/nn_whuber.py fit() in both regressor and classifier` | verified on main |
 | `T0-STRUCT-005` | high | Coach is a pure annotator; cannot gate, only order. No blocker severity, no own confidence tier, 100% of triggers in pages/ | `ml/model_coach.py; pages/05_Preprocess.py:291-294; pages/02_EDA.py:212,246` | feasibility verdict |
 | `T0-WIP-001` | high | docs/FINDINGS_LEDGER.md 'Still open' tail from two lost audit runs, on the multi-file/JSON import path | `docs/FINDINGS_LEDGER.md:47` | verified on main |
 | `T0-DROP-001` | medium | utils/dataset_db.py — 797 loc, zero importers, superseded by session_projects.py | `grep: 0 importers on main` | verified on main |
 | `T0-DROP-002` | medium | setup.py python_requires '>=3.8,<3.10' against a 3.12 repo — uninstallable | `setup.py` | verified on main |
+| `T0-ENG-001` | medium | The diagnose -> profile -> detect path needs only pandas and numpy — no sklearn, scipy or torch | `turbotab/engine.py import surface; verified by the L3 test suite` | Consider splitting requirements into core / training extras so the exploration path installs light. |
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 
 ---
@@ -478,3 +481,15 @@ Nothing is closed without a regression test named after it.
 | `MODELS-022` | invariant | Degenerate bootstrap resamples are DROPPED, never substituted with the point estimate, and a run with too few valid replicates returns a NaN CI rather than a narrow one. | `ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot = boot_stats[np.isf` | preserve |
 | `MODELS-023` | invariant | The NN's best-epoch weights are snapshotted by CLONE, not by reference, so later optimizer steps cannot mutate the saved state. | `models/nn_whuber.py:430 and 529 — `best_model_state = {k: v.detach().clone() for k, v in self.model.state_dict` | preserve |
 | `MODELS-024` | invariant | Cross-validation is skipped for the neural network because its sklearn shim cannot retrain. | `pages/06:1529 `if use_cv and model_name != 'nn'` with the else-branch at 1565 explaining it to the user; pages` | preserve |
+
+---
+
+## FIXED — 2
+
+
+### Verified against main — 2
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `T0-DOC-001` | high | ARCHITECTURE.md over-reported Streamlit coupling: static analysis counted function-level imports as module-level | `ml/model_coach.py:634,1080; docs/turbotab/ARCHITECTURE.md §01` | **test:** `docs/turbotab/ARCHITECTURE.md §01 runtime blocker snippet` — Corrected 2026-07; the empirical run had already disagreed with the static pass and the static pass was publ |
+| `T0-DOC-002` | high | The ARCHITECTURE.md reproduce snippet could not fail — it used find_module, removed in Python 3.12, and passed vacuously without Streamlit installed | `docs/turbotab/ARCHITECTURE.md §01 (previous revision)` | **test:** `docs/turbotab/ARCHITECTURE.md §01 self-check (`blocker is not working` guard)` — Found by the walking-skeleton loop. A test that cannot fail proves nothing — the guard n |
