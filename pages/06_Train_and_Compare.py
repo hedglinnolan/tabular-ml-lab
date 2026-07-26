@@ -28,11 +28,6 @@ def _get_plotly():
     import plotly.express as px
     return go, px
 
-def _get_sklearn_splits():
-    """Lazy import sklearn model_selection."""
-    from sklearn.model_selection import train_test_split, GroupShuffleSplit, GroupKFold
-    return train_test_split, GroupShuffleSplit, GroupKFold
-
 def torch_available() -> bool:
     """Is the optional neural-network dependency installed?"""
     import importlib.util
@@ -362,8 +357,8 @@ else:
 if st.button("Prepare Splits", type="primary"):
     try:
         t0 = time.perf_counter()
-        train_test_split, GroupShuffleSplit, GroupKFold = _get_sklearn_splits()
-        from sklearn.preprocessing import LabelEncoder
+        # sklearn's splitters and LabelEncoder used to be imported here; they
+        # moved into ml/splits.py with the logic that used them.
 
         # Get feature columns - use engineered features if applied
         target_col = data_config.target_col
@@ -389,236 +384,87 @@ if st.button("Prepare Splits", type="primary"):
             )
             st.stop()
 
-        X = df[feature_cols].copy()
-        y = df[target_col].copy()
-        mask = y.notna()
-        orig_labels = df.index[mask]
-        X = X[mask].reset_index(drop=True)
-        y = y[mask].reset_index(drop=True)
-        original_indices = np.where(mask)[0]
-        n_after_notna = len(X)
+        # ── the split ────────────────────────────────────────────────
+        # Extracted to ml/splits.py (L6). What used to be ~230 lines of
+        # branch selection here is now one call, and the same call is what
+        # the headless path and the Guided door use — so a change to the
+        # leakage semantics lands in one place for every consumer.
+        from ml.splits import SplitError, SplitSpec, make_split
 
-        # Test-set lockbox: labels frozen at upload, before feature
-        # engineering/selection could see them. When present (and not in
-        # exploratory mode), it IS the test set; this page only divides the
-        # remaining rows into train/validation. Group- and time-based splits
-        # have their own leakage semantics and bypass the lockbox (disclosed).
-        from utils.test_lockbox import get_lockbox as _get_lockbox, is_exploratory as _lb_exploratory
+        from utils.test_lockbox import (get_lockbox as _get_lockbox,
+                                        is_exploratory as _lb_exploratory)
         _lockbox = None if _lb_exploratory() else _get_lockbox()
-        if _lockbox is not None and use_group_split and entity_id_final:
-            st.warning(
-                "🔓 Group-based splitting draws its own test set (grouping has its own "
-                "leakage semantics) — the upload lockbox does NOT apply to this split."
-            )
-        if _lockbox is not None and split_config.use_time_split and data_config.datetime_col:
-            st.warning(
-                "🔓 Time-based splitting uses chronological ordering — the upload "
-                "lockbox does NOT apply to this split."
-            )
-        _lockbox_applicable = (
-            _lockbox is not None
-            and not (use_group_split and entity_id_final)
-            and not (split_config.use_time_split and data_config.datetime_col)
-        )
-        if _lockbox_applicable:
-            _test_label_set = set(_lockbox["labels"])
-            is_test_row = np.array([lbl in _test_label_set for lbl in orig_labels])
-            if int(is_test_row.sum()) < 2 or int((~is_test_row).sum()) < 4:
-                st.warning(
-                    "🔓 Too few lockbox test rows survive the current filters — "
-                    "falling back to a fresh random split for this run."
-                )
-                _lockbox_applicable = False
+        _lb_labels = list(_lockbox["labels"]) if _lockbox else None
 
-        # Target trimming (regression only, before split)
-        if task_type_final == 'regression' and split_config.target_trim_enabled:
-            # With a lockbox, trim thresholds come from training rows only and
-            # test rows are never dropped — otherwise the trim both leaks
-            # test-target statistics and evaluates on a truncated population.
-            _trim_basis = y[~is_test_row] if _lockbox_applicable else y
-            q_lo = float(_trim_basis.quantile(split_config.target_trim_lower))
-            q_hi = float(_trim_basis.quantile(split_config.target_trim_upper))
-            trim_mask = (y >= q_lo) & (y <= q_hi)
-            if _lockbox_applicable:
-                trim_mask = trim_mask | pd.Series(is_test_row, index=y.index)
-            n_trimmed_rows = int((~trim_mask).sum())
-            X = X[trim_mask].reset_index(drop=True)
-            y = y[trim_mask].reset_index(drop=True)
-            original_indices = original_indices[trim_mask.values]
-            if _lockbox_applicable:
-                is_test_row = is_test_row[trim_mask.values]
+        _spec = SplitSpec(
+            train_size=train_size, val_size=val_size, test_size=test_size,
+            random_state=getattr(split_config, "random_state", 42),
+            stratify=bool(getattr(split_config, "stratify", False)),
+            use_time_split=bool(split_config.use_time_split),
+            datetime_col=data_config.datetime_col,
+            entity_id_col=entity_id_final,
+            use_group_split=bool(use_group_split and entity_id_final),
+            target_trim_enabled=bool(getattr(split_config, "target_trim_enabled", False)),
+            target_trim_lower=float(getattr(split_config, "target_trim_lower", 0.0)),
+            target_trim_upper=float(getattr(split_config, "target_trim_upper", 1.0)),
+        )
+
+        # The engine decides which branch applies; the page only reports it.
+        try:
+            _split = make_split(df, feature_cols, target_col, task_type_final,
+                                _spec, _lb_labels)
+        except SplitError as _e:
+            st.error(str(_e))
+            st.stop()
+
+        # Disclosures the engine produced, surfaced rather than re-derived.
+        for _note in _split.notes:
+            (st.warning if "does not apply" in _note or "falling back" in _note
+             else st.info)(_note)
+
+        X_train, X_val, X_test = _split.X_train, _split.X_val, _split.X_test
+        y_train, y_val, y_test = _split.y_train, _split.y_val, _split.y_test
+        le = _split.label_encoder
+        _lockbox_applicable = _split.lockbox_applied
+        n_after_notna = int(df[target_col].notna().sum())
+        n_trimmed_rows = _split.n_trimmed_rows
+
+        if le is not None:
+            st.session_state["target_label_encoder"] = le
+        else:
+            st.session_state.pop("target_label_encoder", None)
+
+        # CV must inherit the split's leakage semantics or the folds leak what
+        # the split was careful about.
+        st.session_state["cv_strategy"] = _split.cv_strategy
+        st.session_state["cv_groups_train"] = _split.cv_groups_train
+
+        if _split.strategy == "grouped":
             st.info(
-                f"Target trimming: removed **{n_trimmed_rows}** rows "
-                f"(quantiles [{split_config.target_trim_lower:.2f}, {split_config.target_trim_upper:.2f}] "
-                f"→ target range [{q_lo:.3g}, {q_hi:.3g}]). "
-                f"N: {n_after_notna} → {len(X)}"
-            )
+                f"Group-based split: {len(set(df.loc[_split.train_labels, entity_id_final]))} "
+                f"train groups, "
+                f"{len(set(df.loc[_split.val_labels, entity_id_final]))} val groups, "
+                f"{len(set(df.loc[_split.test_labels, entity_id_final]))} test groups")
+        elif _split.strategy == "chronological":
+            _dates = df.loc[_split.train_labels, data_config.datetime_col]
+            st.info(f"Time-based split: Train={_dates.min()} to {_dates.max()}")
+
+        if n_trimmed_rows:
             log_methodology(
                 step='Model Training',
                 action=(
                     f"Target trimmed before split: {n_trimmed_rows} rows removed "
-                    f"(quantiles [{split_config.target_trim_lower:.2f}, {split_config.target_trim_upper:.2f}])"
+                    f"(quantiles [{_spec.target_trim_lower:.2f}, {_spec.target_trim_upper:.2f}])"
                 ),
                 details={
                     'target_trim_enabled': True,
-                    'target_trim_lower': split_config.target_trim_lower,
-                    'target_trim_upper': split_config.target_trim_upper,
-                    'trim_threshold_lower': q_lo,
-                    'trim_threshold_upper': q_hi,
+                    'target_trim_lower': _spec.target_trim_lower,
+                    'target_trim_upper': _spec.target_trim_upper,
                     'n_before_trim': n_after_notna,
-                    'n_after_trim': len(X),
+                    'n_after_trim': len(_split.X_train) + len(_split.X_val) + len(_split.X_test),
                     'rows_removed': n_trimmed_rows,
                 },
             )
-
-        indices = np.arange(len(X))
-
-        if len(X) < 2:
-            st.error("Not enough samples after removing missing target values. Need at least 2 rows for train/test split.")
-            st.stop()
-
-        target_is_categorical = y.dtype.name in ("object", "category", "bool") or (
-            hasattr(y.dtype, "kind") and y.dtype.kind in ("O", "b")
-        )
-        
-        # Single-class validation for classification
-        if task_type_final == 'classification':
-            n_classes = y.nunique()
-            if n_classes < 2:
-                st.error(f"""
-                **Single-class target detected:** Your target has only {n_classes} unique value(s) after removing missing values.
-                
-                Classification requires at least 2 classes. Please check:
-                - That your target column has multiple distinct values
-                - That filtering (e.g., plausibility) did not remove all samples of one class
-                """)
-                st.stop()
-        
-        le = None
-        if target_is_categorical:
-            le = LabelEncoder()
-            y = pd.Series(le.fit_transform(y.astype(str)), index=y.index)
-            st.session_state["target_label_encoder"] = le
-        else:
-            st.session_state.pop("target_label_encoder", None)
-        
-        # Record which CV scheme the fold logic must use to match this split's
-        # leakage semantics (see ml.eval.perform_cross_validation). Cross-
-        # validation runs on TRAINING ROWS ONLY, so group labels are captured
-        # for the train rows alone.
-        st.session_state['cv_strategy'] = 'standard'
-        st.session_state['cv_groups_train'] = None
-
-        # Split data (group-based, time-based, or random)
-        if use_group_split and entity_id_final:
-            groups = to_numpy_1d(df.iloc[original_indices][entity_id_final])
-            y_arr = to_numpy_1d(y)
-
-            gss = GroupShuffleSplit(n_splits=1, test_size=(val_size + test_size), random_state=split_config.random_state)
-            train_idx, temp_idx = next(gss.split(indices, y_arr, groups))
-            # Same-entity rows must stay together in CV too, or folds leak.
-            st.session_state['cv_strategy'] = 'group'
-            st.session_state['cv_groups_train'] = groups[train_idx]
-
-            groups_temp = groups[temp_idx]
-            rel_val = val_size / (val_size + test_size)
-            gss2 = GroupShuffleSplit(n_splits=1, test_size=(1 - rel_val), random_state=split_config.random_state)
-            val_idx, test_idx = next(gss2.split(indices[temp_idx], y_arr[temp_idx], groups_temp))
-
-            X_train = X.iloc[train_idx]
-            X_val = X.iloc[temp_idx[val_idx]]
-            X_test = X.iloc[temp_idx[test_idx]]
-            y_train = y_arr[train_idx]
-            y_val = y_arr[temp_idx[val_idx]]
-            y_test = y_arr[temp_idx[test_idx]]
-
-            n_train_groups = len(np.unique(groups[train_idx]))
-            n_val_groups = len(np.unique(groups[temp_idx[val_idx]]))
-            n_test_groups = len(np.unique(groups[temp_idx[test_idx]]))
-            st.info(f"Group-based split: {n_train_groups} train groups, {n_val_groups} val groups, {n_test_groups} test groups")
-        elif split_config.use_time_split and data_config.datetime_col:
-            # Chronological split → CV must respect time order too (no shuffle).
-            st.session_state['cv_strategy'] = 'time'
-            df_work = df.iloc[original_indices].copy()
-            df_work["_temp_index"] = np.arange(len(df_work))
-            df_work = df_work.sort_values(data_config.datetime_col)
-
-            n_total = len(df_work)
-            n_train = int(n_total * train_size)
-            n_val = int(n_total * val_size)
-
-            train_pos = df_work.iloc[:n_train]["_temp_index"].values
-            val_pos = df_work.iloc[n_train : n_train + n_val]["_temp_index"].values
-            test_pos = df_work.iloc[n_train + n_val :]["_temp_index"].values
-
-            X_train = X.iloc[train_pos]
-            X_val = X.iloc[val_pos]
-            X_test = X.iloc[test_pos]
-            y_train = to_numpy_1d(y.iloc[train_pos])
-            y_val = to_numpy_1d(y.iloc[val_pos])
-            y_test = to_numpy_1d(y.iloc[test_pos])
-            train_indices = original_indices[train_pos]
-            val_indices = original_indices[val_pos]
-            test_indices = original_indices[test_pos]
-
-            st.info(f"Time-based split: Train={df_work.iloc[0][data_config.datetime_col]} to {df_work.iloc[n_train - 1][data_config.datetime_col]}")
-        elif _lockbox_applicable:
-            idx_test = indices[is_test_row]
-            _rest = indices[~is_test_row]
-            _den = train_size + val_size
-            _rel_val = (val_size / _den) if _den > 0 else 0.18
-            _strat = None
-            if split_config.stratify and task_type_final == 'classification':
-                _strat_candidate = y.iloc[_rest]
-                if _strat_candidate.value_counts().min() >= 2:
-                    _strat = _strat_candidate
-            try:
-                idx_train, idx_val = train_test_split(
-                    _rest, test_size=_rel_val,
-                    random_state=split_config.random_state, stratify=_strat
-                )
-            except ValueError:
-                idx_train, idx_val = train_test_split(
-                    _rest, test_size=_rel_val, random_state=split_config.random_state
-                )
-            X_train = X.iloc[idx_train]
-            X_val = X.iloc[idx_val]
-            X_test = X.iloc[idx_test]
-            y_train = y.iloc[idx_train]
-            y_val = y.iloc[idx_val]
-            y_test = y.iloc[idx_test]
-            st.info(
-                f"🔒 Test set from the upload lockbox: n={len(idx_test)} "
-                f"({_lockbox['fraction']:.0%} drawn at upload with seed {_lockbox['seed']}, "
-                f"never seen by feature engineering or selection). "
-                f"Remaining rows were divided into train/validation."
-            )
-        elif split_config.stratify and task_type_final == 'classification':
-            idx_train, idx_temp, y_train, y_temp = train_test_split(
-                indices, y, test_size=(val_size + test_size),
-                random_state=split_config.random_state, stratify=y
-            )
-            rel_val = val_size / (val_size + test_size)
-            idx_val, idx_test, y_val, y_test = train_test_split(
-                idx_temp, y_temp, test_size=(1 - rel_val),
-                random_state=split_config.random_state, stratify=y_temp
-            )
-            X_train = X.iloc[idx_train]
-            X_val = X.iloc[idx_val]
-            X_test = X.iloc[idx_test]
-        else:
-            idx_train, idx_temp, y_train, y_temp = train_test_split(
-                indices, y, test_size=(val_size + test_size),
-                random_state=split_config.random_state
-            )
-            rel_val = val_size / (val_size + test_size)
-            idx_val, idx_test, y_val, y_test = train_test_split(
-                idx_temp, y_temp, test_size=(1 - rel_val),
-                random_state=split_config.random_state
-            )
-            X_train = X.iloc[idx_train]
-            X_val = X.iloc[idx_val]
-            X_test = X.iloc[idx_test]
         
         # Use the same feature list we used above for X
         feature_names = list(feature_cols)
@@ -691,32 +537,45 @@ if st.button("Prepare Splits", type="primary"):
         elapsed = time.perf_counter() - t0
         st.session_state.setdefault("last_timings", {})["Prepare Splits"] = round(elapsed, 2)
 
-        # Store indices for explainability (original df positions)
-        if use_group_split and entity_id_final:
-            st.session_state.train_indices = original_indices[train_idx].tolist()
-            st.session_state.val_indices = original_indices[temp_idx[val_idx]].tolist()
-            st.session_state.test_indices = original_indices[temp_idx[test_idx]].tolist()
-        elif split_config.use_time_split and data_config.datetime_col:
-            st.session_state.train_indices = train_indices.tolist()
-            st.session_state.val_indices = val_indices.tolist()
-            st.session_state.test_indices = test_indices.tolist()
-        else:
-            st.session_state.train_indices = original_indices[idx_train].tolist()
-            st.session_state.val_indices = original_indices[idx_val].tolist()
-            st.session_state.test_indices = original_indices[idx_test].tolist()
+        # Store indices for explainability (original df positions).
+        #
+        # One expression now, where there used to be a branch per split
+        # strategy — the branches only existed because each one carried its own
+        # index bookkeeping. The split reports LABELS, which are the identity
+        # (T0-ID-001); the positions page 07 still reads are derived from them
+        # here, at the one place that knows which frame they index into.
+        #
+        # `get_indexer` is what makes this exact: it resolves each label's
+        # position in `df`, which is what `original_indices[idx]` computed by
+        # hand before, including when a missing target dropped rows.
+        st.session_state.train_indices = df.index.get_indexer(_split.train_labels).tolist()
+        st.session_state.val_indices = df.index.get_indexer(_split.val_labels).tolist()
+        st.session_state.test_indices = df.index.get_indexer(_split.test_labels).tolist()
+        # The labels themselves, so a consumer that wants identity rather than
+        # position does not have to re-derive it.
+        st.session_state.train_row_labels = list(_split.train_labels)
+        st.session_state.val_row_labels = list(_split.val_labels)
+        st.session_state.test_row_labels = list(_split.test_labels)
         
         # Record the split in workflow provenance — without this the generated
         # Methods section contains no train/val/test statement and no seed.
         try:
             from utils.workflow_provenance import get_provenance
-            if use_group_split and entity_id_final:
-                _split_strategy = "grouped"
-            elif split_config.use_time_split and data_config.datetime_col:
-                _split_strategy = "time-based"
-            elif split_config.stratify and task_type_final == 'classification':
-                _split_strategy = "stratified random"
-            else:
-                _split_strategy = "random"
+            # Read the strategy the split ACTUALLY used, rather than
+            # re-deriving it from the same inputs. The two can disagree: when
+            # too few sealed rows survive the current filters the engine falls
+            # back to a fresh random split, and a re-derivation would still
+            # record "lockbox" in the Methods section. Provenance may only
+            # assert what happened.
+            _split_strategy = {
+                "grouped": "grouped",
+                "chronological": "time-based",
+                "stratified": "stratified random",
+                "random": "random",
+                "lockbox": ("stratified random"
+                            if (split_config.stratify and task_type_final == 'classification')
+                            else "random"),
+            }.get(_split.strategy, _split.strategy)
             if _lockbox_applicable:
                 _split_strategy += " (test set locked at upload, before feature engineering/selection)"
             get_provenance().record_split(
