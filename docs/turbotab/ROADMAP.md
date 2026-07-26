@@ -73,19 +73,49 @@ Three decisions only you can make. Each is one question, answerable in an aftern
 unblocks a run of autonomous work. **Decision C is already answered** — see below; it reshapes
 the back half of the roadmap.
 
-### ◆ Decision A — row identity
+### ◆ Decision A — row identity · **REFRAMED — the original question was insufficient**
 
-**Question:** are rows identified by index *labels* or by *positions*?
+I first posed this as *labels or positions?*, i.e. two components disagreeing on a convention.
+The preview-engine loop found something the framing missed: **four of the nine repair kinds
+renumber the rows.** `promote_header`, `drop_empty_rows` and `drop_rows` all end in
+`.reset_index(drop=True)`; `melt_repeated` rebuilds the index outright.
 
-Today both conventions exist (`TRANSITION_PLAN.md` §02.2) and they agree only while the index is
-a pristine `RangeIndex`. Everything in `AnalysisProject` depends on the answer.
+That is not two components disagreeing. It is **one repair invalidating the convention
+mid-analysis**, and no agreement between components prevents it. Picking labels does not help if
+a repair renumbers the labels: a sealed lockbox survives the repair and afterwards names
+*different rows*. PR #145 removed one such `reset_index` in `apply_plausibility_filter`; these
+four are the rest of the class.
 
-**Recommendation: labels.** They survive filtering, cohort selection and row-dropping repairs;
-positions do not. The cost is that every consumer must be audited for `.iloc` on a stored index.
+**The real question:** *what is a row's identity across a repair?*
 
-**Unblocks:** L4, L5, L6.
-**Evidence to gather first (loopable):** an agent can enumerate every site that stores or consumes
-a row index and report which convention each assumes. Ask for that before deciding.
+Three answers, in increasing badness:
+
+- **(a) Repairs preserve identity.** No operation after identity is established may renumber.
+  Drop-style repairs keep the surviving rows' original labels; that is a one-line change per site.
+- **(b) Renumbering repairs record an explicit remapping**, and every row-keyed artifact is
+  rewritten through it. Correct but invasive — every consumer must remember to apply remaps, and
+  forgetting is silent.
+- **(c) Renumbering repairs invalidate row-keyed artifacts** and force a re-seal. This breaks the
+  *sealed once* invariant, which is load-bearing for the manuscript's honesty claim.
+
+**Recommendation: (a), with an explicit identity barrier.**
+
+> There is a point in the pipeline where rows acquire identities — the moment the lockbox is
+> sealed. Operations that *cannot* preserve identity (`promote_header`, `melt_repeated`: they
+> change what a row *is*) are **pre-barrier structural repairs** and may only run before it.
+> Operations that merely remove rows (`drop_empty_rows`, `drop_rows`) preserve survivor labels
+> and may run on either side.
+
+This turns a convention into a phase rule, which is testable rather than remembered:
+
+- a test asserting no post-barrier operation changes the index of any surviving row;
+- a test asserting the pre-barrier repairs are unreachable once the lockbox is sealed;
+- the preview engine already reports renumbering **by content rather than by fix kind**, which is
+  the right detector — a footer drop on a clean `RangeIndex` is genuinely safe, a mid-frame drop
+  is not.
+
+**Unblocks:** L4, L5, L6 — and it is now the single highest-value decision in the project,
+because `AnalysisProject`, the lockbox and cohort runs all key by row.
 
 ### ◆ Decision B — Router gating policy
 
@@ -153,7 +183,10 @@ Six policies enforce it.
    page for any reason, that page's logic moves to the core first. Touching it is the trigger.
 5. **New capability lands core-first, TurboTab-second, Streamlit-only-if-cheap.** The core is
    where the feature lives; the front doors decide whether to expose it.
-6. **Every capability has a register row.** `core` / `classic-only` / `both`, with a reason.
+6. **Every capability has a register row.** `core` / `both` / `classic-only` / `guided-only`,
+   with a reason. `guided-only` exists because capability flows both ways: preview-before-apply
+   and undo are Guided-first, and Classic today applies repairs from a single button with no diff
+   and no undo — the blind consent the vision argues against. **Convergence is bidirectional.**
    A capability with no row fails the register check — see [`FEATURE_PARITY.md`](FEATURE_PARITY.md).
    Without this, lazy migration plus per-feature exposure decisions lose features silently.
 7. **Parity runs in CI forever.** Same CSV, same scripted choices, both front doors, diff the

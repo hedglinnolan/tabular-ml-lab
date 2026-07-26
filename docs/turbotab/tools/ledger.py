@@ -56,11 +56,13 @@ SEV_ORDER = {"critical": 0, "landmine": 1, "high": 2, "invariant": 3, "medium": 
 
 
 def load() -> list[dict]:
-    return json.loads(DATA.read_text())
+    return json.loads(DATA.read_text(encoding="utf-8"))
 
 
 def save(rows: list[dict]) -> None:
-    DATA.write_text(json.dumps(rows, indent=1))
+    # encoding is explicit: the default is locale-dependent (cp1252 on Windows),
+    # and write_text truncates before it raises, so a failure destroys the file.
+    DATA.write_text(json.dumps(rows, indent=1, ensure_ascii=False), encoding="utf-8")
 
 
 def norm(s: str | None) -> str:
@@ -142,7 +144,21 @@ def cmd_check(rows, _args) -> int:
     if bad:
         print(f"\n{len(bad)} violation(s)", file=sys.stderr)
         return 1
-    print(f"ok — {len(rows)} findings, schema clean")
+    # The JSON can be perfect while the generated markdown is empty or stale.
+    # A guard that only reads the source cannot see a destroyed artifact.
+    if not OUT.exists():
+        print("FAIL FINDINGS_LEDGER.md missing — run regen", file=sys.stderr)
+        return 1
+    md = OUT.read_text(encoding="utf-8")
+    if len(md) < 1024:
+        print(f"FAIL FINDINGS_LEDGER.md is {len(md)} bytes — regen truncated it", file=sys.stderr)
+        return 1
+    missing = [r["id"] for r in rows if f"`{r['id']}`" not in md]
+    if missing:
+        print(f"FAIL {len(missing)} findings absent from the markdown "
+              f"(e.g. {', '.join(missing[:5])}) — run regen", file=sys.stderr)
+        return 1
+    print(f"ok — {len(rows)} findings, schema clean, markdown current ({len(md):,} bytes)")
     return 0
 
 
@@ -196,7 +212,12 @@ def cmd_regen(rows, _args) -> int:
                     f"| `{norm(r.get('ev'))[:110]}` | {norm(tail)[:180]} |"
                 )
 
-    OUT.write_text("\n".join(md) + "\n")
+    body = "\n".join(md) + "\n"
+    tmp = OUT.with_suffix(".md.tmp")
+    tmp.write_text(body, encoding="utf-8")   # write aside, then swap: never truncate the real file
+    tmp.replace(OUT)
+    if OUT.stat().st_size < 1024:
+        raise SystemExit("regen produced a suspiciously small ledger — aborting")
     print(f"wrote {OUT.relative_to(ROOT.parent.parent)} — {done}/{len(rows)} closed")
     return 0
 
