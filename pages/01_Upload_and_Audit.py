@@ -1105,11 +1105,13 @@ if task_mode == "prediction":
         _entity_col = getattr(_cohort, 'entity_id_final', None) if _cohort else None
         _lb = ensure_lockbox(df, target_col, task_type_final, group_col=_entity_col)
         if _lb is not None and _lb.get('group_col'):
+            _noun = _lb.get('group_noun') or 'subjects'
+            _one = _noun.rstrip('s') if _noun.endswith('s') else _noun
             st.info(
-                f"🔒 Rows repeat per subject (`{_lb['group_col']}`), so the held-out set was "
-                f"drawn by **subject**, not by row — {_lb['n_test']:,} rows from "
-                f"{_lb.get('n_test_groups', '?')} subjects. Splitting by row would put the "
-                f"same person in both training and testing."
+                f"🔒 Rows repeat per {_one} (`{_lb['group_col']}`), so the held-out set was "
+                f"drawn by **{_one}**, not by row — {_lb['n_test']:,} rows from "
+                f"{_lb.get('n_test_groups', '?')} {_noun}. Splitting by row would put the "
+                f"same {_one} in both training and testing."
             )
         if _lb is not None and get_lockbox() is not None:
             _prev_ledger_note = st.session_state.get('_lockbox_ledger_noted')

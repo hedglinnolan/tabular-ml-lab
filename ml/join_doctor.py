@@ -290,9 +290,6 @@ class KeyCandidate:
           genuinely list the same people in the same order.
         - A column that repeats on both sides, which is a measurement.
         """
-        if self.sampled:
-            # An estimate must never reach the tier the UI pre-selects.
-            return "medium"
         if self.index_like:
             # Offered, never asserted: the app still cannot PROVE that two
             # contiguous runs describe the same people, so "medium" (visible,
@@ -303,10 +300,19 @@ class KeyCandidate:
         if self.repeats_on_both_sides:
             return "low"
         if self.name_similarity >= 0.85 and min(self.coverage_left, self.coverage_right) >= 0.5:
-            return "high"
-        if max(self.coverage_left, self.coverage_right) >= 0.8:
-            return "high" if self.name_similarity >= 0.6 else "medium"
-        return "medium" if max(self.coverage_left, self.coverage_right) >= 0.5 else "low"
+            tier = "high"
+        elif max(self.coverage_left, self.coverage_right) >= 0.8:
+            tier = "high" if self.name_similarity >= 0.6 else "medium"
+        else:
+            tier = "medium" if max(self.coverage_left, self.coverage_right) >= 0.5 else "low"
+        if self.sampled and tier == "high":
+            # An estimate must never reach the tier the UI pre-selects. This is
+            # a CEILING and has to be applied last: checked first it became a
+            # floor, promoting every junk pair on a file above _MAX_DISTINCT
+            # distinct values straight from 'low' to 'medium', where combine_ui
+            # offers it and pre-selects the top-scoring one.
+            return "medium"
+        return tier
 
     @property
     def is_clean(self) -> bool:
@@ -403,12 +409,29 @@ def _key_tokens(df: pd.DataFrame, col: str) -> Optional[pd.Series]:
             # the key space and the measured overlap is an unbiased estimate of
             # the real one. Callers are told it is an estimate via
             # _tokens_were_sampled below.
-            keep = _MAX_DISTINCT / len(uniques)
-            digest = pd.util.hash_array(uniques.to_numpy())
-            uniques = uniques[digest < np.uint64(keep * float(np.iinfo(np.uint64).max))]
+            # Hash the CANONICAL token, not the raw value. pd.util.hash_array
+            # buckets 1 (int64), 1.0 (float64) and '1' (object) differently, so
+            # hashing raw values gave two files holding the identical ID set
+            # disjoint regions of the key space whenever their dtypes differed
+            # — the very "two different random subsets" failure this branch
+            # exists to avoid, and cross-dtype matching is a supported case
+            # here (dtype_mismatch has its own headline).
+            tokens = normalize_key(uniques).dropna()
+            keep = _keep_fraction(len(uniques))
+            digest = pd.util.hash_array(tokens.to_numpy())
+            return tokens[digest < _hash_ceiling(keep)]
         return normalize_key(uniques).dropna()
     except Exception:
         return None
+
+
+def _keep_fraction(n_distinct: int) -> float:
+    """Share of the key space a column of this size retains. 1.0 when unsampled."""
+    return 1.0 if n_distinct <= _MAX_DISTINCT else _MAX_DISTINCT / float(n_distinct)
+
+
+def _hash_ceiling(keep: float) -> np.uint64:
+    return np.uint64(keep * float(np.iinfo(np.uint64).max))
 
 
 def _full_distinct(df: pd.DataFrame, col: Any, fallback: int) -> int:
@@ -518,10 +541,22 @@ def find_key_candidates(left: pd.DataFrame, right: pd.DataFrame,
             matched = lset & rset
             if not matched:
                 continue
-            cov_l = len(matched) / len(lset)
-            cov_r = len(matched) / len(rset)
             sampled_pair = (_tokens_were_sampled(left, lc)
                             or _tokens_were_sampled(right, rc))
+            # Both sides keep the tokens whose hash falls below their own
+            # threshold, so a shared ID survives into the measured intersection
+            # only if it clears the STRICTER of the two. Rescaling by the left
+            # column's ratio alone understated the true key by the size ratio
+            # of the two files — up to 20x — and coverage was never rescaled at
+            # all, so the min_coverage gate below dropped the real key before it
+            # could be scored whenever the files differed in size.
+            _n_l = _full_distinct(left, lc, len(lset))
+            _n_r = _full_distinct(right, rc, len(rset))
+            _keep = min(_keep_fraction(_n_l), _keep_fraction(_n_r))
+            n_matched_est = (len(matched) if not sampled_pair
+                             else int(round(len(matched) / max(_keep, 1e-12))))
+            cov_l = min(1.0, n_matched_est / max(_n_l, 1))
+            cov_r = min(1.0, n_matched_est / max(_n_r, 1))
             if max(cov_l, cov_r) < min_coverage:
                 continue
             lraw, rraw = left[lc], right[rc]
@@ -543,26 +578,23 @@ def find_key_candidates(left: pd.DataFrame, right: pd.DataFrame,
             candidate = KeyCandidate(
                 left_col=str(lc), right_col=str(rc),
                 coverage_left=cov_l, coverage_right=cov_r,
-                # Scale back to the real key space. Reporting the sampled count
-                # would tell a researcher their two 2,000-person files share
-                # 521 IDs.
-                n_matched=(len(matched) if not sampled_pair else
-                           int(round(len(matched)
-                                     * max(_full_distinct(left, lc, len(lset)), 1)
-                                     / max(len(lset), 1)))),
+                # Already scaled back to the real key space above. Reporting the
+                # sampled count would tell a researcher their two 2,000-person
+                # files share 521 IDs.
+                n_matched=n_matched_est,
                 # Uniqueness must come from the FULL column, not the token
                 # set. Above _MAX_DISTINCT the tokens are a value-determined
                 # sample, so len(lset)/len(left) reads as 0.25 on a perfectly
                 # unique key and the "at least one side identifies subjects"
                 # test rejected it — the true key stopped being proposed
                 # exactly when the file was large enough to matter.
-                left_unique=_full_distinct(left, lc, len(lset)),
-                right_unique=_full_distinct(right, rc, len(rset)),
+                left_unique=_n_l,
+                right_unique=_n_r,
                 left_rows=max(len(left), len(lset)), right_rows=max(len(right), len(rset)),
                 dtype_mismatch=dtype_mismatch,
                 needs_normalization=needs_norm,
-                left_has_duplicates=bool(_full_distinct(left, lc, len(lset)) < len(left)),
-                right_has_duplicates=bool(_full_distinct(right, rc, len(rset)) < len(right)),
+                left_has_duplicates=bool(_n_l < len(left)),
+                right_has_duplicates=bool(_n_r < len(right)),
                 name_similarity=_name_similarity(lc, rc),
                 index_like=_looks_like_row_index(lraw) and _looks_like_row_index(rraw),
                 sampled=sampled_pair,

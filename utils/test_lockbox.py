@@ -71,34 +71,98 @@ _SUBJECT_ID_TOKENS = frozenset({
 })
 
 
+# An ID column names one of three very different things, and the lockbox must
+# not confuse them. A PERSON is what the quarantine is about. A CLUSTER (site,
+# plate, batch) CONTAINS people: grouping by one keeps whole people on one side,
+# but only if the people really are nested inside it — assay plates are usually
+# crossed with participants, so grouping by plate splits a person in half. A
+# WITHIN-SUBJECT unit (visit, replicate, aliquot) is finer than a person, so
+# grouping by one is exactly the leak we are trying to prevent.
+_PERSON_TOKENS = frozenset({
+    "subject", "subjid", "usubjid", "subjectid", "participant", "participantid",
+    "patient", "patientid", "person", "personid", "respondent", "respondentid",
+    "mrn", "seqn", "pid", "sid", "individual", "enrollmentid", "enrolment",
+})
+_CLUSTER_TOKENS = frozenset({
+    "site", "sites", "clinic", "center", "centre", "hospital", "institution",
+    "lab", "laboratory", "plate", "batch", "chip", "array", "well", "flowcell",
+    "lane", "sequencer", "instrument", "machine", "cohort", "arm", "block",
+    "family", "household", "cluster", "school", "region", "ward", "practice",
+    "group", "run", "study", "wave", "center_id", "team",
+})
+_WITHIN_SUBJECT_TOKENS = frozenset({
+    "visit", "timepoint", "occasion", "cycle", "session", "followup",
+    "round", "measurement", "observation", "obs", "event", "encounter",
+    "replicate", "aliquot", "draw", "reading", "trial",
+})
+
+
+def _tokenize(col: Any) -> List[str]:
+    """Lowercase tokens, splitting on separators AND camelCase."""
+    import re as _re
+    spaced = _re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", str(col))
+    return [t for t in _re.split(r"[^A-Za-z0-9]+", spaced.lower()) if t]
+
+
 def _name_looks_like_a_subject_id(col: Any) -> bool:
     """Whole-token match, so `uric_acid` and `RIDAGEYR` are not subject IDs."""
-    import re as _re
-    name = str(col)
-    # Split on separators AND camelCase, so SubjectID and subject_id both work.
-    spaced = _re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name)
-    tokens = [t for t in _re.split(r"[^A-Za-z0-9]+", spaced.lower()) if t]
+    tokens = _tokenize(col)
     if any(t in _SUBJECT_ID_TOKENS for t in tokens):
         return True
     # A single run-together token is an ID only if the whole thing is one.
     return "".join(tokens) in _SUBJECT_ID_TOKENS
 
 
-def detect_repeated_subjects(df: pd.DataFrame,
-                             candidate_cols: Optional[list] = None
-                             ) -> Optional[Tuple[str, int, int]]:
-    """Find a column that looks like a subject ID appearing on several rows.
+def _id_kind(col: Any) -> Optional[str]:
+    """'subject', 'cluster', 'record' — or None when the name is not an ID."""
+    if not _name_looks_like_a_subject_id(col):
+        return None
+    tokens = set(_tokenize(col))
+    if tokens & _WITHIN_SUBJECT_TOKENS:
+        return None                       # finer than a person: never group by it
+    if tokens & _PERSON_TOKENS:
+        return "subject"
+    if tokens & _CLUSTER_TOKENS:
+        return "cluster"
+    return "record"
 
-    Returns (column, n_subjects, n_rows) or None. Used to catch the case that
-    silently defeats the quarantine: a merge with repeated measures puts the
-    SAME subject in both the training rows and the sealed test rows, so the
-    "held-out" set was already trained on.
+
+def _nests_within(df: pd.DataFrame, fine: str, coarse: str) -> bool:
+    """True when every value of `fine` sits inside exactly one value of `coarse`."""
+    try:
+        pair = df[[fine, coarse]].dropna()
+        if pair.empty:
+            return False
+        return int(pair.groupby(fine, observed=True)[coarse].nunique().max()) == 1
+    except Exception:
+        return False
+
+
+_NOUNS = {"subject": "subjects", "record": "records"}
+
+
+def group_noun(kind: str, col: Any = "") -> str:
+    """What to call the units on screen. A site is not a subject."""
+    return _NOUNS.get(kind) or f"`{col}` groups"
+
+
+def rank_grouping_candidates(df: pd.DataFrame,
+                             candidate_cols: Optional[list] = None
+                             ) -> List[Dict[str, Any]]:
+    """Columns the held-out split could be grouped by, best first.
+
+    Ranked by what the column IS, not by how many values it has. Ranking by
+    count in either direction is wrong: most-distinct lets a per-sample barcode
+    outrank the participant, and fewest-distinct lets `plate_id` or `site_id`
+    outrank it — both of which the token list admits only because `id` is a
+    token in its own right. A coarser column is preferred ONLY where the data
+    show the finer one really is nested inside it.
     """
     if df is None or df.empty:
-        return None
+        return []
     n = len(df)
     cols = candidate_cols if candidate_cols is not None else list(df.columns)
-    best = None
+    found: List[Dict[str, Any]] = []
     for col in cols:
         if col not in df.columns:
             continue
@@ -115,17 +179,49 @@ def detect_repeated_subjects(df: pd.DataFrame,
         rows_per = n / k
         if rows_per < 1.5 or rows_per > 50:
             continue
-        if not _name_looks_like_a_subject_id(col):
+        kind = _id_kind(col)
+        if kind is None:
             continue
-        # Rank by FEWEST distinct values, i.e. the COARSEST grouping. Ranking by
-        # most distinct is backwards for an ID heuristic: a near-continuous lab
-        # value outranks the actual subject ID sitting next to it, and the
-        # split is then grouped by a covariate. Coarser is also the safe
-        # direction — grouping by a unit that contains the subject can only
-        # keep more of a person on one side, never split one across both.
-        if best is None or k < best[1]:
-            best = (str(col), k, n)
-    return best
+        found.append({"column": str(col), "n_groups": k, "n_rows": n, "kind": kind})
+    if not found:
+        return []
+
+    # A person beats a bare record id; both beat a cluster. Only if nothing
+    # names a person do we consider grouping by the thing people sit inside.
+    for kind in ("subject", "record", "cluster"):
+        tier = [c for c in found if c["kind"] == kind]
+        if tier:
+            break
+
+    # Within the tier, climb to the coarsest column that genuinely CONTAINS the
+    # finest one (subject_id over subject_visit_id), and stop there.
+    tier.sort(key=lambda c: -c["n_groups"])
+    best = tier[0]
+    for other in tier[1:]:
+        if (other["n_groups"] < best["n_groups"]
+                and _nests_within(df, best["column"], other["column"])):
+            best = other
+    ranked = [best] + [c for c in tier if c["column"] != best["column"]]
+    for c in ranked:
+        c["noun"] = group_noun(c["kind"], c["column"])
+    return ranked
+
+
+def detect_repeated_subjects(df: pd.DataFrame,
+                             candidate_cols: Optional[list] = None
+                             ) -> Optional[Tuple[str, int, int]]:
+    """Find a column that looks like a subject ID appearing on several rows.
+
+    Returns (column, n_subjects, n_rows) or None. Used to catch the case that
+    silently defeats the quarantine: a merge with repeated measures puts the
+    SAME subject in both the training rows and the sealed test rows, so the
+    "held-out" set was already trained on.
+    """
+    ranked = rank_grouping_candidates(df, candidate_cols)
+    if not ranked:
+        return None
+    top = ranked[0]
+    return (top["column"], top["n_groups"], top["n_rows"])
 
 
 def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
@@ -156,10 +252,14 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
     # merge with repeated measures otherwise splits the SAME subject across
     # train and test, so the "held-out" rows were already trained on and the
     # quarantine is silently worthless.
+    group_kind = "subject"
     if not group_col:
-        detected = detect_repeated_subjects(df)
-        if detected:
-            group_col = detected[0]
+        ranked = rank_grouping_candidates(df)
+        if ranked:
+            group_col = ranked[0]["column"]
+            group_kind = ranked[0]["kind"]
+    else:
+        group_kind = _id_kind(group_col) or "subject"
     if group_col and group_col not in df.columns:
         group_col = None
 
@@ -218,6 +318,7 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
 
     grouped = False
     test_labels = None
+    st.session_state.pop("_lockbox_grouping_abandoned", None)
     if group_col:
         groups = df.loc[eligible, group_col]
         n_groups = int(groups.nunique(dropna=False))
@@ -231,7 +332,17 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
             except Exception:
                 test_labels = None
         if test_labels is None:
-            group_col = None            # too few groups to split by subject
+            # Too few groups to hold any out. Falling back to a row-wise split
+            # reinstates the exact leak the detector exists to catch — the same
+            # person on both sides — so the page has to say so. There is no
+            # finer column to fall back to: anything finer than the unit that
+            # repeats is inside it, and splitting by that IS the leak.
+            st.session_state["_lockbox_grouping_abandoned"] = {
+                "column": group_col, "n_groups": n_groups,
+                "noun": group_noun(group_kind, group_col),
+                "minimum": _MIN_GROUPS_FOR_GROUPED_LOCKBOX,
+            }
+            group_col = None
 
     # Stratification is decided AFTER the grouped attempt resolves. Deciding it
     # earlier meant that a group column with too few subjects to split by fell
@@ -274,6 +385,11 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
         "group_col": group_col if grouped else None,
         "n_test_groups": (int(df.loc[test_labels, group_col].nunique())
                           if grouped else None),
+        # What the groups ARE. Calling 10 recruitment sites "10 subjects" tells
+        # the researcher the holdout is a random sample of people when it is a
+        # sample of whole sites — a different, harder test than they asked for.
+        "group_kind": group_kind if grouped else None,
+        "group_noun": group_noun(group_kind, group_col) if grouped else None,
     }
 
     if existing is not None and existing.get("labels") != lockbox["labels"]:
@@ -347,13 +463,34 @@ def render_lockbox_status(context: str = "") -> None:
     elif len(_got) > 1:
         st.caption(f"⚖️ Held-out set balanced on {', '.join(f'`{c}`' for c in _got)}.")
 
+    _abandoned = st.session_state.get("_lockbox_grouping_abandoned")
+    if _abandoned:
+        st.warning(
+            f"⚠️ Rows repeat per `{_abandoned['column']}`, but there are only "
+            f"{_abandoned['n_groups']} {_abandoned['noun']} — too few to hold any "
+            f"out (at least {_abandoned['minimum']} are needed). The held-out set "
+            f"was drawn by row instead, so the same "
+            f"{_abandoned['noun'].rstrip('s')} can appear on both sides and "
+            f"held-out performance will read better than it is. Treat these "
+            f"numbers as exploratory."
+        )
+
     if lb.get("group_col"):
+        _noun = lb.get("group_noun") or "subjects"
+        _one = _noun.rstrip('s') if _noun.endswith('s') else _noun
         st.caption(
             f"🔒 Test set: {lb['fraction']:.0%} (n={lb['n_test']} rows from "
-            f"{lb.get('n_test_groups', '?')} subjects, split by '{lb['group_col']}' so no "
-            f"subject appears on both sides) held out since upload — opened once at "
+            f"{lb.get('n_test_groups', '?')} {_noun}, split by '{lb['group_col']}' so no "
+            f"{_one} appears on both sides) held out since upload — opened once at "
             f"Train & Compare.{extra}"
         )
+        if lb.get("group_kind") == "cluster":
+            st.caption(
+                f"⚠️ `{lb['group_col']}` groups people, it does not identify them. "
+                f"Whole groups were held out, so this is a test of generalizing to "
+                f"a NEW {_one} — a harder question than the random holdout you "
+                f"asked for. Name a participant column if that is not what you meant."
+            )
     else:
         st.caption(
             f"🔒 Test set: {lb['fraction']:.0%} (n={lb['n_test']}"
