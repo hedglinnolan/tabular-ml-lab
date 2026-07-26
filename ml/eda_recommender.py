@@ -3,6 +3,7 @@ EDA Recommendation System for Medical/Nutritional Tabular Data.
 Generates contextual recommendations based on dataset signals.
 """
 import pandas as pd
+from pandas.api import types as _pdt
 import numpy as np
 from typing import Dict, List, Optional, Literal
 from dataclasses import dataclass, field
@@ -95,7 +96,8 @@ def compute_dataset_signals(
         dtype = str(df[col].dtype)
         if dtype.startswith('int') or dtype.startswith('float'):
             signals.numeric_cols.append(col)
-        elif dtype == 'object' or dtype == 'category' or dtype == 'bool':
+        elif (_pdt.is_object_dtype(dtype) or _pdt.is_string_dtype(dtype)
+              or isinstance(dtype, pd.CategoricalDtype) or _pdt.is_bool_dtype(dtype)):
             if df[col].dtype == 'bool':
                 signals.categorical_cols.append(col)
             elif df[col].dtype.name == 'category':
@@ -103,7 +105,8 @@ def compute_dataset_signals(
             else:
                 # Check if it's text-like (high cardinality, mostly unique)
                 unique_ratio = df[col].nunique() / len(df)
-                if unique_ratio > 0.8 and df[col].dtype == 'object':
+                if unique_ratio > 0.8 and (_pdt.is_object_dtype(df[col])
+                                           or _pdt.is_string_dtype(df[col])):
                     signals.text_like_cols.append(col)
                 else:
                     signals.categorical_cols.append(col)
@@ -134,7 +137,7 @@ def compute_dataset_signals(
             signals.target_stats['n_missing'] = df[target].isnull().sum()
             signals.target_stats['missing_rate'] = signals.target_stats['n_missing'] / len(df)
             
-            if task_type_final == 'regression' and target_series.dtype in [np.int64, np.int32, np.float64, np.float32]:
+            if task_type_final == 'regression' and _pdt.is_numeric_dtype(target_series):
                 signals.target_stats['mean'] = target_series.mean()
                 signals.target_stats['median'] = target_series.median()
                 signals.target_stats['std'] = target_series.std()

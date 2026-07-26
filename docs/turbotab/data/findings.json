@@ -7,9 +7,11 @@
   "detail": "",
   "ev": "ml/macro_shape.py:82,240,337,495; call sites pages/02_EDA.py:1163,1205,1226,1265",
   "act": "",
-  "status": "OPEN",
-  "note": "verified on main",
-  "verified_against": "origin/main @ 24c3446"
+  "status": "FIXED",
+  "note": "Fixed by detainting rather than by re-keying. The four @st.cache_data decorators are gone from ml/macro_shape.py, which removes both the taint and the constant key in one move — a cache whose only argument is underscore-prefixed cannot have a correct key, because the engine does not know what a dataset is. Caching moved to pages/02, which already threaded a content fingerprint through its own caches for this exact reason. The page's fingerprint hashes VALUES, not just shape and column names: two cohort runs of one study have identical shape and columns and different rows, so a shape-only key would have moved the bug rather than fixed it, and there is a test for that specifically.",
+  "verified_against": "origin/main @ 24c3446",
+  "test": "tests/test_macro_shape_serves_the_right_dataset.py::test_two_datasets_get_their_own_pca",
+  "verified_ev": "ml/macro_shape.py (no cache) · pages/02_EDA.py _macro_fp"
  },
  {
   "id": "T0-LIVE-002",
@@ -3886,10 +3888,11 @@
   "detail": "ml/triage.py:41 tests `target_series.dtype in ['object','category','bool']`. pandas 3 makes `str` the default dtype for text columns, so a text target matches nothing, falls through to the numeric branches, and is detected as REGRESSION at low confidence. Same frame on pandas 2.3.3 detects classification at high confidence. requirements.txt pins `pandas>=2.0.0` with no ceiling, so a fresh install today gets the wrong answer silently. BLAST RADIUS IS WIDER THAN triage:41 — the same string-dtype comparison class appears at ml/triage.py:47,75,165,166,170,189 (feature typing), ml/dataset_profile.py:189 (is_id_like), ml/eda_recommender.py:98,106,137 (which analyses are offered), models/registry_wrappers.py:44 (model selection). Each degrades quietly rather than raising.",
   "ev": "ml/triage.py:41; requirements.txt:2; plus 10 further sites listed in detail",
   "act": "Pin `pandas<3` in requirements.txt now (one line, prevents wrong science on fresh installs), then replace every string-dtype identity check with pandas type predicates (pd.api.types.is_string_dtype / is_bool_dtype / is_integer_dtype / is_float_dtype). Regression test: a text target detects classification/high under both pandas 2 and 3.",
-  "status": "OPEN",
-  "note": "Measured stage by stage on turbotab/sample_data/clinic_visits.csv under 2.3.3 and 3.0.5. Sharper than first reported in two ways. (1) diagnose is NOT affected — import_doctor's structural findings are identical across both majors, so the import path is out of this class. (2) compute_dataset_profile is not independently broken either; it is correct when given the right task_type. The real shape is one wrong answer poisoning the next call: detect_task_type returns regression for a text target, the profiler takes the regression branch, and float(valid.mean()) on a string column raises TypeError: Cannot perform reduction 'mean' with string dtype (dataset_profile.py:243). The exception names the dtype, not the misdetection, so in Classic it surfaces as an unhandled error on the EDA page pointing at the wrong cause. Ceiling applied in both requirements.txt files (pandas<3) and enforced by turbotab/test_skeleton.py::test_a_text_target_is_read_as_classification, which fails if the cap is lifted without the repair. Still OPEN: the cap is not the fix. The fix is pd.api.types predicates at all eleven sites plus a test passing under both majors.",
+  "status": "FIXED",
+  "note": "All eleven dtype-identity sites replaced with pd.api.types predicates. Verified against real pandas 3.0.5 in a separate venv: detect_task_type on the demo CSV now returns classification/high where it returned regression/low, and compute_dataset_profile no longer raises TypeError on the string column. The suite's own canary does not need pandas 3 installed — it casts the target to pd.StringDtype, which both majors have and is the shape pandas 3 gives every text column, so the class is caught on either. Two further tests cover what the predicate must not narrow: category and boolean targets still read as classification, and a nullable Int64 identifier is now recognised as id-like where the int64/int32 name check missed it. The cap stays in both requirements files as belt and braces.",
   "verified_against": "origin/main @ 24c3446",
-  "verified_ev": "ml/triage.py:41,91 · ml/dataset_profile.py:243"
+  "verified_ev": "ml/triage.py · ml/dataset_profile.py:189 · ml/eda_recommender.py · models/registry_wrappers.py",
+  "test": "turbotab/test_skeleton.py::test_the_same_answer_under_a_pandas_3_string_dtype"
  },
  {
   "id": "T0-DOC-001",

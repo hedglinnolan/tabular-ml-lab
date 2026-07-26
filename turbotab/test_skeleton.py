@@ -257,9 +257,64 @@ def test_a_text_target_is_read_as_classification(df: pd.DataFrame):
     assert task["confidence"] == "high"
 
     # The downstream half: feeding the detected task type back in must not
-    # explode. Under pandas 3 this is where the misdetection actually surfaces.
+    # explode. That is where the misdetection used to surface, as a TypeError
+    # naming the string dtype rather than the wrong answer that caused it.
     prof = engine.profile(df, TARGET, task["detected"])
     assert prof.target_profile.task_type == "classification"
+
+
+def test_the_same_answer_under_a_pandas_3_string_dtype(df: pd.DataFrame):
+    """T0-LIVE-004's repair, checked without needing pandas 3 installed.
+
+    The bug was never about a version — it was `dtype in ['object', ...]`
+    answering "is this text?" by identity. pandas 3 makes `str` the default for
+    text columns, so the comparison stops matching and every branch keyed on it
+    takes the wrong path.
+
+    Rather than pin the suite to one major, this converts the target to the
+    dtype pandas 3 would give it (`pd.StringDtype`, which pandas 2 also has) and
+    asserts the answer is unchanged. `pd.api.types.is_string_dtype` is true for
+    both, which is the whole point of asking through a predicate.
+    """
+    as_pandas3 = df.copy()
+    as_pandas3[TARGET] = as_pandas3[TARGET].astype("string")
+    assert str(as_pandas3[TARGET].dtype) != "object", "the fixture did not convert"
+
+    task = engine.detect_task_type(as_pandas3, TARGET)
+    assert task["detected"] == "classification", (
+        f"a string-dtype text target read as {task['detected']!r} — this is "
+        "T0-LIVE-004, and it is the shape pandas 3 hands every text column")
+    assert task["confidence"] == "high"
+
+    # And the downstream call that used to explode on it.
+    prof = engine.profile(as_pandas3, TARGET, task["detected"])
+    assert prof.target_profile.task_type == "classification"
+
+
+def test_categorical_and_boolean_targets_are_still_classification(df: pd.DataFrame):
+    """The predicate must not narrow what the identity list used to accept."""
+    for dtype in ("category", "string"):
+        frame = df.copy()
+        frame[TARGET] = frame[TARGET].astype(dtype)
+        assert engine.detect_task_type(frame, TARGET)["detected"] == "classification", (
+            f"a {dtype} target stopped being classification")
+
+    boolean = df.copy()
+    boolean["flag"] = (boolean.index % 2 == 0)
+    task = engine.detect_task_type(boolean, "flag")
+    assert task["detected"] == "classification"
+
+
+def test_a_nullable_integer_id_is_still_id_like(df: pd.DataFrame):
+    """`dataset_profile:189` asked for `int64`/`int32` by name, so a nullable
+    `Int64` column — which pandas produces for integers with missing values —
+    was not recognised as an identifier."""
+    frame = df.copy()
+    frame["record_no"] = pd.array(range(len(frame)), dtype="Int64")
+    prof = engine.profile(frame, TARGET, "classification")
+    assert "record_no" in prof.id_like_features, (
+        "a nullable-integer identifier was not recognised — the dtype-identity "
+        "class again, at dataset_profile.py:189")
 
 
 def test_engine_refuses_a_duplicated_target_label(df: pd.DataFrame):

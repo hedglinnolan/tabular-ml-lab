@@ -3,6 +3,27 @@ Triage and detection logic for task type and cohort structure.
 """
 import pandas as pd
 import numpy as np
+
+# Dtype questions are asked through pd.api.types, never by comparing a dtype
+# object to a string. pandas 3 makes `str` the default dtype for text columns,
+# so `dtype in ['object', ...]` stops matching a text column and every branch
+# keyed on it silently takes the wrong path (T0-LIVE-004). The predicates below
+# answer the question that was actually meant, on both majors.
+from pandas.api import types as _pdt
+
+
+def _is_categorical_like(s) -> bool:
+    """Text, category or boolean — anything whose values are labels."""
+    return bool(_pdt.is_object_dtype(s) or _pdt.is_string_dtype(s)
+                or isinstance(s.dtype, pd.CategoricalDtype) or _pdt.is_bool_dtype(s))
+
+
+def _is_integer_like(s) -> bool:
+    return bool(_pdt.is_integer_dtype(s) and not _pdt.is_bool_dtype(s))
+
+
+def _is_float_like(s) -> bool:
+    return bool(_pdt.is_float_dtype(s))
 from typing import Dict, List, Optional, Literal
 from datetime import datetime
 
@@ -38,13 +59,13 @@ def detect_task_type(df: pd.DataFrame, target: str) -> Dict:
     confidence = "low"
     
     # Check dtype first
-    if target_series.dtype in ['object', 'category', 'bool']:
+    if _is_categorical_like(target_series):
         detected = 'classification'
         confidence = 'high'
         reasons.append(f"Target is {target_series.dtype} type (categorical/binary)")
     
     # Check for boolean-like (0/1) numeric
-    elif target_series.dtype in [np.int64, np.int32, 'int64', 'int32', 'int']:
+    elif _is_integer_like(target_series):
         unique_vals = sorted(target_series.dropna().unique())
         if len(unique_vals) == 2 and set(unique_vals) == {0, 1}:
             detected = 'classification'
@@ -72,7 +93,7 @@ def detect_task_type(df: pd.DataFrame, target: str) -> Dict:
             reasons.append(f"Target is numeric with {n_unique} unique values ({unique_ratio:.1%} ratio) - regression")
     
     # Float numeric
-    elif target_series.dtype in [np.float64, np.float32, 'float64', 'float32', 'float']:
+    elif _is_float_like(target_series):
         if n_unique <= 10:
             detected = 'classification'
             confidence = 'med'
@@ -162,12 +183,12 @@ def detect_cohort_structure(df: pd.DataFrame, sample_size: int = 1000) -> Dict:
             
             # Require high cardinality (>= 0.5) and discrete-looking
             is_discrete = (
-                df[col].dtype in [np.int64, np.int32, 'int64', 'int32', 'int'] or
-                (df[col].dtype == 'object' and unique_ratio > 0.5)
+                _is_integer_like(df[col]) or
+                (_is_categorical_like(df[col]) and unique_ratio > 0.5)
             )
             
             # Exclude float continuous columns unless integer-like
-            if df[col].dtype in [np.float64, np.float32, 'float64', 'float32', 'float']:
+            if _is_float_like(df[col]):
                 # Check if values are integer-like (small decimal variance)
                 sample = df[col].dropna().head(100)
                 if len(sample) > 0:
@@ -186,7 +207,7 @@ def detect_cohort_structure(df: pd.DataFrame, sample_size: int = 1000) -> Dict:
         # Also check if column is datetime type or can be parsed as datetime
         elif df[col].dtype == 'datetime64[ns]':
             time_column_candidates.append(col)
-        elif df[col].dtype == 'object':
+        elif _is_categorical_like(df[col]):
             # Try to parse a sample
             sample = df[col].dropna().head(min(sample_size, len(df)))
             if len(sample) > 0:

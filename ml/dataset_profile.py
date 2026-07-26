@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Tuple
 import numpy as np
 import pandas as pd
+from pandas.api import types as _pdt
 from enum import Enum
 from ml.clinical_units import infer_unit
 from ml.physiology_reference import load_reference_bundle, match_variable_key, get_reference_interval
@@ -186,7 +187,10 @@ def compute_feature_profile(df: pd.DataFrame, col: str, n: int, outlier_method: 
         unique_count=unique_count,
         cardinality_ratio=cardinality_ratio,
         is_constant=(unique_count <= 1),
-        is_id_like=(unique_count == n and is_numeric and series.dtype in ['int64', 'int32'])
+        # Integer dtype asked by predicate: a nullable Int64 column is still
+        # integer, and `dtype in ['int64','int32']` says it is not.
+        is_id_like=(unique_count == n and is_numeric
+                    and _pdt.is_integer_dtype(series) and not _pdt.is_bool_dtype(series))
     )
     
     if is_numeric:
