@@ -12,7 +12,6 @@ from sklearn.ensemble import HistGradientBoostingRegressor, HistGradientBoosting
 from sklearn.svm import SVR, SVC
 from sklearn.naive_bayes import GaussianNB
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from models.nn_whuber import NNWeightedHuberWrapper
 from models.glm import GLMWrapper
 from models.huber_glm import HuberGLMWrapper
 from models.rf import RFWrapper
@@ -120,6 +119,10 @@ def _create_lda(task_type: str, random_state: int):
 
 
 def _create_nn(task_type: str, random_state: int):
+    # Imported here, not at module scope: torch is ~1.1 GB and is needed only
+    # for this one model. A lean install runs the whole app without it and
+    # simply cannot offer the neural network.
+    from models.nn_whuber import NNWeightedHuberWrapper
     """Factory for Neural Network."""
     return NNWeightedHuberWrapper(dropout=0.1, task_type=task_type)
 

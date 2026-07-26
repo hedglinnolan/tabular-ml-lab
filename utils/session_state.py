@@ -191,19 +191,46 @@ def init_session_state():
         st.session_state.insight_ledger = InsightLedger()
 
 
-def get_data() -> Optional[pd.DataFrame]:
-    """Get active data from session state. 
-    Priority: df_engineered (if feature engineering was applied) > filtered_data > raw_data"""
+def get_data(full_study: bool = False) -> Optional[pd.DataFrame]:
+    """Get active data from session state.
+    Priority: df_engineered (if feature engineering was applied) > filtered_data > raw_data
+
+    When a cohort run is active ("same question, different people"), the rows of
+    that cohort are ALL any page sees — the filter is applied here, once, rather
+    than in each of the nine pages that would each have to remember. Pass
+    full_study=True for the two things that must span the whole study: drawing
+    the test lockbox (every cohort inherits its slice of ONE split) and choosing
+    the target and features (fixed across runs, which is what makes the runs
+    comparable at all).
+    """
     # Explicitly check for None to avoid DataFrame boolean ambiguity
     df_eng = st.session_state.get('df_engineered')
     if df_eng is not None:
-        return df_eng
-    
-    df_filt = st.session_state.get('filtered_data')
-    if df_filt is not None:
-        return df_filt
-    
-    return st.session_state.get('raw_data')
+        df = df_eng
+    else:
+        df_filt = st.session_state.get('filtered_data')
+        df = df_filt if df_filt is not None else st.session_state.get('raw_data')
+
+    from utils.cohorts import active_cohort, apply_cohort
+    if df is None:
+        return df
+    if full_study:
+        # "The whole study" cannot be recovered by skipping ONE filter. Feature
+        # engineering and preprocess row-filters write df_engineered and
+        # filtered_data from whatever get_data() handed them, so inside a run
+        # those frames are themselves cohort-sized — and full_study=True was
+        # returning one cohort's rows while its two callers, the test lockbox
+        # and the cohort chooser, both documented that they need all of them.
+        # The lockbox was then redrawn on that subset and rows sealed since
+        # upload became trainable.
+        #
+        # Starting a run clears df_engineered, so any narrowed frame that
+        # exists during a run was built inside it. The study is therefore the
+        # data as uploaded (raw_data tracks cleaning actions via set_data).
+        if active_cohort() is not None:
+            return st.session_state.get('raw_data', df)
+        return df
+    return apply_cohort(df)
 
 
 def _content_fingerprint(df: pd.DataFrame) -> Optional[int]:
@@ -255,10 +282,30 @@ def set_data(df: pd.DataFrame, is_schema_change: Optional[bool] = None):
     if is_schema_change is None:
         is_schema_change = (old_cols is not None and old_cols != new_cols)
 
+    # A cohort is a set of row labels in the PREVIOUS data, so genuinely new
+    # data must drop it — it would either match nobody or, worse, match
+    # different people. Re-setting the SAME frame must not, which is what page
+    # 01 does on every visit while restoring its working table: clearing there
+    # would end the run the moment the researcher looked at the upload page.
     if is_schema_change:
-        reset_data_dependent_state()
+        reset_data_dependent_state()      # clears the cohort itself
     elif (old_df is not None and old_fp is not None and new_fp is not None
           and old_fp != new_fp):
+        # Results are stale — they were computed from different values. But the
+        # RUN is a set of row labels, and a cleaning action (impute, clip,
+        # recode) changes values without changing who the rows are. Clearing it
+        # here meant that restoring a saved one-group session and opening
+        # Upload & Audit silently reverted the analysis to the whole study.
+        # Clear only when the cohort's people are no longer all present.
+        from utils.cohorts import active_cohort, clear_cohort
+        _run = active_cohort()
+        if _run is not None and set(_run["labels"]) <= set(df.index):
+            _run.pop("_label_set", None)      # cached set may be stale
+        else:
+            if _run is not None:
+                st.session_state["_cohort_cleared_by_data_change"] = {
+                    "column": _run["column"], "label": _run["label"]}
+            clear_cohort()
         reset_downstream_results()
 
 
@@ -299,6 +346,10 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
     st.session_state.preprocessing_config = None
     st.session_state.preprocessing_pipelines_by_model = {}
     st.session_state.preprocessing_config_by_model = {}
+    # The list of models that HAVE pipelines has to go with the pipelines.
+    # Leaving it made page 06 badge a model "Tuned for this model" when nothing
+    # was left to tune it with, and page 05 report it as already built.
+    st.session_state.pop("preprocess_built_model_keys", None)
 
     # Splits & targets
     st.session_state.X_train = None
@@ -407,6 +458,9 @@ def reset_data_dependent_state():
     # as they are workflow-level, not dataset-specific
 
     st.session_state.pop("filtered_data", None)
+    from utils.cohorts import clear_cohort
+    clear_cohort()
+    st.session_state.pop("cohort_runs_done", None)
     st.session_state.selected_features = []
     st.session_state.use_cv = False
     st.session_state.cv_folds = 5

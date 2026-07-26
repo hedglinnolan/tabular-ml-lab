@@ -350,7 +350,7 @@ feature list while a downstream reference to them survives:
   `reset_downstream_results`, restoring the pre-FE list and clearing the full
   downstream set.
 
-**Backstop (defence in depth).** `pages/06` reconciles the feature list vs the
+**Backstop (defense in depth).** `pages/06` reconciles the feature list vs the
 data before Prepare Splits, and rebuilds any preprocessing pipeline whose
 columns drifted before `fit()` (`ml.pipeline.reconcile_pipeline_columns`) —
 loud warning, self-heal, never a cryptic crash. Any future drift path degrades

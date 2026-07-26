@@ -16,7 +16,7 @@ Methodological contract (split-first workflow):
 The lockbox stores index LABELS (not positions) so membership survives
 feature engineering and row filtering, which preserve the original index.
 """
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -24,6 +24,8 @@ import streamlit as st
 
 DEFAULT_TEST_FRACTION = 0.15
 _MIN_ROWS_FOR_LOCKBOX = 10
+# Splitting by subject needs enough subjects for the fraction to be meaningful.
+_MIN_GROUPS_FOR_GROUPED_LOCKBOX = 8
 
 
 def is_exploratory() -> bool:
@@ -39,17 +41,194 @@ def get_lockbox() -> Optional[Dict[str, Any]]:
 
 
 def _lockbox_signature(df: pd.DataFrame, target_col: str, task_type: str,
-                       fraction: float, seed: int) -> str:
+                       fraction: float, seed: int, group_col: Optional[str] = None) -> str:
     try:
         content = int(pd.util.hash_pandas_object(df, index=False).sum())
     except Exception:
-        content = df.shape
-    return f"{content}|{df.shape}|{target_col}|{task_type}|{fraction:.4f}|{seed}"
+        # Unhashable cells (e.g. a list from nested JSON) must not silently
+        # collapse the signature to something stable — that would stop the
+        # lockbox from ever being redrawn. Fall back to a coarse but
+        # content-sensitive descriptor.
+        try:
+            content = f"{df.shape}|{tuple(df.columns)}|{df.notna().sum().sum()}"
+        except Exception:
+            content = str(df.shape)
+    return (f"{content}|{df.shape}|{target_col}|{task_type}|"
+            f"{fraction:.4f}|{seed}|{group_col or ''}")
+
+
+# Whole-token names for a subject identifier. A bare substring test — "id" in
+# name — matches uric_acid, folic_acid, linoleic_acid, lipid, oxidized,
+# residual, and NHANES's entire RID* family including RIDAGEYR, which is age in
+# years. Grouping the held-out set by one of those splits the study by a
+# covariate: every test row then holds a value the model never trained on.
+_SUBJECT_ID_TOKENS = frozenset({
+    "id", "ids", "seqn", "subject", "subjid", "usubjid", "subjectid",
+    "participant", "participantid", "patient", "patientid", "pid", "sid",
+    "record", "recordid", "case", "caseid", "person", "personid", "mrn",
+    "studyid", "sampleid", "specimenid", "respondent", "respondentid",
+    "enrollmentid", "uid", "guid",
+})
+
+
+# An ID column names one of three very different things, and the lockbox must
+# not confuse them. A PERSON is what the quarantine is about. A CLUSTER (site,
+# plate, batch) CONTAINS people: grouping by one keeps whole people on one side,
+# but only if the people really are nested inside it — assay plates are usually
+# crossed with participants, so grouping by plate splits a person in half. A
+# WITHIN-SUBJECT unit (visit, replicate, aliquot) is finer than a person, so
+# grouping by one is exactly the leak we are trying to prevent.
+_PERSON_TOKENS = frozenset({
+    "subject", "subjid", "usubjid", "subjectid", "participant", "participantid",
+    "patient", "patientid", "person", "personid", "respondent", "respondentid",
+    "mrn", "seqn", "pid", "sid", "individual", "enrollmentid", "enrolment",
+})
+_CLUSTER_TOKENS = frozenset({
+    "site", "sites", "clinic", "center", "centre", "hospital", "institution",
+    "lab", "laboratory", "plate", "batch", "chip", "array", "well", "flowcell",
+    "lane", "sequencer", "instrument", "machine", "cohort", "arm", "block",
+    "family", "household", "cluster", "school", "region", "ward", "practice",
+    "group", "run", "study", "wave", "center_id", "team",
+})
+_WITHIN_SUBJECT_TOKENS = frozenset({
+    "visit", "timepoint", "occasion", "cycle", "session", "followup",
+    "round", "measurement", "observation", "obs", "event", "encounter",
+    "replicate", "aliquot", "draw", "reading", "trial",
+})
+
+
+def _tokenize(col: Any) -> List[str]:
+    """Lowercase tokens, splitting on separators AND camelCase."""
+    import re as _re
+    spaced = _re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", str(col))
+    return [t for t in _re.split(r"[^A-Za-z0-9]+", spaced.lower()) if t]
+
+
+def _name_looks_like_a_subject_id(col: Any) -> bool:
+    """Whole-token match, so `uric_acid` and `RIDAGEYR` are not subject IDs."""
+    tokens = _tokenize(col)
+    if any(t in _SUBJECT_ID_TOKENS for t in tokens):
+        return True
+    # A single run-together token is an ID only if the whole thing is one.
+    return "".join(tokens) in _SUBJECT_ID_TOKENS
+
+
+def _id_kind(col: Any) -> Optional[str]:
+    """'subject', 'cluster', 'record' — or None when the name is not an ID."""
+    if not _name_looks_like_a_subject_id(col):
+        return None
+    tokens = set(_tokenize(col))
+    if tokens & _WITHIN_SUBJECT_TOKENS:
+        return None                       # finer than a person: never group by it
+    if tokens & _PERSON_TOKENS:
+        return "subject"
+    if tokens & _CLUSTER_TOKENS:
+        return "cluster"
+    return "record"
+
+
+def _nests_within(df: pd.DataFrame, fine: str, coarse: str) -> bool:
+    """True when every value of `fine` sits inside exactly one value of `coarse`."""
+    try:
+        pair = df[[fine, coarse]].dropna()
+        if pair.empty:
+            return False
+        return int(pair.groupby(fine, observed=True)[coarse].nunique().max()) == 1
+    except Exception:
+        return False
+
+
+_NOUNS = {"subject": "subjects", "record": "records"}
+
+
+def group_noun(kind: str, col: Any = "") -> str:
+    """What to call the units on screen. A site is not a subject."""
+    return _NOUNS.get(kind) or f"`{col}` groups"
+
+
+def rank_grouping_candidates(df: pd.DataFrame,
+                             candidate_cols: Optional[list] = None
+                             ) -> List[Dict[str, Any]]:
+    """Columns the held-out split could be grouped by, best first.
+
+    Ranked by what the column IS, not by how many values it has. Ranking by
+    count in either direction is wrong: most-distinct lets a per-sample barcode
+    outrank the participant, and fewest-distinct lets `plate_id` or `site_id`
+    outrank it — both of which the token list admits only because `id` is a
+    token in its own right. A coarser column is preferred ONLY where the data
+    show the finer one really is nested inside it.
+    """
+    if df is None or df.empty:
+        return []
+    n = len(df)
+    cols = candidate_cols if candidate_cols is not None else list(df.columns)
+    found: List[Dict[str, Any]] = []
+    for col in cols:
+        if col not in df.columns:
+            continue
+        s = df[col]
+        if isinstance(s, pd.DataFrame):
+            continue
+        try:
+            k = int(s.nunique(dropna=True))
+        except TypeError:
+            continue
+        if k < 2 or k >= n:
+            continue                     # unique per row => no repetition
+        # An identifier repeats a handful of times; a category repeats hundreds.
+        rows_per = n / k
+        if rows_per < 1.5 or rows_per > 50:
+            continue
+        kind = _id_kind(col)
+        if kind is None:
+            continue
+        found.append({"column": str(col), "n_groups": k, "n_rows": n, "kind": kind})
+    if not found:
+        return []
+
+    # A person beats a bare record id; both beat a cluster. Only if nothing
+    # names a person do we consider grouping by the thing people sit inside.
+    for kind in ("subject", "record", "cluster"):
+        tier = [c for c in found if c["kind"] == kind]
+        if tier:
+            break
+
+    # Within the tier, climb to the coarsest column that genuinely CONTAINS the
+    # finest one (subject_id over subject_visit_id), and stop there.
+    tier.sort(key=lambda c: -c["n_groups"])
+    best = tier[0]
+    for other in tier[1:]:
+        if (other["n_groups"] < best["n_groups"]
+                and _nests_within(df, best["column"], other["column"])):
+            best = other
+    ranked = [best] + [c for c in tier if c["column"] != best["column"]]
+    for c in ranked:
+        c["noun"] = group_noun(c["kind"], c["column"])
+    return ranked
+
+
+def detect_repeated_subjects(df: pd.DataFrame,
+                             candidate_cols: Optional[list] = None
+                             ) -> Optional[Tuple[str, int, int]]:
+    """Find a column that looks like a subject ID appearing on several rows.
+
+    Returns (column, n_subjects, n_rows) or None. Used to catch the case that
+    silently defeats the quarantine: a merge with repeated measures puts the
+    SAME subject in both the training rows and the sealed test rows, so the
+    "held-out" set was already trained on.
+    """
+    ranked = rank_grouping_candidates(df, candidate_cols)
+    if not ranked:
+        return None
+    top = ranked[0]
+    return (top["column"], top["n_groups"], top["n_rows"])
 
 
 def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
                    fraction: Optional[float] = None,
-                   seed: Optional[int] = None) -> Optional[Dict[str, Any]]:
+                   seed: Optional[int] = None,
+                   group_col: Optional[str] = None,
+                   stratify_cols: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
     """Create or refresh the lockbox; rebuild only when its inputs change.
 
     Returns the lockbox dict, or None when a lockbox cannot be drawn
@@ -69,38 +248,164 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
     if len(eligible) < _MIN_ROWS_FOR_LOCKBOX:
         return get_lockbox()
 
-    sig = _lockbox_signature(df, target_col, task_type, fraction, seed)
+    # If the caller did not name a subject column, look for one anyway: a
+    # merge with repeated measures otherwise splits the SAME subject across
+    # train and test, so the "held-out" rows were already trained on and the
+    # quarantine is silently worthless.
+    group_kind = "subject"
+    if not group_col:
+        ranked = rank_grouping_candidates(df)
+        if ranked:
+            group_col = ranked[0]["column"]
+            group_kind = ranked[0]["kind"]
+    else:
+        group_kind = _id_kind(group_col) or "subject"
+    if group_col and group_col not in df.columns:
+        group_col = None
+
+    sig = _lockbox_signature(df, target_col, task_type, fraction, seed,
+                            f"{group_col}|{'+'.join(sorted(stratify_cols or []))}")
     existing = get_lockbox()
     if existing and existing.get("signature") == sig:
         return existing
 
+    # Every cohort run inherits its slice of ONE split, drawn before the study
+    # was ever divided. Redrawing mid-run silently re-partitions the study: rows
+    # sealed since upload become trainable, and two runs can no longer be
+    # compared because run 2's test people may have been run 1's training
+    # people. Refuse, and let the page say so rather than proceeding quietly.
+    if existing is not None:
+        from utils.cohorts import active_cohort
+        run = active_cohort()
+        if run is not None:
+            # The refusal fires on ANY change of inputs, including a change of
+            # OUTCOME. The sealed rows were chosen among those with a value for
+            # the OLD outcome; if the new one was assayed on a sub-sample —
+            # ordinary in nutrition and omics — most of them cannot be scored at
+            # all, and the chip would still report the old count. Carry the real
+            # number so the page can state it.
+            _sealed = [lbl for lbl in existing["labels"] if lbl in df.index]
+            st.session_state["_lockbox_redraw_refused"] = {
+                "column": run["column"], "label": run["label"],
+                "drawn_for": existing.get("target_col"),
+                "target": target_col,
+                "target_changed": bool(existing.get("target_col")
+                                       and existing.get("target_col") != target_col),
+                "n_sealed": int(len(existing["labels"])),
+                "n_scoreable": int(y.loc[_sealed].notna().sum()) if _sealed else 0,
+            }
+            return existing
+
     from sklearn.model_selection import train_test_split
 
-    stratify = None
-    if task_type == "classification":
-        y_eligible = y.loc[eligible]
-        counts = y_eligible.value_counts()
-        # Stratification needs >=2 members per class and >=1 expected per class
-        if counts.min() >= 2 and (counts * fraction).min() >= 1:
-            stratify = y_eligible
+    def _build_stratum():
+        """Composite stratum for the split, and the columns it ended up using.
 
-    try:
-        _, test_labels = train_test_split(
-            eligible, test_size=fraction, random_state=seed, stratify=stratify
-        )
-    except ValueError:
-        _, test_labels = train_test_split(
-            eligible, test_size=fraction, random_state=seed
-        )
+        The outcome always — a test set holding twice the event rate makes every
+        metric meaningless. Plus any demographic the researcher named, because a
+        test set that is 75% men when the cohort is 71% men reports a number that
+        does not describe the study population.
+        """
+        parts: List[pd.Series] = []
+        used: List[str] = []
+        if task_type == "classification":
+            parts.append(y.loc[eligible].astype(str))
+            used.append(target_col)
+        for col in (stratify_cols or []):
+            if col in df.columns and col != target_col:
+                parts.append(df.loc[eligible, col].astype(str))
+                used.append(col)
+        # Every extra variable multiplies the cells, and one singleton cell makes
+        # the split impossible. Drop the least important variable until it fits,
+        # rather than failing or silently falling back to no stratification.
+        while parts:
+            combined = parts[0]
+            for extra in parts[1:]:
+                combined = combined.str.cat(extra, sep="|")
+            counts = combined.value_counts()
+            if counts.min() >= 2 and (counts * fraction).min() >= 1:
+                return combined, used
+            parts.pop()
+            used.pop()
+        return None, []
 
+    grouped = False
+    test_labels = None
+    st.session_state.pop("_lockbox_grouping_abandoned", None)
+    if group_col:
+        groups = df.loc[eligible, group_col]
+        n_groups = int(groups.nunique(dropna=False))
+        if n_groups >= _MIN_GROUPS_FOR_GROUPED_LOCKBOX:
+            from sklearn.model_selection import GroupShuffleSplit
+            try:
+                gss = GroupShuffleSplit(n_splits=1, test_size=fraction, random_state=seed)
+                _, test_pos = next(gss.split(eligible, groups=groups))
+                test_labels = eligible[test_pos]
+                grouped = True
+            except Exception:
+                test_labels = None
+        if test_labels is None:
+            # Too few groups to hold any out. Falling back to a row-wise split
+            # reinstates the exact leak the detector exists to catch — the same
+            # person on both sides — so the page has to say so. There is no
+            # finer column to fall back to: anything finer than the unit that
+            # repeats is inside it, and splitting by that IS the leak.
+            st.session_state["_lockbox_grouping_abandoned"] = {
+                "column": group_col, "n_groups": n_groups,
+                "noun": group_noun(group_kind, group_col),
+                "minimum": _MIN_GROUPS_FOR_GROUPED_LOCKBOX,
+            }
+            group_col = None
+
+    # Stratification is decided AFTER the grouped attempt resolves. Deciding it
+    # earlier meant that a group column with too few subjects to split by fell
+    # back to an ordinary split carrying NO stratification at all — the one
+    # case that produced a test set unrepresentative of both the outcome and
+    # the demographics, silently.
+    stratify: Optional[pd.Series] = None
+    strata_used: List[str] = []
+    if test_labels is None:
+        stratify, strata_used = _build_stratum()
+        try:
+            _, test_labels = train_test_split(
+                eligible, test_size=fraction, random_state=seed, stratify=stratify
+            )
+        except ValueError:
+            stratify, strata_used = None, []
+            _, test_labels = train_test_split(
+                eligible, test_size=fraction, random_state=seed
+            )
+
+    # GroupShuffleSplit's test_size is a fraction of GROUPS, so the row
+    # fraction it lands on differs from the one requested — the audit measured
+    # 17.1% held out while the lockbox reported 15%. Report what was held out.
+    _actual_fraction = (len(test_labels) / len(eligible)) if len(eligible) else fraction
     lockbox = {
         "labels": list(test_labels),
-        "fraction": fraction,
+        "fraction": float(_actual_fraction),
+        "fraction_requested": float(fraction),
         "seed": seed,
         "n_total": int(len(eligible)),
         "n_test": int(len(test_labels)),
         "signature": sig,
+        # The outcome the split was drawn for. Eligibility is `y.notna()`, so a
+        # lockbox is only meaningful for the outcome it was drawn on.
+        "target_col": target_col,
         "stratified": stratify is not None,
+        "strata": list(strata_used),
+        # What was ASKED for, so a silently-dropped stratum can be named. The
+        # composite is trimmed until the split is possible, and a researcher who
+        # asked for a sex-balanced holdout was previously told only "stratified".
+        "strata_requested": [c for c in ([target_col] if task_type == "classification" else [])
+                             + list(stratify_cols or []) if c],
+        "group_col": group_col if grouped else None,
+        "n_test_groups": (int(df.loc[test_labels, group_col].nunique())
+                          if grouped else None),
+        # What the groups ARE. Calling 10 recruitment sites "10 subjects" tells
+        # the researcher the holdout is a random sample of people when it is a
+        # sample of whole sites — a different, harder test than they asked for.
+        "group_kind": group_kind if grouped else None,
+        "group_noun": group_noun(group_kind, group_col) if grouped else None,
     }
 
     if existing is not None and existing.get("labels") != lockbox["labels"]:
@@ -128,6 +433,27 @@ def train_row_mask(index: pd.Index) -> pd.Series:
     return pd.Series([lbl not in test_set for lbl in index], index=index)
 
 
+def _scoreable_here(labels) -> Optional[int]:
+    """How many of `labels` have a value for the outcome now configured.
+
+    None when the question cannot be answered (no target, no frame) — silence
+    is right there; a guessed count is not.
+    """
+    try:
+        dc = st.session_state.get("data_config")
+        target = getattr(dc, "target_col", None) if dc else None
+        if not target:
+            return None
+        from utils.session_state import get_data
+        df = get_data(full_study=True)
+        if df is None or target not in df.columns:
+            return None
+        present = [lbl for lbl in labels if lbl in df.index]
+        return int(df.loc[present, target].notna().sum())
+    except Exception:
+        return None
+
+
 def render_lockbox_status(context: str = "") -> None:
     """The quiet, consistent status chip shown on workflow pages."""
     if is_exploratory():
@@ -142,8 +468,87 @@ def render_lockbox_status(context: str = "") -> None:
     if lb is None:
         return
     extra = f" {context}" if context else ""
-    st.caption(
-        f"🔒 Test set: {lb['fraction']:.0%} (n={lb['n_test']}"
-        f"{', stratified' if lb.get('stratified') else ''}) held out since upload — "
-        f"opened once at Train & Compare.{extra}"
-    )
+
+    # A cohort run works on a subset, and the study-wide n is then simply not
+    # this run's test set: "n=135" beside a 490-row run is a number the
+    # researcher would write down and be wrong about.
+    from utils.cohorts import active_cohort
+    run = active_cohort()
+    if run is not None:
+        here = set(lb["labels"]) & set(run["labels"])
+        n_here = len(here)
+        # Held out is not the same as scoreable. If the outcome changed since
+        # the split was sealed — and the lockbox refuses to re-draw mid-run —
+        # the rows without a value for the CURRENT outcome cannot be scored, and
+        # reporting the sealed count is a number a researcher would write down
+        # and be wrong about.
+        n_scoreable = _scoreable_here(here)
+        if n_scoreable is not None and n_scoreable < n_here:
+            st.warning(
+                f"⚖️ Test set for this run ({run['column']} = {run['label']}): "
+                f"**{n_scoreable:,} of {n_here:,}** held-out rows have a value for "
+                f"the current outcome. The split was sealed for "
+                f"`{lb.get('target_col')}`, and it is not re-drawn during a "
+                f"one-group run, so performance will be measured on "
+                f"{n_scoreable:,} rows — not {n_here:,}. To hold out a set drawn "
+                f"for this outcome, go back to analyzing everyone first."
+            )
+            return
+        st.caption(
+            f"🔒 Test set for this run ({run['column']} = {run['label']}): "
+            f"n={n_here:,} — this run's share of the {lb['n_test']:,} rows drawn "
+            f"once at upload, before the study was split, so every run is "
+            f"evaluated against the same held-out people. Opened once at "
+            f"Train & Compare.{extra}"
+        )
+        return
+
+    _asked = [c for c in (lb.get("strata_requested") or [])]
+    _got = [c for c in (lb.get("strata") or [])]
+    _dropped = [c for c in _asked if c not in _got]
+    if _dropped:
+        st.warning(
+            f"⚖️ The held-out set could not be balanced on "
+            f"{', '.join(f'`{c}`' for c in _dropped)} — too few people in some "
+            f"combination of those groups to put any in both halves. It IS "
+            f"balanced on {', '.join(f'`{c}`' for c in _got) if _got else 'nothing'}. "
+            f"Check that the test set still resembles your study before "
+            f"reporting performance by subgroup."
+        )
+    elif len(_got) > 1:
+        st.caption(f"⚖️ Held-out set balanced on {', '.join(f'`{c}`' for c in _got)}.")
+
+    _abandoned = st.session_state.get("_lockbox_grouping_abandoned")
+    if _abandoned:
+        st.warning(
+            f"⚠️ Rows repeat per `{_abandoned['column']}`, but there are only "
+            f"{_abandoned['n_groups']} {_abandoned['noun']} — too few to hold any "
+            f"out (at least {_abandoned['minimum']} are needed). The held-out set "
+            f"was drawn by row instead, so the same "
+            f"{_abandoned['noun'].rstrip('s')} can appear on both sides and "
+            f"held-out performance will read better than it is. Treat these "
+            f"numbers as exploratory."
+        )
+
+    if lb.get("group_col"):
+        _noun = lb.get("group_noun") or "subjects"
+        _one = _noun.rstrip('s') if _noun.endswith('s') else _noun
+        st.caption(
+            f"🔒 Test set: {lb['fraction']:.0%} (n={lb['n_test']} rows from "
+            f"{lb.get('n_test_groups', '?')} {_noun}, split by '{lb['group_col']}' so no "
+            f"{_one} appears on both sides) held out since upload — opened once at "
+            f"Train & Compare.{extra}"
+        )
+        if lb.get("group_kind") == "cluster":
+            st.caption(
+                f"⚠️ `{lb['group_col']}` groups people, it does not identify them. "
+                f"Whole groups were held out, so this is a test of generalizing to "
+                f"a NEW {_one} — a harder question than the random holdout you "
+                f"asked for. Name a participant column if that is not what you meant."
+            )
+    else:
+        st.caption(
+            f"🔒 Test set: {lb['fraction']:.0%} (n={lb['n_test']}"
+            f"{', stratified' if lb.get('stratified') else ''}) held out since upload — "
+            f"opened once at Train & Compare.{extra}"
+        )

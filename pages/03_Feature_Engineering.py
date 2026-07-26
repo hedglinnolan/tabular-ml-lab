@@ -18,6 +18,7 @@ from sklearn.decomposition import PCA
 import warnings
 warnings.filterwarnings('ignore')
 
+from utils import replay as _replay
 from utils.session_state import get_data, init_session_state, log_methodology, reset_downstream_results
 from utils.theme import inject_custom_css, render_guidance, render_sidebar_workflow
 from utils.storyline import render_breadcrumb, render_page_navigation
@@ -93,6 +94,18 @@ df = get_data()
 if df is None:
     st.info("👈 Please upload data first in Upload & Audit")
     st.stop()
+
+# ── the other group's run inherits THIS run's decisions ──────────────────
+# "Run the same analysis on Male" means the same analysis. The recipe crossed
+# the switch; the fits did not. Re-execute it here on the new group's rows,
+# refitting anything stateful on that group's TRAINING rows so the held-out set
+# stays sealed through a replay exactly as it does through the original.
+if _replay.pending():
+    with st.spinner("Rebuilding your engineered features for this group..."):
+        _replay_result = _replay.run_pending_replay(df)
+    _replay.render_replay_result(_replay_result)
+    if _replay_result:
+        df = _replay_result["frame"]
 
 # Get data configuration
 data_config = st.session_state.get('data_config')
@@ -337,6 +350,11 @@ with _fe_tabs[0]:
                 X_engineered = pd.concat([X_engineered, poly_df], axis=1)
                 engineered_features.extend(new_cols)
                 engineering_log.append(f"Polynomial degree {poly_degree} ({'interaction-only' if interaction_only else 'full'}): +{len(new_cols)} features")
+                _replay.record("polynomial",
+                               {"columns": list(numeric_features),
+                                "degree": int(poly_degree),
+                                "interaction_only": bool(interaction_only)},
+                               new_cols, _replay.PURE)
                 if _skipped_dupes:
                     st.caption(f"Skipped {_skipped_dupes} polynomial feature(s) that already existed.")
                 
@@ -383,6 +401,12 @@ with _fe_tabs[0]:
                 X_engineered[_new_col_name] = _new_values
                 engineered_features.append(_new_col_name)
                 engineering_log.append(f'Custom interaction ({_ci_op}): {_new_col_name}')
+                _replay.record("interaction",
+                               {"left": _feat_a, "right": _feat_b,
+                                "op": {"Square (A\u00b2)": "square",
+                                       "Multiply (A \u00d7 B)": "*",
+                                       "Divide (A / B)": "/"}.get(_ci_op, "*")},
+                               [_new_col_name], _replay.PURE)
                 st.session_state.fe_work_in_progress['X_engineered'] = X_engineered
                 st.session_state.fe_work_in_progress['engineered_features'] = engineered_features
                 st.session_state.fe_work_in_progress['engineering_log'] = engineering_log
@@ -572,6 +596,14 @@ with _fe_tabs[2]:
                     
                     if new_cols:
                         engineering_log.append(f"Ratio features: +{len(new_cols)} features")
+                        # Only the pairs that actually produced a column. The
+                        # queued list includes ones this run REFUSED (a zero
+                        # denominator), and recording those let the second
+                        # cohort build a predictor the first one never had.
+                        _built_pairs = [[n, d] for n, d in st.session_state.ratio_list
+                                        if f"{n}_div_{d}" in new_cols]
+                        _replay.record("ratio", {"pairs": _built_pairs},
+                                       new_cols, _replay.PURE)
                         
                         # Save back to session state
                         st.session_state.fe_work_in_progress['X_engineered'] = X_engineered

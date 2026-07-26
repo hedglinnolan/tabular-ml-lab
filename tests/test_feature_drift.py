@@ -97,7 +97,7 @@ class TestFeatureChangeInvalidation:
         reset_downstream_results(clear_feature_engineering=False,
                                  clear_feature_selection=False)
 
-        # Stale modelling artifacts gone
+        # Stale modeling artifacts gone
         assert st.session_state.get("preprocessing_pipelines_by_model") == {}
         assert st.session_state.get("preprocessing_config_by_model") == {}
         assert st.session_state.get("X_train") is None

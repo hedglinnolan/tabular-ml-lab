@@ -69,7 +69,7 @@ render_step_indicator(2, "Exploratory Data Analysis")
 st.title("📈 Explore Your Data")
 render_breadcrumb("02_EDA")
 from utils.test_lockbox import render_lockbox_status
-render_lockbox_status("Descriptive EDA is full-cohort; automated selection and modeling decisions use training rows only.")
+render_lockbox_status("Descriptive views below cover every row you are working with; automated selection and modeling decisions use training rows only.")
 render_page_navigation("02_EDA")
 
 # ============================================================================

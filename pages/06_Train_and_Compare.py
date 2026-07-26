@@ -33,9 +33,22 @@ def _get_sklearn_splits():
     from sklearn.model_selection import train_test_split, GroupShuffleSplit, GroupKFold
     return train_test_split, GroupShuffleSplit, GroupKFold
 
+def torch_available() -> bool:
+    """Is the optional neural-network dependency installed?"""
+    import importlib.util
+    return importlib.util.find_spec("torch") is not None
+
+
 def _get_model_wrappers():
-    """Lazy import model wrappers - these load torch/sklearn models."""
-    from models.nn_whuber import NNWeightedHuberWrapper
+    """Lazy import model wrappers - these load torch/sklearn models.
+
+    torch is optional (~1.1 GB for one model), so the NN wrapper is allowed to
+    be absent: everything else must still train.
+    """
+    try:
+        from models.nn_whuber import NNWeightedHuberWrapper
+    except ImportError:
+        NNWeightedHuberWrapper = None
     from models.glm import GLMWrapper
     from models.huber_glm import HuberGLMWrapper
     from models.rf import RFWrapper
@@ -117,6 +130,19 @@ if df is None:
 if len(df) == 0 or len(df.columns) == 0:
     st.warning("Your dataset is empty. Please upload data with at least one row and one column.")
     st.stop()
+
+# ── the next group's run inherits this one's decisions ───────────────────
+# The switch button is on THIS page and promises the engineered features are
+# rebuilt on the new group's rows. Do it here too, or a researcher who presses
+# Train straight after switching compares two runs with different predictor
+# sets and nothing on screen says so.
+from utils import replay as _replay
+if _replay.pending():
+    with st.spinner("Rebuilding your engineered features for this group..."):
+        _replay_result = _replay.run_pending_replay(df)
+    _replay.render_replay_result(_replay_result)
+    if _replay_result:
+        df = _replay_result["frame"]
 
 # Guardrail: Training is only for prediction mode
 task_mode = st.session_state.get('task_mode')
@@ -217,8 +243,15 @@ with col3:
         test_size = st.slider("Test %", 5, 30, test_size_default, key="train_split_test_pct") / 100
 
 if _test_governed_by_lockbox:
+    # In a cohort run the study-wide n is not this run's test set, and printing
+    # it here put two different numbers on one screen.
+    from utils.cohorts import active_cohort as _slider_cohort
+    _run = _slider_cohort()
+    _n_test_here = (len(set(_slider_lb["labels"]) & set(_run["labels"]))
+                    if _run is not None else _slider_lb["n_test"])
+    _whose = f" for {_run['column']} = {_run['label']}" if _run is not None else ""
     st.caption(
-        f"🔒 Test set is locked at {test_size:.0%} (n={_slider_lb['n_test']}) by the upload "
+        f"🔒 Test set is locked at {test_size:.0%} (n={_n_test_here:,}{_whose}) by the upload "
         f"lockbox — held out since before feature engineering. Train % and Val % divide the "
         f"remaining {1 - test_size:.0%}. Change the holdout on Upload & Audit."
     )
@@ -805,6 +838,19 @@ selected_model_params = st.session_state.get('selected_model_params', {})
 _prep_built = st.session_state.get("preprocess_built_model_keys", [])
 _has_preprocessing = len(_prep_built) > 0 or pipeline is not None
 
+# Training resolves `get_preprocessing_pipeline(model_key) or pipeline`, and
+# that fallback is NOT generic: set_preprocessing_pipelines() takes the
+# 'default' entry if Preprocess built one, and otherwise the FIRST model's
+# pipeline. So a model added here but never prepared on Preprocess is trained
+# with another model's preprocessing — PCA and all — which then makes page 07
+# explain PC1 and PC2 for a model the researcher believes saw raw features.
+# Naming the owner is the difference between an informed choice and a silent one.
+_prep_by_model = st.session_state.get("preprocessing_pipelines_by_model", {}) or {}
+_prep_is_generic = "default" in _prep_by_model
+_prep_fallback_owner = (
+    None if _prep_is_generic or not _prep_by_model else next(iter(_prep_by_model))
+)
+
 # Warning banner for unprocessed data
 if not _has_preprocessing:
     st.warning("⚠️ **Warning:** You are about to train models with unprocessed data. It is recommended to preprocess your data first in the Preprocess page to ensure optimal model performance.")
@@ -870,11 +916,22 @@ for group_name in sorted_groups:
 
         with cols[idx % len(cols)]:
             is_selected = st.session_state[checkbox_key]
-            model_has_preprocessing = model_key in _prep_built
+            # The badge describes the pipeline this model will ACTUALLY be
+            # trained with, in the four states that resolution can be in.
+            # "Preprocessed"/"No pipeline" collapsed the middle two, so
+            # borrowing another model's preprocessing looked identical to
+            # having none, and a generic shared pipeline looked like a problem.
+            if model_key in _prep_built:
+                prep_badge, prep_color = "✅ Tuned for this model", "#22c55e"
+            elif _prep_is_generic:
+                prep_badge, prep_color = "✅ Shared pipeline", "#22c55e"
+            elif _prep_fallback_owner:
+                prep_badge = f"⚠️ Would use {_prep_fallback_owner.upper()}'s"
+                prep_color = "#f59e0b"
+            else:
+                prep_badge, prep_color = "⚠️ No pipeline", "#f59e0b"
             border = "#667eea" if is_selected else "#e2e8f0"
             bg = "#f0f0ff" if is_selected else "#fff"
-            prep_badge = "✅ Preprocessed" if model_has_preprocessing else "⚠️ No pipeline"
-            prep_color = "#22c55e" if model_has_preprocessing else "#f59e0b"
             notes = "; ".join(spec.capabilities.notes) if spec.capabilities.notes else ""
             st.markdown(f"""
             <div style="border: 2px solid {border}; border-radius: 10px; padding: 0.75rem;
@@ -884,7 +941,8 @@ for group_name in sorted_groups:
                 {"<br/><span style='font-size:0.78rem; color:#64748b;'>" + notes + "</span>" if notes else ""}
             </div>
             """, unsafe_allow_html=True)
-            is_selected = st.checkbox("Select", value=is_selected, key=checkbox_key, label_visibility="collapsed")
+            is_selected = st.checkbox("Select", value=is_selected, key=checkbox_key,
+                                      label_visibility="collapsed")
             if model_key in _viability:
                 _verdict, _clause = _viability[model_key]
                 st.caption(f"{_VIAB_ICONS.get(_verdict, '·')} {_clause}")
@@ -1143,6 +1201,11 @@ def optimize_model_hyperparameters(model_name, spec, X_train_transformed, y_trai
             else:
                 hidden_layers = [layer_width] * num_layers
             
+            if NNWeightedHuberWrapper is None:
+                raise RuntimeError(
+                    "The neural network needs the optional 'torch' package. "
+                    "Install it with:  uv pip install torch"
+                )
             model = NNWeightedHuberWrapper(
                 hidden_layers=hidden_layers,
                 dropout=params.get('dropout', 0.1),
@@ -1340,6 +1403,11 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
                     
                     status_text.text(f"Architecture: {hidden_layers} ({pattern})")
                     
+                    if NNWeightedHuberWrapper is None:
+                        raise RuntimeError(
+                            "The neural network needs the optional 'torch' package. "
+                            "Install it with:  uv pip install torch"
+                        )
                     model = NNWeightedHuberWrapper(
                         hidden_layers=hidden_layers,
                         dropout=params.get('dropout', model_config.nn_dropout),
@@ -1740,6 +1808,31 @@ if task_type_final == 'classification':
 # Training section with two buttons
 st.markdown("---")
 st.header("Train Models")
+
+# Training a model that was never prepared on Preprocess is allowed on purpose
+# — but it silently borrows the first prepared model's pipeline, so if that one
+# had PCA or a log transform, this model gets it too and page 07 will explain
+# the wrong features. Say whose preprocessing it would use, before it runs.
+_borrowers = [m for m in models_to_train
+              if m not in _prep_built and _prep_fallback_owner]
+if _borrowers:
+    _names = ", ".join(m.upper() for m in _borrowers[:6])
+    st.warning(
+        f"**{len(_borrowers)} selected "
+        f"model{'' if len(_borrowers) == 1 else 's'} "
+        f"({_names}) {'has' if len(_borrowers) == 1 else 'have'} no "
+        f"preprocessing of {'its' if len(_borrowers) == 1 else 'their'} own.** "
+        f"{'It' if len(_borrowers) == 1 else 'They'} will be trained with "
+        f"**{_prep_fallback_owner.upper()}'s** pipeline, including any transform "
+        f"chosen for that model specifically — a PCA or log step meant for "
+        f"{_prep_fallback_owner.upper()} would be applied here too, and "
+        f"Explainability would then describe those components rather than your "
+        f"predictors. To give {'it' if len(_borrowers) == 1 else 'them'} "
+        f"{'its' if len(_borrowers) == 1 else 'their'} own, select "
+        f"{'it' if len(_borrowers) == 1 else 'them'} on **Preprocess** and "
+        f"rebuild.",
+        icon="🔀",
+    )
 
 # Wide-feature advisory: training itself stays fast, but downstream
 # explainability (permutation importance) scales with feature count, and
@@ -2376,6 +2469,23 @@ if st.session_state.get('trained_models'):
             st.info("Train multiple models to see comparison and recommendations.")
     else:
         st.info("Train models to see selection guidance.")
+
+    # ── same question, next group ────────────────────────────────────────
+    # Only renders when a cohort run is active. Banks this run's headline
+    # number so the next group can be put beside it, with the caveats that
+    # stop two AUCs 0.04 apart from being read as a finding.
+    _cohort_metrics = {}
+    try:
+        _cm = ('ROC-AUC' if 'ROC-AUC' in comparison_df.columns else 'Accuracy') \
+            if task_type_final == 'classification' else 'R2'
+        if _cm in comparison_df.columns and len(comparison_df) > 0:
+            _best_row = comparison_df.nlargest(1, _cm).iloc[0]
+            _cohort_metrics = {"Best model": str(_best_row['Model']),
+                               _cm: float(_best_row[_cm])}
+    except Exception:
+        _cohort_metrics = {}
+    from utils.cohort_ui import render_next_cohort
+    render_next_cohort(task_type_final, _cohort_metrics)
 
     # ================================================================
     # DIAGNOSTIC ASSISTANT FOR POOR PERFORMANCE

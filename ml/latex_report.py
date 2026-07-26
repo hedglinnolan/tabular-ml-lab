@@ -152,12 +152,21 @@ def _styled_placeholder(text: str) -> str:
 def _format_abstract_population_sentence(upload_n: int, analysis_n: int) -> str:
     """Describe the abstract population without contradicting split counts."""
     if analysis_n and upload_n and analysis_n != upload_n:
-        return (
+        sentence = (
             f"Of {upload_n:,} observations, {analysis_n:,} remained for analysis "
             "after trimming/exclusion criteria were applied prior to splitting."
         )
-    total = analysis_n or upload_n
-    return f"A total of {total:,} observations were available for analysis."
+    else:
+        total = analysis_n or upload_n
+        sentence = f"A total of {total:,} observations were available for analysis."
+    # A cohort run makes this N the GROUP's, not the study's, and stating it
+    # bare tells a reviewer the model was fitted on everyone. Appended after
+    # BOTH branches — the first version of this fix patched only one, and the
+    # exclusion-criteria wording is exactly where a restricted N is most
+    # likely to be mistaken for the full study.
+    from utils.workflow_provenance import cohort_restriction_sentence
+    restriction = cohort_restriction_sentence()
+    return f"{sentence} {restriction}".strip() if restriction else sentence
 
 
 def _format_abstract_predictor_sentence(feature_counts: Dict[str, Any], feature_names: Optional[List[str]]) -> str:
@@ -740,6 +749,10 @@ def generate_latex_report(
 
     if analysis_n > 0:
         sections.append(f"A total of {analysis_n:,} participants were included in the analysis.")
+    from utils.workflow_provenance import cohort_restriction_sentence
+    _restriction = cohort_restriction_sentence()
+    if _restriction:
+        sections.append(_escape_latex(_restriction))
 
     # Table 1
     if table1_df is not None and not table1_df.empty:
@@ -934,7 +947,20 @@ def generate_latex_report(
     # Auto-fill methodological strengths from what we know
     strength_items = []
     if analysis_n > 0:
-        strength_items.append(f"Sample size of {analysis_n:,} observations")
+        from utils.workflow_provenance import get_provenance as _gp
+        try:
+            _up = getattr(_gp(), "upload", None)
+        except Exception:
+            _up = None
+        if _up is not None and getattr(_up, "cohort_column", ""):
+            # Listing a restricted sample as a plain strength invites the reader
+            # to treat it as the study's size. Name the group it is a sample of.
+            strength_items.append(
+                f"Sample size of {analysis_n:,} observations within "
+                f"{_up.cohort_column} = {_up.cohort_value} "
+                f"(the analysis was restricted to this group)")
+        else:
+            strength_items.append(f"Sample size of {analysis_n:,} observations")
     if bootstrap_results:
         strength_items.append("Bootstrap confidence intervals for uncertainty quantification")
     if explainability_summary:

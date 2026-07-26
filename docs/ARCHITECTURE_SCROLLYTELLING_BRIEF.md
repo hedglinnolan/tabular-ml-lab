@@ -184,7 +184,7 @@ The app already has an identity — **honor it, don't reinvent it.**
 
 - **Brand & palette.** Indigo is the app's signal color: `#667EEA` / `#7C8CF0`
   (light indigo) → `#4034A8` (deep violet). Neutrals should be indigo-biased, not
-  pure grey. The app icon ("Distill") is a white Erlenmeyer flask holding a punched
+  pure gray. The app icon ("Distill") is a white Erlenmeyer flask holding a punched
   data table on an indigo squircle — the piece's motif language is **lab + tabular
   cells**, never finance/charts.
 - **Four lane accents.** Give each plane a distinct, harmonious hue that still

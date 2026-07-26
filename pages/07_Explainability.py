@@ -1116,7 +1116,9 @@ with _explain_tabs[2]:
     )
 
     with st.expander("Upload External Validation Dataset", expanded=False):
-        ext_file = st.file_uploader("Upload external dataset (CSV/Excel)", type=["csv", "xlsx", "xls"], key="ext_val_file")
+        ext_file = st.file_uploader("Upload external dataset (CSV/Excel/JSON)",
+                                    type=["csv", "xlsx", "xls", "parquet", "tsv", "json", "jsonl", "ndjson"],
+                                    key="ext_val_file")
 
         if ext_file is not None:
             from data_processor import load_tabular_data

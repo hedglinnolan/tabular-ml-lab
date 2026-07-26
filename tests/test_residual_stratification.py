@@ -33,7 +33,7 @@ def test_custom_edges():
 
 
 def test_over_prediction_detected():
-    """Systematic over-prediction should be labelled 'over'."""
+    """Systematic over-prediction should be labeled 'over'."""
     y_true = np.arange(50, dtype=float)
     y_pred = y_true + 5
     result = analyze_residuals_stratified(y_true, y_pred, n_bins=3)
@@ -44,7 +44,7 @@ def test_over_prediction_detected():
 
 
 def test_under_prediction_detected():
-    """Systematic under-prediction should be labelled 'under'."""
+    """Systematic under-prediction should be labeled 'under'."""
     y_true = np.arange(50, dtype=float)
     y_pred = y_true - 5
     result = analyze_residuals_stratified(y_true, y_pred, n_bins=3)
@@ -55,7 +55,7 @@ def test_under_prediction_detected():
 
 
 def test_balanced_when_unbiased():
-    """Near-zero bias should be labelled 'balanced'."""
+    """Near-zero bias should be labeled 'balanced'."""
     y_true = np.arange(100, dtype=float)
     y_pred = y_true.copy()  # perfect predictions
     result = analyze_residuals_stratified(y_true, y_pred, n_bins=5)

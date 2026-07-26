@@ -275,6 +275,27 @@ def _build_archive_members() -> Dict[str, bytes]:
         except Exception:
             skipped_keys.append("workflow_provenance")
 
+    def _json_metric(x: Any) -> Any:
+        """Keep numbers numeric; stringify only what JSON cannot hold."""
+        if isinstance(x, bool):
+            return bool(x)
+        if isinstance(x, (int, float)):
+            return x
+        if hasattr(x, "item"):
+            v = x.item()
+            return v if isinstance(v, (int, float, bool)) else str(v)
+        return str(x)
+
+    def _json_scalar(x: Any) -> Any:
+        if isinstance(x, bool):
+            return str(x)
+        if isinstance(x, int):
+            return x
+        if hasattr(x, "item"):              # numpy scalar -> python scalar
+            v = x.item()
+            return v if isinstance(v, int) else str(v)
+        return str(x)
+
     # --- Test-set lockbox (schema 2.1) ---
     # The sealed holdout must survive a save/restore VERBATIM: re-drawing it
     # with a lost non-default fraction would silently change the test set that
@@ -303,11 +324,95 @@ def _build_archive_members() -> Dict[str, bytes]:
                 "n_test": int(lockbox.get("n_test", len(lockbox["labels"]))),
                 "signature": str(lockbox.get("signature", "")),
                 "stratified": bool(lockbox.get("stratified", False)),
+                # Everything the chip reports. Saving only the labels meant a
+                # restored session forgot that the split was drawn by subject,
+                # which outcome it was drawn for, and which strata it had to
+                # drop — so the disclosures on every page went quiet while the
+                # split they describe was still in force.
+                "fraction_requested": float(lockbox.get("fraction_requested",
+                                                        lockbox.get("fraction", 0.15))),
+                "target_col": str(lockbox.get("target_col") or ""),
+                "strata": [str(c) for c in (lockbox.get("strata") or [])],
+                "strata_requested": [str(c) for c in (lockbox.get("strata_requested") or [])],
+                "group_col": (str(lockbox["group_col"])
+                              if lockbox.get("group_col") else None),
+                "group_kind": (str(lockbox["group_kind"])
+                               if lockbox.get("group_kind") else None),
+                "group_noun": (str(lockbox["group_noun"])
+                               if lockbox.get("group_noun") else None),
+                "n_test_groups": (int(lockbox["n_test_groups"])
+                                  if lockbox.get("n_test_groups") is not None else None),
             }
             members["lockbox.json"] = json.dumps(encoded, indent=2).encode("utf-8")
             saved_keys.append("test_lockbox")
         except Exception:
             skipped_keys.append("test_lockbox")
+
+    # --- Active cohort run (schema 2.1) ---
+    # A run is "same question, different people", and the people are held as
+    # index labels. Dropping it on restore does not merely lose a setting: the
+    # restored session silently reports the WHOLE study to a researcher who
+    # saved a one-group analysis, and the banked comparison runs go with it.
+    run = st.session_state.get("cohort_run")
+    if isinstance(run, dict) and run.get("labels"):
+        try:
+            members["cohort.json"] = json.dumps({
+                "column": str(run["column"]),
+                "value": _json_scalar(run.get("value")),
+                "label": str(run["label"]),
+                "labels": [_json_scalar(x) for x in run["labels"]],
+                "n_rows": int(run.get("n_rows", len(run["labels"]))),
+                "n_total": int(run.get("n_total", 0)),
+                "position": int(run.get("position", 1)),
+                "of": int(run.get("of", 1)),
+                "order": [str(x) for x in (run.get("order") or [])],
+                "target_col": str(run.get("target_col") or ""),
+                "dropped_features": [str(x) for x in (run.get("dropped_features") or [])],
+            }, indent=2).encode("utf-8")
+            saved_keys.append("cohort_run")
+        except Exception:
+            skipped_keys.append("cohort_run")
+
+    # Banked comparison runs. Without these the restored session can show one
+    # group's result with nothing to compare it to, and the researcher re-runs
+    # a cohort they had already finished.
+    # Read from session_manager's own view of state rather than through
+    # utils.cohorts, which holds its own streamlit reference — the saver must
+    # serialize the state it is actually looking at.
+    _runs = [r for r in (st.session_state.get("cohort_runs_done") or [])
+             if is_dataclass(r)]
+    if _runs:
+        try:
+            members["cohort_runs.json"] = json.dumps([{
+                "column": r.column, "label": r.label,
+                "n_train": int(r.n_train), "n_test": int(r.n_test),
+                "dropped_features": list(r.dropped_features),
+                "completed": bool(r.completed),
+                # NOT _json_scalar: that coerces to str to keep index LABELS
+                # matching an integer index, and a metric must stay numeric or
+                # the comparison table formats "0.71" as text and f"{v:.3f}"
+                # raises on it.
+                "metrics": {str(k): _json_metric(v) for k, v in r.metrics.items()},
+                "target_col": r.target_col, "task_type": r.task_type,
+                "data_fingerprint": str(r.data_fingerprint),
+            } for r in _runs], indent=2).encode("utf-8")
+            saved_keys.append("cohort_runs_done")
+        except Exception:
+            skipped_keys.append("cohort_runs_done")
+
+    # The engineering recipe. Without it a restored session's cohort switch
+    # reverts to dropping every engineered feature while the button still
+    # promises a rebuild.
+    _steps = [x for x in (st.session_state.get("fe_recipe") or []) if is_dataclass(x)]
+    if _steps:
+        try:
+            members["fe_recipe.json"] = json.dumps([{
+                "kind": x.kind, "params": x.params,
+                "produced": list(x.produced), "mode": x.mode,
+            } for x in _steps], indent=2, default=str).encode("utf-8")
+            saved_keys.append("fe_recipe")
+        except Exception:
+            skipped_keys.append("fe_recipe")
 
     # --- Coach evidence probe (schema 2.1) ---
     probe = st.session_state.get("coach_probe_result")
@@ -428,8 +533,31 @@ def _clear_downstream_state() -> None:
     # Invalidation bookkeeping from the pre-load session must not survive into
     # the restored one: a stale fingerprint could trigger (or suppress) a
     # spurious downstream reset on the next set_data call.
-    st.session_state.pop("_raw_data_fingerprint", None)
+    st.session_state.pop("_raw_data_fingerprint", None)   # recomputed below
     st.session_state.pop("_working_table_source_id", None)
+
+
+def _mark_working_table_as_current() -> None:
+    """Tell page 01 the restored working table is already up to date.
+
+    _clear_downstream_state drops _working_table_source_id, which is right for
+    a stale one and wrong once the session's own working_table has been
+    restored beside it. Without this, the first visit to Upload & Audit sees
+    "no source id" and rebuilds the working table from the ORIGINAL uploaded
+    file — throwing away every cleaning action — then calls set_data() with it.
+    Same columns, different content, so set_data clears the active cohort run
+    and moves the data fingerprint, which also makes every banked run fail the
+    read-time question filter and vanish from the comparison table. All of it
+    silent, and all of it on the app's home page.
+    """
+    try:
+        if st.session_state.get("working_table") is None:
+            return
+        registry = st.session_state.get("datasets_registry") or {}
+        if len(registry) == 1:
+            st.session_state["_working_table_source_id"] = next(iter(registry))
+    except Exception:
+        pass
 
 
 def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any], list]:
@@ -487,6 +615,16 @@ def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any], li
             if member in names:
                 st.session_state[key] = _read_parquet(zf, member)
                 restored += 1
+        # Banked cohort runs are keyed on the data fingerprint, so it has to be
+        # rebuilt here or every restored run reads as belonging to other data
+        # and is filtered out of the comparison table.
+        if st.session_state.get("raw_data") is not None:
+            try:
+                from utils.session_state import _content_fingerprint
+                st.session_state["_raw_data_fingerprint"] = _content_fingerprint(
+                    st.session_state["raw_data"])
+            except Exception:
+                pass
 
         # --- datasets_registry ---
         if "datasets/index.json" in names:
@@ -555,6 +693,74 @@ def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any], li
                         "compiler will start from what you re-run."
                     )
 
+        # --- Active cohort run (absent in files saved before cohort runs) ---
+        if "cohort.json" in names:
+            try:
+                data = _read_json(zf, "cohort.json")
+                labels = data.get("labels")
+                if not isinstance(labels, list) or not labels:
+                    raise ValueError("cohort has no rows")
+                st.session_state["cohort_run"] = {
+                    "column": str(data["column"]),
+                    "value": data.get("value"),
+                    "label": str(data.get("label", "")),
+                    "labels": list(labels),
+                    "n_rows": int(data.get("n_rows", len(labels))),
+                    "n_total": int(data.get("n_total", 0)),
+                    "position": int(data.get("position", 1)),
+                    "of": int(data.get("of", 1)),
+                    "order": list(data.get("order") or []),
+                    "target_col": str(data.get("target_col") or ""),
+                    "dropped_features": list(data.get("dropped_features") or []),
+                }
+                restored += 1
+            except Exception as exc:
+                warnings.append(
+                    f"The saved one-group run could not be restored ({exc}). "
+                    "This session now covers the WHOLE study — re-select your "
+                    "group on Upload & Audit before reading any result."
+                )
+
+        if "cohort_runs.json" in names:
+            try:
+                from utils.cohorts import CohortRun
+                st.session_state["cohort_runs_done"] = [
+                    CohortRun(
+                        column=str(d["column"]), label=str(d["label"]),
+                        n_train=int(d.get("n_train", 0)),
+                        n_test=int(d.get("n_test", 0)),
+                        dropped_features=list(d.get("dropped_features") or []),
+                        completed=bool(d.get("completed", True)),
+                        metrics=dict(d.get("metrics") or {}),
+                        target_col=str(d.get("target_col") or ""),
+                        task_type=str(d.get("task_type") or ""),
+                        data_fingerprint=str(d.get("data_fingerprint") or ""),
+                    )
+                    for d in _read_json(zf, "cohort_runs.json")
+                ]
+                restored += 1
+            except Exception as exc:
+                warnings.append(
+                    f"Saved comparison runs could not be restored ({exc}). "
+                    "Any group you had already analyzed will need re-running."
+                )
+
+        if "fe_recipe.json" in names:
+            try:
+                from utils.replay import Step
+                st.session_state["fe_recipe"] = [
+                    Step(kind=str(d["kind"]), params=dict(d.get("params") or {}),
+                         produced=list(d.get("produced") or []),
+                         mode=str(d.get("mode") or "pure"))
+                    for d in _read_json(zf, "fe_recipe.json")
+                ]
+                restored += 1
+            except Exception as exc:
+                warnings.append(
+                    f"The feature-engineering recipe could not be restored "
+                    f"({exc}). Switching cohorts will not rebuild your "
+                    f"engineered features until you recreate them.")
+
         # --- Test-set lockbox (schema 2.1; absent in 2.0 files) ---
         if "lockbox.json" in names:
             try:
@@ -570,6 +776,15 @@ def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any], li
                     "n_test": int(data.get("n_test", len(labels))),
                     "signature": str(data.get("signature", "")),
                     "stratified": bool(data.get("stratified", False)),
+                    "fraction_requested": float(data.get("fraction_requested",
+                                                         data.get("fraction", 0.15))),
+                    "target_col": data.get("target_col") or None,
+                    "strata": list(data.get("strata") or []),
+                    "strata_requested": list(data.get("strata_requested") or []),
+                    "group_col": data.get("group_col") or None,
+                    "group_kind": data.get("group_kind") or None,
+                    "group_noun": data.get("group_noun") or None,
+                    "n_test_groups": data.get("n_test_groups"),
                 }
                 # Keep the fraction key coherent with the restored lockbox even
                 # if config.json predates it or disagrees.
@@ -600,6 +815,7 @@ def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any], li
                     "evidence probe on Preprocess (~10 s)."
                 )
 
+    _mark_working_table_as_current()
     return restored, manifest, warnings
 
 

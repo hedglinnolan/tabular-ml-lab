@@ -614,3 +614,69 @@ class TestCalibrationNaNSafety:
         y_pred = np.full(20, np.nan)
         with pytest.raises(ValueError, match="finite prediction pairs"):
             calibration_regression(y_true, y_pred, model_name="TEST")
+
+
+# ── Lockbox must quarantine SUBJECTS, not rows ───────────────────────────
+
+class TestGroupAwareLockbox:
+    """Merging repeated measures (visits, NHANES cycles) puts a subject on
+    several rows. A row-wise split then placed the SAME subject in training
+    and in the sealed test set — verified as 4/4 held-out subjects leaking —
+    so 'held-out performance' was measured on people the model had seen."""
+
+    def setup_method(self):
+        _clear_session()
+
+    def teardown_method(self):
+        _clear_session()
+
+    def _repeated_measures(self, n_subj=20, per=3):
+        subj = pd.DataFrame({"id": range(1, n_subj + 1), "age": range(n_subj)})
+        vis = pd.DataFrame({
+            "id": np.repeat(np.arange(1, n_subj + 1), per),
+            "visit": list(range(per)) * n_subj,
+            "glucose": np.random.RandomState(0).normal(100, 20, n_subj * per),
+        })
+        return subj.merge(vis, on="id")
+
+    def test_no_subject_appears_in_both_train_and_test(self):
+        from utils.test_lockbox import ensure_lockbox
+        df = self._repeated_measures()
+        lb = ensure_lockbox(df, "glucose", "regression")
+        test = set(df.loc[lb["labels"], "id"])
+        train = set(df.drop(index=lb["labels"])["id"])
+        assert not (test & train), f"subjects leaked across the split: {sorted(test & train)}"
+
+    def test_grouping_is_recorded_for_disclosure(self):
+        from utils.test_lockbox import ensure_lockbox
+        lb = ensure_lockbox(self._repeated_measures(), "glucose", "regression")
+        assert lb["group_col"] == "id"
+        assert lb["n_test_groups"] and lb["n_test_groups"] >= 1
+
+    def test_declared_entity_id_is_honored(self):
+        from utils.test_lockbox import ensure_lockbox
+        df = self._repeated_measures()
+        lb = ensure_lockbox(df, "glucose", "regression", group_col="id")
+        assert lb["group_col"] == "id"
+
+    def test_cross_sectional_data_is_unchanged(self):
+        """One row per person must still get an ordinary row-wise split."""
+        from utils.test_lockbox import ensure_lockbox
+        df = pd.DataFrame({"SEQN": range(200), "age": range(200),
+                           "glucose": np.random.RandomState(1).normal(100, 20, 200)})
+        lb = ensure_lockbox(df, "glucose", "regression")
+        assert lb["group_col"] is None
+        assert 25 <= lb["n_test"] <= 35
+
+    def test_low_cardinality_column_is_not_used_as_a_subject_id(self):
+        """'sex' repeats too, but grouping on it would hold out an entire
+        category rather than a sample of subjects."""
+        from utils.test_lockbox import detect_repeated_subjects
+        df = pd.DataFrame({"sex": ["M", "F"] * 100, "glucose": range(200)})
+        assert detect_repeated_subjects(df) is None
+
+    def test_too_few_subjects_falls_back_to_row_split(self):
+        from utils.test_lockbox import ensure_lockbox
+        df = self._repeated_measures(n_subj=3, per=8)
+        lb = ensure_lockbox(df, "glucose", "regression")
+        assert lb["group_col"] is None      # 3 subjects cannot support a 15% split

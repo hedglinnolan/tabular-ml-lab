@@ -258,7 +258,7 @@ if _profile:
                                 finding="Evidence probe: scores still rising with more rows",
                                 implication="Additional data would likely help more than additional models.",
                                 recommended_action="Consider whether more samples are obtainable",
-                                manuscript_text=("learning-curve behaviour on the training data "
+                                manuscript_text=("learning-curve behavior on the training data "
                                                  "suggested performance was not yet saturated at "
                                                  "the available sample size"),
                                 relevant_pages=["06_Train_and_Compare"],
@@ -412,9 +412,20 @@ for group_name in sorted(model_groups_prep.keys()):
 
 selected_models = [k.replace("train_model_", "") for k, v in st.session_state.items() if k.startswith("train_model_") and v]
 if selected_models:
-    st.success(f"✅ **{len(selected_models)} model(s) selected:** {', '.join(m.upper() for m in selected_models)}")
+    n_sel = len(selected_models)
+    st.success(
+        f"✅ **{n_sel} model{'' if n_sel == 1 else 's'} selected:** "
+        f"{', '.join(m.upper() for m in selected_models)} — each gets its own "
+        f"preprocessing pipeline.")
 else:
-    st.info("Select at least one model above. Each gets its own preprocessing pipeline.")
+    # "Select at least one model above" read as a hard requirement, but
+    # selecting none is a legal path that builds one shared pipeline. State
+    # what each choice does instead of implying the page is blocked.
+    st.info(
+        "**Choose the models you plan to train.** Each one gets a pipeline "
+        "tuned to it, and they arrive already selected on Train & Compare. "
+        "Choose none and a single shared pipeline is built and used for every "
+        "model instead.")
 
 # ============================================================================
 # 2. PREPROCESSING CONFIGURATION
@@ -464,7 +475,7 @@ if use_smart_defaults:
         st.markdown(f"- Outlier treatment: **{_auto_outlier}**")
         st.markdown(f"- Feature augmentation: **none**")
 
-    st.caption("These defaults are applied to all selected models. Model-specific adjustments (e.g., enabling scaling for SVM) are handled automatically.")
+    st.caption("These defaults are applied to every model you train. Model-specific adjustments (e.g., enabling scaling for SVM) are handled automatically.")
 
 # Interpretability preference (both modes)
 _imode_opts = ["high", "balanced", "performance"]
@@ -761,14 +772,25 @@ else:
                     st.info("✅ High feature-to-sample ratio detected — PCA can help reduce dimensionality.")
                 _maxc = max(1, min(50, len(numeric_features) + (len(categorical_features) * 5) if categorical_features else len(numeric_features)))
                 _pn = _cfg(_mk, "pca_n_components", 10)
-                _fix = isinstance(_pn, (int, type(1)))
+                _fix = isinstance(_pn, int) and not isinstance(_pn, bool)
                 _pmode = st.radio("PCA mode", ["Fixed Components", "Variance Threshold"], index=0 if _fix else 1, key=f"preprocess_{_mk}_pca_mode")
+                # The two modes MUST NOT share a widget key. They did, so
+                # switching to Variance Threshold and back left 0.95 in the key
+                # the number_input reads: int(0.95) is 0, which is below its own
+                # min_value of 1, and Streamlit raised on a page the researcher
+                # had done nothing wrong on. Separate keys, and clamp anyway —
+                # a study with two numeric predictors makes _maxc 2.
                 if _pmode == "Fixed Components":
-                    _defn = min(int(_pn), _maxc) if isinstance(_pn, (int, float)) else min(10, _maxc)
-                    st.number_input("Components", 1, _maxc, _defn, key=f"preprocess_{_mk}_pca_n_components")
+                    _defn = int(_pn) if isinstance(_pn, (int, float)) else 10
+                    _defn = max(1, min(_defn, _maxc))
+                    st.number_input("Components", 1, _maxc, _defn, key=f"preprocess_{_mk}_pca_fixed_n")
+                    st.session_state[f"preprocess_{_mk}_pca_n_components"] = int(
+                        st.session_state.get(f"preprocess_{_mk}_pca_fixed_n", _defn))
                 else:
-                    _pv = 0.95 if not isinstance(_pn, (int, float)) or _pn > 1 else float(_pn)
-                    st.slider("Variance explained", 0.5, 0.99, _pv, 0.05, key=f"preprocess_{_mk}_pca_n_components", help="Retain enough components to explain this fraction of total variance.")
+                    _pv = float(_pn) if isinstance(_pn, (int, float)) and 0.5 <= float(_pn) <= 0.99 else 0.95
+                    st.slider("Variance explained", 0.5, 0.99, _pv, 0.05, key=f"preprocess_{_mk}_pca_variance", help="Retain enough components to explain this fraction of total variance.")
+                    st.session_state[f"preprocess_{_mk}_pca_n_components"] = float(
+                        st.session_state.get(f"preprocess_{_mk}_pca_variance", _pv))
                 st.checkbox("Whiten", value=bool(_cfg(_mk, "pca_whiten", False)), key=f"preprocess_{_mk}_pca_whiten", help="Decorrelates and normalizes components to unit variance. Useful for downstream algorithms that assume isotropic data.")
 
             # KMeans — Cluster-based Feature Engineering
@@ -792,6 +814,18 @@ else:
 
 # Pipeline summary before building
 st.markdown("---")
+if not selected_models:
+    # Per-model tuning can only run for models chosen on Train & Compare, and
+    # the recommended order puts this page FIRST — so on a first pass there is
+    # nothing to tune for, and the page previously just showed a bare button.
+    st.info(
+        "**No models are selected, so one shared pipeline will be built.** It "
+        "is used for every model you train, which is a reasonable first pass. "
+        "For preprocessing tuned per model — different scaling for a neural "
+        "net than for a random forest, say — select those models above before "
+        "you build.",
+        icon="🔨",
+    )
 if use_smart_defaults and selected_models:
     st.markdown("**📋 Pipeline Summary** — what will be built:")
     _summary_cols = st.columns(min(len(selected_models), 4))
@@ -1107,11 +1141,21 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
             _pp_resolve_ledger.upsert(Insight(
                 id="preprocess_summary",
                 source_page="05_Preprocess", category="methodology", severity="info",
-                finding=f"Pipelines built for {len(pipelines_by_model)} model(s): {', '.join(m.upper() for m in pipelines_by_model.keys())}.",
-                implication="Use Train & Compare to train models; preprocessing is applied per model.",
+                finding=(
+                    "One shared preprocessing pipeline was built. It is applied "
+                    "to every model trained."
+                    if not _built else
+                    f"Preprocessing was tuned for "
+                    f"{len(_built)} model{'' if len(_built) == 1 else 's'}: "
+                    f"{', '.join(m.upper() for m in _built)}."
+                ),
+                implication=("Use Train & Compare to train models; every model "
+                             "is preprocessed before it is fitted."),
                 relevant_pages=["06_Train_and_Compare", "10_Report_Export"],
                 resolved=True,
-                resolved_by=f"Built {len(pipelines_by_model)} preprocessing pipeline(s)",
+                resolved_by=("Built one shared preprocessing pipeline" if not _built
+                             else f"Built {len(_built)} preprocessing "
+                                  f"pipeline{'' if len(_built) == 1 else 's'}"),
                 resolved_on_page="05_Preprocess",
                 resolution_details={
                     "action_type": "preprocessing",

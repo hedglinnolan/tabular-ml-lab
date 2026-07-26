@@ -2,7 +2,7 @@
 #
 # 1. Downloads uv (the environment manager) into .\.tools (first run, ~35 MB).
 # 2. Creates a private Python 3.12 environment in .\.venv and installs the
-#    app's libraries (first run, ~1-2 GB, several minutes).
+#    app's libraries (first run, ~600 MB, several minutes).
 # 3. Creates "Tabular ML Lab" shortcuts (Desktop + Start Menu) with the app
 #    icon, so future launches are one double-click.
 # 4. Starts the app; the default browser opens automatically.
@@ -45,7 +45,7 @@ try {
     $stampOk = (Test-Path $Stamp) -and ((Get-Content $Stamp -Raw).Trim() -eq $reqHash)
     if (-not (Test-Path $Py) -or -not $stampOk) {
         Say "First-time setup 2/2: installing Python and the analysis libraries..."
-        Note "This downloads ~1-2 GB and takes a few minutes - ONE TIME ONLY."
+        Note "This downloads about 600 MB and takes a few minutes - ONE TIME ONLY."
         Note "Every launch after this one takes seconds and works offline."
         & $Uv venv --python 3.12 $Venv
         if ($LASTEXITCODE -ne 0) { throw "Python environment creation failed." }

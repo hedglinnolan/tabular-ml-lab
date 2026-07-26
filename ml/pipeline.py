@@ -112,7 +112,15 @@ def apply_plausibility_filter(
     plausibility_bounds: Dict[str, Any],
     unit_conversion_factors: Optional[List[float]] = None,
 ) -> pd.DataFrame:
-    """Filter rows to those where all plausibility-gated numeric cols are within NHANES range."""
+    """Keep the rows whose plausibility-gated numeric columns are in NHANES range.
+
+    The returned frame keeps the row labels it came in with. Those labels are
+    identities here, not decoration: the test-set lockbox seals a set of labels
+    at upload, and a cohort run banks the labels of the people in the group.
+    Renumbering the survivors 0..n-1 would leave both of those sets pointing at
+    whoever now happens to sit at those positions — a "Female" run quietly
+    holding half men, with nothing on screen to say so.
+    """
     lb = plausibility_bounds.get("lower_bounds", [])
     ub = plausibility_bounds.get("upper_bounds", [])
     if not lb and not ub:
@@ -121,7 +129,7 @@ def apply_plausibility_filter(
     if unit_conversion_factors:
         X = X * np.array(unit_conversion_factors, dtype=float)
     mask = plausibility_row_mask(X, lb, ub)
-    return df.loc[mask].reset_index(drop=True)
+    return df.loc[mask]
 
 
 def build_preprocessing_pipeline(

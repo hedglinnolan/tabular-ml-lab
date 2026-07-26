@@ -461,6 +461,19 @@ class NarrativeEngine:
         else:
             rows.append(("Study Design", "NOT RECORDED", "section omitted or generic"))
 
+        # The draft's own preamble points a reader HERE as the proof that every
+        # quantitative statement traces to a logged event. An evidence map that
+        # prints one group's N as the study's, with no row naming the filter, is
+        # the one artifact that must not omit it.
+        _up = getattr(self.prov, "upload", None)
+        if _up is not None and getattr(_up, "cohort_column", ""):
+            rows.append((
+                "Sample Restriction", "cohort run record",
+                f"analysis restricted to `{_up.cohort_column}` = "
+                f"{_up.cohort_value} — {_up.cohort_n:,} of "
+                f"{_up.study_n:,} in the study; every N above is this group's",
+            ))
+
         if comp.get("feature_selection"):
             rows.append(("Predictor Variables", "feature-selection record",
                          f"{ctx.get('fs_method', '—')}: "
@@ -621,6 +634,12 @@ class NarrativeEngine:
                 f"A {task_type} analysis was performed on a dataset of "
                 f"{n_total:,} observations."
             )
+            # Immediately, not in a footnote: without it this N reads as the
+            # study population when it is one group's.
+            from utils.workflow_provenance import cohort_restriction_sentence
+            _restriction = cohort_restriction_sentence()
+            if _restriction:
+                parts.append(_restriction)
         if target:
             parts.append(f"The outcome variable was {target}.")
 
@@ -829,6 +848,37 @@ class NarrativeEngine:
 
         return " ".join(parts)
 
+    def _borrowed_pipeline_note(self) -> str:
+        """Models trained with another model's preprocessing, named.
+
+        Training resolves `get_preprocessing_pipeline(key) or pipeline`, and
+        that fallback is the FIRST prepared model's pipeline — so a model
+        selected on Train & Compare but never prepared really is trained
+        through another model's PCA or power transform. The methods section
+        described only the prepared models, leaving a reader no way to know.
+        """
+        try:
+            import streamlit as st
+            by_model = st.session_state.get("preprocessing_pipelines_by_model") or {}
+            built = set(st.session_state.get("preprocess_built_model_keys") or [])
+            trained = set((st.session_state.get("model_results") or {}).keys())
+            borrowers = sorted(m for m in trained if m not in built)
+            if not borrowers or not by_model:
+                return ""
+            owner = "default" if "default" in by_model else next(iter(by_model))
+            names = ", ".join(m.upper() for m in borrowers)
+            if owner == "default":
+                return f"{names} used the shared preprocessing pipeline."
+            # One borrower is the common case, and the plural verb read as a
+            # typo in an exported manuscript.
+            was = "was" if len(borrowers) == 1 else "were"
+            return (f"{names} had no preprocessing configured and {was} "
+                    f"trained using the pipeline built for {owner.upper()}, "
+                    f"including any transform chosen specifically for that "
+                    f"model.")
+        except Exception:
+            return ""
+
     def _gen_missing_data(self) -> str:
         """Missing data handling."""
         pp = self.ctx.get("preprocessing_per_model", {})
@@ -884,12 +934,19 @@ class NarrativeEngine:
 
         parts = []
 
+        # "All models" is a claim about every model TRAINED, but `pp` holds only
+        # the models that were PREPARED. With a borrower in the run the sentence
+        # was contradicted by the very next one, which named a model that had
+        # none.
+        _borrowed = self._borrowed_pipeline_note()
+        _all = "The prepared models shared" if _borrowed else "All models shared"
+
         if not differs:
             # All models share preprocessing
             cfg = next(iter(pp.values()))
             sents = self._describe_preprocessing(cfg)
             if sents:
-                parts.append(f"All models shared identical preprocessing: {'; '.join(sents)}.")
+                parts.append(f"{_all} identical preprocessing: {'; '.join(sents)}.")
             else:
                 parts.append(
                     "No additional preprocessing transformations were applied beyond imputation."
@@ -909,6 +966,14 @@ class NarrativeEngine:
                     parts.append(
                         f"**{model_label}**: default preprocessing (no additional transformations)."
                     )
+
+        # A model trained through ANOTHER model's pipeline is described here or
+        # nowhere. Leaving it out let a methods section name every prepared
+        # model's transforms while saying nothing about the model that borrowed
+        # them — including a PCA a reader would need to know about to interpret
+        # the explainability at all.
+        if _borrowed:
+            parts.append(_borrowed)
 
         return " ".join(parts)
 

@@ -36,6 +36,32 @@ class UploadProvenance:
     # Data cleaning actions (appended as user cleans)
     cleaning_actions: List[Dict[str, Any]] = field(default_factory=list)
 
+    # A cohort run restricts EVERY downstream page to one group. It is the
+    # single fact that makes the reported effect interpretable — the whole
+    # point of running one group at a time is that the relationship may differ
+    # between groups — and without it here, every exported artifact reports
+    # the group's N as the study's and no reader can tell.
+    cohort_column: str = ""
+    cohort_value: str = ""
+    cohort_n: int = 0
+    study_n: int = 0
+
+    @property
+    def is_cohort_restricted(self) -> bool:
+        return bool(self.cohort_column)
+
+    def restriction_sentence(self) -> str:
+        """One sentence a manuscript can use verbatim, or '' when unrestricted."""
+        if not self.is_cohort_restricted:
+            return ""
+        of_study = (f" of {self.study_n:,} in the full study"
+                    if self.study_n and self.study_n > self.cohort_n else "")
+        return (f"This analysis was restricted to participants with "
+                f"{self.cohort_column} = {self.cohort_value} "
+                f"(n={self.cohort_n:,}{of_study}); the model was fitted and "
+                f"evaluated in that group only, and results should not be read "
+                f"as describing the whole study population.")
+
 
 @dataclass
 class EDAProvenance:
@@ -207,6 +233,13 @@ class WorkflowProvenance:
     statistical_validation: Optional[StatisticalValidationProvenance] = None
     coach: Optional[CoachProvenance] = None
 
+    # Cleaning recorded before a configuration was ever saved. Import Doctor
+    # repairs happen at the moment a file is committed, which is always before
+    # record_upload exists to hold them; without this they were dropped and the
+    # Methods section said nothing about a column whose sentinel codes had been
+    # recoded before anything else saw the data.
+    pending_cleaning_actions: List[Dict[str, Any]] = field(default_factory=list)
+
     # Schema version for forward compatibility
     schema_version: int = 1
 
@@ -229,26 +262,67 @@ class WorkflowProvenance:
             n_features=len(feature_cols),
             data_source=data_source,
             timestamp=datetime.now().isoformat(),
+            # Repairs applied at import happen before this record exists. A
+            # fresh UploadProvenance with cleaning_actions=[] used to erase them.
+            cleaning_actions=list(self.pending_cleaning_actions),
         )
+        self.pending_cleaning_actions = []
+        self.record_cohort_restriction()
         # Reset downstream sections (config changed)
         self.feature_engineering = None
         self.feature_selection = None
         self.preprocessing = None
         self.training = None
 
-    def record_cleaning(self, action: str, rows_before: int, rows_after: int,
-                        details: Optional[Dict[str, Any]] = None) -> None:
-        """Called by Upload & Audit for each data cleaning action."""
+    def record_cohort_restriction(self) -> None:
+        """Copy the active cohort run onto the upload record.
+
+        Called on every config save and whenever a run starts or clears, so the
+        provenance never disagrees with what get_data() is actually returning.
+        """
         if self.upload is None:
             return
-        self.upload.cleaning_actions.append({
+        try:
+            from utils.cohorts import active_cohort
+            run = active_cohort()
+        except Exception:
+            run = None
+        if run is None:
+            self.upload.cohort_column = ""
+            self.upload.cohort_value = ""
+            self.upload.cohort_n = 0
+            self.upload.study_n = 0
+        else:
+            self.upload.cohort_column = str(run.get("column", ""))
+            self.upload.cohort_value = str(run.get("label", ""))
+            self.upload.cohort_n = int(run.get("n_rows", 0))
+            self.upload.study_n = int(run.get("n_total", 0))
+
+    def record_cleaning(self, action: str, rows_before: int, rows_after: int,
+                        details: Optional[Dict[str, Any]] = None) -> None:
+        """Called by Upload & Audit for each data cleaning action.
+
+        Not every cleaning action removes rows. An Import Doctor repair recodes
+        values in place and passes 0/0, which used to overwrite the recorded
+        study N with zero — and, because repairs happen BEFORE a configuration
+        is ever saved, used to be dropped entirely and then erased by the
+        record_upload that followed. Both are handled here: the row count moves
+        only when rows really moved, and a repair recorded before the upload
+        record exists waits for it.
+        """
+        entry = {
             "action": action,
             "rows_before": rows_before,
             "rows_after": rows_after,
             "details": details or {},
             "timestamp": datetime.now().isoformat(),
-        })
-        self.upload.n_samples = rows_after
+        }
+        if self.upload is None:
+            self.pending_cleaning_actions.append(entry)
+            return
+        self.upload.cleaning_actions.append(entry)
+        if rows_after > 0:
+            self.upload.n_samples = rows_after
 
     def record_eda_analysis(self, analysis_name: str) -> None:
         """Called by EDA page for each analysis run."""
@@ -669,3 +743,17 @@ def get_provenance() -> WorkflowProvenance:
     except ImportError:
         # Not in Streamlit context — return a detached instance
         return WorkflowProvenance()
+
+
+def cohort_restriction_sentence() -> str:
+    """The sentence every exported artifact must carry, or '' when unrestricted.
+
+    Read from provenance rather than from session_state directly, so an export
+    can only state a restriction the pipeline actually recorded — which is the
+    promise the manuscript draft header makes.
+    """
+    try:
+        up = getattr(get_provenance(), "upload", None)
+        return up.restriction_sentence() if up is not None else ""
+    except Exception:
+        return ""

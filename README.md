@@ -37,13 +37,11 @@ An interactive research workbench for scientists who work with tabular data and 
 Run Tabular ML Lab on your own computer like a normal desktop app — **your data
 never leaves your machine.**
 
-<p align="center">
-  <a href="https://github.com/hedglinnolan/tabular-ml-lab/archive/refs/heads/main.zip">
-    <img src="https://img.shields.io/badge/⬇_Download_Tabular_ML_Lab-.zip_for_Windows_%26_Mac-667eea?style=for-the-badge" alt="Download Tabular ML Lab">
-  </a>
-</p>
+### ⬇️ [**Download the latest release (.zip)**](https://github.com/hedglinnolan/tabular-ml-lab/releases/latest)
 
-**1.** Download the zip above and unzip it anywhere you like (Desktop, Documents…).
+*(alternate link, if the one above is blocked: [download the current code as a zip](https://github.com/hedglinnolan/tabular-ml-lab/archive/refs/heads/main.zip))*
+
+**1.** Download the zip and unzip it anywhere you like (Desktop, Documents…).
 The unzipped folder **is** the app — don't delete it after setup.
 
 **2.** Open the folder and double-click the starter for your system:
@@ -54,7 +52,7 @@ The unzipped folder **is** the app — don't delete it after setup.
 | **Mac** | `Start Tabular ML Lab.command` | **Right-click → Open → Open** (plain double-click is blocked for downloaded files) |
 
 **3.** The first launch sets everything up **once**: it downloads a private copy
-of Python and the analysis libraries (~1–2 GB, a few minutes — the window tells
+of Python and the analysis libraries (roughly 600 MB, a few minutes — the window tells
 you what's happening). Then the app opens in your browser automatically.
 
 **Coming back later:** setup never repeats. On Windows, a **Tabular ML Lab**
@@ -68,6 +66,49 @@ closing the small console window quits it.
 stores your data inside its own folder, so nothing of yours is lost.
 
 **Uninstalling:** delete the folder (plus the Desktop shortcut on Windows). That's everything.
+
+### If the download is blocked
+
+Some universities and hospitals block downloads at the network level, so the
+file may never arrive — often with no explanation. These paths fail for
+different reasons, so if one is blocked another usually works.
+
+**1. Try the alternate download link above.** The release file and the
+"current code" file are served from different addresses.
+
+**2. Install from a terminal** (nothing is downloaded through your browser):
+
+```bash
+# macOS / Linux — paste into Terminal
+curl -LsSf https://astral.sh/uv/install.sh | sh
+git clone https://github.com/hedglinnolan/tabular-ml-lab.git
+cd tabular-ml-lab && uv run streamlit run app.py
+```
+
+```powershell
+# Windows — paste into PowerShell
+irm https://astral.sh/uv/install.ps1 | iex
+git clone https://github.com/hedglinnolan/tabular-ml-lab.git
+cd tabular-ml-lab; uv run streamlit run app.py
+```
+
+**3. Ask IT to allow these addresses.** Sending them this exact list usually
+resolves it in one message — all are standard developer infrastructure:
+
+```
+github.com
+codeload.github.com          <- needed for zip downloads specifically
+objects.githubusercontent.com
+release-assets.githubusercontent.com
+raw.githubusercontent.com
+pypi.org
+files.pythonhosted.org
+astral.sh
+```
+
+**4. Ask a colleague to send you the folder.** The app is just files — a
+zip on a USB stick or shared drive works exactly the same. Only the first
+launch needs internet, to fetch Python and the libraries.
 
 <details>
 <summary>What the starter actually does (for the curious or cautious)</summary>
@@ -94,7 +135,7 @@ this repository.
 | 3 | **Feature Engineering** | PCA, polynomial features, log transforms, ratios, binning, TDA features |
 | 4 | **Feature Selection** | LASSO path, RFE-CV, univariate, stability selection, consensus ranking |
 | 5 | **Preprocess** | Per-model pipelines: imputation, scaling, encoding, outlier handling, power transforms |
-| 6 | **Train & Compare** | 22 models with bootstrap CIs, automatic baseline comparison, calibration analysis, optional Optuna optimization |
+| 6 | **Train & Compare** | 22 models (the neural network enables with one click) with bootstrap CIs, automatic baseline comparison, calibration analysis, optional Optuna optimization |
 | 7 | **Explainability** | SHAP, permutation importance, PDP, external validation, subgroup analysis |
 | 8 | **Sensitivity Analysis** | Seed robustness, feature dropout — prove your results aren't fragile |
 | 9 | **Statistical Validation** | Traditional stats for Table 1: t-tests, ANOVA, chi-square, custom hypothesis tests |

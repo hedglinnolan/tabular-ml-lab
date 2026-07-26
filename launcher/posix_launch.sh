@@ -7,7 +7,7 @@
 # What it does:
 #   1. Installs uv into ./.tools (first run only; ~35 MB).
 #   2. Creates a private Python 3.12 environment in ./.venv and installs the
-#      app's dependencies (first run only; ~1-2 GB, several minutes).
+#      app's dependencies (first run only; ~600 MB, several minutes).
 #   3. On macOS, generates "Tabular ML Lab.app" next to this folder's
 #      launcher so future launches are a double-click on a real app icon.
 #      The .app is created ON THIS MACHINE, so it carries no quarantine
@@ -79,7 +79,7 @@ PY_SPEC="${TML_PYTHON:-3.12}"
 CURRENT_HASH="$(req_hash)"
 if [[ ! -x "$VENV/bin/python" || ! -f "$STAMP" || "$(cat "$STAMP")" != "$CURRENT_HASH" ]]; then
     say "First-time setup 2/2: installing Python and the analysis libraries…"
-    note "This downloads ~1-2 GB and takes a few minutes — ONE TIME ONLY."
+    note "This downloads about 600 MB and takes a few minutes — ONE TIME ONLY."
     note "Every launch after this one takes seconds and works offline."
     notify_mac "One-time setup in progress — this takes a few minutes."
     "$UV" venv --python "$PY_SPEC" "$VENV"
