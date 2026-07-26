@@ -451,6 +451,160 @@ def test_empty_and_unreadable_uploads_are_refused(client):
     assert r.status_code == 400
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Preview before apply
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_preview_shows_cells_that_really_changed(df: pd.DataFrame):
+    """The gate: real cells, really different, quoted from both frames."""
+    from ml import import_doctor
+
+    finding = next(f for f in import_doctor.diagnose(df)
+                   if f.id == "category_variants__sex")
+    prev = engine.preview_fix(df, finding)
+
+    assert prev["applicable"] and prev["changed_cells"] > 0
+    assert "sex" in prev["changed_columns"]
+
+    # Every cell the preview marks changed must actually differ, and the values
+    # shown must be the real ones from each frame — not a formatted guess.
+    after, _ = import_doctor.apply_fix(df.copy(deep=True), finding)
+    cols = prev["sample"]["columns"]
+    marked = 0
+    for row in prev["sample"]["rows"]:
+        label = row["label"]
+        for i, col in enumerate(cols):
+            assert row["before"][i] == ("" if pd.isna(df.at[label, col])
+                                        else str(df.at[label, col]))
+            assert row["after"][i] == ("" if pd.isna(after.at[label, col])
+                                       else str(after.at[label, col]))
+            if row["changed"][i]:
+                marked += 1
+                assert row["before"][i] != row["after"][i]
+    assert marked > 0, "the sample showed no changed cell for a fix that changes 47"
+
+
+def test_preview_reports_a_fix_that_renumbers_the_rows(df: pd.DataFrame):
+    """The one thing a preview must not stay quiet about.
+
+    Four of the nine fix kinds end in `reset_index(drop=True)`. This project
+    keys rows by label, so a renumbering silently repoints every stored label —
+    `TRANSITION_PLAN.md` §02.2's highest-risk item. `melt_repeated` is the
+    clearest case: 140 rows become 420 and no label survives.
+    """
+    from ml import import_doctor
+
+    melt = next(f for f in import_doctor.diagnose(df) if f.fix_kind == "melt_repeated")
+    prev = engine.preview_fix(df, melt)
+    assert prev["row_identity_preserved"] is False
+    assert prev["row_identity_note"] and "renumbers" in prev["row_identity_note"]
+    assert prev["shape"]["after"][0] > prev["shape"]["before"][0]
+
+
+def test_row_identity_check_is_not_fooled_by_a_constant_column():
+    """A constant column lines up under *any* renumbering.
+
+    So "some column still matches" cannot be the test — it would wave through
+    exactly the corruption this check exists to catch. Judged on every untouched
+    column instead. Rows dropped from the middle break identity; rows dropped
+    from the end of a clean `RangeIndex` genuinely do not.
+    """
+    from ml.import_doctor import ShapeFinding
+
+    base = pd.DataFrame({"v": range(10), "site": ["A"] * 10,
+                         "note": [f"r{i}" for i in range(10)]})
+    mk = lambda kind, params: ShapeFinding(
+        id="x", severity="warning", title="", detail="", why_it_matters="",
+        fix_label="", fix_kind=kind, params=params)
+
+    mid = engine.preview_fix(base, mk("drop_rows", {"positions": [2, 3]}))
+    assert mid["row_identity_preserved"] is False, "a mid-frame drop renumbers survivors"
+
+    tail = engine.preview_fix(base, mk("drop_rows", {"positions": [8, 9]}))
+    assert tail["row_identity_preserved"] is True, "dropping the tail renumbers nothing"
+
+    shifted = base.copy()
+    shifted.index = range(500, 510)
+    off = engine.preview_fix(shifted, mk("drop_rows", {"positions": [8, 9]}))
+    assert off["row_identity_preserved"] is False, "reset on a non-RangeIndex loses labels"
+
+
+def test_preview_refuses_where_the_engine_refuses(df: pd.DataFrame):
+    """`fix_kind='none'` is the engine declining to guess. The preview says so."""
+    from ml.import_doctor import ShapeFinding
+
+    none_fix = ShapeFinding(id="x", severity="critical", title="", detail="",
+                            why_it_matters="", fix_label="", fix_kind="none")
+    prev = engine.preview_fix(df, none_fix)
+    assert prev["applicable"] is False
+    assert "human decision" in prev["description"]
+
+
+def test_declining_a_preview_leaves_the_project_byte_identical(client, raw: bytes):
+    """The gate's second half, asserted on a content hash of the working table.
+
+    Every previewable finding is previewed over HTTP and none is applied. The
+    table — values, row labels and dtypes — must hash the same afterwards.
+    """
+    pid = client.post("/project",
+                      files={"file": ("clinic_visits.csv", raw, "text/csv")}).json()["id"]
+    before = client.get(f"/project/{pid}").json()["fingerprint"]
+
+    previewed = 0
+    for f in client.get(f"/project/{pid}/findings").json()["findings"]:
+        if f["source"] != "structure":
+            continue
+        r = client.get(f"/project/{pid}/finding/{f['id']}/preview")
+        assert r.status_code == 200, r.text
+        previewed += 1
+
+    assert previewed >= 5, "not enough previews to make this assertion mean anything"
+    after = client.get(f"/project/{pid}").json()
+    assert after["fingerprint"] == before, "a preview changed the working table"
+    assert after["applied_fixes"] == []
+    assert not any(d["kind"] == "apply" for d in after["decisions"])
+
+
+def test_applying_changes_the_table_and_reverting_restores_it(client, raw: bytes):
+    """Confirmed means applied; undone means byte-identical again."""
+    pid = client.post("/project",
+                      files={"file": ("clinic_visits.csv", raw, "text/csv")}).json()["id"]
+    original = client.get(f"/project/{pid}").json()["fingerprint"]
+
+    body = client.post(f"/project/{pid}/decision",
+                       json={"kind": "apply", "subject": "category_variants__sex"}).json()
+    assert body["fingerprint"] != original
+    assert body["applied_fixes"] == ["category_variants__sex"]
+    applied = next(d for d in body["decisions"] if d["kind"] == "apply")
+    # The transcript sentence is the engine's own, written for a methods section.
+    assert "sex" in applied["text"]
+    assert applied["payload"]["row_identity_preserved"] is True
+
+    back = client.post(f"/project/{pid}/decision", json={"kind": "revert"}).json()
+    assert back["fingerprint"] == original, "undo did not restore the table exactly"
+    assert back["applied_fixes"] == []
+    assert [d["kind"] for d in back["decisions"]].count("apply") == 1, "the record was rewritten"
+
+
+def test_applying_a_fix_re_diagnoses(client, raw: bytes):
+    """The finding that prompted a fix should not survive the fix."""
+    pid = client.post("/project",
+                      files={"file": ("clinic_visits.csv", raw, "text/csv")}).json()["id"]
+    body = client.post(f"/project/{pid}/decision",
+                       json={"kind": "apply", "subject": "category_variants__sex"}).json()
+    assert "category_variants__sex" not in [f["id"] for f in body["findings"]]
+    assert body["findings_stale"] is False, "findings were recomputed in the same request"
+
+
+def test_revert_with_nothing_to_undo_is_refused(client, uploaded: str):
+    r = client.post(f"/project/{uploaded}/decision", json={"kind": "revert"})
+    assert r.status_code == 400
+
+
+def test_preview_of_an_unknown_finding_is_404(client, uploaded: str):
+    assert client.get(f"/project/{uploaded}/finding/nope/preview").status_code == 404
+
+
 def test_the_frontend_is_served(client):
     r = client.get("/")
     assert r.status_code == 200

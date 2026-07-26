@@ -27,7 +27,7 @@ import io
 import math
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -228,6 +228,222 @@ def data_warning_to_dict(w: DataWarning, ordinal: int) -> Dict[str, Any]:
 def profile_to_dict(p: DatasetProfile) -> Dict[str, Any]:
     """The whole profile as plain data. `_plain` walks the nested dataclasses."""
     return _plain(p)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Preview
+#
+# `import_doctor.apply_fix` already returns `(new_frame, description)` and never
+# mutates its input — the engine has always worked preview-first. Everything
+# below is the diff of two frames the engine produced. No repair is computed
+# here, and no frame produced here is installed anywhere.
+# ─────────────────────────────────────────────────────────────────────────────
+
+MAX_PREVIEW_ROWS = 8
+
+
+def _differs(before: pd.DataFrame, after: pd.DataFrame) -> pd.DataFrame:
+    """Elementwise "this cell changed", with NaN == NaN.
+
+    Two missing values are the same absence, and `!=` disagrees.
+    """
+    try:
+        ne = before.ne(after)
+    except (TypeError, ValueError):
+        # Mixed-type object columns can refuse to compare. Falling back to text
+        # can only over-report a change, never hide one.
+        ne = before.astype(str).ne(after.astype(str))
+    both_missing = before.isna() & after.isna()
+    return ne & ~both_missing
+
+
+def _cell(v: Any) -> str:
+    return "" if v is None or (isinstance(v, float) and math.isnan(v)) or v is pd.NaT else str(v)
+
+
+def preview_fix(df: pd.DataFrame, finding: ShapeFinding) -> Dict[str, Any]:
+    """What this finding's fix would change, computed but not applied.
+
+    The frame handed to `apply_fix` is a copy, and the result is described and
+    discarded. Nothing here touches the project.
+
+    The interesting part is `row_identity_preserved`. Four of the nine fix kinds
+    end in `.reset_index(drop=True)` — `promote_header`, `drop_empty_rows`,
+    `drop_rows`, and `melt_repeated` rebuilds the index outright. This project
+    keys rows by index label (`TRANSITION_PLAN.md` §02.2), so a renumbering
+    means every stored label now names a *different row*. That is the corruption
+    the transition plan calls its highest risk, and a preview that did not
+    mention it would be hiding the most consequential thing about the fix.
+
+    It is detected by content, not by fix kind: the surviving labels are looked
+    up in the original frame and the rows compared. Dropping trailing footer
+    rows from a clean `RangeIndex` renumbers nothing that matters and is
+    correctly reported as preserved; dropping from the middle is not.
+    """
+    if finding.fix_kind == "none":
+        return {
+            "finding_id": finding.id,
+            "fix_kind": "none",
+            "fix_label": finding.fix_label or None,
+            "applicable": False,
+            "description": "No automatic change is possible here; this needs a human decision.",
+        }
+
+    before = df
+    after, description = import_doctor.apply_fix(df.copy(deep=True), finding)
+
+    cols_before, cols_after = list(before.columns), list(after.columns)
+    added = [c for c in cols_after if c not in cols_before]
+    removed = [c for c in cols_before if c not in cols_after]
+    common_cols = [c for c in cols_after if c in cols_before]
+
+    # ── did the surviving rows keep their identities? ──────────────────────
+    labels_known = bool(len(after)) and bool(after.index.isin(before.index).all())
+    identity_ok, identity_note = False, None
+    if labels_known and not after.index.has_duplicates and common_cols:
+        try:
+            aligned = before.loc[after.index, common_cols]
+            # A fix edits the columns it names, so those are excluded from the
+            # test. Identity is judged on every *remaining* column — all of
+            # them, not any of them. Judging on "any column still lines up"
+            # would be satisfied by a constant column, which lines up under any
+            # renumbering whatsoever and would wave through exactly the
+            # corruption this check exists to catch.
+            touched_by_fix = set(map(str, finding.affected_columns or []))
+            witness = [c for c in common_cols if str(c) not in touched_by_fix] or common_cols
+            identity_ok = not bool(
+                _differs(aligned[witness], after[witness]).to_numpy().any()
+            )
+        except (KeyError, ValueError, IndexError):
+            identity_ok = False
+    if len(after) == len(before) and after.index.equals(before.index):
+        identity_ok = True
+    if not identity_ok:
+        identity_note = (
+            "This fix renumbers the rows, so every row label stored before it — "
+            "including a sealed test set — would afterwards name a different row. "
+            "The engine resets the index for this repair."
+        )
+
+    # ── the cell-level diff, over rows and columns present on both sides ────
+    changed_count, changed_cols, changed_labels = 0, [], []
+    if identity_ok and common_cols and len(after):
+        try:
+            aligned = before.loc[after.index, common_cols]
+            mask = _differs(aligned, after[common_cols])
+            changed_count = int(mask.to_numpy().sum())
+            changed_cols = [c for c in common_cols if bool(mask[c].any())]
+            changed_labels = list(after.index[mask.any(axis=1)])
+        except (KeyError, ValueError):
+            pass
+
+    # ── the rows to show ───────────────────────────────────────────────────
+    # When identity holds, before and after are shown *aligned by label*, with
+    # the rows that changed first, and a cell-level diff is meaningful.
+    #
+    # When it does not, there is no correspondence between a before row and an
+    # after row, so no cell diff can honestly be drawn. Both frames' first rows
+    # are shown side by side as samples, carrying their own labels, and nothing
+    # is marked changed — an unaligned diff would paint every cell as modified
+    # and read as data loss when the data is merely reshaped.
+    display_cols = ([c for c in common_cols if c in changed_cols or c in cols_after[:4]]
+                    + added)[:6] or cols_after[:6]
+    rows = []
+
+    if identity_ok:
+        show = list(changed_labels[:MAX_PREVIEW_ROWS])
+        for lbl in list(after.index)[:MAX_PREVIEW_ROWS * 3]:
+            if len(show) >= MAX_PREVIEW_ROWS:
+                break
+            if lbl not in show:
+                show.append(lbl)
+        for lbl in show[:MAX_PREVIEW_ROWS]:
+            b_row, a_row, flags = [], [], []
+            for c in display_cols:
+                b_txt = _cell(before.at[lbl, c]) if (lbl in before.index and c in cols_before) else ""
+                a_txt = _cell(after.at[lbl, c]) if (lbl in after.index and c in cols_after) else ""
+                b_row.append(b_txt)
+                a_row.append(a_txt)
+                flags.append(b_txt != a_txt)
+            rows.append({"label": _plain(lbl), "before_label": _plain(lbl),
+                         "before": b_row, "after": a_row, "changed": flags})
+    else:
+        b_head, a_head = before.head(MAX_PREVIEW_ROWS), after.head(MAX_PREVIEW_ROWS)
+        for i in range(max(len(b_head), len(a_head))):
+            b_lbl = b_head.index[i] if i < len(b_head) else None
+            a_lbl = a_head.index[i] if i < len(a_head) else None
+            b_row = [_cell(b_head.at[b_lbl, c]) if (b_lbl is not None and c in cols_before) else ""
+                     for c in display_cols]
+            a_row = [_cell(a_head.at[a_lbl, c]) if (a_lbl is not None and c in cols_after) else ""
+                     for c in display_cols]
+            rows.append({
+                "label": _plain(a_lbl) if a_lbl is not None else "",
+                "before_label": _plain(b_lbl) if b_lbl is not None else "",
+                "before": b_row, "after": a_row,
+                "changed": [False] * len(display_cols),
+            })
+
+    def _missing(frame: pd.DataFrame, cols: List[str]) -> int:
+        cols = [c for c in cols if c in frame.columns]
+        return int(frame[cols].isna().to_numpy().sum()) if cols else 0
+
+    touched = list(finding.affected_columns) or changed_cols
+    stats = [
+        {"key": "rows", "before": int(len(before)), "after": int(len(after))},
+        {"key": "columns", "before": len(cols_before), "after": len(cols_after)},
+        {"key": "cells changed", "before": 0, "after": changed_count},
+    ]
+    if touched:
+        stats.append({"key": f"missing in {touched[0]}",
+                      "before": _missing(before, touched[:1]),
+                      "after": _missing(after, touched[:1])})
+        if touched[0] in cols_before and touched[0] in cols_after:
+            stats.append({"key": f"dtype of {touched[0]}",
+                          "before": str(before[touched[0]].dtype),
+                          "after": str(after[touched[0]].dtype)})
+
+    return {
+        "finding_id": finding.id,
+        "fix_kind": finding.fix_kind,
+        "fix_label": finding.fix_label or None,
+        "applicable": True,
+        "description": description,
+        "confidence": finding.confidence,
+        "auto_suggestable": bool(finding.auto_suggestable),
+        "shape": {"before": [int(len(before)), len(cols_before)],
+                  "after": [int(len(after)), len(cols_after)]},
+        "columns_added": [str(c) for c in added],
+        "columns_removed": [str(c) for c in removed],
+        "rows_removed": max(0, int(len(before) - len(after))),
+        "rows_added": max(0, int(len(after) - len(before))),
+        "row_identity_preserved": bool(identity_ok),
+        "row_identity_note": identity_note,
+        "changed_cells": changed_count,
+        "changed_columns": [str(c) for c in changed_cols],
+        "sample": {"columns": [str(c) for c in display_cols], "rows": rows,
+                   "aligned": bool(identity_ok)},
+        "stats": _plain(stats),
+    }
+
+
+def apply_fix(df: pd.DataFrame, finding: ShapeFinding) -> Tuple[pd.DataFrame, str]:
+    """Apply one fix. Straight through to `ml.import_doctor.apply_fix`.
+
+    Takes a deep copy first. The engine documents that it never mutates its
+    input; the copy means a future change to that promise cannot corrupt a
+    project that is still holding the original frame.
+    """
+    return import_doctor.apply_fix(df.copy(deep=True), finding)
+
+
+def find_shape_finding(structural: List[ShapeFinding], finding_id: str) -> ShapeFinding:
+    for f in structural:
+        if f.id == finding_id:
+            return f
+    raise EngineRefusal(
+        f"No structural finding '{finding_id}' in this table. Findings are recomputed "
+        "after every change, so an id from before a fix may no longer exist."
+    )
 
 
 def rank_findings(

@@ -27,10 +27,11 @@ The frame itself never appears in it.
 """
 from __future__ import annotations
 
+import hashlib
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -103,6 +104,9 @@ class AnalysisProject:
     # old one. The findings are *marked*, never dropped: "the past is editable,
     # never silently destroyed" (PRODUCT_VISION.md §07.4).
     findings_stale: bool = False
+    # (finding_id, frame) for each applied fix, most recent last. Holds whole
+    # frames, so it is memory the skeleton spends to keep fixes reversible.
+    _history: List[Tuple[str, pd.DataFrame]] = field(default_factory=list, repr=False)
 
     # ── construction ────────────────────────────────────────────────────────
 
@@ -214,6 +218,61 @@ class AnalysisProject:
                      "reasons": self.task_reasons, "replaced": changed},
         )
 
+    def fingerprint(self) -> str:
+        """A content hash of the working table: values, row labels, dtypes.
+
+        Exists so "declining a preview left the project untouched" is a thing a
+        test can assert rather than a thing a comment claims.
+        """
+        h = hashlib.sha256()
+        h.update(self.df.to_csv(index=True).encode("utf-8"))
+        h.update("|".join(f"{c}:{d}" for c, d in
+                          zip(map(str, self.df.columns), map(str, self.df.dtypes))).encode("utf-8"))
+        return h.hexdigest()
+
+    def apply_fix(self, new_df: pd.DataFrame, finding_id: str, title: str,
+                  description: str, row_identity_preserved: bool) -> Decision:
+        """Install a repaired frame, keeping the one it replaced.
+
+        The previous frame is pushed onto a stack rather than dropped, because
+        `ARCHITECTURE.md` §02 requires fixes to be *reversible*, and a fix you
+        cannot undo is a fix the user has to be certain about before they can
+        see what it did — which is the blind consent the preview exists to
+        avoid.
+
+        `row_identity_preserved` is recorded on the decision rather than acted
+        on. Four fix kinds renumber the index, and when that happens every row
+        label stored earlier stops naming the same row. The skeleton has no
+        lockbox to invalidate yet, so the honest thing is to write down that it
+        happened; the step that seals a test set will need to read this.
+        """
+        self._history.append((finding_id, self.df))
+        self.df = new_df
+        self.findings_stale = True
+        return self.record(
+            kind="apply", subject=finding_id, text=description,
+            payload={"title": title,
+                     "row_identity_preserved": bool(row_identity_preserved),
+                     "reverts_to": len(self._history) - 1},
+        )
+
+    def revert_last_fix(self) -> Decision:
+        """Undo the most recent applied fix. Appends; never erases the record."""
+        if not self._history:
+            raise ProjectError("No applied fix to undo.")
+        finding_id, previous = self._history.pop()
+        self.df = previous
+        self.findings_stale = True
+        return self.record(
+            kind="revert", subject=finding_id,
+            text="That change was undone; the table is back as it was.",
+            payload={"undid": finding_id},
+        )
+
+    @property
+    def applied_fixes(self) -> List[str]:
+        return [fid for fid, _ in self._history]
+
     def set_findings(self, findings: List[Dict[str, Any]],
                      profile: Optional[Dict[str, Any]] = None) -> None:
         """Install a freshly computed finding set. Clears the stale mark."""
@@ -251,6 +310,8 @@ class AnalysisProject:
             "decisions": [d.to_dict() for d in self.decisions],
             "findings": self.findings,
             "findings_stale": self.findings_stale,
+            "applied_fixes": self.applied_fixes,
+            "fingerprint": self.fingerprint(),
             "profile": self.profile,
         }
         if include_rows:

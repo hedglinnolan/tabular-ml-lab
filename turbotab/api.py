@@ -195,6 +195,34 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         _recompute(project)
         return _payload(project)
 
+    if decision.kind == "apply":
+        # The only endpoint in this service that changes the working table, and
+        # it is reached only by asking for it by name. A preview never lands
+        # here: it computes on a copy and throws the copy away.
+        try:
+            live = engine.find_shape_finding(engine.diagnose(project.df), decision.subject)
+            prev = engine.preview_fix(project.df, live)
+            if not prev.get("applicable"):
+                raise HTTPException(
+                    400, "That finding has no automatic repair — it needs a human decision.")
+            new_df, description = engine.apply_fix(project.df, live)
+            project.apply_fix(new_df, live.id, live.title, description,
+                              prev["row_identity_preserved"])
+        except engine.EngineRefusal as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        _recompute(project)
+        return _payload(project)
+
+    if decision.kind == "revert":
+        try:
+            project.revert_last_fix()
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        _recompute(project)
+        return _payload(project)
+
     if decision.kind not in {"defer", "dismiss", "undismiss", "flag", "unflag", "note"}:
         raise HTTPException(400, f"Unknown decision kind '{decision.kind}'.")
 
@@ -235,6 +263,31 @@ async def get_findings(project_id: str) -> Dict[str, Any]:
             "target_profile": prof.get("target_profile"),
         } if prof else None,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /project/{id}/finding/{fid}/preview
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/project/{project_id}/finding/{finding_id}/preview")
+async def preview_finding(project_id: str, finding_id: str) -> Dict[str, Any]:
+    """What this fix would change, without changing it.
+
+    A `GET`, because it is a question. It runs `import_doctor.apply_fix` on a
+    deep copy, describes the difference, and discards the result — the project's
+    frame is not touched, which `test_declining_a_preview_leaves_the_project_
+    byte_identical` asserts against a content hash rather than trusting this
+    paragraph.
+    """
+    try:
+        project = STORE.get(project_id)
+    except ProjectError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    try:
+        live = engine.find_shape_finding(engine.diagnose(project.df), finding_id)
+        return engine.preview_fix(project.df, live)
+    except engine.EngineRefusal as exc:
+        raise HTTPException(404, str(exc)) from exc
 
 
 # ─────────────────────────────────────────────────────────────────────────────

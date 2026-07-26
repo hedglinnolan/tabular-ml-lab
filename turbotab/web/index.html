@@ -574,6 +574,8 @@
           <button class="chg" id="d-data-chg" type="button">change</button>
         </div>
 
+        <div id="appliedBox"></div>
+
         <div class="stepcard calm is-hidden" id="card-struct">
           <div class="sub">
             <div class="subhead"><span class="sub-num">noticed</span></div>
@@ -840,63 +842,134 @@
     return h;
   }
 
-  /* The panel the prototype opens on "show me what changes". This build has no
-     transform to diff, so it shows what the engine actually said and states
-     plainly that nothing has been applied — rather than drawing a before/after
-     out of numbers nobody computed. */
+  /* ═════════ PREVIEW BEFORE APPLY ═════════
+     The panel the prototype opens on "show me what changes" — now showing what
+     would actually change. The server runs import_doctor.apply_fix on a copy
+     and describes the difference; every cell below is quoted from one of the
+     two real frames, and the copy is discarded. Nothing is applied until the
+     button in this panel is pressed. */
+
+  function miniTable(cols, rows, side){
+    var lab = side === "before" ? "before_label" : "label";
+    var h = '<table class="mini"><thead><tr><th>row</th>';
+    cols.forEach(function(c){ h += "<th>" + esc(c) + "</th>"; });
+    h += "</tr></thead><tbody>";
+    rows.forEach(function(r){
+      h += '<tr><td>' + esc(r[lab] !== undefined ? r[lab] : r.label) + "</td>";
+      (r[side] || []).forEach(function(v, i){
+        var cls = r.changed[i] ? (side === "before" ? ' class="hit"' : ' class="newv"') : "";
+        h += "<td" + cls + ">" + (v === "" ? "—" : esc(v)) + "</td>";
+      });
+      h += "</tr>";
+    });
+    return h + "</tbody></table>";
+  }
+
+  /* Shown when there is no diff to draw: the engine declined to propose a
+     repair, or the finding came from the profile rather than the doctor. */
+  function explainOnly(f, err){
+    var origin = f.source === "structure" ? "ml/import_doctor.py" : "ml/dataset_profile.py";
+    var h = '<div class="pv-head"><span class="pv-title">What the engine found</span>' +
+            '<span class="pv-note">' + esc(origin) + ' · nothing has been changed</span></div>';
+    h += '<div style="padding:14px 15px;background:var(--surface);">';
+    if (f.why_it_matters)
+      h += '<p style="margin:0 0 11px;font-size:13px;line-height:1.55;color:var(--muted);">' +
+           esc(f.why_it_matters) + "</p>";
+    if ((f.affected_columns || []).length)
+      h += '<p style="margin:0 0 11px;font-size:12.5px;color:var(--muted);">Columns: ' +
+           f.affected_columns.map(function(c){ return '<span class="v">' + esc(c) + "</span>"; }).join(" ") +
+           "</p>";
+    (f.suggested_actions || []).forEach(function(a){
+      h += '<p style="margin:0 0 7px;font-size:12.5px;color:var(--muted);">— ' + esc(a) + "</p>";
+    });
+    h += '<p style="margin:11px 0 0;font-size:13px;color:var(--muted);">' +
+         (err ? esc(err)
+              : "The engine reports this without proposing a repair. Some findings have to " +
+                "refuse rather than guess, and this is one of them.") + "</p>";
+    h += "</div>";
+    h += '<div class="pv-acts">' +
+         '<span style="flex:1;min-width:180px;"></span>' +
+         '<button class="f-act" data-pv-close="' + esc(f.id) + '" type="button">Close</button>' +
+         '<button class="f-act defer" data-defer="' + esc(f.id) + '" type="button">Remind me later</button>' +
+         '<button class="f-act dismiss" data-dismiss="' + esc(f.id) + '" type="button">Dismiss</button>' +
+         "</div>";
+    return h;
+  }
+
+  function previewHTML(f, pv){
+    var s = pv.sample || { columns: [], rows: [] };
+    var note = pv.changed_cells
+      ? pv.changed_cells.toLocaleString() + " cell" + (pv.changed_cells === 1 ? "" : "s") +
+        " change, showing " + s.rows.length
+      : (pv.rows_removed ? pv.rows_removed + " row(s) removed"
+                         : (pv.columns_removed.length ? pv.columns_removed.length + " column(s) removed"
+                                                      : "structure changes"));
+
+    var h = '<div class="pv-head"><span class="pv-title">What this would change</span>' +
+            '<span class="pv-note">' + esc(note) + " · nothing is applied yet</span></div>";
+
+    /* The one thing a preview must not stay quiet about. Four fix kinds reset
+       the index, and this project keys rows by label. */
+    if (pv.row_identity_preserved === false && pv.row_identity_note){
+      h += '<div style="padding:11px 14px;background:var(--warn-tint);' +
+           "border-bottom:1px solid var(--warn-line);font-size:12.5px;color:var(--warn);\">" +
+           "<strong>This renumbers your rows.</strong> " + esc(pv.row_identity_note) + "</div>";
+    }
+
+    h += '<div class="pv-cols">';
+    var un = s.aligned === false;
+    h += '<div class="pv-side"><div class="pv-lab">Before' +
+         (un ? " — first rows" : "") + "</div>" +
+         miniTable(s.columns, s.rows, "before") + "</div>";
+    h += '<div class="pv-arrow" aria-hidden="true">→</div>';
+    h += '<div class="pv-side"><div class="pv-lab after">After' +
+         (un ? " — first rows" : "") + "</div>" +
+         miniTable(s.columns, s.rows, "after") + "</div>";
+    h += "</div>";
+
+    h += '<div class="pv-stats">' + (pv.stats || []).map(function(st){
+      return '<div class="stat"><span class="sk">' + esc(st.key) + '</span><span class="sv">' +
+             '<span class="b">' + esc(st.before) + '</span><span class="ar">→</span>' +
+             '<span class="a">' + esc(st.after) + "</span></span></div>";
+    }).join("") + "</div>";
+
+    h += '<div class="pv-acts">' +
+         '<span style="font-size:12px;color:var(--muted);flex:1;min-width:190px;">' +
+         esc(pv.description) + " Nothing has happened yet.</span>" +
+         '<button class="f-act" data-pv-close="' + esc(f.id) + '" type="button">Close</button>' +
+         '<button class="f-act defer" data-defer="' + esc(f.id) + '" type="button">Remind me later</button>' +
+         '<button class="btn btn-primary" style="padding:7px 14px;font-size:12.5px;" ' +
+         'data-apply="' + esc(f.id) + '" type="button">Apply this</button>' +
+         "</div>";
+    return h;
+  }
+
   function openPanel(id){
     var f = findingById(id);
     if (!f) return;
     var box = $("pv-" + id);
-    var origin = f.source === "structure" ? "ml/import_doctor.py" : "ml/dataset_profile.py";
 
-    var h = '<div class="pv-head"><span class="pv-title">What the engine found</span>' +
-            '<span class="pv-note">' + esc(origin) + ' · nothing has been changed</span></div>';
-    h += '<div style="padding:14px 15px;background:var(--surface);">';
-    if (f.why_it_matters){
-      h += '<p style="margin:0 0 11px;font-size:13px;line-height:1.55;color:var(--muted);">' +
-           esc(f.why_it_matters) + '</p>';
+    if (f.source !== "structure" || !f.fix_kind || f.fix_kind === "none"){
+      box.innerHTML = explainOnly(f);
+      box.classList.remove("is-hidden");
+      anim(box, "arrive", 360);
+      nudge(box);
+      return;
     }
-    if ((f.affected_columns || []).length){
-      h += '<p style="margin:0 0 11px;font-size:12.5px;color:var(--muted);">Columns: ' +
-           f.affected_columns.map(function(c){ return '<span class="v">' + esc(c) + '</span>'; }).join(" ") +
-           '</p>';
-    }
-    (f.suggested_actions || []).forEach(function(a){
-      h += '<p style="margin:0 0 7px;font-size:12.5px;color:var(--muted);">— ' + esc(a) + '</p>';
-    });
-    if (f.fix_label && f.fix_kind && f.fix_kind !== "none"){
-      h += '<p style="margin:11px 0 0;font-size:13px;">The engine proposes: <strong>' +
-           esc(f.fix_label) + '</strong>' +
-           (f.auto_suggestable
-              ? ' — rated <em>high</em> confidence, the only tier the app is allowed to pre-select.'
-              : ' — below high confidence, so it is offered and never pre-selected.') + '</p>';
-    } else {
-      h += '<p style="margin:11px 0 0;font-size:13px;color:var(--muted);">The engine reports this ' +
-           'without proposing a repair. Some findings have to refuse rather than guess.</p>';
-    }
-    h += '</div>';
 
-    h += '<div class="pv-stats">' +
-         '<div class="stat"><span class="sk">severity</span><span class="sv"><span class="a">' + esc(f.severity) + '</span></span></div>' +
-         '<div class="stat"><span class="sk">confidence</span><span class="sv"><span class="a">' + esc(f.confidence || "not rated") + '</span></span></div>' +
-         '<div class="stat"><span class="sk">rank</span><span class="sv"><span class="a">' + (f.rank + 1) + ' of ' + P.findings.length + '</span></span></div>' +
-         '<div class="stat"><span class="sk">may pre-select</span><span class="sv"><span class="a">' + (f.auto_suggestable ? "yes" : "no") + '</span></span></div>' +
-         '</div>';
-
-    h += '<div class="pv-acts">' +
-         '<span style="font-size:12px;color:var(--muted);flex:1;min-width:200px;">This build records what ' +
-         'you decide. It does not change your table — applying a fix is the next slice, not this one.</span>' +
-         '<button class="f-act" data-pv-close="' + esc(id) + '" type="button">Close</button>' +
-         '<button class="f-act defer" data-defer="' + esc(id) + '" type="button">Remind me later</button>' +
-         '<button class="f-act dismiss" data-dismiss="' + esc(id) + '" type="button">Dismiss</button>' +
-         '</div>';
-
-    box.innerHTML = h;
+    box.innerHTML = '<div class="pv-head"><span class="pv-title">What this would change</span>' +
+                    '<span class="pv-note">working it out…</span></div>';
     box.classList.remove("is-hidden");
-    anim(box, "arrive", 360);
-    nudge(box);
+    job("Working out what that would change…",
+        api("/project/" + P.id + "/finding/" + encodeURIComponent(id) + "/preview"))
+      .then(function(pv){
+        box.innerHTML = pv.applicable ? previewHTML(f, pv) : explainOnly(f, pv.description);
+        anim(box, "arrive", 360);
+        nudge(box);
+      })
+      .catch(function(e){ box.innerHTML = explainOnly(f, e.message); });
   }
+
 
   /* ═════════ RENDER ═════════ */
   function renderAll(){
@@ -914,6 +987,22 @@
     if (loaded) record("d-data", esc(loaded.text));
     sectState("data", "recorded", "recorded");
     setMap("data", "done");
+
+    // Applied fixes are named, not merely counted, and the last one can be
+    // taken back. A change you cannot undo is one the preview asked you to be
+    // certain about before you could see it.
+    var applied = P.applied_fixes || [];
+    var box = $("appliedBox");
+    if (applied.length){
+      var sentences = P.decisions.filter(function(d){ return d.kind === "apply"; });
+      var reverted = P.decisions.filter(function(d){ return d.kind === "revert"; }).length;
+      var live = sentences.slice(reverted ? 0 : 0, sentences.length).slice(-applied.length);
+      box.innerHTML = '<div class="dnote on" style="border-style:solid;border-color:var(--ok);">' +
+        "<span>" + live.map(function(d){ return esc(d.text); }).join(" ") + "</span>" +
+        '<button data-revert="1" type="button">Undo the last change</button></div>';
+    } else {
+      box.innerHTML = "";
+    }
 
     var structural = bySource("structure");
     $("card-struct").classList.remove("is-hidden");
@@ -1085,7 +1174,8 @@
 
   document.addEventListener("click", function(e){
     var t = e.target.closest ? e.target.closest(
-      "[data-target-col],[data-panel],[data-pv-close],[data-defer],[data-dismiss],[data-undismiss],[data-flag]") : null;
+      "[data-target-col],[data-panel],[data-pv-close],[data-defer],[data-dismiss]," +
+      "[data-undismiss],[data-flag],[data-apply],[data-revert]") : null;
     if (!t) return;
 
     if (t.hasAttribute("data-target-col")){
@@ -1095,6 +1185,14 @@
     }
     if (t.hasAttribute("data-panel")){ openPanel(t.dataset.panel); return; }
     if (t.hasAttribute("data-pv-close")){ $("pv-" + t.dataset.pvClose).classList.add("is-hidden"); return; }
+    if (t.hasAttribute("data-apply")){
+      decide("apply", t.dataset.apply, {}, "Applying that change and re-checking the table…");
+      return;
+    }
+    if (t.hasAttribute("data-revert")){
+      decide("revert", "", {}, "Putting the table back…");
+      return;
+    }
     if (t.hasAttribute("data-defer")){ decide("defer", t.dataset.defer); return; }
     if (t.hasAttribute("data-dismiss")){ decide("dismiss", t.dataset.dismiss); return; }
     if (t.hasAttribute("data-undismiss")){ decide("undismiss", t.dataset.undismiss); return; }
