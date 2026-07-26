@@ -14,18 +14,21 @@ hard," it is "autonomous between checkpoints, and here are the checkpoints."
 
 TurboTab is finished when all four are true:
 
-1. **Parity.** For the same CSV and the same choices, TurboTab produces the same numbers as the
-   Streamlit app — same splits, same metrics, same lockbox rows, same manuscript claims. Enforced
-   by the parity harness (L10), not by inspection.
+1. **Parity, permanently.** For the same CSV and the same choices, both front doors produce the
+   same numbers — same splits, same metrics, same lockbox rows, same manuscript claims. Enforced
+   by the parity harness running in CI, not by inspection. This condition never retires, because
+   Streamlit never retires.
 2. **The interaction model is real.** One card per step, preview before apply, deferral that
    resurfaces, a stale cascade you can see, and flagged exhibits that land in the export. The
    prototype defines the target; the app must do it against live data.
-3. **The invariants hold.** Every rule in `ARCHITECTURE.md` §02 has a test that fails if it is
+3. **One core.** No domain logic remains in `pages/` or in the TurboTab frontend, enforced by the
+   import-boundary test. Every rule is implemented once.
+4. **The invariants hold.** Every rule in `ARCHITECTURE.md` §02 has a test that fails if it is
    broken. The lockbox in particular: sealed before exploration, sealed once, opened once.
-4. **The ledger is closed.** Every finding is `FIXED` (with a named test), `NOT-A-DEFECT`, or
+5. **The ledger is closed.** Every finding is `FIXED` (with a named test), `NOT-A-DEFECT`, or
    `WONTFIX` (with a reason). Zero `UNVERIFIED`, zero `OPEN`.
 
-Anything short of all four is a milestone, not a finish.
+Anything short of all five is a milestone, not a finish.
 
 ---
 
@@ -49,9 +52,9 @@ Anything short of all four is a milestone, not a finish.
   L9  feed frontend, one step per loop  ← the long one
   L10 parity harness + manuscript chain
                      │
-              ◆ DECISION C — cutover
+              ◆ DECISION C — ANSWERED: never delete
                      │
-  L11 cutover and delete
+  L11 converge Streamlit onto the core (page by page, lazily)
   L12 packaging
 ```
 
@@ -64,7 +67,8 @@ usable milestones throughout, not a sprint.
 ## Decision gates
 
 Three decisions only you can make. Each is one question, answerable in an afternoon, and each
-unblocks a run of autonomous work.
+unblocks a run of autonomous work. **Decision C is already answered** — see below; it reshapes
+the back half of the roadmap.
 
 ### ◆ Decision A — row identity
 
@@ -98,15 +102,67 @@ so the manuscript can still describe what happened.
 
 **Unblocks:** L8, and the shape of L9.
 
-### ◆ Decision C — cutover
+### ◆ Decision C — cutover · **ANSWERED: Streamlit is never deleted**
 
-**Question:** does the Streamlit app get deleted, or kept as a fallback?
+Users depend on it. That is a fixed constraint, not a preference, and it changes the shape of the
+project — for the better, once the framing changes.
 
-Ask it once parity is green (L10). Keeping both doubles maintenance forever; deleting is
-irreversible in practice. The parity harness is what makes this decidable on evidence.
+**The project is no longer "replace the app." It is "extract the core so the UI becomes a choice."**
 
-**Recommendation:** keep Streamlit read-only for one release cycle, then delete. Do not maintain
-two feature sets in parallel — that is the failure mode that kills rewrites.
+That was always the more valuable objective. A shared core is what makes the desktop packaging
+possible, what makes an All of Us deployment possible, and what makes TurboTab possible. Streamlit
+stops being the thing being replaced and becomes **one of several front doors.**
+
+But "keep both" is genuinely the failure mode that kills rewrites — *when both are full
+implementations.* The failure is never two UIs; it is **two implementations of the domain logic**,
+which drift until a number differs and nobody can say which is right. The rules in
+"Two front doors" below are what prevent that, and they are non-negotiable.
+
+**Consequences for this roadmap:**
+
+- L11 changes from *cutover and delete* to *converge Streamlit onto the core*.
+- The parity harness (L10) becomes **permanent CI infrastructure**, not a one-time gate.
+- The extraction loops (L4–L7) become the highest-value work in the project rather than
+  preparation for it — they are now the deliverable.
+- Logic trapped in `pages/` becomes more urgent, not less: **logic in a UI layer cannot be shared,
+  so every line still in `pages/` is a line that must be written twice.**
+
+---
+
+## Two front doors, one core
+
+The rule that makes keeping both sustainable:
+
+> **No domain logic lives in any UI layer. Both Streamlit and TurboTab are thin views over the
+> same Engine, Project, Record and Router.**
+
+Six policies enforce it.
+
+1. **One core, no forks.** `ml/`, `models/`, `AnalysisProject`, the Record and the Router are
+   shared. Neither UI may hold a private copy of a rule, a default, or a computation.
+2. **Enforce it with a test, not a convention.** Add an import-boundary test asserting that
+   nothing under `pages/` or the TurboTab frontend defines domain logic, and that the core never
+   imports either UI. Conventions decay; a red test does not.
+3. **Streamlit is feature-frozen at the UI level, and continuously improved underneath.** It gets
+   no new screens. It inherits every core fix automatically — which means today's cache-poisoning
+   bug and every landmine in the ledger get fixed once, for both.
+4. **Pages migrate to the core lazily.** Do not schedule a 19,835-line refactor. When you touch a
+   page for any reason, that page's logic moves to the core first. Touching it is the trigger.
+5. **New capability lands core-first, TurboTab-second, Streamlit-only-if-cheap.** The core is
+   where the feature lives; the front doors decide whether to expose it.
+6. **Parity runs in CI forever.** Same CSV, same scripted choices, both front doors, diff the
+   outputs. Not a cutover gate — a permanent guard against the drift that makes two apps
+   unmaintainable.
+
+**What this costs.** Converging Streamlit is more work than deleting it: eventually every page
+must consume the core rather than `st.session_state`. It is also work you were partly doing
+anyway — extraction is the migration — and policy 4 spreads it over the natural cadence of
+maintenance rather than demanding a single dangerous refactor.
+
+**What this buys.** Your existing users keep the app they know, and it gets *better* while they
+keep it — because the fixes land underneath them. TurboTab becomes an opt-in second door rather
+than a forced migration, and adoption decides its fate instead of a cutover date. And the same
+core reaches a Workbench VM or a Docker deployment without a third implementation.
 
 ---
 
@@ -182,11 +238,22 @@ Also split `ml/publication.py` (1,887 loc, 32 `st` refs) into logic and delivery
 **Gate:** parity green on at least three real datasets of different shapes — wide, longitudinal,
 and multi-file.
 
-### L11 · Cutover — supervised
+### L11 · Converge Streamlit onto the core — autonomous per page, supervised overall
 
-Ship TurboTab as the default, Streamlit read-only. Then, after a release cycle, delete
-`pages/`, `app.py` and the `utils/*_ui.py` layer. Expect this to surface the last of the trapped
-logic; that is what the freeze list and the ledger are for.
+Not a cutover. Page by page, replace each Streamlit page's private logic with calls into the
+shared core, keeping its UI intact. Users see nothing change; the duplication disappears
+underneath them.
+
+Order by the freeze list and by how much logic each page traps: `06_Train_and_Compare` (382 logic
+markers) and `10_Report_Export` (24 local functions) first, `01_Upload_and_Audit` only after
+`docs/FINDINGS_LEDGER.md`'s open tail closes. `11_Theory_Reference` is content, not logic —
+migrate it as data.
+
+**Gate per page:** parity green for that page's outputs before and after, and the import-boundary
+test still passes.
+
+**Do not delete anything.** The one deletion worth making is `utils/dataset_db.py` — 797 lines,
+zero importers, superseded — and even that goes in its own commit.
 
 ### L12 · Packaging — autonomous
 
@@ -206,8 +273,8 @@ to know it is wrong.**
 
 - The three decision gates above.
 - Any change inside the freeze list until `docs/FINDINGS_LEDGER.md`'s open tail closes.
-- Deleting anything. An agent that deletes `utils/theme.py` as "just styling" also deletes the
-  step state machine.
+- Deleting anything — and under Decision C, deletion is almost never the answer. An agent that
+  removes `utils/theme.py` as "just styling" also removes the step state machine.
 - Accepting parity failures. If L10 reports a divergence, a human decides which side is right.
   Sometimes it will be the new one.
 

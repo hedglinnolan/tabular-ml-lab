@@ -11,6 +11,11 @@ specification, or a clickable prototype driven by synthetic data.
 To get from here to something runnable, see [`LOOP.md`](LOOP.md) §"Loop 3 — the walking
 skeleton". The ledger loops verify and fix; only Loop 3 builds.
 
+**Streamlit is never deleted.** Existing users depend on it, so this is not a replacement
+project — it is an *extraction* project. The goal is one shared core with two front doors, and
+the rules that keep that from becoming two divergent apps are in
+[`ROADMAP.md`](ROADMAP.md) §"Two front doors, one core".
+
 Baseline for all analysis: `origin/main` @ `24c3446` (PR #145 merged).
 
 ---
