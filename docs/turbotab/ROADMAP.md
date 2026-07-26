@@ -153,7 +153,10 @@ Six policies enforce it.
    page for any reason, that page's logic moves to the core first. Touching it is the trigger.
 5. **New capability lands core-first, TurboTab-second, Streamlit-only-if-cheap.** The core is
    where the feature lives; the front doors decide whether to expose it.
-6. **Parity runs in CI forever.** Same CSV, same scripted choices, both front doors, diff the
+6. **Every capability has a register row.** `core` / `classic-only` / `both`, with a reason.
+   A capability with no row fails the register check — see [`FEATURE_PARITY.md`](FEATURE_PARITY.md).
+   Without this, lazy migration plus per-feature exposure decisions lose features silently.
+7. **Parity runs in CI forever.** Same CSV, same scripted choices, both front doors, diff the
    outputs. Not a cutover gate — it is how the product keeps a promise made to researchers, that
    a manuscript from either door describes the same science (`PRODUCT_VISION.md` §04b).
 
@@ -276,8 +279,9 @@ markers) and `10_Report_Export` (24 local functions) first, `01_Upload_and_Audit
 `docs/FINDINGS_LEDGER.md`'s open tail closes. `11_Theory_Reference` is content, not logic —
 migrate it as data.
 
-**Gate per page:** parity green for that page's outputs before and after, and the import-boundary
-test still passes.
+**Gate per page:** parity green for that page's outputs before and after, the import-boundary test
+still passes, and every capability the page held is registered `core` or `classic-only` with a
+reason (`FEATURE_PARITY.md`).
 
 **Do not delete anything.** The one deletion worth making is `utils/dataset_db.py` — 797 lines,
 zero importers, superseded — and even that goes in its own commit.

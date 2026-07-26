@@ -29,6 +29,7 @@ Baseline for all analysis: `origin/main` @ `24c3446` (PR #145 merged).
 | [`FINDINGS_LEDGER.md`](FINDINGS_LEDGER.md) | All 385 findings, tracked to completion. Nothing closes without a regression test named after it. |
 | [`prototypes/interview-feed.html`](prototypes/interview-feed.html) | Open in a browser. The interaction model, working, with synthetic data. |
 | [`LOOP.md`](LOOP.md) | **How to run this as an unsupervised agent loop.** Three loops: verify the ledger, fix the live bugs, or build the walking skeleton — the last is the one that produces a running app. |
+| [`FEATURE_PARITY.md`](FEATURE_PARITY.md) | **Do the intelligent features carry over?** Capability vs orchestration vs exposure, and the register that stops a feature going missing quietly. |
 | [`ROADMAP.md`](ROADMAP.md) | **All twelve loops, the three decision gates, and what "done" means.** Read this to see the whole road, not just the next step. |
 | [`METHODOLOGY.md`](METHODOLOGY.md) | Provenance: what was measured, what was verified by hand, what must still be re-checked. |
 
