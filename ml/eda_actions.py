@@ -12,7 +12,8 @@ from sklearn.feature_selection import mutual_info_regression, mutual_info_classi
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, f1_score
-import streamlit as st
+# No module-level Streamlit import: every use in this file is already a
+# function-level import (the host is only needed when an action renders).
 
 from ml.eval import calculate_regression_metrics, calculate_classification_metrics
 from ml.clinical_units import infer_unit

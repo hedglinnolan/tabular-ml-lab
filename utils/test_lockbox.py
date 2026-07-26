@@ -4,7 +4,7 @@ problem is defined.
 Methodological contract (split-first workflow):
 - Immediately after the user confirms data + target + task type on Upload &
   Audit, a seeded (stratified where feasible) test fraction is drawn and its
-  row labels are frozen in st.session_state['test_lockbox'].
+  row labels are frozen in _state()['test_lockbox'].
 - Every target-aware step upstream of Train & Compare — feature-engineering
   fits, feature selection, target-association views — operates on training
   rows only, via train_row_mask().
@@ -20,7 +20,46 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import streamlit as st
+# The host is reached through _state(), not imported at module scope. Most of
+# this file is decision logic — the grouping-candidate ranking, the repeated-
+# subject detection, the signature — and a module-level import made all of it
+# unreachable without Streamlit. Only render_lockbox_status() is true UI.
+#
+# ARCHITECTURE.md 02 lists what is actually read: exploratory_mode,
+# test_lockbox, test_lockbox_fraction, random_seed, plus the sealed lockbox
+# written back. Those reads are the remaining coupling; routing them through one
+# accessor makes them countable and gives the parameterised version one place to
+# land.
+
+
+class _NoHost(dict):
+    """Stands in for session state when there is no host.
+
+    A dict, so a headless caller can read defaults and get sensible answers
+    rather than an AttributeError three frames down. Writes go nowhere, which is
+    correct: with no host there is no session to seal a lockbox into.
+    """
+
+    def get(self, key, default=None):
+        return default
+
+
+def _state():
+    """The host's session state, or an empty stand-in when there is no host.
+
+    Only `ImportError` falls back. A broader `except` here would be the landmine
+    `TRANSITION_PLAN.md` §04 catalogues — *exceptions swallowed to a clean
+    default* — and it is not hypothetical: the first version of this function
+    caught everything, and when a bad edit made it recurse, the `RecursionError`
+    came back as an empty session state. Every lockbox read then returned a
+    plausible `None` and the quarantine silently stopped existing. A failure to
+    reach the host has to be loud.
+    """
+    try:
+        import streamlit as st
+    except ImportError:
+        return _NoHost()
+    return st.session_state
 
 DEFAULT_TEST_FRACTION = 0.15
 _MIN_ROWS_FOR_LOCKBOX = 10
@@ -30,11 +69,11 @@ _MIN_GROUPS_FOR_GROUPED_LOCKBOX = 8
 
 def is_exploratory() -> bool:
     """Explicit, user-chosen escape hatch. Never enabled by default."""
-    return bool(st.session_state.get("exploratory_mode", False))
+    return bool(_state().get("exploratory_mode", False))
 
 
 def get_lockbox() -> Optional[Dict[str, Any]]:
-    lb = st.session_state.get("test_lockbox")
+    lb = _state().get("test_lockbox")
     if lb and lb.get("labels") is not None:
         return lb
     return None
@@ -240,8 +279,8 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
         return get_lockbox()
 
     fraction = float(fraction if fraction is not None
-                     else st.session_state.get("test_lockbox_fraction", DEFAULT_TEST_FRACTION))
-    seed = int(seed if seed is not None else st.session_state.get("random_seed", 42))
+                     else _state().get("test_lockbox_fraction", DEFAULT_TEST_FRACTION))
+    seed = int(seed if seed is not None else _state().get("random_seed", 42))
 
     y = df[target_col]
     eligible = df.index[y.notna()]
@@ -285,7 +324,7 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
             # all, and the chip would still report the old count. Carry the real
             # number so the page can state it.
             _sealed = [lbl for lbl in existing["labels"] if lbl in df.index]
-            st.session_state["_lockbox_redraw_refused"] = {
+            _state()["_lockbox_redraw_refused"] = {
                 "column": run["column"], "label": run["label"],
                 "drawn_for": existing.get("target_col"),
                 "target": target_col,
@@ -331,7 +370,7 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
 
     grouped = False
     test_labels = None
-    st.session_state.pop("_lockbox_grouping_abandoned", None)
+    _state().pop("_lockbox_grouping_abandoned", None)
     if group_col:
         groups = df.loc[eligible, group_col]
         n_groups = int(groups.nunique(dropna=False))
@@ -350,7 +389,7 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
             # person on both sides — so the page has to say so. There is no
             # finer column to fall back to: anything finer than the unit that
             # repeats is inside it, and splitting by that IS the leak.
-            st.session_state["_lockbox_grouping_abandoned"] = {
+            _state()["_lockbox_grouping_abandoned"] = {
                 "column": group_col, "n_groups": n_groups,
                 "noun": group_noun(group_kind, group_col),
                 "minimum": _MIN_GROUPS_FOR_GROUPED_LOCKBOX,
@@ -413,9 +452,9 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
         from utils.session_state import reset_downstream_results
         reset_downstream_results(clear_feature_engineering=False)
         # Let the page disclose the redraw — a silent reset reads as data loss
-        st.session_state["_lockbox_redrawn"] = True
+        _state()["_lockbox_redrawn"] = True
 
-    st.session_state["test_lockbox"] = lockbox
+    _state()["test_lockbox"] = lockbox
     return lockbox
 
 
@@ -440,7 +479,7 @@ def _scoreable_here(labels) -> Optional[int]:
     is right there; a guessed count is not.
     """
     try:
-        dc = st.session_state.get("data_config")
+        dc = _state().get("data_config")
         target = getattr(dc, "target_col", None) if dc else None
         if not target:
             return None
@@ -455,7 +494,13 @@ def _scoreable_here(labels) -> Optional[int]:
 
 
 def render_lockbox_status(context: str = "") -> None:
-    """The quiet, consistent status chip shown on workflow pages."""
+    """The quiet, consistent status chip shown on workflow pages.
+
+    The one genuinely UI function in this module, so it is the one place that
+    imports the host directly. Everything above it decides; this renders.
+    """
+    import streamlit as st
+
     if is_exploratory():
         st.warning(
             "🔓 **Exploratory mode** — the test-set quarantine is OFF. "
@@ -518,7 +563,7 @@ def render_lockbox_status(context: str = "") -> None:
     elif len(_got) > 1:
         st.caption(f"⚖️ Held-out set balanced on {', '.join(f'`{c}`' for c in _got)}.")
 
-    _abandoned = st.session_state.get("_lockbox_grouping_abandoned")
+    _abandoned = _state().get("_lockbox_grouping_abandoned")
     if _abandoned:
         st.warning(
             f"⚠️ Rows repeat per `{_abandoned['column']}`, but there are only "

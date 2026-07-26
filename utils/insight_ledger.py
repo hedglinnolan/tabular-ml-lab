@@ -43,7 +43,6 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Literal, Dict, Any, Tuple
 from datetime import datetime
 import re
-import streamlit as st
 
 
 # ---------------------------------------------------------------------------
@@ -1397,7 +1396,16 @@ def get_ledger() -> InsightLedger:
     """Get or create the InsightLedger from session state.
 
     This is the single entry point. All pages call this.
+
+    The Streamlit import is deliberately inside the function. Everything above
+    it in this file is 1,400 lines of pure domain logic, and a module-level
+    import made all of it unreachable without the host — including
+    ml.narrative_engine and ml.manuscript_validator, which import this module
+    and were tainted by association. `utils.workflow_provenance.get_provenance`
+    already does it this way; this is the same shape.
     """
+    import streamlit as st
+
     if "insight_ledger" not in st.session_state:
         st.session_state.insight_ledger = InsightLedger()
     ledger = st.session_state.insight_ledger

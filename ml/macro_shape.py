@@ -11,7 +11,15 @@ import plotly.express as px
 from typing import Optional, List, Dict, Any, Tuple
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-import streamlit as st
+# No Streamlit here. These four functions used to carry @st.cache_data, whose
+# key is built from the non-underscore arguments — and every one of them takes
+# only `_df_numeric`, which Streamlit deliberately does not hash. The key was
+# therefore constant, st.cache_data is process-global, and the first dataset's
+# PCA, UMAP, persistence diagram and Mapper graph were returned for every
+# dataset afterwards, across users in the shared deployment (T0-LIVE-001).
+#
+# Caching belongs to the host, which knows what a "dataset" is and can key on a
+# content fingerprint. pages/02 already does exactly that for its own caches.
 
 # ---------------------------------------------------------------------------
 # sklearn 1.8+ compatibility: force_all_finite → ensure_all_finite
@@ -79,7 +87,6 @@ def _prepare_numeric(df: pd.DataFrame, max_features: int = 200) -> tuple:
 # PCA
 # ---------------------------------------------------------------------------
 
-@st.cache_data
 def compute_pca(
     _df_numeric: pd.DataFrame,
     n_components: Optional[int] = None,
@@ -237,7 +244,6 @@ def plot_pca_biplot(
 # UMAP
 # ---------------------------------------------------------------------------
 
-@st.cache_data
 def compute_umap(
     _df_numeric: pd.DataFrame,
     n_neighbors: int = 15,
@@ -334,7 +340,6 @@ def plot_umap(
 # Persistence Diagrams (TDA)
 # ---------------------------------------------------------------------------
 
-@st.cache_data
 def compute_persistence(
     _df_numeric: pd.DataFrame,
     max_samples: int = 2_000,
@@ -492,7 +497,6 @@ def plot_persistence_barcode(result: Dict[str, Any]) -> go.Figure:
 # Mapper Graph
 # ---------------------------------------------------------------------------
 
-@st.cache_data
 def compute_mapper(
     _df_numeric: pd.DataFrame,
     n_cubes: int = 10,

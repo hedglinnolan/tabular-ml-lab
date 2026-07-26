@@ -124,6 +124,21 @@ _has_target = target_col is not None and target_col in df.columns
 # non-prefixed param to ensure cache misses on dataset switch.
 _data_fingerprint = (len(df), len(df.columns), tuple(sorted(df.columns)))
 
+
+def _macro_fp(d):
+    """Content fingerprint for the macro-shape caches.
+
+    Shape and column names are not enough on their own: two cohort runs of the
+    same study have identical shape and columns and different rows. The value
+    sum makes the key follow the data.
+    """
+    import hashlib
+    try:
+        digest = int(pd.util.hash_pandas_object(d, index=True).sum())
+    except Exception:
+        digest = hashlib.md5(repr(d.head(50).values.tobytes()).encode()).hexdigest()
+    return (len(d), len(d.columns), tuple(map(str, d.columns)), str(digest))
+
 # Detection values
 task_type_detection: TaskTypeDetection = st.session_state.get(
     "task_type_detection", TaskTypeDetection()
@@ -1131,10 +1146,10 @@ if regime.show_macro_shape and numeric_features:
     st.caption("How your data looks in reduced dimensions. Each view reveals something the others hide.")
 
     from ml.macro_shape import (
-        compute_pca, plot_scree, plot_pca_biplot,
-        compute_umap, plot_umap,
-        compute_persistence, plot_persistence_diagram, plot_persistence_barcode,
-        compute_mapper, plot_mapper,
+        compute_pca as _compute_pca, plot_scree, plot_pca_biplot,
+        compute_umap as _compute_umap, plot_umap,
+        compute_persistence as _compute_persistence, plot_persistence_diagram, plot_persistence_barcode,
+        compute_mapper as _compute_mapper, plot_mapper,
     )
 
     df_numeric = df[numeric_features].dropna()
@@ -1160,6 +1175,21 @@ if regime.show_macro_shape and numeric_features:
 
     # Variance profile (always first)
     st.subheader("Variance Profile")
+    # Cached here rather than in ml/macro_shape.py. The engine's caches keyed on
+    # nothing — their only argument is underscore-prefixed, which Streamlit does
+    # not hash, so one dataset's PCA was served to every later dataset and, in
+    # the shared deployment, to every later user (T0-LIVE-001). The host is what
+    # knows when the dataset changed, so the host is what caches.
+    @st.cache_data(show_spinner=False)
+    def _macro_cached(_kind: str, _df: pd.DataFrame, fingerprint):
+        return {"pca": _compute_pca, "umap": _compute_umap,
+                "persistence": _compute_persistence, "mapper": _compute_mapper}[_kind](_df)
+
+    def compute_pca(d):          return _macro_cached("pca", d, _macro_fp(d))
+    def compute_umap(d):         return _macro_cached("umap", d, _macro_fp(d))
+    def compute_persistence(d):  return _macro_cached("persistence", d, _macro_fp(d))
+    def compute_mapper(d):       return _macro_cached("mapper", d, _macro_fp(d))
+
     pca_result = compute_pca(df_numeric)
     if "error" not in pca_result:
         fig_scree = plot_scree(pca_result)
