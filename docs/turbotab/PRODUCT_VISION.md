@@ -122,7 +122,67 @@ Anything over ~1s becomes an observable job with a name in plain language, progr
 "Did it break?" is the most common complaint about the current app, and it is a direct consequence
 of Streamlit having nowhere to put long work.
 
-## 05 · Why this required leaving Streamlit
+## 04b · Two doors, one modeling process
+
+TurboTab is not version two. It is a **second door onto the same analysis**, and the Streamlit app
+is not deprecated by its existence.
+
+> Here is the Streamlit version of the app, and here is a more dynamic version of the same
+> modeling process — with more intelligent routing.
+
+Three consequences follow, and they are load-bearing.
+
+### Parity is a product promise, not a QA gate
+
+"The same modeling process" is a claim made *to researchers*. It means a manuscript produced
+through either door describes the same science, and a reviewer asking "which tool did you use?"
+gets an answer that does not change the numbers. The parity harness is therefore not migration
+scaffolding — it is the mechanism that keeps a public promise, and it should be stated in both
+UIs, not hidden in CI.
+
+### Routing is the entire differentiator
+
+If the two doors differ only in appearance, the second one has no reason to exist. Streamlit's
+design ceiling is real but it is not a product thesis. **What justifies TurboTab is that it asks
+better questions, in a better order, and hides the ones that do not apply.**
+
+That places the Router at the centre rather than at the end. It also names the failure mode
+precisely: *a beautiful reskin with thin routing*. Everything else in this repo — the design
+language, the interview feed, the preview panels — is packaging around that claim. If the routing
+is not demonstrably better, the packaging does not save it.
+
+Concretely, "more intelligent routing" has to mean at least:
+
+- **Fewer irrelevant questions.** A single-file upload never sees join options. A regression
+  target never sees class-balance questions.
+- **Ordering by consequence.** What matters most for *this* dataset comes first, from the coach's
+  ranking rather than from a filename prefix.
+- **Disclosure driven by findings.** A question appears because something in the data raised it,
+  not because the pipeline has a stage for it.
+- **Deferral that closes.** Something noticed at exploration returns at the step that can act on
+  it — which no page-ordered app can do.
+
+Each of those is testable against a fixed dataset. Test them before building eleven steps of feed.
+
+### Users should be able to switch doors mid-analysis
+
+This falls out of the architecture almost for free, and it is the strongest argument for the
+extraction: if both doors are thin views over one `AnalysisProject`, a user can begin in Guided,
+switch to Classic for one fiddly step, and switch back — without losing state or changing results.
+
+That imposes one design constraint worth stating now: **`AnalysisProject` must be sufficient for
+both doors, not shaped to TurboTab's convenience.** If the Guided door needs a field the Classic
+door cannot populate, the state model has forked and the promise breaks.
+
+### Naming
+
+Call them modes, not versions. "Classic" and "Guided" both read as legitimate choices; "v1" and
+"v2" tell every existing user they are on the dying one. Whatever the words, the app should be
+explicit that the two doors run the same engine.
+
+---
+
+## 05 · Why the Guided door required leaving Streamlit
 
 Streamlit has no client. Every interaction is a round trip: the browser reports a widget change,
 the server reruns the script top to bottom, the browser repaints. Four consequences, all of which

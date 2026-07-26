@@ -48,7 +48,10 @@ Anything short of all five is a milestone, not a finish.
                      │
               ◆ DECISION B — Router gating policy
                      │
-  L8  Router, EDA only
+  L8  Router, EDA only  ← the differentiator; prove it here
+              │
+       ◆ ROUTING VALUE CHECK — is it better, or just prettier?
+              │
   L9  feed frontend, one step per loop  ← the long one
   L10 parity harness + manuscript chain
                      │
@@ -151,8 +154,8 @@ Six policies enforce it.
 5. **New capability lands core-first, TurboTab-second, Streamlit-only-if-cheap.** The core is
    where the feature lives; the front doors decide whether to expose it.
 6. **Parity runs in CI forever.** Same CSV, same scripted choices, both front doors, diff the
-   outputs. Not a cutover gate — a permanent guard against the drift that makes two apps
-   unmaintainable.
+   outputs. Not a cutover gate — it is how the product keeps a promise made to researchers, that
+   a manuscript from either door describes the same science (`PRODUCT_VISION.md` §04b).
 
 **What this costs.** Converging Streamlit is more work than deleting it: eventually every page
 must consume the core rather than `st.session_state`. It is also work you were partly doing
@@ -187,8 +190,14 @@ objects), the active cohort filter as a first-class field, the lockbox, and a de
 can express **partial** invalidation — `reset_downstream_results(clear_feature_engineering=False)`
 is a real call.
 
+**Design constraint from `PRODUCT_VISION.md` §04b:** the project model must be sufficient for
+**both** doors, not shaped to the Guided door's convenience. If Guided needs a field Classic
+cannot populate, the state model has forked and "same modeling process" stops being true.
+
 **Gate:** the new DAG reproduces both existing cascade implementations, including the hand-rolled
-one in `pages/03`, and round-trips through `to_dict`/`from_dict` with no loss.
+one in `pages/03`, and round-trips through `to_dict`/`from_dict` with no loss. Stretch gate, and
+the one that proves the architecture: **a project started in one door can be opened in the other,
+mid-analysis, with no loss of state or change in results.**
 
 ### L6 · Extract the split block and the step state machine — autonomous, needs L4
 
@@ -213,8 +222,26 @@ identical results to two sequential ones.
 New construction, not a move. Lift triggers out of the pages, add a severity model, implement the
 gating policy from Decision B. Narrowest possible slice: exploration only.
 
+**This is the differentiator.** The Guided door's whole justification is that it asks better
+questions in a better order (`PRODUCT_VISION.md` §04b). If routing is thin, TurboTab is a reskin
+and the eleven loops of L9 are wasted on it.
+
 **Gate:** for a fixed project, the chosen next question is derivable from the record alone, and
 the same project always yields the same question.
+
+**◆ ROUTING VALUE CHECK — do this before starting L9.** Take three real datasets of different
+shapes and measure, against the Streamlit path:
+
+| Claim | Measurement |
+|---|---|
+| Fewer irrelevant questions | count questions asked per dataset, both doors |
+| Ordering by consequence | does the first question match what the coach ranks highest? |
+| Findings drive disclosure | how many questions appear *because* of a finding rather than a pipeline stage? |
+| Deferral closes | does every deferred item resurface at a step that can act on it? |
+
+If the Guided door does not measurably win on at least the first and last, **stop and rethink the
+Router before building the feed.** Discovering this after eleven step-loops is the single most
+expensive mistake available in this plan.
 
 ### L9 · The feed frontend — autonomous, one step per loop
 
