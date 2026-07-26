@@ -26,16 +26,16 @@ Nothing is closed without a regression test named after it.
 | Status | Count |
 |---|---:|
 | `UNVERIFIED` | 370 |
-| `OPEN` | 18 |
-| `PARTIAL` | 2 |
+| `OPEN` | 17 |
+| `PARTIAL` | 3 |
 | `FIXED` | 3 |
 
 ---
 
-## OPEN — 18
+## OPEN — 17
 
 
-### Verified against main — 18
+### Verified against main — 17
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -46,7 +46,6 @@ Nothing is closed without a regression test named after it.
 | `T0-TEST-002` | critical | test_insight_id_integrity.py is an AST scanner keyed on SCAN_DIRS=['pages','utils','ml'] and the literal name Insight; passes vacuously after rename | `tests/test_insight_id_integrity.py:23` | verified on main |
 | `T0-TEST-003` | critical | No test calls the production reset_downstream_results(); three re-implementations test themselves | `utils/session_state.py; tests/test_cascade_invalidation.py` |  |
 | `T0-LIVE-004` | critical | pandas 3 silently turns a classification target into a regression one — dtype identity checks compare against legacy string names | `ml/triage.py:41; requirements.txt:2; plus 10 further sites listed in detail` | Measured stage by stage on turbotab/sample_data/clinic_visits.csv under 2.3.3 and 3.0.5. Sharper than first reported in two ways. (1) diagnose is NOT affected — import_doctor's str |
-| `T0-ID-001` | critical | Four of nine repair kinds renumber rows, invalidating row identity mid-analysis | `ml/import_doctor.py apply_fix — promote_header / drop_empty_rows / drop_rows / melt_repeated` | Found by the preview-engine loop. Detected by content rather than by fix kind, so a trailing footer drop on a clean RangeIndex is correctly reported safe and a mid-frame drop is no |
 | `T0-LIVE-002` | high | Cancel Training writes st.session_state.cancel_training; nothing ever reads it | `pages/06_Train_and_Compare.py:1289-1301 (grep returns only these 4 lines)` | verified on main |
 | `T0-LIVE-003` | high | SklearnCompatible NN fit() marks fitted without training; clone-and-refit yields a silently untrained model that still predicts | `models/nn_whuber.py fit() in both regressor and classifier` | verified on main |
 | `T0-STRUCT-005` | high | Coach is a pure annotator; cannot gate, only order. No blocker severity, no own confidence tier, 100% of triggers in pages/ | `ml/model_coach.py; pages/05_Preprocess.py:291-294; pages/02_EDA.py:212,246` | feasibility verdict |
@@ -60,15 +59,16 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 2
+## PARTIAL — 3
 
 
-### Verified against main — 2
+### Verified against main — 3
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `T0-STRUCT-001` | critical | Global fallback pipeline slot picks an arbitrary member by dict insertion order AND returns a shared object that .fit() mutates in place | `utils/session_state.py:501; pages/06:1813-1821 now DISCLOSES borrowers but root cause unchanged` | PR #145 added disclosure, not a fix |
 | `T0-STRUCT-002` | critical | Row identity: lockbox seals index LABELS, splits store POSITIONS (np.where(mask)[0]), page 07 reads df_raw.iloc[test_indices] | `pages/06:398,696-702; pages/07:185,196; utils/test_lockbox.py train_row_mask` | PR #145 fixed the reset_index instance + test_row_labels_are_identities.py; conventions still dual |
+| `T0-ID-001` | critical | Four of nine repair kinds renumber rows, invalidating row identity mid-analysis | `ml/import_doctor.py apply_fix — promote_header / drop_empty_rows / drop_rows / melt_repeated` | The barrier is now expressed and tested on the split side. ml/splits.py captures index labels before any positional work, never renumbers, and Split.assert_identity_preserved refus |
 
 ---
 

@@ -3936,9 +3936,10 @@
   "detail": "promote_header, drop_empty_rows and drop_rows all end in .reset_index(drop=True); melt_repeated rebuilds the index. The project keys rows by label, so any label stored before such a repair now points at a different row. A sealed lockbox SURVIVES the repair and afterwards names different rows — the seal looks intact and is not. This is a different failure from T0-STRUCT-002: not two components disagreeing on a convention, but one repair invalidating the convention, which no agreement between components prevents. PR #145 removed the same pattern from apply_plausibility_filter; these four are the remainder of the class.",
   "ev": "ml/import_doctor.py apply_fix — promote_header / drop_empty_rows / drop_rows / melt_repeated",
   "act": "Adopt the identity barrier (ROADMAP Decision A): repairs that change what a row IS run only before the lockbox is sealed; repairs that remove rows preserve survivor labels. Tests: no post-barrier op changes a surviving row's index; pre-barrier repairs unreachable once sealed.",
-  "status": "OPEN",
-  "note": "Found by the preview-engine loop. Detected by content rather than by fix kind, so a trailing footer drop on a clean RangeIndex is correctly reported safe and a mid-frame drop is not.",
-  "verified_against": "TurboTab @ 92ca877"
+  "status": "PARTIAL",
+  "note": "The barrier is now expressed and tested on the split side. ml/splits.py captures index labels before any positional work, never renumbers, and Split.assert_identity_preserved refuses a frame whose rows were renumbered after the split (message contains 'renumbered'). Both tests the decision asks for exist: test_no_post_barrier_operation_changes_a_surviving_rows_index and test_a_renumbered_frame_is_caught_rather_than_silently_wrong. pages/06 now stores row LABELS alongside the positions page 07 still reads, and derives those positions from the labels via df.index.get_indexer, so the two conventions can no longer drift apart at that seam. PARTIAL rather than FIXED: the barrier is not yet enforced as a phase rule. Nothing stops promote_header or melt_repeated from running after the lockbox is sealed — the preview engine reports the renumbering (turbotab/engine.py preview_fix, by content not by fix kind) but the app does not refuse it. Making the pre-barrier repairs unreachable once a lockbox exists is the remaining half.",
+  "verified_against": "TurboTab @ 92ca877",
+  "verified_ev": "ml/splits.py Split.assert_identity_preserved · tests/integration/test_split_extraction_equivalence.py"
  },
  {
   "id": "T0-TOOL-001",
