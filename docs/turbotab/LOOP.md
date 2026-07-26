@@ -208,3 +208,8 @@ Some of the sequence in `TRANSITION_PLAN.md` §06 needs a human in the room:
 
 Loops are for verification, for well-specified fixes with clear gates, and for writing tests
 against behaviour that already exists. They are not for decisions you would want to argue about.
+
+But note the reframe in [`ROADMAP.md`](ROADMAP.md): those three items are not permanently
+off-limits. They are blocked on **one decision each**. Make the decision and the execution behind
+it becomes ordinary loop work. The roadmap lays out all twelve loops and the three decision gates
+that separate them, plus a testable definition of done.
