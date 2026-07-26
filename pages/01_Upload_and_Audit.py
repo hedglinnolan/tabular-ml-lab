@@ -343,8 +343,8 @@ if uploaded_files and len(uploaded_files) > 1:
                     _frame.columns = [str(c) for c in _frame.columns]
                     # Honor fixes already applied in the review below.
                     _frame = repaired_frame(_frame, _fk)
-                    _log_import_repairs(_fk, _name)
                     _name = st.session_state.get(f"name_{_fk}") or _uf.name.rsplit('.', 1)[0]
+                    _log_import_repairs(_fk, _name)
                     ok, msg = _commit_dataset(_frame, _name, _uf.name, _ft,
                                               st.session_state.get(f"transpose_{_fk}", False))
                     (added if ok else failed).append(msg)
