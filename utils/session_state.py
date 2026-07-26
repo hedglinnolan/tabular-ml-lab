@@ -333,6 +333,10 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
     st.session_state.preprocessing_config = None
     st.session_state.preprocessing_pipelines_by_model = {}
     st.session_state.preprocessing_config_by_model = {}
+    # The list of models that HAVE pipelines has to go with the pipelines.
+    # Leaving it made page 06 badge a model "Tuned for this model" when nothing
+    # was left to tune it with, and page 05 report it as already built.
+    st.session_state.pop("preprocess_built_model_keys", None)
 
     # Splits & targets
     st.session_state.X_train = None

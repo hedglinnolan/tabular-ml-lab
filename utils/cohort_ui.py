@@ -310,10 +310,19 @@ def render_next_cohort(task_type: str, metrics: Optional[Dict[str, Any]] = None)
 
     nxt = remaining[0]
     st.markdown(
-        f"**Same question, next group.** The target, the predictors and the "
-        f"held-out set stay exactly as they are; only the people change. "
-        f"Everything fitted — imputers, scalers, models — is refitted on "
-        f"{nxt}'s own rows, because carrying a fit across groups is leakage."
+        f"**Same question, next group.** Your target, your held-out set and the "
+        f"models you picked stay exactly as they are; only the people change."
+    )
+    st.info(
+        f"**You will need to rebuild two things for {nxt}, and that is the "
+        f"point.** Any engineered features and preprocessing you set up were "
+        f"fitted on this group's rows — a scaler's mean, an imputer's median, "
+        f"a transform's parameters all come from these people. Carrying them "
+        f"across would leak this group into {nxt}'s results and produce a "
+        f"number you could not reproduce. So Feature Engineering and Preprocess "
+        f"start clean for {nxt}; make the SAME choices there and the two runs "
+        f"stay comparable.",
+        icon="🔁",
     )
     if st.button(f"Now run the same analysis on {nxt}", type="primary",
                  key="cohort_next_btn"):
