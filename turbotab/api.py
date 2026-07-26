@@ -195,6 +195,15 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         _recompute(project)
         return _payload(project)
 
+    if decision.kind == "set_task_type":
+        want = decision.payload.get("task_type") or decision.subject
+        try:
+            project.override_task_type(str(want))
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        _recompute(project)
+        return _payload(project)
+
     if decision.kind == "apply":
         # The only endpoint in this service that changes the working table, and
         # it is reached only by asking for it by name. A preview never lands

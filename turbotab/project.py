@@ -104,6 +104,8 @@ class AnalysisProject:
     # old one. The findings are *marked*, never dropped: "the past is editable,
     # never silently destroyed" (PRODUCT_VISION.md §07.4).
     findings_stale: bool = False
+    # True when the user contradicted the detection rather than confirming it.
+    task_overridden: bool = False
     # (finding_id, frame) for each applied fix, most recent last. Holds whole
     # frames, so it is memory the skeleton spends to keep fixes reversible.
     _history: List[Tuple[str, pd.DataFrame]] = field(default_factory=list, repr=False)
@@ -208,6 +210,7 @@ class AnalysisProject:
         self.task_type = task_type
         self.task_confidence = confidence
         self.task_reasons = list(reasons or [])
+        self.task_overridden = False
         if changed:
             self.findings_stale = True
         return self.record(
@@ -216,6 +219,40 @@ class AnalysisProject:
                  f"{task_type} at {confidence} confidence.",
             payload={"task_type": task_type, "confidence": confidence,
                      "reasons": self.task_reasons, "replaced": changed},
+        )
+
+    def override_task_type(self, task_type: str) -> Decision:
+        """Let the user disagree with the detection, and record that they did.
+
+        Required, not optional. `ml/triage.py` returns `low` confidence for a
+        low-cardinality integer target and says so in its own words — *"counts
+        or ordinal scores should be treated as regression. Verify or override
+        below."* An interface that reports that verdict and offers no way to
+        contradict it has made the choice itself, at a confidence tier the
+        governing rule reserves for the user (`PRODUCT_VISION.md` §07.1).
+        Classic has this control; Guided has to as well.
+
+        The detected value is kept alongside the override, because the record
+        has to be able to say what the app thought *and* what the user decided.
+        """
+        if task_type not in ("classification", "regression"):
+            raise ProjectError(
+                f"'{task_type}' is not a task type. Expected classification or regression.")
+        if not self.target:
+            raise ProjectError("Choose a target before setting its task type.")
+        detected = self.task_type
+        self.task_type = task_type
+        self.task_overridden = task_type != detected
+        if self.task_overridden:
+            self.findings_stale = True
+        return self.record(
+            kind="set_task_type", subject=self.target,
+            text=(f"{self.target} was treated as {task_type}, overriding the detected "
+                  f"{detected} ({self.task_confidence} confidence)."
+                  if self.task_overridden else
+                  f"The detected task type for {self.target}, {task_type}, was confirmed."),
+            payload={"task_type": task_type, "detected": detected,
+                     "overridden": self.task_overridden},
         )
 
     def fingerprint(self) -> str:
@@ -305,6 +342,7 @@ class AnalysisProject:
             "target": self.target,
             "task_type": self.task_type,
             "task_confidence": self.task_confidence,
+            "task_overridden": self.task_overridden,
             "task_reasons": list(self.task_reasons),
             "columns": self.columns,
             "decisions": [d.to_dict() for d in self.decisions],

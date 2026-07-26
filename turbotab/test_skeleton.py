@@ -647,3 +647,58 @@ def test_http_responses_contain_no_nan(client, uploaded: str):
         assert r.status_code == 200
         assert "NaN" not in r.text
         json.loads(r.text)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The user may contradict the engine
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_a_low_confidence_detection_can_be_overridden(client, raw: bytes):
+    """Found by writing the parity register against `pages/01`, which has this
+    control and which Guided did not.
+
+    `ml/triage.py:53-64` returns `low` confidence for a low-cardinality integer
+    target and says in its own words that counts and ordinal scores should be
+    treated as regression — *"Verify or override below."* Reporting that verdict
+    with no way to contradict it is the app deciding, at a tier
+    `PRODUCT_VISION.md` §07.1 reserves for the user.
+    """
+    pid = client.post("/project",
+                      files={"file": ("clinic_visits.csv", raw, "text/csv")}).json()["id"]
+    # bp_1 is a low-cardinality-ish integer: the engine is not certain about it.
+    body = client.post(f"/project/{pid}/decision",
+                       json={"kind": "set_target", "payload": {"column": "bp_1"}}).json()
+    detected = body["task_type"]
+    assert body["task_confidence"] != "high", "fixture no longer exercises the uncertain path"
+    assert body["task_overridden"] is False
+
+    other = "classification" if detected == "regression" else "regression"
+    body = client.post(f"/project/{pid}/decision",
+                       json={"kind": "set_task_type", "payload": {"task_type": other}}).json()
+    assert body["task_type"] == other
+    assert body["task_overridden"] is True
+    # The record keeps both: what the app thought, and what the user decided.
+    d = next(x for x in body["decisions"] if x["kind"] == "set_task_type")
+    assert d["payload"]["detected"] == detected and d["payload"]["overridden"] is True
+    assert body["profile"]["target_profile"]["task_type"] == other
+
+
+def test_confirming_the_detection_is_recorded_too(client, raw: bytes):
+    pid = client.post("/project",
+                      files={"file": ("clinic_visits.csv", raw, "text/csv")}).json()["id"]
+    client.post(f"/project/{pid}/decision",
+                json={"kind": "set_target", "payload": {"column": "bp_1"}})
+    body = client.post(f"/project/{pid}/decision",
+                       json={"kind": "set_task_type",
+                             "payload": {"task_type": client.get(f"/project/{pid}").json()["task_type"]}}).json()
+    assert body["task_overridden"] is False
+    assert any(d["kind"] == "set_task_type" and "confirmed" in d["text"]
+               for d in body["decisions"])
+
+
+def test_an_invalid_task_type_is_refused(client, uploaded: str):
+    client.post(f"/project/{uploaded}/decision",
+                json={"kind": "set_target", "payload": {"column": TARGET}})
+    r = client.post(f"/project/{uploaded}/decision",
+                    json={"kind": "set_task_type", "payload": {"task_type": "clustering"}})
+    assert r.status_code == 400

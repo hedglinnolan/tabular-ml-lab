@@ -605,6 +605,7 @@
               the engine. Nothing is pre-selected here: below <em>high</em> confidence the app is not
               allowed to choose for you, and it cannot know which column matters before you say.</p>
             <div class="answers" id="targetCols"></div>
+            <div id="taskOverride"></div>
           </div>
         </div>
         <div class="decision is-hidden" id="d-target">
@@ -1043,10 +1044,32 @@
       if (P.task_reasons && P.task_reasons.length){
         line += " " + esc(P.task_reasons.join(" "));
       }
-      if (conf !== "high"){
-        line += " Below high confidence the app will not decide this for you — check it before going on.";
+      if (P.task_overridden){
+        line = "<strong>" + esc(P.target) + "</strong> is the target, treated as <strong>" +
+               esc(P.task_type) + "</strong> — your override of the engine's reading.";
+      } else if (conf !== "high"){
+        line += " Below high confidence the app will not decide this for you — confirm it or " +
+                "say otherwise before going on.";
       }
       record("d-target", line);
+
+      // The override. Offered whenever the engine is not certain, because a
+      // verdict you cannot contradict is the app choosing for you at a
+      // confidence tier the rule reserves for the user. The engine says as much
+      // in its own reason text: "Verify or override below."
+      var ov = $("taskOverride");
+      if (conf !== "high" || P.task_overridden){
+        var other = P.task_type === "classification" ? "regression" : "classification";
+        ov.innerHTML =
+          '<div class="pull" style="margin-top:14px;">' +
+          "<span>Is that right? It is your call, not the engine's.</span>" +
+          '<button class="pill" aria-pressed="true" data-task="' + esc(P.task_type) + '" type="button">' +
+          "Yes — " + esc(P.task_type) + "</button>" +
+          '<button class="pill" aria-pressed="false" data-task="' + esc(other) + '" type="button">' +
+          "No — treat it as " + esc(other) + "</button></div>";
+      } else {
+        ov.innerHTML = "";
+      }
       sectState("target", "recorded", "recorded");
       setMap("target", "done");
     } else {
@@ -1175,12 +1198,17 @@
   document.addEventListener("click", function(e){
     var t = e.target.closest ? e.target.closest(
       "[data-target-col],[data-panel],[data-pv-close],[data-defer],[data-dismiss]," +
-      "[data-undismiss],[data-flag],[data-apply],[data-revert]") : null;
+      "[data-undismiss],[data-flag],[data-apply],[data-revert],[data-task]") : null;
     if (!t) return;
 
     if (t.hasAttribute("data-target-col")){
       decide("set_target", t.dataset.targetCol, { column: t.dataset.targetCol },
              "Detecting the task type and re-profiling…");
+      return;
+    }
+    if (t.hasAttribute("data-task")){
+      decide("set_task_type", "", {task_type: t.dataset.task},
+             "Re-profiling for a " + t.dataset.task + " target…");
       return;
     }
     if (t.hasAttribute("data-panel")){ openPanel(t.dataset.panel); return; }

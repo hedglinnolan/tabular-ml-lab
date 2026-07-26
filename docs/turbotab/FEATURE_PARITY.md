@@ -124,6 +124,78 @@ test failure.
 
 ---
 
+## The register — Data & Target step (L3 walking skeleton)
+
+The first step to be built under the register rule. Classic counterpart:
+`pages/01_Upload_and_Audit.py` (1,264 loc, frozen). Every capability that page holds is listed;
+a capability with no row here is the failure mode the register exists to prevent.
+
+**Ingestion**
+
+| Capability | Classic | State | Reason |
+|---|---|---|---|
+| Single delimited file upload | `st.file_uploader` | **both** | `engine.read_table`, plain pandas inference to match what the doctor expects |
+| Multi-file upload + roster (rename / remove / replace) | Step 1 | classic-only | The multi-file path is frozen pending the open ledger tail (`TRANSITION_PLAN.md` §05). Deliberate, not forgotten. |
+| Excel `.xlsx` + sheet selection | Step 1 | classic-only | Not yet exposed. `docs/audit/RESUME.md` names Excel-sheet × transpose as untested; exposing it in Guided first would build on that gap. |
+| JSON + records-key selection | Step 1 | classic-only | Same door as multi-file import; frozen with it. |
+| Transpose on import | Step 1 | classic-only | Belongs with the Excel path above. |
+| Large-file guard ("Load anyway") | Step 1 | classic-only | Guided uses a hard 64 MB ceiling instead, because the frame is held in memory and never spooled to disk. Different mechanism, same intent. |
+| Built-in practice datasets | Step 1 | classic-only | Guided ships one messy sample table instead (`turbotab/sample_data/`). |
+| Import-repair logging to the insight ledger | `_log_import_repairs` | classic-only | Guided records *decisions*; the ledger singleton is not cut yet (L7). |
+| Multi-file join + key detection | Step 2, `join_doctor` | classic-only | Frozen (§05). |
+
+**Audit**
+
+| Capability | Classic | State | Reason |
+|---|---|---|---|
+| Structural diagnosis | `import_doctor.diagnose` | **both** | Same function, same findings — asserted field-for-field by `test_findings_match_a_direct_engine_call` |
+| Apply a proposed repair | "Suggested Actions" | **both** | `import_doctor.apply_fix`, same nine fix kinds |
+| **Preview before apply** | — | **guided-only** | Classic applies straight from a button. See the note below: the register has no state for this. |
+| **Undo an applied repair** | — | **guided-only** | Same. Classic has no undo for a suggested action. |
+| Dataset profile (types, missingness, cardinality, numeric stats) | Steps 3 expanders | **both** | `compute_dataset_profile`; rendered as one ranked stack rather than six expanders |
+| Duplicate-row detection | Step 3 expander | classic-only | Not surfaced in Guided. **No engine home** — it is computed inline in the page, so this is orchestration still trapped in `pages/`. |
+| Cardinality table, per column | Step 3 expander | classic-only | Guided surfaces the profile's high-cardinality *finding* but not the full table. Pull-based exploration, deferred. |
+
+**Target & task**
+
+| Capability | Classic | State | Reason |
+|---|---|---|---|
+| Target column selection | Step 4 | **both** | |
+| Task-type detection | `triage.detect_task_type` | **both** | |
+| **Task-type override** | "Override Task Type" expander | **both** | *Added because this register found it missing.* See below. |
+| Goal selection (Prediction vs Hypothesis Testing) | Step 4 | classic-only | Guided assumes prediction; the hypothesis-testing branch is a different interview. |
+| Feature selection (select all / clear) | Step 4 | classic-only | Not yet asked in Guided. |
+| Test-holdout / lockbox settings | Step 4 expander | classic-only | **The one to watch.** The lockbox is not modelled in the skeleton at all, and it is the invariant with the most scar tissue behind it. |
+
+### What the register caught on its first use
+
+**A missing override, which was a correctness bug and not a scope decision.** `ml/triage.py:53-64`
+returns `low` confidence for a low-cardinality integer target and says so in its own words —
+*"counts or ordinal scores should be treated as regression. Verify or override below."* Classic has
+that override. Guided reported the verdict and offered no way to contradict it, which is the app
+deciding at a confidence tier `PRODUCT_VISION.md` §07.1 reserves for the user. Filing it
+`classic-only` would have recorded a violation of the governing rule as a legitimate exclusion, so
+it was built instead: the override is offered whenever confidence is below `high`, and both the
+detection and the user's answer are kept in the record.
+
+That is the register working exactly as intended on its first outing — the gap was invisible while
+the feature was being built and obvious the moment the capabilities were listed side by side.
+
+**The register needs a fourth state.** It has `core`, `classic-only` and `both`, all of which
+assume capability flows Classic → Guided. Preview-before-apply and undo flow the other way: the
+engine always supported them (`apply_fix` returns a new frame and never mutates), Classic never
+exposed them, Guided now does. Recording those as `both` would be false and `classic-only` absurd.
+Suggest **`guided-only`**, with the same obligation attached — a reason, and a note on whether
+Classic should get it. For these two the answer is probably yes: applying a repair to a research
+dataset from a single button, with no diff and no undo, is the blind consent
+`PRODUCT_VISION.md` §04 argues against, and it is shipping in Classic today.
+
+**One capability has no engine home.** Duplicate-row detection is computed inline in `pages/01`,
+so it is not "shared automatically" — it is orchestration in the §2 sense, and it will not appear
+in any `ml/` inventory. Recorded as `classic-only` rather than assumed portable.
+
+---
+
 ## The one-line answer
 
 **The algorithms are safe — they were always engine code and both doors will call the same
