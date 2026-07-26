@@ -1258,29 +1258,27 @@ if new_features > 0:
             # Track which transforms produced each engineered feature
             st.session_state["engineered_feature_transforms"] = _build_transform_map(engineered_features, engineering_log)
             
-            # CASCADE INVALIDATION: clear all downstream state
-            st.session_state.pop("feature_selection_results", None)
-            st.session_state.pop("consensus_features", None)
-            st.session_state["preprocessing_pipeline"] = None
-            st.session_state["preprocessing_config"] = None
-            st.session_state["preprocessing_pipelines_by_model"] = {}
-            st.session_state["preprocessing_config_by_model"] = {}
-            st.session_state["trained_models"] = {}
-            st.session_state["model_results"] = {}
-            st.session_state["fitted_estimators"] = {}
-            st.session_state["fitted_preprocessing_pipelines"] = {}
-            st.session_state["X_train"] = None
-            st.session_state["X_val"] = None
-            st.session_state["X_test"] = None
-            st.session_state["y_train"] = None
-            st.session_state["y_val"] = None
-            st.session_state["y_test"] = None
-            st.session_state["permutation_importance"] = {}
-            st.session_state["partial_dependence"] = {}
-            st.session_state["shap_results"] = {}
-            st.session_state.pop("sensitivity_seed_results", None)
-            st.session_state["report_data"] = None
-            
+            # CASCADE INVALIDATION — the production cascade, not a copy of it.
+            #
+            # This used to be nineteen lines of hand-listed keys, and it missed
+            # fifteen: cv_results, dataset_profile, eda_results, eda_insights,
+            # train/val/test_indices, cv_strategy, cv_groups_train,
+            # target_transformer, feature_names_by_model, bootstrap_results,
+            # baseline_results, calibration_results and the report artifacts —
+            # plus the ledger rollback and the provenance clearing entirely.
+            # A page that clears most of the downstream state leaves the rest
+            # stale and readable, which is worse than clearing none of it,
+            # because the numbers that survive still look current.
+            #
+            # Feature engineering rewrote the working table, so this is a data
+            # change: everything below it goes, including the selection, which
+            # was made against the old feature set.
+            reset_downstream_results(
+                clear_feature_engineering=False,   # we just wrote it
+                restore_pre_fe_features=False,     # and the selection above is current
+                clear_feature_selection=True,
+            )
+
             # Log methodology action
             log_methodology(
                 step='Feature Engineering',

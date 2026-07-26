@@ -198,5 +198,37 @@
   "classic": "utils/test_lockbox.py (no barrier)",
   "state": "core",
   "reason": "L5: sealing raises the barrier; promote_header/melt_repeated unreachable behind it, enforced at the API apply path. Guided-ahead-of-Classic on the barrier itself."
+ },
+ {
+  "id": "engine-headless",
+  "step": "cross-step",
+  "capability": "Engine imports and runs with no Streamlit in the process",
+  "classic": "n/a — this is the core",
+  "state": "core",
+  "reason": "All 45 core modules import with streamlit blocked, enforced by tests/test_engine_is_headless.py with a stub-first blocker so it cannot pass vacuously. Six were tainted; four went with two deleted lines (insight_ledger's module-level import, which also freed narrative_engine and manuscript_validator, and eda_actions' dead one)."
+ },
+ {
+  "id": "job-queue",
+  "step": "cross-step",
+  "capability": "Observable, cancellable background work with explicit per-job RNG",
+  "classic": "none — Streamlit reruns instead of scheduling",
+  "state": "guided-only",
+  "reason": "turbotab/jobs.py. Owed back to Classic in the sense that Classic cannot have it without a client/server split — this is the component whose absence caused the migration. Jobs that touch process-global RNG are serialized, because snapshot/restore does not isolate threads sharing one RNG; measured, not assumed."
+ },
+ {
+  "id": "macro-shape-cache",
+  "step": "cross-step",
+  "capability": "PCA / UMAP / persistence / Mapper caching keyed on dataset content",
+  "classic": "pages/02_EDA.py _macro_fp",
+  "state": "both",
+  "reason": "T0-LIVE-001. The engine's caches keyed on nothing and served the first dataset's results to every later dataset and user. Caching moved to the host, which is what knows when a dataset changed; the fingerprint hashes values, not shape, because two cohort runs of one study share shape and columns."
+ },
+ {
+  "id": "cancel-training",
+  "step": "cross-step",
+  "capability": "Stopping a long run",
+  "classic": "removed — the button set a flag nothing read",
+  "state": "guided-only",
+  "reason": "T0-LIVE-002. Classic's button is removed rather than wired: Streamlit runs one script per session on one thread, so during training no widget is interactive and the button could not be clicked at all. The page now says a run cannot be interrupted, which is true. Guided has real cancellation via the job queue."
  }
 ]

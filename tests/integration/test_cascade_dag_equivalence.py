@@ -174,36 +174,54 @@ def test_keeping_a_stage_does_not_keep_its_descendants():
 
 # ── gate 2 · covering page 03, and naming what it forgot ─────────────────
 
-def test_the_dag_covers_page_03s_hand_rolled_cascade():
-    page03 = _page03_cleared_keys()
-    declared = cascade.keys_to_clear("data")
-    # Page 03 touches session-state keys that are not results (widget lists,
-    # its own scratch). Only the result keys are in scope.
-    page03_results = page03 & cascade.all_result_keys()
+def test_page_03_no_longer_hand_rolls_its_own_cascade():
+    """The reconciliation, pinned.
 
-    assert page03_results, "the AST scan found no cascade in page 03 — it moved"
-    uncovered = page03_results - declared
-    assert not uncovered, (
-        f"page 03 clears result keys the DAG does not: {sorted(uncovered)}")
+    `pages/03` used to clear nineteen keys inline and miss fifteen —
+    `cv_results`, `dataset_profile`, `eda_results`, the split indices, the
+    target transformer, the evaluation results and every report artifact, plus
+    the ledger rollback and the provenance clearing. A page that clears most of
+    the downstream state is worse than one that clears none, because the numbers
+    that survive still look current.
 
-
-def test_page_03_misses_keys_the_dag_would_clear():
-    """Records the gap rather than asserting a count.
-
-    `TRANSITION_PLAN.md` §03 says page 03 misses at least eleven keys. This is
-    the live list — the to-do for reconciling the two, and the reason the DAG is
-    worth having.
+    It now calls `reset_downstream_results`. What it still writes are the two
+    keys it legitimately *produces* — the engineered frame and its log — which
+    is a stage's output, not a cascade.
     """
-    missed = cascade.missing_from(_page03_cleared_keys())
-    assert len(missed) >= 10, (
-        "page 03's cascade now covers nearly everything the DAG does — if it was "
-        f"reconciled, update this test. Currently missing: {sorted(missed)}")
-    # The specific ones the transition plan named.
-    for named in ("cv_results", "dataset_profile", "eda_results",
-                  "train_indices", "target_transformer", "cv_strategy",
-                  "baseline_results", "calibration_results", "bootstrap_results"):
-        assert named in missed, (
-            f"{named} is no longer missing from page 03 — the plan's list is stale")
+    src = open(os.path.join(ROOT, "pages", "03_Feature_Engineering.py"),
+               encoding="utf-8").read()
+    code = "\n".join(l for l in src.splitlines() if not l.lstrip().startswith("#"))
+    assert "reset_downstream_results(" in code, (
+        "page 03 stopped calling the production cascade")
+
+    touched = _page03_cleared_keys() & cascade.all_result_keys()
+    assert touched <= {"df_engineered", "engineering_log"}, (
+        f"page 03 is hand-clearing downstream keys again: "
+        f"{sorted(touched - {'df_engineered', 'engineering_log'})}")
+
+
+def test_the_reconciled_call_clears_what_the_hand_rolled_one_missed():
+    """The fifteen keys the inline copy forgot are now cleared.
+
+    Page 03's call keeps the feature engineering it just wrote and drops
+    everything downstream of it, including the selection — which was made
+    against the old feature set.
+    """
+    cleared = cascade.keys_for_reset_downstream_results(
+        clear_feature_engineering=False, clear_feature_selection=True)
+
+    for previously_missed in (
+        "cv_results", "dataset_profile", "eda_results", "eda_insights",
+        "train_indices", "val_indices", "test_indices", "cv_strategy",
+        "cv_groups_train", "target_transformer", "feature_names_by_model",
+        "bootstrap_results", "baseline_results", "calibration_results",
+        "methods_section",
+    ):
+        assert previously_missed in cleared, (
+            f"{previously_missed} is still not cleared when page 03 saves")
+
+    # And the frame it just produced survives, or the save would undo itself.
+    assert "df_engineered" not in cleared
 
 
 def test_provenance_sections_follow_the_same_graph():

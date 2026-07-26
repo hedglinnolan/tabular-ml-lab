@@ -324,6 +324,26 @@ def reset_downstream_results(clear_feature_engineering: bool = True,
     this when it APPLIES a new selection: the pipelines/splits/models built on
     the old feature set are stale and must go, but the selection just made (and
     its record) must survive.
+
+    **Three idioms, on purpose — for now (`T0-STATE-001`).** This function
+    clears via `pop(key, None)`, `= None`, and `= {}` / `= []`, and which one a
+    key gets is not arbitrary: some keys are read by *bare attribute access*,
+    which raises `AttributeError` if the key is absent. Measured across the
+    tree:
+
+        model_results          10 bare reads (pages/06)
+        eda_results             5 bare reads (pages/02)
+        trained_models          4 bare reads (pages/06)
+        fitted_estimators       2 bare reads (pages/06)
+
+    So normalizing everything to `pop` is not a rewrite of this function — it is
+    a rewrite of ~25 call sites that must move to `.get()` first. `turbotab.cascade`
+    declares the graph once and its `all_result_keys()` is the checklist for
+    that work; doing it here alone would turn a stale-value bug into an
+    AttributeError on the Train and EDA pages.
+
+    Until then the rule is: a key that anything reads bare is emptied in place;
+    everything else is popped.
     """
     # Feature engineering (df_engineered would otherwise keep serving stale
     # data through get_data()'s precedence)

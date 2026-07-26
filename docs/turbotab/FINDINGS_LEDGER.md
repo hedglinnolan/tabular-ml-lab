@@ -20,34 +20,30 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**6 of 397 closed.**
+**10 of 397 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `UNVERIFIED` | 370 |
-| `OPEN` | 19 |
-| `PARTIAL` | 2 |
-| `FIXED` | 6 |
+| `OPEN` | 14 |
+| `PARTIAL` | 3 |
+| `FIXED` | 10 |
 
 ---
 
-## OPEN — 19
+## OPEN — 14
 
 
-### Verified against main — 19
+### Verified against main — 14
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `T0-LIVE-001` | critical | macro_shape @st.cache_data key omits the dataframe; first dataset's PCA/UMAP/persistence/Mapper served to all later datasets and users | `ml/macro_shape.py:82,240,337,495; call sites pages/02_EDA.py:1163,1205,1226,1265` | verified on main |
 | `T0-STRUCT-003` | critical | No split function exists; ~370 lines of split logic live in pages/06:380-760. ml/splits.py is 20 loc with one helper | `ml/splits.py; pages/06_Train_and_Compare.py` | verified on main |
 | `T0-STRUCT-004` | critical | The only step-completion state machine is render_sidebar_workflow, filed in utils/theme.py | `utils/theme.py:685 (938 loc file, 12 importers)` | verified on main |
 | `T0-TEST-001` | critical | tests/integration/conftest.py injects a bare sklearn Ridge where the app stores wrapper objects | `tests/integration/conftest.py:82,98` | verified on main |
 | `T0-TEST-002` | critical | test_insight_id_integrity.py is an AST scanner keyed on SCAN_DIRS=['pages','utils','ml'] and the literal name Insight; passes vacuously after rename | `tests/test_insight_id_integrity.py:23` | verified on main |
 | `T0-TEST-003` | critical | No test calls the production reset_downstream_results(); three re-implementations test themselves | `utils/session_state.py; tests/test_cascade_invalidation.py` |  |
-| `T0-LIVE-004` | critical | pandas 3 silently turns a classification target into a regression one — dtype identity checks compare against legacy string names | `ml/triage.py:41; requirements.txt:2; plus 10 further sites listed in detail` | Measured stage by stage on turbotab/sample_data/clinic_visits.csv under 2.3.3 and 3.0.5. Sharper than first reported in two ways. (1) diagnose is NOT affected — import_doctor's str |
-| `T0-LIVE-002` | high | Cancel Training writes st.session_state.cancel_training; nothing ever reads it | `pages/06_Train_and_Compare.py:1289-1301 (grep returns only these 4 lines)` | verified on main |
-| `T0-LIVE-003` | high | SklearnCompatible NN fit() marks fitted without training; clone-and-refit yields a silently untrained model that still predicts | `models/nn_whuber.py fit() in both regressor and classifier` | verified on main |
 | `T0-STRUCT-005` | high | Coach is a pure annotator; cannot gate, only order. No blocker severity, no own confidence tier, 100% of triggers in pages/ | `ml/model_coach.py; pages/05_Preprocess.py:291-294; pages/02_EDA.py:212,246` | feasibility verdict |
 | `T0-WIP-001` | high | docs/FINDINGS_LEDGER.md 'Still open' tail from two lost audit runs, on the multi-file/JSON import path | `docs/FINDINGS_LEDGER.md:47` | verified on main |
 | `T0-CLASSIC-001` | high | Classic applies structural repairs from a single button with no diff and no undo | `pages/01_Upload_and_Audit.py apply flow vs turbotab preview engine` | Convergence is bidirectional — the register needs a guided-only state to express this. |
@@ -55,21 +51,21 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-002` | medium | setup.py python_requires '>=3.8,<3.10' against a 3.12 repo — uninstallable | `setup.py` | verified on main |
 | `T0-ENG-001` | medium | The diagnose -> profile -> detect path needs only pandas and numpy — no sklearn, scipy or torch | `turbotab/engine.py import surface; verified by the L3 test suite` | Confirmed by building the vertical: turbotab/ installs pandas, numpy, fastapi, uvicorn, python-multipart and nothing else, and the three engine entry points (import_doctor.diagnose |
 | `T0-PAGES-001` | medium | Duplicate-row detection has no engine home — it is inline in pages/01 | `pages/01_Upload_and_Audit.py (inline)` | Extract to the engine when pages/01 unfreezes; register the capability meanwhile. |
-| `T0-STATE-001` | medium | reset_downstream_results clears keys three different ways — pop, = None, and = {} — so 'cleared' has three observable meanings | `utils/session_state.py reset_downstream_results; L5 gate probe (agent report at 4366b23)` | Normalize to one idiom (pop) inside the production function when pages/03 is reconciled onto it; the DAG's live list of forgotten keys is the checklist for that same change. |
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
 ---
 
-## PARTIAL — 2
+## PARTIAL — 3
 
 
-### Verified against main — 2
+### Verified against main — 3
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `T0-STRUCT-001` | critical | Global fallback pipeline slot picks an arbitrary member by dict insertion order AND returns a shared object that .fit() mutates in place | `utils/session_state.py:501; pages/06:1813-1821 now DISCLOSES borrowers but root cause unchanged` | PR #145 added disclosure, not a fix |
 | `T0-STRUCT-002` | critical | Row identity: lockbox seals index LABELS, splits store POSITIONS (np.where(mask)[0]), page 07 reads df_raw.iloc[test_indices] | `pages/06:398,696-702; pages/07:185,196; utils/test_lockbox.py train_row_mask` | PR #145 fixed the reset_index instance + test_row_labels_are_identities.py; conventions still dual |
+| `T0-STATE-001` | medium | reset_downstream_results clears keys three different ways — pop, = None, and = {} — so 'cleared' has three observable meanings | `utils/session_state.py reset_downstream_results; L5 gate probe (agent report at 4366b23)` | The pages/03 half is done: its nineteen-line hand-rolled cascade now calls reset_downstream_results, so the fifteen keys it missed (cv_results, dataset_profile, eda_results, eda_in |
 
 ---
 
@@ -488,14 +484,18 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 6
+## FIXED — 10
 
 
-### Verified against main — 6
+### Verified against main — 10
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
+| `T0-LIVE-001` | critical | macro_shape @st.cache_data key omits the dataframe; first dataset's PCA/UMAP/persistence/Mapper served to all later datasets and users | `ml/macro_shape.py:82,240,337,495; call sites pages/02_EDA.py:1163,1205,1226,1265` | **test:** `tests/test_macro_shape_serves_the_right_dataset.py::test_two_datasets_get_their_own_pca` — Fixed by detainting rather than by re-keying. The four @st.cache_data decorato |
+| `T0-LIVE-004` | critical | pandas 3 silently turns a classification target into a regression one — dtype identity checks compare against legacy string names | `ml/triage.py:41; requirements.txt:2; plus 10 further sites listed in detail` | **test:** `turbotab/test_skeleton.py::test_the_same_answer_under_a_pandas_3_string_dtype` — All eleven dtype-identity sites replaced with pd.api.types predicates. Verified against  |
 | `T0-ID-001` | critical | Four of nine repair kinds renumber rows, invalidating row identity mid-analysis | `ml/import_doctor.py apply_fix — promote_header / drop_empty_rows / drop_rows / melt_repeated` | **test:** `turbotab/test_project_model.py::test_pre_barrier_repairs_are_unreachable_once_the_lockbox_exists` — The barrier is a phase rule now. The project owns the lockbox, so the |
+| `T0-LIVE-002` | high | Cancel Training writes st.session_state.cancel_training; nothing ever reads it | `pages/06_Train_and_Compare.py:1289-1301 (grep returns only these 4 lines)` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Resolved both ways, as the two doors need. Guided gets real cancellation: turbotab/jobs. |
+| `T0-LIVE-003` | high | SklearnCompatible NN fit() marks fitted without training; clone-and-refit yields a silently untrained model that still predicts | `models/nn_whuber.py fit() in both regressor and classifier` | **test:** `tests/test_characterization_wrappers.py::test_clone_and_refit_now_raises_instead_of_answering_from_the_old_model` — fit() now raises NotFittedError unless the adapter ha |
 | `T0-DOC-001` | high | ARCHITECTURE.md over-reported Streamlit coupling: static analysis counted function-level imports as module-level | `ml/model_coach.py:634,1080; docs/turbotab/ARCHITECTURE.md §01` | **test:** `docs/turbotab/ARCHITECTURE.md §01 runtime blocker snippet` — Corrected 2026-07; the empirical run had already disagreed with the static pass and the static pass was publ |
 | `T0-DOC-002` | high | The ARCHITECTURE.md reproduce snippet could not fail — it used find_module, removed in Python 3.12, and passed vacuously without Streamlit installed | `docs/turbotab/ARCHITECTURE.md §01 (previous revision)` | **test:** `docs/turbotab/ARCHITECTURE.md §01 self-check (`blocker is not working` guard)` — Found by the walking-skeleton loop. A test that cannot fail proves nothing — the guard n |
 | `T0-TOOL-001` | high | ledger.py regen destroyed FINDINGS_LEDGER.md on Windows, and check reported success over the wreckage | `docs/turbotab/tools/ledger.py load/save/regen` | **test:** `docs/turbotab/tools/ledger.py check (markdown-currency guard; verified by emptying the file)` — Reported by the build agent, who recovered from git and used PYTHONUTF8=1 |

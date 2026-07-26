@@ -4027,7 +4027,9 @@
   "detail": "Found by the L5 gate probe, which under-reported survivors by a dozen keys until it learned all three clearing idioms. Consumers testing `key in st.session_state` versus `get(key) is None` versus truthiness see different truths about the same cascade.",
   "ev": "utils/session_state.py reset_downstream_results; L5 gate probe (agent report at 4366b23)",
   "act": "Normalize to one idiom (pop) inside the production function when pages/03 is reconciled onto it; the DAG's live list of forgotten keys is the checklist for that same change.",
-  "status": "OPEN",
-  "verified_against": "TurboTab @ 4366b23"
+  "status": "PARTIAL",
+  "verified_against": "TurboTab @ 4366b23",
+  "note": "The pages/03 half is done: its nineteen-line hand-rolled cascade now calls reset_downstream_results, so the fifteen keys it missed (cv_results, dataset_profile, eda_results, eda_insights, the split indices, cv_strategy, cv_groups_train, target_transformer, feature_names_by_model, bootstrap/baseline/calibration results and the report artifacts) are cleared, along with the ledger rollback and provenance clearing it skipped entirely. Two tests pin it: page 03 touches only the two keys it produces, and the reconciled call clears the previously-missed list. The idiom normalization is NOT done, and the reason is measured rather than assumed: several result keys are read by bare attribute access — model_results 10 times in pages/06, eda_results 5 times in pages/02, trained_models 4, fitted_estimators 2 — so popping them turns a stale-value bug into an AttributeError on the Train and EDA pages. Normalizing to one idiom is a rewrite of ~25 call sites to .get() first, with cascade.all_result_keys() as the checklist. The rule in force meanwhile is documented on the function: emptied in place if anything reads it bare, popped otherwise.",
+  "verified_ev": "utils/session_state.py reset_downstream_results · pages/03_Feature_Engineering.py:1262"
  }
 ]

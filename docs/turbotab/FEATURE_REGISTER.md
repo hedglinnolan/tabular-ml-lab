@@ -4,10 +4,10 @@
 
 | State | Meaning | Count |
 |---|---|---:|
-| `both` | exposed in Classic and Guided | 7 |
-| `core` | extracted into the shared core | 3 |
+| `both` | exposed in Classic and Guided | 8 |
+| `core` | extracted into the shared core | 4 |
 | `classic-only` | a claim to be justified, never a shrug | 13 |
-| `guided-only` | a debt owed back to Classic | 2 |
+| `guided-only` | a debt owed back to Classic | 4 |
 
 ## Data & Target (Classic: pages/01, Step 4) — 22
 
@@ -36,10 +36,14 @@
 | `target-goal-selection` | Goal selection (Prediction vs Hypothesis Testing) | Step 4 | **classic-only** | Guided assumes prediction; the hypothesis-testing branch is a different interview. |
 | `target-lockbox-settings` | Test-holdout / lockbox settings | Step 4 expander | **classic-only** | Updated after L5: the project now OWNS a lockbox — sealing raises the identity barrier and the apply path refuses pre-barrier repairs — but the fraction/seed settings and the act of sealing are not yet asked in the Guided interview. Half-watched, no longer unmodelled. |
 
-## Cross-step infrastructure — 3
+## Cross-step infrastructure — 7
 
 | ID | Capability | Classic | State | Reason |
 |---|---|---|---|---|
+| `cancel-training` | Stopping a long run | removed — the button set a flag nothing read | **guided-only** | T0-LIVE-002. Classic's button is removed rather than wired: Streamlit runs one script per session on one thread, so during training no widget is interactive and the button could not be clicked at all. The page now says a run cannot be interrupted, which is true. Guided has real cancellation via the job queue. |
+| `job-queue` | Observable, cancellable background work with explicit per-job RNG | none — Streamlit reruns instead of scheduling | **guided-only** | turbotab/jobs.py. Owed back to Classic in the sense that Classic cannot have it without a client/server split — this is the component whose absence caused the migration. Jobs that touch process-global RNG are serialized, because snapshot/restore does not isolate threads sharing one RNG; measured, not assumed. |
+| `macro-shape-cache` | PCA / UMAP / persistence / Mapper caching keyed on dataset content | pages/02_EDA.py _macro_fp | **both** | T0-LIVE-001. The engine's caches keyed on nothing and served the first dataset's results to every later dataset and user. Caching moved to the host, which is what knows when a dataset changed; the fingerprint hashes values, not shape, because two cohort runs of one study share shape and columns. |
 | `core-invalidation-dag` | Downstream invalidation cascade | utils/session_state.py reset_downstream_results | **core** | L5 DAG reproduces the production cascade key-for-key across all four flag combinations; carries a live list of the 15 keys pages/03's hand-rolled version forgets. |
 | `core-lockbox-barrier` | Lockbox + identity barrier | utils/test_lockbox.py (no barrier) | **core** | L5: sealing raises the barrier; promote_header/melt_repeated unreachable behind it, enforced at the API apply path. Guided-ahead-of-Classic on the barrier itself. |
 | `core-readiness-model` | Step-completion / readiness model (ten predicates + quick/advanced) | utils/theme.py:685 render_sidebar_workflow | **core** | Extracted to turbotab/readiness.py in L6; the page asks instead of computing, and a test asserts the expressions are gone. The Router's first real input. |
+| `engine-headless` | Engine imports and runs with no Streamlit in the process | n/a — this is the core | **core** | All 45 core modules import with streamlit blocked, enforced by tests/test_engine_is_headless.py with a stub-first blocker so it cannot pass vacuously. Six were tainted; four went with two deleted lines (insight_ledger's module-level import, which also freed narrative_engine and manuscript_validator, and eda_actions' dead one). |
