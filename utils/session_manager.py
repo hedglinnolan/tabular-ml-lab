@@ -382,6 +382,20 @@ def _build_archive_members() -> Dict[str, bytes]:
         except Exception:
             skipped_keys.append("cohort_runs_done")
 
+    # The engineering recipe. Without it a restored session's cohort switch
+    # reverts to dropping every engineered feature while the button still
+    # promises a rebuild.
+    _steps = [x for x in (st.session_state.get("fe_recipe") or []) if is_dataclass(x)]
+    if _steps:
+        try:
+            members["fe_recipe.json"] = json.dumps([{
+                "kind": x.kind, "params": x.params,
+                "produced": list(x.produced), "mode": x.mode,
+            } for x in _steps], indent=2, default=str).encode("utf-8")
+            saved_keys.append("fe_recipe")
+        except Exception:
+            skipped_keys.append("fe_recipe")
+
     # --- Coach evidence probe (schema 2.1) ---
     probe = st.session_state.get("coach_probe_result")
     if probe is not None and is_dataclass(probe):
@@ -689,6 +703,22 @@ def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any], li
                     f"Saved comparison runs could not be restored ({exc}). "
                     "Any group you had already analyzed will need re-running."
                 )
+
+        if "fe_recipe.json" in names:
+            try:
+                from utils.replay import Step
+                st.session_state["fe_recipe"] = [
+                    Step(kind=str(d["kind"]), params=dict(d.get("params") or {}),
+                         produced=list(d.get("produced") or []),
+                         mode=str(d.get("mode") or "pure"))
+                    for d in _read_json(zf, "fe_recipe.json")
+                ]
+                restored += 1
+            except Exception as exc:
+                warnings.append(
+                    f"The feature-engineering recipe could not be restored "
+                    f"({exc}). Switching cohorts will not rebuild your "
+                    f"engineered features until you recreate them.")
 
         # --- Test-set lockbox (schema 2.1; absent in 2.0 files) ---
         if "lockbox.json" in names:

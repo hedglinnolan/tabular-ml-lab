@@ -1202,6 +1202,14 @@ if task_mode == "prediction":
                      "publishable as held-out performance. Toggling in either "
                      "direction resets downstream results.",
             )
+        _ended = st.session_state.pop("_cohort_cleared_by_data_change", None)
+        if _ended:
+            st.warning(
+                f"👥 Your one-group run (**{_ended['column']} = {_ended['label']}**) "
+                f"ended because the data changed in a way that removed some of "
+                f"those rows. This analysis now covers everyone again — "
+                f"re-select the group in Step 5 if you still want it."
+            )
         _refused = st.session_state.pop("_lockbox_redraw_refused", None)
         if _refused:
             st.info(

@@ -155,14 +155,35 @@ class TestTheFilterCannotBeLostQuietly:
             assert active_cohort() is not None
             assert len(get_data()) == run["n_rows"]
 
-    def test_corrected_data_with_the_same_columns_still_clears_it(self):
+    def test_corrected_values_keep_the_run_but_kill_the_results(self):
+        """The rule this started with was too blunt, and the re-audit found the cost.
+
+        A cleaning action — impute, clip, recode — changes VALUES without
+        changing who the rows are, and the run is a set of row labels. Ending it
+        there meant that restoring a saved one-group session and merely opening
+        Upload & Audit silently reverted the analysis to the whole study.
+        Results still die: they were computed from different numbers.
+        """
         df = study()
         set_data(df)
-        begin(df)
+        run = begin(df)
+        st.session_state["trained_models"] = {"logreg": "FITTED"}
         corrected = df.copy()
         corrected.loc[corrected.index[:20], "bmi"] = 99.9
         set_data(corrected)
+        assert active_cohort() is not None, "a value correction ended the run"
+        assert len(get_data()) == run["n_rows"]
+        assert not st.session_state.get("trained_models"), "stale results survived"
+
+    def test_removing_rows_ends_the_run_and_says_so(self):
+        """The people changed, so the run cannot continue — visibly."""
+        df = study()
+        set_data(df)
+        begin(df)
+        set_data(df.iloc[:40])
         assert active_cohort() is None
+        assert st.session_state.get("_cohort_cleared_by_data_change"), (
+            "the run ended with nothing said")
 
 
 # ── the lockbox is drawn before the filter, not after ────────────────────

@@ -94,6 +94,20 @@ def clear_recipe() -> None:
     st.session_state.pop(_RECIPE_KEY, None)
 
 
+def unrecorded_features(engineered: Sequence[str]) -> List[str]:
+    """Engineered columns no step in the recipe claims to have produced.
+
+    The guard that matters. Instrumenting creation sites one by one is a game
+    you lose the moment someone adds a ninth: the first version of this module
+    recorded three of eight, and the other five vanished on a cohort switch
+    under a green "Rebuilt N features" success. Comparing what EXISTS against
+    what the recipe can rebuild catches every site, including ones not written
+    yet, and turns a silent loss into a named one.
+    """
+    claimed = {c for step in recipe() for c in step.produced}
+    return [c for c in engineered if c not in claimed]
+
+
 # ── what a cohort switch hands to the next run ───────────────────────────
 
 def stage_for_replay(reason: str = "") -> Optional[Dict[str, Any]]:
@@ -114,8 +128,13 @@ def stage_for_replay(reason: str = "") -> Optional[Dict[str, Any]]:
                       and k not in _NOT_A_CHOICE}
     if not steps and not prep and not widget_choices:
         return None
+    engineered = list(st.session_state.get("engineered_feature_names") or [])
     pending = {
         "steps": steps,
+        # Carried so the next run can say WHICH features it could not rebuild,
+        # by name, instead of quietly having fewer predictors than run 1.
+        "engineered_before": engineered,
+        "unrecorded": unrecorded_features(engineered),
         "preprocessing_config": dict(prep),
         "preprocess_widgets": dict(widget_choices),
         "reason": reason,
@@ -229,7 +248,17 @@ def replay_onto(df: pd.DataFrame, steps: Sequence[Step],
                     degree=int(step.params.get("degree", 2)),
                     interaction_only=bool(step.params.get("interaction_only", False)),
                     include_bias=False)
-                base = out[cols].apply(pd.to_numeric, errors="coerce").fillna(0.0)
+                base = out[cols].apply(pd.to_numeric, errors="coerce")
+                if base.isna().any().any():
+                    # fillna(0.0) would invent a measurement of zero for people
+                    # whose value is missing in THIS group — a fabricated
+                    # observation, which is worse than a missing feature. The
+                    # page itself refuses to run on missing data; so does this.
+                    skipped.append(f"{step.describe()} — some of "
+                                   f"{', '.join(cols[:3])} are missing in this "
+                                   f"group, and filling them with 0 would "
+                                   f"invent measurements")
+                    continue
                 arr = poly.fit_transform(base)          # deterministic, no fitted state
                 names = list(poly.get_feature_names_out(cols))
                 for i, nm in enumerate(names):
@@ -247,7 +276,11 @@ def replay_onto(df: pd.DataFrame, steps: Sequence[Step],
                 kb = KBinsDiscretizer(n_bins=int(step.params.get("n_bins", 5)),
                                       encode="ordinal",
                                       strategy=step.params.get("strategy", "quantile"))
-                base = out[cols].apply(pd.to_numeric, errors="coerce").fillna(0.0)
+                base = out[cols].apply(pd.to_numeric, errors="coerce")
+                if base.isna().any().any():
+                    skipped.append(f"{step.describe()} — some inputs are missing "
+                                   f"in this group")
+                    continue
                 kb.fit(base.loc[train_mask])            # refit on THIS group's train rows
                 binned = kb.transform(base)
                 for i, c in enumerate(cols):
@@ -264,7 +297,11 @@ def replay_onto(df: pd.DataFrame, steps: Sequence[Step],
                     skipped.append(f"{step.describe()} — this group has "
                                    f"{len(cols)} of the {k} inputs it needs")
                     continue
-                base = out[cols].apply(pd.to_numeric, errors="coerce").fillna(0.0)
+                base = out[cols].apply(pd.to_numeric, errors="coerce")
+                if base.isna().any().any():
+                    skipped.append(f"{step.describe()} — some inputs are missing "
+                                   f"in this group")
+                    continue
                 sc = StandardScaler().fit(base.loc[train_mask])
                 pca = PCA(n_components=k, random_state=int(step.params.get("seed", 42)))
                 pca.fit(sc.transform(base.loc[train_mask]))
@@ -283,15 +320,22 @@ def replay_onto(df: pd.DataFrame, steps: Sequence[Step],
     return out, created, skipped
 
 
-def replay_summary(created: Sequence[str], skipped: Sequence[str]) -> str:
+def replay_summary(created: Sequence[str], skipped: Sequence[str],
+                   unrecorded: Sequence[str] = ()) -> str:
     """One paragraph a researcher can read before trusting the comparison."""
-    if not created and not skipped:
+    if not created and not skipped and not unrecorded:
         return ""
     parts = []
     if created:
         parts.append(f"Rebuilt {len(created)} engineered feature"
                      f"{'' if len(created) == 1 else 's'} on this group's rows, "
                      f"refitting anything that had to be fitted.")
+    if unrecorded:
+        parts.append(
+            f"{len(unrecorded)} feature(s) from the previous run cannot be "
+            f"rebuilt automatically and are NOT in this run: "
+            f"{', '.join(unrecorded[:6])}. Recreate them on this page if you "
+            f"want the two runs to be comparable.")
     if skipped:
         parts.append(f"{len(skipped)} step(s) could NOT be repeated here: "
                      + "; ".join(skipped[:4])

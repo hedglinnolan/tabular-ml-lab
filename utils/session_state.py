@@ -291,8 +291,21 @@ def set_data(df: pd.DataFrame, is_schema_change: Optional[bool] = None):
         reset_data_dependent_state()      # clears the cohort itself
     elif (old_df is not None and old_fp is not None and new_fp is not None
           and old_fp != new_fp):
-        from utils.cohorts import clear_cohort
-        clear_cohort()
+        # Results are stale — they were computed from different values. But the
+        # RUN is a set of row labels, and a cleaning action (impute, clip,
+        # recode) changes values without changing who the rows are. Clearing it
+        # here meant that restoring a saved one-group session and opening
+        # Upload & Audit silently reverted the analysis to the whole study.
+        # Clear only when the cohort's people are no longer all present.
+        from utils.cohorts import active_cohort, clear_cohort
+        _run = active_cohort()
+        if _run is not None and set(_run["labels"]) <= set(df.index):
+            _run.pop("_label_set", None)      # cached set may be stale
+        else:
+            if _run is not None:
+                st.session_state["_cohort_cleared_by_data_change"] = {
+                    "column": _run["column"], "label": _run["label"]}
+            clear_cohort()
         reset_downstream_results()
 
 

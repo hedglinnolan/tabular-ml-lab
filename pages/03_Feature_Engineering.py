@@ -113,12 +113,21 @@ if _pending_replay and _pending_replay.get("steps") and st.session_state.get("df
         _dc = st.session_state.get("data_config")
         _base = list(st.session_state.get("pre_fe_feature_cols")
                      or getattr(_dc, "feature_cols", []) or [])
+        # Setting selected_features without this leaves Reset/Skip with nothing
+        # to restore — reopening a defect this repo already fixed once.
+        st.session_state.setdefault("pre_fe_feature_cols", list(_base))
         st.session_state["selected_features"] = _base + [c for c in _made if c not in _base]
         if _dc is not None:
             _dc.feature_cols = list(st.session_state["selected_features"])
         df = _rebuilt
-    _summary = _replay.replay_summary(_made, _missed)
-    if _missed:
+        # Without a log the Methods section says feature engineering was
+        # performed and lists none of it.
+        st.session_state["engineering_log"] = [
+            f"Replayed for this group: {st.session_state.get('_replay_step_desc', '')}".strip()
+        ] + [s_.describe() for s_ in _pending_replay["steps"]]
+    _unrecorded = list(_pending_replay.get("unrecorded") or [])
+    _summary = _replay.replay_summary(_made, _missed, _unrecorded)
+    if _missed or _unrecorded:
         st.warning(f"🔁 {_summary}")
     elif _made:
         st.success(f"🔁 {_summary}")
@@ -613,8 +622,13 @@ with _fe_tabs[2]:
                     
                     if new_cols:
                         engineering_log.append(f"Ratio features: +{len(new_cols)} features")
-                        _replay.record("ratio",
-                                       {"pairs": [list(pr) for pr in st.session_state.ratio_list]},
+                        # Only the pairs that actually produced a column. The
+                        # queued list includes ones this run REFUSED (a zero
+                        # denominator), and recording those let the second
+                        # cohort build a predictor the first one never had.
+                        _built_pairs = [[n, d] for n, d in st.session_state.ratio_list
+                                        if f"{n}_div_{d}" in new_cols]
+                        _replay.record("ratio", {"pairs": _built_pairs},
                                        new_cols, _replay.PURE)
                         
                         # Save back to session state
