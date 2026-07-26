@@ -84,28 +84,35 @@ correct behaviour for now, not an oversight.
 
 ## What this build found
 
-Four things worth carrying forward. The first two change what the transition documents say.
+Four things worth carrying forward. The first two were corrections to the transition documents and
+**have since been fixed upstream** (`docs/turbotab/ARCHITECTURE.md`, commit `47c9f1b`); they are
+kept here as the record of how the skeleton earned its keep. The third is a live bug, now tracked
+as `T0-LIVE-004`.
 
 ### 1 · The engine runs headless — and `model_coach` is not tainted at import
 
-`ARCHITECTURE.md` §01 lists `ml.model_coach` as transitively coupled to Streamlit through
-`utils.insight_ledger`. **At HEAD it is not.** `model_coach` imports the ledger *lazily*, inside
-functions (`ml/model_coach.py:634` and `:1080`), so the module imports clean with Streamlit blocked.
-The coupling is real but deferred to call time.
+`ARCHITECTURE.md` §01 used to list `ml.model_coach` as transitively coupled to Streamlit through
+`utils.insight_ledger`. **It is not.** `model_coach` imports the ledger *lazily*, inside functions
+(`ml/model_coach.py:634` and `:1080`), and its module-level imports are only `dataclasses`,
+`typing` and `enum`, so it loads clean with Streamlit blocked. The coupling is real but deferred to
+call time. Counting module-level imports only, 4 of 42 core modules are blocked, not 7 — and the
+Router's basis is not one of them.
 
-Nothing in `utils/insight_ledger.py` had to be cut, so **nothing outside `turbotab/` was modified.**
+Nothing in `utils/insight_ledger.py` had to be cut, so **nothing outside `turbotab/` was modified**
+to make this build work.
 
-Related correction, if the singleton is cut later: §01 says the ledger's "only coupling is the
-`get_ledger()` singleton at the bottom of the file". There is also a module-level
-`import streamlit as st` at `utils/insight_ledger.py:46`. Deleting the singleton alone leaves the
-module tainted; line 46 has to go too.
+Related, and also now corrected: §01 said the ledger's only coupling was the `get_ledger()`
+singleton. There is a module-level `import streamlit as st` at `utils/insight_ledger.py:46` above
+it. Cutting the singleton alone would leave the module tainted.
 
-### 2 · The reproduce snippet in `ARCHITECTURE.md` §01 does not block anything
+### 2 · The reproduce snippet in `ARCHITECTURE.md` §01 could not fail
 
-The snippet defines a meta-path finder with `find_module` / `load_module`. The import system
-stopped consulting those in **Python 3.12** — this repo is on 3.12+. Run as printed on a current
-interpreter, the blocker is inert: the import succeeds and the check reports success whether or not
-the module is coupled. A modern blocker implements `find_spec`:
+The snippet defined a meta-path finder with `find_module` / `load_module`. The import system
+stopped consulting those in **Python 3.12** — this repo is on 3.12+ — so run as printed the blocker
+was inert and reported success whether or not the module was coupled. The deeper problem was the
+second one: on a machine with no Streamlit installed, the import fails for the wrong reason and the
+check passes vacuously. A guard that cannot fail proves nothing either way. A working blocker
+implements `find_spec`:
 
 ```python
 class Blocker:
@@ -129,14 +136,41 @@ pandas 3.0 makes `str` the default dtype for text columns, so a text target matc
 branches and falls through to the fallback at line 91: **`regression`, low confidence.** Measured on
 the same frame:
 
-| pandas | `detect_task_type(df, "outcome")` |
-|---|---|
-| 2.3.3 | `classification`, **high** confidence |
-| 3.0.5 | `regression`, low confidence |
+Measured stage by stage on `sample_data/clinic_visits.csv`, across both majors:
 
-The repo's `requirements.txt` pins `pandas>=2.0.0` with no upper bound, so a fresh install today
-resolves to 3.x and gets the second row. `turbotab/requirements.txt` caps at `<3`; the app's own
-requirements are outside this build's remit and were left alone.
+| call | pandas 2.3.3 | pandas 3.0.5 |
+|---|---|---|
+| `diagnose` | 10 findings | 10 findings, byte-identical |
+| `detect_task_type` | `classification` / **high** | **`regression` / low** |
+| `profile(task=detected)` | ok | **`TypeError: Cannot perform reduction 'mean' with string dtype`** |
+| `profile(task="classification")` | ok | ok |
+
+Two things that sharpen the report. **The import doctor is unaffected** — structural diagnosis is
+identical across majors. And **`compute_dataset_profile` is not independently broken**: it is
+correct when told the truth. The damage is that one wrong answer poisons the next call — the
+profiler takes the regression branch and tries to average a text column. The exception names the
+string dtype, not the misdetection that caused it, so in Classic this surfaces as an unhandled
+`TypeError` on the EDA page with no hint of the real cause.
+
+Logged as `T0-LIVE-004`. The class is wider than the one line: the same dtype-identity comparison
+appears at eleven sites — `ml/triage.py:41,47,75,165,166,170,189`, `ml/dataset_profile.py:189`
+(`is_id_like`), `ml/eda_recommender.py:98,106,137` (which analyses get offered),
+`models/registry_wrappers.py:44` (model selection). **Two of this skeleton's three engine entry
+points are on that list**, so the cap is load-bearing here, not hygiene.
+
+`test_a_text_target_is_read_as_classification` is the canary: it asserts the behaviour the pin
+buys, so lifting the pin without doing the repair fails the suite rather than quietly changing an
+answer.
+
+> ### ⚠ The two requirements files must not drift
+>
+> `turbotab/requirements.txt` caps `pandas<3`. The root `requirements.txt` now does too — but the
+> reason is worth stating, because it is not tidiness. If Classic ever installs pandas 3 while
+> Guided installs 2, **the two doors return different task types for the same CSV**, and the "same
+> modeling process behind both doors" promise breaks at the dependency layer, where no amount of
+> shared code can catch it. Parity requires a shared dependency envelope, not just shared
+> functions. Any change to the pandas or numpy bound in either file belongs in the same commit as
+> the change to the other.
 
 ### 4 · The diagnose → profile → detect path needs only pandas and numpy
 

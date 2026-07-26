@@ -218,6 +218,50 @@ def test_everything_survives_strict_json(df: pd.DataFrame):
     json.dumps(payload, allow_nan=False)
 
 
+def test_a_text_target_is_read_as_classification(df: pd.DataFrame):
+    """T0-LIVE-004's canary. Fails the moment the pandas cap is lifted.
+
+    `ml/triage.py:41` decides task type with `dtype in ['object','category','bool']`.
+    pandas 3 makes `str` the default dtype for text columns, so a text target
+    matches no branch and falls through to the fallback at `:91` — *regression*,
+    low confidence, no error raised. Measured on this fixture: `classification`
+    / high under 2.3.3, `regression` / low under 3.0.5.
+
+    Both requirements files cap `pandas<3` because of that. This test is what
+    makes the cap enforceable: raising the ceiling without first replacing the
+    dtype-identity checks with `pd.api.types` predicates breaks the suite here
+    instead of silently changing a paper's statistics.
+
+    Measured stage by stage across both majors on this fixture:
+
+    | call | pandas 2.3.3 | pandas 3.0.5 |
+    |---|---|---|
+    | `diagnose` | 10 findings | 10 findings, identical |
+    | `detect_task_type` | classification / high | **regression / low** |
+    | `profile(task=detected)` | ok | **TypeError: Cannot perform reduction 'mean' with string dtype** |
+    | `profile(task="classification")` | ok | ok |
+
+    So `compute_dataset_profile` is not independently broken — it is correct
+    when told the truth. The damage is that one wrong answer poisons the next
+    call: the profiler takes the regression branch and averages a text column.
+    The exception names the string dtype, not the misdetection that caused it,
+    which is the kind of error that costs an afternoon.
+    """
+    assert not df[TARGET].map(type).eq(float).any(), "fixture target is not text"
+
+    task = engine.detect_task_type(df, TARGET)
+    assert task["detected"] == "classification", (
+        f"a text target read as {task['detected']!r} — pandas is "
+        f"{pd.__version__}; if that is 3.x, the cap was lifted without the repair"
+    )
+    assert task["confidence"] == "high"
+
+    # The downstream half: feeding the detected task type back in must not
+    # explode. Under pandas 3 this is where the misdetection actually surfaces.
+    prof = engine.profile(df, TARGET, task["detected"])
+    assert prof.target_profile.task_type == "classification"
+
+
 def test_engine_refuses_a_duplicated_target_label(df: pd.DataFrame):
     doubled = df.rename(columns={"site": TARGET})
     with pytest.raises(engine.EngineRefusal):
