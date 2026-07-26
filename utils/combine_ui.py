@@ -510,11 +510,15 @@ def render_combine_step(frames: Dict[str, pd.DataFrame]) -> Optional[pd.DataFram
 
 
 def render_combined_summary(df: pd.DataFrame) -> None:
-    """After combining: what you got, and where it came from."""
-    desc = st.session_state.get("_combine_description")
-    st.success(f"**Combined table ready** — {len(df):,} rows × {df.shape[1]} columns")
-    if desc:
-        st.caption(desc)
+    """Where the combined rows came from.
+
+    The shape and the description are deliberately NOT repeated here. The
+    working-table card states the shape once, so there is a single place on the
+    page that answers "what have I got" — two places invited exactly the drift
+    that once left a stale "× 10 columns" sitting above a live "× 9 columns".
+    What only this function knows is the per-file breakdown, so that is what it
+    says.
+    """
     if SOURCE_COLUMN in df.columns:
         counts = df[SOURCE_COLUMN].value_counts()
         st.caption("Rows per file: " +

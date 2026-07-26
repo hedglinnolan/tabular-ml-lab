@@ -27,7 +27,9 @@ from utils.session_projects import get_project_manager
 from utils.column_utils import make_unique_columns
 from utils.theme import inject_custom_css, render_guidance, render_sidebar_workflow
 from utils.table_export import table
-from utils.import_ui import render_import_doctor, repaired_frame
+from utils.import_ui import render_import_doctor, repaired_frame, applied_fixes
+from utils import table_ledger as _ledger
+from utils.working_table_ui import render_working_table_card, render_exit_assurance
 from data_processor import (
     load_tabular_data, get_numeric_columns, get_selectable_columns,
     detect_file_type, inspect_json
@@ -39,6 +41,43 @@ from ml.triage import detect_task_type, detect_cohort_structure
 from ml.eda_recommender import compute_dataset_signals
 
 logger = logging.getLogger(__name__)
+
+
+def _forget_working_table(reason: str = "") -> None:
+    """Drop the working table AND the account of how it was built.
+
+    These have to move together. Three buttons used to drop the table and
+    leave the ledger standing — "Change Merge Setup" most damagingly, because
+    the next combine appended a second "Combined 3 files" step to an account
+    that still described the first, giving a lineage whose before/after chain
+    did not join up.
+    """
+    for key in ("working_table", "_combine_signature", "_combine_reopen",
+                "_working_table_source_id", "merge_preview", "merge_config"):
+        st.session_state.pop(key, None)
+    _ledger.clear()
+    if reason:
+        st.session_state["_working_table_forgotten"] = reason
+
+
+def _origin_notes(dataset_ids) -> list:
+    """What was done to each file BEFORE it became part of the working table.
+
+    Transposing a file and recoding its missing-value codes both change the
+    shape or the values of everything downstream, and both happen per-file
+    while the working table does not yet exist. Carried onto the step that
+    adopts the files so they appear in the account rather than nowhere.
+    """
+    notes = []
+    origins = st.session_state.get("_dataset_origin") or {}
+    for _id in dataset_ids:
+        info = origins.get(_id) or {}
+        name = info.get("filename") or _id
+        if info.get("transposed"):
+            notes.append(f"{name}: transposed (rows and columns swapped on import)")
+        for fix in info.get("repairs") or []:
+            notes.append(f"{name}: {fix}")
+    return notes
 
 
 # =============================================================================
@@ -118,9 +157,7 @@ with st.sidebar:
             st.rerun()
         
         if st.button("Change Merge Setup", type="secondary", key="change_merge", help="Go back to re-merge your datasets"):
-            st.session_state.pop('working_table', None)
-            st.session_state.pop('merge_preview', None)
-            st.session_state.pop('merge_config', None)
+            _forget_working_table("You asked to change how the files are combined.")
             st.session_state.pop('merge_steps', None)
             st.session_state.pop('last_merge_columns', None)
             st.session_state.pop('transposed_for_merge', None)
@@ -146,7 +183,8 @@ with st.sidebar:
             with c1:
                 if st.button("Yes, Clear Session", type="primary", key="confirm_clear_yes"):
                     st.session_state.pop('datasets_registry', None)
-                    st.session_state.pop('working_table', None)
+                    st.session_state.pop('_dataset_origin', None)
+                    _forget_working_table()
                     st.session_state.pop('merge_steps', None)
                     st.session_state.pop('transposed_for_merge', None)
                     st.session_state.pop('confirm_clear_session', None)
@@ -173,6 +211,13 @@ if not active_project:
 # ============================================================================
 st.markdown("---")
 st.header("Step 1: Add Your Data")
+
+# Anything that discarded the working table says so here, once, where the
+# researcher is looking — rather than leaving them to notice that Step 2 has
+# quietly reverted to asking how to combine their files.
+_forgotten = st.session_state.pop("_working_table_forgotten", None)
+if _forgotten:
+    st.warning(f"↩️ {_forgotten}")
 st.caption(
     "Bring one file or bring all of them. If your study lives in several files "
     "that you have never combined — demographics here, labs there, diet in a "
@@ -214,13 +259,27 @@ if project_datasets:
                     db.rename_dataset(d['id'], new_name)
                     st.rerun()
         with c3:
-            if st.button("Remove", key=f"del_{d['id']}", type="secondary"):
+            # Removing a file rebuilds the study from a different set of files,
+            # so the working table and everything measured from it stop being
+            # about the same data. That is the right behavior, but it used to
+            # happen on one unlabeled click; say it on the button.
+            _costs_table = st.session_state.get("working_table") is not None
+            if st.button(
+                "Remove", key=f"del_{d['id']}", type="secondary",
+                help=(f"Take {d['name']} out of the study. Your combined table "
+                      f"is discarded and you will combine the remaining files "
+                      f"again." if _costs_table else
+                      f"Take {d['name']} out of the study."),
+            ):
                 db.delete_dataset(d['id'])
                 st.session_state.datasets_registry.pop(d['id'], None)
+                (st.session_state.get("_dataset_origin") or {}).pop(d['id'], None)
                 # The working table was built from a set of files that no
                 # longer exists; forcing a recombine is the only honest move.
-                st.session_state.pop("working_table", None)
-                st.session_state.pop("_combine_signature", None)
+                _forget_working_table(
+                    f"**{d['name']}** was removed from the study, so the combined "
+                    f"table built from it was discarded. Combine the remaining "
+                    f"files again below.")
                 st.rerun()
     st.markdown("---")
 
@@ -283,12 +342,19 @@ def _log_import_repairs(file_key, dataset_name):
         pass          # recording must never block the upload
 
 
-def _commit_dataset(df, dataset_name, filename, file_type, transposed, replace=True):
+def _commit_dataset(df, dataset_name, filename, file_type, transposed,
+                    replace=True, file_key=None):
     """Register one frame as a dataset in the active project.
 
     Shared by the per-file 'Add' button and the 'Add all' button so both paths
     commit exactly the frame the user reviewed — including any Import Doctor
     fixes — rather than a fresh re-parse of the original file.
+
+    `file_key` is the Import Doctor's session key for this upload. It is taken
+    here because it is the LAST moment the two identities coexist: the Doctor
+    keys its work by "demographics_csv_0" and everything downstream knows the
+    file only by its dataset id, so a repair not carried across right here is
+    invisible from then on.
     """
     existing = db.get_project_datasets(active_project['id'])
     for d in existing:
@@ -313,10 +379,15 @@ def _commit_dataset(df, dataset_name, filename, file_type, transposed, replace=T
         is_transposed=transposed,
     )
     st.session_state.datasets_registry[dataset_id] = df
+    st.session_state.setdefault("_dataset_origin", {})[dataset_id] = {
+        "repairs": list(applied_fixes(file_key)) if file_key else [],
+        "transposed": bool(transposed),
+        "filename": filename,
+    }
     # A new file changes what "combined" means, so any table built from the
-    # previous set of files must not survive as the working table.
-    st.session_state.pop("working_table", None)
-    st.session_state.pop("_combine_signature", None)
+    # previous set of files must not survive as the working table — nor the
+    # account of how that table was built.
+    _forget_working_table()
     return True, dataset_name
 
 
@@ -346,7 +417,8 @@ if uploaded_files and len(uploaded_files) > 1:
                     _name = st.session_state.get(f"name_{_fk}") or _uf.name.rsplit('.', 1)[0]
                     _log_import_repairs(_fk, _name)
                     ok, msg = _commit_dataset(_frame, _name, _uf.name, _ft,
-                                              st.session_state.get(f"transpose_{_fk}", False))
+                                              st.session_state.get(f"transpose_{_fk}", False),
+                                              file_key=_fk)
                     (added if ok else failed).append(msg)
                 except Exception as exc:
                     failed.append(f"{_uf.name}: {exc}")
@@ -512,6 +584,7 @@ if uploaded_files:
                             ok, msg = _commit_dataset(
                                 df_preview, dataset_name, uploaded_file.name,
                                 file_type, transpose_this_file, replace=True,
+                                file_key=file_key,
                             )
                         if not ok:
                             st.error(msg)
@@ -590,11 +663,50 @@ if len(project_datasets) > 1:
     # combination while the page reports "ready".
     _combo_signature = "|".join(sorted(dataframes)) + f"|{len(dataframes)}"
     if st.session_state.get("_combine_signature") != _combo_signature:
-        st.session_state.pop("working_table", None)
+        # A different set of files is a different table, and a different
+        # account of how it was built.
+        _forget_working_table()
         st.session_state["_combine_signature"] = _combo_signature
 
-    _combined = render_combine_step(dataframes)
+    # Once a table has been committed, the combine step is HISTORY, not a
+    # control. Re-rendering the full preview on every rerun left its headline
+    # ("→ 156 rows × 10 columns") on screen describing the inputs, directly
+    # above a table that a later cleaning action had reduced to 9 columns —
+    # two different answers to the same question, both looking current.
+    _REOPEN = "_combine_reopen"
+    _committed = (st.session_state.get("working_table") is not None
+                  and not st.session_state.get(_REOPEN))
+    if _committed:
+        st.header("Step 2: Combine your files")
+        _desc = st.session_state.get("_combine_description")
+        st.success(f"**Combined — {len(dataframes)} files into one table.**")
+        if _desc:
+            st.caption(_desc)
+        st.caption("Reopen this only if you want a different join or a different "
+                   "set of files — the table as it stands, including anything "
+                   "you have changed since, is stated in Step 3.")
+        if st.button("Change how these files are combined", key="combine_reopen_btn"):
+            st.session_state[_REOPEN] = True
+            st.rerun()
+        _combined = None
+    else:
+        _combined = render_combine_step(dataframes)
     if _combined is not None:
+        st.session_state.pop(_REOPEN, None)
+        # The account of how this table came to be starts here. `before` is the
+        # file the others were attached to, so the ledger can state the thing a
+        # researcher most wants to know and the join preview only says in
+        # passing: how many of the people you brought are still in the table.
+        _primary = next(iter(dataframes.values())) if dataframes else None
+        _origin = _origin_notes([d['id'] for d in project_datasets])
+        _ledger.record(
+            action=f"Combined {len(dataframes)} files",
+            kind=_ledger.COMBINE, before=_primary, after=_combined,
+            detail=" ".join(filter(None, [
+                st.session_state.get("_combine_description", ""),
+                ("Before combining — " + "; ".join(_origin) + ".") if _origin else "",
+            ])),
+        )
         st.session_state.working_table = _combined
         st.session_state.last_merge_columns = list(_combined.columns)
         set_data(_combined)
@@ -627,13 +739,23 @@ else:
             working_df.columns = [str(c) for c in working_df.columns]
             st.session_state.working_table = working_df
             st.session_state['_working_table_source_id'] = single_dataset['id']
+            _ledger.clear()
+            _ledger.record(
+                action=f"Started from {single_dataset['name']}",
+                kind=_ledger.ADD, before=None, after=working_df,
+                detail=" · ".join(_origin_notes([single_dataset['id']])),
+            )
         else:
             working_df = st.session_state.working_table
         set_data(working_df)
         
         st.success(f"**Working Table:** {single_dataset['name']}")
         table(working_df.head(10), width="stretch")
-        st.caption(f"Shape: {working_df.shape[0]:,} rows × {working_df.shape[1]} columns")
+        # The shape is stated once, in the card below, so that there is exactly
+        # one place on this page that answers "what have I got". Repeating it
+        # here invited the two to drift, which is how a stale "× 10 columns"
+        # once sat directly above a live "× 9 columns".
+        st.caption("First 10 rows. What this table holds is summarized below.")
     else:
         st.error("""
         **Dataset not in memory.** 
@@ -663,6 +785,16 @@ if len(df) == 0 or len(df.columns) == 0:
 # ============================================================================
 st.markdown("---")
 st.header("Step 3: Data Audit")
+
+# What is being audited, stated where the auditing happens. Without this the
+# only account of the table sat above two committed join previews that still
+# read as live controls, so the most prominent shape on screen could be one the
+# table no longer had.
+_undo_note = st.session_state.pop("_working_table_undo_note", None)
+if _undo_note:
+    st.success(f"↩️ {_undo_note}")
+render_working_table_card(
+    df, "Everything below describes this table, as it stands now.")
 
 from utils.cohort_ui import render_cohort_note as _cohort_note
 _cohort_note("The audit below covers the whole study, which is what it should "
@@ -821,6 +953,10 @@ if suggested_actions:
                     if len(new_df) == 0 or len(new_df.columns) == 0:
                         st.error("This action would result in an empty dataset. Aborted.")
                     else:
+                        _ledger.record(action=label, kind=_ledger.CLEAN,
+                                       before=df, after=new_df,
+                                       detail=(f"Applied to: {', '.join(cols)}"
+                                               if cols else ""))
                         st.session_state.working_table = new_df
                         # Content changed → set_data clears downstream results
                         # (config is kept); reconcile drops any config references
@@ -858,6 +994,16 @@ if suggested_actions:
                     logger.exception(e)
 
 st.session_state.data_audit = audit_results
+
+# ============================================================================
+# SIGN-OFF — the page's closing statement about the DATA, before any question
+# is asked of it. It sits here rather than at the foot of the page because the
+# foot is unreachable until an analysis type is chosen, and the researcher who
+# has not chosen one yet is exactly the one who needs to know what their table
+# holds. Everything earlier on this page is prospective — it explains a
+# decision before you commit to it. Nothing restated the result afterwards.
+# ============================================================================
+render_exit_assurance(get_data(full_study=True))
 
 # ============================================================================
 # SECTION 5: TASK MODE & FIELD SELECTION

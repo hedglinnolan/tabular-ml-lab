@@ -414,6 +414,19 @@ def _build_archive_members() -> Dict[str, bytes]:
         except Exception:
             skipped_keys.append("fe_recipe")
 
+    # How the working table came to be. Restoring the table without its account
+    # would put the researcher back in front of numbers with no explanation of
+    # where they came from — which is the state this ledger exists to end.
+    try:
+        from utils import table_ledger as _tl
+        _ledger_rows = _tl.to_list()
+        if _ledger_rows:
+            members["table_ledger.json"] = json.dumps(
+                _ledger_rows, indent=2, default=str).encode("utf-8")
+            saved_keys.append("working_table_ledger")
+    except Exception:
+        skipped_keys.append("working_table_ledger")
+
     # --- Coach evidence probe (schema 2.1) ---
     probe = st.session_state.get("coach_probe_result")
     if probe is not None and is_dataclass(probe):
@@ -760,6 +773,17 @@ def _restore_session_data(archive_bytes: bytes) -> Tuple[int, Dict[str, Any], li
                     f"The feature-engineering recipe could not be restored "
                     f"({exc}). Switching cohorts will not rebuild your "
                     f"engineered features until you recreate them.")
+
+        if "table_ledger.json" in names:
+            try:
+                from utils import table_ledger as _tl
+                _tl.from_list(_read_json(zf, "table_ledger.json"))
+                restored += 1
+            except Exception as exc:
+                warnings.append(
+                    f"The record of how your working table was assembled could "
+                    f"not be restored ({exc}). The table itself is unchanged; "
+                    f"only its history is missing.")
 
         # --- Test-set lockbox (schema 2.1; absent in 2.0 files) ---
         if "lockbox.json" in names:
