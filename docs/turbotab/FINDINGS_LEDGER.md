@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**4 of 394 closed.**
+**5 of 395 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `UNVERIFIED` | 370 |
-| `OPEN` | 17 |
-| `PARTIAL` | 3 |
-| `FIXED` | 4 |
+| `OPEN` | 18 |
+| `PARTIAL` | 2 |
+| `FIXED` | 5 |
 
 ---
 
-## OPEN — 17
+## OPEN — 18
 
 
-### Verified against main — 17
+### Verified against main — 18
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -56,19 +56,19 @@ Nothing is closed without a regression test named after it.
 | `T0-ENG-001` | medium | The diagnose -> profile -> detect path needs only pandas and numpy — no sklearn, scipy or torch | `turbotab/engine.py import surface; verified by the L3 test suite` | Confirmed by building the vertical: turbotab/ installs pandas, numpy, fastapi, uvicorn, python-multipart and nothing else, and the three engine entry points (import_doctor.diagnose |
 | `T0-PAGES-001` | medium | Duplicate-row detection has no engine home — it is inline in pages/01 | `pages/01_Upload_and_Audit.py (inline)` | Extract to the engine when pages/01 unfreezes; register the capability meanwhile. |
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
+| `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
 ---
 
-## PARTIAL — 3
+## PARTIAL — 2
 
 
-### Verified against main — 3
+### Verified against main — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `T0-STRUCT-001` | critical | Global fallback pipeline slot picks an arbitrary member by dict insertion order AND returns a shared object that .fit() mutates in place | `utils/session_state.py:501; pages/06:1813-1821 now DISCLOSES borrowers but root cause unchanged` | PR #145 added disclosure, not a fix |
 | `T0-STRUCT-002` | critical | Row identity: lockbox seals index LABELS, splits store POSITIONS (np.where(mask)[0]), page 07 reads df_raw.iloc[test_indices] | `pages/06:398,696-702; pages/07:185,196; utils/test_lockbox.py train_row_mask` | PR #145 fixed the reset_index instance + test_row_labels_are_identities.py; conventions still dual |
-| `T0-ID-001` | critical | Four of nine repair kinds renumber rows, invalidating row identity mid-analysis | `ml/import_doctor.py apply_fix — promote_header / drop_empty_rows / drop_rows / melt_repeated` | The barrier is now expressed and tested on the split side. ml/splits.py captures index labels before any positional work, never renumbers, and Split.assert_identity_preserved refus |
 
 ---
 
@@ -487,13 +487,14 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 4
+## FIXED — 5
 
 
-### Verified against main — 4
+### Verified against main — 5
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
+| `T0-ID-001` | critical | Four of nine repair kinds renumber rows, invalidating row identity mid-analysis | `ml/import_doctor.py apply_fix — promote_header / drop_empty_rows / drop_rows / melt_repeated` | **test:** `turbotab/test_project_model.py::test_pre_barrier_repairs_are_unreachable_once_the_lockbox_exists` — The barrier is a phase rule now. The project owns the lockbox, so the |
 | `T0-DOC-001` | high | ARCHITECTURE.md over-reported Streamlit coupling: static analysis counted function-level imports as module-level | `ml/model_coach.py:634,1080; docs/turbotab/ARCHITECTURE.md §01` | **test:** `docs/turbotab/ARCHITECTURE.md §01 runtime blocker snippet` — Corrected 2026-07; the empirical run had already disagreed with the static pass and the static pass was publ |
 | `T0-DOC-002` | high | The ARCHITECTURE.md reproduce snippet could not fail — it used find_module, removed in Python 3.12, and passed vacuously without Streamlit installed | `docs/turbotab/ARCHITECTURE.md §01 (previous revision)` | **test:** `docs/turbotab/ARCHITECTURE.md §01 self-check (`blocker is not working` guard)` — Found by the walking-skeleton loop. A test that cannot fail proves nothing — the guard n |
 | `T0-TOOL-001` | high | ledger.py regen destroyed FINDINGS_LEDGER.md on Windows, and check reported success over the wreckage | `docs/turbotab/tools/ledger.py load/save/regen` | **test:** `docs/turbotab/tools/ledger.py check (markdown-currency guard; verified by emptying the file)` — Reported by the build agent, who recovered from git and used PYTHONUTF8=1 |

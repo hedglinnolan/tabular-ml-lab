@@ -137,6 +137,37 @@ test failure.
 
 ---
 
+## The register — state model (L5 / L6)
+
+Not a Guided *step*, but the layer both doors read. Registered because "extract
+the core so the UI becomes a choice" only holds if the **state model** is shared
+too: two state models is the same failure as two engines, one level down.
+
+| Capability | Classic | State | Reason |
+|---|---|---|---|
+| Step-completion model (ten predicates) | `utils/theme.py:685` | **core** | Extracted to `turbotab/readiness.py`; `theme.py` now asks instead of computing, and a test asserts the expressions are gone rather than merely unused. This is the Router's readiness function. |
+| Quick / advanced disclosure split | `utils/theme.py:685` | **core** | Moved with the predicates — it decides which questions are optional, which the Router inherits. |
+| Invalidation cascade | `utils/session_state.py`, plus a copy in `pages/03` | **core** | `turbotab/cascade.py` declares the graph once and reproduces the production function key for key across all four flag combinations. The `pages/03` copy is **not yet reconciled**: it misses fifteen result keys, and the DAG names them. |
+| Partial invalidation (`clear_feature_*=False`) | `utils/session_state.py` | **core** | Expressed as `keep={stage}` and pinned per flag, because a naive full-cascade DAG cannot express it. |
+| Session save / restore (zip archive) | `utils/session_manager.py` | **both** | `turbotab/archive.py` ports the schema — same members, same names, same version — so the doors read each other's archives. |
+| Sealed lockbox, held by row label | `utils/test_lockbox.py` | **both** | Same dict shape, so one lockbox satisfies both doors; round-trips verbatim. |
+| Active cohort filter | `utils/cohorts.py` | **both** | First-class field on the project, with `working_table` derived from it, so "which rows is this number about?" has one answer. |
+| Per-model pipeline **specs** | `pages/05` (stores fitted objects) | **guided-only** | Guided stores serializable specs and has no global fallback slot. Classic still stores fitted pipelines behind a global slot that lets two models alias one instance (`TRANSITION_PLAN.md` §02.1). A debt owed back, and a live defect there. |
+| Identity barrier (`T0-ID-001`) | — | **guided-only** | Classic has no phase rule: nothing stops a structural repair running after the lockbox is sealed, and the stale lockbox still looks well-formed. Owed back. |
+| Serialization guard (no participant data in the record) | — | **guided-only** | New. `session_manager` drops derivatives for safety and cost; it does not check that what remains is free of cell values. Owed back. |
+
+Three `guided-only` rows, all debts rather than luxuries — and two of them
+(`pipeline specs`, `identity barrier`) describe defects that are **live in
+Classic today**, not merely absent from it.
+
+> **Note.** The Data & Target step register added in `9211566` is not in this
+> file any more; it was dropped in `b4bff25`. Not restored here, because that
+> may have been deliberate — but a step with no rows is the failure mode this
+> register exists to prevent, so it needs either restoring or an explicit entry
+> saying where it went.
+
+---
+
 ## The one-line answer
 
 **The algorithms are safe — they were always engine code and both doors will call the same
