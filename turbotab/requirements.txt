@@ -16,7 +16,7 @@
 # every branch and falls through to "defaulting to regression" — so a
 # responder/non-responder column is silently read as a regression problem. The
 # repo's own requirements.txt says `pandas>=2.0.0` with no ceiling, so a fresh
-# install today picks 3.x and gets that behaviour.
+# install today picks 3.x and gets that behavior.
 pandas>=2.2,<3
 numpy>=1.24
 

@@ -53,7 +53,7 @@ turbotab\.venv\Scripts\python.exe -m pytest turbotab\test_skeleton.py -v
 
 Met. Verified in Chromium against a real upload: the structural findings render, choosing a target
 opens Explore with the real profile, deferring and flagging fill the rail docks from the server's
-record, and there are no console errors in either colour scheme.
+record, and there are no console errors in either color scheme.
 
 **Preview slice, second gate:**
 
@@ -94,7 +94,7 @@ and `revert` puts it back byte-for-byte.
 Projects live in memory. There is no disk path, because `ARCHITECTURE.md` §02 records a
 `_NEVER_PERSIST` contract and §04 lists persistence as an open question — a skeleton that quietly
 wrote to disk would settle it by accident. Restarting the server loses your projects; that is the
-correct behaviour for now, not an oversight.
+correct behavior for now, not an oversight.
 
 ---
 
@@ -169,11 +169,11 @@ string dtype, not the misdetection that caused it, so in Classic this surfaces a
 
 Logged as `T0-LIVE-004`. The class is wider than the one line: the same dtype-identity comparison
 appears at eleven sites — `ml/triage.py:41,47,75,165,166,170,189`, `ml/dataset_profile.py:189`
-(`is_id_like`), `ml/eda_recommender.py:98,106,137` (which analyses get offered),
+(`is_id_like`), `ml/eda_recommender.py:98,106,137` (which analyzes get offered),
 `models/registry_wrappers.py:44` (model selection). **Two of this skeleton's three engine entry
 points are on that list**, so the cap is load-bearing here, not hygiene.
 
-`test_a_text_target_is_read_as_classification` is the canary: it asserts the behaviour the pin
+`test_a_text_target_is_read_as_classification` is the canary: it asserts the behavior the pin
 buys, so lifting the pin without doing the repair fails the suite rather than quietly changing an
 answer.
 
@@ -229,7 +229,7 @@ stronger than the census suggests — this slice installs in seconds.
 ## Decisions taken while building, worth arguing with
 
 - **Findings are ranked by the engine's own severity, then its confidence, then id.** That total
-  order is the only ordering judgement `engine.py` makes; it introduces no new tiers.
+  order is the only ordering judgment `engine.py` makes; it introduces no new tiers.
 - **Profile warnings carry no confidence**, so they are serialised with `confidence: null` and
   `auto_suggestable: false`. A `DataWarning` may never pre-select anything.
 - **A duplicated target label is refused, not answered.** `df[target]` returns a frame there, and

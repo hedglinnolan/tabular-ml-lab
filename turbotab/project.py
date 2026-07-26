@@ -115,7 +115,7 @@ class AnalysisProject:
     @classmethod
     def from_dataframe(cls, df: pd.DataFrame, name: str) -> "AnalysisProject":
         if df is None or df.empty:
-            raise ProjectError(f"'{name}' has no rows to analyse.")
+            raise ProjectError(f"'{name}' has no rows to analyze.")
         # Duplicate index labels would make row identity ambiguous — the exact
         # failure this project model exists to prevent. Catch it at the door
         # rather than at the first `.loc`.

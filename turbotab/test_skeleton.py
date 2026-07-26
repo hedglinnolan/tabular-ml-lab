@@ -281,7 +281,7 @@ def test_rows_are_addressed_by_label_not_position(df: pd.DataFrame):
     """`TRANSITION_PLAN.md` §02.2, pinned.
 
     The frame is re-indexed so labels and positions disagree. Asking for label
-    500 must return the row *labelled* 500; asking for label 0 must fail rather
+    500 must return the row *labeled* 500; asking for label 0 must fail rather
     than quietly return the first row, which is what `.iloc[0]` would have done.
     """
     shifted = df.copy()
@@ -615,7 +615,7 @@ def test_the_stylesheet_is_the_prototype_stylesheet_verbatim():
     """"Keep the design language exactly; only the data source changes."
 
     The prototype's `<style>` block is compared byte for byte. Anything that
-    drifts — a colour nudged, a radius rounded — fails here rather than being
+    drifts — a color nudged, a radius rounded — fails here rather than being
     noticed three screens later.
     """
     proto = (REPO_ROOT / "docs" / "turbotab" / "prototypes" /

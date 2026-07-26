@@ -173,7 +173,7 @@ def profile(
 # The engine speaks two severity vocabularies: `ShapeFinding.severity`
 # (critical/warning/info) and `WarningLevel` (critical/warning/caution/info).
 # This is the union, in the engine's own order. It is the single ordering
-# judgement this adapter makes, and it introduces no new tiers.
+# judgment this adapter makes, and it introduces no new tiers.
 SEVERITY_RANK = {"critical": 0, "warning": 1, "caution": 2, "info": 3}
 CONFIDENCE_RANK = {"high": 0, "medium": 1, "low": 2}
 
