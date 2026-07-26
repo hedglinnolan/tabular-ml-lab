@@ -165,66 +165,64 @@ def test_nn_adapter_refuses_to_fit_without_a_model(regression_data):
     assert est.is_fitted_ is False
 
 
-def test_nn_sklearn_adapter_fit_does_not_train(regression_data):
-    """Pins the *current* behavior, which is a live bug (`T0-LIVE-003`).
+def test_nn_sklearn_adapter_refuses_to_fit_unless_marked_pretrained(regression_data):
+    """`T0-LIVE-003`, fixed — this test is the earlier one inverted.
 
-    With a wrapper attached, `fit()` sets `is_fitted_`, records
-    `n_features_in_`, and returns — it never asks the wrapper to train. Real
-    training is expected to have happened already in `wrapper_instance.fit()`.
-
-    That is a legitimate adapter only while every caller knows the protocol.
-    This asserts the protocol as it stands, so the extraction cannot change it
-    by accident. When `T0-LIVE-003` is fixed — `fit()` raising unless an
-    explicit already-trained flag is set — **invert this test rather than
-    deleting it**; its failure is the signal the fix landed.
+    It used to assert that `fit()` marked the adapter fitted without training,
+    which was true and was the bug. Now `fit()` raises unless the adapter has
+    been explicitly marked as wrapping an already-trained network. The unsafe
+    path is loud instead of silent.
     """
     pytest.importorskip("torch")
+    from sklearn.exceptions import NotFittedError
     from models.nn_whuber import SklearnCompatibleNNRegressor
 
     X, y = regression_data
     stub = _StubNN(answer=7.0)
     est = SklearnCompatibleNNRegressor(wrapper_instance=stub)
 
-    est.fit(X[:120], y[:120])
+    with pytest.raises(NotFittedError, match="does not train"):
+        est.fit(X[:120], y[:120])
+    assert est.is_fitted_ is False
+    assert stub.fit_calls == 0
 
+    # Marked as pre-trained, the adapter is usable — this is the legitimate
+    # path, and `get_sklearn_estimator()` is what takes it.
+    est.mark_pretrained().fit(X[:120], y[:120])
     assert est.is_fitted_ is True
     assert est.n_features_in_ == 5
-    assert stub.fit_calls == 0, (
-        "fit() trained the wrapper — T0-LIVE-003 may be fixed; if so, invert "
-        "this test rather than deleting it")
 
 
-def test_clone_and_refit_silently_answers_from_the_old_model(regression_data):
-    """The path that makes `T0-LIVE-003` dangerous, demonstrated end to end.
+def test_clone_and_refit_now_raises_instead_of_answering_from_the_old_model(regression_data):
+    """The path that made `T0-LIVE-003` dangerous, now closed.
 
-    `get_params()` returns the wrapper instance, so `clone()` carries a copy of
-    the *already-trained* model. Refitting the clone on different data marks it
-    fitted without retraining, and `predict()` then answers from the original
-    model — no exception, just wrong numbers. `ml/sensitivity.py` already calls
-    `clone()` on wrapper objects.
+    `get_params()` returns the wrapper instance, so `clone()` still carries the
+    already-trained model — that part is unavoidable and is what the adapter is
+    for. What has changed is that the pre-trained *mark* is not a constructor
+    parameter, so `clone()` drops it, and the clone's `fit()` raises.
 
-    Pinned, not fixed: `models/` is frozen behavior until `T0-LIVE-003` is
-    worked. This test is the tripwire that says what the fix has to change.
+    Before: `cross_val_score` and `ml/sensitivity.py` cloned, refitted, and got
+    scores from a network that had already seen every fold's held-out rows, with
+    no error anywhere. Now the attempt stops.
     """
     pytest.importorskip("torch")
     from sklearn.base import clone
+    from sklearn.exceptions import NotFittedError
     from models.nn_whuber import SklearnCompatibleNNRegressor
 
     X, y = regression_data
-    original = SklearnCompatibleNNRegressor(wrapper_instance=_StubNN(answer=7.0))
+    original = SklearnCompatibleNNRegressor(
+        wrapper_instance=_StubNN(answer=7.0)).mark_pretrained()
     original.fit(X[:120], y[:120])
+    assert np.allclose(original.predict(X[120:]), 7.0)
 
     fresh = clone(original)
-    # Different data entirely — a refit that meant anything would change the answer.
-    fresh.fit(X[120:] * 100.0, y[120:] * -1.0)
+    assert not getattr(fresh, "_trained_externally", False), (
+        "the pre-trained mark survived clone() — it must not be a constructor "
+        "parameter, or the unsafe path is silent again")
 
-    preds = fresh.predict(X[120:])
-    assert np.allclose(preds, 7.0), (
-        "the clone stopped answering from the original model — T0-LIVE-003 may "
-        "be fixed; invert this test rather than deleting it")
-    assert fresh.is_fitted_ is True, (
-        "a refitted clone reports itself fitted while holding the old model: "
-        "this is the silent-wrong-numbers path T0-LIVE-003 describes")
+    with pytest.raises(NotFittedError, match="does not train"):
+        fresh.fit(X[120:] * 100.0, y[120:] * -1.0)
 
 
 def test_nn_wrapper_is_a_real_wrapper(regression_data):

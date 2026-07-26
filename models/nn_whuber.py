@@ -112,6 +112,34 @@ class SklearnCompatibleNNRegressor(RegressorMixin, BaseEstimator):
                 "Call 'fit' with appropriate arguments before using this estimator."
             )
     
+    def mark_pretrained(self):
+        """Declare that `wrapper_instance` has already been trained.
+
+        Deliberately NOT a constructor parameter. `sklearn.base.clone` rebuilds
+        an estimator from `get_params()`, so anything passed to `__init__`
+        survives cloning — and surviving the clone is exactly what must not
+        happen here. Set after construction, the mark is dropped by `clone()`,
+        and the clone's `fit()` raises instead of quietly answering from the
+        original network (T0-LIVE-003).
+        """
+        self._trained_externally = True
+        return self
+
+    def _refuse_if_not_pretrained(self):
+        if not getattr(self, "_trained_externally", False):
+            raise NotFittedError(
+                f"{self.__class__.__name__} does not train. It adapts an "
+                "already-trained NNWeightedHuberWrapper to sklearn's interface, "
+                "and it was asked to fit without one. "
+                "This is almost always a clone-and-refit: sklearn utilities such "
+                "as cross_val_score and ml/sensitivity.py clone an estimator and "
+                "call fit() on the copy. Previously that succeeded and the copy "
+                "kept predicting from the ORIGINAL network — cross-validation "
+                "scores computed by a model that had already seen every fold's "
+                "held-out rows, with no error anywhere. Train a wrapper and call "
+                "get_sklearn_estimator() on it, or use the wrapper directly."
+            )
+
     def fit(self, X, y):
         """
         Fit the model (sklearn interface).
@@ -121,7 +149,8 @@ class SklearnCompatibleNNRegressor(RegressorMixin, BaseEstimator):
         """
         if self.wrapper_instance is None:
             raise ValueError("wrapper_instance must be set before calling fit()")
-        
+        self._refuse_if_not_pretrained()
+
         # Mark as fitted
         self.is_fitted_ = True
         self.n_features_in_ = X.shape[1]
@@ -171,6 +200,34 @@ class SklearnCompatibleNNClassifier(ClassifierMixin, BaseEstimator):
                 "Call 'fit' with appropriate arguments before using this estimator."
             )
     
+    def mark_pretrained(self):
+        """Declare that `wrapper_instance` has already been trained.
+
+        Deliberately NOT a constructor parameter. `sklearn.base.clone` rebuilds
+        an estimator from `get_params()`, so anything passed to `__init__`
+        survives cloning — and surviving the clone is exactly what must not
+        happen here. Set after construction, the mark is dropped by `clone()`,
+        and the clone's `fit()` raises instead of quietly answering from the
+        original network (T0-LIVE-003).
+        """
+        self._trained_externally = True
+        return self
+
+    def _refuse_if_not_pretrained(self):
+        if not getattr(self, "_trained_externally", False):
+            raise NotFittedError(
+                f"{self.__class__.__name__} does not train. It adapts an "
+                "already-trained NNWeightedHuberWrapper to sklearn's interface, "
+                "and it was asked to fit without one. "
+                "This is almost always a clone-and-refit: sklearn utilities such "
+                "as cross_val_score and ml/sensitivity.py clone an estimator and "
+                "call fit() on the copy. Previously that succeeded and the copy "
+                "kept predicting from the ORIGINAL network — cross-validation "
+                "scores computed by a model that had already seen every fold's "
+                "held-out rows, with no error anywhere. Train a wrapper and call "
+                "get_sklearn_estimator() on it, or use the wrapper directly."
+            )
+
     def fit(self, X, y):
         """
         Fit the model (sklearn interface).
@@ -180,7 +237,8 @@ class SklearnCompatibleNNClassifier(ClassifierMixin, BaseEstimator):
         """
         if self.wrapper_instance is None:
             raise ValueError("wrapper_instance must be set before calling fit()")
-        
+        self._refuse_if_not_pretrained()
+
         # Mark as fitted
         self.is_fitted_ = True
         self.n_features_in_ = X.shape[1]
@@ -561,7 +619,12 @@ class NNWeightedHuberWrapper(BaseModelWrapper):
     def get_sklearn_estimator(self):
         """Get sklearn-compatible estimator wrapper."""
         if self._sklearn_estimator is None:
-            self._sklearn_estimator = SklearnCompatibleNN(wrapper_instance=self, task_type=self.task_type)
+            self._sklearn_estimator = SklearnCompatibleNN(
+                wrapper_instance=self, task_type=self.task_type)
+            # The one place an adapter is legitimately created: from a wrapper
+            # that has already trained. The mark is not a constructor parameter,
+            # so a clone of this estimator will not inherit it.
+            self._sklearn_estimator.mark_pretrained()
             # Mark as fitted and set attributes since model is already trained
             # Note: fit() will be called later with actual data to set n_features_in_ and classes_ properly
             self._sklearn_estimator.is_fitted_ = True

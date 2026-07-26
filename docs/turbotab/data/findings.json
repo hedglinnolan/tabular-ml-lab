@@ -33,9 +33,11 @@
   "detail": "",
   "ev": "models/nn_whuber.py fit() in both regressor and classifier",
   "act": "",
-  "status": "OPEN",
-  "note": "verified on main",
-  "verified_against": "origin/main @ 24c3446"
+  "status": "FIXED",
+  "note": "fit() now raises NotFittedError unless the adapter has been explicitly marked as wrapping an already-trained network. The mark is deliberately NOT a constructor parameter: sklearn.base.clone rebuilds from get_params(), so anything passed to __init__ survives cloning, and surviving the clone is precisely what must not happen. Set post-construction, it is dropped by clone(), so the clone's fit() raises where it used to succeed and keep predicting from the original network. get_sklearn_estimator() is the one legitimate construction site and marks it there. The two characterization tests were inverted rather than deleted, as they said to be.",
+  "verified_against": "origin/main @ 24c3446",
+  "test": "tests/test_characterization_wrappers.py::test_clone_and_refit_now_raises_instead_of_answering_from_the_old_model",
+  "verified_ev": "models/nn_whuber.py mark_pretrained / _refuse_if_not_pretrained"
  },
  {
   "id": "T0-STRUCT-001",
