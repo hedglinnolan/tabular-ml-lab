@@ -43,6 +43,23 @@ from ml.eda_recommender import compute_dataset_signals
 logger = logging.getLogger(__name__)
 
 
+def _forget_working_table(reason: str = "") -> None:
+    """Drop the working table AND the account of how it was built.
+
+    These have to move together. Three buttons used to drop the table and
+    leave the ledger standing — "Change Merge Setup" most damagingly, because
+    the next combine appended a second "Combined 3 files" step to an account
+    that still described the first, giving a lineage whose before/after chain
+    did not join up.
+    """
+    for key in ("working_table", "_combine_signature", "_combine_reopen",
+                "_working_table_source_id", "merge_preview", "merge_config"):
+        st.session_state.pop(key, None)
+    _ledger.clear()
+    if reason:
+        st.session_state["_working_table_forgotten"] = reason
+
+
 def _origin_notes(dataset_ids) -> list:
     """What was done to each file BEFORE it became part of the working table.
 
@@ -140,9 +157,7 @@ with st.sidebar:
             st.rerun()
         
         if st.button("Change Merge Setup", type="secondary", key="change_merge", help="Go back to re-merge your datasets"):
-            st.session_state.pop('working_table', None)
-            st.session_state.pop('merge_preview', None)
-            st.session_state.pop('merge_config', None)
+            _forget_working_table("You asked to change how the files are combined.")
             st.session_state.pop('merge_steps', None)
             st.session_state.pop('last_merge_columns', None)
             st.session_state.pop('transposed_for_merge', None)
@@ -168,7 +183,8 @@ with st.sidebar:
             with c1:
                 if st.button("Yes, Clear Session", type="primary", key="confirm_clear_yes"):
                     st.session_state.pop('datasets_registry', None)
-                    st.session_state.pop('working_table', None)
+                    st.session_state.pop('_dataset_origin', None)
+                    _forget_working_table()
                     st.session_state.pop('merge_steps', None)
                     st.session_state.pop('transposed_for_merge', None)
                     st.session_state.pop('confirm_clear_session', None)
@@ -195,6 +211,13 @@ if not active_project:
 # ============================================================================
 st.markdown("---")
 st.header("Step 1: Add Your Data")
+
+# Anything that discarded the working table says so here, once, where the
+# researcher is looking — rather than leaving them to notice that Step 2 has
+# quietly reverted to asking how to combine their files.
+_forgotten = st.session_state.pop("_working_table_forgotten", None)
+if _forgotten:
+    st.warning(f"↩️ {_forgotten}")
 st.caption(
     "Bring one file or bring all of them. If your study lives in several files "
     "that you have never combined — demographics here, labs there, diet in a "
@@ -236,13 +259,27 @@ if project_datasets:
                     db.rename_dataset(d['id'], new_name)
                     st.rerun()
         with c3:
-            if st.button("Remove", key=f"del_{d['id']}", type="secondary"):
+            # Removing a file rebuilds the study from a different set of files,
+            # so the working table and everything measured from it stop being
+            # about the same data. That is the right behavior, but it used to
+            # happen on one unlabeled click; say it on the button.
+            _costs_table = st.session_state.get("working_table") is not None
+            if st.button(
+                "Remove", key=f"del_{d['id']}", type="secondary",
+                help=(f"Take {d['name']} out of the study. Your combined table "
+                      f"is discarded and you will combine the remaining files "
+                      f"again." if _costs_table else
+                      f"Take {d['name']} out of the study."),
+            ):
                 db.delete_dataset(d['id'])
                 st.session_state.datasets_registry.pop(d['id'], None)
+                (st.session_state.get("_dataset_origin") or {}).pop(d['id'], None)
                 # The working table was built from a set of files that no
                 # longer exists; forcing a recombine is the only honest move.
-                st.session_state.pop("working_table", None)
-                st.session_state.pop("_combine_signature", None)
+                _forget_working_table(
+                    f"**{d['name']}** was removed from the study, so the combined "
+                    f"table built from it was discarded. Combine the remaining "
+                    f"files again below.")
                 st.rerun()
     st.markdown("---")
 
@@ -348,9 +385,9 @@ def _commit_dataset(df, dataset_name, filename, file_type, transposed,
         "filename": filename,
     }
     # A new file changes what "combined" means, so any table built from the
-    # previous set of files must not survive as the working table.
-    st.session_state.pop("working_table", None)
-    st.session_state.pop("_combine_signature", None)
+    # previous set of files must not survive as the working table — nor the
+    # account of how that table was built.
+    _forget_working_table()
     return True, dataset_name
 
 
@@ -626,9 +663,10 @@ if len(project_datasets) > 1:
     # combination while the page reports "ready".
     _combo_signature = "|".join(sorted(dataframes)) + f"|{len(dataframes)}"
     if st.session_state.get("_combine_signature") != _combo_signature:
-        st.session_state.pop("working_table", None)
+        # A different set of files is a different table, and a different
+        # account of how it was built.
+        _forget_working_table()
         st.session_state["_combine_signature"] = _combo_signature
-        _ledger.clear()          # a different set of files is a different table
 
     # Once a table has been committed, the combine step is HISTORY, not a
     # control. Re-rendering the full preview on every rerun left its headline

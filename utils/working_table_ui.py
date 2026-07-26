@@ -128,6 +128,38 @@ def _undo(index: int) -> None:
 
 # ── the closing statement ────────────────────────────────────────────────
 
+def _columns_absent_from_a_source(df: pd.DataFrame) -> list:
+    """Columns that are wholly missing from at least one contributing file.
+
+    Returns (column, files_it_is_missing_from, files_it_came_from). Only
+    meaningful for a stacked table, which is the only place the source of each
+    row is recorded.
+    """
+    try:
+        from utils.combine_ui import SOURCE_COLUMN
+    except Exception:
+        return []
+    if SOURCE_COLUMN not in df.columns:
+        return []
+    out = []
+    try:
+        sources = [str(s) for s in df[SOURCE_COLUMN].dropna().unique()]
+        if len(sources) < 2:
+            return []
+        for col in df.columns:
+            if str(col) == SOURCE_COLUMN or not df[col].isna().any():
+                continue
+            absent, present = [], []
+            for src in sources:
+                rows = df.loc[df[SOURCE_COLUMN].astype(str) == src, col]
+                (absent if rows.isna().all() else present).append(src)
+            if absent and present:
+                out.append((str(col), absent, present))
+    except Exception:
+        return []
+    return out
+
+
 def _surprises(df: pd.DataFrame, subj_col: Optional[str]) -> list:
     """Things true of this table that a researcher would want to have noticed.
 
@@ -136,6 +168,10 @@ def _surprises(df: pd.DataFrame, subj_col: Optional[str]) -> list:
     """
     out = []
     rows, cols = ledger.shape_of(df)
+    # count_subjects re-derives the column when given None, so resolving it
+    # here keeps the number and the name it is attributed to in agreement —
+    # without this the note read "`None` repeats".
+    subj_col = subj_col or ledger.subject_column(df)
 
     n_sub = ledger.count_subjects(df, subj_col)
     if n_sub is not None and n_sub < rows:
@@ -191,6 +227,21 @@ def _surprises(df: pd.DataFrame, subj_col: Optional[str]) -> list:
             + ", ".join(f"`{c}`" for c in dropped[:8])
             + ("…" if len(dropped) > 8 else "")
             + f". {'It is' if one else 'They are'} not available to any later step."
+        )
+
+    # Stacking files with different columns is the shape change that hides
+    # best. Nothing is empty, nothing is dropped, the row count goes up exactly
+    # as promised — and a column measured in only one of the files is now
+    # missing for every row from the others. A researcher who models it loses
+    # half their sample and finds out, if at all, from a sample size in a
+    # results table. This used to pass as "nothing about this table looks
+    # surprising".
+    for col, absent_from, present_in in _columns_absent_from_a_source(df):
+        out.append(
+            f"**`{col}` was not measured in {', '.join(absent_from)}.** It is "
+            f"missing for every one of those rows — {int(df[col].isna().sum()):,} "
+            f"of {rows:,} — and present only in {', '.join(present_in)}. Modeling "
+            f"it silently restricts your sample to those files."
         )
 
     empty_cols = [c for c in df.columns if df[c].isna().all()]

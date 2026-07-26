@@ -316,6 +316,83 @@ def test_a_real_repeated_measures_design_still_says_so():
     assert "Your n is 52, not 156" in notes and "3.0 rows" in notes
 
 
+# ── the shape change that hides best ─────────────────────────────────────
+
+def _stacked():
+    """Two cycles sharing most columns — the classic NHANES stack."""
+    from utils.combine_ui import SOURCE_COLUMN
+    rng = np.random.default_rng(2)
+    a = pd.DataFrame({"seqn": np.arange(10001, 10301),
+                      "age": rng.normal(50, 10, 300),
+                      "vitamin_d": rng.normal(60, 15, 300),
+                      "crp": np.nan, SOURCE_COLUMN: "cycle_2017"})
+    b = pd.DataFrame({"seqn": np.arange(20001, 20281),
+                      "age": rng.normal(50, 10, 280),
+                      "vitamin_d": np.nan,
+                      "crp": rng.gamma(2, 1.5, 280), SOURCE_COLUMN: "cycle_2019"})
+    return pd.concat([a, b], ignore_index=True)
+
+
+def test_a_column_measured_in_only_one_file_is_named():
+    """Nothing is empty, nothing is dropped, the row count rises exactly as
+    promised — and half the sample has no value for two of the columns. This
+    used to pass as "nothing about this table looks surprising"."""
+    from utils.working_table_ui import _surprises
+    notes = " ".join(_surprises(_stacked(), None))
+    assert "`vitamin_d` was not measured in cycle_2019" in notes
+    assert "`crp` was not measured in cycle_2017" in notes
+    assert "280 of 580" in notes and "300 of 580" in notes
+
+
+def test_a_column_present_everywhere_is_not_flagged():
+    from utils.working_table_ui import _columns_absent_from_a_source
+    flagged = [c for c, _, _ in _columns_absent_from_a_source(_stacked())]
+    assert "age" not in flagged and "seqn" not in flagged
+
+
+def test_an_unstacked_table_has_no_source_column_to_reason_about():
+    from utils.working_table_ui import _columns_absent_from_a_source
+    assert _columns_absent_from_a_source(enrolled()) == []
+
+
+def test_the_subject_note_never_says_none():
+    """count_subjects re-derives the column when given None; the text has to
+    be attributed to the same one or it reads "`None` repeats"."""
+    from utils.working_table_ui import _surprises
+    notes = " ".join(_surprises(joined_to_visits(enrolled()), None))
+    assert "`None`" not in notes
+
+
+# ── invalidation ─────────────────────────────────────────────────────────
+
+def test_forgetting_the_table_forgets_its_account_too():
+    """Three buttons dropped the table and left the ledger standing. The next
+    combine then appended a second "Combined N files" step to an account that
+    still described the first, giving a chain that did not join up."""
+    import ast
+    src = open("pages/01_Upload_and_Audit.py").read()
+    tree = ast.parse(src)
+    fn = next(n for n in ast.walk(tree)
+              if isinstance(n, ast.FunctionDef) and n.name == "_forget_working_table")
+    body = ast.dump(fn)
+    assert "working_table" in body and "clear" in body
+
+    # every site that drops the working table must go through it
+    drops = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+             and isinstance(n.func, ast.Attribute) and n.func.attr == "pop"
+             and n.args and isinstance(n.args[0], ast.Constant)
+             and n.args[0].value == "working_table"]
+    assert len(drops) <= 1, (
+        f"{len(drops)} places pop working_table directly; they must call "
+        f"_forget_working_table so the ledger goes with it")
+
+
+def test_removing_a_file_says_what_it_costs():
+    src = open("pages/01_Upload_and_Audit.py").read()
+    assert "is discarded and you will combine the remaining files" in src, (
+        "Remove destroys the working table on one unlabeled click")
+
+
 # ── the page wiring ──────────────────────────────────────────────────────
 
 def test_the_committed_combine_step_stops_rendering_as_a_control():
