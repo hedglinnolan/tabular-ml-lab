@@ -310,11 +310,14 @@ def _format_method(action_type: str, method: str, params: Dict, full_detail: Opt
         ("dimensionality_reduction", "pca"): lambda p: (
             f"PCA was applied (n_components={p.get('n_components', '?')})"
         ),
+        # One pipeline for every model is the no-models-selected path, and
+        # calling it "per-model" contradicted the sibling clause rendered beside
+        # it in the same exported Methods paragraph.
         ("preprocessing", "per_model_pipeline"): lambda p: (
             f"Per-model preprocessing pipelines were configured for "
             f"{len(p.get('models_trained', []))} model(s)"
-            if p.get("models_trained")
-            else "Preprocessing pipelines were configured"
+            if len(p.get("models_trained") or []) > 1
+            else "One shared preprocessing pipeline was configured"
         ),
         ("training", "model_comparison"): lambda p: (
             f"{len(p.get('models_trained', []))} models were trained and compared"

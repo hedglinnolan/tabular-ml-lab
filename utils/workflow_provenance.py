@@ -233,6 +233,13 @@ class WorkflowProvenance:
     statistical_validation: Optional[StatisticalValidationProvenance] = None
     coach: Optional[CoachProvenance] = None
 
+    # Cleaning recorded before a configuration was ever saved. Import Doctor
+    # repairs happen at the moment a file is committed, which is always before
+    # record_upload exists to hold them; without this they were dropped and the
+    # Methods section said nothing about a column whose sentinel codes had been
+    # recoded before anything else saw the data.
+    pending_cleaning_actions: List[Dict[str, Any]] = field(default_factory=list)
+
     # Schema version for forward compatibility
     schema_version: int = 1
 
@@ -255,7 +262,11 @@ class WorkflowProvenance:
             n_features=len(feature_cols),
             data_source=data_source,
             timestamp=datetime.now().isoformat(),
+            # Repairs applied at import happen before this record exists. A
+            # fresh UploadProvenance with cleaning_actions=[] used to erase them.
+            cleaning_actions=list(self.pending_cleaning_actions),
         )
+        self.pending_cleaning_actions = []
         self.record_cohort_restriction()
         # Reset downstream sections (config changed)
         self.feature_engineering = None
@@ -289,17 +300,29 @@ class WorkflowProvenance:
 
     def record_cleaning(self, action: str, rows_before: int, rows_after: int,
                         details: Optional[Dict[str, Any]] = None) -> None:
-        """Called by Upload & Audit for each data cleaning action."""
-        if self.upload is None:
-            return
-        self.upload.cleaning_actions.append({
+        """Called by Upload & Audit for each data cleaning action.
+
+        Not every cleaning action removes rows. An Import Doctor repair recodes
+        values in place and passes 0/0, which used to overwrite the recorded
+        study N with zero — and, because repairs happen BEFORE a configuration
+        is ever saved, used to be dropped entirely and then erased by the
+        record_upload that followed. Both are handled here: the row count moves
+        only when rows really moved, and a repair recorded before the upload
+        record exists waits for it.
+        """
+        entry = {
             "action": action,
             "rows_before": rows_before,
             "rows_after": rows_after,
             "details": details or {},
             "timestamp": datetime.now().isoformat(),
-        })
-        self.upload.n_samples = rows_after
+        }
+        if self.upload is None:
+            self.pending_cleaning_actions.append(entry)
+            return
+        self.upload.cleaning_actions.append(entry)
+        if rows_after > 0:
+            self.upload.n_samples = rows_after
 
     def record_eda_analysis(self, analysis_name: str) -> None:
         """Called by EDA page for each analysis run."""

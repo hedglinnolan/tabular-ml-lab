@@ -501,13 +501,32 @@ def _build_reproducibility_manifest() -> Dict[str, Any]:
         pass
 
     _split_cfg = st.session_state.get('split_config')
-    return {
+    out = {
         'software_versions': versions,
         'random_seed': int(getattr(_split_cfg, 'random_state',
                                    st.session_state.get('random_seed', 42)) or 42),
         'data_sha256': data_hash,
         'data_shape': {'rows': n_rows, 'columns': n_cols},
     }
+    # data_shape.rows and data_sha256 describe the COHORT when a one-group run
+    # is active. A reviewer re-running the manifest against the study file gets
+    # a different row count and a different hash and has nothing to tell them
+    # why. Name the restriction that produced these numbers.
+    try:
+        from utils.cohorts import active_cohort as _man_run
+        _run = _man_run()
+        if _run is not None:
+            out['cohort_restriction'] = {
+                'column': str(_run.get('column', '')),
+                'value': str(_run.get('label', '')),
+                'n_analyzed': int(_run.get('n_rows', 0)),
+                'n_study': int(_run.get('n_total', 0)),
+                'note': ('data_sha256 and data_shape describe this group only, '
+                         'not the whole study.'),
+            }
+    except Exception:
+        pass
+    return out
 
 
 def _summarize_baselines() -> Optional[Dict[str, Dict[str, Any]]]:
@@ -2126,8 +2145,22 @@ with st.expander("📊 Sample Flow Diagram", expanded=False):
         test_n = len(st.session_state.get('X_test', []))
         n_missing_target = df[data_config.target_col].isna().sum() if data_config.target_col else 0
 
+        # `df` is already cohort-filtered, so passing len(df) as "Total records"
+        # told a participant-flow diagram — the one figure whose entire job is
+        # to account for who was excluded and why — that nobody was excluded.
+        from utils.cohorts import active_cohort as _flow_run
+        _run = _flow_run()
+        _n_total = len(df)
+        _excluded, _reasons = 0, None
+        if _run is not None:
+            _n_total = int(_run.get("n_total") or len(df))
+            _excluded = max(0, _n_total - len(df))
+            _reasons = {f"Not {_run['column']} = {_run['label']}": _excluded}
+
         mermaid = generate_flow_diagram_mermaid(
-            n_total=len(df),
+            n_total=_n_total,
+            n_excluded=_excluded,
+            exclusion_reasons=_reasons,
             n_missing_target=n_missing_target,
             n_analyzed=len(df) - n_missing_target,
             n_train=train_n,

@@ -441,6 +441,16 @@ def clear_cohort() -> None:
     import streamlit as st
     st.session_state.pop(_ACTIVE_KEY, None)
     st.session_state.pop(_BROKEN_KEY, None)
+    # Refresh the record HERE rather than at each call site. Two of the four
+    # clear paths — the sidebar repair button and the data-fingerprint branch in
+    # set_data — did not, so a study that had gone back to analyzing everyone
+    # kept exporting "Analyses were restricted to sex = Female (n=319)" beside
+    # a Results section reporting all 600 people.
+    try:
+        from utils.workflow_provenance import get_provenance
+        get_provenance().record_cohort_restriction()
+    except Exception:
+        pass
 
 
 def start_cohort(df: pd.DataFrame, plan: CohortPlan, cell: CohortCell,

@@ -165,11 +165,17 @@ def render_cohort_chooser(df: pd.DataFrame, target_col: str, task_type: str,
                 f"group**" if len(lost) == 1 else
                 f"**{len(lost)} of your predictors carry no information inside "
                 f"this group**")
+        # Two things this used to claim and did not do: that the columns were
+        # left out (nothing removes them from selected_features), and that the
+        # other group loses the same ones (this is computed per group, so by
+        # construction it often does not). Say what is true instead.
         st.info(
-            f"{head} and will be left out of this run: {names}. That is expected "
-            f"— filtering to {cell.label} makes `{column}` constant, and anything "
-            f"that only varies with it goes too. The same predictors are dropped "
-            f"in the other group's run, so the two stay comparable."
+            f"{head}: {names}. That is expected — filtering to {cell.label} "
+            f"makes `{column}` constant, and anything that only varies with it "
+            f"goes flat too. They stay in the predictor list, contributing "
+            f"nothing; drop them on Feature Selection if you would rather they "
+            f"were gone. The other group may lose a different set, so check "
+            f"both before reading the two runs side by side."
         )
 
     already = active and active["column"] == column and active["label"] == choice

@@ -461,6 +461,19 @@ class NarrativeEngine:
         else:
             rows.append(("Study Design", "NOT RECORDED", "section omitted or generic"))
 
+        # The draft's own preamble points a reader HERE as the proof that every
+        # quantitative statement traces to a logged event. An evidence map that
+        # prints one group's N as the study's, with no row naming the filter, is
+        # the one artifact that must not omit it.
+        _up = getattr(self.prov, "upload", None)
+        if _up is not None and getattr(_up, "cohort_column", ""):
+            rows.append((
+                "Sample Restriction", "cohort run record",
+                f"analysis restricted to `{_up.cohort_column}` = "
+                f"{_up.cohort_value} — {_up.cohort_n:,} of "
+                f"{_up.study_n:,} in the study; every N above is this group's",
+            ))
+
         if comp.get("feature_selection"):
             rows.append(("Predictor Variables", "feature-selection record",
                          f"{ctx.get('fs_method', '—')}: "
@@ -853,13 +866,16 @@ class NarrativeEngine:
             if not borrowers or not by_model:
                 return ""
             owner = "default" if "default" in by_model else next(iter(by_model))
+            names = ", ".join(m.upper() for m in borrowers)
             if owner == "default":
-                return (f"{', '.join(m.upper() for m in borrowers)} used the "
-                        f"shared preprocessing pipeline.")
-            return (f"{', '.join(m.upper() for m in borrowers)} had no "
-                    f"preprocessing configured and were trained using the "
-                    f"pipeline built for {owner.upper()}, including any "
-                    f"transform chosen specifically for that model.")
+                return f"{names} used the shared preprocessing pipeline."
+            # One borrower is the common case, and the plural verb read as a
+            # typo in an exported manuscript.
+            was = "was" if len(borrowers) == 1 else "were"
+            return (f"{names} had no preprocessing configured and {was} "
+                    f"trained using the pipeline built for {owner.upper()}, "
+                    f"including any transform chosen specifically for that "
+                    f"model.")
         except Exception:
             return ""
 
@@ -918,12 +934,19 @@ class NarrativeEngine:
 
         parts = []
 
+        # "All models" is a claim about every model TRAINED, but `pp` holds only
+        # the models that were PREPARED. With a borrower in the run the sentence
+        # was contradicted by the very next one, which named a model that had
+        # none.
+        _borrowed = self._borrowed_pipeline_note()
+        _all = "The prepared models shared" if _borrowed else "All models shared"
+
         if not differs:
             # All models share preprocessing
             cfg = next(iter(pp.values()))
             sents = self._describe_preprocessing(cfg)
             if sents:
-                parts.append(f"All models shared identical preprocessing: {'; '.join(sents)}.")
+                parts.append(f"{_all} identical preprocessing: {'; '.join(sents)}.")
             else:
                 parts.append(
                     "No additional preprocessing transformations were applied beyond imputation."
@@ -949,7 +972,6 @@ class NarrativeEngine:
         # model's transforms while saying nothing about the model that borrowed
         # them — including a PCA a reader would need to know about to interpret
         # the explainability at all.
-        _borrowed = self._borrowed_pipeline_note()
         if _borrowed:
             parts.append(_borrowed)
 

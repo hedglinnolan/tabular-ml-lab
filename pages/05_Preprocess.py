@@ -772,14 +772,25 @@ else:
                     st.info("✅ High feature-to-sample ratio detected — PCA can help reduce dimensionality.")
                 _maxc = max(1, min(50, len(numeric_features) + (len(categorical_features) * 5) if categorical_features else len(numeric_features)))
                 _pn = _cfg(_mk, "pca_n_components", 10)
-                _fix = isinstance(_pn, (int, type(1)))
+                _fix = isinstance(_pn, int) and not isinstance(_pn, bool)
                 _pmode = st.radio("PCA mode", ["Fixed Components", "Variance Threshold"], index=0 if _fix else 1, key=f"preprocess_{_mk}_pca_mode")
+                # The two modes MUST NOT share a widget key. They did, so
+                # switching to Variance Threshold and back left 0.95 in the key
+                # the number_input reads: int(0.95) is 0, which is below its own
+                # min_value of 1, and Streamlit raised on a page the researcher
+                # had done nothing wrong on. Separate keys, and clamp anyway —
+                # a study with two numeric predictors makes _maxc 2.
                 if _pmode == "Fixed Components":
-                    _defn = min(int(_pn), _maxc) if isinstance(_pn, (int, float)) else min(10, _maxc)
-                    st.number_input("Components", 1, _maxc, _defn, key=f"preprocess_{_mk}_pca_n_components")
+                    _defn = int(_pn) if isinstance(_pn, (int, float)) else 10
+                    _defn = max(1, min(_defn, _maxc))
+                    st.number_input("Components", 1, _maxc, _defn, key=f"preprocess_{_mk}_pca_fixed_n")
+                    st.session_state[f"preprocess_{_mk}_pca_n_components"] = int(
+                        st.session_state.get(f"preprocess_{_mk}_pca_fixed_n", _defn))
                 else:
-                    _pv = 0.95 if not isinstance(_pn, (int, float)) or _pn > 1 else float(_pn)
-                    st.slider("Variance explained", 0.5, 0.99, _pv, 0.05, key=f"preprocess_{_mk}_pca_n_components", help="Retain enough components to explain this fraction of total variance.")
+                    _pv = float(_pn) if isinstance(_pn, (int, float)) and 0.5 <= float(_pn) <= 0.99 else 0.95
+                    st.slider("Variance explained", 0.5, 0.99, _pv, 0.05, key=f"preprocess_{_mk}_pca_variance", help="Retain enough components to explain this fraction of total variance.")
+                    st.session_state[f"preprocess_{_mk}_pca_n_components"] = float(
+                        st.session_state.get(f"preprocess_{_mk}_pca_variance", _pv))
                 st.checkbox("Whiten", value=bool(_cfg(_mk, "pca_whiten", False)), key=f"preprocess_{_mk}_pca_whiten", help="Decorrelates and normalizes components to unit variance. Useful for downstream algorithms that assume isotropic data.")
 
             # KMeans — Cluster-based Feature Engineering

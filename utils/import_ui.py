@@ -50,8 +50,23 @@ def _frame_signature(df: pd.DataFrame) -> str:
     try:
         content = int(pd.util.hash_pandas_object(df, index=False).sum())
     except Exception:
+        # The old fallback was shape + dtypes — no values at all, i.e. exactly
+        # the identity this function exists to replace, and any frame with an
+        # unhashable cell took it. A list column read back from Parquet arrives
+        # as numpy.ndarray cells, which are unhashable, so two versions of such
+        # a file differing in a numeric column produced the same signature and
+        # repaired_frame served version 1. Stringify per column instead: slower,
+        # but it is a fallback, and it actually looks at the data.
         try:
-            content = f"{int(df.notna().sum().sum())}|{df.dtypes.astype(str).tolist()}"
+            parts = []
+            for col in df.columns:
+                s = df[col]
+                try:
+                    parts.append(int(pd.util.hash_pandas_object(s, index=False).sum()))
+                except Exception:
+                    parts.append(int(pd.util.hash_pandas_object(
+                        s.astype(str), index=False).sum()))
+            content = "|".join(str(p) for p in parts)
         except Exception:
             content = "?"
     return (f"{df.shape[0]}x{df.shape[1]}:"

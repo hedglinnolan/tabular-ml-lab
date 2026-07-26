@@ -37,6 +37,11 @@ NUMERIC_SENTINELS: Tuple[float, ...] = (
     7.0, 8.0, 9.0, 66.0, 77.0, 88.0, 99.0,
     666.0, 777.0, 888.0, 999.0,
     6666.0, 7777.0, 8888.0, 9999.0, 99999.0,
+    # Six-digit top-codes are the norm in income and expenditure columns
+    # (999999 = "refused"), and they are large enough that averaging them in
+    # moves a mean by orders of magnitude. -99999/-999999 appear in the same
+    # files for the same reason.
+    999999.0, -99999.0, -999999.0,
 )
 
 # Single-digit codes (7=refused, 8=not asked, 9=don't know) are only credible
@@ -474,6 +479,15 @@ def check_numeric_sentinels(df: pd.DataFrame, min_count: int = 2) -> List[ShapeF
         hits = {v: int((s == v).sum()) for v in present
                 if v > hi + 0.5 * spread or v < lo - 0.5 * spread}
 
+        # A NEGATIVE code in a column of non-negative measurements is never a
+        # real observation, whatever the distance test says. On a continuous
+        # 0-100 score the threshold sits at -50, so -9 cleared the candidate
+        # filter and then failed the distance test — and the -9s were averaged
+        # into every result. Columns that genuinely go negative (change scores,
+        # z-scores) have real values below the code and are untouched.
+        if float(lo) >= 0:
+            hits.update({v: int((s == v).sum()) for v in present if v < 0})
+
         # On a DENSE integer scale, a code is only a code if the data stops
         # before it. Excluding 7/8/9 as candidates before measuring the spread
         # manufactures a gap: in a genuine 1-9 Likert scale the 7s and 8s are
@@ -527,7 +541,20 @@ def check_numeric_sentinels(df: pd.DataFrame, min_count: int = 2) -> List[ShapeF
         if real.empty:
             continue
         real_lo, real_hi = float(real.min()), float(real.max())
-        hits = {v: n for v, n in hits.items() if v > real_hi or v < real_lo}
+        # "Real values on both sides" has to mean a real POPULATION on both
+        # sides, not one row. Testing against min/max let a SINGLE value above
+        # the code block silence the whole finding: a 1-5 Likert with 7=refused,
+        # 8=don't know, 9=missing plus one row holding 10 (a typo, or a
+        # site-specific "10 = not applicable") lost all three codes, and
+        # diagnose() then said nothing at all about the column — silence being
+        # the one answer this app must never give. Counting instead keeps the
+        # cases the gate was built for: 77 in an age column reaching 80 has two
+        # dozen ages above it, and 88 in a systolic column reaching 174 has
+        # hundreds below, so both stay observations.
+        _floor = max(3, int(round(0.01 * len(s))))
+        _real = real.to_numpy(dtype=float)
+        hits = {v: n for v, n in hits.items()
+                if int((_real > v).sum()) < _floor or int((_real < v).sum()) < _floor}
         if not hits:
             continue
         # Describe the range the codes are actually outside of.
