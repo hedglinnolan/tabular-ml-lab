@@ -1,5 +1,17 @@
 streamlit>=1.28.0
-pandas>=2.0.0
+# Capped below 3.0 until T0-LIVE-004 is fixed. pandas 3 makes `str` the default
+# dtype for text columns, and eleven sites across the app decide behaviour by
+# testing dtype identity against 'object' — `ml/triage.py:41` among them. A text
+# target matches no branch there and falls through to "defaulting to regression"
+# at low confidence, so a categorical outcome is read as a regression problem
+# with no error raised. There is no upper bound on this line today, so a fresh
+# install resolves to 3.x and gets that answer.
+#
+# This is a ceiling, not a repair. The repair is replacing the identity checks
+# with `pd.api.types` predicates, with a regression test asserting a text target
+# detects classification at high confidence under both 2.x and 3.x — at which
+# point this cap comes off.
+pandas>=2.0.0,<3
 numpy>=1.24.0
 scikit-learn>=1.3.0
 scipy>=1.10.0
