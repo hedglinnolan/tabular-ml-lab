@@ -80,7 +80,7 @@ def _seed_dataset_roster(at, df, filename):
     (`:559`). Without this the page never reaches the audit or the target
     selection, and a baseline built from that run would report Classic as asking
     none of the questions it actually asks. Measuring the wrong path in Guided's
-    favour is precisely the bias this baseline exists to avoid.
+    favor is precisely the bias this baseline exists to avoid.
     """
     at.session_state["sp_projects"] = {
         1: {"id": 1, "name": "baseline", "description": "",

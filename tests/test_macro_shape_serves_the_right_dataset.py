@@ -81,8 +81,12 @@ def test_the_page_cache_keys_on_content_not_shape():
     page for one property.
     """
     lines = open("pages/02_EDA.py", encoding="utf-8").read().splitlines()
-    start = next((i for i, l in enumerate(lines) if l.startswith("def _macro_fp(")), None)
-    assert start is not None, "pages/02 lost the macro-shape fingerprint helper"
+    # The macro-shape wrappers now delegate to the page's single
+    # `_content_fingerprint` (`T0-LIVE-005`), so that is the function to check —
+    # extracting `_macro_fp` alone would leave its callee undefined.
+    start = next((i for i, l in enumerate(lines)
+                  if l.startswith("def _content_fingerprint(")), None)
+    assert start is not None, "pages/02 lost the content fingerprint helper"
     # Scan to the next top-level statement rather than to a blank line — the
     # docstring contains blank lines, and stopping at the first one truncates
     # the function mid-string.
@@ -90,8 +94,8 @@ def test_the_page_cache_keys_on_content_not_shape():
                 if lines[j] and not lines[j][0].isspace()), len(lines))
 
     ns = {"pd": pd}
-    exec(compile("\n".join(lines[start:end]), "_macro_fp", "exec"), ns)
-    fp = ns["_macro_fp"]
+    exec(compile("\n".join(lines[start:end]), "_content_fingerprint", "exec"), ns)
+    fp = ns["_content_fingerprint"]
 
     a, b = _frame(0), _frame(1)
     assert a.shape == b.shape and list(a.columns) == list(b.columns)
