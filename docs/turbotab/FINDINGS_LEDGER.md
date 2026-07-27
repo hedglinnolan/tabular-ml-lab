@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**33 of 402 closed.**
+**35 of 402 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `UNVERIFIED` | 220 |
-| `OPEN` | 135 |
-| `PARTIAL` | 14 |
-| `FIXED` | 33 |
+| `UNVERIFIED` | 205 |
+| `OPEN` | 147 |
+| `PARTIAL` | 15 |
+| `FIXED` | 35 |
 
 ---
 
-## OPEN — 135
+## OPEN — 147
 
 
-### Application state / lockbox — 42
+### Application state / lockbox — 48
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -81,6 +81,12 @@ Nothing is closed without a regression test named after it.
 | `STATE-047` | landmine | Provenance sections upload and statistical_validation are never nulled, and hypothesis_test_results IS cleared. | `utils/session_state.py:379-385 `_sections = ['eda','split','preprocessing','training','explainability','coach'…` | Unchanged at HEAD. After a reset, WorkflowProvenance.statistical_validation still lists the tests that were run and get_completeness() still reports statistical_validation=True… |
 | `STATE-048` | landmine | split_config is POPPED by the resetter but re-created with DEFAULTS by the next init_session_state(). | `utils/session_state.py:330 pops it inside the node-3 loop; :135 seeds `'split_config': SplitConfig()` and…` | Unchanged at HEAD. split_config is still popped by the resetter and silently re-created with DEFAULTS by the next init_session_state(), so a 60/20/20 split with… |
 | `STATE-049` | landmine | ensure_lockbox is fed the ENGINEERED frame once feature engineering exists, so both its content signature and its subject-ID auto-detection run against generated columns. | `pages/01_Upload_and_Audit.py:619 `df = get_data(full_study=True)` → utils/session_state.get_data:207-215…` | Unchanged at HEAD, both halves, and note that full_study=True does NOT help here - it escapes the cohort filter, not the df_engineered preference, so once feature engineering… |
+| `STATE-050` | landmine | Two independent resets fire for one user action on a content change. | `utils/session_state.set_data:276-280 detects a same-schema content change → clear_cohort() +…` | Unchanged at HEAD. The signature still depends on every column, so a one-column cleaning action on a variable that is neither the target nor a feature changes it and redraws the… |
+| `STATE-051` | landmine | ensure_lockbox returns the PREVIOUS lockbox (not None) when it cannot draw a new one, and the caller cannot tell the difference. | `utils/test_lockbox.py:114-115 and :123-124 both `return get_lockbox()`; pages/01:1076-1104 then reads…` | Unchanged at HEAD, and the docstring now makes it worse rather than better: it states the contract the code does not honour. Both failure branches - no target column, and fewer… |
+| `STATE-052` | landmine | Every provenance and ledger write in pages/ is wrapped in a bare `except Exception: pass`. | `utils/session_state._log_to_ledger:655-656; pages/01:1105-1106 and :1194; pages/03:1268-1269…` | Unchanged at HEAD; the count is now 20 across nine pages. Any schema drift in the Record layer during the migration - a renamed section, a changed record_* signature, a page id… |
+| `STATE-053` | landmine | All three import cycles are currently invisible because every edge is a function-local import, and the obvious refactor (methods on AnalysisProject) turns them into module-level cycles. | `Cycle 1: utils/insight_ledger.py:1077 ↔ ml/publication.py:98,155,1739,1829. Cycle 2: utils/cohorts.py:474 ↔…` | Unchanged at HEAD: the cycles are all still there and all still invisible, because every edge is a deferred import inside a function. Nothing fails today, which is the hazard - a… |
+| `STATE-054` | landmine | engineering_log is not persisted while df_engineered, feature_engineering_applied and engineered_feature_names are. | `utils/session_manager.py:91-117 _PLAIN_KEYS includes engineered_feature_names, engineered_feature_transforms…` | Unchanged at HEAD. Save and restore a session with engineered features and the frame, the flag, the column names and the double-transform map all come back - so the app looks… |
+| `STATE-056` | landmine | InsightLedger.from_list uses .add() (skip duplicates) rather than .upsert(), and Insight.to_dict omits manuscript_text. | `utils/insight_ledger.py:1346-1355 (from_list → ledger.add(...) inside `except (TypeError, KeyError)…` | Unchanged at HEAD, both halves. (a) from_list uses add(), which skips duplicates, so a save file containing two entries with one id silently keeps the first and drops the second… |
 
 ### Coach to Router — 19
 
@@ -167,6 +173,22 @@ Nothing is closed without a regression test named after it.
 | `MINE-013` | critical | models/* use `is_fitted` but ml/estimator_utils only recognizes `is_fitted_` | `models/base.py:22; models/registry_wrappers.py:37, 58, 64; models/nn_whuber.py:104…` | The marker divergence is real and unchanged at HEAD: BaseModelWrapper and every GLM/Huber/RF/registry wrapper set is_fitted, only nn_whuber uses is_fitted_, and… |
 | `MINE-014` | critical | Explainability re-derives the test set POSITIONALLY from a frame that may have changed since training | `pages/06_Train_and_Compare.py:383, 683-693; pages/07_Explainability.py:182, 184, 198…` | Duplicate of CONTRACT-001 from the landmine pass, and the half it names is entirely unfixed. The derivation changed - pages/06:551-553 now computes positions with… |
 
+### Stage-boundary contracts — 11
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `CONTRACT-001` | critical | Row identity is TWO incompatible conventions: index LABELS (lockbox/cohort) vs POSITIONS (train/val/test_indices) | `pages/06_Train_and_Compare.py:383 (`original_indices = np.where(mask)[0]`), :683-693…` | Still OPEN, and the silent-corruption path is unchanged. The split block did move to ml/splits.py and it now reports LABELS (Split.train/val/test_labels), and pages/06:556-558… |
+| `CONTRACT-004` | critical | ml/eda_actions.py imports a function that does not exist, inside a bare except — 4 insights are silently never recorded | `ml/eda_actions.py:196-197, 280-281, 427-428, 617-618; utils/storyline.py (no add_insight)` | Unchanged at HEAD. All four sites still do a local 'from utils.storyline import add_insight' inside try/except (two of them a BARE except:, at :199 and :430 and :620), and… |
+| `CONTRACT-005` | critical | session_manager writes every DataFrame with to_parquet(index=False) while lockbox and cohort identify rows by index label | `utils/session_manager.py:169-172, :278-306; utils/test_lockbox.py:16-17 ("stores index LABELS ... so…` | resolved-in-core; closes at L11 convergence of utils/session_manager.py. The core got this right: turbotab/archive.py:275-278 writes to_parquet(index=True) with a comment naming… |
+| `CONTRACT-006` | critical | _log_to_ledger swallows every exception | `utils/session_state.py:655-656` | Unchanged at HEAD: _log_to_ledger still ends 'except Exception: pass # Never break methodology logging if ledger has issues'. Any Insight schema drift stops methodology decisions… |
+| `CONTRACT-007` | critical | reset_downstream_results reaches into the ledger and rolls back resolutions by page name | `utils/session_state.py:396-410; utils/insight_ledger.py:803-836` | Unchanged at HEAD. reset_downstream_results still mutates the Record by hard-coded page-name string sets - {'05_Preprocess','06_Train_and_Compare','07_Explainability','08_Sensitivi… |
+| `CONTRACT-008` | high | Page 10 reads data_audit['missing_counts'] which page 01 never writes | `pages/01_Upload_and_Audit.py:657-743, :828 vs pages/10_Report_Export.py:732-733, :754-755` | Duplicate of STATE-021 from the contract pass, unchanged at HEAD. The contract framing is the useful one: data_audit is a Record artifact passed between two pages through an… |
+| `CONTRACT-009` | high | record_split() reads three SplitConfig attributes that do not exist — target trimming never reaches the manuscript | `pages/06_Train_and_Compare.py:714-716 vs utils/session_state.py:78-80` | Duplicate of STATE-007 / STATE-016 from the contract pass, unchanged at HEAD, and it adds the consequence the others do not name: the FLOW DIAGRAM's N is wrong too, not just the… |
+| `CONTRACT-010` | high | st.session_state['task_type'] is read but never written anywhere in the codebase | `pages/06_Train_and_Compare.py:1648-1650; no writer found for key 'task_type' repo-wide` | Duplicate of STATE-017 from the contract pass, unchanged at HEAD. TrainingProvenance.selection_criteria is therefore ALWAYS 'validation Accuracy', including for every regression… |
+| `CONTRACT-011` | high | Four sources of truth for task type, consulted inconsistently by page | `utils/session_state.py:22-27,65; pages/06:1556,1575; pages/07:461; pages/08:64; pages/10:281,540` | Unchanged at HEAD. Four sources still exist - detected, final, the DEPRECATED DataConfig.task_type, and the never-written session key - and pages still consult them… |
+| `CONTRACT-013` | high | get_data() precedence makes page 05's plausibility filter a silent no-op after Feature Engineering | `utils/session_state.py:206-217; pages/05_Preprocess.py:863; absent from utils/session_state.py:283-415` | Duplicate of STATE-037 from the contract pass, unchanged at HEAD, and it names the measurement consequence the other does not: the pipeline was CONFIGURED and n_output_features… |
+| `CONTRACT-014` | high | Feature Selection silently drops all categorical predictors while telling the user it does not | `pages/04_Feature_Selection.py:100-101, :112-119, :440-442, :488-491` | Unchanged at HEAD, and the page computes categorical_excluded at :110 purely to say the sentence at :119 - then contradicts it at :440 and :489 by assigning a numeric-only list… |
+
 ### Models / training / eval — 9
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -205,19 +227,9 @@ Nothing is closed without a regression test named after it.
 | `TEST-008` | critical | No golden-number test exists for calculate_regression_metrics / calculate_classification_metrics — the numbers the whole manuscript rests on | `ml/eval.py:14-52, :55-94 (silent metric drop at :90-92); consumers listed by grep for ml.eval across tests/` | Unchanged where it matters. The four-key regression contract and the conditional classification keys are still unpinned by any test: no golden-number test exists anywhere in the… |
 | `TEST-010` | critical | reset_downstream_results mutates the ledger and provenance as a side effect — an ordering hazard when Record becomes append-mostly | `utils/session_state.py:377-407, esp. hasattr guards at :384, :398, :405` | Unchanged at HEAD, and the guards are the defect. The invalidation path still reaches into the Record: it setattr's six (or seven) provenance sections to None and calls two ledger… |
 
-### Stage-boundary contracts — 5
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `CONTRACT-001` | critical | Row identity is TWO incompatible conventions: index LABELS (lockbox/cohort) vs POSITIONS (train/val/test_indices) | `pages/06_Train_and_Compare.py:383 (`original_indices = np.where(mask)[0]`), :683-693…` | Still OPEN, and the silent-corruption path is unchanged. The split block did move to ml/splits.py and it now reports LABELS (Split.train/val/test_labels), and pages/06:556-558… |
-| `CONTRACT-004` | critical | ml/eda_actions.py imports a function that does not exist, inside a bare except — 4 insights are silently never recorded | `ml/eda_actions.py:196-197, 280-281, 427-428, 617-618; utils/storyline.py (no add_insight)` | Unchanged at HEAD. All four sites still do a local 'from utils.storyline import add_insight' inside try/except (two of them a BARE except:, at :199 and :430 and :620), and… |
-| `CONTRACT-005` | critical | session_manager writes every DataFrame with to_parquet(index=False) while lockbox and cohort identify rows by index label | `utils/session_manager.py:169-172, :278-306; utils/test_lockbox.py:16-17 ("stores index LABELS ... so…` | resolved-in-core; closes at L11 convergence of utils/session_manager.py. The core got this right: turbotab/archive.py:275-278 writes to_parquet(index=True) with a comment naming… |
-| `CONTRACT-006` | critical | _log_to_ledger swallows every exception | `utils/session_state.py:655-656` | Unchanged at HEAD: _log_to_ledger still ends 'except Exception: pass # Never break methodology logging if ledger has issues'. Any Insight schema drift stops methodology decisions… |
-| `CONTRACT-007` | critical | reset_downstream_results reaches into the ledger and rolls back resolutions by page name | `utils/session_state.py:396-410; utils/insight_ledger.py:803-836` | Unchanged at HEAD. reset_downstream_results still mutates the Record by hard-coded page-name string sets - {'05_Preprocess','06_Train_and_Compare','07_Explainability','08_Sensitivi… |
-
 ---
 
-## PARTIAL — 14
+## PARTIAL — 15
 
 
 ### Verified against main — 3
@@ -264,23 +276,21 @@ Nothing is closed without a regression test named after it.
 |---|---|---|---|---|
 | `COACH-001` | landmine | ml/model_coach.py is streamlit-clean on import and streamlit-DIRTY on call. | `ml/model_coach.py:634 (inside generate_preprocessing_insights) and ml/model_coach.py:1080 (inside…` | The reproduction in this row no longer reproduces; the coupling it diagnosed does. utils/insight_ledger.py no longer imports streamlit at module level - it is inside get_ledger()… |
 
----
-
-## UNVERIFIED — 220
-
-
-### Stage-boundary contracts — 62
+### Stage-boundary contracts — 1
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `CONTRACT-008` | high | Page 10 reads data_audit['missing_counts'] which page 01 never writes | `pages/01_Upload_and_Audit.py:657-743, :828 vs pages/10_Report_Export.py:732-733, :754-755` | record — data_audit is a Record artifact; define its schema once and make the report read the declared field |
-| `CONTRACT-009` | high | record_split() reads three SplitConfig attributes that do not exist — target trimming never reaches the manuscript | `pages/06_Train_and_Compare.py:714-716 vs utils/session_state.py:78-80` | record — bug; the Project must expose typed accessors so a renamed field is an AttributeError, not a silent default |
-| `CONTRACT-010` | high | st.session_state['task_type'] is read but never written anywhere in the codebase | `pages/06_Train_and_Compare.py:1648-1650; no writer found for key 'task_type' repo-wide` | record — bug; Project.task_type must be a single computed property with no string-keyed shadow |
-| `CONTRACT-011` | high | Four sources of truth for task type, consulted inconsistently by page | `utils/session_state.py:22-27,65; pages/06:1556,1575; pages/07:461; pages/08:64; pages/10:281,540` | project — one `task_type` property on AnalysisProject; delete DataConfig.task_type |
-| `CONTRACT-012` | high | y_test_proba can be referenced unbound when task_type_final and data_config.task_type disagree | `pages/06_Train_and_Compare.py:1556 (assignment) vs :1575 (use), handler at :1601-1605` | project — eliminated by collapsing task_type to one source; the bare Exception handler around the training loop must be narrowed in the Jobs layer |
-| `CONTRACT-013` | high | get_data() precedence makes page 05's plausibility filter a silent no-op after Feature Engineering | `utils/session_state.py:206-217; pages/05_Preprocess.py:863; absent from utils/session_state.py:283-415` | project — model row-filters as an explicit ordered stack of masks on the Project, not a precedence chain of shadow DataFrames |
-| `CONTRACT-014` | high | Feature Selection silently drops all categorical predictors while telling the user it does not | `pages/04_Feature_Selection.py:100-101, :112-119, :440-442, :488-491` | router — the question 'which predictors survive selection' must return a full feature set; engine keeps numeric-only ranking but the Project must union back the non-ranked columns |
-| `CONTRACT-015` | high | Lockbox save/restore drops group_col, strata and n_test_groups | `utils/session_manager.py:290-301 vs utils/test_lockbox.py:212-224` | record — round-trip the whole lockbox dict; it is a Record artifact, not a cache |
+| `CONTRACT-012` | high | y_test_proba can be referenced unbound when task_type_final and data_config.task_type disagree | `pages/06_Train_and_Compare.py:1556 (assignment) vs :1575 (use), handler at :1601-1605` | The unbound-name path is closed; the defence is one line and untested. Because pages/06:175 now sets data_config.task_type = task_type_final before the training loop, the two… |
+
+---
+
+## UNVERIFIED — 205
+
+
+### Stage-boundary contracts — 54
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
 | `CONTRACT-016` | high | Active cohort run and completed runs are not persisted at all | `utils/cohorts.py:334-344 (CohortRun), :389-407 (_ACTIVE_KEY/_DONE_KEY); utils/session_manager.py:73-162 (key…` | project — cohort membership is core Project state; add it to the serialized schema with the same label-integrity check as the lockbox |
 | `CONTRACT-017` | high | EDA (page 02) runs target-aware analyses on ALL rows including the sealed test set | `pages/02_EDA.py:79 (`df = get_data()`), :71-72 (caption only); ml/eda_actions.py:1206-1224…` | router — the Router owns 'may this question see test rows'; engine functions must take an explicit row mask rather than deciding for themselves |
 | `CONTRACT-018` | high | Preprocessing pipelines are stored FITTED on a sample, then re-fit at train time — two different fitted states share one slot | `pages/05_Preprocess.py:999-1006; pages/06_Train_and_Compare.py:1310-1315, :1596…` | project — separate 'recipe' (config, JSON-serializable) from 'fitted artifact' (pickle-only, job output); never let one object be both |
@@ -336,17 +346,10 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` | engine — move verbatim; add tests before the port, not after |
 | `CONTRACT-069` | low | models/* (7 files, 1000 loc) has zero streamlit and a single stable ABC — port it first | `models/base.py:10-73; models/nn_whuber.py:226; pages/06_Train_and_Compare.py:1371-1375` | engine — port first, with characterization tests written against the current behavior before any code moves |
 
-### Application state / lockbox — 47
+### Application state / lockbox — 40
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `STATE-050` | landmine | Two independent resets fire for one user action on a content change. | `utils/session_state.set_data:276-280 detects a same-schema content change → clear_cohort() +…` | Make the lockbox signature depend only on (eligible row labels, target values, task_type, fraction, seed, group_col, strata) — not on unrelated columns. Then a cleaning action on… |
-| `STATE-051` | landmine | ensure_lockbox returns the PREVIOUS lockbox (not None) when it cannot draw a new one, and the caller cannot tell the difference. | `utils/test_lockbox.py:114-115 and :123-124 both `return get_lockbox()`; pages/01:1076-1104 then reads…` | Return a discriminated result (Drawn | Unchanged | Refused(reason)) instead of an Optional dict, and let the caller/Router surface the refusal as the next question. |
-| `STATE-052` | landmine | Every provenance and ledger write in pages/ is wrapped in a bare `except Exception: pass`. | `utils/session_state._log_to_ledger:655-656; pages/01:1105-1106 and :1194; pages/03:1268-1269…` | Replace the swallow with a structured error appended to a Project-level `record_errors` list that the Feed can surface. Keep the 'never break the workflow' property; drop the… |
-| `STATE-053` | landmine | All three import cycles are currently invisible because every edge is a function-local import, and the obvious refactor (methods on AnalysisProject) turns them into module-level cycles. | `Cycle 1: utils/insight_ledger.py:1077 ↔ ml/publication.py:98,155,1739,1829. Cycle 2: utils/cohorts.py:474 ↔…` | Fix the layering before moving anything: engine (lockbox math, cohort math, fingerprints, TRIPOD_ITEMS, model vocabulary) ← project (AnalysisProject owns lockbox + cohort +… |
-| `STATE-054` | landmine | engineering_log is not persisted while df_engineered, feature_engineering_applied and engineered_feature_names are. | `utils/session_manager.py:91-117 _PLAIN_KEYS includes engineered_feature_names, engineered_feature_transforms…` | Add engineering_log to the serialized recipe (it is a plain List[str]). More generally: audit every ml/publication.py session_state read (32 refs) against session_manager's… |
-| `STATE-055` | landmine | cohort_runs_done is not persisted, and completed_runs() filters on isinstance(r, CohortRun). | `utils/cohorts.py:462-465 and :488; utils/session_manager.py — cohort_runs_done appears in no bucket, so it is…` | Persist cohorts_done as a list of dicts and rebuild via a CohortRun.from_dict (the dataclass is already JSON-safe). The isinstance filter must then accept the reconstructed… |
-| `STATE-056` | landmine | InsightLedger.from_list uses .add() (skip duplicates) rather than .upsert(), and Insight.to_dict omits manuscript_text. | `utils/insight_ledger.py:1346-1355 (from_list → ledger.add(...) inside `except (TypeError, KeyError)…` | Use upsert in from_list, add manuscript_text to to_dict, and add a round-trip property test (to_list → from_list → to_list is identity) — the ledger is the Record layer's whole… |
 | `STATE-057` | invariant | Every selected model has its OWN preprocessing pipeline. Two models must be able to receive genuinely different transformed matrices from the same raw data. | `tests/workflow/test_per_model_pipelines.py::TestPerModelPipelineConfigs::test_ridge_and_rf_get_different_train…` | preserve |
 | `STATE-058` | invariant | Preprocessing is FIT ON TRAINING ROWS ONLY and merely applied to val/test. | `pages/06_Train_and_Compare.py:1312-1315 (`model_pipeline.fit(X_train)` then `.transform(X_val)` /…` | preserve |
 | `STATE-059` | invariant | Cross-validation re-fits preprocessing inside every fold; CV never scores a pre-transformed matrix. | `ml/eval.py:182 make_cv_pipeline(preprocessing, estimator) with its `clone(preprocessing)`; called at…` | preserve |
@@ -531,7 +534,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 33
+## FIXED — 35
 
 
 ### Verified against main — 14
@@ -564,7 +567,7 @@ Nothing is closed without a regression test named after it.
 | `SWEEP-011` | critical | INVARIANT — per-model pipeline forking is the differentiator and it is real; a Project schema that collapses to one pipeline destroys the product | `ARCHITECTURE.md:29,215,324-338; CODE_REVIEW.md 'What genuinely holds' rows 1-2` | **test:** `turbotab/test_project_model.py::test_pipeline_specs_are_specs_not_fitted_objects` — The schema did not collapse. AnalysisProject carries pipeline_specs as a per-model… |
 | `SWEEP-014` | critical | tests/test_insight_id_integrity.py — an AST scanner that will silently stop testing anything the moment the rebuild renames Insight or the ledger variable | `tests/test_insight_id_integrity.py:1-27,39-42; CODE_REVIEW.md 'Bucket-1 hardening wave'` | **test:** `tests/test_insight_id_integrity.py::TestInsightIdIntegrity::test_the_scan_actually_scanned_something` — The vacuous-pass hole is closed, and closed in the way the row… |
 
-### Application state / lockbox — 5
+### Application state / lockbox — 6
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -573,13 +576,15 @@ Nothing is closed without a regression test named after it.
 | `STATE-032` | landmine | Training cancellation does not cancel anything. | `pages/06_Train_and_Compare.py lines 1251-1266: `st.session_state.cancel_training` is initialized, and a '🛑…` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Duplicate of T0-LIVE-002 / MODELS-005 from the state pass, and closed the same way: by… |
 | `STATE-039` | landmine | pages/03_Feature_Engineering.py's Save button hand-rolls a cascade clear instead of calling reset_downstream_results, and the two have drifted. | `pages/03_Feature_Engineering.py:1229-1250 (21 keys) vs utils/session_state.py:283-415 (~60 keys + provenance…` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_page_03_no_longer_hand_rolls_its_own_cascade` — Third sighting of the same defect (CONTRACT-002, STATE-006), and… |
 | `STATE-042` | landmine | session_manager's lockbox serialization is LOSSY (7 of 10 fields) while preserving the signature that suppresses a redraw. | `utils/session_manager.py:298-306 encodes only labels/fraction/seed/n_total/n_test/signature/stratified…` | **test:** `tests/test_state_survives_the_round_trip.py::test_a_restored_lockbox_still_knows_it_was_drawn_by_subject` — Closed. The serialization is no longer lossy in the way this… |
+| `STATE-055` | landmine | cohort_runs_done is not persisted, and completed_runs() filters on isinstance(r, CohortRun). | `utils/cohorts.py:462-465 and :488; utils/session_manager.py — cohort_runs_done appears in no bucket, so it is…` | **test:** `tests/test_session_carries_the_run.py::test_the_banked_comparison_comes_back` — Closed. cohort_runs_done is persisted and restored as reconstructed CohortRun OBJECTS… |
 
-### Stage-boundary contracts — 2
+### Stage-boundary contracts — 3
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `CONTRACT-002` | critical | Page 03 Feature Engineering hand-rolls a partial cascade instead of calling reset_downstream_results() | `pages/03_Feature_Engineering.py:1219-1251 vs utils/session_state.py:283-415` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_page_03_no_longer_hand_rolls_its_own_cascade` — The inline nineteen-key block is gone. pages/03:1276 now calls… |
 | `CONTRACT-003` | critical | macro_shape's @st.cache_data functions exclude the DataFrame from the cache key | `ml/macro_shape.py:82-86, 240-247, 337-342, 495-501; correct pattern at pages/02_EDA.py:146-166` | **test:** `tests/test_macro_shape_serves_the_right_dataset.py::test_two_datasets_get_their_own_pca` — Fixed by detainting, not by re-keying: the four @st.cache_data decorators are… |
+| `CONTRACT-015` | high | Lockbox save/restore drops group_col, strata and n_test_groups | `utils/session_manager.py:290-301 vs utils/test_lockbox.py:212-224` | **test:** `tests/test_state_survives_the_round_trip.py::test_a_restored_lockbox_still_knows_it_was_drawn_by_subject` — Duplicate of STATE-042 from the contract pass, and closed.… |
 
 ### Models / training / eval — 2
 
