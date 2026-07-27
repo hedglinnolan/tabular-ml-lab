@@ -454,5 +454,13 @@
   "classic": "(none — Classic has no acknowledgment path at all)",
   "state": "guided-only",
   "reason": "The tool refuses silence, not the user's judgment. Classic lets a user proceed past a known leak with no record; owed to Classic with the named-column push at L11 convergence of pages/02."
+ },
+ {
+  "id": "cross-deferral-resurface",
+  "step": "cross-step",
+  "capability": "Deferral that resurfaces: defer requires a target_step, deferred items resurface at the step that can act on them (measured by the routing value check's deferral_closes metric)",
+  "classic": "utils/insight_ledger.py records acknowledge/resolve and surfaces insights on relevant pages, but has no defer-to-step contract - no target_step, no resurface guarantee",
+  "state": "guided-only",
+  "reason": "turbotab/api.py rejects a defer without target_step ('a deferral without a target is a discard with manners'); Classic's ledger cannot express the contract. In the definition of done and measured in the value check, yet had no register row - the check could not see the absence. A debt owed back to Classic."
  }
 ]

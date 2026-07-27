@@ -7,7 +7,7 @@
 | `both` | exposed in Classic and Guided | 25 |
 | `core` | extracted into the shared core | 4 |
 | `classic-only` | a claim to be justified, never a shrug | 23 |
-| `guided-only` | a debt owed back to Classic | 5 |
+| `guided-only` | a debt owed back to Classic | 6 |
 
 ## Data & Target (Classic: pages/01, Step 4) — 22
 
@@ -36,11 +36,12 @@
 | `target-goal-selection` | Goal selection (Prediction vs Hypothesis Testing) | Step 4 | **classic-only** | Guided assumes prediction; the hypothesis-testing branch is a different interview. |
 | `target-lockbox-settings` | Test-holdout / lockbox settings | Step 4 expander | **classic-only** | Updated after L5: the project now OWNS a lockbox — sealing raises the identity barrier and the apply path refuses pre-barrier repairs — but the fraction/seed settings and the act of sealing are not yet asked in the Guided interview. Half-watched, no longer unmodeled. |
 
-## Cross-step infrastructure — 7
+## Cross-step infrastructure — 8
 
 | ID | Capability | Classic | State | Reason |
 |---|---|---|---|---|
 | `cancel-training` | Stopping a long run | removed — the button set a flag nothing read | **guided-only** | T0-LIVE-002. Classic's button is removed rather than wired: Streamlit runs one script per session on one thread, so during training no widget is interactive and the button could not be clicked at all. The page now says a run cannot be interrupted, which is true. Guided has real cancellation via the job queue. |
+| `cross-deferral-resurface` | Deferral that resurfaces: defer requires a target_step, deferred items resurface at the step that can act on them (measured by the routing value check's deferral_closes metric) | utils/insight_ledger.py records acknowledge/resolve and surfaces insights on relevant pages, but has no defer-to-step contract - no target_step, no resurface guarantee | **guided-only** | turbotab/api.py rejects a defer without target_step ('a deferral without a target is a discard with manners'); Classic's ledger cannot express the contract. In the definition of done and measured in the value check, yet had no register row - the check could not see the absence. A debt owed back to Classic. |
 | `job-queue` | Observable, cancellable background work with explicit per-job RNG | none — Streamlit reruns instead of scheduling | **guided-only** | turbotab/jobs.py. Owed back to Classic in the sense that Classic cannot have it without a client/server split — this is the component whose absence caused the migration. Jobs that touch process-global RNG are serialized, because snapshot/restore does not isolate threads sharing one RNG; measured, not assumed. |
 | `macro-shape-cache` | PCA / UMAP / persistence / Mapper caching keyed on dataset content | pages/02_EDA.py _macro_fp | **both** | T0-LIVE-001. The engine's caches keyed on nothing and served the first dataset's results to every later dataset and user. Caching moved to the host, which is what knows when a dataset changed; the fingerprint hashes values, not shape, because two cohort runs of one study share shape and columns. |
 | `core-invalidation-dag` | Downstream invalidation cascade | utils/session_state.py reset_downstream_results | **core** | The L5 DAG reproduces the production cascade key-for-key across all four flag combinations, pinned by test_the_dag_matches_the_production_cascade against a real run of the function. Re-verified L1: pages/03 no longer hand-rolls its own copy (CONTRACT-002 FIXED) - test_page_03_no_longer_hand_rolls_its_own_cascade AST-scans the page and fails if it clears a cascade-owned key, and the fifteen keys that copy used to miss are pinned by test_the_reconciled_call_clears_what_the_hand_rolled_one_missed. Known gap: the DAG has no restore edge for restore_pre_fe_features, and the ledger rollback is not modeled (SWEEP-009, SWEEP-013). |

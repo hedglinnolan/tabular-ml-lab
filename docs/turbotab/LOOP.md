@@ -21,7 +21,24 @@ status, **no `FIXED` without a named regression test**, and no `PARTIAL` / `NOT-
 
 ---
 
-## Loop 1 — verify Tier 1 (start here)
+## Loop 1 — verify Tier 1 · ✓ DONE
+
+**Completed 2026-07-27: 370 findings re-verified in 24 batches, 26 commits, nothing touched
+outside `docs/turbotab/`.** Dispositions: 289 OPEN, 31 PARTIAL, 50 FIXED, 0 NOT-A-DEFECT.
+The verifier cut four FIXEDs of its own on the no-test rule, corrected three over-reported
+impacts in notes rather than closing them, refreshed four stale `classic-only` register
+reasons, and flagged four stale Tier-0 rows outside its mandate (closed by the adjudicator
+after verifying the named tests exist). The zero NOT-A-DEFECT rate was checked against the
+three named over-reports — the verifier read the code, not the findings. The prompt below is
+kept for the record.
+
+**One-writer amendment, from this run:** the rule is now scoped to the shared data files
+(`findings.json`, `register.json`, and their generated markdown). A docs-only commit from
+another session may land mid-loop **only if** it touches none of those files and its commit
+message says so — the L1 mid-loop design-language commit (`8667810`) is the precedent, and
+the loop agent's clean rebase over it is the recovery path. Anything touching the data files
+still waits for the loop to land. No exceptions there; that is the artifact this project has
+already lost once.
 
 370 findings were produced by agents reading the repo at `fbe422a`, *before* PR #145 changed
 `utils/test_lockbox.py` by +312 lines and added `utils/replay.py`. They are all marked

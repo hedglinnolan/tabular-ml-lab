@@ -73,9 +73,11 @@
   "detail": "",
   "ev": "ml/splits.py; pages/06_Train_and_Compare.py",
   "act": "",
-  "status": "OPEN",
-  "note": "verified on main",
-  "verified_against": "origin/main @ 24c3446"
+  "status": "FIXED",
+  "note": "Stale self-report, caught by Loop 1's final sweep: ml/splits.py now carries make_split and pages/06 calls it; sixteen equivalence tests pin the extraction, the lockbox-respecting path named here because it is the safety-critical one. Closed by the adjudicator after verifying the file and every named test function exist at HEAD.",
+  "verified_against": "origin/main @ 24c3446",
+  "test": "tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page",
+  "verified_ev": "ml/splits.py (make_split); tests/integration/test_split_extraction_equivalence.py (16 tests)"
  },
  {
   "id": "T0-STRUCT-004",
@@ -85,9 +87,11 @@
   "detail": "",
   "ev": "utils/theme.py:685 (938 loc file, 12 importers)",
   "act": "",
-  "status": "OPEN",
-  "note": "verified on main",
-  "verified_against": "origin/main @ 24c3446"
+  "status": "FIXED",
+  "note": "Stale self-report, caught by Loop 1's final sweep: the step-completion model is extracted to turbotab/readiness.py and a source test asserts theme.py no longer computes it. Closed by the adjudicator after verifying file and test exist at HEAD.",
+  "verified_against": "origin/main @ 24c3446",
+  "test": "tests/integration/test_readiness_equivalence.py::test_the_page_no_longer_carries_its_own_step_model",
+  "verified_ev": "turbotab/readiness.py; utils/theme.py"
  },
  {
   "id": "T0-STRUCT-005",
@@ -121,9 +125,11 @@
   "detail": "",
   "ev": "tests/test_insight_id_integrity.py:23",
   "act": "",
-  "status": "OPEN",
-  "note": "verified on main",
-  "verified_against": "origin/main @ 24c3446"
+  "status": "FIXED",
+  "note": "Stale self-report, caught by Loop 1's final sweep: the scanner now enforces REQUIRED_SCAN_DIRS and a floor, so a vacuous pass is a failure. Closed by the adjudicator after verifying the guard exists at HEAD.",
+  "verified_against": "origin/main @ 24c3446",
+  "test": "tests/test_insight_id_integrity.py::TestInsightIdIntegrity::test_the_scan_actually_scanned_something",
+  "verified_ev": "tests/test_insight_id_integrity.py:33 (REQUIRED_SCAN_DIRS), :160"
  },
  {
   "id": "T0-TEST-003",
@@ -133,8 +139,11 @@
   "detail": "",
   "ev": "utils/session_state.py; tests/test_cascade_invalidation.py",
   "act": "",
-  "status": "OPEN",
-  "verified_against": "origin/main @ 24c3446"
+  "status": "FIXED",
+  "verified_against": "origin/main @ 24c3446",
+  "note": "Stale self-report, caught by Loop 1's final sweep: the equivalence suite calls the production reset_downstream_results across all four flag combinations and compares against the DAG. Closed by the adjudicator after verifying the call site at HEAD. The suite's one-sided vocabulary (seeds only the DAG's own keys) stays open as TEST-006.",
+  "test": "tests/integration/test_cascade_dag_equivalence.py::test_the_dag_matches_the_production_cascade",
+  "verified_ev": "tests/integration/test_cascade_dag_equivalence.py:47,145"
  },
  {
   "id": "T0-DROP-001",
@@ -1057,7 +1066,7 @@
   "ev": "pages/06_Train_and_Compare.py:161 (`task_type_final = task_type_detection.final if task_type_detection.final else data_config.task_type`; TaskTypeDetection.final returns override_value when override_enabled, utils/session_state.py:22-27). A…",
   "act": "Resolve task_type ONCE at the top of the engine's train function, pass it as a parameter, and never read data_config.task_type below that point. Initialize y_test_proba = None before the branch. Add a test that sets override_enabled=True wi…",
   "status": "PARTIAL",
-  "note": "The divergence is reconciled; the guard against its return is not. pages/06:174-175 now assigns data_config.task_type = task_type_final immediately after resolving the override, so the two cannot disagree below that line and none of the three failures this row describes can occur: no UnboundLocalError at the results dict, no probabilities computed then discarded, no StratifiedKFold on a continuous target. WHAT REMAINS, and it is why this is not FIXED: (1) no test anywhere exercises the override path - grep for override_enabled and task_type_final across tests/ returns nothing at all - so a future edit that reads data_config.task_type below :175 before the assignment, or that moves the assignment, reintroduces the whole class silently; (2) y_test_proba is still never initialized before the branch at :1405-1408, so the reconciliation at :175 is the only thing preventing the UnboundLocalError, with no defence in depth.",
+  "note": "The divergence is reconciled; the guard against its return is not. pages/06:174-175 now assigns data_config.task_type = task_type_final immediately after resolving the override, so the two cannot disagree below that line and none of the three failures this row describes can occur: no UnboundLocalError at the results dict, no probabilities computed then discarded, no StratifiedKFold on a continuous target. WHAT REMAINS, and it is why this is not FIXED: (1) no test anywhere exercises the override path - grep for override_enabled and task_type_final across tests/ returns nothing at all - so a future edit that reads data_config.task_type below :175 before the assignment, or that moves the assignment, reintroduces the whole class silently; (2) y_test_proba is still never initialized before the branch at :1405-1408, so the reconciliation at :175 is the only thing preventing the UnboundLocalError, with no defense in depth.",
   "verified_ev": "pages/06_Train_and_Compare.py:169-175 (task_type_final resolved once, then data_config.task_type = task_type_final at :175); :1405-1408 (y_test_proba assigned in the classification arm only, still no initialization before the branch); :1480 (read guarded on data_config.task_type); grep for override_enabled / task_type_final across tests/ returns NOTHING"
  },
  {
@@ -2024,7 +2033,7 @@
   "ev": "utils/test_lockbox.py:114-115 and :123-124 both `return get_lockbox()`; pages/01:1076-1104 then reads `_lb['fraction']`, `_lb['n_test']`, `_lb['seed']`, `_lb['signature']` and writes a resolved Insight asserting the holdout.",
   "act": "Return a discriminated result (Drawn | Unchanged | Refused(reason)) instead of an Optional dict, and let the caller/Router surface the refusal as the next question.",
   "status": "OPEN",
-  "note": "Unchanged at HEAD, and the docstring now makes it worse rather than better: it states the contract the code does not honour. Both failure branches - no target column, and fewer than the minimum eligible rows - return the existing lockbox, so after a target change that leaves too few non-null rows the page reports and LEDGERS a holdout drawn for a different modeling problem, and the manuscript carries 'A 15% test set (n=147) was held out at upload' for a study with no valid lockbox. Note the redraw-REFUSED case is handled well by comparison: it writes _lockbox_redraw_refused with n_sealed, n_scoreable and target_changed so the page can disclose it. These two branches deserve the same treatment - a discriminated Drawn | Unchanged | Refused(reason) result, which the Router can then turn into the next question.",
+  "note": "Unchanged at HEAD, and the docstring now makes it worse rather than better: it states the contract the code does not honor. Both failure branches - no target column, and fewer than the minimum eligible rows - return the existing lockbox, so after a target change that leaves too few non-null rows the page reports and LEDGERS a holdout drawn for a different modeling problem, and the manuscript carries 'A 15% test set (n=147) was held out at upload' for a study with no valid lockbox. Note the redraw-REFUSED case is handled well by comparison: it writes _lockbox_redraw_refused with n_sealed, n_scoreable and target_changed so the page can disclose it. These two branches deserve the same treatment - a discriminated Drawn | Unchanged | Refused(reason) result, which the Router can then turn into the next question.",
   "verified_ev": "utils/test_lockbox.py:266-288 - the docstring says 'Returns the lockbox dict, or None when a lockbox cannot be drawn (no target, too few rows)' and both of those branches then 'return get_lockbox()', i.e. the PREVIOUS lockbox; pages/01_Upload_and_Audit.py:1106 reads the result and writes a resolved Insight asserting the holdout"
  },
  {
@@ -2145,7 +2154,7 @@
   "ev": "pages/06_Train_and_Compare.py:1556 (assignment) vs :1575 (use), handler at :1601-1605",
   "act": "project — eliminated by collapsing task_type to one source; the bare Exception handler around the training loop must be narrowed in the Jobs layer",
   "status": "PARTIAL",
-  "note": "The unbound-name path is closed; the defence is one line and untested. Because pages/06:175 now sets data_config.task_type = task_type_final before the training loop, the two cannot disagree below that point, so the guard at :1480 and the branch at :1405 always agree and the NameError this row describes cannot occur. WHAT REMAINS: y_test_proba is still never initialized before the branch, so that single assignment at :175 is the only thing preventing it, and NO test exercises the override path at all - grep for override_enabled or task_type_final across tests/ returns nothing. A future edit that moves the assignment, or a page that reaches the training loop without passing :175, reintroduces the whole thing. Same disposition and same remainder as MODELS-004.",
+  "note": "The unbound-name path is closed; the defense is one line and untested. Because pages/06:175 now sets data_config.task_type = task_type_final before the training loop, the two cannot disagree below that point, so the guard at :1480 and the branch at :1405 always agree and the NameError this row describes cannot occur. WHAT REMAINS: y_test_proba is still never initialized before the branch, so that single assignment at :175 is the only thing preventing it, and NO test exercises the override path at all - grep for override_enabled or task_type_final across tests/ returns nothing. A future edit that moves the assignment, or a page that reaches the training loop without passing :175, reintroduces the whole thing. Same disposition and same remainder as MODELS-004.",
   "verified_ev": "pages/06_Train_and_Compare.py:169-175 (task_type_final assigned back onto data_config), :1405-1408 (y_test_proba assigned only in the classification arm), :1480 (read under data_config.task_type == 'classification'); grep for override_enabled / task_type_final across tests/ returns nothing"
  },
  {
@@ -2544,7 +2553,7 @@
   "ev": "ml/pipeline.py:109-124; pages/05_Preprocess.py:860; utils/test_lockbox.py:16-17, 248",
   "act": "engine — return `df.loc[mask]` without the reset. WRONG-BUT-PLAUSIBLE OUTPUT: cohorts partially survive because apply_cohort has a fallback that re-derives membership from the grouping column (`if col and col in df.columns: return df.loc[co…",
   "status": "FIXED",
-  "note": "Duplicate of STATE-001 from the landmine pass, and closed. The filter returns df.loc[mask] with labels intact. Two tests hold it and the second is the durable one: test_a_cohort_started_from_a_filtered_frame_holds_only_that_group asserts the downstream consequence rather than the implementation, so a re-introduction by any other route also fails. The fallback this row mentions - apply_cohort re-deriving membership from the grouping column when labels miss - is still there and is still a partial mask; it is worth keeping precisely because it is a second line of defence, not a fix, and the lockbox has no equivalent.",
+  "note": "Duplicate of STATE-001 from the landmine pass, and closed. The filter returns df.loc[mask] with labels intact. Two tests hold it and the second is the durable one: test_a_cohort_started_from_a_filtered_frame_holds_only_that_group asserts the downstream consequence rather than the implementation, so a re-introduction by any other route also fails. The fallback this row mentions - apply_cohort re-deriving membership from the grouping column when labels miss - is still there and is still a partial mask; it is worth keeping precisely because it is a second line of defense, not a fix, and the lockbox has no equivalent.",
   "test": "tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given",
   "verified_ev": "ml/pipeline.py:109-127 - the reset_index(drop=True) is gone and the docstring names the lockbox and the cohort run as the two label-keyed mechanisms it would have broken; tests/test_row_labels_are_identities.py:49-95"
  },
@@ -2726,7 +2735,7 @@
   "ev": "utils/llm_ui.py:14,507,532,621,641",
   "act": "jobs (the three _call_* backends); view (render_*); project/record (context builders)",
   "status": "OPEN",
-  "note": "Unchanged at HEAD. The only process spawn anywhere in utils/, ml/ or models/ still happens on the request thread, behind a spinner that promises about 60 seconds while the wait can run to 120, and all three LLM backends are blocking network calls executed inline. It is the clearest Jobs candidate left after the export path (STATE-029), and the smaller of the two. The privacy note in this row deserves to stay attached to it: the cloud opt-in sends column names and up to 20 RAW DATA ROWS to OpenAI or Anthropic, which is the one place the no-disk / session-isolated privacy story has an outbound edge - and SWEEP-007's invariant says nothing about it. That belongs in ARCHITECTURE.md alongside the persistence story, not only here.",
+  "note": "Unchanged at HEAD. The only process spawn anywhere in utils/, ml/ or models/ still happens on the request thread, behind a spinner that promises about 60 seconds while the wait can run to 120, and all three LLM backends are blocking network calls executed inline. It is the clearest Jobs candidate left after the export path (STATE-029), and the smaller of the two. The privacy note in this row deserves to stay attached to it: the cloud opt-in sends column names and up to 20 RAW DATA ROWS to OpenAI or Anthropic, which is the one place the no-disk / session-isolated privacy story has an outbound edge - and SWEEP-007's invariant says nothing about it. That belongs in ARCHITECTURE.md alongside the persistence story, not only here. Privacy edge recorded by the adjudicator after Loop 1: the cloud-LLM opt-in sends column names and up to 20 raw data rows out of the process, and the 'nothing is written to disk' invariant is silent about outbound network. The Guided door's serialization guard (register: guided-only) covers the archive, not this path.",
   "verified_ev": "utils/llm_ui.py:532 (subprocess.Popen(['ollama','serve'], ...) on the request thread), :507 _call_ollama, :621 _call_openai, :641 _call_anthropic - all blocking inline; :14 _MAX_TABLE_ROWS = 20, used at :340"
  },
  {
@@ -3482,7 +3491,7 @@
   "ev": "utils/test_lockbox.py:237 train_row_mask(index); applied at pages/04:128 (`mask = df[target_col].notna() & train_row_mask(df.index)`) and pages/03:637,775,910,954 (KBinsDiscretizer, StandardScaler, PCA, UMAP fits).",
   "act": "preserve",
   "status": "OPEN",
-  "note": "One of the two failure modes is closed and the other is live. The index-renumbering route is gone - apply_plausibility_filter keeps its labels now, so train_row_mask can no longer be handed a frame whose labels mean nothing. But the invariant as WRITTEN covers 'target-association views', and pages/02 never calls train_row_mask at all: the target profile, dose-response trends, the collinearity map, the leakage scan and quick_probe_baselines - which runs its own 80/20 split and fits models - all see the sealed rows (CONTRACT-017). So feature selection and the stateful FE fits honour the invariant and the EDA views do not, which is worse than a uniform gap because the discipline visibly exists one page over.",
+  "note": "One of the two failure modes is closed and the other is live. The index-renumbering route is gone - apply_plausibility_filter keeps its labels now, so train_row_mask can no longer be handed a frame whose labels mean nothing. But the invariant as WRITTEN covers 'target-association views', and pages/02 never calls train_row_mask at all: the target profile, dose-response trends, the collinearity map, the leakage scan and quick_probe_baselines - which runs its own 80/20 split and fits models - all see the sealed rows (CONTRACT-017). So feature selection and the stateful FE fits honor the invariant and the EDA views do not, which is worse than a uniform gap because the discipline visibly exists one page over.",
   "verified_ev": "utils/test_lockbox.py:461-472 train_row_mask; applied at pages/04_Feature_Selection.py:128 and at the stateful FE fits in pages/03 (binning, TDA, PCA, UMAP); ml/pipeline.py:109-127 no longer resets the index (STATE-001 FIXED); NOT applied anywhere in pages/02_EDA.py"
  },
  {
@@ -4886,5 +4895,113 @@
   "status": "OPEN",
   "verified_against": "TurboTab @ 26fc6ce",
   "note": "The queue phrase is deliberate: this row is the first entry in the L11 convergence queue for pages/02."
+ },
+ {
+  "id": "TEST-033",
+  "area": "TEST",
+  "sev": "low",
+  "item": "_NOT_STAGE_RESULTS in tests/integration/test_cascade_dag_equivalence.py:31 is defined and never referenced - a dead exclusion set that reads as if it were enforcing something",
+  "detail": "Found by the Loop 1 verifier outside its mandate and filed by the adjudicator. A reader skimming the suite sees an exclusion list and assumes those keys are deliberately outside the comparison; nothing consumes the set, so the impression is false. Either wire it into the comparison it implies or delete it.",
+  "ev": "tests/integration/test_cascade_dag_equivalence.py:31",
+  "act": "Reference the set where the comparison seeds its vocabulary, or remove it. Related: TEST-006 (the comparison runs inside the DAG's own vocabulary).",
+  "status": "OPEN",
+  "note": "Filed post-Loop-1; not part of the 370 Tier-1 rows.",
+  "verified_against": "TurboTab @ aa64ea0"
+ },
+ {
+  "id": "GUIDED-001",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "Import doctor proposes numeric coercion for True/False-coded binary columns (meds_hbp, meds_chol) instead of recognizing a binary variable with informative-missingness potential",
+  "detail": "On NHANES, columns coded as True/False text with blanks drew a 'convert to numeric' repair proposal. The right diagnosis is binary-categorical with a missingness decision attached. The doctor's type inference reaches for numeric before binary when text parses truthy.",
+  "ev": "ml/import_doctor.py; screenshot meds_chol",
+  "act": "Teach the doctor a binary-text detector (2 distinct non-null tokens after normalization) that outranks numeric coercion; the repair proposal becomes 'read as binary' with the missingness question routed per GUIDED-002.",
+  "status": "OPEN",
+  "note": "Filed by the adjudicator from the product designer's first drive of the Guided door.",
+  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27"
+ },
+ {
+  "id": "GUIDED-002",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "High-missingness finding reports a count but never names the features, and its card carries no snippet and no dtype-aware recommendation",
+  "detail": "'2 features with high missingness' does not say which two. The decision structure the card should offer is dtype-routed: binary -> is the missingness informative (indicator vs impute vs leave); numeric -> imputation strategies with tradeoffs and a before/after snippet; categorical -> explicit 'Missing' category vs mode, with informativeness stated.",
+  "ev": "ml/dataset_profile.py; turbotab explore step; screenshots",
+  "act": "Name the features in the claim sentence (mono chips). Route the repair proposal by dtype. Statistical imputations are recorded-now/executed-in-pipeline (see the action-timing ruling in the next builder prompt).",
+  "status": "OPEN",
+  "note": "Filed by the adjudicator from the product designer's first drive of the Guided door.",
+  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27"
+ },
+ {
+  "id": "GUIDED-003",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows",
+  "detail": "The physiologic card says '8 flags' and offers 'Verify units and data entry'; it never shows the eight. The card reads as coach prose, not a mechanic. Where the engine refuses to propose a repair, the card's job is to put the evidence on the table: which features, which entries, what range they violated.",
+  "ev": "ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features",
+  "act": "Every finding card names its objects in mono and embeds its evidence (rows or plot). 'The engine refuses to guess' is fine; refusing to show is not.",
+  "status": "OPEN",
+  "note": "Filed by the adjudicator from the product designer's first drive of the Guided door.",
+  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27"
+ },
+ {
+  "id": "GUIDED-004",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "No impossibility tier: bp_di values near 1e-15 are at best 'outliers' - the profile does not distinguish medically impossible from medically improbable",
+  "detail": "A diastolic BP of ~0 is not an outlier, it is an entry error (no living person). The physiologic check flags values outside NHANES reference intervals but treats the whole violation set as one tier. Layered plausibility: (a) outside reference range - advisory, population-based; (b) incompatible with life / physically impossible - a repair proposal per entry (treat as missing), with the affected rows shown.",
+  "ev": "ml/clinical_units.py; ml/physiology_reference.py; ml/dataset_profile.py; screenshot physiologic_check",
+  "act": "Add an impossibility band to the physiology reference (hard floors/ceilings distinct from reference intervals). Impossible entries get a CHOICE card proposing set-to-missing with before/after; improbable stays advisory.",
+  "status": "OPEN",
+  "note": "Filed by the adjudicator from the product designer's first drive of the Guided door.",
+  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27"
+ },
+ {
+  "id": "GUIDED-005",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces",
+  "detail": "A skew finding with no plot asks the user to take shape on faith. For <50 features the step should offer pageable per-feature histograms and a correlation matrix as pull affordances; every shape claim embeds the plot it is about (design language 10, layer 3: teach on their data).",
+  "ev": "turbotab explore step; ml/eda_recommender.py; screenshot skewed_features",
+  "act": "Finding cards embed their plot. Add histogram-pager and correlation-matrix pull chips gated on feature count.",
+  "status": "OPEN",
+  "note": "Filed by the adjudicator from the product designer's first drive of the Guided door.",
+  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27"
+ },
+ {
+  "id": "GUIDED-006",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "Several pull chips do nothing when clicked (dose-response trends, collinearity heatmap, stratified trends per the drive)",
+  "detail": "An offered control that silently no-ops asserts a capability that does not exist - the exact 'assert something false' the governing rule forbids. Solid-border chips ran; dashed ones did nothing with no message.",
+  "ev": "turbotab/web/index.html pull palette; screenshot other_analyses_not_running",
+  "act": "Wire them or mark them visibly not-built ('planned - not in this build', disabled affordance). Builder verifies which chips are dead and why; a dead chip with live styling is the bug even if the analysis is deliberately deferred.",
+  "status": "OPEN",
+  "note": "Filed by the adjudicator from the product designer's first drive of the Guided door.",
+  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27"
+ },
+ {
+  "id": "GUIDED-007",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI",
+  "detail": "Both docked panels show counts and one-line items with no way to open them. The manuscript panel is the natural home of the approved read-as-draft view; the coach ledger should expand to its deferred items, each naming the step where it will resurface.",
+  "ev": "turbotab/web; screenshot coach_manuscript_ledger",
+  "act": "Make both panels expandable. Manuscript panel becomes the read-as-draft panel. Internal placeholder strings never render to users.",
+  "status": "OPEN",
+  "note": "Filed by the adjudicator from the product designer's first drive of the Guided door.",
+  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27"
+ },
+ {
+  "id": "GUIDED-008",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "'Remind me later' does not tell the user where or when the item resurfaces, though the deferral contract already requires a target_step",
+  "detail": "The API rejects a deferral without target_step, so the information exists at click time; the button just does not say it. The user's own words: 'you need to make a decision about how to handle this no later than <step>'.",
+  "ev": "turbotab/api.py (defer requires target_step); screenshots",
+  "act": "Deferral affordances name their destination: 'Decide at Preprocess'. On expand, the coach ledger shows each deferred item with its target step.",
+  "status": "OPEN",
+  "note": "Filed by the adjudicator from the product designer's first drive of the Guided door.",
+  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27"
  }
 ]

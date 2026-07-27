@@ -109,13 +109,11 @@ is closed without a regression test named after it.
 The ledger has two tiers:
 
 - **Tier 0 (15)** — re-verified by hand against `origin/main` after PR #145. Status is real.
-- **Tier 1 (370)** — from ten agent passes at commit `fbe422a`, all marked `UNVERIFIED`.
-  They predate PR #145, which changed `utils/test_lockbox.py` by +312 lines and added
-  `utils/replay.py`. They must be re-checked before they are trusted.
-
-**The first loop iteration is verifying Tier 1 against main** and dispositioning each row as
-`OPEN` / `FIXED` / `NOT-A-DEFECT` / `WONTFIX`. That converts a research artifact into a real
-backlog. See [`LOOP.md`](LOOP.md) for the prompt to hand an agent.
+- **Tier 1 (370)** — from ten agent passes at commit `fbe422a`, all marked `UNVERIFIED` at
+  the time. **Loop 1 re-verified all 370 against HEAD (2026-07-27):** 289 OPEN, 31 PARTIAL,
+  50 FIXED with named tests, 0 NOT-A-DEFECT. The ledger is now a real backlog, not research.
+  Four stale Tier-0 rows the verifier flagged were closed by the adjudicator against their
+  named tests; see `LOOP.md` §"Loop 1" for the full result.
 
 Work `data/findings.json` through `tools/ledger.py`; `FINDINGS_LEDGER.md` is generated.
 

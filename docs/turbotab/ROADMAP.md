@@ -35,7 +35,7 @@ Anything short of all five is a milestone, not a finish.
 ## The map
 
 ```
-  L1  verify ledger ──────────┐            [not started — 370 UNVERIFIED]
+  L1  verify ledger ──────────┐  ✓ DONE — 370 verified: 289 OPEN, 31 PARTIAL, 50 FIXED, 0 N-A-D
   L2  live bugs               ├─ ✓ DONE (folded into L7; T0-LIVE-001..004 FIXED)
   L3  walking skeleton ───────┘  ✓ DONE
                      │

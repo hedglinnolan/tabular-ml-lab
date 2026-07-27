@@ -20,18 +20,18 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**64 of 402 closed.**
+**68 of 411 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 304 |
+| `OPEN` | 309 |
 | `PARTIAL` | 34 |
-| `FIXED` | 64 |
+| `FIXED` | 68 |
 
 ---
 
-## OPEN — 304
+## OPEN — 309
 
 
 ### Application state / lockbox — 71
@@ -81,7 +81,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-048` | landmine | split_config is POPPED by the resetter but re-created with DEFAULTS by the next init_session_state(). | `utils/session_state.py:330 pops it inside the node-3 loop; :135 seeds `'split_config': SplitConfig()` and…` | Unchanged at HEAD. split_config is still popped by the resetter and silently re-created with DEFAULTS by the next init_session_state(), so a 60/20/20 split with… |
 | `STATE-049` | landmine | ensure_lockbox is fed the ENGINEERED frame once feature engineering exists, so both its content signature and its subject-ID auto-detection run against generated columns. | `pages/01_Upload_and_Audit.py:619 `df = get_data(full_study=True)` → utils/session_state.get_data:207-215…` | Unchanged at HEAD, both halves, and note that full_study=True does NOT help here - it escapes the cohort filter, not the df_engineered preference, so once feature engineering… |
 | `STATE-050` | landmine | Two independent resets fire for one user action on a content change. | `utils/session_state.set_data:276-280 detects a same-schema content change → clear_cohort() +…` | Unchanged at HEAD. The signature still depends on every column, so a one-column cleaning action on a variable that is neither the target nor a feature changes it and redraws the… |
-| `STATE-051` | landmine | ensure_lockbox returns the PREVIOUS lockbox (not None) when it cannot draw a new one, and the caller cannot tell the difference. | `utils/test_lockbox.py:114-115 and :123-124 both `return get_lockbox()`; pages/01:1076-1104 then reads…` | Unchanged at HEAD, and the docstring now makes it worse rather than better: it states the contract the code does not honour. Both failure branches - no target column, and fewer… |
+| `STATE-051` | landmine | ensure_lockbox returns the PREVIOUS lockbox (not None) when it cannot draw a new one, and the caller cannot tell the difference. | `utils/test_lockbox.py:114-115 and :123-124 both `return get_lockbox()`; pages/01:1076-1104 then reads…` | Unchanged at HEAD, and the docstring now makes it worse rather than better: it states the contract the code does not honor. Both failure branches - no target column, and fewer… |
 | `STATE-052` | landmine | Every provenance and ledger write in pages/ is wrapped in a bare `except Exception: pass`. | `utils/session_state._log_to_ledger:655-656; pages/01:1105-1106 and :1194; pages/03:1268-1269…` | Unchanged at HEAD; the count is now 20 across nine pages. Any schema drift in the Record layer during the migration - a renamed section, a changed record_* signature, a page id… |
 | `STATE-053` | landmine | All three import cycles are currently invisible because every edge is a function-local import, and the obvious refactor (methods on AnalysisProject) turns them into module-level cycles. | `Cycle 1: utils/insight_ledger.py:1077 ↔ ml/publication.py:98,155,1739,1829. Cycle 2: utils/cohorts.py:474 ↔…` | Unchanged at HEAD: the cycles are all still there and all still invisible, because every edge is a deferred import inside a function. Nothing fails today, which is the hazard - a… |
 | `STATE-054` | landmine | engineering_log is not persisted while df_engineered, feature_engineering_applied and engineered_feature_names are. | `utils/session_manager.py:91-117 _PLAIN_KEYS includes engineered_feature_names, engineered_feature_transforms…` | Unchanged at HEAD. Save and restore a session with engineered features and the frame, the flag, the column names and the double-transform map all come back - so the app looks… |
@@ -313,7 +313,7 @@ Nothing is closed without a regression test named after it.
 | `COACH-031` | invariant | Coaching voice must never reach the manuscript verbatim. | `utils/insight_ledger.py:1188 — `text = (i.manuscript_text or '').strip() or…` | The invariant is stated correctly and is broken in exactly the way this row predicts, unchanged at HEAD. The register separation works - manuscript_text is preferred and the regex… |
 | `COACH-032` | invariant | 'high' confidence is the only tier the UI pre-selects, so 'high' means the app is asserting (docs/FINDINGS_LEDGER.md, Governing rule, lines 20-27). | `PARTIALLY, and only in the import/join domain: ml/join_doctor.py:922 `if include_low or c.confidence !=…` | All three weakenings confirmed at HEAD. (1) is COACH-015: a medium-confidence join key IS pre-selected. (2) is exact - final returns detected with no tier check, so a… |
 
-### Migration safety net — 23
+### Migration safety net — 24
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -340,6 +340,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-029` | medium | ml.feature_steps and ml.baseline_models are uncovered and produce the numbers the manuscript compares against | `ml/feature_steps.py:11,39; ml/baseline_models.py:21,150` | Unchanged at HEAD: both still uncovered, and both still produce published numbers. The seed sensitivity is the specific hazard - PCA's sign convention and KMeans' init are… |
 | `TEST-030` | medium | tests/workflow/* is order-dependent by design and silently degrades to false passes if pytest ordering changes | `tests/workflow/conftest.py:9-15; tests/workflow/test_state_invalidation.py:145-150` | Unchanged at HEAD, and the adjacent test is worth naming precisely because it looks like a fix and is not: tests/test_suite_is_order_independent.py guards RNG reseeding - that… |
 | `TEST-031` | medium | The plain-dict fake state in tests/workflow/ is the ready-made bridge to the Project object — the only asset that transfers directly | `tests/conftest.py:60-85, :88-122, :125-145; tests/workflow/conftest.py:41-45` | Unchanged at HEAD and this is the most useful row in the batch, because it is an ASSET rather than a defect. The test helpers already run against a plain dict, so a Project that… |
+| `TEST-033` | low | _NOT_STAGE_RESULTS in tests/integration/test_cascade_dag_equivalence.py:31 is defined and never referenced - a dead exclusion set that reads as if it were enforcing something | `tests/integration/test_cascade_dag_equivalence.py:31` | Filed post-Loop-1; not part of the 370 Tier-1 rows. |
 
 ### Models / training / eval — 17
 
@@ -363,15 +364,11 @@ Nothing is closed without a regression test named after it.
 | `MODELS-023` | invariant | The NN's best-epoch weights are snapshotted by CLONE, not by reference, so later optimizer steps cannot mutate the saved state. | `models/nn_whuber.py:430 and 529 — `best_model_state = {k: v.detach().clone() for k, v in…` | The invariant holds at both snapshot sites and nothing guards it, so it stays OPEN. state_dict() returns references to live tensors, so a bare copy would let subsequent optimizer… |
 | `MODELS-024` | invariant | Cross-validation is skipped for the neural network because its sklearn shim cannot retrain. | `pages/06:1529 `if use_cv and model_name != 'nn'` with the else-branch at 1565 explaining it to the user…` | Unchanged at HEAD: four separate guards, all keyed on one literal model key. The skip itself is correct and is explained to the user, which is good - the shim cannot retrain, so… |
 
-### Verified against main — 15
+### Verified against main — 11
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `T0-STRUCT-003` | critical | No split function exists; ~370 lines of split logic live in pages/06:380-760. ml/splits.py is 20 loc with one helper | `ml/splits.py; pages/06_Train_and_Compare.py` | verified on main |
-| `T0-STRUCT-004` | critical | The only step-completion state machine is render_sidebar_workflow, filed in utils/theme.py | `utils/theme.py:685 (938 loc file, 12 importers)` | verified on main |
 | `T0-TEST-001` | critical | tests/integration/conftest.py injects a bare sklearn Ridge where the app stores wrapper objects | `tests/integration/conftest.py:82,98` | verified on main |
-| `T0-TEST-002` | critical | test_insight_id_integrity.py is an AST scanner keyed on SCAN_DIRS=['pages','utils','ml'] and the literal name Insight; passes vacuously after rename | `tests/test_insight_id_integrity.py:23` | verified on main |
-| `T0-TEST-003` | critical | No test calls the production reset_downstream_results(); three re-implementations test themselves | `utils/session_state.py; tests/test_cascade_invalidation.py` |  |
 | `T0-STRUCT-005` | high | Coach is a pure annotator; cannot gate, only order. No blocker severity, no own confidence tier, 100% of triggers in pages/ | `ml/model_coach.py; pages/05_Preprocess.py:291-294; pages/02_EDA.py:212,246` | feasibility verdict |
 | `T0-WIP-001` | high | docs/FINDINGS_LEDGER.md 'Still open' tail from two lost audit runs, on the multi-file/JSON import path | `docs/FINDINGS_LEDGER.md:47` | verified on main |
 | `T0-CLASSIC-001` | high | Classic applies structural repairs from a single button with no diff and no undo | `pages/01_Upload_and_Audit.py apply flow vs turbotab preview engine` | Convergence is bidirectional — the register needs a guided-only state to express this. |
@@ -382,6 +379,19 @@ Nothing is closed without a regression test named after it.
 | `T0-PAGES-001` | medium | Duplicate-row detection has no engine home — it is inline in pages/01 | `pages/01_Upload_and_Audit.py (inline)` | Extract to the engine when pages/01 unfreezes; register the capability meanwhile. |
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
+
+### GUIDED — 8
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `GUIDED-001` | high | Import doctor proposes numeric coercion for True/False-coded binary columns (meds_hbp, meds_chol) instead of recognizing a binary variable with informative-missingness potential | `ml/import_doctor.py; screenshot meds_chol` | Filed by the adjudicator from the product designer's first drive of the Guided door. |
+| `GUIDED-002` | high | High-missingness finding reports a count but never names the features, and its card carries no snippet and no dtype-aware recommendation | `ml/dataset_profile.py; turbotab explore step; screenshots` | Filed by the adjudicator from the product designer's first drive of the Guided door. |
+| `GUIDED-004` | high | No impossibility tier: bp_di values near 1e-15 are at best 'outliers' - the profile does not distinguish medically impossible from medically improbable | `ml/clinical_units.py; ml/physiology_reference.py; ml/dataset_profile.py; screenshot physiologic_check` | Filed by the adjudicator from the product designer's first drive of the Guided door. |
+| `GUIDED-006` | high | Several pull chips do nothing when clicked (dose-response trends, collinearity heatmap, stratified trends per the drive) | `turbotab/web/index.html pull palette; screenshot other_analyses_not_running` | Filed by the adjudicator from the product designer's first drive of the Guided door. |
+| `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | Filed by the adjudicator from the product designer's first drive of the Guided door. |
+| `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | Filed by the adjudicator from the product designer's first drive of the Guided door. |
+| `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | Filed by the adjudicator from the product designer's first drive of the Guided door. |
+| `GUIDED-008` | medium | 'Remind me later' does not tell the user where or when the item resurfaces, though the deferral contract already requires a target_step | `turbotab/api.py (defer requires target_step); screenshots` | Filed by the adjudicator from the product designer's first drive of the Guided door. |
 
 ---
 
@@ -404,7 +414,7 @@ Nothing is closed without a regression test named after it.
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `CONTRACT-012` | high | y_test_proba can be referenced unbound when task_type_final and data_config.task_type disagree | `pages/06_Train_and_Compare.py:1556 (assignment) vs :1575 (use), handler at :1601-1605` | The unbound-name path is closed; the defence is one line and untested. Because pages/06:175 now sets data_config.task_type = task_type_final before the training loop, the two… |
+| `CONTRACT-012` | high | y_test_proba can be referenced unbound when task_type_final and data_config.task_type disagree | `pages/06_Train_and_Compare.py:1556 (assignment) vs :1575 (use), handler at :1601-1605` | The unbound-name path is closed; the defense is one line and untested. Because pages/06:175 now sets data_config.task_type = task_type_final before the training loop, the two… |
 | `CONTRACT-026` | high | Boundary Train: X_train/X_val/X_test are DataFrames but y_* type varies by split branch | `pages/06_Train_and_Compare.py:511-517, :541-547, :571-577, :613-616, :655-660; ml/splits.py:9 (to_numpy_1d)…` | The heterogeneity is gone by construction; nothing guards it. Every branch now returns through one Split constructor that coerces y_train, y_val and y_test with to_numpy_1d, and… |
 | `CONTRACT-029` | high | Boundary Train: cv_strategy and cv_groups_train | `pages/06_Train_and_Compare.py:494-497, :507-508, :528, :1543-1546; utils/session_state.py:330-334` | The desync this row warns about is structurally closed; the parallel storage is not. cv_strategy and cv_groups_train are now derived INSIDE make_split from the branch actually… |
 | `CONTRACT-032` | high | Boundary Explain: cancel_explainability / cancel_training are cooperative flags polled inside the render loop | `pages/07_Explainability.py:321-352, :419-422, :540-543; pages/06_Train_and_Compare.py:1252-1266` | Half of this row is closed and half is untouched. cancel_training no longer exists - the button was removed rather than wired, because Streamlit blocks the script during training… |
@@ -464,7 +474,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 64
+## FIXED — 68
 
 
 ### Application state / lockbox — 19
@@ -491,11 +501,15 @@ Nothing is closed without a regression test named after it.
 | `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — Duplicate of COACH-024 from the state pass, and closed the same way: the… |
 | `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | **test:** `tests/test_cohort_runs.py::test_unrecognizable_rows_yield_nothing_not_everything` — The invariant is implemented, disclosed and tested, and the test's NAME is the… |
 
-### Verified against main — 14
+### Verified against main — 18
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `T0-LIVE-001` | critical | macro_shape @st.cache_data key omits the dataframe; first dataset's PCA/UMAP/persistence/Mapper served to all later datasets and users | `ml/macro_shape.py:82,240,337,495; call sites pages/02_EDA.py:1163,1205,1226,1265` | **test:** `tests/test_macro_shape_serves_the_right_dataset.py::test_two_datasets_get_their_own_pca` — Fixed by detainting rather than by re-keying. The four @st.cache_data… |
+| `T0-STRUCT-003` | critical | No split function exists; ~370 lines of split logic live in pages/06:380-760. ml/splits.py is 20 loc with one helper | `ml/splits.py; pages/06_Train_and_Compare.py` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page` — Stale self-report, caught by Loop 1's final sweep: ml/splits.py now… |
+| `T0-STRUCT-004` | critical | The only step-completion state machine is render_sidebar_workflow, filed in utils/theme.py | `utils/theme.py:685 (938 loc file, 12 importers)` | **test:** `tests/integration/test_readiness_equivalence.py::test_the_page_no_longer_carries_its_own_step_model` — Stale self-report, caught by Loop 1's final sweep: the… |
+| `T0-TEST-002` | critical | test_insight_id_integrity.py is an AST scanner keyed on SCAN_DIRS=['pages','utils','ml'] and the literal name Insight; passes vacuously after rename | `tests/test_insight_id_integrity.py:23` | **test:** `tests/test_insight_id_integrity.py::TestInsightIdIntegrity::test_the_scan_actually_scanned_something` — Stale self-report, caught by Loop 1's final sweep: the scanner… |
+| `T0-TEST-003` | critical | No test calls the production reset_downstream_results(); three re-implementations test themselves | `utils/session_state.py; tests/test_cascade_invalidation.py` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_the_dag_matches_the_production_cascade` — Stale self-report, caught by Loop 1's final sweep: the equivalence… |
 | `T0-LIVE-004` | critical | pandas 3 silently turns a classification target into a regression one — dtype identity checks compare against legacy string names | `ml/triage.py:41; requirements.txt:2; plus 10 further sites listed in detail` | **test:** `turbotab/test_skeleton.py::test_the_same_answer_under_a_pandas_3_string_dtype` — All eleven dtype-identity sites replaced with pd.api.types predicates. Verified against… |
 | `T0-ID-001` | critical | Four of nine repair kinds renumber rows, invalidating row identity mid-analysis | `ml/import_doctor.py apply_fix — promote_header / drop_empty_rows / drop_rows / melt_repeated` | **test:** `turbotab/test_project_model.py::test_pre_barrier_repairs_are_unreachable_once_the_lockbox_exists` — The barrier is a phase rule now. The project owns the lockbox, so… |
 | `T0-LIVE-002` | high | Cancel Training writes st.session_state.cancel_training; nothing ever reads it | `pages/06_Train_and_Compare.py:1289-1301 (grep returns only these 4 lines)` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Resolved both ways, as the two doors need. Guided gets real cancellation… |
