@@ -3102,7 +3102,9 @@
   "detail": "A producer omits manuscript_text and its finding survives the regex. ALL FOUR coach preprocessing insights omit it (ml/model_coach.py:673-799), and their findings contain '(s)' pluralization the rest of the codebase avoids via pages/02_EDA.py:194 `_count_word`. Verified output: 'Your linear models (Ridge Regression, LASSO, etc.) are scale-sensitive; the app's default pipeline already standardizes features for them.' lands in the manuscript LIMITATIONS list.",
   "ev": "utils/insight_ledger.py:1188 — `text = (i.manuscript_text or '').strip() or _clean_for_manuscript(i.finding)`, with _clean_for_manuscript (lines 388-445) stripping coaching parentheticals, bracket tags and stock phrases and rewriting model …",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant is stated correctly and is broken in exactly the way this row predicts, unchanged at HEAD. The register separation works - manuscript_text is preferred and the regex cleaner is the fallback, as CODE_REVIEW's manuscript-trust wave intended - but ALL FOUR coach preprocessing producers omit the field, so all four fall through to the cleaner, and the cleaner is a regex over prose it was never shown. The verified output stands: a reassurance ('the app's default pipeline already standardizes features for them') and a neutral fact land in the manuscript's LIMITATIONS list, in coaching voice, with the '(s)' pluralization the rest of the codebase avoids. See COACH-007 for the resolver half. The durable fix is to make manuscript_text mandatory at construction, or to require an explicit narrative=False.",
+  "verified_ev": "utils/insight_ledger.py:1190 (text = manuscript_text or _clean_for_manuscript(finding)) and :388-445 (the regex cleaner); ml/model_coach.py:674, 718, 746, 775 - all four preprocessing insights still omit manuscript_text (the file's first manuscript_text is at :886)"
  },
  {
   "id": "COACH-032",
@@ -3112,7 +3114,9 @@
   "detail": "THREE ways it is already weaker than stated. (1) utils/combine_ui.py:266-273 hands the non-low candidates to an st.selectbox, which pre-selects index 0 — so a 'medium'-confidence join key IS pre-selected. (2) TaskTypeDetection.final (utils/session_state.py:22-27) returns `detected` regardless of confidence, so a 'low'-confidence task type propagates into DataConfig, the lockbox and the coach with full authority. (3) THE COACH HAS NO CONFIDENCE TIER AT ALL, yet pages/05_Preprocess.py:290-294 pre-selects its picks unconditionally. Promoting the coach to Router without giving it a tier promotes an unhedged assertion to the control plane.",
   "ev": "PARTIALLY, and only in the import/join domain: ml/join_doctor.py:922 `if include_low or c.confidence != 'low'` in suggest_best; utils/combine_ui.py:262 `usable = [c for c in cands if c.confidence != 'low']`; utils/import_ui.py auto-applies …",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "All three weakenings confirmed at HEAD. (1) is COACH-015: a medium-confidence join key IS pre-selected. (2) is exact - final returns detected with no tier check, so a low-confidence task type propagates into DataConfig, the lockbox draw and the coach with full authority; pages/01 does downgrade the BANNER below high (SWEEP-004), which is disclosure, not gating. (3) is the one that matters most for the migration: the coach has no confidence tier and pages/05 pre-selects its picks anyway, so promoting it to Router without first giving it a tier promotes an unhedged assertion into the control plane. The Router now enforces the rule on its own side (SWEEP-004 / ml/router.py) - these three are the Classic surfaces that do not, and they close at L11.",
+  "verified_ev": "(1) utils/combine_ui.py:262-280 filters only 'low' and hands the rest to a selectbox defaulting to index 0; (2) utils/session_state.py:22-28 - TaskTypeDetection.final returns self.detected regardless of confidence; (3) the coach has no confidence field at all, and pages/05_Preprocess.py:291-294 pre-selects its picks unconditionally"
  },
  {
   "id": "COACH-033",
@@ -3122,7 +3126,9 @@
   "detail": "Already broken at CALL time, not import time. Verified: `import ml.model_coach` leaves streamlit unimported, but `ml.model_coach.generate_preprocessing_insights(['ridge'], profile)` raises ModuleNotFoundError: No module named 'streamlit' via ml/model_coach.py:634 → utils/insight_ledger.py:46. Same for _detect_overfit via ml/model_coach.py:1080. Any headless Engine/Jobs process without streamlit installed loses BOTH the preprocessing coaching and the ENTIRE post-training diagnostics batch (run_post_training_diagnostics has no internal try/except, so _detect_overfit raising discards the six other detectors' findings too).",
   "ev": "Convention plus the structural measurement (only eda_actions, macro_shape and publication touch streamlit). tests/test_model_scoped_coaching.py:12-13 works around it with `sys.modules['streamlit'] = MagicMock()` and lines 18-22 COPY the fam…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "The reproduction in this row no longer reproduces; two of its three claims survive. Calling generate_preprocessing_insights or _detect_overfit with streamlit absent no longer raises ModuleNotFoundError, because insight_ledger's module-level import moved inside get_ledger (RECORD-009), so a headless worker keeps both the preprocessing coaching and the diagnostics batch. WHAT REMAINS: (a) nothing tests call-time headlessness - the census test says so in its own docstring - so this could regress silently; (b) run_post_training_diagnostics still has no internal error isolation, so ANY single detector raising still discards the other six findings, which was half of this row's consequence and is unrelated to streamlit. Same disposition and same remainder as COACH-001.",
+  "verified_ev": "utils/insight_ledger.py:1400-1407 (the streamlit import is now inside get_ledger, not at module level); ml/model_coach.py:634-638 and :1080 import only vocabulary constants from it; tests/test_engine_is_headless.py:18-22 explicitly covers IMPORT time only and says call-time is a different problem; run_post_training_diagnostics still has no per-detector error isolation"
  },
  {
   "id": "MODELS-015",
@@ -3132,7 +3138,9 @@
   "detail": "Anyone 'optimizes' CV by passing X_train_model (already transformed) to perform_cross_validation. Scores stay plausible and improve slightly — the leak is invisible.",
   "ev": "ml/eval.py:182 make_cv_pipeline() composes Pipeline([('prep', clone(preprocessing)), ('densify', ...), ('est', estimator)]); pages/06:1555 wraps every CV call in it; pages/06:1312 fits the pipeline on X_train before transforming val/test. T…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant is implemented where it cannot be bypassed by accident, and NOTHING TESTS IT - so it stays OPEN. ml/eval.py:182-190 make_cv_pipeline composes Pipeline([('prep', clone(preprocessing)), ('densify', ...), ('est', estimator)]) with the leakage rationale in its own docstring: cross-validating the composite on RAW training data re-fits the preprocessing inside every fold, so no fold's held-out rows contribute to imputer, scaler, encoder or PCA statistics, and scoring a pre-transformed matrix would leak each fold's test portion into the transformer fits. pages/06 wraps every CV call in it. But a repo-wide grep for make_cv_pipeline returns exactly three hits - the definition and two lines in pages/06 - so no test imports it, and the 'optimization' this row warns about (passing the already-transformed X_train_model to perform_cross_validation) would pass the whole suite while raising every CV score slightly. A golden test comparing CV scores for a composite pipeline against a pre-transformed matrix on a fixed frame closes it.",
+  "verified_ev": "ml/eval.py:182-190 - make_cv_pipeline composes Pipeline([('prep', clone(preprocessing)), ('densify', ...), ('est', estimator)]) with the leakage rationale written into the docstring; pages/06_Train_and_Compare.py wraps every CV call in it and fits the pipeline on X_train before transforming val and test"
  },
  {
   "id": "MODELS-016",
@@ -3142,7 +3150,9 @@
   "detail": "Moving evaluation into the engine without carrying target_transformer + y_*_original. Every metric silently becomes log-scale RMSE — numerically smaller, therefore looks like an improvement.",
   "ev": "pages/06:1486-1497 (test) and 1508-1517 (train), plus the CV branch wrapping the estimator in TransformedTargetRegressor at 1536-1550 and swapping in y_train_original. Baselines mirror it at pages/06:2113-2118 by preferring y_train_original…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant is real, currently honored, and unguarded - so it stays OPEN. Every consumer inverse-transforms before scoring and prefers y_*_original, which is correct. What makes it fragile is documented in two other rows: CONTRACT-027 (target_transformer is a string-or-object union whose branch is duplicated at four sites) and CONTRACT-028 (the .get default silently substitutes the TRANSFORMED target when the write/pop pair desynchronizes). So the failure mode this row predicts - moving evaluation into the engine without carrying target_transformer and y_*_original - already has a cheaper route: one missing key. And the symptom is the worst kind, because log-scale RMSE is numerically SMALLER and reads as an improvement. A test that asserts a reported metric's scale would close all three.",
+  "verified_ev": "pages/06_Train_and_Compare.py:1391-1420 (test predictions inverse-transformed, metrics computed against st.session_state.get('y_train_original', y_train)), :1440-1450 (the CV branch wrapping the estimator in TransformedTargetRegressor and swapping in y_train_original), :2043 (baselines preferring y_train_original); no test asserts the scale of a reported metric"
  },
  {
   "id": "MODELS-017",
@@ -3152,7 +3162,10 @@
   "detail": "Collapsing per-model pipelines into one shared pipeline during the rebuild. Ridge/SVR/kNN/LDA/NN silently degrade (unscaled RBF kernels and distance metrics still return numbers) while RF/boosting are unaffected — so the leaderboard reorders for a preprocessing reason that looks like a modeling result.",
   "ev": "pages/05_Preprocess.py:487, 801, 847, 1059 read spec.capabilities.requires_scaled_numeric to build per-model pipelines into preprocessing_pipelines_by_model; pages/06:1286 get_preprocessing_pipeline(model_name) selects it. Test: tests/workf…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The invariant holds on both sides of the migration and has a test that would catch the collapse this row warns about: tests/workflow/test_per_model_pipelines.py asserts two models receive genuinely different transformed matrices, which is exactly the assertion a shared-pipeline refactor fails. The Project also kept the shape - pipeline_specs is per-model, pinned by turbotab/test_project_model.py::test_pipeline_specs_are_specs_not_fitted_objects (SWEEP-011). The failure this row describes is the subtle one worth keeping on the record: unscaled RBF kernels and distance metrics still return numbers, so a collapse reorders the leaderboard for a preprocessing reason that reads as a modeling result. NOTE what is NOT covered by this row and remains open: the global fallback slot (T0-STRUCT-001 / STATE-005) means a model with no spec of its own still borrows another's.",
+  "test": "tests/workflow/test_per_model_pipelines.py::test_scaled_vs_unscaled_outputs_differ",
+  "verified_ev": "pages/05_Preprocess.py reads spec.capabilities.requires_scaled_numeric to build per-model pipelines into preprocessing_pipelines_by_model; pages/06_Train_and_Compare.py:1286 selects by model key via get_preprocessing_pipeline(model_name); turbotab/project.py:155 carries per-model pipeline_specs"
  },
  {
   "id": "MODELS-018",
@@ -3162,7 +3175,9 @@
   "detail": "Gating on spec.capabilities.supports_predict_proba instead — it is task-agnostic and wrong for nn/glm/rf (see landmine 8). Also breaks if a new factory adds a third positional parameter.",
   "ev": "ml/model_registry.py:44 declares factory: Callable[[str, int], Any]; all 22 factories honor it. pages/06:1502, 1522, 2050, 2171, 2722, 2769 all gate on model.supports_proba() before calling predict_proba.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant holds today and nothing enforces either half, so it stays OPEN. The factory signature is declared in a type annotation that Python does not check and no test asserts, so a factory gaining a third positional parameter fails at call time in whichever page reaches it first. The runtime-versus-declared proba distinction is the sharper half: every current call site correctly gates on model.supports_proba(), which is task-aware, while ModelCapabilities.supports_predict_proba sits next to it looking authoritative and being wrong for the task-dual models - and a Router reading declarative capability metadata would reach for exactly the wrong one (MODELS-008). A test asserting, for every registry key and both task types, that supports_predict_proba() agrees with the wrapper closes both rows.",
+  "verified_ev": "ml/model_registry.py:44 - factory: Callable[[str, int], Any] with the signature in a comment - and all 22 factories honor it; pages/06_Train_and_Compare.py gates predict_proba calls on model.supports_proba() at six sites; ModelCapabilities.supports_predict_proba has zero readers (MODELS-008)"
  },
  {
   "id": "MODELS-019",
@@ -3172,7 +3187,9 @@
   "detail": "ModelSpec is a NON-FROZEN dataclass with mutable dicts, and pages/05, /06, /07 each cache get_registry() under @st.cache_resource (process-wide, cross-session). One dropped .copy() permanently rewrites a model's defaults for every user of the process. pages/06:1449 already mutates `params['n_neighbors']` in place, which writes back into selected_model_params when the key existed.",
   "ev": "pages/06:1437 `params = selected_model_params.get(model_name, spec.default_params.copy())` — the .copy() is the entire enforcement. Nothing else guards it.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and the enforcement is still one method call in one place. ModelSpec is not frozen, its default_params is a mutable dict, and three pages cache the registry under @st.cache_resource - which returns THE SAME object to every session in the process - so a single dropped .copy() permanently rewrites a model's defaults for every concurrent user of the deployment. pages/10:1391 already hands out the shared dict without copying, so the asymmetry exists today. Two cheap changes remove the class rather than patch it: freeze ModelSpec (or make default_params a MappingProxyType), and drop the cache_resource wrappers, since get_registry() is already pure and builds a fresh dict per call.",
+  "verified_ev": "pages/06_Train_and_Compare.py:1342 - params = selected_model_params.get(model_name, spec.default_params.copy()) - the .copy() is the entire enforcement; pages/10_Report_Export.py:1391 omits it; ModelSpec is a non-frozen dataclass with mutable dicts, cached process-wide by three @st.cache_resource wrappers (MINE-017)"
  },
  {
   "id": "MODELS-020",
@@ -3182,7 +3199,9 @@
   "detail": "The rebuild is only sound if training IS reproducible from the seed — and it is not: NNWeightedHuberWrapper.fit seeds the GLOBAL torch/numpy RNG (order-dependent under concurrency), optuna.create_study() at pages/06:1224 takes no sampler seed at all, and GLMWrapper/RFWrapper hardcode random_state=42 regardless of the project seed.",
   "ev": "utils/session_manager.py:138-162 _NEVER_PERSIST drops trained_models, fitted_estimators, fitted_preprocessing_pipelines, model_results, cv_results and all splits; the save is an allow-list (_PLAIN_KEYS, line 91) so anything unlisted is drop…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Half of the invariant is enforced by construction and the half it depends on is false. The no-persistence side is solid: _NEVER_PERSIST plus an allow-list means an unlisted artifact is dropped rather than accidentally saved, and turbotab/test_project_model.py::test_derivatives_are_not_persisted pins the same property in the core. But 'rebuildable from raw data + config + seed' requires training to BE reproducible from the seed, and it is not: optuna.create_study takes no sampler seed at all, so hyperparameter search is non-reproducible outright; the NN seeds process-global RNG so its result depends on execution order under concurrency (MODELS-006); and GLM/RF hardcode 42 regardless of the project seed (MODELS-007, SWEEP-023). Fix the seeding before the no-persistence claim can be relied on.",
+  "verified_ev": "utils/session_manager.py _NEVER_PERSIST drops trained_models, fitted_estimators, fitted_preprocessing_pipelines, model_results, cv_results and the splits, and the save is an allow-list; against that: pages/06_Train_and_Compare.py:1120 optuna.create_study(direction=direction) with NO sampler seed; models/nn_whuber.py:371-375 seeds global torch/numpy RNG; GLM and RF wrappers hardcode random_state=42"
  },
  {
   "id": "MODELS-021",
@@ -3192,7 +3211,9 @@
   "detail": "Swapping RandomState for the global np.random, or for default_rng, changes every published interval. Note NNWeightedHuberWrapper.fit calls np.random.seed(random_seed) globally at line 315 — if bootstrap were ever changed to use the global RNG, its results would become dependent on whether an NN was trained first.",
   "ev": "ml/bootstrap.py:115 `rng = np.random.RandomState(random_state)` is the sole randomness; every public entry point threads random_state: int = 42 through. Tests: tests/test_bootstrap.py, tests/test_review_fixes.py:53-58.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant holds structurally and no test asserts it, so it stays OPEN. ml/bootstrap.py:115 creates its own np.random.RandomState(random_state) and the module touches the global RNG nowhere, so output is a pure function of (y_true, y_pred, metric_fn, n_resamples, random_state). But tests/test_bootstrap.py asserts STRUCTURE - that a BootstrapResult comes back, that ci_lower <= estimate <= ci_upper, that the expected metric keys are present - and never that two runs with one seed produce identical intervals. The row's own warning is why that matters: models/nn_whuber.py seeds the GLOBAL numpy RNG during fit, so a 'modernization' to np.random.default_rng() or to the global RNG would make every published interval depend on whether an NN trained first in the process, and every individual run would still look deterministic. One equality assertion over two seeded runs closes it. Compare MODELS-007: every CALL SITE omits random_state, so the project seed never reaches this parameter in the first place.",
+  "verified_ev": "ml/bootstrap.py:115 - rng = np.random.RandomState(random_state) is the sole source of randomness in the module, threaded from a random_state: int = 42 parameter on every public entry point; no np.random.* global call anywhere in the file"
  },
  {
   "id": "MODELS-022",
@@ -3202,7 +3223,10 @@
   "detail": "A well-meaning 'fill NaN with the estimate' refactor. Intervals narrow, nothing errors, and the manuscript overstates precision — exactly the failure the current code was written to prevent.",
   "ev": "ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot = boot_stats[np.isfinite(boot_stats)]`, and an early return when len(valid_boot) < max(50, n_resamples // 2). The reasoning is written in the source …",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The invariant is implemented with the reasoning in the source AND pinned by a test that fails if the guard is softened. ml/bootstrap.py:136-149 initializes boot_stats to NaN, leaves failed resamples as NaN, filters to valid_boot, and returns a NaN interval when fewer than max(50, n_resamples // 2) replicates survived; TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples asserts exactly that, with a metric that always returns NaN. That is the governing rule applied to a confidence interval - the app may refuse to state a precision it did not achieve, and may not state a better one - and the 'fill NaN with the estimate' refactor this row warns about would narrow every interval, error nowhere, and overstate precision in a published paper. Adjacent and still OPEN: MODELS-012, where BCa acceleration is computed over a jackknife padded to length n with the mean of its first 200 values, so the interval is honest about its resamples and quietly damped in its acceleration.",
+  "test": "tests/test_review_fixes.py::TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples",
+  "verified_ev": "ml/bootstrap.py:136-149 - boot_stats initialized to NaN, failed resamples left as NaN, valid_boot = boot_stats[np.isfinite(boot_stats)], and an early return with a NaN CI when len(valid_boot) < max(50, n_resamples // 2)"
  },
  {
   "id": "MODELS-023",
@@ -3212,7 +3236,9 @@
   "detail": "Reverting to a bare state_dict() copy. Early stopping then restores the LAST weights instead of the best ones — training still completes, metrics just get quietly worse.",
   "ev": "models/nn_whuber.py:430 and 529 — `best_model_state = {k: v.detach().clone() for k, v in self.model.state_dict().items()}`, with the reason in the comment at line 428-429.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant holds at both snapshot sites and nothing guards it, so it stays OPEN. state_dict() returns references to live tensors, so a bare copy would let subsequent optimizer steps mutate the 'saved' best weights in place - early stopping would then restore the LAST weights while reporting the best epoch's number. The failure is invisible by construction: training completes, the epoch count is right, and the metrics are just quietly worse. models/ is now covered by tests/test_characterization_wrappers.py but that suite does not reach inside the training loop. A test that trains past a deliberate best epoch and asserts the restored weights match the snapshot would close it, and is cheap on a tiny fixture.",
+  "verified_ev": "models/nn_whuber.py:488 and :587 - best_model_state = {k: v.detach().clone() for k, v in self.model.state_dict().items()}, with the reason in the comment above; no test asserts that early stopping restores the BEST epoch rather than the last"
  },
  {
   "id": "MODELS-024",
@@ -3222,7 +3248,9 @@
   "detail": "Both guards match the literal string 'nn'. A registry that ever gains a second neural key ('nn_deep', 'mlp') silently routes it into cross_val_score, where SklearnCompatibleNN*.fit() is a no-op — producing CV scores from a network that already saw every fold's held-out rows. See landmine 1.",
   "ev": "pages/06:1529 `if use_cv and model_name != 'nn'` with the else-branch at 1565 explaining it to the user; pages/08:121 has the parallel guard for seed sensitivity.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: four separate guards, all keyed on one literal model key. The skip itself is correct and is explained to the user, which is good - the shim cannot retrain, so cross-validating it would score a network that already saw every fold's held-out rows. What is fragile is the identification: a registry that ever gains a second neural key ('nn_deep', 'mlp') silently routes it into cross_val_score. The consequence is now smaller than when this row was written, because MODELS-001 made the adapter REFUSE to fit unless marked pretrained - so the new key would raise rather than silently return leaked scores. That converts a silent corruption into a loud failure, which is the right direction, but the guard is still a string match in four places. It belongs on ModelSpec as a capability.",
+  "verified_ev": "pages/06_Train_and_Compare.py:1434 (if use_cv and model_name != 'nn') and :1470 (the elif that explains the skip to the user); pages/08_Sensitivity_Analysis.py:69 (_seed_compatible = [k for k in model_keys if k != 'nn']) and :121 - four guards, all matching the literal string 'nn'"
  },
  {
   "id": "RECORD-020",
@@ -3232,7 +3260,9 @@
   "detail": "A _gen_* method gains a default/boilerplate sentence for a stage that was never recorded, or the evidence map is generated from a different context than the draft (already true today at pages/10_Report_Export.py:2094, which constructs NarrativeEngine WITHOUT manuscript_context while the draft at :616 is built WITH it).",
   "ev": "ml/narrative_engine.py NarrativeEngine.generate_evidence_map() (rows keyed off prov.get_completeness()); every _gen_* returns \"\" on missing input; tests/test_manuscript_trust.py::TestEvidenceMap::{test_full_provenance_traced,test_empty_prov…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant is well implemented in the engine and already violated at the seam - which is why it stays OPEN rather than closing on its tests. narrative_engine does the right thing: sections whose sources were never recorded return empty, the evidence map is keyed off get_completeness, and two tests pin both the full-provenance and the empty-provenance cases. But pages/10 builds the evidence map from a DIFFERENT context than the draft it certifies (RECORD-012), so the artifact whose entire purpose is to make 'compiled from the audit trail' checkable can disagree with the thing it certifies, and nothing compares them. Two further live violations sit under it: STATE-047, where get_completeness reports statistical_validation done after its results were deleted, and STATE-019, where the readiness map reports bland_altman as 'inferred / recomputable' for a code path with no producer.",
+  "verified_ev": "ml/narrative_engine.py (every _gen_* returns '' on missing input; generate_evidence_map keyed off prov.get_completeness()); tests/test_manuscript_trust.py::TestEvidenceMap::{test_full_provenance_traced, test_empty_provenance_admits_gaps}; violation at pages/10_Report_Export.py:2126-2127, which builds the evidence map with NO manuscript_context while the draft at :635 is built WITH it"
  },
  {
   "id": "RECORD-021",
@@ -3242,7 +3272,9 @@
   "detail": "The LaTeX path is used: ml/latex_report.py emits '[INVESTIGATOR: …]' and '[PLACEHOLDER: …]' instead, and ml/publication.py emits '[PLACEHOLDER: …]'. Three conventions already coexist, and manuscript_validator's artifact check only tolerates '[PLACEHOLDER:' (with colon) while failing bare '[PLACEHOLDER]'.",
   "ev": "ml/narrative_engine.py _gen_discussion() (5 scaffolds); ManuscriptDraft.OWNERSHIP_PREAMBLE; ManuscriptDraft.count_author_inputs(); tests/test_manuscript_trust.py::TestAuthorScaffolds::{test_marker_standardized,test_prior_work_scaffold_cites…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and the counts are worse than the row states: three marker conventions coexist and the LaTeX path carries 22 non-standard markers (19 PLACEHOLDER, 3 INVESTIGATOR) against the markdown path's single standardized one. So the two files in the same exported ZIP ask the author for input in three different vocabularies, and only one of them is what count_author_inputs and the trust tests know about. Compounding: RECORD-007 shows the LaTeX Discussion is rebuilt from generic placeholders whenever model_results exists, discarding the compiled [AUTHOR REQUIRED] scaffolds entirely - so the honesty guarantees pinned by tests/test_manuscript_trust.py::TestDiscussionHonesty apply to the markdown alone. Standardize on one marker and render LaTeX from the typed draft rather than by re-parsing markdown.",
+  "verified_ev": "ml/narrative_engine.py (the five [AUTHOR REQUIRED] scaffolds, OWNERSHIP_PREAMBLE, count_author_inputs); ml/latex_report.py at HEAD - 3 occurrences of 'INVESTIGATOR:' and 19 of 'PLACEHOLDER:'; ml/publication.py - 3 of 'PLACEHOLDER:'; manuscript_validator tolerates '[PLACEHOLDER:' with a colon and fails a bare '[PLACEHOLDER]'"
  },
  {
   "id": "RECORD-022",
