@@ -1,0 +1,1147 @@
+{
+ "schema_version": "1.0",
+ "measurements": [
+  {
+   "door": "classic",
+   "dataset": "messy-clinic",
+   "n_rows": 140,
+   "n_columns": 14,
+   "metrics": {
+    "required_decisions": 9,
+    "questions_asked": 34,
+    "irrelevant_questions": 25,
+    "findings_driven": 0.0,
+    "deferral_closes": null,
+    "coverage": 0.1111
+   },
+   "uncovered": [
+    "repair::sentinel_missing__age",
+    "repair::sentinel_missing__bp_2",
+    "repair::sentinel_missing__glucose",
+    "repair::category_variants__sex",
+    "repair::numeric_as_text__weight",
+    "repair::text_missing__notes",
+    "repair::unnamed_columns",
+    "repair::numeric_as_text__income"
+   ],
+   "required": [
+    {
+     "key": "choose_target",
+     "reason": "Nothing downstream can be decided before the outcome is named.",
+     "severity": "critical",
+     "source_finding": null,
+     "confidence": null,
+     "fix_label": null
+    },
+    {
+     "key": "repair::sentinel_missing__age",
+     "reason": "'age' may use numeric codes for missing values",
+     "severity": "critical",
+     "source_finding": "sentinel_missing__age",
+     "confidence": "medium",
+     "fix_label": "Treat 999 as missing in 'age'"
+    },
+    {
+     "key": "repair::sentinel_missing__bp_2",
+     "reason": "'bp_2' may use numeric codes for missing values",
+     "severity": "critical",
+     "source_finding": "sentinel_missing__bp_2",
+     "confidence": "medium",
+     "fix_label": "Treat 99 as missing in 'bp_2'"
+    },
+    {
+     "key": "repair::sentinel_missing__glucose",
+     "reason": "'glucose' may use numeric codes for missing values",
+     "severity": "critical",
+     "source_finding": "sentinel_missing__glucose",
+     "confidence": "medium",
+     "fix_label": "Treat 999 as missing in 'glucose'"
+    },
+    {
+     "key": "repair::category_variants__sex",
+     "reason": "'sex' has categories that differ only by spacing or case",
+     "severity": "warning",
+     "source_finding": "category_variants__sex",
+     "confidence": "high",
+     "fix_label": "Merge those variants in 'sex'"
+    },
+    {
+     "key": "repair::numeric_as_text__weight",
+     "reason": "'weight' looks numeric but is stored as text",
+     "severity": "warning",
+     "source_finding": "numeric_as_text__weight",
+     "confidence": "high",
+     "fix_label": "Convert 'weight' to numbers"
+    },
+    {
+     "key": "repair::text_missing__notes",
+     "reason": "'notes' spells missing values as text",
+     "severity": "warning",
+     "source_finding": "text_missing__notes",
+     "confidence": "high",
+     "fix_label": "Treat those as missing in 'notes'"
+    },
+    {
+     "key": "repair::unnamed_columns",
+     "reason": "1 column(s) have no name",
+     "severity": "warning",
+     "source_finding": "unnamed_columns",
+     "confidence": "high",
+     "fix_label": "Drop 1 unnamed column(s)"
+    },
+    {
+     "key": "repair::numeric_as_text__income",
+     "reason": "'income' looks numeric but is stored as text",
+     "severity": "warning",
+     "source_finding": "numeric_as_text__income",
+     "confidence": "low",
+     "fix_label": "Convert 'income' to numbers"
+    }
+   ],
+   "questions": [
+    {
+     "key": "target_selectbox",
+     "label": "Target Variable (what you want to predict)",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": "choose_target"
+    },
+    {
+     "key": "cohort_split_column",
+     "label": "Split the study by",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "features_multiselect",
+     "label": "Select features to use as predictors",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "task_override",
+     "label": "Override auto-detected task type",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "exploratory_mode",
+     "label": "Exploratory mode (disable test-set quarantine)",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "lockbox_fraction_slider",
+     "label": "Held-out test fraction",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "rename_1",
+     "label": "Rename",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "del_1",
+     "label": "Remove",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "apply_suggested_0",
+     "label": "Apply: Drop constant columns: site",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "btn_prediction",
+     "label": "Select Prediction",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "btn_hypothesis",
+     "label": "Select Hypothesis Testing",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "select_all_features",
+     "label": "Select All Features",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "clear_features",
+     "label": "Clear Selection",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "col_inspector",
+     "label": "Select column to inspect",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "fe_x",
+     "label": "X axis",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "fe_y",
+     "label": "Y axis",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "fe_color",
+     "label": "Color by",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "table1_group",
+     "label": "Stratify by",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "eda_outlier_method",
+     "label": "Outlier detection method",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "table1_continuous",
+     "label": "Continuous variables",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "table1_categorical",
+     "label": "Categorical variables",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "corr_threshold",
+     "label": "Highlight threshold",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "rec_run_data_sufficiency_check",
+     "label": "Run",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_readiness_linearity_scatter",
+     "label": "Run Linearity Check",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_readiness_multicollinearity_vif",
+     "label": "Run VIF (Multicollinearity)",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_quality_plausibility_check",
+     "label": "Run Physiologic Plausibility",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_quality_leakage_scan",
+     "label": "Run Leakage Detection",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_quality_data_sufficiency_check",
+     "label": "Run Data Sufficiency",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_quality_feature_scaling_check",
+     "label": "Run Feature Scaling",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_advanced_interaction_analysis",
+     "label": "Run Interaction Detection",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_advanced_outlier_influence",
+     "label": "Run Outlier Influence",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_advanced_target_profile",
+     "label": "Run Target Profile",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_advanced_quick_probe_baselines",
+     "label": "Run Quick Baselines",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "gen_table1",
+     "label": "Generate Table 1",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    }
+   ],
+   "deferrals": [],
+   "notes": [
+    "Classic has no deferral disposition; deferral_closes is not measurable rather than zero.",
+    "Questions counted are interactive widgets on pages 01-02 that change what happens next; navigation, session controls, LLM settings and paging are excluded by name.",
+    "SCOPE: the measured window is the exploration phase, pages 01-02. Classic surfaces the import doctor's findings in the audit display but offers one-click repair for only a subset; the rest are acted on at Preprocess (page 05), outside this window. Coverage below 1.0 therefore means 'not raised as an actionable decision during exploration', not 'never offered anywhere'. Guided is scored on the identical window."
+   ]
+  },
+  {
+   "door": "classic",
+   "dataset": "wide-assay",
+   "n_rows": 60,
+   "n_columns": 47,
+   "metrics": {
+    "required_decisions": 1,
+    "questions_asked": 31,
+    "irrelevant_questions": 30,
+    "findings_driven": 0.0,
+    "deferral_closes": null,
+    "coverage": 1.0
+   },
+   "uncovered": [],
+   "required": [
+    {
+     "key": "choose_target",
+     "reason": "Nothing downstream can be decided before the outcome is named.",
+     "severity": "critical",
+     "source_finding": null,
+     "confidence": null,
+     "fix_label": null
+    }
+   ],
+   "questions": [
+    {
+     "key": "target_selectbox",
+     "label": "Target Variable (what you want to predict)",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": "choose_target"
+    },
+    {
+     "key": "features_multiselect",
+     "label": "Select features to use as predictors",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "task_override",
+     "label": "Override auto-detected task type",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "exploratory_mode",
+     "label": "Exploratory mode (disable test-set quarantine)",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "lockbox_fraction_slider",
+     "label": "Held-out test fraction",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "rename_1",
+     "label": "Rename",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "del_1",
+     "label": "Remove",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "btn_prediction",
+     "label": "Select Prediction",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "btn_hypothesis",
+     "label": "Select Hypothesis Testing",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "select_all_features",
+     "label": "Select All Features",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "clear_features",
+     "label": "Clear Selection",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "col_inspector",
+     "label": "Select column to inspect",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "fe_x",
+     "label": "X axis",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "fe_y",
+     "label": "Y axis",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "fe_color",
+     "label": "Color by",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "table1_group",
+     "label": "Stratify by",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "eda_outlier_method",
+     "label": "Outlier detection method",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "table1_continuous",
+     "label": "Continuous variables",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "table1_categorical",
+     "label": "Categorical variables",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "corr_threshold",
+     "label": "Highlight threshold",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "rec_run_data_sufficiency_check",
+     "label": "Run",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_readiness_linearity_scatter",
+     "label": "Run Linearity Check",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_readiness_multicollinearity_vif",
+     "label": "Run VIF (Multicollinearity)",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_quality_leakage_scan",
+     "label": "Run Leakage Detection",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_quality_data_sufficiency_check",
+     "label": "Run Data Sufficiency",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_quality_feature_scaling_check",
+     "label": "Run Feature Scaling",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_advanced_interaction_analysis",
+     "label": "Run Interaction Detection",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_advanced_outlier_influence",
+     "label": "Run Outlier Influence",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_advanced_target_profile",
+     "label": "Run Target Profile",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_advanced_quick_probe_baselines",
+     "label": "Run Quick Baselines",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "gen_table1",
+     "label": "Generate Table 1",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    }
+   ],
+   "deferrals": [],
+   "notes": [
+    "Classic has no deferral disposition; deferral_closes is not measurable rather than zero.",
+    "Questions counted are interactive widgets on pages 01-02 that change what happens next; navigation, session controls, LLM settings and paging are excluded by name.",
+    "SCOPE: the measured window is the exploration phase, pages 01-02. Classic surfaces the import doctor's findings in the audit display but offers one-click repair for only a subset; the rest are acted on at Preprocess (page 05), outside this window. Coverage below 1.0 therefore means 'not raised as an actionable decision during exploration', not 'never offered anywhere'. Guided is scored on the identical window."
+   ]
+  },
+  {
+   "door": "classic",
+   "dataset": "longitudinal",
+   "n_rows": 135,
+   "n_columns": 7,
+   "metrics": {
+    "required_decisions": 1,
+    "questions_asked": 32,
+    "irrelevant_questions": 31,
+    "findings_driven": 0.0,
+    "deferral_closes": null,
+    "coverage": 1.0
+   },
+   "uncovered": [],
+   "required": [
+    {
+     "key": "choose_target",
+     "reason": "Nothing downstream can be decided before the outcome is named.",
+     "severity": "critical",
+     "source_finding": null,
+     "confidence": null,
+     "fix_label": null
+    }
+   ],
+   "questions": [
+    {
+     "key": "target_selectbox",
+     "label": "Target Variable (what you want to predict)",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": "choose_target"
+    },
+    {
+     "key": "cohort_split_column",
+     "label": "Split the study by",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "features_multiselect",
+     "label": "Select features to use as predictors",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "task_override",
+     "label": "Override auto-detected task type",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "exploratory_mode",
+     "label": "Exploratory mode (disable test-set quarantine)",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "lockbox_fraction_slider",
+     "label": "Held-out test fraction",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "rename_1",
+     "label": "Rename",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "del_1",
+     "label": "Remove",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "btn_prediction",
+     "label": "Select Prediction",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "btn_hypothesis",
+     "label": "Select Hypothesis Testing",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "select_all_features",
+     "label": "Select All Features",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "clear_features",
+     "label": "Clear Selection",
+     "door": "classic",
+     "step": "upload",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "col_inspector",
+     "label": "Select column to inspect",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "fe_x",
+     "label": "X axis",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "fe_y",
+     "label": "Y axis",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "fe_color",
+     "label": "Color by",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "table1_group",
+     "label": "Stratify by",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "eda_outlier_method",
+     "label": "Outlier detection method",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "table1_continuous",
+     "label": "Continuous variables",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "table1_categorical",
+     "label": "Categorical variables",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "corr_threshold",
+     "label": "Highlight threshold",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_readiness_linearity_scatter",
+     "label": "Run Linearity Check",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_readiness_multicollinearity_vif",
+     "label": "Run VIF (Multicollinearity)",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_quality_plausibility_check",
+     "label": "Run Physiologic Plausibility",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_quality_leakage_scan",
+     "label": "Run Leakage Detection",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_quality_data_sufficiency_check",
+     "label": "Run Data Sufficiency",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_quality_feature_scaling_check",
+     "label": "Run Feature Scaling",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_advanced_interaction_analysis",
+     "label": "Run Interaction Detection",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_advanced_outlier_influence",
+     "label": "Run Outlier Influence",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_advanced_target_profile",
+     "label": "Run Target Profile",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "run_advanced_quick_probe_baselines",
+     "label": "Run Quick Baselines",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    },
+    {
+     "key": "gen_table1",
+     "label": "Generate Table 1",
+     "door": "classic",
+     "step": "explore",
+     "triggering_finding": null,
+     "skipped": false,
+     "skip_reason": null,
+     "covers": null
+    }
+   ],
+   "deferrals": [],
+   "notes": [
+    "Classic has no deferral disposition; deferral_closes is not measurable rather than zero.",
+    "Questions counted are interactive widgets on pages 01-02 that change what happens next; navigation, session controls, LLM settings and paging are excluded by name.",
+    "SCOPE: the measured window is the exploration phase, pages 01-02. Classic surfaces the import doctor's findings in the audit display but offers one-click repair for only a subset; the rest are acted on at Preprocess (page 05), outside this window. Coverage below 1.0 therefore means 'not raised as an actionable decision during exploration', not 'never offered anywhere'. Guided is scored on the identical window."
+   ]
+  }
+ ]
+}
