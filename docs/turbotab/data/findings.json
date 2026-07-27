@@ -1829,7 +1829,9 @@
   "detail": "Skipping EDA is legal — no page blocks on it. The Model Coach block (05:194) is `if _profile:`, so the coach, the evidence probe, the auto-model-selection and all scoped insights simply do not render; smart defaults fall back to scaling='standard' and missing_indicators=False; page 06 shows no viability verdicts and no class-imbalance handling even on imbalanced data. Nothing says why.",
   "ev": "pages/02_EDA.py line 166 `st.session_state['dataset_profile'] = profile` is the only writer. Consumers: pages/05 lines 178, 192 (Model Coach, smart defaults' outlier/missing/skew detection, generate_preprocessing_insights), pages/06 lines 8…",
   "act": "Make profile computation a Project-level artifact computed on demand (it is already a pure ml.dataset_profile call), not a side effect of visiting a page. This is the single most important Router consequence in the audit: today the app's in…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and this is the most important Router consequence in the ledger. Skipping EDA is legal - no page blocks on it - so a user who goes straight to Preprocess silently loses the model coach, the evidence probe, the auto-model-selection and every scoped insight, gets smart defaults falling back to scaling='standard' and missing_indicators=False, and sees no viability verdicts and no class-imbalance handling on page 06. Nothing anywhere says why. The app's intelligence is gated on VISITING A PAGE rather than on having the data, and the profile is a pure function that could be computed on demand. In a feed there is no page to visit, so this must become a Project-level artifact before L9, not during it.",
+  "verified_ev": "pages/02_EDA.py:201 - st.session_state['dataset_profile'] = profile - is still the ONLY writer in the repository; consumers pages/05_Preprocess.py:178,192 and pages/06_Train_and_Compare.py; ml/dataset_profile.compute_dataset_profile is a pure function taking (df, target, features, task_type)"
  },
  {
   "id": "STATE-036",
@@ -1839,7 +1841,9 @@
   "detail": "Any frame whose index is not 0..n-1 — a cohort run (apply_cohort returns df.loc[hit], labels preserved), a plausibility-filtered frame, a target-NaN-dropped frame — makes df_raw.iloc[test_indices] select the WRONG ROWS. SHAP, subgroup explainability and the residual tables are then computed on people who were not in the test set, with no error and plausible-looking numbers.",
   "ev": "pages/06_Train_and_Compare.py:385 `original_indices = np.where(mask)[0]` vs :382 `orig_labels = df.index[mask]`; written at :683-693; consumed at pages/07_Explainability.py:185 `raw_candidate = df_raw.iloc[test_indices]`, :196, :1196. tests…",
   "act": "Store labels everywhere. Make SplitResult carry train_labels/val_labels/test_labels (pd.Index), and make the one place that needs positions derive them at use time via frame.index.get_indexer(labels), asserting no -1. Add a test with a shuf…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of CONTRACT-001 / MINE-014 / STATE-025 from the state pass, unchanged at HEAD, and the detail it adds is about the TEST rather than the code: the only test covering this seam passes because its fixture uses a default RangeIndex, i.e. the one condition under which positions and labels agree. So the seam is covered in the sense that a test touches it and uncovered in the sense that the test cannot fail. A test with a shuffled or non-contiguous index is the missing piece, and it would fail today. The action is already half-done - Split carries train/val/test_labels - so what remains is deriving positions at USE time via frame.index.get_indexer(labels) with an assertion that no result is -1.",
+  "verified_ev": "pages/06_Train_and_Compare.py:551-553 (positions) and :556-558 (labels, unread); pages/07_Explainability.py:185,196,1196; the split now emits labels (ml/splits.py:107-109) and the lockbox stores labels (utils/test_lockbox.py:423)"
  },
  {
   "id": "STATE-037",
@@ -1849,7 +1853,9 @@
   "detail": "A researcher enables plausibility filtering in 'filter' mode AFTER applying feature engineering: the rows they excluded are silently still in the training data, and the manuscript's n is wrong. Conversely, a filtered_data left over from an abandoned preprocessing config keeps shrinking the dataset across every reset that is not a full data change.",
   "ev": "utils/session_state.get_data:207-212 (`df_engineered` first, `filtered_data` only in the else branch); pages/05_Preprocess.py:863 writes filtered_data; reset_downstream_results:301-358 never touches it (only set_data:264 and reset_data_depe…",
   "act": "Collapse the three frames into one explicit derivation chain on the Project (base → cleaned → filtered → engineered) with each step recorded, so 'engineered' is computed FROM 'filtered' rather than instead of it. Add filtered_data to the in…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, both halves. filtered_data is still DEAD whenever df_engineered exists, so enabling plausibility filtering in 'filter' mode after applying feature engineering silently keeps the excluded rows in the training data and the manuscript's n is wrong. And reset_downstream_results still never clears it, so a filtered_data left over from an abandoned preprocessing config keeps shrinking the dataset across every partial reset. The two failures point opposite directions from one cause: three frames with an implicit precedence instead of one explicit derivation chain. base -> cleaned -> filtered -> engineered, each step recorded, with engineered computed FROM filtered rather than instead of it.",
+  "verified_ev": "utils/session_state.py:196 (docstring: df_engineered > filtered_data > raw_data), :207-215 (the precedence), :280 and :486 (the only two places filtered_data is popped - set_data and reset_data_dependent_state); reset_downstream_results never touches it; pages/05_Preprocess.py:863 writes it"
  },
  {
   "id": "STATE-038",
@@ -1859,7 +1865,9 @@
   "detail": "After a data change, a target change, a feature-selection change or a lockbox redraw, the exported manuscript contains partial-dependence curves, feature-dropout sensitivity numbers and Bland-Altman statistics computed from models that no longer exist — presented as results for the current analysis.",
   "ev": "reset_downstream_results _analysis_keys (utils/session_state.py:350-356) and the report list (:362-367) omit all of them. Consumers: pages/10_Report_Export.py:289 `st.session_state.get('pdp_results') or st.session_state.get('partial_depende…",
   "act": "Make the Project's result registry EXHAUSTIVE and derive the invalidation set from it: a result key that is not registered against a stage should be a schema error at startup, not a survivor. Add a test that walks every session_state write …",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD except for preprocess_built_model_keys, which is now cleared (see STATE-009). Everything else in this list still survives every reset, so after a data change, a target change, a feature-selection change or a lockbox redraw the exported manuscript can carry partial-dependence curves, feature-dropout sensitivity numbers and Bland-Altman statistics computed from models that no longer exist, presented as results for the current analysis. The remedy this row names is the right one and is the same one SWEEP-013 and TEST-006 arrive at from other directions: make the result registry EXHAUSTIVE and derive invalidation from it, so an unregistered result key is a schema error at startup rather than a survivor. turbotab/cascade.py is that registry; it is not yet authoritative for these keys.",
+  "verified_ev": "utils/session_state.py reset_downstream_results - pdp_results, sensitivity_dropout_results, sensitivity_dropout_baseline, bland_altman_results, preprocessing_summary, manuscript_export_context, compiled_pdf, manuscript_table1_df/metadata and table1_custom_test_footnotes are absent from both the analysis-key list and the report list; consumers in pages/10_Report_Export.py"
  },
  {
   "id": "STATE-039",
@@ -1869,7 +1877,10 @@
   "detail": "(a) Saving engineered features leaves a target_transformer and y_train_original from the previous split alive — page 08 then inverse-transforms new predictions with the old transformer. (b) The ledger keeps asserting a resolved target transform and resolved training that were just invalidated. (c) ml/publication and pages/10 read data_config.feature_cols, which still names the PRE-FE feature list, so the Methods section reports the wrong predictors while page 06 trains on the engineered ones.",
   "ev": "pages/03_Feature_Engineering.py:1229-1250 (21 keys) vs utils/session_state.py:283-415 (~60 keys + provenance + ledger). The Save path omits: train/val/test_indices, split_config, target_transformer, target_label_encoder, y_*_original, cv_st…",
   "act": "Delete the hand-rolled block and route page 03's Save through the canonical resetter (which pages/03's own Reset and Skip buttons already do, at :172 and :185). Then make selected_features and data_config.feature_cols a single field on the …",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Third sighting of the same defect (CONTRACT-002, STATE-006), and closed. All three page-03 paths route through the canonical resetter now, so the three consequences this row enumerates are gone with it: no stale target_transformer or y_*_original surviving into page 08's inverse transform, no ledger left asserting a resolved target transform that was just invalidated, and the feature-list drift handled by the cascade's own restore step. The AST guard fails if page 03 clears a cascade-owned key again, and test_the_reconciled_call_clears_what_the_hand_rolled_one_missed pins the keys the copy used to omit.",
+  "test": "tests/integration/test_cascade_dag_equivalence.py::test_page_03_no_longer_hand_rolls_its_own_cascade",
+  "verified_ev": "pages/03_Feature_Engineering.py:1261-1280 (Save now calls reset_downstream_results with explicit flags), :185 (Reset), :198 (Skip); tests/integration/test_cascade_dag_equivalence.py:177-224"
  },
  {
   "id": "STATE-040",
@@ -1879,7 +1890,9 @@
   "detail": "Engineer features in exploratory mode → turn exploratory mode off → train → export. The manuscript claims a clean held-out evaluation, and there is no warning anywhere, because the flag that would have watermarked it was removed by the very reset that was supposed to guarantee cleanliness. The in-file rationale at :412-415 ('only quarantine-clean if EVERY surviving result was computed with the lockbox on') is correct — the implementation just does not hold when a survivor is kept.",
   "ev": "utils/session_state.py:415 `st.session_state.pop('exploratory_used', None)` is unconditional; pages/01_Upload_and_Audit.py:1114-1119 `_on_exploratory_toggle` calls `_rdr(clear_feature_engineering=False)` — so toggling the quarantine OFF→ON …",
   "act": "Make quarantine_ever_off monotone: it can be cleared ONLY by a full data reset, never by a partial one. Better: tag every derived artifact with the quarantine state it was produced under, and let the manuscript ask the artifacts rather than…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and the sequence is still reachable exactly as written: engineer features in exploratory mode, turn exploratory mode off, train, export. Toggling the quarantine back ON calls the resetter with clear_feature_engineering=False, so df_engineered survives - it was fitted with the test rows visible - while the watermark that would have disclosed it is popped unconditionally at :474. The manuscript then claims a clean held-out evaluation with no warning anywhere. The in-file rationale at :471-473 is correct in principle ('only quarantine-clean if EVERY surviving result was computed with the lockbox on'); the implementation just does not hold when a survivor is deliberately kept. Make the flag monotone - clearable only by a full data reset - or better, tag each artifact with the quarantine state it was produced under and let the manuscript ask the artifacts.",
+  "verified_ev": "utils/session_state.py:474 - st.session_state.pop('exploratory_used', None) - unconditional, outside every flag block; pages/01_Upload_and_Audit.py's exploratory toggle calls reset_downstream_results(clear_feature_engineering=False)"
  },
  {
   "id": "STATE-041",
@@ -1889,7 +1902,9 @@
   "detail": "(a) Upload a brand-new dataset while exploratory mode is on: the full reset clears everything except the quarantine-off flag, so the new study starts with no test-set protection and no banner. (b) Restore an exploratory session and go anywhere except page 01: is_exploratory() reads False, the app behaves as if quarantined, but the restored artifacts were produced without quarantine.",
   "ev": "utils/session_state.reset_data_dependent_state:418-445 never touches it; pages/01_Upload_and_Audit.py:1158 `st.checkbox(..., key='exploratory_mode')`; session_manager._SAFE_WIDGET_KEYS:131 stores it; pages/01:1130-1143 is the ONLY place tha…",
   "act": "quarantine_off becomes an ordinary persisted Project field with no widget backing; include it in the full reset; and on load, apply it before any stage renders.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, both halves. (a) Uploading a brand-new dataset with exploratory mode on runs the full reset, which clears everything EXCEPT the quarantine-off flag, so the new study begins with no test-set protection - and the banner that would say so is on the page the user just left. (b) Restoring an exploratory session and going anywhere except page 01 leaves is_exploratory() reading False, so the app behaves as if quarantined while the restored artifacts were produced without it. Both come from the same root: a methodological state stored as a Streamlit widget key, which means one page owns whether it is true. It has to be an ordinary persisted Project field with no widget backing, cleared by the full reset, and applied before any stage renders.",
+  "verified_ev": "utils/session_state.py reset_data_dependent_state never touches exploratory_mode; pages/01_Upload_and_Audit.py binds it as a st.checkbox widget key and is the only place that claims it from the deferred widget-restore dict; utils/session_manager.py _SAFE_WIDGET_KEYS carries it"
  },
  {
   "id": "STATE-042",
@@ -1899,7 +1914,10 @@
   "detail": "A restored session that was originally split BY SUBJECT comes back believing it was a plain row split: render_lockbox_status stops saying 'so no subject appears on both sides', the disclosure sentence vanishes from the manuscript, and cohort/lockbox reporting loses the grouping claim — while the labels (and therefore the actual protection) are still correct, so nothing looks wrong.",
   "ev": "utils/session_manager.py:298-306 encodes only labels/fraction/seed/n_total/n_test/signature/stratified; :565-573 restores the same 7. `strata`, `group_col` and `n_test_groups` are dropped. ensure_lockbox:139-141 returns the existing lockbox…",
   "act": "Serialize the whole LockboxSpec. Add strata/group_col/n_test_groups to the encoder and decoder, and assert round-trip equality in a test.",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Closed. The serialization is no longer lossy in the way this row describes: group_col, n_test_groups and both strata lists round-trip, and the encoder additionally gained target_col, group_kind, group_noun and fraction_requested - which matter for the same reason, since they are what the status chip and the manuscript disclosure sentence are built from. The named test is exactly the failure this row predicted: a session split BY SUBJECT that comes back believing it was a plain row split. Note the restore path is still wrapped in a try that degrades to a warning rather than raising - correct here, because the warning IS surfaced and the labels are the load-bearing part; the remaining hole in that path is the label-dtype coercion tracked separately as STATE-043.",
+  "test": "tests/test_state_survives_the_round_trip.py::test_a_restored_lockbox_still_knows_it_was_drawn_by_subject",
+  "verified_ev": "utils/session_manager.py:315-345 (the encoder now carries strata, strata_requested, group_col, group_kind, group_noun, n_test_groups, target_col and fraction_requested alongside the original seven) and :775-790 (the decoder restores all of them)"
  },
  {
   "id": "STATE-043",
@@ -1909,7 +1927,9 @@
   "detail": "A float, datetime, or string-with-different-repr index round-trips to labels that match nothing in the restored frame. train_row_mask then returns all-True for every row, is_exploratory() is False, no banner fires, and the quarantine is silently gone for the rest of the session.",
   "ev": "utils/session_manager.py:288-296 `_plain_label`: bool→str, int→int, numpy scalar→.item() then int-or-str, everything else→`str(x)`. The comment correctly explains the numpy-int case but the str fallback is the remaining hole.",
   "act": "Store label_dtype alongside the labels and re-cast on load; on restore, assert |set(labels) ∩ set(frame.index)| == n_test and raise a visible SessionLoadError otherwise (the loader already has a warnings channel for exactly this).",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The str fallback is still the hole: a float, datetime or otherwise-repr-sensitive index round-trips to labels that match nothing in the restored frame, and because train_row_mask returns all-True when nothing matches - it tests 'lbl not in test_set' per row - the quarantine is silently gone for the whole session with no banner, since is_exploratory() is False. Note the restore block DOES have a warnings channel and uses it when the block raises; it just has nothing to raise on, because a label set that matches zero rows is not an exception. Store label_dtype beside the labels and re-cast on load, and assert |set(labels) & set(frame.index)| == n_test on restore, raising into that existing channel.",
+  "verified_ev": "utils/session_manager.py:309-317 _plain_label - bool -> str, int -> int, numpy scalar -> .item() then int-or-str, EVERYTHING ELSE -> str(x); the decoder at :775-790 restores the labels verbatim with no dtype record and no intersection check against the restored frame"
  },
  {
   "id": "STATE-044",
@@ -1919,7 +1939,9 @@
   "detail": "Two materially different frames can produce the same sum (wraparound is a real collision channel over large frames), so set_data treats a genuine data change as a benign rerun and every stale model, metric and figure survives. Conversely a pandas upgrade changes the hash for identical data, so the first render after a deploy redraws the lockbox and wipes the user's work with a banner that says the data changed.",
   "ev": "utils/test_lockbox.py:46 and utils/session_state.py:228 (`except Exception: return None` → set_data falls back to schema-only invalidation, per the docstring at :224-226).",
   "act": "Use an explicit, version-pinned digest (e.g. blake2b over the parquet bytes of a canonicalized frame) and store the digest algorithm id in the Project. Never let 'cannot fingerprint' silently mean 'unchanged' — make it mean 'assume changed'…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Both the lockbox signature and the invalidation fingerprint still rest on a SUM of per-row hashes, which wraps silently on int64 and is therefore a real collision channel over large frames - and set_data treats a collision as a benign rerun, so every stale model, metric and figure survives a genuine data change. The failure runs the other way too: pd.util.hash_pandas_object is not a stability guarantee across pandas versions, so the first render after an upgrade can redraw the lockbox and wipe the user's work under a banner saying the data changed. And the unhashable-cell path degrades to None, which MINE-010 covers. Use a version-pinned digest over canonicalized bytes, store the algorithm id in the Project, and never let 'cannot fingerprint' mean 'unchanged'.",
+  "verified_ev": "utils/test_lockbox.py:85 (content = int(pd.util.hash_pandas_object(df, index=False).sum())) and utils/session_state.py:244 (the same sum inside _content_fingerprint, with except Exception: return None at :245-246)"
  },
  {
   "id": "STATE-045",
@@ -1929,7 +1951,9 @@
   "detail": "After an FE reset with an empty data_config.feature_cols, selected_features is restored but data_config.feature_cols stays empty. Page 06 works (it prefers selected_features), so nothing errors — but ml/publication:213-215 and pages/10 read data_config.feature_cols and produce a manuscript with an empty predictor list.",
   "ev": "utils/session_state.py:311-313: `dc = st.session_state.get('data_config'); if dc is not None and getattr(dc, 'feature_cols', None): dc.feature_cols = list(pre_fe)`. pages/03:1218 falls back to `list(selected_features)` when data_config.feat…",
   "act": "Drop the truthiness guard and make the two lists one field. If they must stay separate during migration, assert they are equal at every stage boundary.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: the restore of data_config.feature_cols is still guarded on it being ALREADY truthy, so after an FE reset with an empty feature_cols the selection is restored to selected_features and data_config keeps an empty list. Page 06 works, because it prefers selected_features - which is why nothing errors - but ml/publication.py and pages/10 read data_config.feature_cols and produce a manuscript with an empty predictor list. That is the exact shape the governing rule forbids: not a crash, a confident document missing its predictors. Drop the truthiness guard, and make the two lists one field; if they must stay separate through the migration, assert equality at every stage boundary.",
+  "verified_ev": "utils/session_state.py:357-362 - pre_fe = pop('pre_fe_feature_cols'); if restore_pre_fe_features and pre_fe: selected_features = list(pre_fe); dc = get('data_config'); if dc is not None and getattr(dc, 'feature_cols', None): dc.feature_cols = list(pre_fe)"
  },
  {
   "id": "STATE-046",
@@ -1939,7 +1963,9 @@
   "detail": "Applying a consensus or manual feature selection deletes every auto-generated EDA insight (skew, missingness, leakage, collinearity findings). Today they come back because the user can revisit page 02. In TurboTab's single scrolling interview there is no revisit — the findings are gone permanently, and the manuscript's limitations section quietly shrinks.",
   "ev": "utils/session_state.py:407-410 — outside both `if clear_feature_selection` blocks. Called from pages/04:447 and :494 with clear_feature_selection=False.",
   "act": "Gate the prune on the same stage graph as the rest: pruning EDA insights is only correct when the DATA changed, not when the feature list did. Make invalidate() return the prune set so it is visible and testable.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Applying a consensus or manual feature selection still deletes every auto-generated EDA insight - skew, missingness, leakage and collinearity findings - even though that call explicitly asks to keep the selection and its record. Today the damage is repaired by accident, because the user can revisit page 02 and the producers re-detect. In a single scrolling interview there is no revisit: the findings are gone permanently and the manuscript's limitations section quietly shrinks. Pruning EDA insights is only correct when the DATA changed, not when the feature list did, so this belongs on the same stage graph as everything else - and invalidate() should return the prune set so it is visible and testable rather than a side effect.",
+  "verified_ev": "utils/session_state.py:466-469 - prune_auto_generated({'02_EDA','05_Preprocess','06_Train_and_Compare'}) sits OUTSIDE both clear_feature_selection blocks, so it runs on every call including the ones from pages/04 that pass clear_feature_selection=False"
  },
  {
   "id": "STATE-047",
@@ -1949,7 +1975,9 @@
   "detail": "After a reset, WorkflowProvenance.statistical_validation still lists the tests that were run, get_completeness() reports statistical_validation=True, and the generated Methods section asserts hypothesis tests whose results were just deleted. The Router (which will key off get_completeness) will also believe that stage is done and never re-ask the question.",
   "ev": "utils/session_state.py:379-385 `_sections = ['eda','split','preprocessing','training','explainability','coach']` — statistical_validation and upload are absent; :353 pops hypothesis_test_results.",
   "act": "Null statistical_validation with the rest. Keep `upload` deliberately (it survives because it describes the data configuration, which the reset preserves) but assert that explicitly in a test so the omission reads as a decision.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. After a reset, WorkflowProvenance.statistical_validation still lists the tests that were run and get_completeness() still reports statistical_validation=True, while the results those tests produced have just been deleted - so the generated Methods section asserts hypothesis tests whose results are gone. The Router consequence is the one to weigh: get_completeness is exactly what a Router keys off to decide which questions remain, so it will believe that stage is done and never re-ask. Null statistical_validation with the rest. Keep upload deliberately - it describes the data configuration, which the reset preserves - but assert that in a test so the omission reads as a decision rather than an oversight.",
+  "verified_ev": "utils/session_state.py:438-441 (_sections = ['eda','split','preprocessing','training','explainability','coach'] - statistical_validation and upload absent) while hypothesis_test_results IS cleared; utils/workflow_provenance.py:233 (the field), :511-516 (the writer), :550 (get_completeness reports it as present when non-None)"
  },
  {
   "id": "STATE-048",
@@ -1959,7 +1987,9 @@
   "detail": "A 60/20/20 split with target_transform='yeo-johnson' and target trimming silently reverts to 70/15/15, transform='none', no trimming after any downstream reset. Nothing tells the user; Prepare Splits just uses different settings than the ones on screen a moment ago.",
   "ev": "utils/session_state.py:330 pops it inside the node-3 loop; :135 seeds `'split_config': SplitConfig()` and :183-185 re-applies any missing default at the top of every page.",
   "act": "Reset to an explicit default instance and surface it in the InvalidationReport, or exclude configuration objects from the pop loop entirely (they are configuration, not results — which is the resetter's own stated contract).",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. split_config is still popped by the resetter and silently re-created with DEFAULTS by the next init_session_state(), so a 60/20/20 split with target_transform='yeo-johnson' and target trimming reverts to 70/15/15, transform='none', no trimming after any downstream reset - and nothing tells the user, so Prepare Splits simply uses different settings than the ones on screen a moment ago. This contradicts the function's own stated contract, quoted in its docstring: clear every RESULT, keeping CONFIGURATION. split_config is configuration. Either exclude configuration objects from the pop loop or reset to an explicit named default and surface it in an invalidation report. Note this compounds STATE-007/016: the trim settings that provenance already fails to record are also the ones silently reverted.",
+  "verified_ev": "utils/session_state.py:389 ('split_config' inside the pop loop) versus :135 ('split_config': SplitConfig() in the init defaults) and the re-application of missing defaults at the top of every page"
  },
  {
   "id": "STATE-049",
@@ -1969,7 +1999,9 @@
   "detail": "(a) The signature changes purely because FE added columns, so revisiting the upload step after FE can redraw the lockbox and fire a downstream reset. (b) Worse: detect_repeated_subjects scans engineered column NAMES; any generated column containing 'id'/'case'/'record'/'person' with 1.5–50 rows per level flips the split to GroupShuffleSplit, producing a completely different sealed set and a subject-level split the user never asked for.",
   "ev": "pages/01_Upload_and_Audit.py:619 `df = get_data(full_study=True)` → utils/session_state.get_data:207-215 returns df_engineered when present → pages/01:1074 `ensure_lockbox(df, target_col, task_type_final, group_col=_entity_col)` → utils/tes…",
   "act": "Draw and validate the lockbox against the PRE-FE frame only (the frame that defined the modeling problem), and pass the candidate subject columns explicitly (detect_repeated_subjects already accepts candidate_cols) rather than scanning ever…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, both halves, and note that full_study=True does NOT help here - it escapes the cohort filter, not the df_engineered preference, so once feature engineering exists the lockbox is drawn and validated against the ENGINEERED frame. (a) The content signature then changes purely because FE added columns, so revisiting the upload step after FE can redraw the lockbox and fire a downstream reset. (b) The worse half: subject detection scans engineered column NAMES, so any generated column containing id/case/record/person with 1.5-50 rows per level flips the split to GroupShuffleSplit, producing a completely different sealed set and a subject-level split the user never asked for. Draw and validate against the PRE-FE frame - the frame that defined the modeling problem - and pass candidate subject columns explicitly rather than scanning.",
+  "verified_ev": "pages/01_Upload_and_Audit.py:651 (df = get_data(full_study=True), which returns df_engineered when present) -> :1106 and :1211 (ensure_lockbox(df, target_col, task_type_final, group_col=_entity_col)); utils/test_lockbox.py:85 (the signature hashes that frame); detect_repeated_subjects scans column names"
  },
  {
   "id": "STATE-050",
