@@ -5,19 +5,19 @@
   {
    "dataset": "messy-clinic",
    "classic": {
-    "required_decisions": 9,
+    "required_decisions": 10,
     "questions_asked": 34,
-    "irrelevant_questions": 25,
+    "irrelevant_questions": 24,
     "findings_driven": 0.0,
     "deferral_closes": null,
-    "coverage": 0.1111,
+    "coverage": 0.1,
     "pull_affordances": 0
    },
    "guided": {
-    "required_decisions": 9,
-    "questions_asked": 9,
+    "required_decisions": 10,
+    "questions_asked": 10,
     "irrelevant_questions": 0,
-    "findings_driven": 0.8889,
+    "findings_driven": 0.9,
     "deferral_closes": 1.0,
     "coverage": 1.0,
     "pull_affordances": 7,
@@ -51,19 +51,19 @@
   {
    "dataset": "longitudinal",
    "classic": {
-    "required_decisions": 1,
+    "required_decisions": 2,
     "questions_asked": 32,
-    "irrelevant_questions": 31,
+    "irrelevant_questions": 30,
     "findings_driven": 0.0,
     "deferral_closes": null,
-    "coverage": 1.0,
+    "coverage": 0.5,
     "pull_affordances": 0
    },
    "guided": {
-    "required_decisions": 1,
-    "questions_asked": 1,
+    "required_decisions": 2,
+    "questions_asked": 2,
     "irrelevant_questions": 0,
-    "findings_driven": 0.0,
+    "findings_driven": 0.5,
     "deferral_closes": null,
     "coverage": 1.0,
     "pull_affordances": 5,

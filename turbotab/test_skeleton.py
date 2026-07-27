@@ -128,18 +128,32 @@ def test_findings_match_a_direct_engine_call(df: pd.DataFrame):
     Compared field by field against `ml.import_doctor.diagnose` reached directly,
     so a future 'improvement' in `engine.py` that rewords or reorders a finding
     fails here.
+
+    Two engine modules now feed this stream rather than one. `ml.binary_text`
+    supersedes the doctor's numeric-coercion proposal on the columns it claims
+    (GUIDED-001), so the assertion is: every doctor finding that was not
+    superseded is reported verbatim, and every superseded one is replaced by a
+    binary reading of the same column — never dropped, never shown twice.
     """
-    from ml import import_doctor          # the real thing, no adapter
+    from ml import binary_text, import_doctor      # the real thing, no adapter
 
     direct = import_doctor.diagnose(df)
     assert direct, "the fixture is supposed to be a messy file"
 
+    binary = binary_text.detect_binary_text(df)
+    claimed = {c for f in binary for c in f.affected_columns}
+    superseded = [d for d in direct
+                  if d.fix_kind == "coerce_numeric"
+                  and any(str(c) in claimed for c in d.affected_columns)]
+    survivors = [d for d in direct if d not in superseded]
+
     ranked = engine.rank_findings(engine.diagnose(df), None)
     structural = [f for f in ranked if f["source"] == "structure"]
 
-    assert len(structural) == len(direct)
+    assert len(structural) == len(survivors) + len(binary)
     by_id = {f["id"]: f for f in structural}
-    for d in direct:
+
+    for d in survivors + binary:
         got = by_id[d.id]
         assert got["title"] == d.title
         assert got["detail"] == d.detail
@@ -149,6 +163,13 @@ def test_findings_match_a_direct_engine_call(df: pd.DataFrame):
         assert got["fix_kind"] == d.fix_kind
         assert got["affected_columns"] == list(d.affected_columns)
         assert got["auto_suggestable"] is bool(d.auto_suggestable)
+
+    for d in superseded:
+        assert d.id not in by_id, (
+            f"{d.id} was superseded by a binary reading and is still shown; two "
+            "repair proposals for one column make the user settle the engine's "
+            "own disagreement")
+        assert any(str(c) in claimed for c in d.affected_columns)
 
 
 def test_profile_matches_a_direct_engine_call(df: pd.DataFrame):

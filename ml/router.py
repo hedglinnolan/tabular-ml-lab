@@ -52,12 +52,26 @@ Headless: no Streamlit, no project object, no I/O.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 # Steps of the exploration phase, in order. The Router asks at the earliest step
 # that can act on a question, which is what makes deferral meaningful: a
 # deferred item has somewhere later to go.
 STEPS: Sequence[str] = ("data", "explore")
+
+# Every step a deferral can name, built or not, with the words the interface
+# uses for it. A deferral affordance says "Decide at Preprocess" rather than
+# "Remind me later" — the API has always required a target_step, so the
+# information existed at click time and the button simply did not say it
+# (GUIDED-008). Naming a step that is not built yet is correct: it is where the
+# item resurfaces, and pretending otherwise would be the vaguer answer.
+STEP_LABELS: Dict[str, str] = {
+    "data": "Data",
+    "explore": "Explore",
+    "preprocess": "Preprocess",
+    "features": "Features",
+    "train": "Train",
+}
 
 # Severity order for ranking. The engine's own vocabulary; no new tiers.
 _SEVERITY_RANK = {"critical": 0, "blocker": 0, "warning": 1, "caution": 2, "info": 3,
@@ -334,6 +348,35 @@ def _is_repairable(f: Dict[str, Any]) -> bool:
     return (f.get("severity") in ("critical", "warning")
             and bool(f.get("fix_label"))
             and f.get("fix_kind") not in (None, "none"))
+
+
+def defer_destination(finding: Dict[str, Any]) -> Tuple[str, str]:
+    """Where a deferred finding resurfaces, and the label the button shows.
+
+    The Router owns this because it owns "which step can act on this". The
+    frontend must not invent a destination: a deferral whose target is chosen by
+    the renderer is a deferral the record cannot honor.
+
+    Two rules:
+
+    * A **structural** repair changes what the table *is*, so it has to be
+      settled before rows acquire identities (`T0-ID-001`). Its home step is
+      `data`; deferring it moves it to `explore`, the last step where the table
+      can still be repaired.
+    * A **profile** finding — missingness, distribution, plausibility — is
+      answered by a statistical transform, and those are recorded now and fitted
+      inside the per-model pipeline. They belong to `preprocess`.
+    """
+    source = finding.get("source")
+    category = ((finding.get("params") or {}).get("category") or "")
+    if source == "structure":
+        step = "explore"
+    elif category.startswith("missing") or category in (
+            "physiologic_plausibility", "outliers", "distribution", "skew"):
+        step = "preprocess"
+    else:
+        step = "preprocess"
+    return step, STEP_LABELS.get(step, step.title())
 
 
 def _home_step(f: Dict[str, Any]) -> str:

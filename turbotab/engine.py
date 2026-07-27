@@ -37,7 +37,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from ml import import_doctor, triage                        # noqa: E402
+from ml import binary_text, card_evidence, import_doctor, missingness_plan, triage  # noqa: E402
 from ml.dataset_profile import (                            # noqa: E402
     DatasetProfile,
     DataWarning,
@@ -129,12 +129,23 @@ def read_table(raw: bytes, filename: str = "upload.csv") -> pd.DataFrame:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def diagnose(df: pd.DataFrame) -> List[ShapeFinding]:
-    """Structural diagnosis. Straight through to `ml.import_doctor.diagnose`.
+    """Structural diagnosis, from two engine modules rather than one.
 
-    That function is pure — it never mutates `df` and applies no fix. Preview
-    before apply is the engine's existing contract, not something added here.
+    `ml.import_doctor.diagnose` is pure — it never mutates `df` and applies no
+    fix. Preview before apply is the engine's existing contract, not something
+    added here.
+
+    `ml.binary_text` is folded in on top of it because the doctor reaches for
+    numeric coercion before binary when text parses truthy: a `True`/`False`
+    column with blanks draws "Convert to numbers" at *high* confidence, which is
+    arithmetically fine and diagnostically wrong. The binary reading supersedes
+    the numeric one for the columns it claims — two proposals for one column
+    would make the user adjudicate the engine's own disagreement (GUIDED-001).
+
+    Both merges are decisions about *which* finding to show, not new statistics;
+    the statistics are computed in `ml/`.
     """
-    return import_doctor.diagnose(df)
+    return binary_text.diagnose_with_binary(df, import_doctor.diagnose(df))
 
 
 def detect_task_type(df: pd.DataFrame, target: str) -> Dict[str, Any]:
@@ -176,6 +187,22 @@ def profile(
 # judgment this adapter makes, and it introduces no new tiers.
 SEVERITY_RANK = {"critical": 0, "warning": 1, "caution": 2, "info": 3}
 CONFIDENCE_RANK = {"high": 0, "medium": 1, "low": 2}
+
+
+def _with_deferral(d: Dict[str, Any]) -> Dict[str, Any]:
+    """Attach where this finding goes if deferred, and what to call that step.
+
+    Delegated to `ml.router.defer_destination` rather than decided here: the
+    Router owns "which step can act on this", and a destination chosen by the
+    renderer is one the record cannot honor. The API has always rejected a
+    deferral with no target — the button simply never said what the target was
+    (GUIDED-008).
+    """
+    from ml import router
+    step, label = router.defer_destination(d)
+    d["defer_target"] = step
+    d["defer_target_label"] = label
+    return d
 
 
 def shape_finding_to_dict(f: ShapeFinding) -> Dict[str, Any]:
@@ -257,6 +284,33 @@ def _differs(before: pd.DataFrame, after: pd.DataFrame) -> pd.DataFrame:
     return ne & ~both_missing
 
 
+def _differs_as_shown(before: pd.DataFrame, after: pd.DataFrame) -> pd.DataFrame:
+    """Elementwise "this cell *reads* differently", with NaN == NaN.
+
+    Deliberately not `_differs`. That one compares values, which is right for
+    deciding whether row identity survived; this one compares what the user will
+    see in the two panes, which is right for deciding what to count and what to
+    highlight — and the two disagree in both directions:
+
+      * `"1200"` → `1200` is a dtype change and no visible change. Value
+        comparison called it 8 changed cells while every rendered cell was
+        identical, so the panel said "8 cells change" over an unmarked table.
+      * `True` → `1.0` is the reverse: pandas holds `True == 1`, so value
+        comparison saw nothing while the panes plainly differ.
+
+    The count, the highlighted columns and the highlighted cells now all come
+    from this one function, so the header and the table cannot contradict each
+    other. Type-only changes are still reported — by the `dtype of …` row in the
+    statistics, which is where a type change belongs.
+    """
+    try:
+        ne = before.astype(str).ne(after.astype(str))
+    except (TypeError, ValueError):
+        ne = before.ne(after)
+    both_missing = before.isna() & after.isna()
+    return ne & ~both_missing
+
+
 def _cell(v: Any) -> str:
     return "" if v is None or (isinstance(v, float) and math.isnan(v)) or v is pd.NaT else str(v)
 
@@ -290,7 +344,7 @@ def preview_fix(df: pd.DataFrame, finding: ShapeFinding) -> Dict[str, Any]:
         }
 
     before = df
-    after, description = import_doctor.apply_fix(df.copy(deep=True), finding)
+    after, description = _dispatch_fix(df.copy(deep=True), finding)
 
     cols_before, cols_after = list(before.columns), list(after.columns)
     added = [c for c in cols_after if c not in cols_before]
@@ -330,7 +384,7 @@ def preview_fix(df: pd.DataFrame, finding: ShapeFinding) -> Dict[str, Any]:
     if identity_ok and common_cols and len(after):
         try:
             aligned = before.loc[after.index, common_cols]
-            mask = _differs(aligned, after[common_cols])
+            mask = _differs_as_shown(aligned, after[common_cols])
             changed_count = int(mask.to_numpy().sum())
             changed_cols = [c for c in common_cols if bool(mask[c].any())]
             changed_labels = list(after.index[mask.any(axis=1)])
@@ -426,14 +480,68 @@ def preview_fix(df: pd.DataFrame, finding: ShapeFinding) -> Dict[str, Any]:
     }
 
 
-def apply_fix(df: pd.DataFrame, finding: ShapeFinding) -> Tuple[pd.DataFrame, str]:
-    """Apply one fix. Straight through to `ml.import_doctor.apply_fix`.
+def _dispatch_fix(df: pd.DataFrame, finding: ShapeFinding) -> Tuple[pd.DataFrame, str]:
+    """Route one fix to the engine module that owns its kind.
 
-    Takes a deep copy first. The engine documents that it never mutates its
-    input; the copy means a future change to that promise cannot corrupt a
-    project that is still holding the original frame.
+    `ml/import_doctor.py` owns nine kinds and is frozen as engine-move-only
+    (`TRANSITION_PLAN.md` §05), so `read_as_binary` lives in `ml/binary_text.py`
+    and is dispatched here rather than added to the doctor's own table.
     """
-    return import_doctor.apply_fix(df.copy(deep=True), finding)
+    if finding.fix_kind == "read_as_binary":
+        return binary_text.apply_read_as_binary(df, finding)
+    return import_doctor.apply_fix(df, finding)
+
+
+def apply_fix(df: pd.DataFrame, finding: ShapeFinding) -> Tuple[pd.DataFrame, str]:
+    """Apply one fix, on a deep copy of the frame.
+
+    The engine documents that it never mutates its input; the copy means a
+    future change to that promise cannot corrupt a project that is still
+    holding the original frame.
+    """
+    return _dispatch_fix(df.copy(deep=True), finding)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Evidence
+#
+# Every finding card puts its evidence on the table: the flagged entries with
+# their values, or the plot the claim is about (GUIDED-003 / GUIDED-005). None
+# of it is computed here — `ml.card_evidence` and `ml.missingness_plan` do the
+# work and this hands the result across the wire.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def plausibility(df: pd.DataFrame) -> Dict[str, Any]:
+    """Impossible and improbable entries, in two tiers, with rows named."""
+    return _plain(card_evidence.plausibility_report(df))
+
+
+def histograms(df: pd.DataFrame, columns: Optional[List[str]] = None,
+               page: int = 0, per_page: int = 6) -> Dict[str, Any]:
+    return _plain(card_evidence.histogram_gallery(df, columns, page, per_page))
+
+
+def correlations(df: pd.DataFrame,
+                 columns: Optional[List[str]] = None) -> Dict[str, Any]:
+    return _plain(card_evidence.correlation_matrix(df, columns))
+
+
+def column_histogram(df: pd.DataFrame, column: str) -> Optional[Dict[str, Any]]:
+    if column not in df.columns:
+        raise EngineRefusal(f"No column named '{column}' in this table.")
+    return _plain(card_evidence.histogram(df[column]))
+
+
+def missingness(df: pd.DataFrame) -> List[Dict[str, Any]]:
+    """Dtype-routed missingness decisions, each naming its column."""
+    return _plain(missingness_plan.missingness_cards(df))
+
+
+def imputation_preview(df: pd.DataFrame, column: str,
+                       strategy: str) -> Optional[Dict[str, Any]]:
+    if column not in df.columns:
+        raise EngineRefusal(f"No column named '{column}' in this table.")
+    return _plain(missingness_plan.imputation_preview(df[column], strategy))
 
 
 def find_shape_finding(structural: List[ShapeFinding], finding_id: str) -> ShapeFinding:
@@ -457,9 +565,10 @@ def rank_findings(
     already sorts its own output by severity; this re-sorts only because the two
     streams have to interleave.
     """
-    items = [shape_finding_to_dict(f) for f in structural]
+    items = [_with_deferral(shape_finding_to_dict(f)) for f in structural]
     if prof is not None:
-        items += [data_warning_to_dict(w, i) for i, w in enumerate(prof.warnings)]
+        items += [_with_deferral(data_warning_to_dict(w, i))
+                  for i, w in enumerate(prof.warnings)]
 
     items.sort(key=lambda d: (
         SEVERITY_RANK.get(d["severity"], 99),

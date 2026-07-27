@@ -20,18 +20,18 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**80 of 411 closed.**
+**88 of 411 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 297 |
+| `OPEN` | 289 |
 | `PARTIAL` | 34 |
-| `FIXED` | 80 |
+| `FIXED` | 88 |
 
 ---
 
-## OPEN — 297
+## OPEN — 289
 
 
 ### Application state / lockbox — 64
@@ -368,19 +368,6 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### GUIDED — 8
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `GUIDED-001` | high | Import doctor proposes numeric coercion for True/False-coded binary columns (meds_hbp, meds_chol) instead of recognizing a binary variable with informative-missingness potential | `ml/import_doctor.py; screenshot meds_chol` | Filed by the adjudicator from the product designer's first drive of the Guided door. |
-| `GUIDED-002` | high | High-missingness finding reports a count but never names the features, and its card carries no snippet and no dtype-aware recommendation | `ml/dataset_profile.py; turbotab explore step; screenshots` | Filed by the adjudicator from the product designer's first drive of the Guided door. |
-| `GUIDED-004` | high | No impossibility tier: bp_di values near 1e-15 are at best 'outliers' - the profile does not distinguish medically impossible from medically improbable | `ml/clinical_units.py; ml/physiology_reference.py; ml/dataset_profile.py; screenshot physiologic_check` | Filed by the adjudicator from the product designer's first drive of the Guided door. |
-| `GUIDED-006` | high | Several pull chips do nothing when clicked (dose-response trends, collinearity heatmap, stratified trends per the drive) | `turbotab/web/index.html pull palette; screenshot other_analyses_not_running` | Filed by the adjudicator from the product designer's first drive of the Guided door. |
-| `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | Filed by the adjudicator from the product designer's first drive of the Guided door. |
-| `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | Filed by the adjudicator from the product designer's first drive of the Guided door. |
-| `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | Filed by the adjudicator from the product designer's first drive of the Guided door. |
-| `GUIDED-008` | medium | 'Remind me later' does not tell the user where or when the item resurfaces, though the deferral contract already requires a target_step | `turbotab/api.py (defer requires target_step); screenshots` | Filed by the adjudicator from the product designer's first drive of the Guided door. |
-
 ---
 
 ## PARTIAL — 34
@@ -462,7 +449,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 80
+## FIXED — 88
 
 
 ### Application state / lockbox — 26
@@ -532,6 +519,19 @@ Nothing is closed without a regression test named after it.
 | `SWEEP-018` | high | The EDA cache fingerprint is SCHEMA-only while set_data() invalidation is CONTENT-based — a same-shape cleaning action resets results but not the profile | `pages/02_EDA.py:125 vs utils/session_state.py:220-226,259-263` | **test:** `tests/test_eda_caches_follow_the_data.py::test_no_cache_on_the_page_keys_on_shape_alone` — Closed - the two notions of invalidation are now one. The page's fingerprint… |
 | `SWEEP-024` | high | INVARIANT — reconcile_pipeline_columns: drift must self-heal loudly, never crash cryptically; its sibling reconcile_state_with_df is imported but never called | `CODE_REVIEW.md 2026-07 'Backstop'; CODE_REVIEW.md C7; utils/reconcile.py` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_reconcile_leaves_a_gated_pipeline_alone_when_nothing_drifted` — Both halves closed. The dormant-reconciler half was… |
 | `SWEEP-025` | high | INVARIANT — CV strategy is bound to the SPLIT strategy, and cv_strategy/cv_groups_train are cleared WITH the split | `CODE_REVIEW.md 2026-07 'Strategy-aware cross-validation' and 'Test-set slider guardrail'…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_grouped_split_matches_the_page` — Both halves of the invariant are implemented and tested. The CV scheme is… |
+
+### GUIDED — 8
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `GUIDED-001` | high | Import doctor proposes numeric coercion for True/False-coded binary columns (meds_hbp, meds_chol) instead of recognizing a binary variable with informative-missingness potential | `ml/import_doctor.py; screenshot meds_chol` | **test:** `turbotab/test_guided_drive.py::test_a_true_false_column_is_read_as_binary_not_coerced_to_numbers` — Fixed, and reproduced first: a True/False column with blanks is read… |
+| `GUIDED-002` | high | High-missingness finding reports a count but never names the features, and its card carries no snippet and no dtype-aware recommendation | `ml/dataset_profile.py; turbotab explore step; screenshots` | **test:** `turbotab/test_guided_drive.py::test_missingness_routes_by_dtype` — Fixed. Cards name their column in the question text and in a mono chip, carry the count, the share… |
+| `GUIDED-004` | high | No impossibility tier: bp_di values near 1e-15 are at best 'outliers' - the profile does not distinguish medically impossible from medically improbable | `ml/clinical_units.py; ml/physiology_reference.py; ml/dataset_profile.py; screenshot physiologic_check` | **test:** `turbotab/test_guided_drive.py::test_a_diastolic_of_zero_is_impossible_and_a_high_one_is_improbable` — Fixed. The bundled NHANES reference now carries floor/ceiling… |
+| `GUIDED-006` | high | Several pull chips do nothing when clicked (dose-response trends, collinearity heatmap, stratified trends per the drive) | `turbotab/web/index.html pull palette; screenshot other_analyses_not_running` | **test:** `turbotab/test_guided_drive.py::test_every_pull_chip_says_whether_it_runs` — Fixed, and the audit result is worse than the row states: BEFORE this change NO pull chip… |
+| `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
+| `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
+| `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |
+| `GUIDED-008` | medium | 'Remind me later' does not tell the user where or when the item resurfaces, though the deferral contract already requires a target_step | `turbotab/api.py (defer requires target_step); screenshots` | **test:** `turbotab/test_guided_drive.py::test_every_finding_carries_the_step_its_deferral_goes_to` — Fixed. The Router owns the destination, because it owns which step can act on… |
 
 ### Stage-boundary contracts — 6
 

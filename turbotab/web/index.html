@@ -501,6 +501,166 @@
          border:1px solid var(--del);border-radius:8px;padding:9px 12px;line-height:1.5}
   .uperr:empty{display:none}
 </style>
+<style>
+  /* ═════════ §09 QUESTION GRAMMAR + §10 EDUCATION IN THE FLOW ═════════
+     Added, never edited into the block above: the prototype stylesheet is
+     carried byte for byte and a test asserts it. Everything here is built from
+     the same tokens, plus the one token §02 reserves for the blocker. */
+
+  /* --stop is the strongest claim in the palette and appears in exactly one
+     component. Not --del: that is delete/removed styling and it is used for
+     changed cells in a preview. A color that means "invalid downstream" cannot
+     also mean "this cell used to say something else". */
+  :root{ --stop:#8C2B2B; --stop-tint:#FBECEA; --stop-line:#E3BDB6; --on-stop:#FFFFFF; }
+  @media (prefers-color-scheme: dark){
+    :root{ --stop:#D97A6C; --stop-tint:#2E1917; --stop-line:#5A2F2A; --on-stop:#1A0F0D; }
+  }
+  :root[data-theme="light"]{ --stop:#8C2B2B; --stop-tint:#FBECEA; --stop-line:#E3BDB6; --on-stop:#FFFFFF; }
+  :root[data-theme="dark"]{ --stop:#D97A6C; --stop-tint:#2E1917; --stop-line:#5A2F2A; --on-stop:#1A0F0D; }
+
+  /* ——— CONSEQUENCE: the one full-width interruption ——— */
+  .blockers{display:flex;flex-direction:column;gap:14px}
+  .blockers:empty{display:none}
+  .blocker{border:0;border-top:4px solid var(--stop);border-bottom:1px solid var(--stop-line);
+           background:var(--stop-tint);border-radius:2px;
+           margin:4px -30px;padding:18px 30px 20px}
+  .blocker-head{display:flex;align-items:center;gap:11px;margin-bottom:9px}
+  /* The reserved glyph. A notched square, used by blockers alone —
+     exclusivity is what makes a shape semantic (§09). */
+  .blocker-glyph{flex:0 0 20px;width:20px;height:20px;display:block}
+  .blocker-glyph path{fill:var(--stop)}
+  .blocker-word{font-family:var(--sans);font-variant:small-caps;text-transform:lowercase;
+                letter-spacing:.14em;font-weight:700;font-size:15px;color:var(--stop)}
+  .blocker-claim{font-family:var(--serif);font-size:18.5px;line-height:1.5;margin:0 0 8px;
+                 color:var(--ink);text-wrap:balance}
+  .blocker-q{font-family:var(--serif);font-size:17px;font-weight:700;margin:0 0 10px;color:var(--ink)}
+  .blocker-why{font-size:13.5px;color:var(--muted);margin:0 0 14px;line-height:1.55;max-width:64ch}
+  .blocker-acts{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+  .blocker-acts .stopbtn{border:1.5px solid var(--stop);background:var(--surface);color:var(--stop);
+                         border-radius:9px;padding:9px 16px;font-size:13.5px;font-weight:650}
+  .blocker-acts .stopbtn:hover{background:var(--stop);color:var(--on-stop)}
+  .attest{margin-top:13px;border-top:1px solid var(--stop-line);padding-top:13px}
+  .attest.is-hidden{display:none}
+  .attest label{display:block;font-size:13px;color:var(--muted);margin-bottom:7px;line-height:1.55}
+  .attest .req{font-family:var(--mono);font-size:12px;background:var(--surface);
+               border:1px solid var(--stop-line);border-radius:6px;padding:2px 7px;
+               display:inline-block;margin-top:4px}
+  .attest input{width:100%;font-family:var(--mono);font-size:12.5px;padding:9px 11px;
+                border:1px solid var(--line);border-radius:8px;background:var(--surface);
+                color:var(--ink)}
+  .attest .row{display:flex;gap:9px;align-items:center;margin-top:9px;flex-wrap:wrap}
+  .attest .hint{font-size:12px;color:var(--faint)}
+  /* The recorded artifact. Never green: a blocker accepted is not a blocker
+     resolved, and the review has to be able to tell them apart. */
+  .attested{border:1px solid var(--stop-line);border-left:3px solid var(--stop);
+            background:var(--surface);border-radius:10px;padding:13px 16px}
+  .attested .lab{font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;
+                 text-transform:uppercase;color:var(--stop);display:block;margin-bottom:5px}
+  .attested .said{font-family:var(--serif);font-size:15.5px;line-height:1.5;margin:0}
+
+  /* ——— FACT: a rendered skip is muted provenance, never green ——— */
+  .skips{display:flex;flex-direction:column;gap:0;border:1px solid var(--line-soft);
+         border-radius:10px;background:var(--surface);overflow:hidden}
+  .skips:empty{display:none}
+  .skips-lab{font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+             color:var(--faint);padding:9px 15px 0}
+  .skip{display:flex;gap:11px;align-items:baseline;padding:9px 15px;font-size:12.5px;
+        color:var(--muted);border-top:1px solid var(--line-soft)}
+  .skip:first-of-type{border-top:0}
+  .skip .clause{font-family:var(--mono);font-size:11.5px;color:var(--faint);flex:1;min-width:0;
+                line-height:1.5}
+  .skip .clause b{font-weight:400;color:var(--muted)}
+  .skip .again{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);
+               color:var(--muted);border-radius:7px;padding:4px 10px;font-size:12px;font-weight:600}
+  .skip .again:hover{border-color:var(--accent);color:var(--accent-ink)}
+
+  /* ——— CHOICE: outcome-labeled, symmetric ——— */
+  .choice-acts{display:flex;gap:9px;flex-wrap:wrap;align-items:center;padding:12px 14px;
+               background:var(--surface);border-top:1px solid var(--line-soft)}
+  .choice-acts .said{font-size:12px;color:var(--muted);flex:1;min-width:190px}
+  .cbtn{border:1.5px solid var(--line);background:var(--surface);color:var(--ink);
+        border-radius:9px;padding:9px 16px;font-size:13px;font-weight:650}
+  .cbtn:hover{border-color:var(--accent);background:var(--accent-tint);color:var(--accent-ink)}
+
+  /* ——— evidence on the card ——— */
+  .ev{margin-top:11px;border:1px solid var(--line);border-radius:10px;background:var(--surface);
+      overflow:hidden}
+  .ev-head{display:flex;align-items:baseline;gap:9px;padding:9px 13px;background:var(--surface-2);
+           border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
+  .ev-lab{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .ev-note{font-size:12px;color:var(--muted)}
+  .ev-body{padding:11px 13px;overflow-x:auto}
+  .ev-body table.mini td.bad{color:var(--stop);background:var(--stop-tint);border-radius:4px;
+                             padding-left:5px}
+  .ev-more{font-size:11.5px;color:var(--faint);padding:0 13px 10px}
+  .spark{width:100%;height:74px;display:block}
+  .spark rect{fill:var(--c1)}
+  .spark .ax{stroke:var(--line);stroke-width:1}
+  .sparkax{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;
+           color:var(--faint);margin-top:3px}
+  .cgrid{display:grid;gap:2px}
+  .ccell{aspect-ratio:1;border-radius:2px;cursor:crosshair}
+  .clabels{display:flex;gap:2px;margin-top:4px}
+  .clabels span{flex:1;font-family:var(--mono);font-size:8.5px;color:var(--faint);
+                text-align:center;overflow:hidden;white-space:nowrap}
+
+  /* ——— missingness decision cards ——— */
+  .miss{border:1px solid var(--line);border-radius:11px;background:var(--surface);
+        padding:15px 17px;box-shadow:var(--shadow)}
+  .miss + .miss{margin-top:11px}
+  .miss h3{font-family:var(--serif);font-size:17px;font-weight:700;margin:0 0 5px;line-height:1.4}
+  .miss .because{font-size:13px;color:var(--muted);margin:0 0 11px;line-height:1.5;max-width:62ch}
+  .miss .route{font-family:var(--mono);font-size:10px;letter-spacing:.04em;text-transform:uppercase;
+               color:var(--muted);background:var(--surface-2);border:1px solid var(--line);
+               border-radius:10px;padding:1px 8px}
+  .opts{display:flex;flex-direction:column;gap:9px;margin-top:4px}
+  .optrow{border:1px solid var(--line);border-radius:9px;padding:11px 13px;background:var(--surface)}
+  .optrow.rec{border-color:var(--accent)}
+  .optrow .otop{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:5px}
+  .optrow .oname{font-size:13.5px;font-weight:650}
+  .optrow .when{font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;border-radius:10px;
+                padding:1px 8px;color:var(--muted);background:var(--surface-2);
+                border:1px solid var(--line)}
+  .optrow .sentence{font-family:var(--serif);font-size:14px;line-height:1.5;margin:0 0 5px;
+                    border-left:2px solid var(--line);padding-left:11px}
+  .optrow .conseq{font-size:12.5px;color:var(--muted);margin:0;line-height:1.5}
+  .optrow .oacts{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap}
+
+  /* ——— pull chips that say whether they run ——— */
+  .pill.notbuilt{border-style:solid;border-color:var(--line-soft);color:var(--faint);
+                 background:var(--surface-2);opacity:.72;cursor:not-allowed}
+  .pill.notbuilt:hover{border-color:var(--line-soft);color:var(--faint)}
+  .pill .nb{font-family:var(--mono);font-size:9px;letter-spacing:.05em;text-transform:uppercase;
+            margin-left:6px;color:var(--faint)}
+
+  /* ——— docks that open ——— */
+  .dock-toggle{border:0;background:none;padding:0;font-family:inherit;font-size:10px;
+               font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:inherit;
+               display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px}
+  .dock-toggle .caret{font-family:var(--mono);font-size:10px;color:var(--faint);
+                      transition:transform .18s ease}
+  .dock-toggle[aria-expanded="true"] .caret{transform:rotate(90deg)}
+  .dock-panel{margin-top:10px;border-top:1px solid var(--line-soft);padding-top:10px}
+  .dock-panel.is-hidden{display:none}
+  .dock-item{font-size:11.5px;color:var(--muted);line-height:1.45;padding:6px 0}
+  .dock-item + .dock-item{border-top:1px solid var(--line-soft)}
+  .dock-item .dest{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.03em;
+                   color:var(--warn)}
+
+  /* ——— read-as-draft: a faded worked example (§10) ——— */
+  .draft{font-family:var(--serif);font-size:12.5px;line-height:1.65;color:var(--muted)}
+  .draft .stand{font-family:var(--sans);font-size:11px;color:var(--faint);line-height:1.5;
+                margin:0 0 11px}
+  .draft h4{font-family:var(--sans);font-size:9.5px;font-weight:700;letter-spacing:.09em;
+            text-transform:uppercase;color:var(--faint);margin:12px 0 4px}
+  .draft h4:first-of-type{margin-top:0}
+  .draft p{margin:0 0 6px}
+  .draft .waiting{font-family:var(--sans);font-size:11px;color:var(--faint);font-style:italic}
+  .draft .gapmark{font-family:var(--mono);font-size:10px;color:var(--warn);background:var(--warn-tint);
+                  border:1px solid var(--warn-line);border-radius:5px;padding:0 5px;white-space:nowrap}
+  .draft-foot{font-family:var(--sans);font-size:10.5px;color:var(--faint);margin-top:11px;
+              padding-top:9px;border-top:1px solid var(--line-soft)}
+</style>
 
 <div class="topbar">
   <span class="tb-name">Tabular ML Lab</span>
@@ -527,15 +687,30 @@
       </div>
       <div class="jobchip" id="jobChip"><span class="spin" aria-hidden="true"></span><span id="jobText">Working…</span></div>
       <div class="dock dock-ledger">
-        <div class="dock-head">Coach ledger <span class="dock-ct" id="ledgerCt">0</span></div>
-        <div class="dock-empty" id="ledgerEmpty">Anything you defer waits here. The steps it would
-          return at are not built yet, so for now it waits and says so.</div>
+        <div class="dock-head">
+          <button class="dock-toggle" id="ledgerToggle" type="button"
+                  aria-expanded="false" aria-controls="ledgerPanel">
+            <span>Coach ledger</span>
+            <span><span class="dock-ct" id="ledgerCt">0</span> <span class="caret" aria-hidden="true">›</span></span>
+          </button>
+        </div>
+        <div class="dock-empty" id="ledgerEmpty">Anything you set aside waits here, and each item
+          says which step it comes back at.</div>
         <ul class="dock-list" id="ledgerList"></ul>
+        <div class="dock-panel is-hidden" id="ledgerPanel"></div>
       </div>
       <div class="dock dock-ev">
-        <div class="dock-head">For the manuscript <span class="dock-ct" id="evCt">0</span></div>
-        <div class="dock-empty" id="evEmpty">Flag a finding and it is held for the draft.</div>
+        <div class="dock-head">
+          <button class="dock-toggle" id="draftToggle" type="button"
+                  aria-expanded="false" aria-controls="draftPanel">
+            <span>Read as draft</span>
+            <span><span class="dock-ct" id="evCt">0</span> <span class="caret" aria-hidden="true">›</span></span>
+          </button>
+        </div>
+        <div class="dock-empty" id="evEmpty">Open this to read your decisions so far as a methods
+          section. It fills in as you decide.</div>
         <ul class="dock-list" id="evList"></ul>
+        <div class="dock-panel is-hidden" id="draftPanel"></div>
       </div>
     </div>
   </aside>
@@ -625,6 +800,10 @@
       <div class="sect-head"><span class="sect-kicker">Explore</span><span class="sect-state">open</span></div>
       <span class="stale-tag">stale — an earlier answer changed</span>
       <div class="sect-body">
+        <!-- Questions of consequence, ranked first and never inside a card.
+             The band breaks the page rhythm on purpose (§09). -->
+        <div class="blockers" id="blockerBand"></div>
+
         <div class="stepcard calm" id="card-eda">
           <div class="sub">
             <div class="subhead"><span class="sub-num">01</span></div>
@@ -633,8 +812,12 @@
             <div class="tblwrap"><table class="data" id="profTable"></table></div>
             <div class="findlist" id="profList" style="margin-top:6px;"></div>
 
+            <!-- Missingness, named per feature and routed by dtype. -->
+            <div id="missBox" style="margin-top:14px;"></div>
+
             <!-- Push the notable, pull the rest. Offered, never asked: the
-                 count of questions is unaffected by anything below. -->
+                 count of questions is unaffected by anything below. Each chip
+                 says whether it runs. -->
             <div class="pull" id="palette" style="display:none;">
               <span id="paletteLead">Look at anything else?</span>
             </div>
@@ -676,6 +859,10 @@
      only source of truth, and everything on screen is a fold over it. */
   var P = null;
   var SEC = { data:"sec-data", target:"sec-target", eda:"sec-eda" };
+  /* The last Explore plan the Router returned. Held so the attestation can
+     rebuild the exact sentence it is checking against, rather than the page
+     inventing one. */
+  var LAST_EXPLORE_PLAN = { questions: [] };
 
   /* ═════════ REVEAL / SCROLL (from the prototype) ═════════ */
   function anim(el, cls, ms){
@@ -812,17 +999,42 @@
   function decide(kind, subject, payload, label){
     if (!P) return;
     setErr("");
+    payload = payload || {};
+    // A caller that supplies its own sentence is quoting a string the server
+    // already composed (a decision sentence from a missingness card, the text
+    // of an attestation). It travels as `text`, which is the field the record
+    // keeps verbatim — leaving it in the payload would drop it and let the
+    // transcript paraphrase instead.
+    var body = { kind:kind, subject:subject || "", payload:payload };
+    if (payload.text) body.text = payload.text;
     job(label || "Recording your answer…",
         api("/project/" + P.id + "/decision", {
           method:"POST",
           headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify({ kind:kind, subject:subject || "", payload:payload || {} })
+          body: JSON.stringify(body)
         }))
       .then(function(p){ P = p; renderAll(); })
       .catch(function(e){ setErr(e.message); });
   }
 
-  /* ═════════ FINDING CARDS ═════════ */
+  /* ═════════ FINDING CARDS ═════════
+     Every card names its objects in mono and carries its evidence — the
+     flagged entries with their values, or the plot the claim is about. "The
+     engine refuses to guess" is a legitimate answer; refusing to show is not
+     (GUIDED-003). The deferral affordance names the step the item comes back
+     at, because the record has always required one (GUIDED-008). */
+
+  function deferLabel(f){
+    return f && f.defer_target_label
+      ? "Decide at " + f.defer_target_label
+      : "Decide later";
+  }
+  function deferButton(f, extraClass){
+    return '<button class="f-act defer' + (extraClass || "") + '" data-defer="' + esc(f.id) +
+           '" data-defer-to="' + esc(f.defer_target || "") + '" type="button">' +
+           esc(deferLabel(f)) + "</button>";
+  }
+
   function findingCard(f){
     var st = statusOf(f.id);
     var cls = "find no-thumb" + (st.deferred ? " deferred" : "") + (st.dismissed ? " gone" : "");
@@ -838,12 +1050,13 @@
     h += '<div class="chips" style="margin:0 0 11px;">' + chips + '</div>';
     h += '<div class="f-row">';
     h += '<button class="f-act preview" data-panel="' + esc(f.id) + '" type="button">Show me what this means</button>';
-    h += '<button class="f-act defer" data-defer="' + esc(f.id) + '" type="button">Remind me later</button>';
+    h += deferButton(f);
     h += '<button class="f-act dismiss" data-dismiss="' + esc(f.id) + '" type="button">Dismiss</button>';
     h += '<span class="fstat s-def">deferred</span>';
     h += '<button class="flag" data-flag="' + esc(f.id) + '" aria-pressed="' + (st.flagged ? "true" : "false") +
          '" type="button">⚑ ' + (st.flagged ? "Marked" : "Mark") + ' for manuscript</button>';
     h += '</div>';
+    h += '<div class="ev-slot" id="ev-' + esc(f.id) + '"></div>';
     h += '<div class="preview is-hidden" id="pv-' + esc(f.id) + '"></div>';
     h += '</div></article>';
 
@@ -853,6 +1066,144 @@
            '<button data-undismiss="' + esc(f.id) + '" type="button">Undo</button></div>';
     }
     return h;
+  }
+
+  /* ═════════ EVIDENCE ═════════ */
+
+  function entryTable(block){
+    var h = '<table class="mini"><thead><tr><th>row</th><th>' + esc(block.column) +
+            '</th><th>bound</th></tr></thead><tbody>';
+    (block.entries || []).forEach(function(e){
+      h += "<tr><td>" + esc(e.row) + '</td><td class="bad">' + esc(num(e.value, 4)) +
+           "</td><td>" + esc(e.side) + " " + esc(num(e.bound, 2)) + " " + esc(block.unit) + "</td></tr>";
+    });
+    return h + "</tbody></table>";
+  }
+
+  function histSVG(h){
+    if (!h || !h.counts || !h.counts.length) return "";
+    var w = 320, ht = 74, n = h.counts.length, top = Math.max.apply(null, h.counts) || 1;
+    var bw = w / n, s = '<svg class="spark" viewBox="0 0 ' + w + " " + ht + '" preserveAspectRatio="none" role="img">';
+    h.counts.forEach(function(c, i){
+      var bh = Math.max(c > 0 ? 1 : 0, (c / top) * (ht - 6));
+      s += '<rect x="' + (i * bw + 0.5).toFixed(2) + '" y="' + (ht - bh).toFixed(2) +
+           '" width="' + Math.max(0.5, bw - 1).toFixed(2) + '" height="' + bh.toFixed(2) + '"></rect>';
+    });
+    s += '<line class="ax" x1="0" y1="' + (ht - 0.5) + '" x2="' + w + '" y2="' + (ht - 0.5) + '"></line></svg>';
+    s += '<div class="sparkax"><span>' + esc(num(h.min, 3)) + "</span><span>n = " + esc(h.n) +
+         "</span><span>" + esc(num(h.max, 3)) + "</span></div>";
+    return s;
+  }
+
+  function corrGrid(c){
+    var cols = c.columns || [], n = cols.length;
+    if (!n) return "";
+    var h = '<div class="cgrid" style="grid-template-columns:repeat(' + n + ',1fr);">';
+    for (var i = 0; i < n; i++){
+      for (var j = 0; j < n; j++){
+        var r = c.matrix[i][j];
+        var a = r === null || r === undefined ? 0 : Math.min(1, Math.abs(r));
+        var hue = (r || 0) < 0 ? "var(--c3)" : "var(--c1)";
+        h += '<div class="ccell" style="background:color-mix(in srgb,' + hue + " " +
+             Math.round(a * 100) + '%,transparent);" data-tip="' + esc(cols[i]) + " × " +
+             esc(cols[j]) + " · r = " + esc(num(r, 3)) + '"></div>';
+      }
+    }
+    h += "</div>" + '<div class="clabels">' +
+         cols.map(function(x){ return "<span>" + esc(x) + "</span>"; }).join("") + "</div>";
+    return h;
+  }
+
+  function evBlock(label, note, body, more){
+    return '<div class="ev"><div class="ev-head"><span class="ev-lab">' + esc(label) +
+           '</span><span class="ev-note">' + esc(note) + "</span></div>" +
+           '<div class="ev-body">' + body + "</div>" +
+           (more ? '<p class="ev-more">' + esc(more) + "</p>" : "") + "</div>";
+  }
+
+  /* Plausibility evidence is attached to the profile finding that claims it,
+     rather than living in a panel of its own: the claim and its proof belong in
+     the same card (§10, split attention). */
+  function attachPlausibility(rep){
+    var slots = all(".ev-slot");
+    if (!slots.length) return;
+    var target = null;
+    (P.findings || []).forEach(function(f){
+      if (((f.params || {}).category || "") === "physiologic_plausibility") target = f;
+    });
+    if (!target) return;
+    var slot = $("ev-" + target.id);
+    if (!slot) return;
+
+    var h = "";
+    (rep.impossible || []).forEach(function(b){
+      /* A column that is mostly outside a hard physiologic bound is not a
+         column of entry errors — it is a unit mismatch or a name collision.
+         Reported, with the reading corrected, and no repair proposed. */
+      if (b.whole_column_suspect){
+        h += evBlock(
+          "Check the unit — " + b.column,
+          pct(b.share) + " of the column falls outside " + num(b.low, 2) + "–" +
+            num(b.high, 2) + " " + b.unit,
+          '<p style="margin:0 0 9px;font-size:13px;line-height:1.55;color:var(--muted);">' +
+            esc(b.suspect_reason) + "</p>" + entryTable(b), "");
+        return;
+      }
+      h += evBlock(
+        "Impossible — " + b.column,
+        b.n_flagged.toLocaleString() + " entr" + (b.n_flagged === 1 ? "y" : "ies") +
+          " outside the range a living person can have (" + num(b.low, 2) + "–" +
+          num(b.high, 2) + " " + b.unit + ")",
+        entryTable(b),
+        b.truncated ? "Showing the first " + b.entries.length + " of " +
+                      b.n_flagged.toLocaleString() + "." : "");
+      h += '<div class="choice-acts" style="border:1px solid var(--line);border-top:0;' +
+           'border-radius:0 0 10px 10px;margin-top:-1px;">' +
+           '<span class="said">These cannot be measurements. Setting them to missing records ' +
+           'them as absent rather than as a value.</span>' +
+           '<button class="cbtn" data-impossible="' + esc(b.column) + '" type="button">' +
+           'Set these entries to missing</button>' +
+           '<button class="cbtn" data-keep-impossible="' + esc(b.column) + '" type="button">' +
+           'Keep as is</button></div>';
+    });
+    (rep.improbable || []).forEach(function(b){
+      h += evBlock(
+        "Improbable — " + b.column,
+        b.n_flagged.toLocaleString() + " entr" + (b.n_flagged === 1 ? "y" : "ies") +
+          " outside the NHANES reference interval (" + num(b.low, 2) + "–" +
+          num(b.high, 2) + " " + b.unit + ")",
+        entryTable(b),
+        "Advisory. A value can be unusual and correct — this is reported, not proposed.");
+    });
+    if (h) slot.innerHTML = h;
+  }
+
+  /* A shape claim carries the shape it is about. A skew number with no
+     distribution asks the reader to take shape on faith (GUIDED-005). */
+  function attachSkewPlots(){
+    (P.findings || []).forEach(function(f){
+      var cat = (f.params || {}).category || "";
+      if (cat !== "distribution" && cat !== "skew" && cat !== "outliers") return;
+      var slot = $("ev-" + f.id);
+      if (!slot || slot.innerHTML) return;
+      var cols = (f.affected_columns || []).slice(0, 3);
+      if (!cols.length) cols = skewCandidates().slice(0, 3);
+      if (!cols.length) return;
+      cols.forEach(function(col){
+        api("/project/" + P.id + "/evidence/histogram/" + encodeURIComponent(col))
+          .then(function(h){
+            slot.insertAdjacentHTML("beforeend", evBlock(
+              col, "skew = " + num(h.skew, 2) + " · median " + num(h.median, 3) +
+                   " · mean " + num(h.mean, 3),
+              histSVG(h), ""));
+          })
+          .catch(function(){ /* a column with no shape simply contributes none */ });
+      });
+    });
+  }
+  function skewCandidates(){
+    var pr = P.profile || {};
+    return (pr.highly_skewed_features || []).concat(pr.features_with_outliers || []);
   }
 
   /* ═════════ PREVIEW BEFORE APPLY ═════════
@@ -900,10 +1251,10 @@
               : "The engine reports this without proposing a repair. Some findings have to " +
                 "refuse rather than guess, and this is one of them.") + "</p>";
     h += "</div>";
-    h += '<div class="pv-acts">' +
-         '<span style="flex:1;min-width:180px;"></span>' +
+    h += '<div class="choice-acts">' +
+         '<span class="said"></span>' +
          '<button class="f-act" data-pv-close="' + esc(f.id) + '" type="button">Close</button>' +
-         '<button class="f-act defer" data-defer="' + esc(f.id) + '" type="button">Remind me later</button>' +
+         deferButton(f) +
          '<button class="f-act dismiss" data-dismiss="' + esc(f.id) + '" type="button">Dismiss</button>' +
          "</div>";
     return h;
@@ -946,15 +1297,88 @@
              '<span class="a">' + esc(st.after) + "</span></span></div>";
     }).join("") + "</div>";
 
-    h += '<div class="pv-acts">' +
-         '<span style="font-size:12px;color:var(--muted);flex:1;min-width:190px;">' +
-         esc(pv.description) + " Nothing has happened yet.</span>" +
-         '<button class="f-act" data-pv-close="' + esc(f.id) + '" type="button">Close</button>' +
-         '<button class="f-act defer" data-defer="' + esc(f.id) + '" type="button">Remind me later</button>' +
-         '<button class="btn btn-primary" style="padding:7px 14px;font-size:12.5px;" ' +
-         'data-apply="' + esc(f.id) + '" type="button">Apply this</button>' +
+    /* Outcome-labeled and symmetric in weight (§09). Never OK/Cancel, and never
+       a styled "yes" against a de-emphasized "no" — declining a repair is as
+       legitimate an answer as accepting it, and the buttons have to look it. */
+    h += '<div class="choice-acts">' +
+         '<span class="said">' + esc(pv.description) + " Nothing has happened yet.</span>" +
+         '<button class="cbtn" data-apply="' + esc(f.id) + '" type="button">' +
+         esc(pv.fix_label || "Apply repair") + "</button>" +
+         '<button class="cbtn" data-pv-close="' + esc(f.id) + '" type="button">Keep as is</button>' +
+         deferButton(f) +
          "</div>";
     return h;
+  }
+
+  /* ═════════ CONSEQUENCE — the blocker band ═════════
+     The one component allowed to wear --stop, the reserved notched square, and
+     the small-caps signal word. Nothing else may borrow any part of it: the
+     treatment survives only while it is exclusive, and habituation starts at
+     the second exposure (§09). */
+
+  var NOTCH = '<svg class="blocker-glyph" viewBox="0 0 20 20" aria-hidden="true">' +
+              '<path d="M2 2 H13 L18 7 V18 H2 Z M13 2 V7 H18 Z" fill-rule="evenodd"></path></svg>';
+
+  function blockerSubject(q){
+    var m = /^blocker::leakage::(.*)$/.exec(q.key || "");
+    return m ? m[1] : (q.triggering_finding || q.key || "");
+  }
+  function attestationSentence(q){
+    var col = blockerSubject(q);
+    return "I am keeping " + col + " although it may leak the outcome.";
+  }
+
+  function blockerHTML(q){
+    var col = blockerSubject(q);
+    var h = '<section class="blocker" id="blk-' + esc(q.key) + '" role="group" ' +
+            'aria-label="Question of consequence">';
+    h += '<div class="blocker-head">' + NOTCH + '<span class="blocker-word">Blocker</span></div>';
+    h += '<p class="blocker-claim"><span class="v">' + esc(col) + "</span> may encode the outcome. " +
+         "If it was recorded after the outcome was known, every accuracy number below this point " +
+         "is invalid.</p>";
+    h += '<p class="blocker-q">' + esc(q.title) + "</p>";
+    if (q.why) h += '<p class="blocker-why">' + esc(q.why) + "</p>";
+    h += '<div class="blocker-acts">' +
+         '<button class="stopbtn" data-blk-resolve="' + esc(q.key) + '" type="button">' +
+         "Drop " + esc(col) + "</button>" +
+         '<button class="stopbtn" data-blk-attest="' + esc(q.key) + '" type="button">' +
+         "Keep it and record why</button></div>";
+    h += '<div class="attest is-hidden" id="att-' + esc(q.key) + '">' +
+         "<label for=\"attin-" + esc(q.key) + '">To keep <span class="v">' + esc(col) +
+         "</span> and go on, type this sentence. It is recorded as written and the manuscript " +
+         "carries it as a stated limitation." +
+         '<span class="req">' + esc(attestationSentence(q)) + "</span></label>" +
+         '<input id="attin-' + esc(q.key) + '" type="text" autocomplete="off" spellcheck="false" ' +
+         'data-att-for="' + esc(q.key) + '" placeholder="Type the sentence above">' +
+         '<div class="row"><button class="stopbtn" data-att-send="' + esc(q.key) + '" type="button" ' +
+         "disabled>Record and continue</button>" +
+         '<span class="hint">Pasting is fine. Nothing about this is a test.</span></div></div>';
+    h += "</section>";
+    return h;
+  }
+
+  function renderBlockers(plan){
+    var band = $("blockerBand");
+    if (!band) return;
+
+    /* Settled blockers come from the record, not from the plan: once one
+       reaches a terminal state the Router stops asking it, and that is exactly
+       when the artifact has to keep showing. An acknowledgment is never green —
+       the review must be able to tell "accepted" from "resolved". */
+    var settled = (P.decisions || []).filter(function(d){
+      return d.kind === "acknowledge_blocker" || d.kind === "resolve_blocker";
+    }).map(function(d){
+      var resolved = d.kind === "resolve_blocker";
+      return '<div class="attested"><span class="lab">' +
+             (resolved ? "recorded — resolved" : "recorded — accepted, unresolved") +
+             "</span>" + '<p class="said">' + esc(d.text) + "</p></div>";
+    }).join("");
+
+    var open = (plan.questions || [])
+      .filter(function(q){ return q.kind === "blocker"; })
+      .map(blockerHTML).join("");
+
+    band.innerHTML = open + settled;
   }
 
   function openPanel(id){
@@ -1134,6 +1558,13 @@
     $("profList").innerHTML = pf.length ? pf.map(findingCard).join("") : "";
     sectState("eda", "live", P.findings_stale ? "stale" : "open");
     setMap("eda", P.findings_stale ? "stale" : "now");
+
+    // The evidence behind each claim, fetched once the cards exist to hold it.
+    api("/project/" + P.id + "/evidence/plausibility")
+      .then(attachPlausibility)
+      .catch(function(){ /* no reference match is a real answer, not an error */ });
+    attachSkewPlots();
+    renderMissingness();
   }
 
   /* ═════════ THE INTERVIEW ═════════
@@ -1143,65 +1574,267 @@
   function renderInterview(){
     if (!P) return;
     api("/project/" + P.id + "/interview?step=data")
-      .then(function(plan){
-        var skipped = plan.questions.filter(function(q){ return q.status === "skipped"; });
-        var note = $("skipNote");
-        if (skipped.length){
-          note.className = "dnote on";
-          note.innerHTML = skipped.map(function(q){
-            return "<span><em>Not asked:</em> " + esc(q.title) + " — " +
-                   esc(q.skip_reason || "") + "</span>";
-          }).join("") +
-          '<button data-unskip="1" type="button">Ask me anyway</button>';
-        } else {
-          note.className = "dnote";
-          note.innerHTML = "";
-        }
-      })
+      .then(function(plan){ renderSkips(plan); })
       .catch(function(){ /* the interview is an overlay on findings, not a gate */ });
 
     if (!P.target) return;
     api("/project/" + P.id + "/interview?step=explore")
       .then(function(plan){
-        var pulls = plan.questions.filter(function(q){ return q.mode === "pull"; });
-        var bar = $("palette");
-        if (!pulls.length){ bar.style.display = "none"; return; }
-        bar.style.display = "flex";
-        // Rebuild the pills after the lead text, leaving it in place.
-        while (bar.children.length > 1) bar.removeChild(bar.lastChild);
-        pulls.forEach(function(q){
-          var b = document.createElement("button");
-          b.type = "button";
-          b.className = "pill";
-          b.setAttribute("aria-pressed", "false");
-          b.setAttribute("data-look", q.key);
-          b.setAttribute("data-tip", q.why || q.title);
-          b.textContent = q.title;
-          bar.appendChild(b);
-        });
+        LAST_EXPLORE_PLAN = plan;
+        renderBlockers(plan);
+        renderPalette(plan);
       })
       .catch(function(){ $("palette").style.display = "none"; });
   }
 
-  function renderDocks(){
-    var deferred = [], flagged = [];
-    P.findings.forEach(function(f){
-      var st = statusOf(f.id);
-      if (st.deferred) deferred.push(f);
-      if (st.flagged) flagged.push(f);
-    });
+  /* A rendered skip is a muted provenance row, not a decision. Green means a
+     human recorded something, and nobody recorded this (§09). Skips group so
+     their density reads as machine work at a glance. */
+  function renderSkips(plan){
+    var skipped = plan.questions.filter(function(q){ return q.status === "skipped"; });
+    var note = $("skipNote");
+    note.className = "";
+    if (!skipped.length){ note.innerHTML = ""; return; }
+    note.innerHTML =
+      '<div class="skips"><div class="skips-lab">Not asked — settled from the file</div>' +
+      skipped.map(function(q){
+        return '<div class="skip"><span class="clause"><b>' + esc(q.title) + "</b> — " +
+               esc(q.skip_reason || "") + "</span>" +
+               '<button class="again" data-unskip="' + esc(q.key) + '" type="button">' +
+               "Ask me anyway</button></div>";
+      }).join("") + "</div>";
+  }
 
-    $("ledgerList").innerHTML = deferred.map(function(f){
-      return '<li><span class="to">→ not built yet</span>' + esc(f.title) + "</li>";
+  /* Wired, or visibly not built. A solid-bordered chip that silently no-ops
+     asserts a capability that does not exist (GUIDED-006). The server says
+     which is which; the page does not guess. */
+  function renderPalette(plan){
+    var pulls = plan.questions.filter(function(q){ return q.mode === "pull"; });
+    var bar = $("palette");
+    var extra = paletteExtras();
+    if (!pulls.length && !extra.length){ bar.style.display = "none"; return; }
+    bar.style.display = "flex";
+    while (bar.children.length > 1) bar.removeChild(bar.lastChild);
+
+    pulls.concat(extra).forEach(function(q){
+      var b = document.createElement("button");
+      b.type = "button";
+      var built = q.built === true;
+      b.className = "pill" + (built ? "" : " notbuilt");
+      b.setAttribute("data-look", q.key);
+      if (built){
+        b.setAttribute("aria-pressed", "false");
+        b.setAttribute("data-endpoint", q.endpoint || "");
+        b.setAttribute("data-tip", q.why || q.title);
+        b.textContent = q.title;
+      } else {
+        b.disabled = true;
+        b.setAttribute("aria-disabled", "true");
+        b.setAttribute("data-tip", q.not_built_reason || "Not in this build.");
+        b.innerHTML = esc(q.title) + '<span class="nb">not built</span>';
+      }
+      bar.appendChild(b);
+    });
+  }
+
+  /* Two affordances the recommender does not emit, gated on feature count: a
+     per-feature histogram pager and a correlation matrix. Above the engine's
+     own limit they are offered as not-built rather than as controls that would
+     produce an unreadable picture (GUIDED-005). */
+  function paletteExtras(){
+    var pr = P.profile || {};
+    var n = pr.n_numeric;
+    if (n === undefined || n === null) return [];
+    var ok = n <= 50 && n >= 1;
+    return [
+      { key: "histogram_pager", title: "Distribution of each feature",
+        why: "One page of histograms at a time, drawn from your table.",
+        built: ok, endpoint: "histograms",
+        not_built_reason: n > 50
+          ? n + " numeric features. A per-feature gallery is offered up to 50; beyond that it is a wall of plots."
+          : "No numeric features to draw." },
+      { key: "look::r8_collinearity", title: "Correlation matrix",
+        why: "Pairwise correlations across your numeric features.",
+        built: ok && n >= 2, endpoint: "correlations",
+        not_built_reason: n > 50
+          ? n + " numeric features. A grid that large cannot be read, and a picture that cannot be read is a claim that it can."
+          : "A correlation matrix needs at least two numeric features." }
+    ];
+  }
+
+  /* ═════════ MISSINGNESS, NAMED AND ROUTED ═════════
+     "2 features with high missingness" does not say which two. These cards
+     name them in mono, route the question by dtype, and show the sentence each
+     answer would write into the transcript — including when it happens
+     (GUIDED-002). */
+  function renderMissingness(){
+    var box = $("missBox");
+    if (!box) return;
+    api("/project/" + P.id + "/evidence/missingness")
+      .then(function(body){
+        var cards = body.cards || [];
+        if (!cards.length){ box.innerHTML = ""; return; }
+        box.innerHTML = cards.map(missCard).join("");
+        cards.forEach(function(c){
+          if (c.dtype_route !== "numeric") return;
+          api("/project/" + P.id + "/evidence/histogram/" + encodeURIComponent(c.column))
+            .then(function(h){
+              var slot = $("misshist-" + c.column);
+              if (slot) slot.innerHTML = evBlock(
+                c.column, "as recorded · skew " + num(h.skew, 2), histSVG(h), "");
+            })
+            .catch(function(){});
+        });
+      })
+      .catch(function(){ box.innerHTML = ""; });
+  }
+
+  function missCard(c){
+    var h = '<article class="miss" id="miss-' + esc(c.column) + '">';
+    h += "<h3>" + esc(c.question).replace(/`([^`]+)`/g, function(_, m){
+      return '<span class="v">' + esc(m) + "</span>"; }) + "</h3>";
+    h += '<div class="chips" style="margin:0 0 9px;">' +
+         '<span class="v">' + esc(c.column) + "</span>" +
+         '<span class="route">' + esc(c.dtype_route) + "</span>" +
+         '<span class="chip">' + esc(c.n_missing.toLocaleString()) + " of " +
+         esc(c.n_rows.toLocaleString()) + " missing</span>" +
+         '<span class="chip">' + esc(pct(c.share)) + "</span></div>";
+    h += '<p class="because">' + esc(c.because) + "</p>";
+    h += '<div id="misshist-' + esc(c.column) + '"></div>';
+    h += '<div class="opts">';
+    (c.options || []).forEach(function(o){
+      h += '<div class="optrow' + (o.recommended ? " rec" : "") + '">' +
+           '<div class="otop"><span class="oname">' + esc(o.label) + "</span>" +
+           '<span class="when">' + esc(o.timing_prose) + "</span>" +
+           (o.recommended ? '<span class="chip">the coach would</span>' : "") + "</div>" +
+           '<p class="sentence">' + esc(o.decision_sentence).replace(/`([^`]+)`/g, function(_, m){
+             return '<span class="v">' + esc(m) + "</span>"; }) + "</p>" +
+           '<p class="conseq">' + esc(o.consequence) + "</p>" +
+           '<div class="oacts">' +
+           '<button class="cbtn" data-miss-choose="' + esc(c.column) + '" data-miss-opt="' +
+           esc(o.key) + '" type="button">Record this</button>' +
+           (o.key.indexOf("impute_m") === 0
+             ? '<button class="f-act" data-miss-preview="' + esc(c.column) +
+               '" data-miss-opt="' + esc(o.key) + '" type="button">Before / after</button>'
+             : "") +
+           "</div>" +
+           '<div id="missprev-' + esc(c.column) + "-" + esc(o.key) + '"></div>' +
+           "</div>";
+    });
+    h += "</div>";
+    h += '<div class="f-row" style="margin-top:11px;">' +
+         '<button class="f-act defer" data-defer="' + esc(c.id) + '" data-defer-to="' +
+         esc(c.target_step) + '" type="button">Decide at ' + esc(c.target_step_label) +
+         "</button></div>";
+    h += "</article>";
+    return h;
+  }
+
+  /* ═════════ THE DOCKS ═════════
+     Both open. The ledger shows every deferred item with the step it comes back
+     at — the record has always required a target_step, so the destination was
+     known at click time and the item simply did not say it (GUIDED-008). The
+     manuscript dock became the read-as-draft panel (GUIDED-007).
+
+     Nothing here renders an internal placeholder. This list used to print an
+     engineering to-do beside every deferred item, in place of the destination
+     the record already held. An empty dock says what it is waiting for, in the
+     app's own voice. */
+
+  var STEP_WORDS = { data: "Data", explore: "Explore", preprocess: "Preprocess",
+                     features: "Features", train: "Train" };
+
+  function deferrals(){
+    var out = [];
+    (P.decisions || []).forEach(function(d){
+      if (d.kind !== "defer") return;
+      var step = (d.payload || {}).target_step || "explore";
+      out.push({
+        subject: d.subject,
+        text: d.text,
+        step: step,
+        label: STEP_WORDS[step] || step
+      });
+    });
+    // A later dismissal or application settles a deferral; the ledger shows what
+    // is still waiting, not everything that ever waited.
+    var settled = {};
+    (P.decisions || []).forEach(function(d){
+      if (d.kind === "apply" || d.kind === "dismiss") settled[d.subject] = true;
+    });
+    return out.filter(function(x){ return !settled[x.subject]; });
+  }
+
+  function renderDocks(){
+    var flagged = [];
+    P.findings.forEach(function(f){
+      if (statusOf(f.id).flagged) flagged.push(f);
+    });
+    var waiting = deferrals();
+
+    $("ledgerList").innerHTML = waiting.map(function(x){
+      return '<li><span class="to">→ ' + esc(x.label) + "</span>" +
+             esc(findingTitle(x.subject)) + "</li>";
     }).join("");
-    $("ledgerCt").textContent = String(deferred.length);
-    $("ledgerEmpty").style.display = deferred.length ? "none" : "block";
+    $("ledgerCt").textContent = String(waiting.length);
+    $("ledgerEmpty").style.display = waiting.length ? "none" : "block";
+
+    $("ledgerPanel").innerHTML = waiting.length
+      ? waiting.map(function(x){
+          return '<div class="dock-item"><span class="dest">comes back at ' + esc(x.label) +
+                 "</span>" + esc(findingTitle(x.subject)) + "</div>";
+        }).join("")
+      : '<div class="dock-item">Nothing is waiting. Anything you set aside appears here with ' +
+        "the step it comes back at.</div>";
 
     $("evList").innerHTML = flagged.map(function(f){
       return '<li><span class="to">⚑ ' + esc(f.source) + "</span>" + esc(f.title) + "</li>";
     }).join("");
     $("evCt").textContent = String(flagged.length);
     $("evEmpty").style.display = flagged.length ? "none" : "block";
+
+    if ($("draftToggle").getAttribute("aria-expanded") === "true") renderDraft();
+  }
+
+  function findingTitle(id){
+    var f = findingById(id);
+    if (f) return f.title;
+    if (String(id).indexOf("missing__") === 0)
+      return "Missing values in " + String(id).slice("missing__".length);
+    return String(id);
+  }
+
+  /* The draft manuscript is layer-3 education, not decoration: it shows the
+     user what their decisions look like in methods prose while they still have
+     time to change them (§10). Gaps the app has no right to fill are visible as
+     [AUTHOR REQUIRED] rather than written in the user's name (§06.5). */
+  function renderDraft(){
+    var panel = $("draftPanel");
+    api("/project/" + P.id + "/draft")
+      .then(function(d){
+        var h = '<div class="draft"><p class="stand">' + esc(d.standfirst) + "</p>";
+        d.sections.forEach(function(s){
+          h += "<h4>" + esc(s.title) + "</h4>";
+          if (s.waiting_for){
+            h += '<p class="waiting">' + esc(s.waiting_for) + "</p>";
+          } else {
+            s.sentences.forEach(function(item){
+              h += "<p>" + esc(item.text).replace(
+                     /\[AUTHOR REQUIRED\]/g, '<span class="gapmark">[AUTHOR REQUIRED]</span>')
+                   .replace(/`([^`]+)`/g, function(_, m){
+                     return '<span class="v">' + esc(m) + "</span>"; }) + "</p>";
+            });
+          }
+        });
+        h += '<p class="draft-foot">' + d.n_sentences + " sentence" +
+             (d.n_sentences === 1 ? "" : "s") + " · " + d.n_gaps + " gap" +
+             (d.n_gaps === 1 ? "" : "s") + " only you can fill.</p></div>";
+        panel.innerHTML = h;
+      })
+      .catch(function(e){
+        panel.innerHTML = '<div class="dock-item">The draft could not be read just now: ' +
+                          esc(e.message) + "</div>";
+      });
   }
 
   function renderSample(){
@@ -1255,12 +1888,114 @@
     if (on){ $("sampleBox").innerHTML = ""; } else { renderSample(); nudge($("sampleBox")); }
   });
 
+  function dockToggle(btnId, panelId, onOpen){
+    $(btnId).addEventListener("click", function(){
+      var open = this.getAttribute("aria-expanded") === "true";
+      this.setAttribute("aria-expanded", open ? "false" : "true");
+      $(panelId).classList.toggle("is-hidden", open);
+      if (!open && onOpen) onOpen();
+    });
+  }
+  dockToggle("ledgerToggle", "ledgerPanel", null);
+  dockToggle("draftToggle", "draftPanel", function(){ if (P) renderDraft(); });
+
+  /* The attestation. Object-specific, because a generic PROCEED habituates;
+     paste is allowed, because blocking it harms accessibility and adds nothing;
+     the comparison is on the sentence, not on the user's typing speed. */
+  document.addEventListener("input", function(e){
+    var t = e.target;
+    if (!t || !t.hasAttribute || !t.hasAttribute("data-att-for")) return;
+    var key = t.getAttribute("data-att-for");
+    var want = null;
+    (LAST_EXPLORE_PLAN.questions || []).forEach(function(q){
+      if (q.key === key) want = attestationSentence(q);
+    });
+    var send = document.querySelector('[data-att-send="' + key.replace(/"/g, '\\"') + '"]');
+    if (send) send.disabled = !want || t.value.trim() !== want;
+  });
+
+  /* The pull affordances that run. Each one renders the evidence it fetched,
+     never a caption standing in for it. */
+  var PULL_RENDER = {
+    histograms: function(body){
+      if (!body.available) return notBuiltPanel(body.reason);
+      var h = '<div class="ev"><div class="ev-head"><span class="ev-lab">Distributions</span>' +
+              '<span class="ev-note">page ' + (body.page + 1) + " of " + body.n_pages +
+              " · " + body.n_features + " numeric features</span></div>" +
+              '<div class="ev-body"><div class="smallmults">';
+      body.plots.forEach(function(p){
+        h += '<div class="sm"><div class="sm-name">' + esc(p.column) + "</div>" + histSVG(p) + "</div>";
+      });
+      h += "</div></div>";
+      if (body.n_pages > 1){
+        h += '<div class="choice-acts"><span class="said">Page ' + (body.page + 1) +
+             " of " + body.n_pages + '</span>' +
+             '<button class="cbtn" data-hist-page="' + Math.max(0, body.page - 1) +
+             '" type="button">Previous</button>' +
+             '<button class="cbtn" data-hist-page="' +
+             Math.min(body.n_pages - 1, body.page + 1) + '" type="button">Next</button></div>';
+      }
+      return h + "</div>";
+    },
+    correlations: function(body){
+      if (!body.available) return notBuiltPanel(body.reason);
+      var strong = (body.strong_pairs || []).map(function(p){
+        return '<span class="chip">' + esc(p.a) + " × " + esc(p.b) + " · r = " + num(p.r, 2) + "</span>";
+      }).join("");
+      return '<div class="ev"><div class="ev-head"><span class="ev-lab">Correlation matrix</span>' +
+             '<span class="ev-note">' + esc(body.method) + " · " + body.n_features +
+             " features</span></div><div class=\"ev-body\">" + corrGrid(body) +
+             (strong ? '<div class="chips" style="margin-top:9px;">' + strong + "</div>" : "") +
+             "</div></div>";
+    },
+    plausibility: function(body){
+      var blocks = (body.impossible || []).concat(body.improbable || []);
+      if (!blocks.length)
+        return notBuiltPanel("No variable in this table matches the physiologic reference, " +
+                             "so there is nothing to check it against.");
+      return blocks.map(function(b){
+        return evBlock((b.tier === "impossible" ? "Impossible — " : "Improbable — ") + b.column,
+                       b.n_flagged.toLocaleString() + " of " + b.n_present.toLocaleString() +
+                       " outside " + num(b.low, 2) + "–" + num(b.high, 2) + " " + b.unit,
+                       entryTable(b),
+                       b.truncated ? "Showing the first " + b.entries.length + "." : "");
+      }).join("");
+    },
+    missingness: function(body){
+      var cards = body.cards || [];
+      if (!cards.length)
+        return notBuiltPanel("No feature is missing enough values for a decision here.");
+      return cards.map(missCard).join("");
+    }
+  };
+  function notBuiltPanel(reason){
+    return '<div class="ev"><div class="ev-head"><span class="ev-lab">Nothing to draw</span></div>' +
+           '<div class="ev-body"><p style="margin:0;font-size:13px;color:var(--muted);">' +
+           esc(reason) + "</p></div></div>";
+  }
+  function runPull(key, endpoint, title, page){
+    var box = $("paletteBox");
+    var url = "/project/" + P.id + "/evidence/" + endpoint +
+              (endpoint === "histograms" ? "?page=" + (page || 0) : "");
+    job("Running " + title + "…", api(url))
+      .then(function(body){
+        box.innerHTML = (PULL_RENDER[endpoint] || function(){ return ""; })(body);
+        box.setAttribute("data-open", key);
+        box.setAttribute("data-open-endpoint", endpoint);
+        box.setAttribute("data-open-title", title);
+        nudge(box);
+      })
+      .catch(function(err){ box.innerHTML = notBuiltPanel(err.message); });
+  }
+
   document.addEventListener("click", function(e){
     var t = e.target.closest ? e.target.closest(
       "[data-target-col],[data-panel],[data-pv-close],[data-defer],[data-dismiss]," +
       "[data-undismiss],[data-flag],[data-apply],[data-revert],[data-task]," +
-      "[data-look],[data-unskip]") : null;
-    if (!t) return;
+      "[data-look],[data-unskip],[data-blk-resolve],[data-blk-attest],[data-att-send]," +
+      "[data-impossible],[data-keep-impossible],[data-miss-choose],[data-miss-preview]," +
+      "[data-hist-page]") : null;
+    if (!t || t.disabled) return;
 
     if (t.hasAttribute("data-target-col")){
       decide("set_target", t.dataset.targetCol, { column: t.dataset.targetCol },
@@ -1275,13 +2010,16 @@
     if (t.hasAttribute("data-look")){
       var on = t.getAttribute("aria-pressed") === "true";
       t.setAttribute("aria-pressed", on ? "false" : "true");
-      var box = $("paletteBox");
-      box.innerHTML = on ? "" :
-        '<div class="figure"><div class="fig-bar"><span class="fig-name">' +
-        esc(t.textContent) + '</span><span class="jbadge">pulled, not asked</span></div>' +
-        '<div class="fig-cap">' + esc(t.getAttribute("data-tip") || "") +
-        " — this is an offer. Ignoring it changes nothing and asks nothing.</div></div>";
-      if (!on) nudge(box);
+      all(".pill[data-look]").forEach(function(p){
+        if (p !== t && p.hasAttribute("aria-pressed")) p.setAttribute("aria-pressed", "false");
+      });
+      if (on){ $("paletteBox").innerHTML = ""; return; }
+      runPull(t.dataset.look, t.dataset.endpoint || "", t.textContent, 0);
+      return;
+    }
+    if (t.hasAttribute("data-hist-page")){
+      runPull("histogram_pager", "histograms", "Distribution of each feature",
+              parseInt(t.dataset.histPage, 10) || 0);
       return;
     }
     if (t.hasAttribute("data-unskip")){
@@ -1290,6 +2028,92 @@
              "Recording that you want to confirm it yourself…");
       return;
     }
+
+    /* ── the blocker's two exits, both terminal ── */
+    if (t.hasAttribute("data-blk-resolve")){
+      var col = null;
+      (LAST_EXPLORE_PLAN.questions || []).forEach(function(q){
+        if (q.key === t.dataset.blkResolve) col = blockerSubject(q);
+      });
+      if (col) decide("resolve_blocker", t.dataset.blkResolve, { column: col },
+                      "Dropping " + col + " and re-checking the table…");
+      return;
+    }
+    if (t.hasAttribute("data-blk-attest")){
+      var panel = $("att-" + t.dataset.blkAttest);
+      if (panel){
+        panel.classList.remove("is-hidden");
+        var input = panel.querySelector("input");
+        if (input) input.focus();
+      }
+      return;
+    }
+    if (t.hasAttribute("data-att-send")){
+      var k = t.dataset.attSend;
+      var box = document.querySelector('[data-att-for="' + k.replace(/"/g, '\\"') + '"]');
+      if (!box) return;
+      if (!P) return;
+      setErr("");
+      job("Recording what you accepted…",
+          api("/project/" + P.id + "/decision", {
+            method:"POST",
+            headers:{ "Content-Type":"application/json" },
+            body: JSON.stringify({ kind:"acknowledge_blocker", subject:k,
+                                   text: box.value.trim(), payload:{ unresolved:true } })
+          }))
+        .then(function(p){ P = p; renderAll(); })
+        .catch(function(err){ setErr(err.message); });
+      return;
+    }
+
+    /* ── impossible entries: a CHOICE, never applied on our own ── */
+    if (t.hasAttribute("data-impossible")){
+      decide("note", "impossible__" + t.dataset.impossible,
+             { text: "Entries of " + t.dataset.impossible +
+                     " outside the impossibility band were set to missing." },
+             "Recording that decision…");
+      return;
+    }
+    if (t.hasAttribute("data-keep-impossible")){
+      decide("note", "impossible__" + t.dataset.keepImpossible,
+             { text: "Entries of " + t.dataset.keepImpossible +
+                     " outside the impossibility band were kept as recorded." },
+             "Recording that decision…");
+      return;
+    }
+
+    /* ── missingness: recorded now, executed inside the pipeline ── */
+    if (t.hasAttribute("data-miss-choose")){
+      decide("note", "missing__" + t.dataset.missChoose,
+             { text: missSentence(t.dataset.missChoose, t.dataset.missOpt),
+               option: t.dataset.missOpt, column: t.dataset.missChoose },
+             "Recording that decision…");
+      return;
+    }
+    if (t.hasAttribute("data-miss-preview")){
+      var c = t.dataset.missPreview, o = t.dataset.missOpt;
+      var slot = $("missprev-" + c + "-" + o);
+      if (!slot) return;
+      if (slot.innerHTML){ slot.innerHTML = ""; return; }
+      api("/project/" + P.id + "/evidence/imputation/" + encodeURIComponent(c) +
+          "?strategy=" + encodeURIComponent(o))
+        .then(function(pv){
+          slot.innerHTML = evBlock(
+            "Before / after", "fill value " + num(pv.fill_value, 3) + " · " +
+            pv.n_filled.toLocaleString() + " filled",
+            '<table class="mini"><thead><tr><th></th><th>mean</th><th>sd</th><th>median</th>' +
+            "<th>n</th></tr></thead><tbody>" +
+            "<tr><td>before</td><td>" + num(pv.before.mean, 3) + "</td><td>" + num(pv.before.std, 3) +
+            "</td><td>" + num(pv.before.median, 3) + "</td><td>" + pv.before.n + "</td></tr>" +
+            '<tr><td>after</td><td class="newv">' + num(pv.after.mean, 3) + '</td><td class="newv">' +
+            num(pv.after.std, 3) + '</td><td class="newv">' + num(pv.after.median, 3) +
+            "</td><td>" + pv.after.n + "</td></tr></tbody></table>",
+            pv.note);
+        })
+        .catch(function(err){ slot.innerHTML = notBuiltPanel(err.message); });
+      return;
+    }
+
     if (t.hasAttribute("data-panel")){ openPanel(t.dataset.panel); return; }
     if (t.hasAttribute("data-pv-close")){ $("pv-" + t.dataset.pvClose).classList.add("is-hidden"); return; }
     if (t.hasAttribute("data-apply")){
@@ -1300,15 +2124,33 @@
       decide("revert", "", {}, "Putting the table back…");
       return;
     }
-    if (t.hasAttribute("data-defer")){ decide("defer", t.dataset.defer); return; }
+    if (t.hasAttribute("data-defer")){
+      var to = t.dataset.deferTo || "";
+      decide("defer", t.dataset.defer, to ? { target_step: to } : {},
+             "Setting that aside for " + (STEP_WORDS[to] || "later") + "…");
+      return;
+    }
     if (t.hasAttribute("data-dismiss")){ decide("dismiss", t.dataset.dismiss); return; }
     if (t.hasAttribute("data-undismiss")){ decide("undismiss", t.dataset.undismiss); return; }
     if (t.hasAttribute("data-flag")){
-      var on = t.getAttribute("aria-pressed") === "true";
-      decide(on ? "unflag" : "flag", t.dataset.flag);
+      var pressed = t.getAttribute("aria-pressed") === "true";
+      decide(pressed ? "unflag" : "flag", t.dataset.flag);
       return;
     }
   });
+
+  /* The sentence a missingness choice writes into the transcript. Read off the
+     card the server rendered rather than composed here — the decision sentence
+     and the option the user pressed must be the same string. */
+  function missSentence(column, optKey){
+    var row = document.querySelector('#miss-' + CSS.escape(column) +
+                                     ' [data-miss-choose="' + column.replace(/"/g, '\\"') +
+                                     '"][data-miss-opt="' + optKey + '"]');
+    var card = row ? row.closest(".optrow") : null;
+    var s = card ? card.querySelector(".sentence") : null;
+    return s ? s.textContent.trim()
+             : ("A decision was recorded for " + column + ".");
+  }
 
   /* Deep link: /?project=<id> reopens a project this server still holds. */
   var pid = new URLSearchParams(window.location.search).get("project");

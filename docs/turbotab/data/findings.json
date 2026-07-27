@@ -4929,9 +4929,11 @@
   "detail": "On NHANES, columns coded as True/False text with blanks drew a 'convert to numeric' repair proposal. The right diagnosis is binary-categorical with a missingness decision attached. The doctor's type inference reaches for numeric before binary when text parses truthy.",
   "ev": "ml/import_doctor.py; screenshot meds_chol",
   "act": "Teach the doctor a binary-text detector (2 distinct non-null tokens after normalization) that outranks numeric coercion; the repair proposal becomes 'read as binary' with the missingness question routed per GUIDED-002.",
-  "status": "OPEN",
-  "note": "Filed by the adjudicator from the product designer's first drive of the Guided door.",
-  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27"
+  "status": "FIXED",
+  "note": "Fixed, and reproduced first: a True/False column with blanks is read by pandas as object holding Python bools, pd.to_numeric parses those at 100%, and check_numeric_stored_as_text therefore proposed 'Convert to numbers' at HIGH confidence - the tier the interface may pre-select. The detector is a new engine module, ml/binary_text.py, not an edit to ml/import_doctor.py, which TRANSITION_PLAN §05 freezes as engine-move-only; turbotab/engine.diagnose folds the two streams and turbotab/engine._dispatch_fix routes the read_as_binary kind, so the doctor keeps its nine kinds and its signatures. Binary means two distinct non-null tokens after normalization, which is wider than a truthy vocabulary on purpose; where the pair is a known boolean one the positive level is a fact and confidence is high, and where it is not (M/F, alpha/beta) the assignment is declared as the user's call at medium confidence rather than guessed silently. Outranking is implemented as SUPERSEDING: the coerce_numeric finding for a claimed column is dropped, because two repair proposals on one column make the user adjudicate the engine's own disagreement. The blanks are left blank - the missingness question is routed to Preprocess per GUIDED-002, and filling it here would answer it by accident. test_findings_match_a_direct_engine_call was rewritten to assert the new contract field-for-field rather than relaxed.",
+  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27",
+  "test": "turbotab/test_guided_drive.py::test_a_true_false_column_is_read_as_binary_not_coerced_to_numbers",
+  "verified_ev": "ml/binary_text.py; turbotab/engine.py:diagnose, _dispatch_fix"
  },
  {
   "id": "GUIDED-002",
@@ -4941,9 +4943,11 @@
   "detail": "'2 features with high missingness' does not say which two. The decision structure the card should offer is dtype-routed: binary -> is the missingness informative (indicator vs impute vs leave); numeric -> imputation strategies with tradeoffs and a before/after snippet; categorical -> explicit 'Missing' category vs mode, with informativeness stated.",
   "ev": "ml/dataset_profile.py; turbotab explore step; screenshots",
   "act": "Name the features in the claim sentence (mono chips). Route the repair proposal by dtype. Statistical imputations are recorded-now/executed-in-pipeline (see the action-timing ruling in the next builder prompt).",
-  "status": "OPEN",
-  "note": "Filed by the adjudicator from the product designer's first drive of the Guided door.",
-  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27"
+  "status": "FIXED",
+  "note": "Fixed. Cards name their column in the question text and in a mono chip, carry the count, the share and the total, and route by dtype: binary gets the informativeness decision (indicator vs impute vs leave), numeric gets imputation choices with a before/after the card can pull, categorical gets an explicit Missing level against the mode. THE ACTION-TIMING RULING is carried as data on every option rather than as prose the frontend might paraphrase: TIMING_IMMEDIATE for structural repairs that execute on the working table now, TIMING_IN_PIPELINE for statistical transforms that are recorded as decisions and fitted inside each model's pipeline on training folds. The decision sentence states the timing as methods prose - 'Missing values in bmi were imputed with the training-fold median.' - and a test bans the software vocabulary (pipeline, click, button, the app) from those sentences so the timing cannot degrade into a UI lecture. Only drop_rows is immediate, and its sentence says it is an exclusion criterion belonging in the participant flow. The before/after preview is computed on the whole column for display and says so, because the value actually used is fitted per fold.",
+  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27",
+  "test": "turbotab/test_guided_drive.py::test_missingness_routes_by_dtype",
+  "verified_ev": "ml/missingness_plan.py; turbotab/api.py:/evidence/missingness, /evidence/imputation"
  },
  {
   "id": "GUIDED-003",
@@ -4953,9 +4957,11 @@
   "detail": "The physiologic card says '8 flags' and offers 'Verify units and data entry'; it never shows the eight. The card reads as coach prose, not a mechanic. Where the engine refuses to propose a repair, the card's job is to put the evidence on the table: which features, which entries, what range they violated.",
   "ev": "ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features",
   "act": "Every finding card names its objects in mono and embeds its evidence (rows or plot). 'The engine refuses to guess' is fine; refusing to show is not.",
-  "status": "OPEN",
-  "note": "Filed by the adjudicator from the product designer's first drive of the Guided door.",
-  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27"
+  "status": "FIXED",
+  "note": "Fixed. ml/card_evidence.py returns the entries behind a claim - row label, value, the bound it broke and which side - and the physiologic card embeds them in a table under the claim rather than printing '8 flags' over a piece of advice. The engine may still refuse to propose a repair; what it may not do is refuse to show. Skew and outlier findings embed the histogram of the columns they name (GUIDED-005). One case needed a rule rather than more evidence: when more than a quarter of a column falls outside a hard physiologic bound, the entries are not the problem and the card says so - see GUIDED-004.",
+  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27",
+  "test": "turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted",
+  "verified_ev": "ml/card_evidence.py; turbotab/web/index.html attachPlausibility/attachSkewPlots"
  },
  {
   "id": "GUIDED-004",
@@ -4965,9 +4971,11 @@
   "detail": "A diastolic BP of ~0 is not an outlier, it is an entry error (no living person). The physiologic check flags values outside NHANES reference intervals but treats the whole violation set as one tier. Layered plausibility: (a) outside reference range - advisory, population-based; (b) incompatible with life / physically impossible - a repair proposal per entry (treat as missing), with the affected rows shown.",
   "ev": "ml/clinical_units.py; ml/physiology_reference.py; ml/dataset_profile.py; screenshot physiologic_check",
   "act": "Add an impossibility band to the physiology reference (hard floors/ceilings distinct from reference intervals). Impossible entries get a CHOICE card proposing set-to-missing with before/after; improbable stays advisory.",
-  "status": "OPEN",
-  "note": "Filed by the adjudicator from the product designer's first drive of the Guided door.",
-  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27"
+  "status": "FIXED",
+  "note": "Fixed. The bundled NHANES reference now carries floor/ceiling beside p01/p99 for all eleven variables, and get_impossibility_band returns None rather than falling back to the reference interval when no band is published - falling back would promote improbable values to impossible ones and propose deleting real data. The tiers are asserted to nest: a band narrower than its interval would call ordinary values impossible, and test_the_impossibility_band_contains_the_reference_interval runs that over every variable. Impossible entries get a CHOICE card proposing set-to-missing with the affected rows shown; improbable stays advisory and the two tiers never double-count an entry. ONE THING THE ROW DID NOT ANTICIPATE, found on the drive fixture and now guarded: match_variable_key matches by substring, so a column named hba1c_proxy matched hba1c and 75 of 160 rows were reported impossible. A quarter of a column outside a hard floor is a unit mismatch or a name collision, not a column of entry errors, so above that share the block is reported with the reading corrected - check the unit - and no per-entry repair is proposed. That is the blocker-budget doctrine applied one tier down: a false positive that cannot be cleanly resolved costs more than a missed advisory.",
+  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27",
+  "test": "turbotab/test_guided_drive.py::test_a_diastolic_of_zero_is_impossible_and_a_high_one_is_improbable",
+  "verified_ev": "ml/physiology_reference.py:get_impossibility_band, band_is_wider_than_interval; ml/card_evidence.py:plausibility_report"
  },
  {
   "id": "GUIDED-005",
@@ -4977,9 +4985,11 @@
   "detail": "A skew finding with no plot asks the user to take shape on faith. For <50 features the step should offer pageable per-feature histograms and a correlation matrix as pull affordances; every shape claim embeds the plot it is about (design language 10, layer 3: teach on their data).",
   "ev": "turbotab explore step; ml/eda_recommender.py; screenshot skewed_features",
   "act": "Finding cards embed their plot. Add histogram-pager and correlation-matrix pull chips gated on feature count.",
-  "status": "OPEN",
-  "note": "Filed by the adjudicator from the product designer's first drive of the Guided door.",
-  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27"
+  "status": "FIXED",
+  "note": "Fixed. Every shape claim embeds the distribution it is about, and two pull chips were added: a histogram pager and a correlation matrix, both gated at 50 numeric features. Above the gate they are not hidden and not offered as live controls - they render as not-built affordances carrying the reason, because a 400-column heatmap is a picture asserting that it can be read. A constant column returns 404 with the reason rather than an empty plot. The gate is one constant in the engine (MAX_FEATURES_FOR_GALLERY) so the page and the server cannot disagree about it.",
+  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27",
+  "test": "turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count",
+  "verified_ev": "ml/card_evidence.py:histogram, histogram_gallery, correlation_matrix; turbotab/web/index.html paletteExtras"
  },
  {
   "id": "GUIDED-006",
@@ -4989,9 +4999,11 @@
   "detail": "An offered control that silently no-ops asserts a capability that does not exist - the exact 'assert something false' the governing rule forbids. Solid-border chips ran; dashed ones did nothing with no message.",
   "ev": "turbotab/web/index.html pull palette; screenshot other_analyses_not_running",
   "act": "Wire them or mark them visibly not-built ('planned - not in this build', disabled affordance). Builder verifies which chips are dead and why; a dead chip with live styling is the bug even if the analysis is deliberately deferred.",
-  "status": "OPEN",
-  "note": "Filed by the adjudicator from the product designer's first drive of the Guided door.",
-  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27"
+  "status": "FIXED",
+  "note": "Fixed, and the audit result is worse than the row states: BEFORE this change NO pull chip ran. The handler rendered a figure shell containing the chip's own tooltip and the caption 'pulled, not asked' - so the three chips the drive called live (solid-bordered) were no more wired than the dashed ones; what varied was only whether the shell looked like a result. Three are wired now against real endpoints (physiologic plausibility, missingness, correlation matrix) plus the histogram pager; the rest render disabled, with aria-disabled, muted styling and the reason on the chip. The server owns the roster (PULL_CAPABILITIES) and the interview endpoint stamps built/ not_built_reason onto every pull question, so the page cannot claim a capability the server does not have, and a test walks the roster and calls every endpoint a chip claims.",
+  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27",
+  "test": "turbotab/test_guided_drive.py::test_every_pull_chip_says_whether_it_runs",
+  "verified_ev": "turbotab/api.py:PULL_CAPABILITIES, get_interview; turbotab/web/index.html renderPalette"
  },
  {
   "id": "GUIDED-007",
@@ -5001,9 +5013,11 @@
   "detail": "Both docked panels show counts and one-line items with no way to open them. The manuscript panel is the natural home of the approved read-as-draft view; the coach ledger should expand to its deferred items, each naming the step where it will resurface.",
   "ev": "turbotab/web; screenshot coach_manuscript_ledger",
   "act": "Make both panels expandable. Manuscript panel becomes the read-as-draft panel. Internal placeholder strings never render to users.",
-  "status": "OPEN",
-  "note": "Filed by the adjudicator from the product designer's first drive of the Guided door.",
-  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27"
+  "status": "FIXED",
+  "note": "Fixed. Both docks expand. The manuscript dock became the read-as-draft panel: turbotab/draft.py folds the record into methods-section prose in four sections, and DESIGN_LANGUAGE §10 names it a faded worked example, so it is styled as one - serif, muted, the standfirst saying plainly that it is a draft that updates as you decide. [AUTHOR REQUIRED] gaps are visible and are the point: the app states what was done and never why it mattered, so a dismissal renders as the dismissal plus a gap where only the author can say why it does not affect the analysis. The literal string the row named is gone from the ledger, which now shows each deferred item with its destination (GUIDED-008), and an empty section says what it is waiting for in the app's own voice rather than rendering blank or rendering an engineering note. A test scans the whole page for internal placeholder strings.",
+  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27",
+  "test": "turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open",
+  "verified_ev": "turbotab/draft.py; turbotab/api.py:/project/{id}/draft; turbotab/web/index.html renderDraft, dockToggle"
  },
  {
   "id": "GUIDED-008",
@@ -5013,8 +5027,10 @@
   "detail": "The API rejects a deferral without target_step, so the information exists at click time; the button just does not say it. The user's own words: 'you need to make a decision about how to handle this no later than <step>'.",
   "ev": "turbotab/api.py (defer requires target_step); screenshots",
   "act": "Deferral affordances name their destination: 'Decide at Preprocess'. On expand, the coach ledger shows each deferred item with its target step.",
-  "status": "OPEN",
-  "note": "Filed by the adjudicator from the product designer's first drive of the Guided door.",
-  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27"
+  "status": "FIXED",
+  "note": "Fixed. The Router owns the destination, because it owns which step can act on a question - a destination chosen by the renderer is one the record cannot honor. defer_destination sends structural repairs to Explore (the last step where the table can still be repaired before rows acquire identities) and profile findings to Preprocess (their answer is a statistical transform, and those are recorded now and fitted in the per-model pipeline). Every finding on the wire carries defer_target and defer_target_label, the button reads 'Decide at Preprocess' rather than 'Remind me later', the click sends that step rather than letting the API default it, and the expanded coach ledger shows each waiting item with 'comes back at <Step>'. Naming a step that is not built yet is correct: it is where the item resurfaces, and the vaguer answer was the bug.",
+  "verified_against": "TurboTab @ aa64ea0 - user drive with NHANES, 2026-07-27",
+  "test": "turbotab/test_guided_drive.py::test_every_finding_carries_the_step_its_deferral_goes_to",
+  "verified_ev": "ml/router.py:defer_destination, STEP_LABELS; turbotab/engine.py:_with_deferral; turbotab/web/index.html deferButton"
  }
 ]

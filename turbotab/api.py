@@ -28,7 +28,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from turbotab import engine
+from turbotab import draft, engine
 from turbotab.project import AnalysisProject, ProjectError, ProjectStore
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
@@ -236,6 +236,48 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         _recompute(project)
         return _payload(project)
 
+    if decision.kind == "resolve_blocker":
+        # The blocker's other terminal exit: the CHOICE it spawns, carried out.
+        # Dropping a column is `import_doctor`'s own `drop_columns` repair, so
+        # this composes the engine rather than adding a repair of its own — and
+        # it goes through the same identity barrier as every other apply.
+        column = decision.payload.get("column") or ""
+        if not column:
+            raise HTTPException(400, "Resolving a blocker needs the column it is about.")
+        if column not in list(project.df.columns):
+            raise HTTPException(400, f"No column named '{column}' in this table.")
+        from ml.import_doctor import ShapeFinding
+        drop = ShapeFinding(
+            id=f"blocker_drop__{column}",
+            severity="critical",
+            title=f"Drop '{column}'",
+            detail=f"'{column}' was dropped to resolve a question of consequence.",
+            why_it_matters="",
+            fix_label=f"Drop '{column}'",
+            fix_kind="drop_columns",
+            confidence="high",
+            params={"columns": [column]},
+            affected_columns=[column],
+        )
+        try:
+            project.check_repair_allowed(drop.fix_kind)
+            prev = engine.preview_fix(project.df, drop)
+            new_df, description = engine.apply_fix(project.df, drop)
+            project.apply_fix(new_df, drop.id, drop.title, description,
+                              prev["row_identity_preserved"])
+        except engine.EngineRefusal as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        project.record("resolve_blocker",
+                       f"`{column}` was dropped from the analysis because it may "
+                       f"encode the outcome.",
+                       subject=decision.subject,
+                       payload={**decision.payload, "column": column,
+                                "resolved": True})
+        _recompute(project)
+        return _payload(project)
+
     if decision.kind == "acknowledge_blocker":
         # The constitution's third clause. The tool does not refuse the user's
         # judgment — the flagged column may be legitimate — it refuses silence.
@@ -322,6 +364,130 @@ async def preview_finding(project_id: str, finding_id: str) -> Dict[str, Any]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Evidence
+#
+# "Every finding card names its objects in mono and embeds its evidence (rows or
+# plot). 'The engine refuses to guess' is fine; refusing to show is not."
+# (GUIDED-003). These endpoints are the show.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Which pull affordances actually run. The frontend renders a chip as live only
+# when it appears here as `built`, and as a visibly disabled affordance
+# otherwise — a solid-bordered control that no-ops asserts a capability that
+# does not exist (GUIDED-006). Adding an analysis means adding it here, so the
+# interface cannot drift ahead of the engine.
+PULL_CAPABILITIES: Dict[str, Dict[str, Any]] = {
+    "look::r1_plausibility": {
+        "built": True, "endpoint": "plausibility",
+        "label": "Physiologic plausibility",
+    },
+    "look::r2_missingness": {
+        "built": True, "endpoint": "missingness",
+        "label": "Missingness by feature",
+    },
+    "look::r8_collinearity": {
+        "built": True, "endpoint": "correlations",
+        "label": "Correlation matrix",
+    },
+    "histogram_pager": {
+        "built": True, "endpoint": "histograms",
+        "label": "Distribution of each feature",
+    },
+}
+
+# Named, not counted: the reason a chip is dark is shown on the chip. Anything
+# the Router offers that is not in PULL_CAPABILITIES falls back to this.
+NOT_BUILT_REASON = ("Not in this build. The engine has the analysis; the Guided "
+                    "door has not been wired to it yet, and a control that "
+                    "silently does nothing is worse than one that says so.")
+
+
+def _project(project_id: str) -> AnalysisProject:
+    try:
+        return STORE.get(project_id)
+    except ProjectError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.get("/project/{project_id}/evidence/plausibility")
+async def evidence_plausibility(project_id: str) -> Dict[str, Any]:
+    """Impossible and improbable entries, in two tiers, with the rows named.
+
+    The impossible tier carries a repair proposal; the improbable tier stays
+    advisory. A diastolic pressure of ~0 is an entry error, not a rare patient
+    (GUIDED-004).
+    """
+    return engine.plausibility(_project(project_id).working_table)
+
+
+@app.get("/project/{project_id}/evidence/histograms")
+async def evidence_histograms(project_id: str, page: int = 0,
+                              per_page: int = 6) -> Dict[str, Any]:
+    return engine.histograms(_project(project_id).working_table,
+                             page=page, per_page=per_page)
+
+
+@app.get("/project/{project_id}/evidence/histogram/{column}")
+async def evidence_one_histogram(project_id: str, column: str) -> Dict[str, Any]:
+    try:
+        h = engine.column_histogram(_project(project_id).working_table, column)
+    except engine.EngineRefusal as exc:
+        raise HTTPException(404, str(exc)) from exc
+    if h is None:
+        raise HTTPException(
+            404, f"'{column}' has no distribution to draw — it is constant or "
+                 f"has fewer than two usable values.")
+    return {"column": column, **h}
+
+
+@app.get("/project/{project_id}/evidence/correlations")
+async def evidence_correlations(project_id: str) -> Dict[str, Any]:
+    return engine.correlations(_project(project_id).working_table)
+
+
+@app.get("/project/{project_id}/evidence/missingness")
+async def evidence_missingness(project_id: str) -> Dict[str, Any]:
+    """Dtype-routed missingness decisions, each naming its own column.
+
+    The action-timing ruling is carried on every option: structural repairs run
+    now, statistical transforms are recorded and fitted inside the per-model
+    pipeline on training folds. Stated as methods prose in the decision
+    sentence, never as a note about the software (GUIDED-002).
+    """
+    return {"cards": engine.missingness(_project(project_id).working_table)}
+
+
+@app.get("/project/{project_id}/evidence/imputation/{column}")
+async def evidence_imputation(project_id: str, column: str,
+                              strategy: str = "impute_median") -> Dict[str, Any]:
+    try:
+        preview = engine.imputation_preview(
+            _project(project_id).working_table, column, strategy)
+    except engine.EngineRefusal as exc:
+        raise HTTPException(404, str(exc)) from exc
+    if preview is None:
+        raise HTTPException(
+            400, f"'{strategy}' has no before/after to show for '{column}'.")
+    return preview
+
+
+@app.get("/project/{project_id}/draft")
+async def get_draft(project_id: str) -> Dict[str, Any]:
+    """The decisions so far, as draft methods prose with the gaps visible."""
+    return draft.draft(_project(project_id).to_dict())
+
+
+@app.get("/capabilities")
+async def get_capabilities() -> Dict[str, Any]:
+    """Which pull affordances are wired, and what the unwired ones say.
+
+    Served rather than hard-coded in the page so the interface cannot claim a
+    capability the server does not have.
+    """
+    return {"pulls": PULL_CAPABILITIES, "not_built_reason": NOT_BUILT_REASON}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # GET /project/{id}/interview — the Router's plan
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -349,6 +515,15 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
             answered.append("confirm_task_type")
         elif d.kind in ("apply", "dismiss"):
             answered.append(f"repair::{d.subject}")
+        elif d.kind == "acknowledge_blocker":
+            # A terminal state is guaranteed (DESIGN_LANGUAGE §09). A blocker
+            # never re-fires on the same facts after acknowledgment: a flag that
+            # cannot be satisfied teaches contempt for all flags. The
+            # acknowledgment stays in the record and surfaces afterwards as its
+            # own --stop-flagged artifact — never green, never gone.
+            answered.append(d.subject)
+        elif d.kind == "resolve_blocker":
+            answered.append(d.subject)
         elif d.kind == "defer":
             deferred[f"repair::{d.subject}"] = d.payload.get("target_step", "explore")
         elif d.kind == "undismiss":
@@ -393,11 +568,27 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
         raise HTTPException(500, f"The interview broke a governing rule: {exc}") from exc
 
     open_blockers = router.unresolved_blockers(questions, answered)
+
+    # Every pull affordance says whether it runs. A chip that is offered in live
+    # styling and silently no-ops asserts a capability that does not exist —
+    # the exact "assert something false" the governing rule forbids — so the
+    # server, which knows, tells the page rather than the page guessing
+    # (GUIDED-006).
+    rendered = []
+    for q in questions:
+        d = q.to_dict()
+        if d["mode"] == "pull":
+            cap = PULL_CAPABILITIES.get(d["key"])
+            d["built"] = bool(cap and cap.get("built"))
+            d["endpoint"] = (cap or {}).get("endpoint")
+            d["not_built_reason"] = None if d["built"] else NOT_BUILT_REASON
+        rendered.append(d)
+
     return {
         "project_id": project.id,
         "step": step,
         "steps": list(router.STEPS),
-        "questions": [q.to_dict() for q in questions],
+        "questions": rendered,
         # Leaving the step with one of these open is allowed, and is itself a
         # decision. The frontend shows the sentence the record will carry.
         "unresolved_blockers": [q.key for q in open_blockers],

@@ -470,5 +470,77 @@
   "classic": "pages/02_EDA.py (train_row_mask; the profile and quick_probe_baselines)",
   "state": "classic-only",
   "reason": "L9 narrow cut on CONTRACT-017. Classic's Explore step now runs the two paths that model - the dataset profile that drives the coach, and quick_probe_baselines, which fits models on its own 80/20 split - on train_row_mask(df.index) only, and says so in the same words pages/04 uses. Guided does not: turbotab/engine.py:166 profiles the whole working table, and the Guided interview does not yet ask for a lockbox at all (see target-lockbox-settings), so there is usually nothing sealed to exclude. This is Classic-ahead-of-Guided and a debt owed forward, not backward: when the Guided door asks for the seal, its Explore step has to arrive with this scoping already in place. The display analyses on both sides still see every row - deliberately, per the lockbox status line - and converge at L11."
+ },
+ {
+  "id": "audit-binary-text",
+  "step": "data-target",
+  "capability": "Binary-coded text detected as binary, outranking numeric coercion, with a 'read as binary' repair",
+  "classic": "(none) - import_doctor proposes coerce_numeric for the same column",
+  "state": "guided-only",
+  "reason": "GUIDED-001. ml/binary_text.py is engine code and Classic could call it, but pages/01 renders import_doctor.diagnose directly and would show both proposals for one column. The merge lives in turbotab/engine.diagnose because ml/import_doctor.py is frozen as engine-move-only (TRANSITION_PLAN §05) and folding it into diagnose() there would be a behavior change to a frozen file. Owed back to Classic when the freeze lifts."
+ },
+ {
+  "id": "explore-missingness-decisions",
+  "step": "explore",
+  "capability": "Per-feature missingness decision cards: features named, routed by dtype, each option carrying its execution timing and its decision sentence",
+  "classic": "pages/02_EDA.py missingness_scan (a scan, not a decision) + pages/05 global imputation controls",
+  "state": "guided-only",
+  "reason": "GUIDED-002. Classic has the analysis and the controls, but not the decision: the EDA page reports missingness patterns and the Preprocess page offers imputation strategies as widgets, with no card that names the feature, routes the question by dtype and writes a methods sentence. The action-timing ruling - structural repairs now, statistical transforms recorded now and fitted in the per-model pipeline on training folds - is carried as data on every option (ml/missingness_plan.py TIMING_*), so it moves to Classic with the module."
+ },
+ {
+  "id": "explore-impossibility-band",
+  "step": "explore",
+  "capability": "Two-tier plausibility: impossible entries (hard floor/ceiling) get a repair proposal with the rows shown; improbable entries stay advisory",
+  "classic": "pages/02_EDA.py plausibility_check - one tier, advisory only",
+  "state": "both",
+  "reason": "GUIDED-004. The band itself is core: ml/physiology_reference.py now publishes floor/ceiling beside p01/p99, and get_impossibility_band returns None rather than falling back to the reference interval, so both doors read the same two tiers from the same reference. What is Guided-only is the CHOICE card - Classic still renders the single advisory list, and converges at L11 with pages/02. Marked both because the capability being registered is the tiering, and Classic's check reads the tiered reference today."
+ },
+ {
+  "id": "explore-evidence-on-the-card",
+  "step": "explore",
+  "capability": "Finding cards embed their evidence: the flagged entries with values and bounds, or the distribution the claim is about",
+  "classic": "pages/02_EDA.py renders plots per analysis, in tabs, separate from the finding text",
+  "state": "guided-only",
+  "reason": "GUIDED-003 / GUIDED-005. Classic has more plots than Guided; what it does not have is the plot ATTACHED TO THE CLAIM. A skew finding in the coach ledger and a histogram in the Feature Explorer tab are two screens apart, which is the split-attention cost DESIGN_LANGUAGE §10 layer 2 exists to remove. ml/card_evidence.py is engine code and portable; the attachment is a rendering decision Classic has not made."
+ },
+ {
+  "id": "explore-histogram-pager",
+  "step": "explore",
+  "capability": "Per-feature histogram pager and correlation matrix, offered only below 50 numeric features",
+  "classic": "pages/02_EDA.py Feature Explorer pager + correlation heatmap (no feature-count gate)",
+  "state": "both",
+  "reason": "GUIDED-005. Both doors offer both analyses. The difference is the gate: Guided refuses above 50 numeric features and says why, because a grid that cannot be read is a claim that it can. Classic pages them without a ceiling. Registered as both because the capability is present on both sides; the gate is the Guided door being stricter, not a missing feature, and it converges at L11."
+ },
+ {
+  "id": "explore-pull-capability-audit",
+  "step": "explore",
+  "capability": "Every pull affordance declares whether it is wired; unwired ones render disabled with the reason on the control",
+  "classic": "(none) - Classic's EDA buttons all run",
+  "state": "guided-only",
+  "reason": "GUIDED-006. Classic does not need this: every button on pages/02 runs an analysis. Guided needed it because the palette is generated from the recommender and outran the endpoints behind it - before L9 no pull chip ran at all, and three of them looked live. The roster is served from turbotab/api.PULL_CAPABILITIES so the page cannot claim a capability the server lacks."
+ },
+ {
+  "id": "cross-read-as-draft",
+  "step": "cross-step",
+  "capability": "Read-as-draft panel: the recorded decisions rendered as draft methods prose with [AUTHOR REQUIRED] gaps visible",
+  "classic": "pages/10_Report_Export.py generates the manuscript at the END of the workflow",
+  "state": "guided-only",
+  "reason": "GUIDED-007, DESIGN_LANGUAGE §10. Classic can generate a manuscript; it cannot show you the draft WHILE you still have time to change the decisions in it, which is the whole pedagogical claim - layer 3 teaching on the user's own data. turbotab/draft.py is a pure fold over the record and holds no state, so Classic could mount it against WorkflowProvenance; it has not."
+ },
+ {
+  "id": "cross-deferral-destination",
+  "step": "cross-step",
+  "capability": "Deferral affordances name their destination on the control, and the coach ledger shows each waiting item with the step it comes back at",
+  "classic": "(none) - Classic's ledger has no defer-to-step contract at all",
+  "state": "guided-only",
+  "reason": "GUIDED-008, and the narrower sibling of cross-deferral-resurface. The API has always rejected a deferral without a target_step, so the destination existed at click time and the button did not say it. ml/router.defer_destination now decides it - structural repairs to Explore, profile findings to Preprocess - and the label travels on every finding. Classic cannot express the contract, so this is owed back with the resurface guarantee, not separately."
+ },
+ {
+  "id": "explore-blocker-costume",
+  "step": "explore",
+  "capability": "The CONSEQUENCE treatment: small-caps BLOCKER signal word, full-width interruption band in --stop, the reserved notched glyph, two terminal exits",
+  "classic": "(none) - Classic renders a leakage warning box in the same style as every other warning",
+  "state": "guided-only",
+  "reason": "DESIGN_LANGUAGE §09. The costume is what makes the tier legible before a word is read, and it is reserved: --stop, the signal word and the notched square appear in exactly one component, enforced by a test that scans the page for the tokens outside it. Both exits are terminal - Resolve drops the column through import_doctor's own drop_columns repair, Acknowledge records the typed object-specific sentence - and the blocker never re-fires on the same facts afterwards. Classic has no acknowledgment path and no reserved tier; owed to Classic with explore-blocker-acknowledgment at L11."
  }
 ]
