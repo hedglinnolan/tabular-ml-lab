@@ -2919,7 +2919,9 @@
   "detail": "LANDS: engine. ml/stats_tests.py:12 correlation_test, :44 two_sample_location_test, :69 k_sample_location_test, :91 categorical_association_test, :116 `normality_check(series) -> Tuple[float, float, str]`, :135 `friedman_test(block_data: np.ndarray) -> Tuple[float, float, str]`, :153 `paired_location_test(diff: np.ndarray, parametric: bool) -> Tuple[float, float, str]`. Several return a third element that is a human-readable test NAME — that string is what ends up printed in the methods section, so renaming it changes the manuscript's claim about which test was run. pages/09_Hypothesis_Testing.py is the main consumer and carries 6 of the 47 silent-swallow blocks.",
   "ev": "ml/stats_tests.py:12-153 (7 functions); 4 import sites; pages/09_Hypothesis_Testing.py",
   "act": "Golden test with fixed seeds pinning BOTH the numeric statistic/p-value (10 dp) AND the returned test-name string for each function, including the parametric/non-parametric branch of each (normality_check driving the switch). The name strin…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: still zero coverage. The specific hazard this row names is worth restating because it is unusual - several of these functions return a human-readable test NAME as part of their result, and that string is quoted verbatim in the Methods section, so renaming it during a refactor changes the manuscript's claim about which statistical test was run. A golden test must therefore pin the STRING as well as the statistic and the p-value, for both the parametric and non-parametric branch of each function, with normality_check driving the switch. Compounding: pages/09_Hypothesis_Testing.py carries six of the bare provenance swallows (STATE-052), and STATE-022 shows its per-branch detail keys never survive to the export - so this module's output is both unpinned and lossy on the way out.",
+  "verified_ev": "ml/stats_tests.py - correlation_test, two_sample_location_test, k_sample_location_test, categorical_association_test, normality_check, friedman_test, paired_location_test, several returning a human-readable test NAME as the third element; no test file in the repository imports ml.stats_tests"
  },
  {
   "id": "TEST-021",
@@ -2929,7 +2931,9 @@
   "detail": "LANDS: engine/record/project boundary. Every edge is a deferred import inside a function body: ml/publication.py:98,155,1739,1829 import from utils.insight_ledger, while utils/insight_ledger.py:1077 does `from ml.publication import TRIPOD_ITEMS` inside get_tripod_status(). utils/cohorts.py:474 `from utils.test_lockbox import get_lockbox` vs utils/test_lockbox.py:269 `from utils.cohorts import active_cohort`. utils/session_state.py:216,278,428 import utils.cohorts while utils/test_lockbox.py:228 imports `reset_downstream_results` from utils.session_state. A refactor that tidies imports to the top of the file — the single most natural cleanup during a move — converts all three into hard circul…",
   "ev": "ml/publication.py:98,155,1739,1829 / utils/insight_ledger.py:1077; utils/cohorts.py:474 / utils/test_lockbox.py:269; utils/session_state.py:216,278,428 / utils/test_lockbox.py:228",
   "act": "Break the cycles BEFORE moving files: TRIPOD_ITEMS is pure data — lift it to a standalone module both sides import. Move reset_downstream_results' invocation out of test_lockbox via a callback/event so Project owns invalidation. Add an impo…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of STATE-053 / CONTRACT-037 from the test pass, unchanged at HEAD, and it contributes the concrete first move the other two do not: TRIPOD_ITEMS is PURE DATA and can be lifted to a standalone module both sides import, which breaks cycle 1 on its own with no design decision required. Cycle 2 and 3 need the harder change - moving the invalidation call out of test_lockbox so the Project owns it rather than the accessor. The row's other contribution is the guard: an import-linter or a test that imports every module at module scope would make the cycles visible today instead of at the moment someone tidies imports to the top of a file, which is the single most natural cleanup during a move.",
+  "verified_ev": "ml/publication.py imports from utils.insight_ledger at four sites while utils/insight_ledger.py imports TRIPOD_ITEMS from ml.publication inside get_tripod_status; utils/cohorts.py imports get_lockbox from utils.test_lockbox while utils/test_lockbox.py:520 imports active_cohort from utils.cohorts; utils/session_state.py:230-233 imports utils.cohorts inside get_data while utils/test_lockbox.py:452 imports reset_downstream_results from utils.session_state"
  },
  {
   "id": "TEST-022",
@@ -2939,7 +2943,9 @@
   "detail": "LANDS: engine + project. ml/eval.py:97 `perform_cross_validation(model, X, y, cv_folds=5, task_type='regression', scoring=None, cv_strategy='standard', groups=None) -> Dict[str, np.ndarray]` implements three branches with explicit leakage rationale (:107-119): 'group' -> StratifiedGroupKFold/GroupKFold, 'time' -> TimeSeriesSplit (no shuffle), else StratifiedKFold/KFold with random_state=42. It returns {'scores','mean','std','folds','strategy'}. tests/test_cv_strategies.py exists (86 loc) but cv_strategy and cv_groups_train are both in the 21-key unasserted-clear list — so the fold scheme can go stale relative to the split after a data change with nothing detecting it. The fallback at :143-14…",
   "ev": "ml/eval.py:97-171; silent downgrade at :143-149; cv_strategy/cv_groups_train absent from all three test key-lists",
   "act": "Golden test asserting the returned 'strategy' and 'folds' for each branch, plus the concrete fold membership (list of test-index arrays) for a fixed 60-row frame with 12 groups — fold MEMBERSHIP is what leakage depends on, and it is what a …",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "The staleness half is closed; the fold-membership half is not. cv_strategy and cv_groups_train are no longer unasserted-on-clear - they are registered in the cascade and pinned by the characterization suite, and since SWEEP-025 they are derived inside make_split so they cannot go stale relative to the split at all. WHAT REMAINS is what the action actually asked for and what leakage actually depends on: no test asserts concrete FOLD MEMBERSHIP. tests/test_cv_strategies.py checks that the right splitter type is chosen and that the fold count clamps, which a refactor could satisfy while still leaking - and the silent downgrade at ml/eval.py:143-149 means a group strategy that cannot build folds falls back rather than refusing. Pin the list of test-index arrays for a fixed 60-row frame with 12 groups.",
+  "verified_ev": "ml/eval.py:97-171 (three branches with explicit leakage rationale; returns scores/mean/std/folds/strategy; silent downgrade at :143-149); tests/test_cv_strategies.py:19-85 (five tests incl. the group clamp and the no-groups fallback); cv_strategy and cv_groups_train are now covered by the cascade tests and by ml/splits.py"
  },
  {
   "id": "TEST-023",
@@ -2949,7 +2955,9 @@
   "detail": "LANDS: record. utils/insight_ledger.py:523 `class Insight` with `__post_init__` at :602 performing vocabulary normalization (tests/test_review_fixes.py:395-398 shows model_scope ['Boosting','Neural Net'] normalizing to ['tree','neural'], and the test must call `ins.__post_init__()` MANUALLY to trigger it after mutation). to_dict at :617, from_dict at :647, to_list at :1342, from_list at :1347. If from_dict bypasses or a future refactor changes construction so __post_init__ does not run, un-normalized family strings enter the ledger and silently mismatch every get_for_models() lookup — insights simply stop appearing, with no error. Round-trip is covered only at tests/test_unified_ledger_integ…",
   "ev": "utils/insight_ledger.py:523,602,617,647,1342,1347; tests/test_review_fixes.py:395-398 (manual __post_init__ call)",
   "act": "Characterization test: construct an Insight with DENORMALIZED model_scope and un-normalized fields, round-trip through to_dict/from_dict and to_list/from_list, and assert the normalized form survives both directions. Then assert ledger.get_…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and the mechanism is worth being precise about: from_dict constructs through cls(**filtered), so __post_init__ DOES currently re-run and normalization does survive a round trip today. The finding is that nothing tests it and the invariant is fragile by construction - the test suite already has to call ins.__post_init__() BY HAND after mutating a scope, which is a live demonstration that normalization is not idempotent under mutation. Any future change to a __new__, a cached constructor, a dataclasses.replace path or a from_dict that bypasses __init__ silently admits un-normalized family strings, which then match no lookup and are discarded with no trace by utils/coaching_ui.py. Round-trip a DENORMALIZED scope through both to_dict/from_dict and to_list/from_list and assert the normalized form survives.",
+  "verified_ev": "utils/insight_ledger.py:604-616 (__post_init__ normalizes model_scope through FAMILY_ALIASES), :617-646 (to_dict), :648-653 (from_dict, which constructs via cls(**filtered) and therefore DOES re-run __post_init__), :1342-1357 (to_list/from_list); tests/test_review_fixes.py:395-398 calls ins.__post_init__() manually after mutation"
  },
  {
   "id": "TEST-024",
@@ -2959,7 +2967,9 @@
   "detail": "LANDS: project. The keys crossing page boundaries are enumerated only inside test fixtures (tests/integration/conftest.py:48-123 inject_data_state/inject_trained_state) and inside the cascade key-lists. There is no single declaration of what a stage PRODUCES vs CONSUMES. inject_trained_state at :79 sets 12 keys; _inject_full_downstream_state at tests/integration/test_cascade_invalidation.py:57 sets 25. The divergence between the two 'complete pipeline' fixtures is itself evidence that no canonical contract exists. Building Project without first extracting this contract means guessing.",
   "ev": "tests/integration/conftest.py:48-123 (12 keys) vs tests/integration/test_cascade_invalidation.py:57-121 (25 keys)",
   "act": "Derive the produces/consumes table from the two fixtures plus the 65-key clear list BEFORE writing Project, and encode it as a stage-contract test: for each stage, assert the exact set of Project fields that are non-None after it runs, and …",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The two 'complete pipeline' fixtures still disagree about what a complete pipeline is - 12 keys against 25 - and that divergence is itself the finding: if a canonical contract existed, both would be derived from it. The keys crossing page boundaries are still enumerated only inside fixtures and inside the cascade key lists, so building the Project without extracting the produces/consumes table first means guessing at it. Note the raw material now exists in one place that did not exist when this was written: turbotab/cascade.py declares which stage PRODUCES each result key, so the produces half is half-derived already - what is missing is CONSUMES, which is the half that says whether a stage can run at all.",
+  "verified_ev": "tests/integration/conftest.py inject_data_state / inject_trained_state (12 keys) versus tests/integration/test_cascade_invalidation.py _inject_full_downstream_state (25 keys); no single declaration anywhere of what a stage PRODUCES versus CONSUMES"
  },
  {
   "id": "TEST-025",
@@ -2969,7 +2979,9 @@
   "detail": "LANDS: jobs/infra. .github/workflows/ci.yml runs exactly `python -m pytest tests/ --ignore=tests/integration -q --timeout=60` then `python -m pytest tests/integration -q --timeout=120`, followed by a deploy job gated only on `needs: test`. There is no --cov, no minimum test count, no coverage delta check. During a migration that deletes ~40 test modules, CI stays green throughout and auto-deploys to the self-hosted runner on every push to main. Combined with the vacuous-green patterns above, the safety net can quietly reach zero while reporting success.",
   "ev": ".github/workflows/ci.yml Tier 1/Tier 2 steps and the `deploy: needs: test` gate",
   "act": "Before the first file moves: add a collected-test-count floor (assert >= N collected) and a coverage gate on engine/ + project/, and disable auto-deploy on main for the duration of the migration.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Two pytest invocations, no coverage gate, no minimum collected-test count, and a deploy job to a self-hosted runner gated on nothing but 'tests passed and the branch is main'. During a migration that deletes test modules, CI stays green the whole way and keeps deploying - and combined with the vacuous-green patterns in TEST-011 and TEST-016, the safety net can reach zero while reporting success. The cheapest effective guard is the collected-count floor, because it needs no coverage tooling and catches exactly the failure this row is about; tests/test_insight_id_integrity.py already uses that pattern internally (MIN_FILES_SCANNED / MIN_PRODUCED_IDS) and it is the reason SWEEP-014 could close.",
+  "verified_ev": ".github/workflows/ci.yml:48 (pytest tests/ --ignore=tests/integration) and :52 (pytest tests/integration), no --cov and no collected-count floor anywhere; :59-62 deploy: needs: test, gated only on the branch being main"
  },
  {
   "id": "COACH-022",
@@ -2979,7 +2991,9 @@
   "detail": "run_probe moves into Jobs and is invoked from a job spec that hands it the whole frame — which is the natural thing to do, since the function signature `run_probe(X_train, y_train, task_type)` merely NAMES its arguments X_train/y_train and validates nothing. Every probe number then silently becomes contaminated, and because probe verdicts flow into CoachProvenance and from there into narrative_engine's Methods draft, the leakage reaches the manuscript.",
   "ev": "NOT enforced inside ml/coach_probe.py — its docstring (lines 19-21) states 'the probe must ONLY ever see training rows (callers apply the lockbox mask)'. The single enforcement is at pages/05_Preprocess.py:224: `_pm = df[target_col].notna()…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and the invariant is unguarded, so it stays OPEN. The contract is stated in prose in the engine and enforced in exactly one caller, which is the shape that breaks the moment there is a second caller - and moving run_probe into Jobs creates one, invoked from a job spec that naturally hands it the whole frame. Every probe number then becomes contaminated silently, and because probe verdicts flow into CoachProvenance and from there into the Methods draft, the contamination reaches the manuscript. The fix is cheap and belongs before the move: have run_probe take a mask (or a Split) rather than two arrays whose names assert something the function cannot check.",
+  "verified_ev": "ml/coach_probe.py:18 (the docstring: 'The probe must ONLY ever see training rows (callers apply the lockbox mask)') and :207 (run_probe(X_train, y_train, task_type) - the parameter NAMES carry the contract and nothing validates it); the single enforcement is pages/05_Preprocess.py:220-222, _pm = df[target_col].notna() & train_row_mask(df.index)"
  },
  {
   "id": "COACH-023",
@@ -2989,7 +3003,9 @@
   "detail": "A Router surfaces probe.linear_score / probe.tree_score as numbers in a results table or a metric tile. Nothing in ProbeResult marks the fields as non-reportable — the discipline lives entirely in prose.",
   "ev": "ml/coach_probe.py:20-23 (contract docstring); pages/05_Preprocess.py:269-274 renders the caption '_Advisory only — computed on training rows, never a reportable result._'; ml/narrative_engine.py:947-951 emits 'screen scores were advisory an…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and unguarded. The discipline lives entirely in prose - one docstring, one caption and one manuscript sentence - while ProbeResult exposes linear_score, tree_score and permuted_score as ordinary floats with nothing distinguishing them from a metric. A Router that surfaces them in a results table or a metric tile is doing the natural thing with the data it has. This is the same class as SWEEP-005 (an invariant that holds by construction with nothing to keep it holding), and the fix is the same shape: make the property structural - a NonReportable wrapper, or a reportable=False flag the renderer checks - rather than a convention three files remember.",
+  "verified_ev": "ml/coach_probe.py:20-23 (the contract in prose); pages/05_Preprocess.py:269-274 renders the caption 'Advisory only - computed on training rows, never a reportable result'; ml/narrative_engine.py emits the matching sentence; ProbeResult carries no field marking any score non-reportable"
  },
  {
   "id": "COACH-024",
@@ -2999,7 +3015,10 @@
   "detail": "The Router reimplements gating with its own sweep loop, or calls a generalized `acknowledge_all(...)`. The consequence is fabricated 'accepted risk' provenance for target leakage and insufficient-sample findings — the exact class of confidently-wrong assertion the governing rule forbids.",
   "ev": "utils/insight_ledger.py:789-794 — the explicit `if i.severity == 'blocker': continue` inside auto_acknowledge_gate, with a four-line in-code justification.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The invariant is implemented at the one place that could violate it, the reason is written next to the code, and a test fails if the guard is removed. utils/insight_ledger.py:787-796 skips blocker-severity insights inside auto_acknowledge_gate with a four-line justification naming the failure it prevents - bulk-acknowledging would fabricate 'accepted risk' provenance for the worst findings - and tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers pins it. It is also load-bearing for the routing constitution's third clause: a blocker is a question of consequence, and passing a gate is not an answer to one, so the ledger and the Router now agree on that point from two directions. The guard keys on SEVERITY rather than on id or page, so a new blocker-severity producer inherits the protection automatically - which is what makes it survive the Record split.",
+  "test": "tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers",
+  "verified_ev": "utils/insight_ledger.py:787-796 - inside auto_acknowledge_gate, 'if i.severity == \"blocker\": continue' with a four-line in-code justification naming the failure it prevents ('bulk-acknowledging would fabricate accepted risk provenance for the worst findings')"
  },
  {
   "id": "COACH-025",
@@ -3009,7 +3028,9 @@
   "detail": "The Router auto-runs its own picks. Overlap then becomes tautological, `_followed` is always True, and the Methods section claims a rationale the user never adopted. Note pages/05_Preprocess.py:290-294 ALREADY partially defeats this by auto-checking the picks.",
   "ev": "ml/narrative_engine.py:933-936 — `_pick_keys = {p.get('model_key') for p in coach_picks…}; _followed = bool(_pick_keys & set(models))`, then both the headline sentence (937) and the probe sentence (946) are gated on `_followed`.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The guard exists and is already partly defeated, which is why this stays OPEN. narrative_engine correctly refuses to cite the coach's rationale unless the trained lineup actually overlaps the shortlist - the Methods draft cannot claim a reasoning the user never adopted. But pages/05:291-294 AUTO-CHECKS the picks, so for any user who does not deselect them the overlap is guaranteed and _followed is tautologically True: the app advises, silently selects what it advised, and then cites its own advice as the user's rationale. That is the advisory plane writing into the narrative plane through a side door (SWEEP-005). A Router that auto-runs its picks completes the circle. Fix COACH-006's widget-key write and this guard becomes meaningful again.",
+  "verified_ev": "ml/narrative_engine.py:1000-1011 - _followed = bool(_pick_keys & set(models)), gating both the coach headline sentence and the probe sentence; pages/05_Preprocess.py:291-294 auto-checks the coach's picks behind the _coach_applied flag"
  },
  {
   "id": "COACH-026",
@@ -3019,7 +3040,9 @@
   "detail": "(a) Two producers pick the same id — the second silently overwrites the first, and upsert's field-preservation makes the result a chimera. (b) The scanner's shape assumptions change: it keys on the constructor name ENDING in 'Insight', on the variable name `_ACTION_TO_INSIGHT_MAP`, and on the receiver expression containing the substring 'ledger'. Rename the map, alias the ledger as something without 'ledger' in it, or build Insights via a factory function, and the guard goes quiet without failing.",
   "ev": "utils/insight_ledger.py:670-675 (`add`) and 677-707 (`upsert`) both scan `i.id == insight.id`. Cross-file consistency is enforced only by tests/test_insight_id_integrity.py, an AST scan that collects `*Insight(id=…)` constructor kwargs plus…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Identity-by-id-string is the right model and it is enforced only by a scanner with three shape assumptions, any of which a refactor breaks quietly: rename the action map, alias the ledger to a name without 'ledger' in it, or build Insights through a factory function and the guard narrows rather than fails. SWEEP-014 closed the WORST version of this - the scan can no longer collapse to nothing, because MIN_PRODUCED_IDS and MIN_REFERENCED_IDS floors now fail loudly - so a total collapse is caught. A PARTIAL narrowing still is not: dropping from 60 produced ids to 35 passes every floor. The two-producers-one-id case is also uncovered, and upsert's field preservation makes that result a chimera rather than a clean overwrite (see COACH-011).",
+  "verified_ev": "utils/insight_ledger.py:670-675 (add) and :679-709 (upsert), both matching on i.id == insight.id; cross-file consistency enforced only by tests/test_insight_id_integrity.py, whose scanner keys on a constructor name ENDING in 'Insight', on the literal name _ACTION_TO_INSIGHT_MAP, and on a receiver expression containing the substring 'ledger'"
  },
  {
   "id": "COACH-027",
@@ -3029,7 +3052,9 @@
   "detail": "A Router constructs scoped questions from TopPick.group (which is the string 'Trees/Boosting' at ml/model_coach.py:540 — not in FAMILY_ALIASES) or from ml/model_coach.GROUP_DISPLAY_NAMES. Normalization yields 'trees/boosting', matches no family, and utils/coaching_ui.py:170-173 discards the insight with no trace.",
   "ev": "utils/insight_ledger.py:609-615 — Insight.__post_init__ lowercases and maps every scope entry through FAMILY_ALIASES ('trees'->tree, 'boosting'->tree, 'neural net'->neural, …); and ml/model_coach.py:1076-1082, where _detect_overfit delibera…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and unguarded. Normalization exists and works for the canonical vocabulary, but nothing prevents a producer from passing a DISPLAY group instead of a family: 'Trees/Boosting' lowercases to 'trees/boosting', matches no alias, matches no family, and utils/coaching_ui.py drops the insight silently (COACH-010). ml/model_coach.py already carries an in-code note about this exact failure having happened once with the coach's display groups, which is the strongest evidence it will happen again. The Router constructing scoped questions from TopPick.group is the natural next instance. Validate the vocabulary in __post_init__ - an unknown family should raise, not normalize to itself.",
+  "verified_ev": "utils/insight_ledger.py:73 (FAMILY_ALIASES) and :615 (__post_init__ lowercases each scope entry and maps it through the aliases); ml/model_coach.py TopPick.group carries display strings such as 'Trees/Boosting' which are NOT in FAMILY_ALIASES; utils/coaching_ui.py:162-173 discards a scope-mismatched insight with a bare pass"
  },
  {
   "id": "COACH-028",
@@ -3039,7 +3064,10 @@
   "detail": "A model is added to the registry without adding a branch to model_viability. The test catches it — this is the healthiest invariant in the domain and must survive the split intact.",
   "ev": "tests/test_coach_intelligence.py::TestModelViability::test_covers_full_registry — `missing = registry_keys - set(v.keys()); assert not missing`.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The healthiest invariant in this domain, and it is intact: adding a model to the registry without adding a viability branch fails the suite by set difference against the live registry rather than against a hand-listed set, so the test cannot go stale as the registry grows. It survives the engine/record split unchanged because both sides are already engine code. One caveat that belongs on the record rather than on this row: the test asserts COVERAGE, not correctness, and MODELS-008 / COACH-017 show the verdicts themselves are task-blind - logreg, lda and gaussian_nb get verdicts on regression data. Extending this test with the complement assertion (no classification key appears in a regression verdict map) is what would close COACH-017.",
+  "test": "tests/test_coach_intelligence.py::TestModelViability::test_covers_full_registry",
+  "verified_ev": "tests/test_coach_intelligence.py:121 - missing = registry_keys - set(v.keys()); assert not missing"
  },
  {
   "id": "COACH-029",
@@ -3049,7 +3077,10 @@
   "detail": "Jobs parallelizes the probe legs, or run_probe is handed a differently-ordered dataframe (feature selection by variance uses nlargest, whose ties break on column order). The test only compares linear_score, so tree_score / permuted_score drift would pass.",
   "ev": "ml/coach_probe.py SEED=42 threaded through np.random.default_rng, KFold/StratifiedKFold(random_state=SEED), LassoCV(random_state=SEED) and HistGradientBoosting*(random_state=SEED); asserted by tests/test_coach_intelligence.py::test_seeded_a…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Determinism is real and structural: the probe is the one place in the engine that uses np.random.default_rng with an explicit seed rather than reaching for process RNG (contrast SWEEP-003 and MODELS-006), and every estimator inside it takes random_state=SEED. The named test pins it. The row's own caveat is worth carrying forward rather than treating as a defect here: the test compares linear_score only, so drift in tree_score or permuted_score would pass - and the two ways to break this are parallelizing the probe legs and handing run_probe a differently-ordered frame, since the variance-based feature selection uses nlargest and ties break on column order. Widen the assertion to all three scores when the probe moves into Jobs.",
+  "test": "tests/test_coach_intelligence.py::test_seeded_and_deterministic",
+  "verified_ev": "ml/coach_probe.py:42-44 and the SEED threaded through np.random.default_rng, KFold/StratifiedKFold(random_state=SEED), LassoCV(random_state=SEED) and HistGradientBoosting*(random_state=SEED); tests/test_coach_intelligence.py:73"
  },
  {
   "id": "COACH-030",
@@ -3059,7 +3090,9 @@
   "detail": "Both calls are guarded by `if hasattr(ledger, 'rollback_resolutions')` / `hasattr(ledger, 'prune_auto_generated')`. A Record class that renames or splits either method makes invalidation a NO-OP with no error, and the manuscript keeps asserting a target transform / imputation config / training run that no longer exists.",
   "ev": "utils/session_state.py:396-411 → InsightLedger.rollback_resolutions({'05_Preprocess','06_Train_and_Compare','07_Explainability','08_Sensitivity_Analysis','09_Hypothesis_Testing'} plus {'03','04'} when clear_feature_selection) and prune_auto…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of TEST-010 from the coach pass, unchanged at HEAD, and this framing states the stake most directly: a resolution claim must not outlive the results that earned it, and the only thing enforcing that is two hasattr tests that fail OPEN. A Record class that renames or splits either method makes invalidation a silent no-op and the manuscript keeps asserting a target transform, an imputation config or a training run that no longer exists. The guard is inverted relative to the governing rule - it is written to protect the workflow from the Record, where the rule says the Record must be protected from being wrong. Replace with explicit protocol calls that raise, and pin the surviving insight set in a characterization test.",
+  "verified_ev": "utils/session_state.py:455-469 - both ledger calls guarded by hasattr(ledger, 'rollback_resolutions') and hasattr(ledger, 'prune_auto_generated'); utils/insight_ledger.py:825-837 (prune_auto_generated)"
  },
  {
   "id": "COACH-031",
