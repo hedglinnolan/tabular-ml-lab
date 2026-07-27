@@ -1,0 +1,78 @@
+{
+ "schema_version": "1.0",
+ "prereg": "VALUE_CHECK_PREREG.md",
+ "rows": [
+  {
+   "dataset": "messy-clinic",
+   "classic": {
+    "required_decisions": 9,
+    "questions_asked": 34,
+    "irrelevant_questions": 25,
+    "findings_driven": 0.0,
+    "deferral_closes": null,
+    "coverage": 0.1111
+   },
+   "guided": {
+    "required_decisions": 9,
+    "questions_asked": 9,
+    "irrelevant_questions": 0,
+    "findings_driven": 0.8889,
+    "deferral_closes": 1.0,
+    "coverage": 1.0,
+    "surfaced_coverage": 1.0,
+    "asked_coverage": 1.0
+   }
+  },
+  {
+   "dataset": "wide-assay",
+   "classic": {
+    "required_decisions": 1,
+    "questions_asked": 31,
+    "irrelevant_questions": 30,
+    "findings_driven": 0.0,
+    "deferral_closes": null,
+    "coverage": 1.0
+   },
+   "guided": {
+    "required_decisions": 1,
+    "questions_asked": 1,
+    "irrelevant_questions": 0,
+    "findings_driven": 0.0,
+    "deferral_closes": null,
+    "coverage": 1.0,
+    "surfaced_coverage": 1.0,
+    "asked_coverage": 1.0
+   }
+  },
+  {
+   "dataset": "longitudinal",
+   "classic": {
+    "required_decisions": 1,
+    "questions_asked": 32,
+    "irrelevant_questions": 31,
+    "findings_driven": 0.0,
+    "deferral_closes": null,
+    "coverage": 1.0
+   },
+   "guided": {
+    "required_decisions": 1,
+    "questions_asked": 1,
+    "irrelevant_questions": 0,
+    "findings_driven": 0.0,
+    "deferral_closes": null,
+    "coverage": 1.0,
+    "surfaced_coverage": 1.0,
+    "asked_coverage": 1.0
+   }
+  }
+ ],
+ "verdict": {
+  "passes": true,
+  "failures": [],
+  "literal_reading_only_failures": [
+   "wide-assay: deferral_closes = None (nothing deferrable on this dataset; fails only under the literal reading of the prereg)",
+   "longitudinal: deferral_closes = None (nothing deferrable on this dataset; fails only under the literal reading of the prereg)"
+  ],
+  "passes_under_literal_reading": false
+ }
+}
