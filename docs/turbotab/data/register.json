@@ -252,8 +252,8 @@
   "step": "explore",
   "capability": "EDA trigger: eda_leakage_<var> (blocker)",
   "classic": "pages/02_EDA.py:279",
-  "state": "classic-only",
-  "reason": "Per-column leakage, the second blocker severity. The signal exists in eda_recommender (r4_leakage) and is offered as a pull affordance, but Guided does not yet ASK about a leaking column. Owed: it is a blocker, and a blocker that only offers is not gating."
+  "state": "both",
+  "reason": "T0-ROUTE-001 built: leakage is now a pushed question of consequence, not a palette offer. The Router raises one question per column correlating above 0.95 with the target, naming the column, ranked first in the plan. router.audit refuses a blocker offered as pull or skipped at any confidence. Leaving the step with one unresolved is permitted and recorded — the tool does not refuse the user's judgment, it refuses silence, and the acknowledgment is what the manuscript carries as a stated limitation. Classic still only offers a Run leakage detection action and never names the leaking column, so the Classic side of this row remains owed at L11 convergence of pages/02."
  },
  {
   "id": "explore-eda-corr-cluster-col",

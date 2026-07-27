@@ -236,6 +236,19 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         _recompute(project)
         return _payload(project)
 
+    if decision.kind == "acknowledge_blocker":
+        # The constitution's third clause. The tool does not refuse the user's
+        # judgment — the flagged column may be legitimate — it refuses silence.
+        # This is what the manuscript carries as a stated limitation.
+        text = decision.text or decision.payload.get("acknowledgment")
+        if not text:
+            raise HTTPException(
+                400, "An acknowledgment must say what is being accepted; that "
+                     "sentence is what the manuscript carries as a limitation.")
+        project.record("acknowledge_blocker", str(text), subject=decision.subject,
+                       payload={**decision.payload, "unresolved": True})
+        return _payload(project)
+
     if decision.kind not in {"defer", "dismiss", "undismiss", "flag", "unflag", "note"}:
         raise HTTPException(400, f"Unknown decision kind '{decision.kind}'.")
 
@@ -351,8 +364,10 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
 
     structural = [f for f in project.findings if f.get("source") == "structure"]
 
-    # The pull palette, from the recommender that was already engine code.
-    recommendations = []
+    # The pull palette, from the recommender that was already engine code — and
+    # the signals that carry blocker severity, which are questions rather than
+    # offers (the constitution's third clause).
+    recommendations, signals = [], None
     if step == "explore" and project.target:
         try:
             from ml.eda_recommender import compute_dataset_signals, recommend_eda
@@ -362,24 +377,31 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
             recommendations = recommend_eda(signals)
         except Exception:
             # The palette is an offer, not a promise. Losing it must not take
-            # the interview's questions with it.
-            recommendations = []
+            # the interview's questions with it. A blocker is different: if the
+            # signals could not be computed there is no blocker to hide, and the
+            # next branch reports none rather than claiming none exist.
+            recommendations, signals = [], None
 
     try:
         questions = router.plan(structural, target=project.target,
                                 detection=detection, step=step,
                                 deferred=deferred, answered=answered,
-                                recommendations=recommendations)
+                                recommendations=recommendations, signals=signals)
         router.audit(questions)
     except router.RouterError as exc:
         # A plan that breaks a governing rule is not rendered at all.
         raise HTTPException(500, f"The interview broke a governing rule: {exc}") from exc
 
+    open_blockers = router.unresolved_blockers(questions, answered)
     return {
         "project_id": project.id,
         "step": step,
         "steps": list(router.STEPS),
         "questions": [q.to_dict() for q in questions],
+        # Leaving the step with one of these open is allowed, and is itself a
+        # decision. The frontend shows the sentence the record will carry.
+        "unresolved_blockers": [q.key for q in open_blockers],
+        "acknowledgment_required": router.acknowledgment_required(questions, answered),
         "n_asked": sum(1 for q in questions if q.mode == "push" and q.status == "asked"),
         "n_offered": sum(1 for q in questions if q.mode == "pull"),
         "next": next((q.to_dict() for q in questions

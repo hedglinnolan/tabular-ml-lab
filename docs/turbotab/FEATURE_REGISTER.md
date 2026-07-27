@@ -4,9 +4,9 @@
 
 | State | Meaning | Count |
 |---|---|---:|
-| `both` | exposed in Classic and Guided | 24 |
+| `both` | exposed in Classic and Guided | 25 |
 | `core` | extracted into the shared core | 4 |
-| `classic-only` | a claim to be justified, never a shrug | 24 |
+| `classic-only` | a claim to be justified, never a shrug | 23 |
 | `guided-only` | a debt owed back to Classic | 4 |
 
 ## Data & Target (Classic: pages/01, Step 4) — 22
@@ -53,6 +53,7 @@
 | ID | Capability | Classic | State | Reason |
 |---|---|---|---|---|
 | `explore-eda-class-imbalance` | EDA trigger: eda_class_imbalance (warning) | pages/02_EDA.py:415 | **both** | Raised by the profile and rendered; the imbalance finding is in the Explore stack. |
+| `explore-eda-leakage-col` | EDA trigger: eda_leakage_<var> (blocker) | pages/02_EDA.py:279 | **both** | T0-ROUTE-001 built: leakage is now a pushed question of consequence, not a palette offer. The Router raises one question per column correlating above 0.95 with the target, naming the column, ranked first in the plan. router.audit refuses a blocker offered as pull or skipped at any confidence. Leaving the step with one unresolved is permitted and recorded — the tool does not refuse the user's judgment, it refuses silence, and the acknowledgment is what the manuscript carries as a stated limitation. Classic still only offers a Run leakage detection action and never names the leaking column, so the Classic side of this row remains owed at L11 convergence of pages/02. |
 | `explore-eda-missing-moderate` | EDA trigger: eda_missing_moderate (info) | pages/02_EDA.py:380 | **both** | Same source, info severity. |
 | `explore-eda-missing-severe` | EDA trigger: eda_missing_severe (warning) | pages/02_EDA.py:363 | **both** | Surfaced as a profile finding in the Explore stack and as the missingness pull card. |
 | `explore-eda-sufficiency-borderline` | EDA trigger: eda_sufficiency_borderline (warning) | pages/02_EDA.py:261 | **both** | Same source as the insufficient case, at warning severity. |
@@ -69,7 +70,6 @@
 | `explore-rec-r8-collinearity` | EDA recommendation card: Collinearity Heatmap | ml/eda_recommender.py:483 (already engine) | **both** | Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question. |
 | `explore-rec-r9-outlier-influence` | EDA recommendation card: Outlier Influence Analysis | ml/eda_recommender.py:517 (already engine) | **both** | Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question. |
 | `explore-eda-corr-cluster-col` | EDA trigger: eda_corr_cluster_<var> (warning) | pages/02_EDA.py:338 | **classic-only** | Collinearity clusters. Offered via the collinearity heatmap card; not yet a question. |
-| `explore-eda-leakage-col` | EDA trigger: eda_leakage_<var> (blocker) | pages/02_EDA.py:279 | **classic-only** | Per-column leakage, the second blocker severity. The signal exists in eda_recommender (r4_leakage) and is offered as a pull affordance, but Guided does not yet ASK about a leaking column. Owed: it is a blocker, and a blocker that only offers is not gating. |
 | `explore-eda-low-dimensionality` | EDA trigger: eda_low_dimensionality (opportunity) | pages/02_EDA.py:1228 | **classic-only** | Raised from the macro-shape panel, which Guided does not render yet. |
 | `explore-eda-opportunity-balanced` | EDA trigger: eda_opportunity_balanced (opportunity) | pages/02_EDA.py:563 | **classic-only** | Metric guidance; Train step. |
 | `explore-eda-opportunity-clean-data` | EDA trigger: eda_opportunity_clean_data (opportunity) | pages/02_EDA.py:475 | **classic-only** | An encouragement, not a decision. Deliberately not surfaced: an interview that congratulates the user on clean data is ceremony, which the clean-dataset guard forbids. |

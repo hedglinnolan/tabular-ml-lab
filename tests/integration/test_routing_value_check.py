@@ -117,17 +117,18 @@ def _run_guided(dataset: str, csv_path: pathlib.Path, target: str) -> Measuremen
     # The palette ships with the Explore step, so it is measured from here on.
     # If the thresholds moved when it landed, they were counting offers as
     # questions and "push the notable, pull the rest" would read as regression.
-    recommendations = []
+    recommendations, signals = [], None
     try:
         from ml.eda_recommender import compute_dataset_signals, recommend_eda
-        recommendations = recommend_eda(compute_dataset_signals(
-            df, target, detection.get("detected"), "cross_sectional", None))
+        signals = compute_dataset_signals(
+            df, target, detection.get("detected"), "cross_sectional", None)
+        recommendations = recommend_eda(signals)
     except Exception:
-        recommendations = []
+        recommendations, signals = [], None
 
     at_explore = router.plan(findings, target=target, detection=detection,
                              step="explore", deferred=deferred, answered=answered,
-                             recommendations=recommendations)
+                             recommendations=recommendations, signals=signals)
     router.audit(at_explore)
 
     for q in at_explore:

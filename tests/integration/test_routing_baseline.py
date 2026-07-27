@@ -30,6 +30,10 @@ pytestmark = pytest.mark.timeout(900)
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DATA = ROOT / "turbotab" / "sample_data"
 BASELINE = ROOT / "docs" / "turbotab" / "data" / "routing-baseline.json"
+# The leaky case gets its OWN baseline file. The three original baselines are
+# frozen and every threshold in VALUE_CHECK_PREREG.md is banked against them;
+# injecting a leak into one of those datasets would silently invalidate the lot.
+LEAKY_BASELINE = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-leaky.json"
 
 # Three shapes, as the roadmap asks. Multi-file stays frozen
 # (`TRANSITION_PLAN.md` §05), so the third is the messy single file.
@@ -304,3 +308,70 @@ def test_measure_classic_and_commit_the_baseline():
               f"irrelevant={row['metrics']['irrelevant_questions']:>3} "
               f"findings_driven={row['metrics']['findings_driven']} "
               f"coverage={row['metrics']['coverage']}")
+
+
+# ── the fourth dataset · T0-ROUTE-001 ────────────────────────────────────
+
+LEAKY = ("leaky-sepsis", DATA / "leaky_sepsis.csv", "sepsis")
+
+
+def test_measure_classic_on_the_leaky_dataset_first():
+    """Baseline before the thing being judged, exactly as before.
+
+    `T0-ROUTE-001` adds a fourth dataset containing a column recorded after the
+    outcome was known. Classic is measured on it *now*, before the Router learns
+    to push blockers, so the leakage comparison cannot be fitted to either.
+
+    Written to its own file: the three original baselines are frozen, and every
+    pre-registered threshold is banked against them.
+    """
+    name, path, target = LEAKY
+    assert path.exists(), f"missing dataset {path}"
+
+    m = _measure_classic(name, path, target)
+    m.notes.append(
+        "Fourth dataset, added for T0-ROUTE-001. Contains abx_escalation_score, "
+        "recorded after the outcome and correlating 0.9996 with it — the "
+        "canonical leak. Classic raises leakage as a blocker INSIGHT on page 02 "
+        "but never asks about it, which is the gap being closed.")
+
+    assert m.required_decisions > 0
+    assert m.questions_asked > 0
+
+    LEAKY_BASELINE.parent.mkdir(parents=True, exist_ok=True)
+    measure.write_baseline(LEAKY_BASELINE, [m])
+
+    row = measure.read_baseline(LEAKY_BASELINE)[0]
+    print(f"\n{row['dataset']:<14} required={row['metrics']['required_decisions']:>3} "
+          f"asked={row['metrics']['questions_asked']:>3} "
+          f"irrelevant={row['metrics']['irrelevant_questions']:>3} "
+          f"coverage={row['metrics']['coverage']}")
+
+
+def test_classic_does_not_ask_about_the_leak():
+    """The gap, measured rather than asserted.
+
+    Classic emits a `blocker`-severity insight for a leaking column and renders
+    it in the coaching summary. What it never does is put a question. This
+    records that, so closing the gap has a before.
+    """
+    _, path, target = LEAKY
+    df, questions = _classic_questions(path, target, "leaky-sepsis")
+    labels = " ".join(q.label.lower() for q in questions)
+
+    # Classic DOES offer "Run leakage detection" — that is the recommendation
+    # card, rendered as an action. The gap is narrower and worse than absence:
+    # nothing ever names the column that is actually leaking, so the user has to
+    # already suspect a leak to go looking for one.
+    assert "leakage" in labels, (
+        "Classic lost its leakage recommendation card — this test is now "
+        "measuring something else")
+    assert "abx_escalation_score" not in labels, (
+        "Classic now names the leaking column in a question — the T0-ROUTE-001 "
+        "gap may be closed upstream, so re-check what this test measures")
+
+    # And it is an offer, not a blocker gate: nothing about leaving the step
+    # with a leak unresolved appears anywhere.
+    assert not any("acknowledge" in q.label.lower() or "limitation" in q.label.lower()
+                   for q in questions), (
+        "Classic gained an acknowledgment path for an unresolved blocker")

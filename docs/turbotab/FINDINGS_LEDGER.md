@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**13 of 401 closed.**
+**14 of 401 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `UNVERIFIED` | 370 |
-| `OPEN` | 15 |
+| `OPEN` | 14 |
 | `PARTIAL` | 3 |
-| `FIXED` | 13 |
+| `FIXED` | 14 |
 
 ---
 
-## OPEN — 15
+## OPEN — 14
 
 
-### Verified against main — 15
+### Verified against main — 14
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -47,7 +47,6 @@ Nothing is closed without a regression test named after it.
 | `T0-STRUCT-005` | high | Coach is a pure annotator; cannot gate, only order. No blocker severity, no own confidence tier, 100% of triggers in pages/ | `ml/model_coach.py; pages/05_Preprocess.py:291-294; pages/02_EDA.py:212,246` | feasibility verdict |
 | `T0-WIP-001` | high | docs/FINDINGS_LEDGER.md 'Still open' tail from two lost audit runs, on the multi-file/JSON import path | `docs/FINDINGS_LEDGER.md:47` | verified on main |
 | `T0-CLASSIC-001` | high | Classic applies structural repairs from a single button with no diff and no undo | `pages/01_Upload_and_Audit.py apply flow vs turbotab preview engine` | Convergence is bidirectional — the register needs a guided-only state to express this. |
-| `T0-ROUTE-001` | high | A blocker-severity finding (eda_leakage) is offered as pull, not pushed — a blocker that only offers is not gating | `docs/turbotab/data/register.json explore-eda-leakage-col; pages/02_EDA.py:279 (Classic's blocker)…` | The builder proposed folding this into Loop 1; overruled — Loop 1 is read-only verification and this is routing doctrine plus a build. Loop 1 instead TAGS siblings… |
 | `T0-DROP-001` | medium | utils/dataset_db.py — 797 loc, zero importers, superseded by session_projects.py | `grep: 0 importers on main` | verified on main |
 | `T0-DROP-002` | medium | setup.py python_requires '>=3.8,<3.10' against a 3.12 repo — uninstallable | `setup.py` | verified on main |
 | `T0-ENG-001` | medium | The diagnose -> profile -> detect path needs only pandas and numpy — no sklearn, scipy or torch | `turbotab/engine.py import surface; verified by the L3 test suite` | Confirmed by building the vertical: turbotab/ installs pandas, numpy, fastapi, uvicorn, python-multipart and nothing else, and the three engine entry points… |
@@ -485,10 +484,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 13
+## FIXED — 14
 
 
-### Verified against main — 13
+### Verified against main — 14
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -503,5 +502,6 @@ Nothing is closed without a regression test named after it.
 | `T0-DOC-003` | high | ARCHITECTURE.md inverted the persistence contract, creating a false conflict with the door-switch gate | `utils/session_manager.py:23-34,138,531; docs/turbotab/ARCHITECTURE.md §02 (previous revision)…` | **test:** `docs/turbotab/ARCHITECTURE.md §02 (corrected); L5 gate now names session_manager as prior art` — Third documentation error found by the build agent's runtime checking.… |
 | `T0-PROC-001` | high | Branch merge blind-copied an older FEATURE_PARITY.md over the newer one, silently destroying the Data & Target feature register | `git: 9211566 (register added) vs b4bff25 (register gone); flagged by the build agent at 4366b23` | **test:** `tools/register.py check (artifact-currency + BUILT_STEPS coverage; verified by deleting the markdown)` — Process rule going forward: on any merge, tracked artifacts are… |
 | `T0-LIVE-005` | high | pages/02's eight pre-existing caches still key on the shape-only fingerprint — equal-sized cohort runs of one study collide | `pages/02_EDA.py:125 (_data_fingerprint, shape-only) vs :127-140 (_macro_fp, content); consumers at…` | **test:** `tests/test_eda_caches_follow_the_data.py::test_the_page_has_one_fingerprint_and_it_follows_the_values` — Fixed by collapsing the page's two fingerprints into one.… |
+| `T0-ROUTE-001` | high | A blocker-severity finding (eda_leakage) is offered as pull, not pushed — a blocker that only offers is not gating | `docs/turbotab/data/register.json explore-eda-leakage-col; pages/02_EDA.py:279 (Classic's blocker)…` | **test:** `tests/test_router.py::test_a_leaking_column_is_pushed_not_offered` — Built as its own slice before Loop 1, with the fourth dataset's Classic baseline measured first and… |
 | `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |

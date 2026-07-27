@@ -22,12 +22,26 @@ enforced in one place — :func:`_skip_is_permitted` — and asserted, not trust
 a skip without a high-confidence finding raises rather than being quietly
 emitted.
 
-**What "moot" means, narrowly.** A high-confidence finding can settle a question
-of *fact* — "is this column categorical?" — because the engine is certain and
-the transcript can state it. It can never settle a question of *choice*: whether
-to apply a repair is the user's, however confident the engine is, because
-applying without preview is the blind consent `PRODUCT_VISION.md` §04 rules out.
-So repairs are always asked; only confirmations of detected fact are skippable.
+**The routing constitution — three clauses, one per kind of question.**
+
+* **Fact** — skippable at `high` confidence. The engine is certain and the
+  transcript can state it: *"is this column categorical?"*
+* **Choice** — always asked. Whether to apply a repair is the user's however
+  confident the engine is, because applying without preview is the blind consent
+  `PRODUCT_VISION.md` §04 rules out.
+* **Consequence** — always **pushed, never offered**, and leaving the step with
+  one unresolved is itself a recorded decision. A `blocker` is a finding that can
+  make the whole analysis wrong; offering it beside a distribution gallery is
+  not gating, it is decoration. Leakage is the canonical case — near-perfect
+  discrimination from a column that encodes the outcome is how a prediction
+  paper becomes wrong.
+
+The third clause deliberately does **not** hard-refuse. The user may know the
+flagged column is legitimate, and a tool that blocks on a correct analysis is a
+tool people route around. What it refuses is *silence*: exiting past a blocker
+writes an acknowledgment into the record, so the manuscript can carry it as a
+stated limitation rather than omitting it. Overriding a blocker is allowed;
+overriding one quietly is not.
 
 **Determinism.** `plan()` is a pure function of (findings, detection, record).
 Same inputs, same questions, same order — derivable from the record alone, with
@@ -108,6 +122,12 @@ class Question:
         }
 
 
+# Severities that are questions of consequence. `blocker` is the engine's own
+# word, and `ARCHITECTURE.md` records that only `pages/02` ever emitted it — the
+# coach cannot gate. Now the Router can.
+BLOCKER_SEVERITIES = frozenset({"blocker"})
+
+
 def _skip_is_permitted(confidence: Optional[str], kind: str) -> bool:
     """Decision B, in one place.
 
@@ -160,6 +180,35 @@ def palette(recommendations: Sequence[Any], step: str = "explore") -> List[Quest
     return out
 
 
+def blockers(signals: Any, step: str = "explore") -> List[Question]:
+    """Questions of consequence, from the signals that carry `blocker` severity.
+
+    Today that is leakage. `compute_dataset_signals` reports
+    `leakage_candidate_cols` for anything correlating above 0.95 with the
+    target, which `pages/02` raised as a blocker insight and Guided previously
+    only *offered* as a palette card.
+
+    Pushed, one per column, each citing the column that raised it.
+    """
+    out: List[Question] = []
+    cols = list(getattr(signals, "leakage_candidate_cols", None) or [])
+    flags = list(getattr(signals, "leakage_flags", None) or [])
+    for col in cols:
+        out.append(Question(
+            key=f"blocker::leakage::{col}", kind="blocker", step=step, mode="push",
+            severity="blocker", confidence="high",
+            title=f"Does '{col}' encode the outcome?",
+            why=("It correlates above 0.95 with the target. If it was recorded "
+                 "after the outcome was known, any model using it will look "
+                 "near-perfect and predict nothing — the canonical way a "
+                 "prediction paper becomes wrong. If it is a legitimate "
+                 "measurement, say so and it will be carried as a stated "
+                 "limitation. " + " ".join(flags)),
+            triggering_finding=f"eda_leakage_{col}",
+            options=["drop it", "it is legitimate — record why", "show me the correlation"]))
+    return out
+
+
 def plan(
     findings: Sequence[Dict[str, Any]],
     *,
@@ -169,6 +218,7 @@ def plan(
     deferred: Optional[Dict[str, str]] = None,
     answered: Sequence[str] = (),
     recommendations: Sequence[Any] = (),
+    signals: Any = None,
 ) -> List[Question]:
     """Every question this step asks, in order, derived from the record.
 
@@ -236,11 +286,42 @@ def plan(
             q.deferred_from = "data"
         out.append(q)
 
+    # Questions of consequence come FIRST when they exist: a blocker that is
+    # third in a list of nine is a blocker in name only.
+    if signals is not None:
+        blocking = [q for q in blockers(signals, step=step)
+                    if q.key not in answered]
+        out = blocking + out
+
     # The pull palette sits beside the questions, never among them.
     if recommendations:
         out.extend(palette(recommendations, step=step))
 
     return out
+
+
+def unresolved_blockers(questions: Sequence[Question],
+                        answered: Sequence[str] = ()) -> List[Question]:
+    """Blockers still open at the point of leaving the step.
+
+    The caller uses this to require an acknowledgment. Nothing here blocks —
+    the refusal is of silence, not of the user's judgment.
+    """
+    done = set(answered)
+    return [q for q in questions
+            if q.kind == "blocker" and q.key not in done and q.status == "asked"]
+
+
+def acknowledgment_required(questions: Sequence[Question],
+                            answered: Sequence[str] = ()) -> Optional[str]:
+    """The sentence the record must carry if the step is left as it stands."""
+    open_ones = unresolved_blockers(questions, answered)
+    if not open_ones:
+        return None
+    subjects = ", ".join(q.title for q in open_ones)
+    return (f"{len(open_ones)} question(s) of consequence were left unresolved: "
+            f"{subjects} Recorded so the manuscript can carry it as a stated "
+            "limitation rather than omitting it.")
 
 
 def _is_repairable(f: Dict[str, Any]) -> bool:
@@ -313,6 +394,18 @@ def audit(questions: Sequence[Question]) -> None:
     has a failure.
     """
     for q in questions:
+        # Consequence is checked first: both rules would reject a
+        # skipped blocker, and the specific message is the useful one.
+        if q.kind == "blocker" and q.mode != "push":
+            raise RouterError(
+                f"{q.key} is a blocker offered as {q.mode!r}. A blocker is a "
+                "question of consequence: always pushed, never offered. A "
+                "blocker that only offers is not gating.")
+        if q.kind == "blocker" and q.status == "skipped":
+            raise RouterError(
+                f"{q.key} is a blocker and was skipped. Consequence is the one "
+                "kind that high confidence does not make moot — being certain a "
+                "column leaks is a reason to ask, not a reason to stay quiet.")
         if q.status == "skipped":
             if not _skip_is_permitted(q.confidence, q.kind):
                 raise RouterError(

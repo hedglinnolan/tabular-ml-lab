@@ -255,3 +255,104 @@ def test_the_palette_does_not_change_the_question_count(messy):
     assert m.pull_affordances > 0
     assert m.questions_asked == sum(1 for q in plan
                                     if q.mode == "push" and q.status == "asked")
+
+
+# ── the third clause: consequence · T0-ROUTE-001 ─────────────────────────
+
+@pytest.fixture(scope="module")
+def leaky():
+    import pandas as pd
+    from ml.eda_recommender import compute_dataset_signals, recommend_eda
+
+    df = pd.read_csv(DATA / "leaky_sepsis.csv")
+    findings = engine.rank_findings(engine.diagnose(df), None)
+    detection = engine.detect_task_type(df, "sepsis")
+    signals = compute_dataset_signals(df, "sepsis", "classification",
+                                      "cross_sectional", None)
+    return df, findings, detection, signals, recommend_eda(signals)
+
+
+def test_a_leaking_column_is_pushed_not_offered(leaky):
+    """The gap `T0-ROUTE-001` names. A blocker that only offers is not gating."""
+    _, findings, detection, signals, recs = leaky
+    plan = router.plan(findings, target="sepsis", detection=detection,
+                       step="explore", answered=["choose_target"],
+                       recommendations=recs, signals=signals)
+    router.audit(plan)
+
+    blockers = [q for q in plan if q.kind == "blocker"]
+    assert blockers, "the leaking column raised no question at all"
+    q = blockers[0]
+    assert q.mode == "push", "the blocker was offered rather than asked"
+    assert q.status == "asked"
+    assert "abx_escalation_score" in q.title, "the question does not name the column"
+    assert q.is_findings_driven
+
+    # And it comes first: a blocker third in a list of nine is a blocker in name.
+    assert plan[0].kind == "blocker"
+
+
+def test_a_blocker_is_never_skipped_even_at_high_confidence(leaky):
+    """Consequence is the one kind certainty does not make moot.
+
+    Being sure a column leaks is a reason to ask, not a reason to stay quiet.
+    """
+    _, findings, detection, signals, _ = leaky
+    plan = router.plan(findings, target="sepsis", detection=detection,
+                       step="explore", answered=["choose_target"], signals=signals)
+    for q in plan:
+        if q.kind == "blocker":
+            assert q.confidence == "high"
+            assert q.status == "asked"
+
+
+def test_audit_rejects_a_blocker_offered_as_pull():
+    bad = Question(key="blocker::leakage::x", title="t", why="w", step="explore",
+                   kind="blocker", mode="pull", severity="blocker")
+    with pytest.raises(RouterError, match="only offers is not gating"):
+        router.audit([bad])
+
+
+def test_audit_rejects_a_skipped_blocker():
+    bad = Question(key="blocker::leakage::x", title="t", why="w", step="explore",
+                   kind="blocker", mode="push", severity="blocker",
+                   confidence="high", status="skipped", skip_reason="certain")
+    with pytest.raises(RouterError, match="reason to ask"):
+        router.audit([bad])
+
+
+def test_leaving_the_step_with_a_blocker_open_requires_an_acknowledgment(leaky):
+    """The refusal is of silence, not of the user's judgment.
+
+    The tool does not hard-refuse — the flagged column may be legitimate — but
+    exiting past it writes a sentence the manuscript can carry as a limitation.
+    """
+    _, findings, detection, signals, _ = leaky
+    plan = router.plan(findings, target="sepsis", detection=detection,
+                       step="explore", answered=["choose_target"], signals=signals)
+
+    open_now = router.unresolved_blockers(plan)
+    assert open_now, "nothing to acknowledge"
+
+    sentence = router.acknowledgment_required(plan)
+    assert sentence and "unresolved" in sentence
+    assert "limitation" in sentence, (
+        "the acknowledgment must say what the record is for")
+
+    # Answered, and there is nothing left to acknowledge.
+    answered = [q.key for q in open_now]
+    assert router.unresolved_blockers(plan, answered) == []
+    assert router.acknowledgment_required(plan, answered) is None
+
+
+def test_a_clean_dataset_raises_no_blocker_and_needs_no_acknowledgment(messy):
+    """The gate must not fire where there is nothing to gate."""
+    from ml.eda_recommender import compute_dataset_signals
+
+    df, findings, detection = messy
+    signals = compute_dataset_signals(df, "outcome", "classification",
+                                      "cross_sectional", None)
+    plan = router.plan(findings, target="outcome", detection=detection,
+                       step="explore", answered=["choose_target"], signals=signals)
+    assert [q for q in plan if q.kind == "blocker"] == []
+    assert router.acknowledgment_required(plan) is None
