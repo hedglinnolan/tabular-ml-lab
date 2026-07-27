@@ -2193,7 +2193,10 @@
   "detail": "`cohort_run` and `cohort_runs_done` appear in none of _DATAFRAME_KEYS/_DATACLASS_KEYS/_PLAIN_KEYS/_NEVER_PERSIST. A save taken mid-cohort-run restores with the lockbox intact but no cohort filter, so get_data() silently returns the WHOLE study under a session that was labeled 'women'. CohortRun is a dataclass with only JSON-safe fields, so this is an omission, not a technical limit.",
   "ev": "utils/cohorts.py:334-344 (CohortRun), :389-407 (_ACTIVE_KEY/_DONE_KEY); utils/session_manager.py:73-162 (key taxonomy)",
   "act": "project — cohort membership is core Project state; add it to the serialized schema with the same label-integrity check as the lockbox",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Closed for both keys. The failure this row describes - a save taken mid-cohort-run restoring with the lockbox intact and no cohort filter, so get_data() silently covers the whole study under a session labeled 'women' - is exactly what test_the_active_run_comes_back asserts against, and its message says so ('the restored session silently covered the whole study'). The label-integrity concern the action raises is also handled: test_the_data_fingerprint_is_rebuilt pins the fingerprint restore, without which every restored run would read as belonging to other data and be filtered out. cohort_runs_done is covered by test_the_banked_comparison_comes_back (see STATE-055).",
+  "test": "tests/test_session_carries_the_run.py::test_the_active_run_comes_back",
+  "verified_ev": "utils/session_manager.py:356-374 (cohort_run encoded on save), :382-401 (cohort_runs_done), :703 and :727 (both restored); tests/test_session_carries_the_run.py:57-73, 75-80"
  },
  {
   "id": "CONTRACT-017",
@@ -2203,7 +2206,9 @@
   "detail": "test_lockbox.py's module docstring states 'Every target-aware step upstream of Train & Compare — feature-engineering fits, feature selection, target-association views — operates on training rows only, via train_row_mask()'. Page 02 never calls train_row_mask; it uses `df = get_data()` unfiltered. The target-aware actions target_profile, dose_response_trends, collinearity_map, leakage_scan and especially quick_probe_baselines (which does its OWN 80/20 train_test_split on all rows and fits models) therefore see held-out people. dataset_profile — which drives the model coach's picks — is likewise computed on all rows.",
   "ev": "pages/02_EDA.py:79 (`df = get_data()`), :71-72 (caption only); ml/eda_actions.py:1206-1224; utils/test_lockbox.py:8-11",
   "act": "router — the Router owns 'may this question see test rows'; engine functions must take an explicit row mask rather than deciding for themselves",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and it is the largest live leakage hole in the ledger. The lockbox module's own docstring says 'Every target-aware step upstream of Train & Compare - feature-engineering fits, feature selection, target-association views - operates on training rows only, via train_row_mask()'. Page 02 never calls it. So the target profile, dose-response trends, collinearity map, leakage scan and quick_probe_baselines - which runs its OWN 80/20 split and fits models - all see the sealed rows, and dataset_profile, which drives the coach's picks, is computed on all rows. Note the contrast with pages/04, which DOES scope selection to train_row_mask and says so on screen: the discipline exists in the codebase and page 02 is outside it. The Router owns 'may this question see test rows'; engine actions must take an explicit row mask rather than deciding for themselves.",
+  "verified_ev": "pages/02_EDA.py:79 (df = get_data(), unfiltered) - train_row_mask appears nowhere in the file; ml/eda_actions.py's target-aware actions (target_profile, dose_response_trends, collinearity_map, leakage_scan, quick_probe_baselines) receive that frame; utils/test_lockbox.py:8-11 states the contract they violate"
  },
  {
   "id": "CONTRACT-018",
@@ -2213,7 +2218,9 @@
   "detail": "Page 05 does `pipeline.fit(X_sample); X_transformed = pipeline.transform(X_sample)` purely to record `n_output_features`, then stores the (now fitted-on-a-sample) Pipeline in `preprocessing_pipelines_by_model`. Page 06 later calls `model_pipeline.fit(X_train)` on the SAME object, mutating it in place, and stores it again under `fitted_preprocessing_pipelines`. Both dict entries can end up aliasing one mutated object. Anything that reads preprocessing_pipelines_by_model after training (page 10 export context) gets a pipeline fitted on training rows, not the configured-but-unfitted recipe it thinks it has.",
   "ev": "pages/05_Preprocess.py:999-1006; pages/06_Train_and_Compare.py:1310-1315, :1596; utils/session_state.py:463-471",
   "act": "project — separate 'recipe' (config, JSON-serializable) from 'fitted artifact' (pickle-only, job output); never let one object be both",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of STATE-004 from the contract pass, unchanged at HEAD, and this framing names the aliasing precisely: the SAME Pipeline object is fitted twice into two different dict slots, so preprocessing_pipelines_by_model and fitted_preprocessing_pipelines can end up pointing at one mutated object. Anything reading the former after training - the page-10 export context does - gets a pipeline fitted on training rows while believing it holds the configured-but-unfitted recipe. The fit-on-a-sample exists only to record n_output_features, which is a reason to compute that number differently rather than to fit. Separate recipe (config, JSON-serializable) from fitted artifact (job output); never let one object be both.",
+  "verified_ev": "pages/05_Preprocess.py:1033-1040 (pipeline.fit(X_sample); transform; then stored into preprocessing_pipelines_by_model); pages/06_Train_and_Compare.py:1310-1315 (model_pipeline.fit(X_train) mutating the same object) and :1501 (stored again under fitted_preprocessing_pipelines); utils/session_state.py:524-534"
  },
  {
   "id": "CONTRACT-019",
@@ -2223,7 +2230,9 @@
   "detail": "`try: import streamlit as st; if 'workflow_provenance' not in st.session_state ... except ImportError: return WorkflowProvenance()`. In a background worker streamlit imports fine but touching st.session_state raises StreamlitAPIException/RuntimeError, which is not caught. Every engine path that records provenance will hard-crash the first time it runs off the main script thread — which is exactly what the Jobs layer introduces.",
   "ev": "utils/workflow_provenance.py:662-671",
   "act": "record — provenance must be passed in explicitly, never fetched from ambient context",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and this one has a date on it. In a worker thread streamlit imports FINE - so the ImportError branch never fires - and touching st.session_state off the script thread raises StreamlitAPIException or a bare RuntimeError, neither of which is caught. turbotab/jobs.py is a ThreadPoolExecutor in the same process, so the first job that runs anything recording provenance hard-crashes rather than degrading. The comment at :744 ('Not in Streamlit context - return a detached instance') states the intent the code does not implement: the detached-instance path is unreachable in exactly the situation it was written for. Catch the context error too as an immediate mitigation; the durable fix is that provenance is passed in, never fetched from ambient context.",
+  "verified_ev": "utils/workflow_provenance.py:736-745 - get_provenance() wraps 'import streamlit as st' and the st.session_state access in one try whose only handler is 'except ImportError: return WorkflowProvenance()'"
  },
  {
   "id": "CONTRACT-020",
@@ -2233,7 +2242,9 @@
   "detail": "`shap_values` (pages/10:288, :1754), `partial_dependence` (pages/10:289, :1756 — only ever cleared, never populated: page 07 writes `pdp_results`), `explainability_robustness` (pages/10:290), `bland_altman_results` (pages/10:1526-1534, :1760 AND ml/publication.py:1174), `sensitivity_feature_dropout` (pages/10:877 — page 08 writes `sensitivity_dropout_results`). Bland-Altman and feature-dropout can therefore NEVER appear in the manuscript even after the user runs them.",
   "ev": "pages/10_Report_Export.py:288-290,877,1526,1754-1760; pages/07_Explainability.py:623-625; pages/08_Sensitivity_Analysis.py:499-500; ml/publication.py:1174,1382",
   "act": "drop the dead aliases; record — wire sensitivity_dropout_results and a real bland_altman artifact into the Record",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD - five keys read by the export path that nothing in the repository writes. Two are dead ALIASES of live keys (partial_dependence for pdp_results, sensitivity_feature_dropout for sensitivity_dropout_results), which is the worse kind, because the feature works everywhere except the manuscript and the omission looks like scope. Three have no producer at all (shap_values as a legacy alias, explainability_robustness, bland_altman_results - and pages/07 computes Bland-Altman and discards it). So Bland-Altman and feature dropout can NEVER appear in a manuscript even after the user runs them. Overlaps STATE-018, STATE-019 and RECORD-006; this row is the complete list, which is the useful form. Drop the dead aliases and wire the two real artifacts into the Record.",
+  "verified_ev": "pages/10_Report_Export.py:288-290 (shap_values, partial_dependence, explainability_robustness), :896 (sensitivity_feature_dropout), :1545-1553 and :1792 (bland_altman_results); ml/publication.py:1174; the actual producers write pdp_results (pages/07) and sensitivity_dropout_results (pages/08)"
  },
  {
   "id": "CONTRACT-021",
@@ -2243,7 +2254,9 @@
   "detail": "_build_analysis_cohort_df applies target trimming using quantiles of the WHOLE frame. Page 06 deliberately computes trim thresholds from TRAINING rows only when the lockbox applies, and never drops test rows (`trim_mask = trim_mask | pd.Series(is_test_row, ...)`). The manuscript's reported analysis N and Table 1 population can therefore differ from the population that was actually modeled, with no warning.",
   "ev": "pages/10_Report_Export.py:539-554 vs pages/06_Train_and_Compare.py:421-433",
   "act": "record — persist the realized cohort membership at split time; the report must read it, never re-derive it",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and the two semantics are not merely different, they are deliberately different: page 06's version is CORRECT and careful - thresholds from training rows so the trim is not fitted on held-out data, and test rows exempted so the sealed set stays intact - while page 10 re-derives from the whole frame with neither protection. So the manuscript's analysis N and Table 1 population can differ from the population actually modeled, with no warning, and the more defensible number is the one that does not reach the paper. Related to STATE-031 and MODELS-009. Persist the realized cohort membership at split time and have the report READ it; anything re-derived downstream of a decision is a second implementation of that decision.",
+  "verified_ev": "pages/10_Report_Export.py _build_analysis_cohort_df applies target trimming from quantiles of the WHOLE frame; pages/06_Train_and_Compare.py:421-433 computes trim thresholds from TRAINING rows only when the lockbox applies and never drops test rows (trim_mask = trim_mask | is_test_row)"
  },
  {
   "id": "CONTRACT-022",
@@ -2253,7 +2266,9 @@
   "detail": "Page 03 uses `data_config.feature_cols if data_config.feature_cols else [c for c in df.columns if c != target]` — it ignores session_state.selected_features entirely. Pages 05/06/07/10 use `st.session_state.get('selected_features') or data_config.feature_cols`. After FE, selected_features is overwritten with EVERY engineered column (`[col for col in df_engineered.columns if col != target]`), so the two lists routinely disagree and page 03 re-engineers from the pre-selection list.",
   "ev": "pages/03_Feature_Engineering.py:118, :1223; pages/06_Train_and_Compare.py:357; pages/05_Preprocess.py (selected_features'); pages/10:379-383",
   "act": "project — one ordered feature list on the Project with an explicit provenance tag (uploaded / engineered / selected); delete the duplicate",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: two precedence rules for the same question, and page 03 is the odd one out. Because FE overwrites selected_features with every engineered column while data_config.feature_cols keeps the pre-FE list, the two routinely disagree and page 03 re-engineers from the pre-selection list - which is also how STATE-026's pre_fe capture goes wrong. The fix is one ordered feature list on the Project with an explicit provenance tag (uploaded / engineered / selected) and the duplicate deleted; note CONTRACT-014 and STATE-045 both also resolve into that single field, so this is one change closing three rows.",
+  "verified_ev": "pages/03_Feature_Engineering.py:131 (data_config.feature_cols if truthy else every non-target column - selected_features is not consulted) versus pages/05, /06, /07 and /10, which all use st.session_state.get('selected_features') or data_config.feature_cols; after FE, selected_features is overwritten with every engineered column"
  },
  {
   "id": "CONTRACT-023",
@@ -2263,7 +2278,9 @@
   "detail": "All 17 action functions have the signature `(df, target, features, signals, session_state) -> Dict`. Two of them actually read it: `session_state.get('unit_overrides', {})` and `session_state.get('eda_outlier_method', 'iqr')`. The other 15 accept it and ignore it. This is the single biggest false coupling in ml/ — replacing the 5th parameter with an explicit typed options object frees the whole module.",
   "ev": "ml/eda_actions.py:29-34 (plausibility_check), :50, :781; call sites pages/02_EDA.py:1500, :1588",
   "act": "engine — change the signature to (df, target, features, signals, opts: EdaOptions); Project supplies opts",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. All 17 action functions still take st.session_state positionally and only two of them read anything from it - unit_overrides and eda_outlier_method. This is the cheapest structural win in ml/: replacing the fifth parameter with a typed EdaOptions object frees the entire module from the host, and the two real reads become two fields. Worth pairing with CONTRACT-017, because the same signature change is where the explicit row mask belongs - an action that takes (df, target, features, signals, opts) can be handed training rows only, which is what the lockbox contract requires and page 02 currently cannot express.",
+  "verified_ev": "ml/eda_actions.py:35, 214, 329, 373, 468 and beyond - the fifth positional parameter is still session_state: Any on every action; :51 reads session_state.get('unit_overrides', {}) and one other site reads eda_outlier_method"
  },
  {
   "id": "CONTRACT-024",
@@ -2273,7 +2290,9 @@
   "detail": "`{labels: List[label], fraction: float, seed: int, n_total: int, n_test: int, signature: str, stratified: bool, strata: List[str], group_col: Optional[str], n_test_groups: Optional[int]}`. JSON-serializable IF labels are coerced to plain int/str. `signature` embeds a pandas content hash; ensure_lockbox rebuilds only on signature change, and a rebuild that changes labels calls reset_downstream_results(clear_feature_engineering=False) as a SIDE EFFECT from inside utils/, plus sets a `_lockbox_redrawn` flag the page must pop to disclose it.",
   "ev": "utils/test_lockbox.py:102-234, esp. :212-234",
   "act": "project — the lockbox belongs to Project; the cascading reset must move out of the accessor and into the invalidation DAG",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD in the part that matters. The dict itself is in better shape than when this was written - it carries the disclosure fields now and round-trips (CONTRACT-015) - but the structural objection stands: a read-shaped accessor performs a cascading invalidation as a SIDE EFFECT, through a function-local import that is one of the three cycles STATE-053 catalogues, and the disclosure depends on the page remembering to pop a flag. So whether the user learns their results were invalidated is a property of the caller, not of the invalidation. The lockbox belongs to the Project and the cascading reset belongs in the invalidation DAG, where it can be returned rather than performed.",
+  "verified_ev": "utils/test_lockbox.py:422-448 (the dict, now including target_col, strata, strata_requested, group_col, group_kind, group_noun, n_test_groups) and :450-453 - on a label change it imports reset_downstream_results from utils.session_state INSIDE the function and calls it, then sets a redraw flag the page must pop to disclose"
  },
  {
   "id": "CONTRACT-025",
@@ -2283,7 +2302,9 @@
   "detail": "`for pick in _coach_picks: st.session_state[f'train_model_{pick.model_key}'] = True`, guarded by a one-shot `_coach_applied` flag. Page 06 reads the same key namespace at :814 and :887 and additionally force-sets it True for every key in preprocess_built_model_keys. This is the existing advisor→router seam and it is implemented as cross-page widget-key mutation — the single most fragile thing to port.",
   "ev": "pages/05_Preprocess.py:290-294; pages/06_Train_and_Compare.py:808-817, :887-889",
   "act": "router — this IS the Router in embryo; replace with an explicit Router decision the Feed renders, never a widget-key write",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of COACH-006 from the contract pass, unchanged at HEAD, and its framing is the one worth keeping: this IS the Router in embryo, and it is implemented as cross-page widget-key mutation. Every property the Router must have - a decision that is recorded, explainable, reversible and visible - is absent here: the write is invisible, Streamlit garbage-collects the key on navigation, and nothing records whether a selected model was coach-selected or user-selected. It is also the single most fragile thing to port, because the behavior depends on Streamlit's widget lifecycle rather than on anything in the code. Replace with an explicit Router decision the Feed renders; never a widget-key write.",
+  "verified_ev": "pages/05_Preprocess.py:291-294 (the coach writes st.session_state[f'train_model_{pick.model_key}'] = True behind a one-shot _coach_applied flag); pages/06_Train_and_Compare.py:686 and :772 read and force-set the same key namespace"
  },
  {
   "id": "CONTRACT-026",
@@ -2293,7 +2314,9 @@
   "detail": "X_* are always pd.DataFrame (X.iloc[idx]). y_* are pd.Series in the lockbox and stratified branches, but raw np.ndarray in the group-split branch (`y_arr = to_numpy_1d(y)`) and the time-split branch. set_splits() normalizes only when a target transform is applied (via to_numpy_1d); otherwise the heterogeneous type propagates to every consumer. Page 08 does `list(X_train.columns) if hasattr(X_train,'columns')` precisely because of this.",
   "ev": "pages/06_Train_and_Compare.py:511-517, :541-547, :571-577, :613-616, :655-660; ml/splits.py:9 (to_numpy_1d); pages/08:65",
   "act": "project — Splits must be one typed object with a single normalized representation; do the coercion once at construction",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "The heterogeneity is gone by construction; nothing guards it. Every branch now returns through one Split constructor that coerces y_train, y_val and y_test with to_numpy_1d, and the dataclass declares them np.ndarray - so the group and time branches no longer differ from the lockbox and stratified ones, and the defensive hasattr(X_train,'columns') idiom downstream is now belt-and-braces rather than load-bearing. WHAT REMAINS: a dataclass annotation is not enforced at runtime and the equivalence tests compare VALUES, so a future branch that returned a Series would pass every existing test. One isinstance assertion in the split suite closes this.",
+  "verified_ev": "ml/splits.py:101 (y_train: np.ndarray on the Split dataclass) and :383-385 (y_train/y_val/y_test all built with to_numpy_1d at the single construction point, for every branch); pages/06_Train_and_Compare.py consumes _split.*; no test in tests/integration/test_split_extraction_equivalence.py asserts the returned type"
  },
  {
   "id": "CONTRACT-027",
@@ -2303,7 +2326,9 @@
   "detail": "`st.session_state['target_transformer']` is either the literal string 'log1p' or a fitted sklearn PowerTransformer. Every consumer must branch: `if _bt_transformer == 'log1p': np.expm1(...) else: _bt_transformer.inverse_transform(...)`. That branch is duplicated in page 06 (twice: test preds, train preds), the CV path (TransformedTargetRegressor with func/inverse_func vs transformer=clone), and page 08. One missed branch inverts predictions with the wrong function and produces plausible-looking wrong numbers.",
   "ev": "pages/06_Train_and_Compare.py:644, :1560-1566, :1590-1598, :1531-1546; pages/08_Sensitivity_Analysis.py (target_transformer')",
   "act": "engine — one TargetTransform ADT with .forward/.inverse; picklable-only when it wraps PowerTransformer, so Project stores the SPEC and Jobs re-fits",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. target_transformer is still a union of a string sentinel and a fitted sklearn object, and the branch that distinguishes them is duplicated at four sites across two pages plus the CV path, which additionally has to choose between TransformedTargetRegressor(func/inverse_func) and transformer=clone(...) depending which arm it is in. One missed branch inverts predictions with the wrong function and produces plausible wrong numbers on the original scale - no exception, and the metric name is unchanged. One TargetTransform type with .forward/.inverse; the Project stores the SPEC and the job re-fits, which also removes a fitted object from the serialized state.",
+  "verified_ev": "pages/06_Train_and_Compare.py:503 (target_transformer set to either the string 'log1p' or a fitted PowerTransformer), :633, :1391 and the CV path - each consumer branches on the string sentinel before inverting; pages/08_Sensitivity_Analysis.py:401-404 branches the same way"
  },
  {
   "id": "CONTRACT-028",
@@ -2313,7 +2338,9 @@
   "detail": "np.ndarray copies of the pre-transform targets, written ONLY when a target transform is active and popped otherwise. All metric computation reads `st.session_state.get('y_train_original', y_train)` — the .get default silently substitutes the TRANSFORMED target if the key is missing, which happens whenever the pop/write pair desynchronizes. Metrics would then be reported on the log scale while labeled original-scale.",
   "ev": "pages/06_Train_and_Compare.py:645-647, :679-682 (pop branch), :1559, :1587",
   "act": "project — Splits carries y in both scales as explicit fields; never use .get() with a silently-wrong default for a scale-bearing value",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The write/pop pair is still the only thing keeping the .get default from firing, and the default is not a neutral fallback - it substitutes the transformed target, so metrics would be computed on the log scale and reported under original-scale labels with no error and no name change. That is the assert-something-false failure with a units mismatch, which is the hardest kind for a reader to catch: an RMSE of 0.31 on log-glucose looks like an excellent model. Splits should carry y in both scales as explicit fields; a scale-bearing value must never have a silently-wrong .get default.",
+  "verified_ev": "pages/06_Train_and_Compare.py:504-506 (y_*_original written only when a transform is active), :531-534 (popped otherwise), :1420 and :1443 (st.session_state.get('y_train_original', y_train) - the default silently substitutes the TRANSFORMED target)"
  },
  {
   "id": "CONTRACT-029",
@@ -2323,7 +2350,9 @@
   "detail": "cv_strategy: Literal['standard','group','time'] and cv_groups_train: Optional[np.ndarray] (group labels for TRAIN ROWS ONLY). Set as a side effect of the split branch, consumed by ml.eval.perform_cross_validation. cv_groups_train is a numpy array — not JSON-safe. Both are cleared by reset_downstream_results. If the split branch changes and these are not updated in lockstep, CV folds silently leak across the grouping variable.",
   "ev": "pages/06_Train_and_Compare.py:494-497, :507-508, :528, :1543-1546; utils/session_state.py:330-334",
   "act": "project — derive the CV scheme FROM the recorded split strategy rather than storing it as a parallel field that can desync",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "The desync this row warns about is structurally closed; the parallel storage is not. cv_strategy and cv_groups_train are now derived INSIDE make_split from the branch actually taken and returned on the Split object, which is exactly the action ('derive the CV scheme FROM the recorded split strategy'), so a new or reordered branch can no longer leave them stale - they are computed in the same expression that chooses the strategy. WHAT REMAINS: pages/06:439-440 immediately copies both into session_state as free-standing keys and :1464-1465 reads them back from there, so the parallel fields still exist in Classic and the cascade still has to clear them by name. cv_groups_train is also a numpy array, so it is not JSON-safe and is correctly excluded from the archive - which means a restored session silently loses its grouping for CV.",
+  "verified_ev": "ml/splits.py:118-119 (cv_strategy and cv_groups_train are FIELDS ON Split), :303-316 and :329 (both derived inside make_split from the branch that was taken), :393-394; pages/06_Train_and_Compare.py:439-440 copies them out of _split into session state, read back at :1464-1465"
  },
  {
   "id": "CONTRACT-030",
@@ -2333,7 +2362,9 @@
   "detail": "feature_names: List[str] = the RAW input columns (`list(feature_cols)`). feature_names_by_model: Dict[model_key -> List[str]] = post-transform names from ml.pipeline.get_feature_names_after_transform (PCA→PC1..PCn, KMeans→kmeans_*). Page 07 has three-tier fallback logic to reconcile a length mismatch against the actual SHAP/PI array width, ending in generic 'feature_0..n' names — i.e. mislabeled importance plots are already an accepted failure mode.",
   "ev": "utils/session_state.py:488-496; pages/06_Train_and_Compare.py:1595-1598; ml/pipeline.py:427-433; pages/07_Explainability.py:391-404, :492-506",
   "act": "project — post-transform feature names are an output of the fitted pipeline artifact and must travel WITH it, not in a parallel dict that can go out of sync",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. feature_names holds the raw input columns while feature_names_by_model holds post-transform names (PCA gives PC1..PCn, KMeans gives kmeans_*), and page 07 still reconciles a length mismatch against the actual SHAP or permutation array width through a three-tier fallback that ends in generic feature_0..n. That last tier is the finding: MISLABELED importance plots are already an accepted failure mode, coded deliberately, and those plots go into the manuscript. Post-transform names are an output of the fitted pipeline and must travel WITH the artifact, not in a parallel dict that can go out of sync - which is the same conclusion CONTRACT-018 reaches about the artifact itself.",
+  "verified_ev": "utils/session_state.py set_splits stores feature_names as the RAW input columns; pages/06_Train_and_Compare.py:1503-1505 stores feature_names_by_model from get_feature_names_after_transform; pages/07_Explainability.py:304-308 and :390-404 carry the three-tier fallback ending in generic names"
  },
  {
   "id": "CONTRACT-031",
