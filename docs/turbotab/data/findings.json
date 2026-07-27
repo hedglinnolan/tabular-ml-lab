@@ -4070,5 +4070,17 @@
   "status": "FIXED",
   "test": "data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)",
   "note": "Process note: this is the pre-registration discipline working, not failing — the ambiguity surfaced loudly, the adverse number is permanent, and the ruling is published against the drafter's own clause."
+ },
+ {
+  "id": "T0-ROUTE-001",
+  "area": "TIER0",
+  "sev": "high",
+  "item": "A blocker-severity finding (eda_leakage) is offered as pull, not pushed — a blocker that only offers is not gating",
+  "detail": "Guided's Explore palette offers the Target Leakage Risk Assessment card but never ASKS about a detected leaking column. Leakage is the canonical way a prediction paper becomes wrong — near-perfect discrimination from a column that encodes the outcome — and it carries one of only two blocker severities in the app. Under the routing constitution's third clause (ROADMAP, Decision B refinement), a blocker is a question of consequence: always pushed, and exiting the step with it unresolved requires an explicit recorded acknowledgment that the manuscript can carry as a limitation. Register row explore-eda-leakage-col is the classic-only/owed record of the same gap.",
+  "ev": "docs/turbotab/data/register.json explore-eda-leakage-col; pages/02_EDA.py:279 (Classic's blocker); ml/eda_recommender.py r4_leakage",
+  "act": "Small build, BEFORE Loop 1: (1) measure Classic on a NEW fourth dataset containing an injected leaking column — baselines are frozen, so the leaky case gets its own baseline first, harness pattern unchanged; (2) promote blocker-severity triggers to pushed questions; (3) router.audit() rule: blocker may never be pull; (4) step exit with an unresolved blocker requires a recorded acknowledgment decision. Gate: on the leaky dataset the question is pushed and cited, exit-unresolved produces an acknowledgment in the record, and the standing harness still passes on the original three datasets.",
+  "status": "OPEN",
+  "verified_against": "TurboTab @ c8c5f51",
+  "note": "The builder proposed folding this into Loop 1; overruled — Loop 1 is read-only verification and this is routing doctrine plus a build. Loop 1 instead TAGS siblings (blocker-that-only-offers pattern) for one batched follow-up."
  }
 ]

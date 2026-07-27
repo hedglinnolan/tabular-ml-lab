@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**13 of 400 closed.**
+**13 of 401 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `UNVERIFIED` | 370 |
-| `OPEN` | 14 |
+| `OPEN` | 15 |
 | `PARTIAL` | 3 |
 | `FIXED` | 13 |
 
 ---
 
-## OPEN — 14
+## OPEN — 15
 
 
-### Verified against main — 14
+### Verified against main — 15
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -47,6 +47,7 @@ Nothing is closed without a regression test named after it.
 | `T0-STRUCT-005` | high | Coach is a pure annotator; cannot gate, only order. No blocker severity, no own confidence tier, 100% of triggers in pages/ | `ml/model_coach.py; pages/05_Preprocess.py:291-294; pages/02_EDA.py:212,246` | feasibility verdict |
 | `T0-WIP-001` | high | docs/FINDINGS_LEDGER.md 'Still open' tail from two lost audit runs, on the multi-file/JSON import path | `docs/FINDINGS_LEDGER.md:47` | verified on main |
 | `T0-CLASSIC-001` | high | Classic applies structural repairs from a single button with no diff and no undo | `pages/01_Upload_and_Audit.py apply flow vs turbotab preview engine` | Convergence is bidirectional — the register needs a guided-only state to express this. |
+| `T0-ROUTE-001` | high | A blocker-severity finding (eda_leakage) is offered as pull, not pushed — a blocker that only offers is not gating | `docs/turbotab/data/register.json explore-eda-leakage-col; pages/02_EDA.py:279 (Classic's blocker)…` | The builder proposed folding this into Loop 1; overruled — Loop 1 is read-only verification and this is routing doctrine plus a build. Loop 1 instead TAGS siblings… |
 | `T0-DROP-001` | medium | utils/dataset_db.py — 797 loc, zero importers, superseded by session_projects.py | `grep: 0 importers on main` | verified on main |
 | `T0-DROP-002` | medium | setup.py python_requires '>=3.8,<3.10' against a 3.12 repo — uninstallable | `setup.py` | verified on main |
 | `T0-ENG-001` | medium | The diagnose -> profile -> detect path needs only pandas and numpy — no sklearn, scipy or torch | `turbotab/engine.py import surface; verified by the L3 test suite` | Confirmed by building the vertical: turbotab/ installs pandas, numpy, fastapi, uvicorn, python-multipart and nothing else, and the three engine entry points… |

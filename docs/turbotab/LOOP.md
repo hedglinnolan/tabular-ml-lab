@@ -56,18 +56,33 @@ safe to run unattended. Paste this:
 > 5. After each batch: `tools/ledger.py regen`, then `tools/ledger.py check` (must exit 0), then
 >    commit with a message naming the batch and the dispositions.
 >
-> Report at the end: how many of each disposition, and the three findings you consider most
-> urgent.
+> Two rules added after L4–L9 landed:
+>
+> - **"Guided avoids it" is never closure.** Streamlit never retires (Decision C), so a defect
+>   that still exists in Classic stays `OPEN` even where the core or the Guided door has
+>   structurally resolved it. Disposition those as `OPEN` with the note
+>   `resolved-in-core; closes at L11 convergence of <page>` — that phrase is the queue for the
+>   convergence loop, so use it verbatim.
+> - **Tag, don't fix, siblings of known patterns.** If a finding is another instance of
+>   "a blocker that only offers is not gating" (see `T0-ROUTE-001`), add
+>   `sibling-of: T0-ROUTE-001` to its note and move on. They get one batched build, not
+>   twenty inline ones.
+>
+> In the same pass, re-verify the register's `classic-only` claims (`data/register.json`) —
+> several predate the Router and may be stale. Use `register.py set` with an updated reason;
+> a `classic-only` row whose reason no longer holds is the register lying.
+>
+> Report at the end: how many of each disposition, the three findings you consider most
+> urgent, and every row tagged `sibling-of`.
 
 **Expected shape:** ~25 batches. Each batch is a commit, so a crash costs at most one batch.
 
 ---
 
-## Loop 2 — the live bugs
+## Loop 2 — the live bugs · ✓ DONE (folded into L7)
 
-Only after Loop 1 finishes, and only if you want existing app code changed while you are away.
-(If what you want is a *new app* to look at, skip to Loop 3.) Three
-well-specified bugs, each with a clear gate. See `TRANSITION_PLAN.md` §01.
+`T0-LIVE-001` through `T0-LIVE-005` are `FIXED` with named tests — see the ledger. The prompt
+below is kept for the record only; do not run it.
 
 > On branch `TurboTab`, fix the three live bugs in `docs/turbotab/TRANSITION_PLAN.md` §01
 > (`T0-LIVE-001`, `T0-LIVE-002`, `T0-LIVE-003`). Work them one at a time, smallest first.

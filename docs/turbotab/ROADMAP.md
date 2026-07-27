@@ -146,8 +146,22 @@ so the manuscript can still describe what happened.
 > **choice**. Whether to apply a repair is the user's decision however confident the engine is,
 > because applying without preview is the blind consent the preview exists to end.
 
-Repairs are always asked; only detected facts are skippable. This is the routing constitution in
-two sentences, and `router.audit()` enforces it before any run is scored — a run that breaks the
+Repairs are always asked; only detected facts are skippable. And with the palette came the second
+clause: **a pull affordance may never be skipped or deferred — ignoring one has to be free, or it
+was never pull.**
+
+**Third clause, from the Explore step's register dispositioning — blocker severity:**
+
+> A `blocker`-severity finding is a question of **consequence**. It is always pushed, never
+> offered — *a blocker that only offers is not gating.* The tool does not hard-refuse to proceed
+> (the user may know the flagged column is legitimate), but passing an unresolved blocker requires
+> an **explicit recorded acknowledgment**, and that acknowledgment flows into the record so the
+> manuscript can carry it as a limitation. Silence past a blocker is impossible; overriding one is
+> a decision the transcript owns.
+
+Fact → skippable at `high` confidence. Choice → always asked. Consequence → always asked, and
+exit past it unresolved is itself a recorded decision. This is the routing constitution in three
+clauses, and `router.audit()` enforces all of it before any run is scored — a run that breaks a
 rule has no number, it has a failure.
 
 **Unblocks:** L8, and the shape of L9.
