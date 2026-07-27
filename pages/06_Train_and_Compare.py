@@ -583,9 +583,14 @@ if st.button("Prepare Splits", type="primary"):
                 train_n=len(X_train), val_n=len(X_val), test_n=len(X_test),
                 random_seed=int(getattr(split_config, 'random_state', 42)),
                 target_transform=_target_transform or "none",
-                target_trim_enabled=bool(getattr(split_config, 'trim_target', False)),
-                target_trim_lower=float(getattr(split_config, 'trim_lower', 0.0)),
-                target_trim_upper=float(getattr(split_config, 'trim_upper', 1.0)),
+                # These are the names the page itself writes at :312-318. They
+                # were `trim_target` / `trim_lower` / `trim_upper` here — names
+                # SplitConfig has never had — so getattr's default was recorded
+                # instead and the Methods section stated that no rows were
+                # removed while the screen said they were.
+                target_trim_enabled=bool(getattr(split_config, 'target_trim_enabled', False)),
+                target_trim_lower=float(getattr(split_config, 'target_trim_lower', 0.0)),
+                target_trim_upper=float(getattr(split_config, 'target_trim_upper', 1.0)),
             )
         except Exception:
             logger.exception("Failed to record split provenance")
