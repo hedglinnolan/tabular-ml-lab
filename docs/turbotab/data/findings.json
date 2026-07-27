@@ -1105,7 +1105,9 @@
   "detail": "The Router is exactly the component that would naturally read declarative capability metadata to decide which question to ask next. If it consults supports_predict_proba it will offer calibration, ROC curves, and decision-curve analysis for regression models — the branches then call predict_proba, get None back (base default, no exception), and render an empty or crashed panel. The metadata LOOKS authoritative because 8 sibling fields on the same dataclass are load-bearing.",
   "ev": "ml/model_registry.py — registry['nn'] (line 536), registry['glm'] (557) and registry['rf'] (604) all declare supports_predict_proba=True, but for a REGRESSION task the corresponding wrapper's supports_proba() returns False (models/nn_whuber…",
   "act": "Either delete supports_predict_proba, recommended_for_high_dim and interpretability_tier, or make them task-parameterized (supports_predict_proba(task_type) -> bool) and add a test that asserts, for every registry key and both task types, t…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: still zero readers anywhere, and still task-blind. The field is declared on ModelSpec and set twelve times, but no page, no util, no turbotab module and no test ever reads it - the app answers 'can this predict probabilities?' by calling wrapper.supports_proba(), which IS task-aware. So the metadata is authoritative-looking and wrong for exactly the models that serve both tasks. It sits on a dataclass whose sibling fields ARE load-bearing, which is what makes it dangerous: the Router is precisely the component that would reach for declarative capability metadata to decide which question to ask, and doing so would offer calibration, ROC and decision curves for a regression model. Delete it or make it supports_predict_proba(task_type), and test every key against the wrapper's own answer for both tasks. Same shape for recommended_for_high_dim and interpretability_tier.",
+  "verified_ev": "ml/model_registry.py:27 (the field), :265,312,359,407,455,476,495,536,556,603,663,727 (twelve True declarations, incl. the task-dual nn/glm/rf specs); repo-wide grep for supports_predict_proba across pages/, utils/, turbotab/ and tests/ returns NOTHING outside the registry"
  },
  {
   "id": "MODELS-009",
@@ -1115,7 +1117,9 @@
   "detail": "Train {ridge, rf} and the baselines run on a scaled/imputed matrix; train {rf, ridge} and they run on an unscaled one. The LinearRegression baseline's R2 changes, so the headline claim 'our model beats the linear baseline by X' changes — with no indication that anything about the baseline moved. If the transform raises (a pipeline expecting engineered columns), the except swallows it and the baseline silently trains on raw data that may contain NaNs or strings.",
   "ev": "pages/06_Train_and_Compare.py:2122-2124 — `first_model = list(st.session_state.get('fitted_preprocessing_pipelines', {}).keys())` then `pipe = st.session_state['fitted_preprocessing_pipelines'][first_model[0]]`. Because pipelines are per-mo…",
   "act": "Give baselines their OWN explicit pipeline (scaled numeric + simple imputation) recorded in the Record, independent of any user model. Remove the bare except or make it record a visible failure. Pin current baseline metrics before changing …",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The baselines are still transformed through whichever per-model pipeline happens to be first in dict insertion order, i.e. checkbox order, so training {ridge, rf} and {rf, ridge} give the LinearRegression baseline a different matrix and therefore a different R2 - and the headline claim 'our model beats the linear baseline by X' moves with it, with nothing on screen indicating the baseline changed. This is the same insertion-order class as COACH-008 and T0-STRUCT-001, in the one place where the number is a comparison the manuscript makes. Baselines need their own explicit pipeline, recorded in the Record, independent of any user model - and the current baseline metrics need pinning before that changes them.",
+  "verified_ev": "pages/06_Train_and_Compare.py:2052-2054 - first_model = list(st.session_state.get('fitted_preprocessing_pipelines', {}).keys()) then pipe = st.session_state['fitted_preprocessing_pipelines'][first_model[0]]"
  },
  {
   "id": "MODELS-010",
@@ -1125,7 +1129,9 @@
   "detail": "ExtraTrees never triggers the slow-model warning or the cancel affordance, so a multi-minute run presents with no warning at all. Ported into a jobs layer as a duration estimator, this becomes wrong ETAs and wrong queue priorities — plausible-looking numbers that nobody validates.",
   "ev": "pages/06_Train_and_Compare.py:1248 — `slow_models = {'nn', 'extratrees', 'svc', 'svr'}`. The registry has NO key 'extratrees'; it has 'extratrees_reg' and 'extratrees_clf' (ml/model_registry.py:322, 345). It also omits 'svc'/'svr' siblings …",
   "act": "Move cost class onto ModelSpec as an explicit field (cheap/moderate/expensive) so it is impossible to key off a string that does not exist, and assert in a test that every cost-class reference resolves to a real registry key.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The cost model still keys off four strings, three of which are not registry keys, so ExtraTrees (the actual slow one) never triggers the slow-model warning and a multi-minute run presents with no warning at all. The set is now consulted in three places (:1145, :1177, :1183) rather than one, so the wrong answer propagates further than when this was written. Ported into a jobs layer as a duration estimator this becomes wrong ETAs and wrong queue priorities - plausible numbers nobody validates. Cost class belongs on ModelSpec as a field, with a test asserting every cost-class reference resolves to a real registry key.",
+  "verified_ev": "pages/06_Train_and_Compare.py:1144 slow_models = {'nn','extratrees','svc','svr'}, used at :1145 and :1177,:1183; ml/model_registry.py has extratrees_reg / extratrees_clf and no bare 'extratrees', 'svc' or 'svr' key"
  },
  {
   "id": "MODELS-011",
@@ -1135,7 +1141,9 @@
   "detail": "A regression target that is integer-valued with under 20 distinct levels (ordinal scores, counts, Likert sums — common in the clinical datasets this app targets) is scored as ACCURACY and reported under 'val_metric'. Conversely a float-encoded class label is scored as RMSE. Nothing errors. The value lands in a history key nobody currently reads, which is exactly why it has survived — it becomes live the moment the Router or the feed starts reading history generically. Separately, routing rf/glm/huber through RegistryModelWrapper during consolidation would silently DROP their sample_weight support, since RFWrapper/GLMWrapper/HuberGLMWrapper ignore **kwargs entirely.",
   "ev": "models/registry_wrappers.py:44 — `if len(np.unique(y_train)) < 20 and y_train.dtype in [np.int64, np.int32, 'int64', 'int32', 'int']`. Its fit is also the only one reading kwargs['sample_weight'] (line 32-36); pages/06:1477-1480 relies on t…",
   "act": "Pass task_type into RegistryModelWrapper.__init__ from the registry key and delete the heuristic. Before consolidating wrappers, add a test asserting class-weight balancing actually reaches the estimator for every key where capabilities.sup…",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "The dtype half was repaired; the cardinality half was not. The test is no longer dtype-identity against ['int64','int32'] - it now asks through pd.api.types.is_integer_dtype with an explicit bool exclusion, so the pandas-3 class (T0-LIVE-004) does not apply here. WHAT REMAINS is the original defect: the wrapper still RE-DERIVES the task type from the data rather than being told, and the len(unique) < 20 rule still scores an integer-valued regression target - ordinal scores, counts, Likert sums, all routine in the clinical datasets this app targets - as ACCURACY, stored under 'val_metric'. It survives only because nothing reads that key yet (see MODELS-003). The second half of the row is also untouched: RegistryModelWrapper is still the only wrapper honoring sample_weight, so routing rf/glm/huber through it during consolidation would silently drop class-weight balancing for them.",
+  "verified_ev": "models/registry_wrappers.py:44-52 - the heuristic is now len(np.unique(y_train)) < 20 AND _pdt.is_integer_dtype(y_train) AND NOT _pdt.is_bool_dtype(y_train); :32-36 (still the only wrapper reading kwargs['sample_weight']); models/rf.py, glm.py, huber_glm.py still ignore **kwargs"
  },
  {
   "id": "MODELS-012",
@@ -1145,7 +1153,9 @@
   "detail": "For n > 200 the acceleration term a is computed over an array whose tail is constant, shrinking both the third and second moments in a way that depends on n. The intervals are still produced, still look reasonable, and are still labeled 'BCa' — but the acceleration correction is progressively damped as the test set grows. Any refactor that 'fixes' this (uncapping the jackknife, or passing only the 200 computed values) CHANGES EVERY PUBLISHED INTERVAL WIDTH, and the change will be attributed to the migration rather than to a deliberate statistical correction.",
   "ev": "ml/bootstrap.py:152-166 — `n_jack = min(n, 200)`, `jack_stats = np.full(n, np.nan)`, the loop runs only `for i in range(n_jack)`, then `jack_stats[~np.isfinite(jack_stats)] = jack_fill` fills all n - 200 remaining slots with nanmean of the …",
   "act": "Do not touch this during the move. Snapshot BootstrapResult values for a fixed (y_true, y_pred, seed) with n well above 200 into a golden file, port byte-identically, verify the golden file passes, and only then open a separate, explicitly-…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, byte for byte. For n > 200 the BCa acceleration is still computed over an array whose tail is a constant, damping the third and second moments by an amount that depends on n, while the interval is still labeled BCa. The important part of this row is the instruction, and it still stands: do NOT touch this during the move. Uncapping the jackknife or passing only the computed values changes every published interval width, and the change would be attributed to the migration rather than to a deliberate statistical correction. Snapshot BootstrapResult for a fixed (y_true, y_pred, seed) with n well above 200, port byte-identically, verify the golden passes, and only then open a separate statistical decision. Note this compounds with MODELS-007: the seed those goldens would be taken at is currently 42 regardless of the project.",
+  "verified_ev": "ml/bootstrap.py:152-164 - n_jack = min(n, 200); jack_stats = np.full(n, np.nan); the loop runs for i in range(n_jack); jack_fill = nanmean of the first n_jack; jack_stats[~np.isfinite(jack_stats)] = jack_fill, filling all n-200 remaining slots"
  },
  {
   "id": "MODELS-013",
@@ -1155,7 +1165,9 @@
   "detail": "The fallbacks are silent by construction — getattr with a default never raises. Any path that reconstructs the wrapper from recorded config and refits (a Job retry, a sensitivity re-run, a reproducibility check) that fails to re-enter the weighted_huber branch trains against a Gaussian window centered at 180 with width 20 on a target that may live in [0,1]. The weight collapses to a near-constant 1.0, so it degrades to plain Huber and simply performs slightly worse — no error, no warning, and the manuscript still claims a weighted loss was used.",
   "ev": "models/nn_whuber.py:376-378 sets them only in the `elif self.loss_function == 'weighted_huber'` branch; lines 459-461 and 494-496 read them via `getattr(self, '_whuber_t0', 180.0)` / `getattr(self, '_whuber_s', 20.0)`. They appear in NEITHE…",
   "act": "Compute t0/s in __init__ or make them explicit constructor parameters, include them in get_architecture_summary(), and record them in the Record. Delete the 180.0/20.0 getattr defaults so the failure becomes an AttributeError instead of a s…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The emphasis window is still derived during fit, stored only on the instance, and read back through getattr with the legacy glucose constants 180.0 and 20.0 as defaults - which never raise, by construction. Any path that rebuilds the wrapper from recorded config and refits without re-entering the weighted_huber branch trains against a Gaussian window centred at 180 with width 20 on a target that may live in [0,1]: the weight collapses to near-constant, the loss silently degrades to plain Huber, the model just performs a little worse, and the manuscript still claims a weighted loss. Job retries, sensitivity re-runs and reproducibility checks are all such paths. Make t0/s explicit parameters, put them in get_architecture_summary() and the Record, and delete the defaults so the failure is an AttributeError.",
+  "verified_ev": "models/nn_whuber.py:435-436 (the window is derived inside the weighted_huber branch of fit and stored only as self._whuber_t0 / self._whuber_s) and :518-519, :553-554 (read back via getattr(self,'_whuber_t0',180.0) / getattr(self,'_whuber_s',20.0))"
  },
  {
   "id": "MODELS-014",
@@ -1165,7 +1177,9 @@
   "detail": "A stratified split that leaves a rare class out of training maps every such validation row to the FIRST class. Validation accuracy is computed against those fabricated labels, early stopping optimizes against them, and the selected 'best' epoch is chosen on corrupted signal. Meanwhile, with no tests on the other five wrapper files, ANY behavioral change made during the move — the RF duplicate-method deletion, a shared base-class refactor, normalizing the fit() return shape — lands with nothing to catch it.",
   "ev": "models/nn_whuber.py:337 — `y_val_mapped = np.array([class_to_idx.get(cls, 0) for cls in y_val])` (note: the TRAIN mapping at line 327 uses class_to_idx[cls] and would KeyError, but validation uses .get with a 0 default). Coverage: grep acro…",
   "act": "WHAT A MIGRATION SUITE MUST PIN FIRST, in order: (1) for every one of the 22 registry keys and both task types, construct via spec.factory and assert the exact constructor kwargs — this is the defense against landmine 2; (2) fit each wrappe…",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "The coverage half is closed; the silent remap is not. models/base, glm, huber_glm, rf and registry_wrappers are no longer untested - tests/test_characterization_wrappers.py parameterizes the base contract across the regression wrappers, pins the registry wrapper against the estimator it wraps, pins proba support for classification, and pins that an unfitted wrapper refuses to predict. WHAT REMAINS is the defect this row is named for: nn_whuber.py:395 still maps an unseen validation class to index 0 via .get(cls, 0), while the train mapping at :385 would KeyError on the same input. So a stratified split that leaves a rare class out of training fabricates labels for those rows, validation accuracy is computed against the fabrication, and early stopping selects a 'best' epoch on corrupted signal - with no error. The asymmetry between the two lines is the tell: one path was written to fail loudly and the other to keep going.",
+  "verified_ev": "models/nn_whuber.py:384-395 - y_val_mapped = np.array([class_to_idx.get(cls, 0) for cls in y_val]) at :395, against class_to_idx[cls] at :385 for train; coverage half now covered by tests/test_characterization_wrappers.py:62-269"
  },
  {
   "id": "RECORD-001",
@@ -1175,7 +1189,9 @@
   "detail": "After any session save/restore — and after any TurboTab job round-trip that serializes the Record — every insight loses its manuscript-register phrasing and silently falls back to the coaching-register finding. The Discussion's Limitations then read in coach voice ('a reviewer would question…', 'consider…') in a submitted manuscript. tests/test_manuscript_trust.py::test_manuscript_text_preferred_over_finding passes because it never serializes.",
   "ev": "utils/insight_ledger.py:617 (to_dict) vs :571 (field) vs :1188 (discussion_points_for_manuscript's `text = (i.manuscript_text or \"\").strip() or _clean_for_manuscript(i.finding)`); serialization path utils/session_manager.py:257-265 and :536…",
   "act": "Replace the hand-written to_dict with dataclasses.asdict (or add the field), and add a round-trip test that asserts manuscript_text survives to_dict->from_dict. Do this BEFORE the Record is moved behind a job queue, because jobs make serial…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and this is the most consequential row in the batch. Insight.to_dict still writes id, source_page, category, severity, finding, implication, recommended_action, relevant_pages, affected_features, tripod_keys, model_scope, auto_generated, theory_anchor, action_page, the five resolution fields, the three acknowledgment fields, created_at and metadata - and NOT manuscript_text. So every save/restore, and every Record round-trip through a job queue, silently strips the manuscript-register phrasing from every insight, and utils/insight_ledger.py:1190 then falls back to the coaching-register finding. The Discussion's Limitations come back in coach voice in a manuscript the author is about to submit. tests/test_manuscript_trust.py::test_manuscript_text_preferred_over_finding passes because it never serializes - the register separation is real in memory and absent on disk. Fix with dataclasses.asdict plus a to_dict/from_dict round-trip assertion, BEFORE the Record goes behind a queue.",
+  "verified_ev": "utils/insight_ledger.py:617-646 (to_dict enumerates 22 fields by hand and manuscript_text is not among them) vs :573 (the declared field) and :1190 (discussion_points prefers manuscript_text over the cleaned finding); from_dict at :648-653 filters on __dataclass_fields__ and would restore it; serialization path utils/session_manager.py:261"
  },
  {
   "id": "RECORD-002",
@@ -1185,7 +1201,9 @@
   "detail": "On save, numpy.float64 is stringified to '0.8231'. On restore, TrainingProvenance.metrics_by_model holds STRINGS. NarrativeEngine._normalize_metrics only fixes keys, not values. _gen_results then evaluates `rmse < best_rmse` (str vs float) -> TypeError, which is caught by the blanket `except Exception` in pages/10_Report_Export.py:619, which logs a warning and silently downgrades to the legacy publication.py path — whose headings the validator cannot parse — which blocks all exports with two unrelated-looking FAIL rows.",
   "ev": "pages/06_Train_and_Compare.py:1660 passes res['metrics'] straight through; utils/workflow_provenance.py record_training does only dict(metrics_by_model) (shallow); utils/session_manager.py:271 json.dumps(provenance.to_dict(), default=str)",
   "act": "Coerce to plain float/int at the record boundary in record_training (and in from_dict as a repair pass). Add a test that saves a provenance containing numpy scalars, restores it, and asserts NarrativeEngine.generate() succeeds and metrics a…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Metric values still reach the Record as whatever the trainer produced (numpy scalars) and the save path still stringifies them through default=str, so after a restore TrainingProvenance.metrics_by_model holds strings. Note the codebase already knows this hazard one function over - utils/session_manager.py:303 carries a comment saying json.dumps(default=str) would turn numpy ints into strings and handles it there - so the fix pattern exists and was simply not applied to provenance. The failure chain is long and the visible symptom is unrelated to the cause: str vs float comparison raises inside _gen_results, the blanket except in pages/10 downgrades to the legacy publication.py path, and the validator then fails on headings it cannot parse (see RECORD-004), presenting as two unrelated FAIL rows. Coerce to float/int at the record boundary and repair on from_dict.",
+  "verified_ev": "pages/06_Train_and_Compare.py:1565 passes res.get('metrics', {}) straight through; utils/workflow_provenance.py:469 metrics_by_model=dict(metrics_by_model or {}) with no coercion; utils/session_manager.py:272 json.dumps(provenance.to_dict(), indent=2, default=str)"
  },
  {
   "id": "RECORD-003",
@@ -1195,7 +1213,9 @@
   "detail": "Any later mutation of a model's metrics dict (retraining in place, adding bootstrap CI keys, normalizing casing) retroactively rewrites the 'record of what happened'. The Record stops being append-mostly and starts being a live view. Nothing detects it; the manuscript simply reports numbers that were never the ones the user saw.",
   "ev": "utils/workflow_provenance.py:386-400",
   "act": "copy.deepcopy at the record boundary, or freeze to an immutable mapping. Add a test that mutates the source metrics dict after record_training and asserts the provenance is unchanged.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: record_training still takes shallow copies, so the Record shares its inner per-model dicts with live session state. Any later mutation - retraining in place, adding bootstrap CI keys, normalizing metric-name casing - retroactively rewrites the record of what happened, and the Record stops being append-mostly and becomes a live view of the present. Nothing detects it; the manuscript simply reports numbers that were never the ones the user saw. This is the quietest failure in the batch because there is no moment at which anything goes wrong. deepcopy at the boundary, plus a test that mutates the source dict after record_training and asserts the provenance is unchanged.",
+  "verified_ev": "utils/workflow_provenance.py:460-469 - hyperparameters=dict(hyperparameters or {}) and metrics_by_model=dict(metrics_by_model or {}), both shallow; the inner per-model dicts are the same objects as st.session_state['model_results'][name]['metrics'] and ['selected_model_params']"
  },
  {
   "id": "RECORD-004",
@@ -1205,7 +1225,9 @@
   "detail": "Whenever the NarrativeEngine path throws for ANY reason, the fallback produces a perfectly reasonable manuscript whose Study Design and Model Evaluation sections extract as empty strings. Checks 1 ('analysis population is consistent') and 6 ('model names match between development and evaluation') then FAIL for every model, exports_blocked goes True, and the UI tells the user their counts disagree. The actual cause — a swallowed exception — appears only in a logger.warning.",
   "ev": "ml/manuscript_validator.py:159-162 vs ml/publication.py:413 and :1156; path switch at pages/10_Report_Export.py:608-626",
   "act": "Delete generate_methods_section (all its facts are in the Record). Until then, make the fallback emit the same headings, surface the swallowed exception in the UI, and add a test that validates a bundle built from the fallback path.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The validator's section extractor requires the heading text to be followed directly by a newline, so '### Study Design and Participants' does not match a request for 'Study Design' and '### Performance Evaluation' does not match 'Model Evaluation' - both extract as empty strings whenever the NarrativeEngine path throws and the legacy publication.py fallback runs. Checks 1 and 6 then fail for every model, exports_blocked goes True, and the user is told their participant counts disagree. The real cause - a swallowed exception - appears only in a logger.warning. This is the second half of RECORD-002's failure chain and the reason that chain is so hard to diagnose from the UI. Until generate_methods_section can be deleted, make the fallback emit the validator's headings and surface the swallowed exception.",
+  "verified_ev": "ml/manuscript_validator.py:48-51 (_extract_section anchors on ^###\\s+<heading>\\s*\\n, so the heading must be followed by a newline), :158-162 (extracts 'Study Design', 'Predictor Variables', 'Model Development', 'Model Evaluation'); ml/publication.py:413 emits '### Study Design and Participants' and :1156 emits '### Performance Evaluation'; path switch at pages/10_Report_Export.py"
  },
  {
   "id": "RECORD-005",
@@ -1215,7 +1237,9 @@
   "detail": "Check 6 ('Model names match between development and evaluation sections') silently PASSES for Random Forest in any manuscript containing the word 'performance' — which every Model Evaluation section contains by construction. The check has never actually validated 'rf', and the same class of false-pass applies to any short key. A model genuinely missing from one section is reported as consistent.",
   "ev": "ml/manuscript_validator.py:111-119 (_model_variants returns [display, key.upper(), key.title()]; _contains_any_variant lowercases and substring-matches)",
   "act": "Match with re.search(rf'\\b{re.escape(variant)}\\b', ...) as check 11 already does. Add a regression test: a manuscript whose Model Evaluation mentions 'performance' but not Random Forest must FAIL.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and trivially reproducible: for key 'rf' the variants include 'RF', which lowercases to 'rf', and 'performance' contains the substring 'rf' at index 2. Every Model Evaluation section contains the word 'performance' by construction, so check 6 has never once validated Random Forest - a model genuinely missing from one section is reported as consistent. The same false-pass applies to any short key. The fix is already present elsewhere in the same file: check 11 uses a \\b-anchored re.search. Add the regression test the action names - a manuscript whose Model Evaluation says 'performance' but never names Random Forest must FAIL.",
+  "verified_ev": "ml/manuscript_validator.py:111-119 - _model_variants returns [display, key.upper(), key.replace('_',' ').title()] and _contains_any_variant does 'variant.lower() in lowered', a substring test with no word boundary; contrast the \\b-anchored re.search used by check 11"
  },
  {
   "id": "RECORD-006",
@@ -1225,7 +1249,9 @@
   "detail": "sensitivity_summary never contains feature_dropout_conducted, so ml/latex_report.py:853 never emits 'Feature dropout sensitivity analysis was conducted…'. A user who ran feature dropout gets a LaTeX manuscript that does not mention it. No warning, no FAIL — the section just quietly omits real work.",
   "ev": "pages/10_Report_Export.py:877 vs pages/08_Sensitivity_Analysis.py:499 and ml/publication.py:1222,:1382",
   "act": "Fix the key, and then delete the whole function: SensitivityProvenance.feature_dropout already carries this fact. Add a test asserting that recorded sensitivity work appears in the LaTeX.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD - a read-never-written key, the class TRANSITION_PLAN 04 names, in the export path. sensitivity_summary therefore never carries feature_dropout_conducted, ml/latex_report.py never emits the 'Feature dropout sensitivity analysis was conducted' sentence, and a user who ran feature dropout gets a LaTeX manuscript that does not mention it. No warning, no FAIL - real work quietly omitted from the record of the work. Fixing the key is a one-character-class change; the durable fix is deleting the function, because SensitivityProvenance.feature_dropout already carries the fact. Add a test asserting recorded sensitivity work reaches the LaTeX.",
+  "verified_ev": "pages/10_Report_Export.py:896 reads st.session_state.get('sensitivity_feature_dropout'); the producer writes 'sensitivity_dropout_results' (pages/08_Sensitivity_Analysis.py:499, read back at :555-556) and ml/publication.py:1222,:1382 use that name too. Nothing in the repository ever writes 'sensitivity_feature_dropout'."
  },
  {
   "id": "RECORD-007",
@@ -1235,7 +1261,9 @@
   "detail": "In the normal case (results exist) the .tex Discussion is rebuilt from scratch out of generic [PLACEHOLDER: …] strings, while the .md Discussion contains the compiled, evidence-citing [AUTHOR REQUIRED] scaffolds. The two exports in the same ZIP make different claims and use different author-marker conventions, and the honesty guarantees pinned by tests/test_manuscript_trust.py::TestDiscussionHonesty apply only to the markdown.",
   "ev": "ml/latex_report.py:692-700 (draft_results assignment) and :754-785 (`if model_results: … elif draft_results: …`)",
   "act": "Render LaTeX from ManuscriptDraft's typed fields (Methods/Results/Discussion) instead of re-parsing markdown; delete _convert_markdown_to_latex. Add a test asserting '[AUTHOR REQUIRED' appears in the generated .tex when model_results is pre…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. _convert_markdown_to_latex still splits the draft at '## Results', so everything after it - the entire Discussion, with every [AUTHOR REQUIRED] scaffold - lands in draft_results, and draft_results is only ever appended in the elif branch. In the NORMAL case, where model_results is truthy, that branch never runs and the .tex Discussion is rebuilt from generic [PLACEHOLDER: ...] strings. So the two files in the same exported ZIP make different claims and use different author-marker conventions, and the honesty guarantees pinned by tests/test_manuscript_trust.py::TestDiscussionHonesty apply only to the markdown. Render LaTeX from ManuscriptDraft's typed fields and delete the markdown re-parse; assert '[AUTHOR REQUIRED' appears in the .tex when model_results is present.",
+  "verified_ev": "ml/latex_report.py:703-709 (methods_latex, results_latex = _convert_markdown_to_latex(...); draft_results = _demote_results_subsections(results_latex)) and :767-797 (if model_results: ... rebuilt from manuscript_facts ... elif draft_results: sections.append(draft_results))"
  },
  {
   "id": "RECORD-008",
@@ -1245,7 +1273,9 @@
   "detail": "Change the target column or replace the data and StatisticalValidationProvenance.tests_run (and, via record_upload, SplitProvenance and SensitivityProvenance) survive. The Methods draft then states 'Statistical validation was performed using: Shapiro-Wilk, Mann-Whitney…' and reports significance counts for tests run against a variable that is no longer in the analysis. The evidence map reports them as RECORDED. Nothing fails.",
   "ev": "utils/workflow_provenance.py:233-237 vs utils/session_state.py:376-388",
   "act": "Move invalidation entirely into the Project's DAG — the Record must have no invalidation logic of its own. Enumerate the full downstream set per stage and test each edge. tests/test_workflow_provenance.py::test_record_upload_resets_downstre…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and the two lists are still different lists. Change the target or replace the data and StatisticalValidationProvenance.tests_run survives both paths, while record_upload additionally leaves split, explainability, coach and sensitivity standing. The Methods draft then states 'Statistical validation was performed using: Shapiro-Wilk, Mann-Whitney...' with significance counts for tests run against a variable no longer in the analysis, and the evidence map reports them as RECORDED. Nothing fails. The structural fix is the one the action names and it has not started: invalidation belongs entirely in the Project's DAG and the Record must have none of its own - which is also SWEEP-013's remainder, seen from the Record side. Note turbotab/cascade.py already models provenance_sections per stage; statistical_validation and sensitivity are the sections that need to appear there.",
+  "verified_ev": "utils/workflow_provenance.py:271-275 (record_upload nulls feature_engineering, feature_selection, preprocessing, training only) vs utils/session_state.py:435-446 (reset_downstream_results nulls eda, split, preprocessing, training, explainability, coach, plus feature_selection/feature_engineering under their flags). Neither touches statistical_validation; sensitivity is cleared by neither."
  },
  {
   "id": "RECORD-009",
