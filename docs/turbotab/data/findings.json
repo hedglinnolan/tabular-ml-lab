@@ -1648,7 +1648,9 @@
   "detail": "Double .get() with a {} fallback yields None; the whole 'is your model better than trivial?' section is skipped. Baselines still render on page 06, so the author sees them and assumes they exported.",
   "ev": "pages/10_Report_Export.py line 1337: `_baselines_for_report = (export_ctx.get('manuscript_context') or {}).get('baseline_results')` — build_export_context() (lines 306-334) returns 23 keys and 'manuscript_context' is not among them. The bas…",
   "act": "Pass the bundle explicitly. Structurally: export_ctx and manuscript_context are two overlapping snapshots of the same state — collapse them into one Record view during the rebuild.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and verified key by key: 'manuscript_context' is not among the keys build_export_context returns, so the double .get() with a {} fallback is always None and the whole Baseline Comparison section - the 'is your model better than trivial?' answer - is skipped in the exported markdown. Baselines still render on page 06, so the author sees them, assumes they exported, and ships a report without them. The structural half of this row is the useful part: export_ctx and manuscript_context are two overlapping snapshots of the same state, and a read that crosses between them silently returns nothing rather than failing. Collapse them into one Record view.",
+  "verified_ev": "pages/10_Report_Export.py:1356 - _baselines_for_report = (export_ctx.get('manuscript_context') or {}).get('baseline_results'); build_export_context() at :282-334 returns dataset, data_config, split_config, model_config, trained_models, model_results, data_audit, profile, pipeline, pipelines_by_model, configs_by_model, selected_model_params, feature_names, permutation_importance, shap_results, legacy_shap_values, pdp_results, robustness and a readiness map - and no 'manuscript_context' key"
  },
  {
   "id": "STATE-021",
@@ -1658,7 +1660,9 @@
   "detail": "Both branches are skipped; execution reaches the third fallback at line 772 which recomputes from the dataframe — so it usually still works, by accident, and the dead code looks load-bearing. When df is None it silently produces no missing-data statement at all.",
   "ev": "pages/10_Report_Export.py lines 732, 754: `data_audit['missing_counts']`. pages/01_Upload_and_Audit.py builds audit_results with keys 'cardinality', 'dtypes', 'missing' (a list of {Column, Missing Count, Missing %} records), 'duplicates', '…",
   "act": "Delete the two dead branches; keep the recompute. Then make the audit a typed artifact so 'which keys does the audit have' is answerable without grep.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Both branches still key on 'missing_counts', which pages/01 never puts in the audit dict - it is a local variable there, at :726 - so both are dead and execution reaches the third fallback that recomputes from the dataframe. That is why this row is subtle rather than loud: it USUALLY still works, by accident, and the two dead branches read as load-bearing code. When df is None the fallback cannot run and the report silently carries no missing-data statement at all. Delete the dead branches, keep the recompute, and make the audit a typed artifact so 'which keys does the audit have' is answerable without grep - which is the same fix STATE-019 and STATE-020 want.",
+  "verified_ev": "pages/10_Report_Export.py:751-754 and :773-779 both branch on data_audit['missing_counts']; pages/01_Upload_and_Audit.py:726 computes missing_counts as a LOCAL and stores the audit under a different shape ('missing' as a list of records)"
  },
  {
   "id": "STATE-022",
@@ -1668,7 +1672,9 @@
   "detail": "test_name falls back to `action` (which happens to be the test name, so it looks right), variable becomes the literal string 'unknown variable', statistic becomes None. The LaTeX supplementary prints 'Shapiro-Wilk on unknown variable'.",
   "ev": "pages/10_Report_Export.py lines 892-896 read `details.get('test_name')`, `details.get('variable', 'unknown variable')`, `details.get('statistic')`; pages/09_Hypothesis_Testing.py logs details with keys var1/var2 (line 273), numeric_var/grou…",
   "act": "Normalize the statistical-test record at write time (one StatTest record type used by all six branches), not at read time.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The reader still asks for test_name, variable and statistic; the six writer branches on page 09 use their own per-test key names, so every statistical test loses its variable and its statistic. The failure is disguised by the fallback: test_name falls back to action, which HAPPENS to be the test name, so the line looks right - and then prints 'Shapiro-Wilk on unknown variable' with no statistic in the LaTeX supplementary. That is the app asserting a test was run without being able to say on what. Normalize at WRITE time with one StatTest record used by all six branches; normalizing at read time is what produced six vocabularies in the first place.",
+  "verified_ev": "pages/10_Report_Export.py:912-914 - test_name = details.get('test_name') or action; variable = details.get('variable', 'unknown variable'); statistic = details.get('statistic') - against pages/09_Hypothesis_Testing.py, which logs details under var1/var2, numeric_var/group_var and similar per-branch names"
  },
  {
   "id": "STATE-023",
@@ -1678,7 +1684,9 @@
   "detail": "'RIDGE', 'LASSO', 'RF' match; 'LOGISTIC' (registry: logreg), 'ELASTIC_NET' (elasticnet), 'RANDOM_FOREST', 'SVM_LINEAR', 'SVM_RBF', 'XGB' (xgb_clf/xgb_reg), 'LGBM' (lgbm_*) never match. So a logistic-regression winner falls to the generic 'but consider if interpretability is important' and every boosted model reports 'Unknown complexity'. No error.",
   "ev": "pages/06_Train_and_Compare.py lines 2380-2385: `if model1_name in ['LOGISTIC','RIDGE','LASSO']` / `elif model1_name in ['RF','RANDOM_FOREST']`. model1_name comes from comparison_df['Model'] = name.upper() where name is a registry key ('logr…",
   "act": "Drive both from ml.model_coach._get_model_info() / the registry, which is already keyed correctly. This is the pattern to hunt for generally: the page layer repeatedly re-encodes model taxonomy by hand (06:834 EXPLAINABILITY_ORDER 'Trees'/'…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and the hand-rolled taxonomy now appears twice in the same file (:2230 and :2310). RIDGE, LASSO and RF match; LOGISTIC, ELASTIC_NET, RANDOM_FOREST, SVM_LINEAR, XGB and LGBM never do - so a logistic-regression winner falls through to the generic interpretability caveat and every boosted model reports 'Unknown complexity', with no error. The general pattern is the thing to hunt: the page layer keeps re-encoding model taxonomy by hand while ml/model_coach._get_model_info() and the registry already hold it keyed correctly. Every such re-encoding is a place where adding a model to the registry silently degrades a page.",
+  "verified_ev": "pages/06_Train_and_Compare.py:2230-2231 (simple_models = ['LOGISTIC','RIDGE','LASSO','ELASTIC_NET']; moderate_models = ['RF','RANDOM_FOREST','SVM_LINEAR']), :2241 ('Unknown complexity'), :2310-2312 (the same literals again); comparison_df['Model'] is a registry key upper-cased, and the registry keys are logreg, elasticnet, xgb_clf/xgb_reg, lgbm_*, extratrees_*"
  },
  {
   "id": "STATE-024",
@@ -1688,7 +1696,9 @@
   "detail": "The fallback yields [], so on a first pass (models selected, nothing trained yet) generate_preprocessing_insights is never called and the model-scoped coaching silently does not exist. The whole block is inside a bare `try/except: pass` (line 328), so even a real error is invisible.",
   "ev": "pages/05_Preprocess.py line 309: `st.session_state.get(\"model_registry\", {})` — no writer exists in the repo. The expression is the `or` fallback for `_selected_for_coaching`, whose first operand is the keys of `trained_models`.",
   "act": "Iterate the train_model_* session keys as the rest of the page does (line 413). Ban bare `except: pass` around coaching — 8 such swallows exist across pages 02/05/06 (02:1473, 05:296, 05:328, 06:1731, 06:1985, 06:2294, plus every `except Ex…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The first operand of _selected_for_coaching is the keys of trained_models and the fallback iterates a session key that has no writer, so on a first pass - models selected, nothing trained yet - the fallback yields [] and generate_preprocessing_insights is never called. Model-scoped preprocessing coaching therefore only appears AFTER training, which is exactly backwards: the advice is about how to preprocess for the models you are about to train. The page already knows the right way to answer this - it scans the train_model_* keys at :413 and :850 - so the fix is to use its own idiom. And the surrounding bare swallow (COACH-005) means a real error here is equally invisible.",
+  "verified_ev": "pages/05_Preprocess.py:309 - the fallback iterates st.session_state.get('model_registry', {}), a key nothing in the repository writes (the page imports get_registry from ml.model_registry at :26 and does not use it here); the whole block is inside the try whose handler swallows"
  },
  {
   "id": "STATE-025",
@@ -1698,7 +1708,9 @@
   "detail": "iloc on a different-length or differently-ordered frame either raises IndexError (loud, fine) or returns the WRONG ROWS (silent). Wrong rows produce a plausible y vector, so permutation importance, external-validation labels, and subgroup stratification are quietly computed against mismatched outcomes. pages/07 wraps the whole reconstruction in `except Exception: pass` (line 204-205) and falls back to X_test — hiding even the loud case.",
   "ev": "Written pages/06 lines 681-693; read pages/07 lines 185-196 (`df_raw.iloc[test_indices]` for permutation/SHAP raw rows AND `df_raw[target].iloc[test_indices]` for y) and line 1196 (subgroup labels). get_data() precedence is df_engineered > …",
   "act": "Stop passing positions. The split should emit a TestSet carrying its own index labels (the lockbox already stores LABELS, not positions — utils/test_lockbox line 411 uses `set(_lockbox['labels'])`). Make row identity label-based end to end.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of CONTRACT-001 / MINE-014 from the state pass, unchanged at HEAD, and it names the aggravating detail the others do not: pages/07:204-205 wraps the whole reconstruction in a bare except and falls back to X_test, so even the LOUD version of this failure - an IndexError from a shorter frame - is swallowed. What is left is the silent version: same length, different rows, a plausible y vector, and permutation importance, external-validation labels and subgroup stratification all computed against mismatched outcomes. The swallow is what turns a detectable bug into an undetectable one, and it should go first.",
+  "verified_ev": "pages/06_Train_and_Compare.py:551-553 (positions written) and :556-558 (labels written but unread); pages/07_Explainability.py:185,196 (df_raw.iloc[test_indices]) and :1196; :204-205 (except Exception: pass, falling back to X_test)"
  },
  {
   "id": "STATE-026",
@@ -1708,7 +1720,9 @@
   "detail": "When data_config.feature_cols is empty, pre_fe_feature_cols is set to the TRANSFORM selection instead of the original feature list. reset_downstream_results then 'restores' that wrong list into both selected_features and data_config.feature_cols (utils/session_state.py ~307-313), permanently shrinking the model's feature set on a Reset/Skip. Also line 495 (`untransformed = [f for f in _skew_ins.affected_features if f not in selected_features]`) depends on the second binding — correct there, which is why the shadowing looks intentional.",
   "ev": "pages/03_Feature_Engineering.py line 118 binds `selected_features = data_config.feature_cols or [non-target columns]` (the modeling feature set); line 423 REBINDS `selected_features = st.multiselect('Features', numeric_features, ...)` (the …",
   "act": "Rename before touching anything else. During extraction, each tab's answer must be its own named field on a FeatureRecipe; there should be no page-scoped mutable name shared across seven tabs.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. One name still means two things in one file: the modeling feature set at :131 and the transform-tab multiselect at :447. When data_config.feature_cols is empty, pre_fe_feature_cols is captured from the SECOND binding, so a later Reset or Skip 'restores' the transform selection into both selected_features and data_config.feature_cols and permanently shrinks the model's feature set. The shadowing reads as intentional because at least one downstream use is correct against the second binding, which is exactly what makes it dangerous to touch without renaming first. Rename before any extraction; in the rebuild each tab's answer is its own named field on a FeatureRecipe and there is no page-scoped mutable name shared across seven tabs.",
+  "verified_ev": "pages/03_Feature_Engineering.py:131 binds selected_features = data_config.feature_cols or [non-target columns] (the modeling feature set); :447 REBINDS selected_features = st.multiselect(...) (the transform-tab selection); utils/session_state.py restores pre_fe_feature_cols into both selected_features and data_config.feature_cols"
  },
  {
   "id": "STATE-027",
@@ -1718,7 +1732,9 @@
   "detail": "Miss one of the three and the frame, the name list, and the log go out of sync. The removal path at 1148-1156 already does exactly this — it updates X_engineered and engineered_features but NOT engineering_log, so a removed feature keeps its 'created' entry in the log that becomes provenance and manuscript text.",
   "ev": "pages/03 lines 344-346, 386-388, 486-489, 577-579, 665-668, 851-853, 922-925, 969-972, 1060-1062, 1106-1108, 1154-1155 (all: fe_work_in_progress['X_engineered'] / ['engineered_features'] / ['engineering_log'] = ...).",
   "act": "One append(operation) API returning a new recipe state. Never three parallel assignments.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: the write-triple idiom is still the only way state moves through this page, and the one place it is already broken is still broken - removing an engineered feature updates X_engineered and engineered_features and leaves the 'created' entry standing in engineering_log, which becomes provenance and then manuscript text. So the manuscript can describe a feature the model never saw. The count is lower than when this was written (nine log-assignments rather than twelve triples) but the invariant is unchanged and unenforced. One append(operation) API returning a new recipe state; never three parallel assignments, because the failure mode of three parallel assignments is always the one you forget.",
+  "verified_ev": "pages/03_Feature_Engineering.py - nine sites still assign fe_work_in_progress['engineering_log'] alongside ['X_engineered'] and ['engineered_features']; the removal path updates the frame and the name list but not the log"
  },
  {
   "id": "STATE-028",
@@ -1728,7 +1744,9 @@
   "detail": "Already drifted — demo_skewness in utils uses height=300 and an abbreviated 'Train your eye' paragraph, page 11's uses height=320 and the full text. A rebuild that migrates the page and keeps the util (or vice versa) silently ships the losing variant, or ships both and they diverge further.",
   "ev": "pages/11_Theory_Reference.py contains 18 inline demos (lines 442, 581, 710, 1045, 1151, 1327, 1408, 2075, 2172, 2706, 3408, 3565, 3728, 3880, 3981, 4108, 4678, 4829); utils/theory_demos.py contains 19 portable `demo_*(page_context, expanded…",
   "act": "Diff all 18/19 pairs, pick a winner per demo, delete the other. Page 11 also has demos with NO util counterpart (model-family fits at 2172, PDP-hides-interaction at 3981, subgroup disparity at 4108, target trimming at 905) and utils has dem…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: two independent copies of the theory demos, already drifted, and neither is a subset of the other - page 11 has demos with no util counterpart and utils has demos page 11 does not use. This is the two-implementations failure Decision C names, in miniature and already realised, in a place nobody watches because it is 'just content'. It matters for the migration for one specific reason: ROADMAP L11 says 11_Theory_Reference is content and should migrate as DATA, which is only safe once there is a single source. Diff the pairs, pick a winner per demo, delete the loser - before the page is treated as content.",
+  "verified_ev": "utils/theory_demos.py defines 19 portable demo_* functions; pages/11_Theory_Reference.py carries its own inline demos in ~25 expanders and imports none of them"
  },
  {
   "id": "STATE-029",
@@ -1738,7 +1756,9 @@
   "detail": "Not silent in behavior (it is slow), but silent in ATTRIBUTION — a typed character in the 'Paper title' box triggers the whole pipeline, and figure-export failures are counted into _plot_export_failures and surfaced only as an aggregate warning at 2448-2454. save_matplotlib_fig (2188) does not count its failures at all, so missing SHAP images are invisible.",
   "ev": "pages/10_Report_Export.py lines 2234-2445, unconditional module-level code. Also unconditional per render: _build_latex_export_bundle (1802), generate_latex (1819-1839, cache-keyed), generate_report (1846), validate_manuscript_bundle (1958)…",
   "act": "This is the clearest Jobs candidate in the codebase: export = one cancellable job with progress and a per-artifact success/failure manifest. Make save_matplotlib_fig count failures like its plotly twin before porting.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The whole export - joblib dumps of every model and every pipeline, server-side PNG rendering of every figure - is still rebuilt at module scope on every render, before the user clicks anything, so typing a character into the paper-title box triggers it. The attribution problem is the real one: the cost is invisible because nothing names it, and figure failures are surfaced only as an aggregate warning while save_matplotlib_fig at :2234 counts no failures at all, so missing SHAP images are simply absent. This is the clearest Jobs candidate in the codebase - export as one cancellable job with progress and a per-artifact success/failure manifest - and the cheap prerequisite is making save_matplotlib_fig count failures like its plotly twin.",
+  "verified_ev": "pages/10_Report_Export.py:2281 resets _plot_export_failures, :2285 onward writes the ZIP unconditionally at module level (joblib dumps of every model and pipeline, PNG rendering of every figure); :2230 counts plotly export failures; :2234 save_matplotlib_fig counts none of its own"
  },
  {
   "id": "STATE-030",
@@ -1748,7 +1768,9 @@
   "detail": "Constant columns cannot help any model, but they survive: page 04 excludes only NON-numeric features, LASSO/RFE will simply give them zero weight, and page 01's constant-column detector runs on the AUDIT frame, not on the engineered frame. They then appear in the feature count reported to reviewers.",
   "ev": "pages/03_Feature_Engineering.py lines 839-844: `tda_features_array = np.array(tda_features_list).reshape(1,-1)` then `np.tile(tda_features_array, (n_samples,1))`. The comment at 772-774 confirms the intent (one point cloud → dataset-level s…",
   "act": "Either drop them at creation with an explanation, or record them as dataset-level metadata rather than columns. At minimum re-run the constant-column check after feature engineering.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. TDA features are still dataset-level constants tiled down every row - zero variance by construction - and nothing filters them out: selection excludes non-numeric features only, L1 and RFE simply assign them zero weight rather than removing them, and the constant-column check runs on the audit frame, before feature engineering exists. They then count toward the feature total reported to reviewers, which is the part that reaches the manuscript. Either drop them at creation with an explanation or record them as dataset-level metadata rather than columns; at minimum, re-run the constant-column check AFTER feature engineering, which is a cheap general guard this codebase should have anyway.",
+  "verified_ev": "pages/03_Feature_Engineering.py:871-873 - tda_features_array = np.array(tda_features_list).reshape(1, -1) then np.tile(tda_features_array, (n_samples, 1)); pages/04_Feature_Selection.py excludes only non-numeric features; page 01's constant-column detector runs on the audit frame, not the engineered one"
  },
  {
   "id": "STATE-031",
@@ -1758,7 +1780,9 @@
   "detail": "Both produce valid-looking numbers. Table 1 describes a population the models were not trained on; baselines are preprocessed under a config the user may have selected for a different model family.",
   "ev": "pages/06 lines 2122-2124 borrow `fitted_preprocessing_pipelines[first_model]` for ALL baselines even though pipelines are per-model and can differ. pages/10 _build_analysis_cohort_df (lines 527-554) re-derives the trim thresholds from the f…",
   "act": "Materialize the analysis cohort ONCE at split time as a Project artifact and have Table 1, baselines, and the flow diagram all read it. Give baselines their own explicit, documented preprocessing choice.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Both halves still produce valid-looking numbers about slightly different populations: the baselines are preprocessed under whichever model's config happens to be first (see MODELS-009), and the export cohort is RE-DERIVED rather than read, so Table 1 can describe a population the models were not trained on. Neither can fail visibly, because both answers are well-formed. The fix is one artifact, not two fixes: materialize the analysis cohort ONCE at split time as a Project artifact and have Table 1, the baselines and the flow diagram all read it. Anything re-derived downstream of a decision is a second implementation of that decision.",
+  "verified_ev": "pages/06_Train_and_Compare.py:2052-2054 (baselines borrow fitted_preprocessing_pipelines[first_model] for all baselines); pages/10_Report_Export.py _build_analysis_cohort_df re-derives the trim thresholds from the frame rather than reading what the split used"
  },
  {
   "id": "STATE-032",
@@ -1768,7 +1792,10 @@
   "detail": "The button says 'Training canceled. Trained models saved.' — but a running fit continues to completion; the message describes a state the code did not reach.",
   "ev": "pages/06_Train_and_Compare.py lines 1251-1266: `st.session_state.cancel_training` is initialized, and a '🛑 Cancel Training' button is rendered ONCE before the model loop; clicking it sets the flag and calls st.stop(). The flag is never read…",
   "act": "Real Job semantics with cooperative cancellation checkpoints. Take page 07's between-unit checks as the minimum bar and the honest per-step progress as the model.",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Duplicate of T0-LIVE-002 / MODELS-005 from the state pass, and closed the same way: by removal plus an honest replacement. The message this row objects to - 'Training canceled. Trained models saved.', describing a state the code never reached - no longer exists, and the warning that replaced it states the truth. The comment at :1150-1157 records why wiring the flag would still have lied: Streamlit runs one script per session on one thread, so during training no widget is interactive and the button could not be clicked at all. Real cooperative cancellation now exists in turbotab/jobs.py, and the queue refuses to claim a cancel it did not achieve. RESIDUAL, tracked under MODELS-005 rather than here: the engine's fit and bootstrap loops still take no cancel token, so a job wrapping them is cooperative in name only.",
+  "test": "turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor",
+  "verified_ev": "pages/06_Train_and_Compare.py:1143-1170 - the button and the cancel_training flag are gone; the surviving warning says 'This cannot be interrupted once started - close the tab to abandon the run'; turbotab/jobs.py:33-37, 175-215; turbotab/test_jobs.py:146-193, 225+"
  },
  {
   "id": "STATE-033",
@@ -1778,7 +1805,9 @@
   "detail": "For >2 classes the stored class_label can say 'Class 0' while the array is the last class, or the stored 2D array gets re-sliced. Plots and labels are individually plausible.",
   "ev": "pages/07_Explainability.py lines 476-495 (compute): `if isinstance(sv_raw, list)` → len==2 takes index 1 labeled 'Class 1 (Positive)', otherwise index 0 labeled 'Class 0'; `if sv_plot.ndim == 3` → `sv_plot[:, :, -1]` (LAST class). Lines 7…",
   "act": "Normalize once, at compute time, into an explicit {class_index, class_label, values} record and never re-normalize at render.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. For more than two classes the compute path still labels the result 'Class 0' while slicing the LAST class from a 3-D array, and the render path at :757-769 re-normalizes a stored array that may already have been sliced. Every intermediate value is individually plausible - a valid SHAP array, a valid class name, a plot that renders - so nothing anywhere can detect the mismatch, and the figure lands in the manuscript. This is the assert-something-false rule broken by a label. Normalize once at compute time into an explicit {class_index, class_label, values} record and never re-normalize at render; the render path having its own ndim branch is the bug's second half, not a safety net.",
+  "verified_ev": "pages/07_Explainability.py:476-495 (compute: len(sv_raw)==2 takes index 1 labeled 'Class 1 (Positive)', else index 0 labeled 'Class 0'; if sv_plot.ndim == 3 it takes sv_plot[:, :, -1], the LAST class), :518 stores class_label, :757 and :769 re-normalize at render"
  },
  {
   "id": "STATE-034",
@@ -1788,7 +1817,9 @@
   "detail": "A metric with a small absolute range but a small mean (e.g. R²=0.05±0.02) reads 'Very stable' on range and 'Unstable' on CV, on the same screen. Downstream, the manuscript records one and the interpretation records the other.",
   "ev": "pages/08_Sensitivity_Analysis.py lines 253-260 (coefficient-of-variation bands: <2% highly robust, <5% moderately robust, <10% some instability, else unstable) and lines 304-321 (absolute-range bands: <0.03 'publication-ready without caveat…",
   "act": "Pick one verdict function, name it, use it everywhere, and record the raw statistics alongside the verdict.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: two independent robustness verdict systems, rendered on the same screen, that can disagree. A metric with a small absolute range and a small mean - R-squared of 0.05 plus or minus 0.02 is the obvious case - reads 'Very stable' on the range bands and 'Unstable' on the CV bands simultaneously, and downstream the manuscript records one while the interpretation records the other. Neither verdict is wrong on its own terms, which is why this has survived; what is wrong is that the app states two conclusions about one number. Pick one verdict function, name it, use it everywhere, and record the raw statistics beside the verdict so a reader can see what the verdict was computed from.",
+  "verified_ev": "pages/08_Sensitivity_Analysis.py:253-260 (coefficient-of-variation bands, ending 'Unstable. >10% variation') and :304-321 (absolute-range bands, starting 'Very stable' / 'Excellent. Your model is highly robust')"
  },
  {
   "id": "STATE-035",
