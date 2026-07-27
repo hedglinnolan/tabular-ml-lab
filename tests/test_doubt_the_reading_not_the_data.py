@@ -201,9 +201,13 @@ def test_the_advisory_tier_never_doubts_its_own_reading():
     Running the predicate there would put a 'check the unit' correction beside
     a claim that never asserted anything strong enough to be wrong about.
     """
+    # Inside the impossibility band [10, 2000], outside the reference interval
+    # [70, 200] — which is what the advisory tier is for.
     rng = np.random.default_rng(7)
-    df = pd.DataFrame({"hba1c_proxy": rng.normal(0.4, 0.1, 80)})
+    df = pd.DataFrame({"glucose": np.concatenate([rng.normal(95, 8, 76),
+                                                  [250.0, 260.0, 45.0, 40.0]])})
     rep = plausibility_report(df)
+    assert rep["improbable"], "the fixture no longer produces an advisory block"
     for block in rep["improbable"]:
         assert block["reading"] == READING_ENTRIES
         assert block["reading_statement"] is None
@@ -212,15 +216,75 @@ def test_the_advisory_tier_never_doubts_its_own_reading():
 def test_the_reported_count_excludes_every_doubted_column():
     rng = np.random.default_rng(8)
     df = pd.DataFrame({
-        "hba1c_proxy": rng.normal(0.4, 0.1, 80),
         "glucose": rng.normal(5.4, 0.6, 80),
         "bp_di": np.concatenate([rng.normal(78, 8, 78), [1.5e-15, 301.0]]),
     })
     rep = plausibility_report(df)
-    assert rep["n_suspect_columns"] == 2
+    assert rep["n_suspect_columns"] == 1
     assert rep["n_impossible"] == 2, (
         "the two real entry errors are the only entries that earn a repair")
     readings = {b["column"]: b["reading"] for b in rep["impossible"]}
-    assert readings == {"hba1c_proxy": READING_IDENTITY,
-                        "glucose": READING_UNITS,
-                        "bp_di": READING_ENTRIES}
+    assert readings == {"glucose": READING_UNITS, "bp_di": READING_ENTRIES}
+
+
+# ── an unrecognized name earns no bounds at all ──────────────────────────
+
+@pytest.mark.parametrize("column", [
+    "hba1c_proxy", "hba1c_v2", "hba1c_imputed", "hba1c_lab2",
+    "weight_change", "bp_sys_delta", "glucose_flag", "height_percentile",
+])
+def test_an_unknown_suffix_yields_silence_rather_than_inherited_bounds(column):
+    """The ruling that replaced the closed modifier list.
+
+    A denylist cannot answer an allowlist question: `_proxy` was listed and
+    `_v2`, `_imputed` and `_lab2` were not, so three of these four inherited
+    HbA1c's floor and its licence to propose deleting entries. Matching is now
+    exact key or declared alias, and an unrecognized name gets no bounds and no
+    flags. Silence is a gap; a wrong bound is a claim.
+    """
+    from ml.physiology_reference import load_nhanes_reference, match_variable_key
+
+    assert match_variable_key(column, load_nhanes_reference()) is None
+
+    rng = np.random.default_rng(11)
+    df = pd.DataFrame({column: rng.normal(0.4, 0.1, 80)})
+    rep = plausibility_report(df)
+    named = [b["column"] for b in rep["impossible"] + rep["improbable"]]
+    assert column not in named, (
+        f"{column} was measured against a variable it merely resembles")
+    assert rep["n_impossible"] == 0
+
+
+@pytest.mark.parametrize("column, expected", [
+    ("hba1c", "hba1c"),
+    ("HbA1c", "hba1c"),
+    ("a1c", "hba1c"),
+    ("hemoglobin_a1c", "hba1c"),
+    ("bp_di", "bp_di"),
+    ("diastolic", "bp_di"),
+    ("dbp", "bp_di"),
+    ("serum_glucose", "glucose"),
+    ("Serum Glucose", "glucose"),
+])
+def test_an_exact_key_or_a_declared_alias_still_earns_its_bounds(column, expected):
+    """Silence must not become the answer to everything.
+
+    Aliases are how a real column earns its bounds — declared per variable and
+    readable, matched after case and separators are stripped.
+    """
+    from ml.physiology_reference import load_nhanes_reference, match_variable_key
+
+    assert match_variable_key(column, load_nhanes_reference()) == expected
+
+
+def test_every_declared_alias_is_unique_to_one_variable():
+    """Two variables claiming one alias makes the match order-dependent."""
+    from ml.physiology_reference import load_nhanes_reference
+
+    ref = load_nhanes_reference()
+    owner = {}
+    for key, payload in ref["variables"].items():
+        for name in [key] + list(payload.get("aliases") or []):
+            assert name not in owner, (
+                f"{name!r} is claimed by both {owner.get(name)} and {key}")
+            owner[name] = key

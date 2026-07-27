@@ -20,18 +20,18 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**91 of 416 closed.**
+**92 of 417 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 290 |
-| `PARTIAL` | 35 |
-| `FIXED` | 91 |
+| `OPEN` | 291 |
+| `PARTIAL` | 34 |
+| `FIXED` | 92 |
 
 ---
 
-## OPEN — 290
+## OPEN — 291
 
 
 ### Application state / lockbox — 64
@@ -369,9 +369,15 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
+### Features / preprocessing — 1
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `T0-BUILD-004` | critical | clinical_units.infer_unit matches by substring and decides the conversion factor actually applied to the data | `ml/clinical_units.py:139-142 (`if var_name in col_lower`); ml/pipeline.py:60 build_unit_harmonization_config…` | Found at L9c while implementing the T0-BUILD-003 ruling, described by no row. sibling-of: T0-BUILD-003 and the theory_anchors substring fallback - three registries resolving a key… |
+
 ---
 
-## PARTIAL — 35
+## PARTIAL — 34
 
 
 ### Stage-boundary contracts — 8
@@ -448,15 +454,9 @@ Nothing is closed without a regression test named after it.
 | `MINE-020` | high | The JSON wrapper-key guess still lives in the engine while the disclosure lives in the view | `data_processor.py:124, 236-239, 283-287, 400-420; pages/01_Upload_and_Audit.py:311, 385-388, 413…` | The disclosure landed; the guess did not change. inspect_json now computes the candidate wrapper keys and returns a note the page renders, which is what closed FINDINGS_LEDGER C4… |
 | `MINE-028` | high | The de-facto Router logic lives in the view, and four modules disagree about what 'done' means | `utils/theme.py:744-758; utils/workflow_provenance.py:461-477; utils/insight_ledger.py:495-501…` | One of the four definitions was removed; three remain. The theme.py probe this row names as the de-facto Router is gone - the page asks turbotab.readiness now and a source-reading… |
 
-### Features / preprocessing — 1
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `T0-BUILD-003` | high | physiology_reference.match_variable_key matches by substring, so any column whose name contains a reference key is measured against that variable's intervals | `ml/physiology_reference.py match_variable_key (`if key in col_lower`); ml/card_evidence.py…` | Contained at L9, then GENERALIZED at L9b - the containment became a named predicate rather than a threshold. ml/card_evidence.interpretation_verdict is the rule 'escalate on… |
-
 ---
 
-## FIXED — 91
+## FIXED — 92
 
 
 ### Application state / lockbox — 26
@@ -599,3 +599,9 @@ Nothing is closed without a regression test named after it.
 | `TEST-001` | critical | The invalidation DAG has NO test that calls the production function — three separate re-implementations test themselves | `utils/session_state.py:283 vs tests/workflow/test_state_invalidation.py:40-51 and…` | **test:** `tests/integration/test_characterization_cascade.py::test_full_reset_clears_every_downstream_key` — The production function is now called by a test, which is the whole… |
 | `TEST-003` | critical | PlausibilityGate violates sklearn's clone() contract — cross-validation raises RuntimeError whenever plausibility bounds are configured | `ml/preprocess_operators.py:49-55; ml/pipeline.py:185; ml/eval.py:161; contrast ml/preprocess_operators.py:13` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_cross_validation_runs_with_plausibility_bounds_configured` — Fixed with STATE-002 - same defect, same edit, and this… |
 | `TEST-013` | high | tests/integration/test_lockbox_split.py is the ONLY integration test that exercises real behavior end-to-end — it must be ported, not dropped | `tests/integration/test_lockbox_split.py:45-112` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page` — Ported before the cut, exactly as this row instructed, and strengthened… |
+
+### Features / preprocessing — 1
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `T0-BUILD-003` | high | physiology_reference.match_variable_key matches by substring, so any column whose name contains a reference key is measured against that variable's intervals | `ml/physiology_reference.py match_variable_key (`if key in col_lower`); ml/card_evidence.py…` | **test:** `tests/test_doubt_the_reading_not_the_data.py::test_an_unknown_suffix_yields_silence_rather_than_inherited_bounds` — Fixed on the adjudicator's ruling: exact key or… |

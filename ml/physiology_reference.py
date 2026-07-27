@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Dict, Optional, Tuple, Any
 from functools import lru_cache
 from urllib.request import urlopen
@@ -32,8 +33,13 @@ from ml.clinical_units import CLINICAL_VARIABLES
 
 
 DEFAULT_NHANES_REFERENCE: Dict[str, Any] = {
-    "version": "nhanes_reference_demo_v2_impossibility",
+    "version": "nhanes_reference_demo_v3_aliases",
     "source": "NHANES (reference population, demo defaults)",
+    # `aliases` is how a column earns this variable's bounds. Matching is exact
+    # against the key or one of these, after case and separators are stripped —
+    # never by substring, which would let `hba1c_proxy` inherit HbA1c's floor
+    # and its licence to propose deleting entries. A name that is not here gets
+    # no bounds and no flags: silence is a gap, and a wrong bound is a claim.
     "variables": {
         # p01/p99  — the reference interval: unusual for this population.
         # floor/ceiling — the impossibility band: incompatible with a living
@@ -41,17 +47,33 @@ DEFAULT_NHANES_REFERENCE: Dict[str, Any] = {
         #   generous: this tier proposes a repair, so a false positive here costs
         #   more than a missed one, and the reference interval still catches the
         #   merely improbable.
-        "glucose":      {"unit": "mg/dL", "p01": 70,  "p99": 200,  "floor": 10,   "ceiling": 2000},
-        "bmi":          {"unit": "kg/m²", "p01": 15,  "p99": 50,   "floor": 8,    "ceiling": 200},
-        "hba1c":        {"unit": "%",     "p01": 4.0, "p99": 15.0, "floor": 2.0,  "ceiling": 30.0},
-        "cholesterol":  {"unit": "mmol/L", "p01": 2.0, "p99": 10.0, "floor": 0.3, "ceiling": 40.0},
-        "triglyceride": {"unit": "mg/dL", "p01": 50,  "p99": 500,  "floor": 5,    "ceiling": 10000},
-        "weight":       {"unit": "kg",    "p01": 35,  "p99": 200,  "floor": 0.4,  "ceiling": 650},
-        "height":       {"unit": "cm",    "p01": 140, "p99": 210,  "floor": 20,   "ceiling": 280},
-        "waist":        {"unit": "cm",    "p01": 55,  "p99": 150,  "floor": 20,   "ceiling": 350},
-        "bp_sys":       {"unit": "mmHg",  "p01": 90,  "p99": 200,  "floor": 40,   "ceiling": 300},
-        "bp_di":        {"unit": "mmHg",  "p01": 50,  "p99": 120,  "floor": 15,   "ceiling": 220},
-        "kcal":         {"unit": "kcal",  "p01": 800, "p99": 4500, "floor": 100,  "ceiling": 30000},
+        "glucose":      {"unit": "mg/dL", "p01": 70,  "p99": 200,  "floor": 10,   "ceiling": 2000,
+                         "aliases": ["blood_glucose", "serum_glucose", "plasma_glucose",
+                                     "fasting_glucose", "glucose_mgdl", "glu", "lbxglu"]},
+        "bmi":          {"unit": "kg/m²", "p01": 15,  "p99": 50,   "floor": 8,    "ceiling": 200,
+                         "aliases": ["body_mass_index", "bmxbmi"]},
+        "hba1c":        {"unit": "%",     "p01": 4.0, "p99": 15.0, "floor": 2.0,  "ceiling": 30.0,
+                         "aliases": ["a1c", "hemoglobin_a1c", "glycated_hemoglobin",
+                                     "hgba1c", "lbxgh"]},
+        "cholesterol":  {"unit": "mmol/L", "p01": 2.0, "p99": 10.0, "floor": 0.3, "ceiling": 40.0,
+                         "aliases": ["total_cholesterol", "chol", "tc", "lbxtc"]},
+        "triglyceride": {"unit": "mg/dL", "p01": 50,  "p99": 500,  "floor": 5,    "ceiling": 10000,
+                         "aliases": ["triglycerides", "trig", "tg", "lbxtr"]},
+        "weight":       {"unit": "kg",    "p01": 35,  "p99": 200,  "floor": 0.4,  "ceiling": 650,
+                         "aliases": ["body_weight", "wt", "weight_kg", "bmxwt"]},
+        "height":       {"unit": "cm",    "p01": 140, "p99": 210,  "floor": 20,   "ceiling": 280,
+                         "aliases": ["standing_height", "ht", "height_cm", "bmxht"]},
+        "waist":        {"unit": "cm",    "p01": 55,  "p99": 150,  "floor": 20,   "ceiling": 350,
+                         "aliases": ["waist_circumference", "waist_cm", "bmxwaist"]},
+        "bp_sys":       {"unit": "mmHg",  "p01": 90,  "p99": 200,  "floor": 40,   "ceiling": 300,
+                         "aliases": ["systolic", "systolic_bp", "sbp", "bp_systolic",
+                                     "bpxsy1"]},
+        "bp_di":        {"unit": "mmHg",  "p01": 50,  "p99": 120,  "floor": 15,   "ceiling": 220,
+                         "aliases": ["diastolic", "diastolic_bp", "dbp", "bp_diastolic",
+                                     "bpxdi1"]},
+        "kcal":         {"unit": "kcal",  "p01": 800, "p99": 4500, "floor": 100,  "ceiling": 30000,
+                         "aliases": ["energy", "calories", "kilocalories", "energy_kcal",
+                                     "dr1tkcal"]},
     },
 }
 
@@ -113,10 +135,40 @@ def _validate_reference(data: Dict[str, Any]) -> bool:
     return True
 
 
+def _normalize_name(name: str) -> str:
+    """A column or alias reduced to comparable form: lowercase, no separators."""
+    return re.sub(r"[^0-9a-z]+", "", str(name).lower())
+
+
 def match_variable_key(col_name: str, reference: Dict[str, Any]) -> Optional[str]:
-    col_lower = col_name.lower()
-    for key in reference.get("variables", {}).keys():
-        if key in col_lower:
+    """The reference variable this column *is*, or None.
+
+    **Exact key or declared alias. Nothing else.**
+
+    This used to match by substring — `if key in col_lower` — which answered an
+    allowlist question with an accident. `hba1c_proxy`, `bp_sys_delta` and
+    `weight_change` inherited their parent variable's reference intervals and,
+    once the impossibility band landed, its licence to propose deleting entries.
+    L9b contained that with a closed list of modifier words, which was the wrong
+    shape for the same reason: it catches `hba1c_proxy` because `proxy` is
+    listed and misses `hba1c_v2`, `hba1c_imputed` and `hba1c_lab2` because they
+    are not. A denylist cannot answer "is this that variable?".
+
+    So an unrecognized name gets **no bounds and no flags**. That is the
+    governing rule's *may be silent* branch, taken deliberately: saying nothing
+    about `hba1c_lab2` is a gap, and applying HbA1c's floor to it is the app
+    asserting something it does not know. Aliases are how a real column earns
+    its bounds — declared in the reference, per variable, and readable.
+    """
+    target = _normalize_name(col_name)
+    if not target:
+        return None
+    variables = reference.get("variables", {})
+    for key, payload in variables.items():
+        names = [key]
+        if isinstance(payload, dict):
+            names += list(payload.get("aliases") or [])
+        if any(_normalize_name(n) == target for n in names):
             return key
     return None
 

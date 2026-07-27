@@ -316,19 +316,26 @@ def test_the_two_tiers_do_not_double_count_the_same_entry(client, project):
 def test_a_column_that_is_mostly_impossible_is_read_as_a_unit_problem():
     """The predicate escalates on evidence, not on how much a repair would cost.
 
-    `hba1c_proxy` matches the reference key `hba1c` by substring and holds
-    values nowhere near an HbA1c percentage. Proposing per-entry deletion there
-    deletes real data over a naming coincidence.
-    """
-    from ml.card_evidence import READING_IDENTITY, plausibility_report
-    rng = np.random.default_rng(2)
-    df = pd.DataFrame({"hba1c_proxy": rng.normal(0.4, 0.1, 80)})
-    rep = plausibility_report(df)
-    block = next(b for b in rep["impossible"] if b["column"] == "hba1c_proxy")
+    A glucose column recorded in mmol/L reads as entirely impossible against
+    mg/dL bounds. It is not: multiplying by 18 — a unit glucose is actually
+    recorded in — puts the whole column inside its reference interval, so the
+    reading is wrong and no entry is.
 
-    assert block["reading"] == READING_IDENTITY
+    (`hba1c_proxy`, which used to be this test's fixture, no longer reaches the
+    predicate at all: `match_variable_key` matches exact keys and declared
+    aliases only, so a column merely named like a variable now gets no bounds.
+    That is asserted in
+    `tests/test_doubt_the_reading_not_the_data.py::test_an_unknown_suffix_yields_silence_rather_than_inherited_bounds`.)
+    """
+    from ml.card_evidence import READING_UNITS, plausibility_report
+    rng = np.random.default_rng(2)
+    df = pd.DataFrame({"glucose": rng.normal(5.4, 0.6, 80)})
+    rep = plausibility_report(df)
+    block = next(b for b in rep["impossible"] if b["column"] == "glucose")
+
+    assert block["reading"] == READING_UNITS
     assert block["whole_column_suspect"] is True
-    assert "derived-name:proxy" in block["reading_evidence"]
+    assert any(e.startswith("rescued-by:") for e in block["reading_evidence"])
     assert rep["n_impossible"] == 0, (
         "a suspect column inflated the count of entries that earn a repair")
     assert block["entries"], "the values are still shown; silence is the other lie"
