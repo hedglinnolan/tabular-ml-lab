@@ -2556,7 +2556,9 @@
   "detail": "Five save paths append to skipped_keys and swallow the reason: dataclass configs (utils/session_manager.py:236-237), insight_ledger (264-265), workflow_provenance (275-276), test_lockbox (309-310), coach_probe (320-321). The UI shows only `f\"\\n- **Note:** {len(skipped)} items skipped (non-serializable)\"` (line 729). On load, dataclass reconstruction failure is `except Exception: pass` (lines 518-519) and the comment at line 523 is explicit: '# unknown keys are silently ignored'. Restore also begins with `try: reset_data_dependent_state() except Exception: pass` (lines 421-425).",
   "ev": "utils/session_manager.py:236-237, 264-265, 275-276, 309-310, 320-321, 421-425, 514-523, 728-729",
   "act": "project — this module is the direct ancestor of Project serialization; name every skipped key in the message and make an unrecognized key a loud migration event. WRONG-BUT-PLAUSIBLE OUTPUT: the lockbox fails to encode, the sidebar says '1 i…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged in substance, and the surface GREW: there are eight swallow sites now, not five, because cohort_run, cohort_runs_done, fe_recipe and coach_probe_result were added with the same pattern. One real improvement: the manifest at :434 does carry the sorted key names, so the information exists in the archive - it is the UI that reduces it to 'N items skipped (non-serializable)'. That makes the fix cheap: render the names the manifest already has. The load side is unchanged and is the worse half - an unrecognized key is silently ignored by design, which is precisely the behavior that will hide a schema rename during the Project migration. Name every skipped key in the message, and make an unrecognized key on load a loud migration event.",
+  "verified_ev": "utils/session_manager.py - eight append-and-swallow sites now (:237 dataclass configs, :265 insight_ledger, :276 workflow_provenance, :349 test_lockbox, :374 cohort_run, :401 cohort_runs_done, :415 fe_recipe, :426 coach_probe_result); the manifest carries sorted(set(skipped_keys)) at :434 but the UI still reports only a COUNT; load still ignores unknown keys silently"
  },
  {
   "id": "MINE-023",
@@ -2566,7 +2568,9 @@
   "detail": "Save: `index[str(dataset_id)] = member_name` (utils/session_manager.py:222). Load: `registry[str(dataset_id)] = _read_parquet(zf, member)` (line 504). Any non-string key (the pages write `st.session_state.datasets_registry[dataset_id] = df` at pages/01_Upload_and_Audit.py:285 and 518) comes back as a string.",
   "ev": "utils/session_manager.py:214-225, 492-507; pages/01_Upload_and_Audit.py:285, 518",
   "act": "project — pin dataset_id to str at creation, or store the original type alongside. WRONG-BUT-PLAUSIBLE OUTPUT: if dataset_id is ever an int or UUID object, `registry[dataset_id]` misses after a restore and the multi-file combine UI shows an…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Both directions still coerce to str, so any non-string dataset id - an int, a UUID object - comes back as a string and registry[dataset_id] misses after a restore. The multi-file combine UI then shows an empty or partial roster with no error, because a missing key in that path degrades rather than raises. Note this sits inside the TRANSITION_PLAN 05 freeze (the multi-file path), so the fix is not available until the ledger tail closes - which argues for the cheaper half now: pin dataset_id to str at CREATION, in the page, so the coercion becomes a no-op rather than a conversion.",
+  "verified_ev": "utils/session_manager.py:222 (index[str(dataset_id)] = member_name on save) and :642 (registry[str(dataset_id)] = _read_parquet(...) on load); pages/01_Upload_and_Audit.py writes datasets_registry[dataset_id] = df with whatever type the caller had"
  },
  {
   "id": "MINE-024",
@@ -2576,7 +2580,9 @@
   "detail": "For pandas orient='split' payloads: `if isinstance(obj.get(\"index\"), list) and len(obj[\"index\"]) == len(df): df.index = obj[\"index\"]` (data_processor.py:273-274), inside a `try/except Exception: pass # fall through` (276-277). set_data only resets the index when it is NON-UNIQUE (`if not df.index.is_unique: df = df.reset_index(drop=True)`, utils/session_state.py:249-253), so a unique but arbitrary index (strings, timestamps, floats) survives into raw_data.",
   "ev": "data_processor.py:271-277; utils/session_state.py:249-253; utils/test_lockbox.py:213; utils/session_manager.py:288-296",
   "act": "engine — normalize to a RangeIndex on ingest and keep the file's index as an ordinary column. WRONG-BUT-PLAUSIBLE OUTPUT: lockbox labels become the JSON's strings; _plain_label coerces them via `str(x)` (utils/session_manager.py:296); after…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. A JSON file can still install its own index, and set_data only intervenes when that index is non-unique - so a unique but arbitrary index (strings, timestamps, floats) survives into raw_data and becomes the identity every label-keyed mechanism relies on. The consequence chain is specific and bad: the lockbox seals those labels, session_manager's _plain_label coerces them through str(x) on save (see STATE-043), and after a restore they match nothing, train_row_mask returns all-True, and the quarantine is gone with no banner. Normalize to a RangeIndex on ingest and keep the file's index as an ordinary column - the file's own index is data, not identity.",
+  "verified_ev": "data_processor.py:269-277 - for pandas orient='split', df.index = obj['index'] when the lengths match, inside a try/except that falls through; utils/session_state.py:265-269 resets the index only when it is NON-unique"
  },
  {
   "id": "MINE-025",
@@ -2586,7 +2592,9 @@
   "detail": "`first_pca = next(iter(pca_details.values()))` with the comment '# Use the first PCA config as representative' (ml/publication.py:626-628), and `first_cfg = next(iter(_per_model_configs.values()))` (line 798), plus `all_cfgs = list(_per_model_configs.values()); shared_scaling = all_cfgs[0].get(...)` (lines 807-808). The source dict is `st.session_state.get('preprocessing_config_by_model', {})` — insertion-ordered by whatever sequence the Preprocess page built pipelines in.",
   "ev": "ml/publication.py:626-634, 780-810",
   "act": "record — key these by the model actually being described, or assert that the configs agree before collapsing them. WRONG-BUT-PLAUSIBLE OUTPUT: preprocessing_config_by_model is JSON-round-tripped or rebuilt in a different order by the Projec…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The manuscript still describes PCA and preprocessing by taking whichever per-model config happens to be first in insertion order - i.e. checkbox order - and calls it representative. The comment is honest about the intent and wrong about the guarantee: per-model pipelines are the product's differentiator precisely BECAUSE they differ, so 'representative' is the one thing a member of that dict is not. Same insertion-order family as COACH-008, MODELS-009 and STATE-005. Either key the description to the model being described, or assert the configs agree before collapsing them and disclose when they do not.",
+  "verified_ev": "ml/publication.py:628 (first_pca = next(iter(pca_details.values())), commented 'Use the first PCA config as representative') and :798 (first_cfg = next(iter(_per_model_configs.values()))), plus the all_cfgs[0] read just below; the source is preprocessing_config_by_model, insertion-ordered by the Preprocess page's build sequence"
  },
  {
   "id": "MINE-026",
@@ -2596,7 +2604,9 @@
   "detail": "`df_numeric = df[numeric_features].dropna()` then `color_vals = df.loc[df_numeric.index, target_col].values` (pages/02_EDA.py:1140, 1144). This is correct only because dropna preserves labels. If df_numeric is ever reset (or df is), and df has a RangeIndex 0..N-1 while df_numeric was reset to 0..M-1, the .loc lookup SUCCEEDS (those labels exist) and returns the first M target values instead of the surviving rows' values.",
   "ev": "pages/02_EDA.py:1140-1147",
   "act": "engine — return the color vector from the compute function alongside the embedding, aligned by construction. WRONG-BUT-PLAUSIBLE OUTPUT: a UMAP/PCA scatter colored by the wrong target values. The plot renders, the colorbar has the right ran…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. It is correct today only because dropna preserves labels, which makes it a latent alignment bug rather than a live one - but the failure mode is the dangerous kind: if either frame is ever renumbered, .loc SUCCEEDS against a RangeIndex (those labels exist) and returns the first M target values instead of the surviving rows' values. The scatter renders, the colorbar has the right range, and the coloring is wrong. Note this file is full of renumbering hazards elsewhere in this ledger (STATE-001's class, MINE-024's JSON index), so 'nothing renumbers today' is a weak guarantee. Return the color vector from the compute function alongside the embedding, aligned by construction.",
+  "verified_ev": "pages/02_EDA.py:1179 - color_vals = df.loc[df_numeric.index, target_col].values, where df_numeric = df[numeric_features].dropna()"
  },
  {
   "id": "MINE-027",
@@ -2606,7 +2616,9 @@
   "detail": "`finite = np.isfinite(y_true) & np.isfinite(y_pred); if not finite.all(): logging.getLogger(__name__).warning(...); y_true, y_pred = y_true[finite], y_pred[finite]` (ml/eval.py:29-37). The metrics are then computed on the SUBSET and returned as ordinary floats with no indication of how many pairs were dropped. The docstring names the exact trigger: 'a degenerate target-transform back-mapping (e.g. a power transform fit on a near-constant target) can produce NaN/inf predictions.'",
   "ev": "ml/eval.py:18-51",
   "act": "engine — return n_dropped in the metrics dict and have the job surface it into the ledger. WRONG-BUT-PLAUSIBLE OUTPUT: a degenerate target transform makes 30% of test predictions NaN; those rows are dropped; R² is computed on the 70% the mo…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and worth stating precisely because half of it is right: the drop is deliberate, documented, and better than crashing - the docstring names the exact trigger (a power transform fit on a near-constant target producing NaN predictions) and the all-NaN return for fewer than two surviving pairs is honest. What is missing is the number. A degenerate transform that makes 30% of test predictions NaN yields an R-squared computed on the 70% the model handled, reported as the model's R-squared, with the only trace in a logger nobody reads. Return n_dropped in the metrics dict and have the job surface it into the ledger; the app may be silent about a fact, not about a truncation.",
+  "verified_ev": "ml/eval.py:28-40 - non-finite pairs are dropped after a logging.warning, and the returned dict is the ordinary four-key {MAE, RMSE, R2, MedianAE} with no count of what was dropped"
  },
  {
   "id": "MINE-028",
@@ -2616,7 +2628,9 @@
   "detail": "utils/theme.render_sidebar_workflow computes step completion by probing session_state directly: data_configured / features_selected / pipeline_built / models_trained / explainability_run / sensitivity_run / report_generated / feature_engineering_applied (utils/theme.py:744-758). Three other definitions exist: WorkflowProvenance.get_completeness returns a 10-key dict keyed on `self.<stage> is not None` (utils/workflow_provenance.py:461-477); utils/insight_ledger.WORKFLOW_PHASES groups the 10 pages into 5 phases (lines 495-501); utils/storyline.PAGE_ORDER + RECOMMENDED_PAGE_IDS defines the navigable spine and a 'quick' mode that skips pages (lines 11-34, 55-64).",
   "ev": "utils/theme.py:744-758; utils/workflow_provenance.py:461-477; utils/insight_ledger.py:495-501; utils/storyline.py:11-34, 55-64",
   "act": "router — pick get_completeness() as the single source of truth (it is already serializable and already feeds TRIPOD), and delete the theme.py probe. WRONG-BUT-PLAUSIBLE OUTPUT: the Router asks a question the user already answered (or skips …",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "One of the four definitions was removed; three remain. The theme.py probe this row names as the de-facto Router is gone - the page asks turbotab.readiness now and a source-reading test fails if it computes a predicate itself (SWEEP-001). So the view no longer holds a private definition of 'done'. WHAT REMAINS is the disagreement between the survivors: readiness.assess probes result keys, get_completeness probes whether a provenance SECTION exists, WORKFLOW_PHASES groups pages, and storyline defines a quick mode that skips pages. They can disagree - STATE-047 is a live instance, where get_completeness reports statistical_validation done after its results were deleted. The row's recommendation (make get_completeness the single source) now conflicts with where the extraction went; the decision is which one wins, and it has not been made.",
+  "verified_ev": "utils/theme.py:743-764 now delegates to turbotab.readiness.assess (see SWEEP-001); the other three definitions are unchanged - utils/workflow_provenance.py:550 get_completeness keyed on 'self.<stage> is not None', utils/insight_ledger.py WORKFLOW_PHASES grouping ten pages into five phases, utils/storyline.py PAGE_ORDER + RECOMMENDED_PAGE_IDS defining the navigable spine and a quick mode"
  },
  {
   "id": "MINE-029",
@@ -2626,7 +2640,9 @@
   "detail": "`@lru_cache(maxsize=1) def load_nhanes_reference(reference_url: Optional[str] = None)` reads `os.getenv(\"NHANES_REFERENCE_URL\")` INSIDE the body when the arg is None (ml/physiology_reference.py:51-58), so the cache key is None regardless of the env var. A fetch failure falls back silently: `except (URLError, HTTPError, ValueError): pass` → `return DEFAULT_NHANES_REFERENCE` (lines 65-68). load_reference_bundle is likewise `@lru_cache(maxsize=4)` (line 71) and its docstring says 'Cached per process.'",
   "ev": "ml/physiology_reference.py:51-77; ml/pipeline.py:78-79, 105",
   "act": "engine — pass the resolved URL in explicitly and make fallback an explicit return value the caller can record. WRONG-BUT-PLAUSIBLE OUTPUT: in a long-lived worker, one transient network blip at first call freezes the bundled defaults for the…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The cache key is still None regardless of the env var, so the parameter that exists to vary the reference cannot vary the cache, and a fetch failure still falls back to the bundled defaults silently. In a long-lived worker one transient network blip at first call freezes the bundled defaults for the life of the process - and plausibility bounds ARE the numbers that decide which rows get filtered and which values become NaN, so the fallback is a silent change to the analysis population. Pass the resolved URL in explicitly so the key is real, and make the fallback an explicit return value the caller can record in the Record.",
+  "verified_ev": "ml/physiology_reference.py:51 (@lru_cache(maxsize=1) over load_nhanes_reference(reference_url=None), which reads os.getenv('NHANES_REFERENCE_URL') inside the body when the arg is None) and :71 (@lru_cache(maxsize=4) on load_reference_bundle, docstring 'Cached per process')"
  },
  {
   "id": "MINE-030",
@@ -2636,7 +2652,9 @@
   "detail": "`except Exception: pass` inside the per-seed loop (ml/sensitivity.py:92-93), followed by `description=f\"Results across {len(variations)} different random seeds (baseline seed={baseline_seed}).\"` (line 99). ml/publication.py:1253-1260 writes this into the manuscript: 'using {d.get(\"n_seeds\", \"multiple\")} random seeds to assess sensitivity of ...'.",
   "ev": "ml/sensitivity.py:85-100; ml/publication.py:1249-1281",
   "act": "engine — count attempts and failures separately and expose both. WRONG-BUT-PLAUSIBLE OUTPUT: 6 of 8 seeds fail (OOM in a worker, a convergence error), the analysis silently becomes a 2-seed study, the coefficient of variation is computed ac…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Failed seeds are still swallowed and the SURVIVOR count is still reported as the analysis size, in a sentence that reaches the manuscript. So six failures out of eight seeds silently becomes a two-seed study whose coefficient of variation is computed across two points and described as a seed-sensitivity analysis. Nothing distinguishes 'we ran eight' from 'eight ran and two finished'. Same shape as MINE-011 (stability selection divides by attempts) and MINE-030's sibling in ml/eval - counting attempts and failures separately is the general fix, and in each case the number that reaches the paper is the one that must carry the denominator it was actually computed over.",
+  "verified_ev": "ml/sensitivity.py:91-92 (except Exception: pass inside the per-seed loop) and :98-100 (description=f'Results across {len(variations)} different random seeds'); ml/publication.py:1249-1281 writes that count into the manuscript"
  },
  {
   "id": "MINE-031",
@@ -2646,7 +2664,9 @@
   "detail": "`except Exception: p_values.append(1.0); test_stats.append(0.0); test_names.append(\"failed\")` (ml/feature_selection.py:178-181). p=1.0 is a perfectly ordinary p-value; the only distinguishing signal is the string 'failed' in a parallel test_names list, and the p_values array is what feeds `p_values = np.array(p_values)` and the multiple-testing correction on the next lines.",
   "ev": "ml/feature_selection.py:172-185",
   "act": "engine — use NaN and exclude failed columns from the correction denominator. WRONG-BUT-PLAUSIBLE OUTPUT: a feature whose correlation test crashed (constant after masking, dtype issue) is reported as p=1.00 — 'no association with the outcome…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. A crashed univariate test still records p = 1.0, which is an ordinary p-value and reads as 'no association with the outcome'; the only trace is the string 'failed' in a parallel list that the correction never sees. Worse than the mislabel: the fabricated 1.0 enters multipletests as a real test, so it inflates the correction denominator and makes every OTHER feature's corrected p-value more conservative - one crashed column quietly raises the bar for all of them. Use NaN and exclude failed columns from the correction denominator, and report the count. This is the third member of the same family in one module, with MINE-011 and STATE-010.",
+  "verified_ev": "ml/feature_selection.py:178-181 - except Exception: p_values.append(1.0); test_stats.append(0.0); test_names.append('failed') - then :183 p_values = np.array(p_values) and :186 multipletests(p_values, ...)"
  },
  {
   "id": "SWEEP-017",
@@ -2656,7 +2676,9 @@
   "detail": "SQLite project/dataset store: class DatasetDB (create_project/add_dataset/save_merge_config/set_working_table), module singleton `_db_instance: Optional[DatasetDB] = None` at :765, get_db() at :768, plus three pure helpers detect_common_columns(:598), suggest_join_keys(:626), execute_merge(:680). Repo-wide grep for DatasetDB/get_db()/execute_merge returns only one hit outside the file: utils/session_projects.py:29 docstring 'Drop-in replacement for DatasetDB using only session state.' ARCHITECTURE.md:179-180 and CODE_REVIEW.md both name it dead; CODE_REVIEW's 'Known remaining work' lists 'removing or wiring the dead DatasetDB'. Carrying it forward re-introduces a disk-persistence path (sqlit…",
   "ev": "utils/dataset_db.py:14,765,768; utils/session_projects.py:29; ARCHITECTURE.md:179-180",
   "act": "drop",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: still 797 lines, still zero importers, still superseded by utils/session_projects.py, and still named as dead by both ARCHITECTURE.md and CODE_REVIEW.md. It stays OPEN rather than closing as a drop because ROADMAP explicitly keeps deletion supervised - and this one carries a specific reason to be deliberate: it is a SQLite path, so carrying it forward re-introduces disk persistence into a product whose privacy claim is that nothing is written to disk (SWEEP-007). Three of its functions are pure and reusable (detect_common_columns, suggest_join_keys, execute_merge), so the deletion commit should say explicitly whether those are being dropped or lifted.",
+  "verified_ev": "utils/dataset_db.py (797 loc, class DatasetDB, module singleton _db_instance, get_db(), plus detect_common_columns / suggest_join_keys / execute_merge); repo-wide grep for DatasetDB / get_db / execute_merge returns exactly one hit outside the file - a docstring in utils/session_projects.py:29 calling itself a drop-in replacement"
  },
  {
   "id": "SWEEP-018",
@@ -2666,7 +2688,10 @@
   "detail": "pages/02_EDA.py:125 `_data_fingerprint = (len(df), len(df.columns), tuple(sorted(df.columns)))`. utils/session_state.py:220 `_content_fingerprint(df)` is a 'cheap deterministic fingerprint of a DataFrame's contents… hashes values, not identity', used by set_data() at :259-263 to fire reset_downstream_results on a same-schema content change (this was critical finding C7's fix). A cleaning action that repairs values without changing shape or column names therefore correctly clears trained models — and silently leaves DatasetProfile and dataset signals describing the pre-cleaning data. Two invalidation notions coexist and disagree.",
   "ev": "pages/02_EDA.py:125 vs utils/session_state.py:220-226,259-263",
   "act": "project (one fingerprint, one DAG — the Project's invalidation must own memo keys, not let the view invent a second scheme)",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Closed - the two notions of invalidation are now one. The page's fingerprint hashes contents, so a cleaning action that repairs values without changing shape or column names invalidates the profile and the signals as well as the downstream results, and the disagreement with set_data's content fingerprint is gone. Duplicate of MINE-016 from the sweep pass. The named test is the structural one: it reads the page's source and fails if any cached helper keys on shape alone, so a new cache added later cannot reintroduce the second scheme quietly.",
+  "test": "tests/test_eda_caches_follow_the_data.py::test_no_cache_on_the_page_keys_on_shape_alone",
+  "verified_ev": "pages/02_EDA.py:122-155 - _data_fingerprint is now _content_fingerprint(df), which hashes VALUES; the docstring names T0-LIVE-005 and the two-cohort collision as the reason shape and column names were not enough"
  },
  {
   "id": "SWEEP-019",
@@ -2676,7 +2701,9 @@
   "detail": "gather_session_context() at :200 assembles the LLM's background context. Line 225-227: `df = st.session_state.get(\"working_df\"); if df is not None and hasattr(df,\"__len__\"): ctx[\"sample_size\"] = len(df)`. Repo-wide grep: the only writes are LOCAL variables named working_df in pages/01_Upload_and_Audit.py:572,593,599; the session key that page writes is `working_table` (:596). No code anywhere assigns session_state['working_df']. Same defect class as the C4 `selected_models` read-never-written finding that killed model-aware coaching — CODE_REVIEW design principle #2 ('State first, widgets second') was written to close this class, and this instance survived it.",
   "ev": "utils/llm_ui.py:225; pages/01_Upload_and_Audit.py:596 (writes working_table, not working_df)",
   "act": "project (a Project with declared, typed fields makes this a compile-time error instead of a silent empty dict)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and the framing this row adds is the one worth keeping: CODE_REVIEW design principle 2 ('State first, widgets second - name who writes, who reads, who invalidates') was written specifically to close this class after the selected_models instance killed model-aware coaching, and THIS INSTANCE SURVIVED IT. So the principle is not self-enforcing, which is the argument for the typed Project rather than for another review pass. Concretely: ctx['sample_size'] is never populated, so every LLM answer is composed without knowing how many rows the study has. Same row as SWEEP-012's live counter-example.",
+  "verified_ev": "utils/llm_ui.py:225-227 - df = st.session_state.get('working_df'); if df is not None: ctx['sample_size'] = len(df) - and nothing in the repository writes that key; pages/01_Upload_and_Audit.py:604-636 uses working_df only as a LOCAL and writes the session key working_table at :628"
  },
  {
   "id": "SWEEP-020",
@@ -2686,7 +2713,9 @@
   "detail": "`profile = st.session_state.get(\"dataset_profile\"); if profile and isinstance(profile, dict): ctx[\"dataset_profile\"] = profile`. pages/02_EDA.py:166 writes `st.session_state[\"dataset_profile\"] = profile` where profile comes from ml.dataset_profile.compute_dataset_profile, and ml/dataset_profile.py:110 declares `class DatasetProfile`. The isinstance check is therefore always False. Same pattern at :268-275: preprocessing_pipelines_by_model is typed Dict[str, Pipeline] in ARCHITECTURE.md:324, but the code does `if isinstance(pipeline_data, dict)` before extracting config. Both fail closed and produce a plausible-but-thinner LLM answer with no error — the exact 'silent' failure mode the app's g…",
   "ev": "utils/llm_ui.py:212-214,268-275; pages/02_EDA.py:166; ml/dataset_profile.py:110; ARCHITECTURE.md:324",
   "act": "project",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The isinstance(profile, dict) guard is always False against a DatasetProfile dataclass, so the profile never reaches the LLM - the app asks a model to advise on a dataset while withholding everything it knows about it, and the answer comes back plausible and thinner with no error. The second instance at :268-275 does the same for the per-model pipelines. Both fail closed, which is the correct direction and the wrong outcome: silence about the profile is indistinguishable from a dataset with nothing notable in it. A typed Project makes both of these attribute access rather than a guarded dict probe.",
+  "verified_ev": "utils/llm_ui.py:212-214 - profile = st.session_state.get('dataset_profile'); if profile and isinstance(profile, dict) - while pages/02_EDA.py:201 writes a DatasetProfile DATACLASS; the same pattern at :268-275 guards preprocessing_pipelines_by_model as a dict"
  },
  {
   "id": "SWEEP-021",
@@ -2696,7 +2725,9 @@
   "detail": "The only subprocess/thread spawn in utils/, ml/ or models/. _call_ollama (:507), _call_openai (:621), _call_anthropic (:641) are all blocking network calls executed inline. CODE_REVIEW flags this: 'if Ollama is installed but stopped, the app Popens ollama serve on the request thread and can block up to 120s behind a spinner that promises ~60s'. This is the clearest existing candidate for the Jobs layer. Also note the privacy surface: _MAX_TABLE_ROWS = 20 (:14) — the cloud-LLM opt-in sends column names and up to ~20 raw data rows to OpenAI/Anthropic.",
   "ev": "utils/llm_ui.py:14,507,532,621,641",
   "act": "jobs (the three _call_* backends); view (render_*); project/record (context builders)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The only process spawn anywhere in utils/, ml/ or models/ still happens on the request thread, behind a spinner that promises about 60 seconds while the wait can run to 120, and all three LLM backends are blocking network calls executed inline. It is the clearest Jobs candidate left after the export path (STATE-029), and the smaller of the two. The privacy note in this row deserves to stay attached to it: the cloud opt-in sends column names and up to 20 RAW DATA ROWS to OpenAI or Anthropic, which is the one place the no-disk / session-isolated privacy story has an outbound edge - and SWEEP-007's invariant says nothing about it. That belongs in ARCHITECTURE.md alongside the persistence story, not only here.",
+  "verified_ev": "utils/llm_ui.py:532 (subprocess.Popen(['ollama','serve'], ...) on the request thread), :507 _call_ollama, :621 _call_openai, :641 _call_anthropic - all blocking inline; :14 _MAX_TABLE_ROWS = 20, used at :340"
  },
  {
   "id": "SWEEP-022",
