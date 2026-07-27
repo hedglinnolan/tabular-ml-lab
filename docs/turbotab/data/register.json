@@ -53,7 +53,7 @@
   "capability": "Built-in practice datasets",
   "classic": "Step 1",
   "state": "classic-only",
-  "reason": "Guided ships one messy sample table (turbotab/sample_data/)."
+  "reason": "Classic has a built-in dataset PICKER (utils/datasets.py generators). Guided has no picker: turbotab/sample_data/ holds four fixture tables (clinic_visits, leaky_sepsis, longitudinal_visits, wide_assay) that you point the uploader at by hand, and three of the four exist for the routing measurement rather than for practice. Re-verified L1: the earlier reason said one table."
  },
  {
   "id": "ingest-repair-ledger-log",
@@ -61,7 +61,7 @@
   "capability": "Import-repair logging to the insight ledger",
   "classic": "_log_import_repairs",
   "state": "classic-only",
-  "reason": "Guided records decisions; the ledger singleton is not cut yet (L7)."
+  "reason": "Guided records the repair as a project decision (project.apply_fix -> record(kind='apply'), turbotab/project.py:489-513), so the ACT is not lost. What is Classic-only is the write into the InsightLedger. Re-verified L1: the earlier reason said the ledger singleton is not cut yet (L7). L7 landed and did something narrower - it moved the streamlit import inside get_ledger() (RECORD-009), which untainted the module - but get_ledger() is still a session_state singleton, so there is still no headless ledger for Guided to write to."
  },
  {
   "id": "ingest-multi-join",
@@ -189,7 +189,7 @@
   "capability": "Downstream invalidation cascade",
   "classic": "utils/session_state.py reset_downstream_results",
   "state": "core",
-  "reason": "L5 DAG reproduces the production cascade key-for-key across all four flag combinations; carries a live list of the 15 keys pages/03's hand-rolled version forgets."
+  "reason": "The L5 DAG reproduces the production cascade key-for-key across all four flag combinations, pinned by test_the_dag_matches_the_production_cascade against a real run of the function. Re-verified L1: pages/03 no longer hand-rolls its own copy (CONTRACT-002 FIXED) - test_page_03_no_longer_hand_rolls_its_own_cascade AST-scans the page and fails if it clears a cascade-owned key, and the fifteen keys that copy used to miss are pinned by test_the_reconciled_call_clears_what_the_hand_rolled_one_missed. Known gap: the DAG has no restore edge for restore_pre_fe_features, and the ledger rollback is not modeled (SWEEP-009, SWEEP-013)."
  },
  {
   "id": "core-lockbox-barrier",
@@ -205,7 +205,7 @@
   "capability": "Engine imports and runs with no Streamlit in the process",
   "classic": "n/a — this is the core",
   "state": "core",
-  "reason": "All 45 core modules import with streamlit blocked, enforced by tests/test_engine_is_headless.py with a stub-first blocker so it cannot pass vacuously. Six were tainted; four went with two deleted lines (insight_ledger's module-level import, which also freed narrative_engine and manuscript_validator, and eda_actions' dead one)."
+  "reason": "All 46 core modules import with streamlit blocked, enforced by tests/test_engine_is_headless.py with a stub-first blocker so it cannot pass vacuously. Was 45 at L7; ml/router.py made it 46 at L8, and the census is computed from the tree rather than written down, so the test moved with it. Six modules were tainted at the L7 baseline; the last was utils/insight_ledger, whose module-level import also tainted narrative_engine, manuscript_validator and latex_report."
  },
  {
   "id": "job-queue",
