@@ -462,5 +462,13 @@
   "classic": "utils/insight_ledger.py records acknowledge/resolve and surfaces insights on relevant pages, but has no defer-to-step contract - no target_step, no resurface guarantee",
   "state": "guided-only",
   "reason": "turbotab/api.py rejects a defer without target_step ('a deferral without a target is a discard with manners'); Classic's ledger cannot express the contract. In the definition of done and measured in the value check, yet had no register row - the check could not see the absence. A debt owed back to Classic."
+ },
+ {
+  "id": "explore-lockbox-scoped-modeling",
+  "step": "explore",
+  "capability": "Explore's model-fitting analyses and its dataset profile are scoped to training rows, with the scoping stated on screen",
+  "classic": "pages/02_EDA.py (train_row_mask; the profile and quick_probe_baselines)",
+  "state": "classic-only",
+  "reason": "L9 narrow cut on CONTRACT-017. Classic's Explore step now runs the two paths that model - the dataset profile that drives the coach, and quick_probe_baselines, which fits models on its own 80/20 split - on train_row_mask(df.index) only, and says so in the same words pages/04 uses. Guided does not: turbotab/engine.py:166 profiles the whole working table, and the Guided interview does not yet ask for a lockbox at all (see target-lockbox-settings), so there is usually nothing sealed to exclude. This is Classic-ahead-of-Guided and a debt owed forward, not backward: when the Guided door asks for the seal, its Explore step has to arrive with this scoping already in place. The display analyses on both sides still see every row - deliberately, per the lockbox status line - and converge at L11."
  }
 ]

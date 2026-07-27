@@ -6,7 +6,7 @@
 |---|---|---:|
 | `both` | exposed in Classic and Guided | 25 |
 | `core` | extracted into the shared core | 4 |
-| `classic-only` | a claim to be justified, never a shrug | 23 |
+| `classic-only` | a claim to be justified, never a shrug | 24 |
 | `guided-only` | a debt owed back to Classic | 6 |
 
 ## Data & Target (Classic: pages/01, Step 4) — 22
@@ -49,7 +49,7 @@
 | `core-readiness-model` | Step-completion / readiness model (ten predicates + quick/advanced) | utils/theme.py:685 render_sidebar_workflow | **core** | Extracted to turbotab/readiness.py in L6; the page asks instead of computing, and a test asserts the expressions are gone. The Router's first real input. |
 | `engine-headless` | Engine imports and runs with no Streamlit in the process | n/a — this is the core | **core** | All 46 core modules import with streamlit blocked, enforced by tests/test_engine_is_headless.py with a stub-first blocker so it cannot pass vacuously. Was 45 at L7; ml/router.py made it 46 at L8, and the census is computed from the tree rather than written down, so the test moved with it. Six modules were tainted at the L7 baseline; the last was utils/insight_ledger, whose module-level import also tainted narrative_engine, manuscript_validator and latex_report. |
 
-## Explore / EDA (Classic: pages/02) — 28
+## Explore / EDA (Classic: pages/02) — 29
 
 | ID | Capability | Classic | State | Reason |
 |---|---|---|---|---|
@@ -81,3 +81,4 @@
 | `explore-eda-skew-group` | EDA trigger: eda_skew_group (info) | pages/02_EDA.py:451 | **classic-only** | Feature-level skew grouping. Its action is a Preprocess transform; deferred to that step. |
 | `explore-eda-target-skew` | EDA trigger: eda_target_skew (warning) | pages/02_EDA.py:395 | **classic-only** | The action is a target transform on the Train page, which is outside the explore window. Belongs to the Train step's pre-list. |
 | `explore-eda-tda-loops` | EDA trigger: eda_tda_loops (opportunity) | pages/02_EDA.py:1300 | **classic-only** | Raised from the persistence diagram; requires the optional TDA extra and the macro-shape panel. Neither is in Guided. |
+| `explore-lockbox-scoped-modeling` | Explore's model-fitting analyses and its dataset profile are scoped to training rows, with the scoping stated on screen | pages/02_EDA.py (train_row_mask; the profile and quick_probe_baselines) | **classic-only** | L9 narrow cut on CONTRACT-017. Classic's Explore step now runs the two paths that model - the dataset profile that drives the coach, and quick_probe_baselines, which fits models on its own 80/20 split - on train_row_mask(df.index) only, and says so in the same words pages/04 uses. Guided does not: turbotab/engine.py:166 profiles the whole working table, and the Guided interview does not yet ask for a lockbox at all (see target-lockbox-settings), so there is usually nothing sealed to exclude. This is Classic-ahead-of-Guided and a debt owed forward, not backward: when the Guided door asks for the seal, its Explore step has to arrive with this scoping already in place. The display analyses on both sides still see every row - deliberately, per the lockbox status line - and converge at L11. |

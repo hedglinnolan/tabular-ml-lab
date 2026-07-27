@@ -25,13 +25,13 @@ Nothing is closed without a regression test named after it.
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 298 |
-| `PARTIAL` | 33 |
+| `OPEN` | 297 |
+| `PARTIAL` | 34 |
 | `FIXED` | 80 |
 
 ---
 
-## OPEN — 298
+## OPEN — 297
 
 
 ### Application state / lockbox — 64
@@ -103,7 +103,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-090` | invariant | Repeated measures split by SUBJECT, not by row — the same person must never appear in both training and the sealed test set. | `utils/test_lockbox.detect_repeated_subjects + ensure_lockbox:130-133 (auto-detect only when the caller named…` | The invariant is right and its stated trigger is LIVE, so it stays OPEN. The row asks 'what if detect_repeated_subjects runs against the ENGINEERED frame' and answers its own… |
 | `STATE-094` | invariant | An invalidated resolution is rolled back (the finding survives, the claim does not), and an auto-generated insight whose producer will re-detect is deleted outright — absent is better than false. | `utils/session_state.py:389-410 + InsightLedger.rollback_resolutions / prune_auto_generated. Tests…` | The behavior is correct and tested - a rolled-back resolution leaves the FINDING standing and drops only the CLAIM, and auto-generated insights whose producer re-detects are… |
 
-### Stage-boundary contracts — 56
+### Stage-boundary contracts — 55
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -117,7 +117,6 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-011` | high | Four sources of truth for task type, consulted inconsistently by page | `utils/session_state.py:22-27,65; pages/06:1556,1575; pages/07:461; pages/08:64; pages/10:281,540` | Unchanged at HEAD. Four sources still exist - detected, final, the DEPRECATED DataConfig.task_type, and the never-written session key - and pages still consult them… |
 | `CONTRACT-013` | high | get_data() precedence makes page 05's plausibility filter a silent no-op after Feature Engineering | `utils/session_state.py:206-217; pages/05_Preprocess.py:863; absent from utils/session_state.py:283-415` | Duplicate of STATE-037 from the contract pass, unchanged at HEAD, and it names the measurement consequence the other does not: the pipeline was CONFIGURED and n_output_features… |
 | `CONTRACT-014` | high | Feature Selection silently drops all categorical predictors while telling the user it does not | `pages/04_Feature_Selection.py:100-101, :112-119, :440-442, :488-491` | Unchanged at HEAD, and the page computes categorical_excluded at :110 purely to say the sentence at :119 - then contradicts it at :440 and :489 by assigning a numeric-only list… |
-| `CONTRACT-017` | high | EDA (page 02) runs target-aware analyses on ALL rows including the sealed test set | `pages/02_EDA.py:79 (`df = get_data()`), :71-72 (caption only); ml/eda_actions.py:1206-1224…` | Unchanged at HEAD and it is the largest live leakage hole in the ledger. The lockbox module's own docstring says 'Every target-aware step upstream of Train & Compare… |
 | `CONTRACT-018` | high | Preprocessing pipelines are stored FITTED on a sample, then re-fit at train time — two different fitted states share one slot | `pages/05_Preprocess.py:999-1006; pages/06_Train_and_Compare.py:1310-1315, :1596…` | Duplicate of STATE-004 from the contract pass, unchanged at HEAD, and this framing names the aliasing precisely: the SAME Pipeline object is fitted twice into two different dict… |
 | `CONTRACT-019` | high | get_provenance() only catches ImportError, not the no-script-run-context error | `utils/workflow_provenance.py:662-671` | Unchanged at HEAD, and this one has a date on it. In a worker thread streamlit imports FINE - so the ImportError branch never fires - and touching st.session_state off the script… |
 | `CONTRACT-020` | high | Five session keys are read by Report Export but written by nobody | `pages/10_Report_Export.py:288-290,877,1526,1754-1760; pages/07_Explainability.py:623-625…` | Unchanged at HEAD - five keys read by the export path that nothing in the repository writes. Two are dead ALIASES of live keys (partial_dependence for pdp_results… |
@@ -384,8 +383,21 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 33
+## PARTIAL — 34
 
+
+### Stage-boundary contracts — 8
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `CONTRACT-012` | high | y_test_proba can be referenced unbound when task_type_final and data_config.task_type disagree | `pages/06_Train_and_Compare.py:1556 (assignment) vs :1575 (use), handler at :1601-1605` | The unbound-name path is closed; the defense is one line and untested. Because pages/06:175 now sets data_config.task_type = task_type_final before the training loop, the two… |
+| `CONTRACT-017` | high | EDA (page 02) runs target-aware analyses on ALL rows including the sealed test set | `pages/02_EDA.py:79 (`df = get_data()`), :71-72 (caption only); ml/eda_actions.py:1206-1224…` | **test:** `tests/test_eda_does_not_model_on_sealed_rows.py; tests/integration/test_eda_profile_is_scoped_to_training_rows.py::test_the_profile_the_coach_reads_excludes_the_sealed_r… |
+| `CONTRACT-026` | high | Boundary Train: X_train/X_val/X_test are DataFrames but y_* type varies by split branch | `pages/06_Train_and_Compare.py:511-517, :541-547, :571-577, :613-616, :655-660; ml/splits.py:9 (to_numpy_1d)…` | The heterogeneity is gone by construction; nothing guards it. Every branch now returns through one Split constructor that coerces y_train, y_val and y_test with to_numpy_1d, and… |
+| `CONTRACT-029` | high | Boundary Train: cv_strategy and cv_groups_train | `pages/06_Train_and_Compare.py:494-497, :507-508, :528, :1543-1546; utils/session_state.py:330-334` | The desync this row warns about is structurally closed; the parallel storage is not. cv_strategy and cv_groups_train are now derived INSIDE make_split from the branch actually… |
+| `CONTRACT-032` | high | Boundary Explain: cancel_explainability / cancel_training are cooperative flags polled inside the render loop | `pages/07_Explainability.py:321-352, :419-422, :540-543; pages/06_Train_and_Compare.py:1252-1266` | Half of this row is closed and half is untouched. cancel_training no longer exists - the button was removed rather than wired, because Streamlit blocks the script during training… |
+| `CONTRACT-041` | medium | Boundary Upload→Target: raw_data + _raw_data_fingerprint | `utils/session_state.py:220-230, :259-280; not in any session_manager key list` | The persistence half is closed and the 'unknown means clean' half is not. The row says the fingerprint is not persisted so the first set_data after a restore skips the… |
+| `CONTRACT-061` | medium | Import cycle ml.publication ↔ utils.insight_ledger is a genuine layering inversion | `ml/publication.py:128,182,453,460; utils/insight_ledger.py (imports at module top)` | The inversion narrowed from four formatting helpers to one pure-data constant. The presentation helpers this row says belong to neither module are no longer imported from… |
+| `CONTRACT-069` | low | models/* (7 files, 1000 loc) has zero streamlit and a single stable ABC — port it first | `models/base.py:10-73; models/nn_whuber.py:226; pages/06_Train_and_Compare.py:1371-1375` | The row's blocking condition is satisfied and its recommendation still stands. 'Entirely untested, which is the reason to do it first WITH TESTS ATTACHED' - the tests are attached… |
 
 ### Migration safety net — 7
 
@@ -398,18 +410,6 @@ Nothing is closed without a regression test named after it.
 | `TEST-022` | high | perform_cross_validation's leakage semantics are documented in prose but only partially tested — and CV strategy is a cleared-but-unasserted key | `ml/eval.py:97-171; silent downgrade at :143-149; cv_strategy/cv_groups_train absent from all three test…` | The staleness half is closed; the fold-membership half is not. cv_strategy and cv_groups_train are no longer unasserted-on-clear - they are registered in the cascade and pinned by… |
 | `TEST-026` | medium | scripts/integration_test_apptest.py and scripts/integration_test.py are unreachable from CI and duplicate tests/integration/ | `.github/workflows/ci.yml (only `pytest tests/` and `pytest tests/integration`); Makefile:22-40…` | Half the row's premise is wrong at HEAD and the correction changes the disposition. scripts/integration_test.py is NOT unreachable from CI - ci.yml:90-94 runs it as the E2E smoke… |
 | `TEST-032` | medium | tests/test_page_imports.py and tests/test_insight_id_integrity.py are AST-based over pages/ — they die with pages/ but encode rules worth keeping | `tests/test_page_imports.py:123; tests/test_insight_id_integrity.py:52` | Half the row is closed. test_insight_id_integrity can no longer pass vacuously over an empty or renamed directory - that is SWEEP-014, and it was fixed in exactly the way this row… |
-
-### Stage-boundary contracts — 7
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `CONTRACT-012` | high | y_test_proba can be referenced unbound when task_type_final and data_config.task_type disagree | `pages/06_Train_and_Compare.py:1556 (assignment) vs :1575 (use), handler at :1601-1605` | The unbound-name path is closed; the defense is one line and untested. Because pages/06:175 now sets data_config.task_type = task_type_final before the training loop, the two… |
-| `CONTRACT-026` | high | Boundary Train: X_train/X_val/X_test are DataFrames but y_* type varies by split branch | `pages/06_Train_and_Compare.py:511-517, :541-547, :571-577, :613-616, :655-660; ml/splits.py:9 (to_numpy_1d)…` | The heterogeneity is gone by construction; nothing guards it. Every branch now returns through one Split constructor that coerces y_train, y_val and y_test with to_numpy_1d, and… |
-| `CONTRACT-029` | high | Boundary Train: cv_strategy and cv_groups_train | `pages/06_Train_and_Compare.py:494-497, :507-508, :528, :1543-1546; utils/session_state.py:330-334` | The desync this row warns about is structurally closed; the parallel storage is not. cv_strategy and cv_groups_train are now derived INSIDE make_split from the branch actually… |
-| `CONTRACT-032` | high | Boundary Explain: cancel_explainability / cancel_training are cooperative flags polled inside the render loop | `pages/07_Explainability.py:321-352, :419-422, :540-543; pages/06_Train_and_Compare.py:1252-1266` | Half of this row is closed and half is untouched. cancel_training no longer exists - the button was removed rather than wired, because Streamlit blocks the script during training… |
-| `CONTRACT-041` | medium | Boundary Upload→Target: raw_data + _raw_data_fingerprint | `utils/session_state.py:220-230, :259-280; not in any session_manager key list` | The persistence half is closed and the 'unknown means clean' half is not. The row says the fingerprint is not persisted so the first set_data after a restore skips the… |
-| `CONTRACT-061` | medium | Import cycle ml.publication ↔ utils.insight_ledger is a genuine layering inversion | `ml/publication.py:128,182,453,460; utils/insight_ledger.py (imports at module top)` | The inversion narrowed from four formatting helpers to one pure-data constant. The presentation helpers this row says belong to neither module are no longer imported from… |
-| `CONTRACT-069` | low | models/* (7 files, 1000 loc) has zero streamlit and a single stable ABC — port it first | `models/base.py:10-73; models/nn_whuber.py:226; pages/06_Train_and_Compare.py:1371-1375` | The row's blocking condition is satisfied and its recommendation still stands. 'Entirely untested, which is the reason to do it first WITH TESTS ATTACHED' - the tests are attached… |
 
 ### Application state / lockbox — 6
 

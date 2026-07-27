@@ -119,6 +119,50 @@ feature_cols = (
 )
 _has_target = target_col is not None and target_col in df.columns
 
+# ── Sealed rows, quarantined from the paths that model ───────────────────
+# `utils/test_lockbox.py`'s contract: "Every target-aware step upstream of
+# Train & Compare — feature-engineering fits, feature selection,
+# target-association views — operates on training rows only, via
+# train_row_mask()." This page did not call it. The two paths where that costs
+# something real are quarantined here, the same way pages/04 does it:
+#
+#   - the dataset profile, because it drives the model coach's picks, and a
+#     profile computed on held-out people lets the test set choose the models;
+#   - quick_probe_baselines, which runs its own 80/20 split and FITS models —
+#     a modeling step wearing an EDA costume, reporting a score for rows it
+#     has already been shown.
+#
+# Descriptive views elsewhere on this page still cover every row, which is what
+# the lockbox status line above states. See CONTRACT-017 for the remainder.
+from utils.test_lockbox import train_row_mask
+
+# train_row_mask already returns all-True in exploratory mode and with no
+# lockbox, so the scoping claim below follows from the mask rather than from a
+# second reading of the same state.
+_train_mask = train_row_mask(df.index)
+_train_df = df.loc[_train_mask]
+# A lockbox that sealed everything would leave nothing to profile; fall back
+# rather than crash, and do not claim a scoping that did not happen.
+if _train_df.empty:
+    _train_df = df
+    _train_mask = pd.Series(True, index=df.index)
+_lockbox_scoped = bool((~_train_mask).any())
+
+# quick_probe_baselines is the one EDA action that fits models. Anything added
+# here gets the masked frame and says so on screen.
+_TRAIN_ONLY_ACTIONS = {"quick_probe_baselines"}
+
+
+def _frame_for_action(run_action: str) -> pd.DataFrame:
+    """The rows an EDA action may see: training rows only if it models."""
+    return _train_df if run_action in _TRAIN_ONLY_ACTIONS else df
+
+
+_TRAIN_SCOPE_CAPTION = (
+    "held-out test rows are excluded to prevent selection leakage."
+)
+
+
 def _content_fingerprint(d):
     """Cache key for every cached computation on this page.
 
@@ -153,6 +197,12 @@ def _content_fingerprint(d):
 # macro-shape ones added with T0-LIVE-001. Having both meant the principle was
 # written down in one place and applied in the other.
 _data_fingerprint = _content_fingerprint(df)
+# The profile is computed on a different frame, so it needs its own key. Reusing
+# the full-frame fingerprint would serve the all-rows profile to the masked call
+# and put the leak straight back.
+_train_fingerprint = (
+    _data_fingerprint if _train_df is df else _content_fingerprint(_train_df)
+)
 
 
 def _macro_fp(d):
@@ -194,11 +244,16 @@ with st.sidebar:
         )
 
 profile = _compute_profile(
-    df, target_col or feature_cols[0],
+    _train_df, target_col or feature_cols[0],
     feature_cols, task_type_final or "regression", outlier_method,
-    data_id=_data_fingerprint,
+    data_id=_train_fingerprint,
 )
 st.session_state["dataset_profile"] = profile
+if _lockbox_scoped:
+    st.caption(
+        f"The dataset profile and quick baselines see n={int(_train_mask.sum())} "
+        f"training rows; {_TRAIN_SCOPE_CAPTION}"
+    )
 
 # Signals (cached)
 @st.cache_data(show_spinner="Scanning statistical signals (one-time per dataset)…")
@@ -1542,12 +1597,18 @@ def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""
     from utils.llm_ui import build_llm_context, build_eda_full_results_context, render_interpretation_with_llm_button, gather_session_context
 
     key_prefix = f"{tab_key}_{action_id}" if tab_key else action_id
+    _action_df = _frame_for_action(run_action)
+    if _lockbox_scoped and run_action in _TRAIN_ONLY_ACTIONS:
+        st.caption(
+            f"Fits models, so it sees n={len(_action_df)} training rows; "
+            f"{_TRAIN_SCOPE_CAPTION}"
+        )
     if st.button(f"Run {title}", key=f"run_{key_prefix}", type="primary"):
         try:
             action_func = getattr(eda_actions, run_action, None)
             if action_func:
                 with st.spinner(f"Running {title}..."):
-                    result = action_func(df, target_col, feature_cols, signals, st.session_state)
+                    result = action_func(_action_df, target_col, feature_cols, signals, st.session_state)
                     st.session_state.eda_results[action_id] = result
                     log_methodology(step="EDA", action=f"Ran {title}", details={"analysis": run_action})
                     _resolve_insights_from_eda_result(action_id, result, title)
@@ -1635,7 +1696,8 @@ if _recommendations:
                 action_func = getattr(eda_actions, aid, None)
                 if action_func:
                     with st.spinner(f'Running {title}...'):
-                        result = action_func(df, target_col, feature_cols, signals, st.session_state)
+                        result = action_func(_frame_for_action(aid), target_col,
+                                             feature_cols, signals, st.session_state)
                         st.session_state.eda_results[aid] = result
                         log_methodology(step='EDA', action=f'Ran {title}', details={'analysis': aid})
                         _resolve_insights_from_eda_result(aid, result, title)
