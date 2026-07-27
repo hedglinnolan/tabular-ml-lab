@@ -6,7 +6,7 @@
 |---|---|---:|
 | `both` | exposed in Classic and Guided | 27 |
 | `core` | extracted into the shared core | 4 |
-| `classic-only` | a claim to be justified, never a shrug | 24 |
+| `classic-only` | a claim to be justified, never a shrug | 25 |
 | `guided-only` | a debt owed back to Classic | 14 |
 
 ## Data & Target (Classic: pages/01, Step 4) — 24
@@ -38,7 +38,7 @@
 | `target-goal-selection` | Goal selection (Prediction vs Hypothesis Testing) | Step 4 | **classic-only** | Guided assumes prediction; the hypothesis-testing branch is a different interview. |
 | `target-lockbox-settings` | Test-holdout / lockbox settings | Step 4 expander | **classic-only** | Updated after L5: the project now OWNS a lockbox — sealing raises the identity barrier and the apply path refuses pre-barrier repairs — but the fraction/seed settings and the act of sealing are not yet asked in the Guided interview. Half-watched, no longer unmodeled. |
 
-## Cross-step infrastructure — 10
+## Cross-step infrastructure — 11
 
 | ID | Capability | Classic | State | Reason |
 |---|---|---|---|---|
@@ -52,6 +52,7 @@
 | `core-lockbox-barrier` | Lockbox + identity barrier | utils/test_lockbox.py (no barrier) | **core** | L5: sealing raises the barrier; promote_header/melt_repeated unreachable behind it, enforced at the API apply path. Guided-ahead-of-Classic on the barrier itself. |
 | `core-readiness-model` | Step-completion / readiness model (ten predicates + quick/advanced) | utils/theme.py:685 render_sidebar_workflow | **core** | Extracted to turbotab/readiness.py in L6; the page asks instead of computing, and a test asserts the expressions are gone. The Router's first real input. |
 | `engine-headless` | Engine imports and runs with no Streamlit in the process | n/a — this is the core | **core** | All 46 core modules import with streamlit blocked, enforced by tests/test_engine_is_headless.py with a stub-first blocker so it cannot pass vacuously. Was 45 at L7; ml/router.py made it 46 at L8, and the census is computed from the tree rather than written down, so the test moved with it. Six modules were tainted at the L7 baseline; the last was utils/insight_ledger, whose module-level import also tainted narrative_engine, manuscript_validator and latex_report. |
+| `cross-profile-row-scope` | The dataset profile records which rows it describes, and every export that copies its numbers states that population | pages/02 writes dataset_profile_scope; pages/10 labels the metadata and the Methods sentence | **classic-only** | Raised out of L11 because it is a live assertion of something false in an exported document, not a convergence item. CONTRACT-017 made Classic's dataset_profile training-scope - the profile drives the model coach, and a coach that has seen the held-out people is choosing models with them - and pages/10 copies its p_n_ratio, total_missing_rate and data sufficiency straight into the export metadata and the Methods section. The number moved and the manuscript did not. Classic now records the scope beside the profile and states it at the point of export, including the case the fix exposed: the missing-data sentence mixes two populations, a feature COUNT from the training-scope profile and per-feature RATES from data_audit over the whole frame, so it now names both. THE TWO DOORS DISAGREE ON SCOPE, and this row is where that is said rather than papered over. Classic's profile covers training rows only whenever a lockbox is sealed. Guided's does not: turbotab/engine.profile(project.df) profiles the whole working table, and the Guided interview does not ask for a seal at all yet (target-lockbox-settings), so in practice nothing is sealed and the two agree by accident rather than by design. The moment Guided asks for the seal, its profile becomes a whole-study number driving a coach that must not see the test set - which is the CONTRACT-017 defect, arriving second, in the door built to avoid it. Guided has no export step yet, so there is no false claim in a Guided document today; there will be one the day there is. The debt is owed FORWARD, and the L11 convergence of pages/02 is where both sides adopt one scope and one label. |
 
 ## Explore / EDA (Classic: pages/02) — 35
 

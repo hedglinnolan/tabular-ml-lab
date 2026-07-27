@@ -249,6 +249,18 @@ profile = _compute_profile(
     data_id=_train_fingerprint,
 )
 st.session_state["dataset_profile"] = profile
+# Which rows the profile describes, recorded beside it. Pages 05, 06 and 10 read
+# `dataset_profile` and cannot otherwise tell: since the lockbox mask above, its
+# p/n ratio, missingness rate and data-sufficiency verdict describe the training
+# rows, and page 10 copies those numbers into the exported record. A number whose
+# population is not stated is a number the reader will assume is about everyone.
+st.session_state["dataset_profile_scope"] = {
+    "rows": "training" if _lockbox_scoped else "all",
+    "n_rows": int(_train_mask.sum()),
+    "n_rows_total": int(len(df)),
+    "reason": ("held-out test rows are excluded to prevent selection leakage"
+               if _lockbox_scoped else "no rows are sealed in this analysis"),
+}
 if _lockbox_scoped:
     st.caption(
         f"The dataset profile and quick baselines see n={int(_train_mask.sum())} "

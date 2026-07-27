@@ -147,6 +147,39 @@ def get_git_info() -> Dict[str, str]:
     return {'app_version': '1.0.0', 'commit': 'n/a'}
 
 
+def _profile_scope_fields() -> Dict[str, Any]:
+    """Which rows `dataset_profile` describes, for anything that exports it.
+
+    Page 02 quarantines the sealed test rows out of the profile, because the
+    profile drives the model coach and a coach that has seen the held-out people
+    is choosing models with them (`CONTRACT-017`). That makes the profile's
+    p/n ratio, missing rate and sufficiency verdict statements about the
+    *training* rows — and this page copies those numbers into the exported
+    record and into the Methods section.
+
+    An exported number whose population is unstated is read as being about
+    everyone, which is the one thing the app must never let a document do. When
+    page 02 has not run, or nothing is sealed, the scope is unknown or `all` and
+    that is said too rather than assumed.
+    """
+    scope = st.session_state.get('dataset_profile_scope')
+    if not isinstance(scope, dict):
+        return {'row_scope': 'unknown', 'row_scope_n': None,
+                'row_scope_note': 'the rows this profile describes were not recorded'}
+    rows = scope.get('rows', 'unknown')
+    n = scope.get('n_rows')
+    total = scope.get('n_rows_total')
+    if rows == 'training' and n is not None:
+        note = f"training rows only, n={n:,}"
+        if total:
+            note += f" of {total:,}; {scope.get('reason', '')}".rstrip('; ')
+    elif rows == 'all' and n is not None:
+        note = f"all rows, n={n:,}"
+    else:
+        note = 'the rows this profile describes were not recorded'
+    return {'row_scope': rows, 'row_scope_n': n, 'row_scope_note': note}
+
+
 def generate_metadata() -> Dict[str, Any]:
     """Generate comprehensive metadata for export."""
     git_info = get_git_info()
@@ -189,9 +222,15 @@ def generate_metadata() -> Dict[str, Any]:
             'p_n_ratio': profile.p_n_ratio,
             'total_missing_rate': profile.total_missing_rate,
             'n_features_with_outliers': len(profile.features_with_outliers),
-            'warnings': [w.short_message for w in profile.warnings]
+            'warnings': [w.short_message for w in profile.warnings],
+            # Which rows these numbers describe. Page 02 computes the profile on
+            # training rows only when a lockbox is sealed, so p/n, the missing
+            # rate and the sufficiency verdict are about the training set — and
+            # an exported number whose population is unstated will be read as
+            # being about everyone.
+            **_profile_scope_fields(),
         }
-    
+
     return metadata
 
 
@@ -760,11 +799,20 @@ def _build_methods_section_for_export(
                         'total_features': total_features,
                         'min_missing_rate': min_rate,
                         'max_missing_rate': max_rate,
+                        # The feature COUNT comes from the profile, which page 02
+                        # computes on training rows only when a lockbox exists;
+                        # the RATES come from data_audit over the whole frame.
+                        # Two populations in one sentence, so the sentence has to
+                        # say which is which.
+                        **_profile_scope_fields(),
+                        'rates_row_scope': 'all',
+                        'rates_n_rows': int(n_rows),
                     }
                 else:
                     missing_data_summary = {
                         'n_features_with_missing': profile.n_features_with_missing,
                         'total_features': total_features,
+                        **_profile_scope_fields(),
                     }
     
     # Fallback: check data_audit directly

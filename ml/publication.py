@@ -711,16 +711,34 @@ def generate_methods_section(
         total_features = missing_data_summary.get('total_features')
         min_missing_rate = missing_data_summary.get('min_missing_rate')
         max_missing_rate = missing_data_summary.get('max_missing_rate')
-        
+
+        # Which participants this counted. The feature count comes from the
+        # dataset profile, which is computed on training rows only once a test
+        # set is sealed, while the per-feature rates are computed over the whole
+        # frame. Two populations in one sentence: state them, or the reader
+        # takes both as the whole study.
+        _scope = missing_data_summary.get('row_scope')
+        _scope_n = missing_data_summary.get('row_scope_n')
+        _counted_in = ""
+        if _scope == 'training' and _scope_n:
+            _counted_in = f", counted on the {_scope_n:,} training rows"
+        _rates_over = ""
+        if (missing_data_summary.get('rates_row_scope') == 'all'
+                and missing_data_summary.get('rates_n_rows')):
+            _rates_over = (f" over all {missing_data_summary['rates_n_rows']:,} "
+                           f"records")
+
         if n_features_with_missing is not None and total_features is not None:
             if min_missing_rate is not None and max_missing_rate is not None:
                 sections.append(
-                    f" {n_features_with_missing} of {total_features} features had missing values "
-                    f"(missing rates ranging from {min_missing_rate*100:.1f}% to {max_missing_rate*100:.1f}%)."
+                    f" {n_features_with_missing} of {total_features} features had missing values"
+                    f"{_counted_in} (missing rates ranging from {min_missing_rate*100:.1f}% "
+                    f"to {max_missing_rate*100:.1f}%{_rates_over})."
                 )
             else:
                 sections.append(
-                    f" {n_features_with_missing} of {total_features} features had missing values."
+                    f" {n_features_with_missing} of {total_features} features had missing values"
+                    f"{_counted_in}."
                 )
 
     sections.append("\n\n### Data Preprocessing\n")

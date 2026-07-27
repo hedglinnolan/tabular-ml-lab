@@ -550,5 +550,13 @@
   "classic": "pages/01 help tooltips on the target and task-type widgets",
   "state": "guided-only",
   "reason": "DESIGN_LANGUAGE §09: 'A FACT that cannot state its consumer is a question we have no right to ask.' Classic's tooltips explain what the control does; they do not name what reads the answer or what changes downstream, which is the part that lets a user judge whether to think hard about it. The text lives on ml.router.Question.consumer and router.audit raises on a pushed question of fact without one, so the rule is enforced where a new question would have to pass it rather than in the page. The Router is shared, so Classic can adopt this by asking instead of computing - the same move readiness already made."
+ },
+ {
+  "id": "cross-profile-row-scope",
+  "step": "cross-step",
+  "capability": "The dataset profile records which rows it describes, and every export that copies its numbers states that population",
+  "classic": "pages/02 writes dataset_profile_scope; pages/10 labels the metadata and the Methods sentence",
+  "state": "classic-only",
+  "reason": "Raised out of L11 because it is a live assertion of something false in an exported document, not a convergence item. CONTRACT-017 made Classic's dataset_profile training-scope - the profile drives the model coach, and a coach that has seen the held-out people is choosing models with them - and pages/10 copies its p_n_ratio, total_missing_rate and data sufficiency straight into the export metadata and the Methods section. The number moved and the manuscript did not. Classic now records the scope beside the profile and states it at the point of export, including the case the fix exposed: the missing-data sentence mixes two populations, a feature COUNT from the training-scope profile and per-feature RATES from data_audit over the whole frame, so it now names both. THE TWO DOORS DISAGREE ON SCOPE, and this row is where that is said rather than papered over. Classic's profile covers training rows only whenever a lockbox is sealed. Guided's does not: turbotab/engine.profile(project.df) profiles the whole working table, and the Guided interview does not ask for a seal at all yet (target-lockbox-settings), so in practice nothing is sealed and the two agree by accident rather than by design. The moment Guided asks for the seal, its profile becomes a whole-study number driving a coach that must not see the test set - which is the CONTRACT-017 defect, arriving second, in the door built to avoid it. Guided has no export step yet, so there is no false claim in a Guided document today; there will be one the day there is. The debt is owed FORWARD, and the L11 convergence of pages/02 is where both sides adopt one scope and one label."
  }
 ]
