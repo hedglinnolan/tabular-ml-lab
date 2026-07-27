@@ -375,7 +375,9 @@
   "detail": "`set_global_seed(st.session_state.get('random_seed', 42))` sits at module level in pages/06_Train_and_Compare.py:95, i.e. it re-seeds numpy's and Python's GLOBAL RNG on every script rerun of that page. set_global_seed calls `np.random.seed(seed)`, `random.seed(seed)`, `torch.manual_seed(seed)` and sets `torch.backends.cudnn.deterministic = True` (utils/seed.py:21-29). No other page calls it. get_global_seed reads Streamlit directly: `import streamlit as st; return st.session_state.get('random_seed', 42)` (utils/seed.py:36-37).",
   "ev": "pages/06_Train_and_Compare.py:95, 120-122; utils/seed.py:14-29, 34-37",
   "act": "jobs — each job must seed its own RNG at job start from the Project's seed and, better, thread explicit np.random.Generator objects instead of touching globals. utils/seed.get_global_seed lands in project (drop the streamlit import). WRONG-…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. set_global_seed(st.session_state.get('random_seed', 42)) still sits at module scope in pages/06 (:90), so every Streamlit rerun of that page reseeds numpy's, python's and torch's PROCESS-GLOBAL RNG, and no other page calls it. utils/seed.py:21-29 still mutates global state and sets torch.backends.cudnn.deterministic; get_global_seed at :34-37 still does an in-function 'import streamlit as st', which is the taint keeping utils.seed out of the headless engine. The core did the honest thing rather than the impossible one: turbotab/jobs.py:128-156 isolated_rng snapshots and restores global numpy/torch state around a job and serializes uses_global_rng jobs under a queue-wide lock, with test_two_concurrent_jobs_match_two_sequential_ones proving the lock is load-bearing. That contains the blast radius; it does not remove the call sites.",
+  "verified_ev": "pages/06_Train_and_Compare.py:17, :90 (module-scope set_global_seed), :117; utils/seed.py:14-29, 34-37"
  },
  {
   "id": "MINE-010",
@@ -385,7 +387,9 @@
   "detail": "`try: return hash((df.shape, int(pd.util.hash_pandas_object(df, index=False).sum()))) except Exception: return None` (utils/session_state.py:227-230). set_data only clears downstream results when BOTH fingerprints are non-None and differ: `elif (old_df is not None and old_fp is not None and new_fp is not None and old_fp != new_fp)` (utils/session_state.py:276-277). Nested-JSON imports are a first-class supported path (data_processor._JSON_WRAPPER_KEYS, records_key) and can leave list/dict cells; data_processor.py:211-214 already swallows the check that would flatten them (`except Exception: has_nonscalar = False`).",
   "ev": "utils/session_state.py:220-230, 266-280; data_processor.py:205-218",
   "act": "project — the DAG's dirty-check must not have a silent 'unknown → assume clean' branch; make it 'unknown → assume dirty' and disclose. WRONG-BUT-PLAUSIBLE OUTPUT: a researcher re-uploads a corrected version of the same JSON (same columns, f…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and now documented as intended rather than fixed: the docstring at :239-241 states 'Returns None when the frame contains unhashable cells - callers treat None as unknown and fall back to schema-only invalidation.' set_data at :292-293 still clears downstream results only when old_fp and new_fp are both non-None and differ, so a re-upload of a corrected nested-JSON import with the same columns keeps every stale model, metric and figure. The DAG's dirty-check must not have a silent unknown-means-clean branch; unknown must mean dirty, and must be disclosed.",
+  "verified_ev": "utils/session_state.py:236-246 (_content_fingerprint returns None), :275-276, :292-293 (the elif requires BOTH fingerprints non-None); data_processor.py has_nonscalar swallow"
  },
  {
   "id": "MINE-011",
@@ -395,7 +399,9 @@
   "detail": "Failed bootstrap fits are skipped with `except Exception: continue` (ml/feature_selection.py:252-253) without decrementing anything, then `selection_probs = selection_counts / n_bootstrap` (line 256) and `selected = [f for f, p in zip(feature_names, selection_probs) if p >= threshold]` (line 257).",
   "ev": "ml/feature_selection.py:245-258",
   "act": "engine — track n_successful and divide by it; refuse (or flag) when the success rate is low. WRONG-BUT-PLAUSIBLE OUTPUT: on a wide matrix where half the Lasso fits fail to converge, every feature's selection probability is halved, nothing c…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Failed bootstrap fits are still skipped with a bare 'except Exception: continue' that decrements nothing, and the probability is still counts / n_bootstrap rather than counts / n_successful. Nothing records the failure count either: details at :260-265 reports n_bootstrap - the number ATTEMPTED - and the description string at :273-274 states it as 'across {n_bootstrap} subsamples'. So on a wide matrix where half the Lasso fits fail to converge, every probability is halved, the threshold quietly selects nothing, and the app asserts a subsample count it did not achieve.",
+  "verified_ev": "ml/feature_selection.py:230-258 (except Exception: continue at :252-253; selection_probs = selection_counts / n_bootstrap at :256); details at :260-265; description at :273-274"
  },
  {
   "id": "MINE-012",
@@ -405,7 +411,9 @@
   "detail": "Every session_state read in the manuscript generator is `try: import streamlit as st; ... except ImportError: pass`. Uninstalling streamlit makes the import raise ImportError, which is caught, and the guarded block is skipped entirely. Affected blocks and what they emit: line 597-620 = the entire '### Feature Engineering' section; 1171-1178 = SHAP and Bland-Altman in '### Model Interpretability'; 1220-1235 = the whole Sensitivity Analysis section; 1349-1360 = the CV-on-pre-transformed-data limitation; 1381-1392 = the feature-dropout methodology caveat; 1401-1412 = the double-transformation caveat; 1826-1834 = generate_decision_audit_trail returns '' (the whole decision appendix). Line 161 is…",
   "ev": "ml/publication.py:159-166, 212-215, 597-620, 731-737, 1171-1178, 1220-1235, 1349-1360, 1381-1392, 1401-1412, 1826-1834",
   "act": "record — thread an explicit Project/Record object into generate_methods_section (utils/workflow_provenance.get_methods_context at utils/workflow_provenance.py:479-483 already exists for exactly this: 'This replaces the 100+ scattered sessio…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: ten guarded streamlit imports remain in the manuscript generator, each written so that removing Streamlit silently drops the section it guards instead of failing. This is the governing rule inverted - the result is not a silent app but a manuscript that omits its own Feature Engineering section, its Sensitivity Analysis section, its interpretability mentions and its entire decision appendix while reading as complete. utils/workflow_provenance.get_methods_context already exists as the replacement path and nothing in publication.py uses it yet.",
+  "verified_ev": "ml/publication.py:154-166, 211-215, 596-620, 730-737, 1170-1178, 1219-1235, 1348-1360, 1380-1392, 1400-1412, 1824-1836 - ten guarded 'import streamlit as st' blocks under try/except ImportError"
  },
  {
   "id": "MINE-013",
@@ -415,7 +423,9 @@
   "detail": "BaseModelWrapper sets `self.is_fitted = False` (models/base.py:22, no trailing underscore) and RegistryModelWrapper sets `self.is_fitted = True` on fit (models/registry_wrappers.py:37); GLMWrapper, HuberGLMWrapper and RFWrapper inherit this. Only models/nn_whuber.py uses `is_fitted_` (lines 104, 126, 162, 185, 567). is_estimator_fitted checks `hasattr(estimator, 'is_fitted_')` in BOTH fallback branches (ml/estimator_utils.py:25-26, 41-42), and check_is_fitted on a non-sklearn wrapper raises TypeError, routing to the permissive branch which looks for coef_/feature_importances_/n_features_in_ on the WRAPPER (they live on the inner .model).",
   "ev": "models/base.py:22; models/registry_wrappers.py:37, 58, 64; models/nn_whuber.py:104; ml/estimator_utils.py:19-43; pages/07_Explainability.py:172",
   "act": "engine — unify on one fitted-marker and add tests; ALL of models/* is currently test-uncovered so nothing catches this. WRONG-BUT-PLAUSIBLE OUTPUT: `if estimator is None or not is_estimator_fitted(estimator): return None, None, None, None` …",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The marker divergence is real and unchanged at HEAD: BaseModelWrapper and every GLM/Huber/RF/registry wrapper set is_fitted, only nn_whuber uses is_fitted_, and is_estimator_fitted looks for is_fitted_ in all three fallback branches. But the finding's stated IMPACT is wrong at its own call site and the record should say so: pages/06:1489-1498 stores the inner sklearn estimator (model.get_model()) in fitted_estimators - or, for the NN, the sklearn adapter, which does carry is_fitted_ - so pages/07:172, the only caller of is_estimator_fitted in the repo, never sees a wrapper and never silently returns None. Kept OPEN because the hazard is latent rather than absent: trained_models DOES hold wrappers (pinned by tests/test_characterization_wrappers.py::test_trained_models_shape_is_wrappers_not_estimators), so the first consumer that asks is_estimator_fitted about a wrapper lands in the permissive coef_/n_features_in_ branch, and no test covers that path.",
+  "verified_ev": "models/base.py:22, models/glm.py:33, models/huber_glm.py:31, models/rf.py:52, models/registry_wrappers.py:38 (is_fitted) vs models/nn_whuber.py:104,155,191,243 (is_fitted_); ml/estimator_utils.py:25-26,34-35,41-42; pages/06_Train_and_Compare.py:1489-1498; pages/07_Explainability.py:172"
  },
  {
   "id": "MINE-014",
@@ -425,7 +435,9 @@
   "detail": "Page 06 stores positions, not labels: `original_indices = np.where(mask)[0]` then `st.session_state.test_indices = original_indices[...].tolist()` (pages/06_Train_and_Compare.py:383, 683-693). Page 07 reads them back as positions into a freshly-fetched frame: `raw_candidate = df_raw.iloc[test_indices]` and `y_raw = df_raw[data_config.target_col].iloc[test_indices].values` where `df_raw = get_data()` (pages/07_Explainability.py:182-198). get_data() applies cohort filtering and prefers df_engineered over filtered_data over raw_data (utils/session_state.py:194-217), so the row set it returns can differ between the two page visits.",
   "ev": "pages/06_Train_and_Compare.py:383, 683-693; pages/07_Explainability.py:182, 184, 198; utils/session_state.py:194-217",
   "act": "project — the Project must expose the test set as row LABELS with a single accessor; positional indices across page boundaries cannot survive a job queue where the frame is re-materialized. WRONG-BUT-PLAUSIBLE OUTPUT: switch cohorts (or app…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of CONTRACT-001 from the landmine pass, and the half it names is entirely unfixed. The derivation changed - pages/06:551-553 now computes positions with df.index.get_indexer(_split.train/val/test_labels) instead of np.where(mask)[0] - but the STORED artifact is still positional, and pages/07:185,196,1196 still does df_raw.iloc[test_indices] with df_raw = get_data(). get_data still applies the active cohort filter and still prefers df_engineered over filtered_data over raw_data, so the row set can differ between the Train visit and the Explain visit and the .iloc lands on different people with no error. pages/06:556-558 now also stores test_row_labels; page 07 does not read it.",
+  "verified_ev": "pages/06_Train_and_Compare.py:540-558; pages/07_Explainability.py:181-196, 1180-1196; utils/session_state.py:194-233 (get_data applies the cohort filter and prefers df_engineered over filtered_data over raw_data)"
  },
  {
   "id": "SWEEP-001",
@@ -435,7 +447,10 @@
   "detail": "938 loc, 53 st.* refs, 20 session_state refs. inject_custom_css() (:10) is pure CSS. But render_sidebar_workflow(current_page) computes the app's entire step-completion state machine inline: data_uploaded=get_data() is not None; data_configured=session_state['data_config'].target_col is not None; features_selected='feature_selection_results'; pipeline_built='preprocessing_pipeline'; models_trained=bool('trained_models'); explainability_run=len('permutation_importance')>0 or len('shap_results')>0; sensitivity_run='sensitivity_seed_results'; report_generated='report_data'; stat_validation_run='hypothesis_test_results' or len('custom_table1_tests')>0; feature_engineering_applied. It also owns t…",
   "ev": "utils/theme.py:685-745 (predicates at :746-760), imports at :693-695, :713",
   "act": "router (extract the 10 predicates + core/advanced split verbatim); view (CSS, cards, flash)",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The step-completion model is out of the stylesheet. utils/theme.py:751-764 now imports turbotab.readiness and calls assess(_state, workflow_mode) - it renders, it no longer computes - and the ten predicates plus the quick/advanced membership live in turbotab/readiness.py:53-126. The guard is two-sided, which is what makes this closeable: test_the_extracted_predicates_match_the_page compares the extracted predicates against a verbatim transcription of pre-extraction theme.py expression by expression, and test_the_page_no_longer_carries_its_own_step_model reads theme.py's source and fails if it computes any step predicate itself. test_readiness_imports_without_streamlit keeps it headless.",
+  "test": "tests/integration/test_readiness_equivalence.py::test_the_page_no_longer_carries_its_own_step_model",
+  "verified_ev": "utils/theme.py:743-764 (delegates to turbotab.readiness.assess); turbotab/readiness.py:53-126 (the ten predicates and the core/advanced split); tests/integration/test_readiness_equivalence.py:79-105, 149-151"
  },
  {
   "id": "SWEEP-002",
@@ -445,7 +460,10 @@
   "detail": "Streamlit skips hashing parameters whose name starts with '_'. compute_pca(_df_numeric, n_components=None, max_features=200) at :82, compute_umap(_df_numeric, n_neighbors=15, min_dist=0.1, max_samples=10_000, max_features=200) at :240, compute_persistence(_df_numeric, max_samples=2_000, max_features=50, homology_dimensions=(0,1)) at :337, compute_mapper(_df_numeric, n_cubes=10, overlap=0.3, max_samples=3_000, max_features=100) at :495. Every call site passes ONLY the unhashed frame: pages/02_EDA.py:1163 compute_pca(df_numeric), :1205 compute_umap(df_numeric), :1226 compute_persistence(df_numeric), :1265 compute_mapper(df_numeric). So the key reduces to the defaults — a constant. st.cache_dat…",
   "ev": "ml/macro_shape.py:82,240,337,495; pages/02_EDA.py:1163,1205,1226,1265 vs :122-124,146,169",
   "act": "engine (bodies are pure); jobs (long-running: TDA is O(n^3)) — key any memo on a real content fingerprint, never on an underscore convention",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Third sighting of one defect (T0-LIVE-001, CONTRACT-003, MINE-003), this one from the completeness sweep. All four @st.cache_data decorators are gone and ml/macro_shape.py imports no streamlit at all; memoization moved to pages/02, keyed on a fingerprint that hashes values rather than shape, so two cohort runs of one study do not collide.",
+  "test": "tests/test_macro_shape_serves_the_right_dataset.py::test_two_datasets_get_their_own_pca",
+  "verified_ev": "ml/macro_shape.py:14-17, 90, 247, 343, 500 (no decorators, no streamlit import); pages/02_EDA.py _macro_fp"
  },
  {
   "id": "SWEEP-003",
@@ -455,7 +473,9 @@
   "detail": "generate_linear_with_outliers(:17), generate_nonlinear_regression(:49), generate_imbalanced_classification(:77) each call `np.random.seed(random_state)` rather than using np.random.default_rng. get_builtin_datasets() at :105 returns the name->callable map; single importer pages/01_Upload_and_Audit.py:22. Same class: utils/seed.py:21-27 set_global_seed() sets np.random.seed + random.seed + torch.manual_seed + torch.backends.cudnn.deterministic=True/benchmark=False, and models/nn_whuber.py:314-315 does torch.manual_seed + np.random.seed. Today, one Streamlit script run at a time makes this safe. Under a Jobs worker pool it is not: a user loading a demo dataset in one job reseeds the global RNG…",
   "ev": "utils/datasets.py:17,49,77; utils/seed.py:21-27; models/nn_whuber.py:314-315",
   "act": "engine (convert all three to np.random.default_rng(random_state)); jobs (every job must carry an explicit RNG, never touch global state)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD in all three named modules: utils/datasets.py still calls np.random.seed in generate_linear_with_outliers, generate_nonlinear_regression and generate_imbalanced_classification; utils/seed.py:21-29 still sets np.random.seed + random.seed + torch.manual_seed + cudnn.deterministic; models/nn_whuber.py:372-373 still does torch.manual_seed + np.random.seed. The core does not pretend otherwise - turbotab/jobs.py:132-138 says in as many words that isolated_rng 'does not fix those call sites', it makes them harmless to neighbours by snapshot/restore plus a serialization lock for uses_global_rng jobs. So the class is contained under the new queue and unchanged under Classic, and the serialization is a real throughput cost that only converting these three modules to np.random.default_rng removes.",
+  "verified_ev": "utils/datasets.py:17, 49, 77 (np.random.seed(random_state)); utils/seed.py:21-29; models/nn_whuber.py:372-373; contrast turbotab/jobs.py:128-156, 206-215"
  },
  {
   "id": "SWEEP-004",
@@ -465,7 +485,10 @@
   "detail": "docs/FINDINGS_LEDGER.md:19-25, restated verbatim in docs/audit/RESUME.md:26-30, is the repo's governing rule: '`high` confidence is the only tier the UI pre-selects, so `high` means the app is asserting. Nothing uncertain may reach it. A confidently-wrong answer is worse than a crash, because a crash gets reported and a wrong number gets published.' A function-level inventory sees `confidence: str` on the import/join doctor results and treats it as data. It is a UI contract: the tier binds to whether the app pre-selects. The Router INHERITS this the moment it decides which question is asked next with a pre-filled answer — auto-advance IS pre-selection, so the Router may only auto-advance on …",
   "ev": "docs/FINDINGS_LEDGER.md:17-25; docs/audit/RESUME.md:24-30",
   "act": "router",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The invariant now has an enforcer and a test, which is what closes an invariant row. ml/router.py:131-142 permits a skip only at confidence == 'high' and only for a question of fact, and audit() at :389-415 RAISES on a skip that breaks the rule rather than emitting it quietly, so a run that violates Decision B has no score, it has a failure. Pinned by test_audit_rejects_a_skip_that_breaks_decision_b, with test_a_low_confidence_detection_is_always_asked and test_a_high_confidence_detection_may_be_stated_rather_than_asked covering both directions. Classic honors the same contract at its one auto-detection site: pages/01:1035-1047 downgrades below high from a success banner to 'Best guess ... please verify'. Scope: this closes the Router's inheritance of the rule, not every other pre-selection in Classic, which is register work.",
+  "test": "tests/test_router.py::test_audit_rejects_a_skip_that_breaks_decision_b",
+  "verified_ev": "ml/router.py:131-142 (_skip_is_permitted), :389-415 (audit raises); tests/test_router.py:82-115; pages/01_Upload_and_Audit.py:1029-1047"
  },
  {
   "id": "SWEEP-005",
@@ -475,7 +498,9 @@
   "detail": "docs/ARCHITECTURE_SCROLLYTELLING_BRIEF.md §8: 'The four planes advise/witness/publish in that order of authority. Never draw the Advisory plane writing directly into the Narrative plane — advice reaches the manuscript only by being acted on and thereby recorded.' Enforced concretely by the manuscript register separation (CODE_REVIEW 'Manuscript-trust wave'): Insight.manuscript_text carries reviewer-facing phrasing for every auto-generated producer so coaching voice ('a reviewer would question…', 'consider…') 'can no longer reach the Discussion verbatim, and the regex cleaner is now a fallback rather than the mechanism'. The NEW Router is precisely the component that will be tempted to short-…",
   "ev": "docs/ARCHITECTURE_SCROLLYTELLING_BRIEF.md §8; CODE_REVIEW.md 'Manuscript-trust wave' (1); utils/insight_ledger.py:580 theory_anchor / manuscript_text field",
   "act": "router (Router writes to Project and reads Record; it must have NO write path into Record)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant HOLDS at HEAD but nothing guards it, so under the no-test-no-FIXED rule it stays OPEN. ml/router.py imports only dataclasses and typing: plan() is pure, returns Question objects, and has no write path into the Record by construction. The manuscript register separation is real too - Insight.manuscript_text at utils/insight_ledger.py:573 is preferred over the coaching phrasing at :1190, pinned by test_manuscript_text_preferred_over_finding. What is missing is the guard the definition of done requires: an import-boundary test asserting ml/router.py never imports insight_ledger or workflow_provenance. test_router_imports_without_streamlit reads the source for 'streamlit' only, so a Router that grew a ledger.upsert call tomorrow would stay green.",
+  "verified_ev": "ml/router.py:52-55 (imports only dataclasses and typing - no ledger, no record, no I/O); utils/insight_ledger.py:573,582,1190; tests/test_manuscript_trust.py:42-69; tests/test_router.py:190-195"
  },
  {
   "id": "SWEEP-006",
@@ -485,7 +510,10 @@
   "detail": "ARCHITECTURE.md:182-188: save/load is a ZIP of JSON+Parquet, 'Deliberately not pickle-based: pickle files are rejected on load for security, and fitted models/pipelines are never persisted (_NEVER_PERSIST) — after restoring a session, models are re-trained by re-running Train & Compare. What round-trips: data, configuration, ledger entries, provenance records, and methodology logs.' Backed by utils/session_manager.py:60 _ACCEPTED_SCHEMA_VERSIONS={'2.0','2.1'}, :65-67 _MAX_UPLOAD_BYTES/_MAX_EXTRACTED_BYTES/_MAX_MEMBERS zip-bomb caps, :123 _SAFE_WIDGET_KEYS, :138 _NEVER_PERSIST. CODE_REVIEW verdict: 'Holds (better than documented)'. THE RISK: the AnalysisProject design already has to_dict/from…",
   "ev": "ARCHITECTURE.md:182-188; utils/session_manager.py:60,65-67,123,138",
   "act": "project (Project.to_dict must inherit _NEVER_PERSIST and the pickle refusal by construction, not by convention)",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The risk this row named - that AnalysisProject.to_dict would reinvent serialization and lose the security property - did not happen, and it is now tested rather than conventional. test_the_archive_uses_session_managers_schema pins the port rather than a redesign; test_an_archive_that_is_a_pickle_is_refused and test_an_unknown_schema_version_is_refused keep the two refusals; test_derivatives_are_not_persisted keeps _NEVER_PERSIST; and test_no_participant_data_appears_in_a_serialized_project turns 'never persist participant data' into the operational check the roadmap asked for - no cell value from the loaded frame appears anywhere in the serialized project - with test_the_guard_catches_a_leak proving that guard is not vacuous.",
+  "test": "turbotab/test_project_model.py::test_no_participant_data_appears_in_a_serialized_project",
+  "verified_ev": "turbotab/archive.py (schema ported from session_manager; pickle refused, version-gated); turbotab/project.py:571-572; turbotab/test_project_model.py:191-207, 258-283, 307-354"
  },
  {
   "id": "SWEEP-007",
@@ -495,7 +523,9 @@
   "detail": "ARCHITECTURE.md:13 and :171-174: 'session-state-only project/dataset management (nothing is persisted to disk; sessions are saved as user-downloaded archives)'. CODE_REVIEW verifies it: the SQLite layer and utils/persistence.py are dead code with no callers; session archives are built in-memory; PDF compiles in an auto-cleaned tempdir. The README caveat the reviewers raised is that 'All processing happens in your browser session' is already inaccurate for server-side Streamlit. A Jobs layer needs somewhere to park intermediate state and results between worker and web process — that is a disk write, and it is invisible to any function-level inventory because no function does it today.",
   "ev": "ARCHITECTURE.md:13,171-180; CODE_REVIEW.md 'Privacy: Nothing is written to disk' row",
   "act": "jobs (decide the persistence story explicitly and update ARCHITECTURE.md in the same commit — design principle #7)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant holds at HEAD and is unguarded, so it stays OPEN. The job queue did NOT become the violator this row predicted: turbotab/jobs.py keeps handles, results and progress in an in-process dict, writes nothing, and holds no global queue instance; the only disk write anywhere under turbotab/ outside tests is turbotab/measure.py:339, which persists the routing-baseline measurement JSON and is a developer tool, not a request path. Two things are missing: a test that fails if a job or the API starts parking intermediate state on disk, and the explicit decision the action asks for - the queue is in-process today, so 'nothing is written to disk' survives only while the worker shares the web process. Writing that down in ARCHITECTURE.md is part of closing this.",
+  "verified_ev": "turbotab/jobs.py:39 (headless, no I/O; handles and results held in an in-process dict), :159-215; turbotab/archive.py:275-278 (in-memory zip); turbotab/measure.py:339-345 (the only disk write under turbotab/ outside tests); ARCHITECTURE.md:13,171-180"
  },
  {
   "id": "SWEEP-008",
@@ -505,7 +535,9 @@
   "detail": "docs/ARCHITECTURE_SCROLLYTELLING_BRIEF.md §4A: '~15% drawn into a sealed vault… Every target-aware step (EDA, FE fits, feature selection, the coach probe) operates on train_row_mask() rows only… The vault opens exactly once, at stage 6.' CODE_REVIEW's remediation adds the laundering guard: 'An explicit, watermarked Exploratory mode preserves fast full-data screening, and toggling it in EITHER direction resets downstream results so exploratory selection can never launder into a clean manuscript.' In a single scrolling feed the user can scroll back up and change an earlier answer AFTER stage 6 has opened the vault — a page-ordered app gets 'before anyone looks' for free from navigation order; …",
   "ev": "docs/ARCHITECTURE_SCROLLYTELLING_BRIEF.md §4A; CODE_REVIEW.md remediation ('Both leakage criticals'); utils/test_lockbox.py:26,28",
   "act": "router + project (lockbox draw/open must be Project state transitions the Router gates, not an emergent property of scroll position)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Half the invariant is built and tested; the half this row actually warned about is not. Sealed-once is enforced - seal_lockbox refuses a redraw (project.py:344-349), pinned by test_the_lockbox_is_sealed_once - and the identity barrier now refuses pre-barrier repairs once sealed. But OPENED-once has no representation at all: there is no open_lockbox transition, no 'the vault has been opened' state, and therefore nothing the Router can gate on. That is exactly the scrolling-feed risk named here - a page-ordered app gets 'before anyone looks' free from navigation order and a feed does not - so it must land WITH L9's train step, not after it.",
+  "verified_ev": "turbotab/project.py:306-375 (barrier_raised, refuse_pre_barrier_fix, seal_lockbox refuses a second seal, check_sealed_rows_survive); turbotab/test_project_model.py:111-190; no open-once state anywhere in turbotab/ or utils/"
  },
  {
   "id": "SWEEP-009",
@@ -515,7 +547,9 @@
   "detail": "CODE_REVIEW 2026-07 section: applying a feature selection must clear stale pipelines/splits/models while PRESERVING the selection just made — `reset_downstream_results(clear_feature_engineering=False, clear_feature_selection=False)`, described as 'a new flag that clears stale pipelines/splits/models while preserving the selection just made.' Feature-Engineering Skip and Reset route through the same helper, and Reset must RESTORE the pre-FE selected_features list (previously it never did, leaving selection referencing engineered columns that no longer existed — the reported NHANES crash: 'Some column names are not columns of the dataframe: {meds_hbp_has_data, meds_chol_has_data}'). ARCHITECTU…",
   "ev": "CODE_REVIEW.md '2026-07 · Feature-engineering state drift' (04:440, 04:483); ARCHITECTURE.md:278",
   "act": "project (the invalidation DAG needs per-edge suppression AND a restore-previous-value path, not just cascade-clear)",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "Per-edge suppression is done and tested; the restore-previous-value path is not in the graph. turbotab/cascade.py:189-210 expresses partial invalidation as keys_to_clear(changed, keep={stages}), keys_for_reset_downstream_results maps the two clear_* flags onto it, test_the_dag_matches_the_production_cascade pins the DAG against the real function flag-combination by flag-combination, and test_keeping_a_stage_does_not_keep_its_descendants pins the subtlety this row names. WHAT REMAINS: reset_downstream_results has a THIRD parameter, restore_pre_fe_features (utils/session_state.py:312-314), which restores pre_fe_feature_cols into both selected_features and data_config.feature_cols and is the fix for the reported NHANES crash. The DAG models clearing only - it has no restore edge and keys_for_reset_downstream_results does not accept the flag - so a caller driving invalidation from the graph alone would reproduce that crash.",
+  "verified_ev": "turbotab/cascade.py:189-239 (keys_to_clear(keep=...) and keys_for_reset_downstream_results, two flags); utils/session_state.py:312-314 (the production call takes THREE flags, incl. restore_pre_fe_features); tests/integration/test_cascade_dag_equivalence.py:140-173"
  },
  {
   "id": "SWEEP-010",
