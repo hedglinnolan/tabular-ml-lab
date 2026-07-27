@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**55 of 402 closed.**
+**58 of 402 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `UNVERIFIED` | 85 |
-| `OPEN` | 235 |
-| `PARTIAL` | 27 |
-| `FIXED` | 55 |
+| `UNVERIFIED` | 70 |
+| `OPEN` | 246 |
+| `PARTIAL` | 28 |
+| `FIXED` | 58 |
 
 ---
 
-## OPEN — 235
+## OPEN — 246
 
 
-### Application state / lockbox — 58
+### Application state / lockbox — 69
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -97,6 +97,17 @@ Nothing is closed without a regression test named after it.
 | `STATE-070` | invariant | The held-out test set is drawn EXACTLY ONCE, at upload, before feature engineering, feature selection, or any target-aware EDA can see it; page 06 is the only page permitted to open it. | `pages/01 lines 1062-1081 (ensure_lockbox after target/task are fixed); utils/test_lockbox.train_row_mask()…` | The 'opened only by page 06' half is now stronger than when this was written - the applicability rule moved into make_split, so no page decides it - and the 'drawn once' half is… |
 | `STATE-072` | invariant | Once ANY result has been computed in exploratory mode, the manuscript is permanently watermarked until those results are cleared. | `pages/01 _on_exploratory_toggle (line 1111) sets exploratory_used; only…` | Duplicate of STATE-040 from the invariant pass, unchanged at HEAD, and this framing names the exact laundering path: the OR at pages/10 is correct and the stickiness it depends on… |
 | `STATE-073` | invariant | Changing the feature set, the target, OR the task type invalidates every downstream result. | `pages/01 lines 1042-1060: md5 over sorted(feature_cols) + '|target=' + target + '|task=' + task_type →…` | The invariant is implemented correctly at HEAD - the signature covers features, target and task type, and the comment records the exact bug it was added for, a target swap that… |
+| `STATE-075` | invariant | All reported metrics are on the ORIGINAL target scale, even when models train on a transformed target. | `pages/06 lines 1485-1497 (test) and 1506-1517 (train) back-transform predictions and evaluate against…` | Duplicate of MODELS-016 from the state pass, unchanged at HEAD, and its statement of the risk is the sharper one: NOTHING TYPE-CHECKS THE SCALE, so a fifth consumer that forgets… |
+| `STATE-076` | invariant | Preprocessing is fit on training rows only, and cross-validation re-fits it inside each fold. | `pages/06 line 1312 (model_pipeline.fit(X_train)) and lines 1551-1555 (ml.eval.make_cv_pipeline wraps…` | Duplicate of STATE-058 / MODELS-015 from the invariant pass, unchanged at HEAD, and this row alone flags the preview object explicitly: pages/05 fits on ALL rows including the… |
+| `STATE-077` | invariant | Model coefficients are labeled with POST-transform feature names, or omitted entirely. | `pages/10 extract_model_coefficients returns None when len(feature_names) != len(coef) (lines 220-221); the…` | The invariant is implemented as a disclosed refusal and NOTHING TESTS IT, so it stays OPEN. pages/10_Report_Export.py:216-221 returns None on a name/coefficient length mismatch… |
+| `STATE-079` | invariant | Insight IDs are a cross-page API; resolution depends on exact string equality or prefix. | `pages/02 emits 13 fixed ids and maps 5 of them in _ACTION_TO_INSIGHT_MAP (line 1418); pages/03 resolves…` | Duplicate of COACH-026 from the state pass, unchanged at HEAD, and it names one failure the other does not: a CLUSTER id derived from its first three sorted members changes… |
+| `STATE-080` | invariant | No manuscript leaves the app while pre-export validation fails, unless the user explicitly overrides. | `pages/10 lines 1958-1987: validate_manuscript_bundle → exports_blocked; every st.download_button passes…` | Duplicate of RECORD-030 / RECORD-019 from the state pass, unchanged at HEAD. The row says two artifacts slip through; the count at HEAD is four - the TRIPOD checklist, both Table… |
+| `STATE-081` | invariant | test_indices / train_indices / val_indices are POSITIONAL offsets into whatever get_data() returned at split time. | `pages/06 lines 681-693 store original_indices[...] .tolist(); pages/07 lines 185-196 and 1196 and pages/10…` | Duplicate of CONTRACT-001 / MINE-014 / STATE-025 / STATE-036 from the invariant pass, unchanged at HEAD, and it states the mechanism most precisely of the five: the stored offsets… |
+| `STATE-082` | invariant | Page 01 works on the WHOLE study; every other page works on the cohort-filtered view. | `pages/01 line 619 calls get_data(full_study=True) with a comment explaining why (the audit describes the…` | The invariant holds and is enforced by a default parameter and a comment, which is what keeps it OPEN - and SWEEP-010 records that the escape count is now THREE, not the two both… |
+| `STATE-083` | invariant | The held-out test rows are frozen ONCE, at the moment the modeling problem is defined, and every target-aware step upstream of training sees only the complement. | `utils/test_lockbox.py ensure_lockbox() called from pages/01_Upload_and_Audit.py:1074 right after the config…` | Duplicate of STATE-070 / MINE-005 / CONTRACT-017 from the invariant pass, and it names both failure modes in one sentence, which is why it is worth keeping distinct. The first is… |
+| `STATE-084` | invariant | The lockbox stores index LABELS, not positions, so membership survives feature engineering, row filtering and column subsetting. | `utils/test_lockbox.py module docstring lines 16-18; ensure_lockbox stores list(test_labels) from df.index…` | The invariant is right and all three of its named breakers are live at HEAD. index=False on save (CONTRACT-005 / MINE-002, resolved in the core at turbotab/archive.py:278 and not… |
+| `STATE-088` | invariant | Exploratory mode is explicit, never enabled by default, and every result produced under it is watermarked in the manuscript. | `utils/test_lockbox.is_exploratory():32 (`Never enabled by default`); pages/01:1116-1119…` | Duplicate of STATE-040 / STATE-041 / STATE-072 from the invariant pass, and it is the clearest statement of the pair. Clause one holds: exploratory mode is explicit and never on… |
+| `STATE-089` | invariant | A rebuild that REPLACES an existing lockbox invalidates downstream results, and the redraw is disclosed rather than silent. | `utils/test_lockbox.ensure_lockbox:226-231 — `if existing is not None and existing.get('labels') !=…` | Unchanged at HEAD, and both of the row's objections stand. The comparison is on LABEL LISTS rather than sets, so a redraw producing the same rows in a different order fires a… |
 
 ### Stage-boundary contracts — 30
 
@@ -317,7 +328,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 27
+## PARTIAL — 28
 
 
 ### Migration safety net — 5
@@ -330,6 +341,16 @@ Nothing is closed without a regression test named after it.
 | `TEST-014` | high | ALL of models/* is uncovered, and models/rf.py carries literal duplicate method definitions proving nothing exercises it | `models/rf.py:75-97 (duplicated block); models/base.py:10-76` | The coverage half is closed and the artifact it pointed at is still there. models/ is no longer untested - tests/test_characterization_wrappers.py parameterizes the base contract… |
 | `TEST-022` | high | perform_cross_validation's leakage semantics are documented in prose but only partially tested — and CV strategy is a cleared-but-unasserted key | `ml/eval.py:97-171; silent downgrade at :143-149; cv_strategy/cv_groups_train absent from all three test…` | The staleness half is closed; the fold-membership half is not. cv_strategy and cv_groups_train are no longer unasserted-on-clear - they are registered in the cascade and pinned by… |
 
+### Application state / lockbox — 5
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `STATE-009` | landmine | reset_downstream_results() does not clear preprocess_built_model_keys, preprocessing_summary, or engineered_feature_transforms, so three consumers keep describing deleted work. | `utils/session_state.py:283-416 (the function; grep it for these three keys — absent). Writers: pages/05:1011…` | One of the three keys is fixed; two are not. preprocess_built_model_keys IS now cleared at utils/session_state.py:372, which closes the worst arm of this row - the 'you are about… |
+| `STATE-014` | landmine | The 370-line split builder — the single most leakage-sensitive function in the app — lives inside a Streamlit button handler with zero unit tests, and writes its outputs through two separate… | `pages/06_Train_and_Compare.py:349-720. The split arrays are written via set_splits() at :610 or :646; the…` | Two of the three claims are closed; the third is not. The 370-line block is out of the button handler and into ml/splits.py as make_split, with SplitSpec in and an immutable Split… |
+| `STATE-066` | invariant | Every result computed from the current data is cleared when the data, target, features, or feature set changes. 'Any page that introduces a new result key must add it here.' | `utils/session_state.py:283 reset_downstream_results() (its own docstring states the rule)…` | The competing implementation is gone; the key list is still incomplete. pages/03 no longer bypasses the function - all three of its paths route through it and an AST guard fails… |
+| `STATE-074` | invariant | reset_downstream_results is the SINGLE source of truth for invalidation; every new result key must be registered there. | `utils/session_state.reset_downstream_results docstring and body (pipelines, splits, targets, models, 11…` | The 'second copy' half is closed and the 'every new key is registered' half is not. The 22-key competing cascade in pages/03 is gone - it omitted the ledger rollback, the… |
+| `STATE-087` | invariant | reset_downstream_results is the SINGLE source of truth for downstream invalidation; any page that introduces a new result key must add it there. | `utils/session_state.py:288-291 docstring; tests/test_review_fixes.py::TestDownstreamReset::test_reset_clears_e…` | Duplicate of STATE-066 / STATE-074 from the invariant pass. The first of the row's two breakages is closed - pages/03's competing 21-key cascade is gone and an AST guard fails if… |
+
 ### Completeness sweep — 4
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -338,15 +359,6 @@ Nothing is closed without a regression test named after it.
 | `SWEEP-013` | critical | INVARIANT — 'Absent is better than false': the invalidation cascade must visibly clear ALL FOUR planes, not just the data plane | `docs/ARCHITECTURE_SCROLLYTELLING_BRIEF.md §4B, §9; CODE_REVIEW.md C5; brief §0 table (InsightLedger…` | Two of the planes the row names are in the graph; the Record plane is not. Data and provenance are modeled - Stage carries provenance_sections, provenance_sections_to_clear walks… |
 | `SWEEP-015` | critical | Known test-fidelity hole exactly at the model-object boundary — the transition's safety net does not cover models/ | `CODE_REVIEW.md 'Dynamic testing summary' note; tests/integration/conftest.py:67…` | The named instance is fixed and models/ now has coverage; the fixture-fidelity hole itself is not. FIXED half: pages/08:419 now does _est_for_dropout = model_obj.get_model() if… |
 | `SWEEP-024` | high | INVARIANT — reconcile_pipeline_columns: drift must self-heal loudly, never crash cryptically; its sibling reconcile_state_with_df is imported but never called | `CODE_REVIEW.md 2026-07 'Backstop'; CODE_REVIEW.md C7; utils/reconcile.py` | The dormant-reconciler half is closed; the invariant it protects is actively broken by a different row. reconcile_state_with_df is no longer imported-but-never-called… |
-
-### Application state / lockbox — 4
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `STATE-009` | landmine | reset_downstream_results() does not clear preprocess_built_model_keys, preprocessing_summary, or engineered_feature_transforms, so three consumers keep describing deleted work. | `utils/session_state.py:283-416 (the function; grep it for these three keys — absent). Writers: pages/05:1011…` | One of the three keys is fixed; two are not. preprocess_built_model_keys IS now cleared at utils/session_state.py:372, which closes the worst arm of this row - the 'you are about… |
-| `STATE-014` | landmine | The 370-line split builder — the single most leakage-sensitive function in the app — lives inside a Streamlit button handler with zero unit tests, and writes its outputs through two separate… | `pages/06_Train_and_Compare.py:349-720. The split arrays are written via set_splits() at :610 or :646; the…` | Two of the three claims are closed; the third is not. The 370-line block is out of the button handler and into ml/splits.py as make_split, with SplitSpec in and an immutable Split… |
-| `STATE-066` | invariant | Every result computed from the current data is cleared when the data, target, features, or feature set changes. 'Any page that introduces a new result key must add it here.' | `utils/session_state.py:283 reset_downstream_results() (its own docstring states the rule)…` | The competing implementation is gone; the key list is still incomplete. pages/03 no longer bypasses the function - all three of its paths route through it and an AST guard fails… |
-| `STATE-074` | invariant | reset_downstream_results is the SINGLE source of truth for invalidation; every new result key must be registered there. | `utils/session_state.reset_downstream_results docstring and body (pipelines, splits, targets, models, 11…` | The 'second copy' half is closed and the 'every new key is registered' half is not. The 22-key competing cascade in pages/03 is gone - it omitted the ledger rollback, the… |
 
 ### Stage-boundary contracts — 4
 
@@ -389,7 +401,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## UNVERIFIED — 85
+## UNVERIFIED — 70
 
 
 ### Stage-boundary contracts — 31
@@ -428,33 +440,6 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` | engine — move verbatim; add tests before the port, not after |
 | `CONTRACT-069` | low | models/* (7 files, 1000 loc) has zero streamlit and a single stable ABC — port it first | `models/base.py:10-73; models/nn_whuber.py:226; pages/06_Train_and_Compare.py:1371-1375` | engine — port first, with characterization tests written against the current behavior before any code moves |
 
-### Application state / lockbox — 22
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `STATE-075` | invariant | All reported metrics are on the ORIGINAL target scale, even when models train on a transformed target. | `pages/06 lines 1485-1497 (test) and 1506-1517 (train) back-transform predictions and evaluate against…` | preserve |
-| `STATE-076` | invariant | Preprocessing is fit on training rows only, and cross-validation re-fits it inside each fold. | `pages/06 line 1312 (model_pipeline.fit(X_train)) and lines 1551-1555 (ml.eval.make_cv_pipeline wraps…` | preserve |
-| `STATE-077` | invariant | Model coefficients are labeled with POST-transform feature names, or omitted entirely. | `pages/10 extract_model_coefficients returns None when len(feature_names) != len(coef) (lines 220-221); the…` | preserve |
-| `STATE-078` | invariant | Applying a feature selection preserves the selection and its record while destroying everything built on the previous feature set. | `pages/04 lines 447-448 and 494-495: reset_downstream_results(clear_feature_engineering=False…` | preserve |
-| `STATE-079` | invariant | Insight IDs are a cross-page API; resolution depends on exact string equality or prefix. | `pages/02 emits 13 fixed ids and maps 5 of them in _ACTION_TO_INSIGHT_MAP (line 1418); pages/03 resolves…` | preserve |
-| `STATE-080` | invariant | No manuscript leaves the app while pre-export validation fails, unless the user explicitly overrides. | `pages/10 lines 1958-1987: validate_manuscript_bundle → exports_blocked; every st.download_button passes…` | preserve |
-| `STATE-081` | invariant | test_indices / train_indices / val_indices are POSITIONAL offsets into whatever get_data() returned at split time. | `pages/06 lines 681-693 store original_indices[...] .tolist(); pages/07 lines 185-196 and 1196 and pages/10…` | preserve |
-| `STATE-082` | invariant | Page 01 works on the WHOLE study; every other page works on the cohort-filtered view. | `pages/01 line 619 calls get_data(full_study=True) with a comment explaining why (the audit describes the…` | preserve |
-| `STATE-083` | invariant | The held-out test rows are frozen ONCE, at the moment the modeling problem is defined, and every target-aware step upstream of training sees only the complement. | `utils/test_lockbox.py ensure_lockbox() called from pages/01_Upload_and_Audit.py:1074 right after the config…` | preserve |
-| `STATE-084` | invariant | The lockbox stores index LABELS, not positions, so membership survives feature engineering, row filtering and column subsetting. | `utils/test_lockbox.py module docstring lines 16-18; ensure_lockbox stores list(test_labels) from df.index…` | preserve |
-| `STATE-085` | invariant | When two runs analyze different cohorts, the lockbox is drawn BEFORE the filter, so every cohort inherits its slice of one split. | `utils/cohorts.py module docstring invariant #1; pages/01 draws it from get_data(full_study=True)…` | preserve |
-| `STATE-086` | invariant | A cohort switch throws away every model, split, pipeline and figure — decisions replay, fits do not. | `utils/cohorts.py docstring invariant #2; utils/cohort_ui.py:_switch_to and :_advance_to both call…` | preserve |
-| `STATE-087` | invariant | reset_downstream_results is the SINGLE source of truth for downstream invalidation; any page that introduces a new result key must add it there. | `utils/session_state.py:288-291 docstring; tests/test_review_fixes.py::TestDownstreamReset::test_reset_clears_e…` | preserve |
-| `STATE-088` | invariant | Exploratory mode is explicit, never enabled by default, and every result produced under it is watermarked in the manuscript. | `utils/test_lockbox.is_exploratory():32 (`Never enabled by default`); pages/01:1116-1119…` | preserve |
-| `STATE-089` | invariant | A rebuild that REPLACES an existing lockbox invalidates downstream results, and the redraw is disclosed rather than silent. | `utils/test_lockbox.ensure_lockbox:226-231 — `if existing is not None and existing.get('labels') !=…` | preserve |
-| `STATE-090` | invariant | Repeated measures split by SUBJECT, not by row — the same person must never appear in both training and the sealed test set. | `utils/test_lockbox.detect_repeated_subjects + ensure_lockbox:130-133 (auto-detect only when the caller named…` | preserve |
-| `STATE-091` | invariant | Stratification is decided AFTER the grouped attempt resolves, so a group column with too few subjects still yields a stratified split. | `utils/test_lockbox.py:193-210 with an explicit six-line comment naming the bug this ordering fixed. Test…` | preserve |
-| `STATE-092` | invariant | Session files never carry executable content: no pickle, joblib, dill or cloudpickle is ever loaded from user input; trained models and pipelines are regenerated, not deserialized. | `utils/session_manager.py module docstring lines 4-16; _NEVER_PERSIST (all fitted objects)…` | preserve |
-| `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | preserve |
-| `STATE-094` | invariant | An invalidated resolution is rolled back (the finding survives, the claim does not), and an auto-generated insight whose producer will re-detect is deleted outright — absent is better than false. | `utils/session_state.py:389-410 + InsightLedger.rollback_resolutions / prune_auto_generated. Tests…` | preserve |
-| `STATE-095` | invariant | set_data distinguishes three cases: schema change (full reset), same-schema content change (results cleared, config kept), identical content (no-op) — because page 01 re-sets the same working table… | `utils/session_state.set_data:266-280 with the _raw_data_fingerprint comparison. Tests…` | preserve |
-| `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | preserve |
-
 ### Silent-failure landmines — 13
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -490,6 +475,18 @@ Nothing is closed without a regression test named after it.
 | `SWEEP-038` | low | launcher/make_icon.py — 175 loc build-time asset generator, not app code; its docstring is the product's identity statement | `launcher/make_icon.py:1-13; .gitignore ('One-click launcher artifacts'); .github/workflows/release.yml` | drop (from the app); keep as a build script |
 | `SWEEP-039` | low | ml/__init__.py, utils/__init__.py, pages/__init__.py — one-line docstrings, no re-exports, no side effects | `ml/__init__.py:1; utils/__init__.py:1; pages/__init__.py:1` | engine (ml, utils); drop (pages) |
 
+### Application state / lockbox — 7
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `STATE-090` | invariant | Repeated measures split by SUBJECT, not by row — the same person must never appear in both training and the sealed test set. | `utils/test_lockbox.detect_repeated_subjects + ensure_lockbox:130-133 (auto-detect only when the caller named…` | preserve |
+| `STATE-091` | invariant | Stratification is decided AFTER the grouped attempt resolves, so a group column with too few subjects still yields a stratified split. | `utils/test_lockbox.py:193-210 with an explicit six-line comment naming the bug this ordering fixed. Test…` | preserve |
+| `STATE-092` | invariant | Session files never carry executable content: no pickle, joblib, dill or cloudpickle is ever loaded from user input; trained models and pipelines are regenerated, not deserialized. | `utils/session_manager.py module docstring lines 4-16; _NEVER_PERSIST (all fitted objects)…` | preserve |
+| `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | preserve |
+| `STATE-094` | invariant | An invalidated resolution is rolled back (the finding survives, the claim does not), and an auto-generated insight whose producer will re-detect is deleted outright — absent is better than false. | `utils/session_state.py:389-410 + InsightLedger.rollback_resolutions / prune_auto_generated. Tests…` | preserve |
+| `STATE-095` | invariant | set_data distinguishes three cases: schema change (full reset), same-schema content change (results cleared, config kept), identical content (no-op) — because page 01 re-sets the same working table… | `utils/session_state.set_data:266-280 with the _raw_data_fingerprint comparison. Tests…` | preserve |
+| `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | preserve |
+
 ### Migration safety net — 7
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -504,8 +501,28 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 55
+## FIXED — 58
 
+
+### Application state / lockbox — 15
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `STATE-001` | landmine | apply_plausibility_filter calls reset_index(drop=True), and its output becomes the app's active dataframe — which silently voids the test lockbox for every downstream step. | `ml/pipeline.py:124 `return df.loc[mask].reset_index(drop=True)` -> pages/05_Preprocess.py:863…` | **test:** `tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given` — Closed, and closed at the source rather than at the consumer.… |
+| `STATE-006` | landmine | pages/03_Feature_Engineering.py hand-rolls its own cascade invalidation instead of calling reset_downstream_results(), and the copy has drifted. | `pages/03_Feature_Engineering.py:1229-1252 (the block after `st.session_state['engineered_feature_transforms']…` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_page_03_no_longer_hand_rolls_its_own_cascade` — Duplicate of CONTRACT-002 from the state pass, and closed the… |
+| `STATE-032` | landmine | Training cancellation does not cancel anything. | `pages/06_Train_and_Compare.py lines 1251-1266: `st.session_state.cancel_training` is initialized, and a '🛑…` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Duplicate of T0-LIVE-002 / MODELS-005 from the state pass, and closed the same way: by… |
+| `STATE-039` | landmine | pages/03_Feature_Engineering.py's Save button hand-rolls a cascade clear instead of calling reset_downstream_results, and the two have drifted. | `pages/03_Feature_Engineering.py:1229-1250 (21 keys) vs utils/session_state.py:283-415 (~60 keys + provenance…` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_page_03_no_longer_hand_rolls_its_own_cascade` — Third sighting of the same defect (CONTRACT-002, STATE-006), and… |
+| `STATE-042` | landmine | session_manager's lockbox serialization is LOSSY (7 of 10 fields) while preserving the signature that suppresses a redraw. | `utils/session_manager.py:298-306 encodes only labels/fraction/seed/n_total/n_test/signature/stratified…` | **test:** `tests/test_state_survives_the_round_trip.py::test_a_restored_lockbox_still_knows_it_was_drawn_by_subject` — Closed. The serialization is no longer lossy in the way this… |
+| `STATE-055` | landmine | cohort_runs_done is not persisted, and completed_runs() filters on isinstance(r, CohortRun). | `utils/cohorts.py:462-465 and :488; utils/session_manager.py — cohort_runs_done appears in no bucket, so it is…` | **test:** `tests/test_session_carries_the_run.py::test_the_banked_comparison_comes_back` — Closed. cohort_runs_done is persisted and restored as reconstructed CohortRun OBJECTS… |
+| `STATE-057` | invariant | Every selected model has its OWN preprocessing pipeline. Two models must be able to receive genuinely different transformed matrices from the same raw data. | `tests/workflow/test_per_model_pipelines.py::TestPerModelPipelineConfigs::test_ridge_and_rf_get_different_train…` | **test:** `tests/workflow/test_per_model_pipelines.py::TestPipelineTrainingIntegration::test_ridge_and_rf_get_different_training_data` — The differentiator is intact on both sides… |
+| `STATE-060` | invariant | The CV fold scheme matches the split's leakage semantics: group split -> GroupKFold/StratifiedGroupKFold, time split -> TimeSeriesSplit, else KFold/StratifiedKFold. | `pages/06:496,507,528 set st.session_state['cv_strategy'] and ['cv_groups_train'] at split time…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_grouped_split_matches_the_page` — Both halves closed. The fold scheme is no longer a parallel field that… |
+| `STATE-062` | invariant | The lockbox test set is drawn once, before feature engineering/selection, and is THE test set at Train & Compare — the split only divides the remaining rows. | `utils/test_lockbox.py module docstring (lines 4-17); pages/06:552-582 (the `elif _lockbox_applicable:`…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page` — The invariant moved into the engine, which is what makes it closeable.… |
+| `STATE-063` | invariant | Target trimming thresholds are computed from TRAINING rows only, and test rows are never trimmed away. | `pages/06:420-425: `_trim_basis = y[~is_test_row] if _lockbox_applicable else y` and `trim_mask = trim_mask |…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page` — The invariant is now engine code with its rationale beside it, rather… |
+| `STATE-067` | invariant | Fitted sklearn objects are never persisted; pipelines are derived artifacts rebuilt from config. | `utils/session_manager.py:138-162 _NEVER_PERSIST explicitly lists preprocessing_pipeline…` | **test:** `turbotab/test_project_model.py::test_derivatives_are_not_persisted` — The invariant holds on both sides of the migration and the core has a test for it. The allow-list… |
+| `STATE-071` | invariant | Group-based and time-based splits BYPASS the lockbox and must say so out loud. | `pages/06 lines 395-404 (two 🔓 st.warning blocks) and lines 250-254 (caption when the slider is not…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_branch_priority_is_group_then_time_then_lockbox` — Closed in the way that makes it survive a view rewrite… |
+| `STATE-078` | invariant | Applying a feature selection preserves the selection and its record while destroying everything built on the previous feature set. | `pages/04 lines 447-448 and 494-495: reset_downstream_results(clear_feature_engineering=False…` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_keeping_a_stage_does_not_keep_its_descendants` — The asymmetry is preserved and now has a test that asserts the… |
+| `STATE-085` | invariant | When two runs analyze different cohorts, the lockbox is drawn BEFORE the filter, so every cohort inherits its slice of one split. | `utils/cohorts.py module docstring invariant #1; pages/01 draws it from get_data(full_study=True)…` | **test:** `tests/test_cohort_lockbox_invariant.py::test_engineering_inside_a_run_cannot_redraw_the_lockbox` — The invariant is implemented and the test file exists for this… |
+| `STATE-086` | invariant | A cohort switch throws away every model, split, pipeline and figure — decisions replay, fits do not. | `utils/cohorts.py docstring invariant #2; utils/cohort_ui.py:_switch_to and :_advance_to both call…` | **test:** `tests/test_cohort_runs.py` — Both cohort entry points reset, and they do more than the invariant strictly requires, which is the healthy sign: each also pops… |
 
 ### Verified against main — 14
 
@@ -525,23 +542,6 @@ Nothing is closed without a regression test named after it.
 | `T0-ROUTE-001` | high | A blocker-severity finding (eda_leakage) is offered as pull, not pushed — a blocker that only offers is not gating | `docs/turbotab/data/register.json explore-eda-leakage-col; pages/02_EDA.py:279 (Classic's blocker)…` | **test:** `tests/test_router.py::test_a_leaking_column_is_pushed_not_offered` — Built as its own slice before Loop 1, with the fourth dataset's Classic baseline measured first and… |
 | `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |
-
-### Application state / lockbox — 12
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `STATE-001` | landmine | apply_plausibility_filter calls reset_index(drop=True), and its output becomes the app's active dataframe — which silently voids the test lockbox for every downstream step. | `ml/pipeline.py:124 `return df.loc[mask].reset_index(drop=True)` -> pages/05_Preprocess.py:863…` | **test:** `tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given` — Closed, and closed at the source rather than at the consumer.… |
-| `STATE-006` | landmine | pages/03_Feature_Engineering.py hand-rolls its own cascade invalidation instead of calling reset_downstream_results(), and the copy has drifted. | `pages/03_Feature_Engineering.py:1229-1252 (the block after `st.session_state['engineered_feature_transforms']…` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_page_03_no_longer_hand_rolls_its_own_cascade` — Duplicate of CONTRACT-002 from the state pass, and closed the… |
-| `STATE-032` | landmine | Training cancellation does not cancel anything. | `pages/06_Train_and_Compare.py lines 1251-1266: `st.session_state.cancel_training` is initialized, and a '🛑…` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Duplicate of T0-LIVE-002 / MODELS-005 from the state pass, and closed the same way: by… |
-| `STATE-039` | landmine | pages/03_Feature_Engineering.py's Save button hand-rolls a cascade clear instead of calling reset_downstream_results, and the two have drifted. | `pages/03_Feature_Engineering.py:1229-1250 (21 keys) vs utils/session_state.py:283-415 (~60 keys + provenance…` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_page_03_no_longer_hand_rolls_its_own_cascade` — Third sighting of the same defect (CONTRACT-002, STATE-006), and… |
-| `STATE-042` | landmine | session_manager's lockbox serialization is LOSSY (7 of 10 fields) while preserving the signature that suppresses a redraw. | `utils/session_manager.py:298-306 encodes only labels/fraction/seed/n_total/n_test/signature/stratified…` | **test:** `tests/test_state_survives_the_round_trip.py::test_a_restored_lockbox_still_knows_it_was_drawn_by_subject` — Closed. The serialization is no longer lossy in the way this… |
-| `STATE-055` | landmine | cohort_runs_done is not persisted, and completed_runs() filters on isinstance(r, CohortRun). | `utils/cohorts.py:462-465 and :488; utils/session_manager.py — cohort_runs_done appears in no bucket, so it is…` | **test:** `tests/test_session_carries_the_run.py::test_the_banked_comparison_comes_back` — Closed. cohort_runs_done is persisted and restored as reconstructed CohortRun OBJECTS… |
-| `STATE-057` | invariant | Every selected model has its OWN preprocessing pipeline. Two models must be able to receive genuinely different transformed matrices from the same raw data. | `tests/workflow/test_per_model_pipelines.py::TestPerModelPipelineConfigs::test_ridge_and_rf_get_different_train…` | **test:** `tests/workflow/test_per_model_pipelines.py::TestPipelineTrainingIntegration::test_ridge_and_rf_get_different_training_data` — The differentiator is intact on both sides… |
-| `STATE-060` | invariant | The CV fold scheme matches the split's leakage semantics: group split -> GroupKFold/StratifiedGroupKFold, time split -> TimeSeriesSplit, else KFold/StratifiedKFold. | `pages/06:496,507,528 set st.session_state['cv_strategy'] and ['cv_groups_train'] at split time…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_grouped_split_matches_the_page` — Both halves closed. The fold scheme is no longer a parallel field that… |
-| `STATE-062` | invariant | The lockbox test set is drawn once, before feature engineering/selection, and is THE test set at Train & Compare — the split only divides the remaining rows. | `utils/test_lockbox.py module docstring (lines 4-17); pages/06:552-582 (the `elif _lockbox_applicable:`…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page` — The invariant moved into the engine, which is what makes it closeable.… |
-| `STATE-063` | invariant | Target trimming thresholds are computed from TRAINING rows only, and test rows are never trimmed away. | `pages/06:420-425: `_trim_basis = y[~is_test_row] if _lockbox_applicable else y` and `trim_mask = trim_mask |…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page` — The invariant is now engine code with its rationale beside it, rather… |
-| `STATE-067` | invariant | Fitted sklearn objects are never persisted; pipelines are derived artifacts rebuilt from config. | `utils/session_manager.py:138-162 _NEVER_PERSIST explicitly lists preprocessing_pipeline…` | **test:** `turbotab/test_project_model.py::test_derivatives_are_not_persisted` — The invariant holds on both sides of the migration and the core has a test for it. The allow-list… |
-| `STATE-071` | invariant | Group-based and time-based splits BYPASS the lockbox and must say so out loud. | `pages/06 lines 395-404 (two 🔓 st.warning blocks) and lines 250-254 (caption when the slider is not…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_branch_priority_is_group_then_time_then_lockbox` — Closed in the way that makes it survive a view rewrite… |
 
 ### Completeness sweep — 8
 

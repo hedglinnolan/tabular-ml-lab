@@ -3653,7 +3653,9 @@
   "detail": "A fifth consumer of predictions forgets to invert. Nothing type-checks the scale — the number just changes.",
   "ev": "pages/06 lines 1485-1497 (test) and 1506-1517 (train) back-transform predictions and evaluate against y_*_original; lines 2109-2118 force baselines onto the original scale; pages/08 lines 178-187 and 400-405 repeat it; a banner at 06:760-77…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of MODELS-016 from the state pass, unchanged at HEAD, and its statement of the risk is the sharper one: NOTHING TYPE-CHECKS THE SCALE, so a fifth consumer that forgets to invert does not fail - the number just changes, downward, and a smaller RMSE reads as a better model. Four consumers currently remember. CONTRACT-027 (the string-or-object transformer union, branched at four sites) and CONTRACT-028 (the .get default that substitutes the transformed target) are the two cheap routes to a fifth mistake. A test that trains under a transform and asserts a reported metric's magnitude against the original-scale expectation closes this row, MODELS-016 and half of CONTRACT-028.",
+  "verified_ev": "pages/06_Train_and_Compare.py:1391-1420 (test and train predictions back-transformed and scored against y_*_original), :2043 (baselines forced onto the original scale); pages/08_Sensitivity_Analysis.py:400-405 repeats it; no test asserts the scale of any reported metric"
  },
  {
   "id": "STATE-076",
@@ -3663,7 +3665,9 @@
   "detail": "CV is handed the pre-transformed matrix — the comment at 06:1551-1554 records this exact prior bug, which optimistically biased every CV score. NOTE pages/05 lines 945 and 999 fit the preview pipeline on X_sample = df[all_features] (ALL rows, including sealed test rows) — that fitted object is a preview only and must never be reused for training.",
   "ev": "pages/06 line 1312 (model_pipeline.fit(X_train)) and lines 1551-1555 (ml.eval.make_cv_pipeline wraps preprocessing + estimator so CV re-fits per fold); pages/08 lines 161-166 and 448-452 clone-and-refit per seed/ablation.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of STATE-058 / MODELS-015 from the invariant pass, unchanged at HEAD, and this row alone flags the preview object explicitly: pages/05 fits on ALL rows including the sealed ones, and that fitted object 'is a preview only and must never be reused for training'. It is reused - not for training, but for the CSV download and for the exported joblib (STATE-004 / CONTRACT-018), so the lockbox leaks through a download button and the reproducibility artifact a reviewer loads is not the transform the published model saw. The training path itself is correct and unguarded: make_cv_pipeline has three references in the repo, all production, so no test would catch a caller passing the pre-transformed matrix (MODELS-015).",
+  "verified_ev": "pages/06_Train_and_Compare.py:1310-1315 (model_pipeline.fit(X_train), then transform on val and test) and :1437-1460 (make_cv_pipeline wrapping preprocessing + estimator so CV refits per fold); pages/08 clones and refits per seed and per ablation; against that, pages/05_Preprocess.py:898-901 and :979/:1033 fit the preview pipeline on X_sample = the FULL frame"
  },
  {
   "id": "STATE-077",
@@ -3673,7 +3677,9 @@
   "detail": "A caller passes raw column names of the same length as the coefficient vector — then PCA components get labeled with clinical variable names and no check fires.",
   "ev": "pages/10 extract_model_coefficients returns None when len(feature_names) != len(coef) (lines 220-221); the caller passes feature_names_by_model[model_key] and prints an explicit '_Coefficient table omitted…mislabeled coefficients are worse …",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant is implemented as a disclosed refusal and NOTHING TESTS IT, so it stays OPEN. pages/10_Report_Export.py:216-221 returns None on a name/coefficient length mismatch, with the reasoning beside it - the names would be from the wrong space (raw versus post-transform) and positional truncation would attach real variable names to the wrong coefficients - and :1409 prints an explicit line telling the reader the table was omitted and why. That is the governing rule done properly: silent is allowed, refusing is allowed, asserting a false label is not. But a repo-wide grep for extract_model_coefficients across tests/ returns nothing, so the guard could be relaxed to a zip-and-truncate by anyone who found the omission annoying, and the suite would stay green. SEPARATE residual: the guard is a LENGTH check, so raw column names that happen to match the coefficient count still mislabel - and CONTRACT-030's three-tier feature-name fallback can produce exactly that.",
+  "verified_ev": "pages/10_Report_Export.py:216-221 - the length check with its comment ('A name/coefficient count mismatch means the names are from the wrong space (raw vs post-transform); positional truncation would attach real variable names to the wrong coefficients') returning None; :1409 prints the explicit omission line to the reader"
  },
  {
   "id": "STATE-078",
@@ -3683,7 +3689,10 @@
   "detail": "Either flag defaults back to True — the page then erases the result it just produced, or silently keeps stale pipelines that name dropped columns.",
   "ev": "pages/04 lines 447-448 and 494-495: reset_downstream_results(clear_feature_engineering=False, clear_feature_selection=False).",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The asymmetry is preserved and now has a test that asserts the property rather than the call: test_keeping_a_stage_does_not_keep_its_descendants checks that keeping feature_selection keeps feature_selection_results and consensus_features while still clearing preprocessing_pipeline, X_train and trained_models - which is precisely the behavior both failure directions in this row would break. Its docstring states the point: 'Feature Selection applying a new selection keeps the selection and drops everything built on the old feature set. That asymmetry is the point.' The DAG expresses it declaratively, so the Guided door inherits it rather than reimplementing it.",
+  "test": "tests/integration/test_cascade_dag_equivalence.py::test_keeping_a_stage_does_not_keep_its_descendants",
+  "verified_ev": "pages/04_Feature_Selection.py:448 and :495 - reset_downstream_results(clear_feature_engineering=False, clear_feature_selection=False) at both apply sites; turbotab/cascade.py:189-210 expresses the same asymmetry as keys_to_clear(keep={'feature_selection'})"
  },
  {
   "id": "STATE-079",
@@ -3693,7 +3702,9 @@
   "detail": "An id is renamed, or a cluster id changes because its first three sorted members changed (02:304), or a page resolves an id that no page emits. All failures are silent no-ops.",
   "ev": "pages/02 emits 13 fixed ids and maps 5 of them in _ACTION_TO_INSIGHT_MAP (line 1418); pages/03 resolves 'eda_skew_group' (line 493); pages/05 resolves eda_missing_severe, eda_missing_moderate, eda_sufficiency_* and eda_skew_group (lines 113…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of COACH-026 from the state pass, unchanged at HEAD, and it names one failure the other does not: a CLUSTER id derived from its first three sorted members changes identity when the cluster's membership changes, so a resolution earned against a collinearity cluster silently stops applying when one variable enters or leaves it. Every failure in this family is a silent no-op - a resolve() that matches nothing returns False and nobody checks. SWEEP-014 closed the total-collapse case with the scanner's floors; a partial narrowing (60 produced ids to 35) still passes every floor, and a per-id drift like the cluster case is invisible to a count-based guard entirely.",
+  "verified_ev": "utils/insight_ledger.py:670-709 (add and upsert both match on exact id equality); tests/test_insight_id_integrity.py is the only cross-file guard, and it keys on a constructor name ending in 'Insight', the literal name _ACTION_TO_INSIGHT_MAP, and a receiver containing the substring 'ledger'; pages/02_EDA.py builds a cluster id from its first sorted members"
  },
  {
   "id": "STATE-080",
@@ -3703,7 +3714,9 @@
   "detail": "A new download button is added without the disabled flag. Two already slip through by design — the TRIPOD checklist (line 1907) and the Evidence Map (line 2097).",
   "ev": "pages/10 lines 1958-1987: validate_manuscript_bundle → exports_blocked; every st.download_button passes disabled=exports_blocked (ZIP, report.md, metrics.csv, .tex, .pdf, methods_section.md).",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of RECORD-030 / RECORD-019 from the state pass, unchanged at HEAD. The row says two artifacts slip through; the count at HEAD is four - the TRIPOD checklist, both Table 1 exports, the evidence map and the flow diagram. The evidence map is the pointed one, because it is the artifact that certifies the draft and it downloads when the draft will not; and the LaTeX Supplementary tells reviewers to consult the exported TRIPOD checklist, which is one of the four. A gate four buttons route around is not a gate. Build the package from one manifest and read the flag from the manifest rather than per button, which also closes RECORD-019's omission half.",
+  "verified_ev": "pages/10_Report_Export.py computes exports_blocked and applies it as disabled= on the ZIP, report.md, metrics.csv, manuscript.tex, manuscript.pdf, the PDF preview and methods_section.md; tripod_checklist.csv, table1_final.csv/.tex, evidence_map.md and flow_diagram.mmd carry no such flag"
  },
  {
   "id": "STATE-081",
@@ -3713,7 +3726,9 @@
   "detail": "get_data()'s precedence result changes after the split — and it can: df_engineered > filtered_data > raw_data, then cohort filtering (utils/session_state.get_data lines 194-219). pages/05 sets filtered_data whenever any model enables plausibility 'filter' mode (line 863). Row identity is then silently scrambled.",
   "ev": "pages/06 lines 681-693 store original_indices[...] .tolist(); pages/07 lines 185-196 and 1196 and pages/10 consume them via df_raw.iloc[test_indices].",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of CONTRACT-001 / MINE-014 / STATE-025 / STATE-036 from the invariant pass, unchanged at HEAD, and it states the mechanism most precisely of the five: the stored offsets are positional into WHATEVER get_data() returned at split time, and get_data's answer is not stable - the precedence chain can change (page 05 writing filtered_data mid-analysis) and the cohort filter can start or clear. So the identity of row N is a function of when you ask. The split now reports labels and pages/06 stores them; nothing reads them. Until page 07 selects by label, every one of these five rows stays open together.",
+  "verified_ev": "pages/06_Train_and_Compare.py:551-553 (positions derived from labels via get_indexer) and :556-558 (labels stored, unread); pages/07_Explainability.py:185,196,1196 (df_raw.iloc[test_indices] against a fresh get_data()); utils/session_state.py:196-233 (df_engineered > filtered_data > raw_data, then the cohort filter); pages/05_Preprocess.py:863 writes filtered_data"
  },
  {
   "id": "STATE-082",
@@ -3723,7 +3738,9 @@
   "detail": "Page 01 loses the full_study flag — the lockbox then covers only the active cohort and the two runs are no longer the same question asked of different people.",
   "ev": "pages/01 line 619 calls get_data(full_study=True) with a comment explaining why (the audit describes the data, the lockbox spans all groups, and target/features are fixed across runs); all other pages call plain get_data().",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant holds and is enforced by a default parameter and a comment, which is what keeps it OPEN - and SWEEP-010 records that the escape count is now THREE, not the two both the invariant and turbotab/project.py:418 state. Nothing enumerates the permitted callers, so a fourth escape is a one-word change nobody reviews. The consequence the row names is the right one to weigh: page 01 losing full_study=True would draw the lockbox over the active cohort only, and the two runs would stop being the same question asked of different people - which is the entire premise of cohort runs. Two distinct named accessors, as turbotab/project.py already has (df and working_table), remove the class.",
+  "verified_ev": "pages/01_Upload_and_Audit.py:651 - df = get_data(full_study=True), with the comment explaining why; utils/cohort_ui.py:371 and utils/test_lockbox.py:487 are the other two production escapes; turbotab/project.py:418 still documents 'exactly two'"
  },
  {
   "id": "STATE-083",
@@ -3733,7 +3750,9 @@
   "detail": "Any new target-aware step is added without a train_row_mask() call, or train_row_mask is rewritten to read the lockbox from a default-None argument — a missing lockbox and 'everything is training data' are the same return value today (pd.Series(True, index=index)).",
   "ev": "utils/test_lockbox.py ensure_lockbox() called from pages/01_Upload_and_Audit.py:1074 right after the config save; train_row_mask() consumed at pages/03:637,775,910,954 (FE fits), pages/04:126-128 (selection), pages/05:220-222 (coach probe),…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of STATE-070 / MINE-005 / CONTRACT-017 from the invariant pass, and it names both failure modes in one sentence, which is why it is worth keeping distinct. The first is live: pages/02 is a target-aware step with no train_row_mask call, so the EDA views, the profile that drives the coach, and quick_probe_baselines all see sealed rows. The second is the design flaw that makes the first invisible: an absent lockbox returns all-True rather than raising, so 'no quarantine exists' and 'everything is legitimately training data' are indistinguishable to every caller. One renamed session key during the Project move disables the methodological spine silently. Absence must be a rendered, refusable state.",
+  "verified_ev": "utils/test_lockbox.py:461-472 (train_row_mask returns pd.Series(True, index=index) when the lockbox is absent - a missing lockbox and 'everything is training data' are the same value); gating present at pages/03 (four fits), pages/04:128, pages/05:222; ABSENT from pages/02_EDA.py"
  },
  {
   "id": "STATE-084",
@@ -3743,7 +3762,9 @@
   "detail": "A frame is round-tripped through parquet with index=False (utils/persistence.save_dataframe, session_manager._df_to_parquet_bytes both do this), or labels are coerced to str on save (session_manager._plain_label), or downstream code stores positions instead (pages/06:683-693 already does).",
   "ev": "utils/test_lockbox.py module docstring lines 16-18; ensure_lockbox stores list(test_labels) from df.index; train_row_mask does `lbl not in test_set` over the passed index; utils/session_state.set_data:249-253 resets a non-unique index BEFOR…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant is right and all three of its named breakers are live at HEAD. index=False on save (CONTRACT-005 / MINE-002, resolved in the core at turbotab/archive.py:278 and not in Classic); the str() coercion in _plain_label, which makes a float or datetime index restore to labels matching nothing while train_row_mask returns all-True (STATE-043); and downstream code storing positions (CONTRACT-001). Note utils/persistence.py has the same index=False pattern and is dead code, so it is a trap for a future reader rather than a live defect. The invariant survives in the core - turbotab/archive.py writes index=True with a comment naming row identity as the reason - which is the model for the Classic fix.",
+  "verified_ev": "utils/test_lockbox.py:7 and :423 (labels stored from df.index), :461-472 (membership by label); utils/session_manager.py:171 still writes to_parquet(index=False) and :309-317 still coerces non-int labels through str(x); pages/06_Train_and_Compare.py:551-553 still stores positions"
  },
  {
   "id": "STATE-085",
@@ -3753,7 +3774,10 @@
   "detail": "ensure_lockbox is ever called with a cohort-filtered frame (i.e. get_data() without full_study=True), or the cohort is started before the config save.",
   "ev": "utils/cohorts.py module docstring invariant #1; pages/01 draws it from get_data(full_study=True); utils/session_state.get_data applies the cohort AFTER the precedence chain; cohorts.record_run computes n_test as |cohort ∩ lockbox|. Test: te…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The invariant is implemented and the test file exists for this specific property, which is unusual and right - one lockbox drawn before the filter, every cohort inheriting its slice. The three tests cover the three ways it could break: engineering inside a run must not trigger a redraw, the second cohort must still be reachable afterwards, and a redraw attempted mid-run must be REFUSED AND DISCLOSED rather than silently allowed or silently ignored. That last one is the shape the rest of this ledger keeps asking for. NOTE the adjacent hazard that is NOT closed by this row: once feature engineering exists, full_study=True does not escape the df_engineered preference, so the lockbox is validated against the engineered frame (STATE-049).",
+  "test": "tests/test_cohort_lockbox_invariant.py::test_engineering_inside_a_run_cannot_redraw_the_lockbox",
+  "verified_ev": "utils/cohorts.py module docstring invariant 1; pages/01_Upload_and_Audit.py:651 draws from get_data(full_study=True); utils/session_state.py applies the cohort AFTER the precedence chain; cohorts.record_run computes n_test as the intersection of the cohort with the lockbox; tests/test_cohort_lockbox_invariant.py:28, 51, 61"
  },
  {
   "id": "STATE-086",
@@ -3763,7 +3787,10 @@
   "detail": "A new cohort entry point is added that calls start_cohort() without the reset — carrying a scaler or imputer across cohorts is leakage that produces an irreproducible result.",
   "ev": "utils/cohorts.py docstring invariant #2; utils/cohort_ui.py:_switch_to and :_advance_to both call reset_downstream_results(clear_feature_engineering=True) immediately after start_cohort/clear_cohort.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Both cohort entry points reset, and they do more than the invariant strictly requires, which is the healthy sign: each also pops filtered_data - a row subset of the PREVIOUS cohort, with a comment saying so - and stages decisions for replay so the user's CHOICES survive while their FITS do not. That is the invariant stated precisely: decisions replay, fits do not. Carrying a scaler or imputer across cohorts would be leakage producing an irreproducible result, and neither path can do it. The risk the row names remains real and is a review rule rather than a code fix: a third entry point that calls start_cohort without the reset. Both existing sites are in one file, which makes that rule cheap to keep.",
+  "test": "tests/test_cohort_runs.py",
+  "verified_ev": "utils/cohort_ui.py:208-235 (_switch_to: pops filtered_data with a comment, clear_cohort/start_cohort, then reset_downstream_results(clear_feature_engineering=True)) and :385-396 (_advance_to does the same, plus record_cohort_restriction and the replay stage); utils/cohorts.py docstring invariant 2"
  },
  {
   "id": "STATE-087",
@@ -3773,7 +3800,9 @@
   "detail": "ALREADY BROKEN in two places: pages/03_Feature_Engineering.py:1229-1250 hand-rolls its own 21-key cascade instead of calling the resetter, and pdp_results / sensitivity_dropout_results / bland_altman_results / preprocessing_summary / manuscript_export_context are never listed anywhere.",
   "ev": "utils/session_state.py:288-291 docstring; tests/test_review_fixes.py::TestDownstreamReset::test_reset_clears_every_result_key over a 22-key RESULT_KEYS list; tests/test_feature_drift.py.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "Duplicate of STATE-066 / STATE-074 from the invariant pass. The first of the row's two breakages is closed - pages/03's competing 21-key cascade is gone and an AST guard fails if any page starts hand-clearing a cascade-owned key again. The second is unchanged: the named keys are still listed nowhere, so after a data change the exported manuscript can carry partial-dependence curves, feature-dropout numbers and Bland-Altman statistics computed from models that no longer exist. The docstring's rule remains a convention enforced by nothing. Derive the clear-set from a declared result registry - turbotab/cascade.py is that registry, and making it authoritative for these keys is what closes this row, STATE-038, STATE-066 and TEST-017 together.",
+  "verified_ev": "pages/03_Feature_Engineering.py:1261-1280 now calls the production cascade (CONTRACT-002 FIXED, AST-guarded); still unlisted anywhere: pdp_results, sensitivity_dropout_results, bland_altman_results, preprocessing_summary, manuscript_export_context, engineered_feature_transforms, filtered_data"
  },
  {
   "id": "STATE-088",
@@ -3783,7 +3812,9 @@
   "detail": "reset_downstream_results pops exploratory_used while clear_feature_engineering=False leaves df_engineered alive — the toggle-off path does exactly this (landmine below). Also breaks if exploratory_mode survives a dataset change (it does).",
   "ev": "utils/test_lockbox.is_exploratory():32 (`Never enabled by default`); pages/01:1116-1119 _on_exploratory_toggle resets downstream in BOTH directions and sets exploratory_used on the way on; pages/01:1140-1143 re-arms the flag for a restored …",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of STATE-040 / STATE-041 / STATE-072 from the invariant pass, and it is the clearest statement of the pair. Clause one holds: exploratory mode is explicit and never on by default. Clause two does not: the watermark is popped by the very reset the toggle fires, while clear_feature_engineering=False keeps the engineered frame that was fitted with the test rows visible - so toggling the quarantine back ON launders the results it was supposed to protect. And exploratory_mode itself survives a dataset change, so a brand-new study can start unquarantined with the banner on the page the user just left. Both halves come from storing a methodological state as a session flag rather than as a property of each artifact.",
+  "verified_ev": "utils/test_lockbox.py:70-72 (is_exploratory: 'Explicit, user-chosen escape hatch. Never enabled by default'); utils/session_state.py:474 pops exploratory_used unconditionally; the toggle calls reset_downstream_results(clear_feature_engineering=False), which keeps df_engineered; exploratory_mode is a widget key that survives reset_data_dependent_state"
  },
  {
   "id": "STATE-089",
@@ -3793,7 +3824,9 @@
   "detail": "The comparison is on LABEL LISTS, so a redraw that produces the same labels in a different ORDER would fire a spurious reset; and a redraw fired from anywhere other than page 01 leaves _lockbox_redrawn set forever with no consumer.",
   "ev": "utils/test_lockbox.ensure_lockbox:226-231 — `if existing is not None and existing.get('labels') != lockbox['labels']` → reset_downstream_results(clear_feature_engineering=False) + _lockbox_redrawn=True; pages/01:1166 pops and renders the ba…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and both of the row's objections stand. The comparison is on LABEL LISTS rather than sets, so a redraw producing the same rows in a different order fires a spurious full invalidation - and GroupShuffleSplit's output order is not guaranteed stable across versions, so this is a real upgrade hazard, not a theoretical one. And the disclosure is a flag the PAGE must remember to pop, so a redraw fired from anywhere other than page 01 invalidates the user's work with no message. Compare the refused-redraw path immediately above it, which is the better pattern: it records structured disclosure fields the caller can render, rather than a bare boolean. Compare labels as sets, and return the disclosure rather than parking it in state.",
+  "verified_ev": "utils/test_lockbox.py:450-457 - if existing is not None and existing.get('labels') != lockbox['labels'] -> reset_downstream_results(clear_feature_engineering=False) and the redraw flag; :320-336 writes _lockbox_redraw_refused with n_sealed, n_scoreable, target_changed and drawn_for for the refused case"
  },
  {
   "id": "STATE-090",
