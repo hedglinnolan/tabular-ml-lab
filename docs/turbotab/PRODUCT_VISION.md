@@ -164,6 +164,32 @@ Concretely, "more intelligent routing" has to mean at least:
 
 Each of those is testable against a fixed dataset. Test them before building eleven steps of feed.
 
+### Guided is never the less capable door
+
+Routing is the differentiator, but it is not a licence to ship a narrower product. The rule, in
+the product owner's words:
+
+> **Guided should be easier to understand and more dynamic, not less capable.**
+
+Multi-file assembly is the case that settled it. Guided takes one table today, and the tempting
+shortcut was to hand the user off to Classic whenever files need combining — cheap, honest, and
+exactly backwards. Combining files is the interaction that *most* needs a dynamic surface,
+because the user is empowered to decide correctly only when they can watch their working data
+morph under each join, merge or split. Routing them to Streamlit for that is routing them to the
+one place where the morph cannot be shown.
+
+Two consequences follow, and they are design requirements rather than nice-to-haves:
+
+- **The live preview answers the question the wizards had to ask.** Tableau, SPSS and Power Query
+  interrogate the user about grain — *what does one row represent?* — because a static form cannot
+  show them. A surface that animates the working table can let the user *see* one-row-per-patient
+  become one-row-per-visit. Ask only what showing cannot answer.
+- **Reshape is not a second release.** Cross-sectional versus longitudinal restructuring is part of
+  "how does my data morph," not an advanced extra bolted on later.
+
+The corollary binds the other way too: a capability Guided cannot yet do is a `classic-only`
+register row with a dated reason, never a permanent scoping-down of what the second door is for.
+
 ### Users should be able to switch doors mid-analysis
 
 This falls out of the architecture almost for free, and it is the strongest argument for the
