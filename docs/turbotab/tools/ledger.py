@@ -58,6 +58,10 @@ AREA_NAME = {
     "RECORD": "Record / narrative / export",
     "PAGES": "Page-layer extraction",
     "PREP": "Features / preprocessing",
+    # Filed from drives of the Guided door. Present in the data since the L1
+    # adjudication and absent from this table until `add` started validating
+    # against it — the map was a display convenience and is now a schema.
+    "GUIDED": "Guided-door drive feedback",
     "MISC": "Other",
 }
 SEV_ORDER = {"critical": 0, "landmine": 1, "high": 2, "invariant": 3, "medium": 4, "low": 5}

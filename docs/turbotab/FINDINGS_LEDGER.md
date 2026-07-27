@@ -20,18 +20,18 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**89 of 412 closed.**
+**90 of 415 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 289 |
+| `OPEN` | 291 |
 | `PARTIAL` | 34 |
-| `FIXED` | 89 |
+| `FIXED` | 90 |
 
 ---
 
-## OPEN — 289
+## OPEN — 291
 
 
 ### Application state / lockbox — 64
@@ -302,7 +302,7 @@ Nothing is closed without a regression test named after it.
 | `COACH-031` | invariant | Coaching voice must never reach the manuscript verbatim. | `utils/insight_ledger.py:1188 — `text = (i.manuscript_text or '').strip() or…` | The invariant is stated correctly and is broken in exactly the way this row predicts, unchanged at HEAD. The register separation works - manuscript_text is preferred and the regex… |
 | `COACH-032` | invariant | 'high' confidence is the only tier the UI pre-selects, so 'high' means the app is asserting (docs/FINDINGS_LEDGER.md, Governing rule, lines 20-27). | `PARTIALLY, and only in the import/join domain: ml/join_doctor.py:922 `if include_low or c.confidence !=…` | All three weakenings confirmed at HEAD. (1) is COACH-015: a medium-confidence join key IS pre-selected. (2) is exact - final returns detected with no tier check, so a… |
 
-### Migration safety net — 23
+### Migration safety net — 24
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -323,6 +323,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-023` | high | Insight is a mutable dataclass with normalization in __post_init__ that from_dict must re-trigger — a silent record-corruption path | `utils/insight_ledger.py:523,602,617,647,1342,1347; tests/test_review_fixes.py:395-398 (manual __post_init__…` | Unchanged at HEAD, and the mechanism is worth being precise about: from_dict constructs through cls(**filtered), so __post_init__ DOES currently re-run and normalization does… |
 | `TEST-024` | high | Only 3 of 12 pages' state contracts involve any value assertion; page-to-page handoff shape is effectively unspecified | `tests/integration/conftest.py:48-123 (12 keys) vs tests/integration/test_cascade_invalidation.py:57-121 (25…` | Unchanged at HEAD. The two 'complete pipeline' fixtures still disagree about what a complete pipeline is - 12 keys against 25 - and that divergence is itself the finding: if a… |
 | `TEST-025` | high | CI runs only two pytest invocations and has no coverage gate — a migration can delete tests without turning CI red | `.github/workflows/ci.yml Tier 1/Tier 2 steps and the `deploy: needs: test` gate` | Unchanged at HEAD. Two pytest invocations, no coverage gate, no minimum collected-test count, and a deploy job to a self-hosted runner gated on nothing but 'tests passed and the… |
+| `T0-BUILD-002` | high | tests/integration/test_cascade_dag_equivalence.py::test_the_dag_matches_the_production_cascade[full-reset] failed once in a full tier-2 run and has not reproduced | `tests/integration/test_cascade_dag_equivalence.py:139 (the full-reset param), :70 _production_cleared runs…` | 1 failure observed in 1 full tier-2 run; 0 failures in 3 subsequent full tier-2 runs and 3 isolated runs of the file (13 tests each). Recorded rather than dismissed, per the rule… |
 | `TEST-027` | medium | utils/persistence.py is dead code — zero importers — yet contains the reproducibility manifest the new Project layer needs | `utils/persistence.py:1-158; zero import sites repo-wide` | Unchanged at HEAD - verified unreachable, not merely uncovered. The trap the row names is the one to record: it is tempting to adopt this wholesale as the Project serializer, and… |
 | `TEST-028` | medium | visualizations.py returns figures nobody inspects — the safest module to move and the easiest to break unnoticed | `visualizations.py:12,53,91,129,170; consumers pages/06_Train_and_Compare.py:69…` | Unchanged at HEAD: the module is genuinely pure and genuinely untested - the two tests that name it check that it imports, not what it draws. That combination is the row's point… |
 | `TEST-029` | medium | ml.feature_steps and ml.baseline_models are uncovered and produce the numbers the manuscript compares against | `ml/feature_steps.py:11,39; ml/baseline_models.py:21,150` | Unchanged at HEAD: both still uncovered, and both still produce published numbers. The seed sensitivity is the specific hazard - PCA's sign convention and KMeans' init are… |
@@ -367,6 +368,12 @@ Nothing is closed without a regression test named after it.
 | `T0-PAGES-001` | medium | Duplicate-row detection has no engine home — it is inline in pages/01 | `pages/01_Upload_and_Audit.py (inline)` | Extract to the engine when pages/01 unfreezes; register the capability meanwhile. |
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
+
+### Features / preprocessing — 1
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `T0-BUILD-003` | high | physiology_reference.match_variable_key matches by substring, so any column whose name contains a reference key is measured against that variable's intervals | `ml/physiology_reference.py match_variable_key (`if key in col_lower`); ml/card_evidence.py…` | sibling-of: the theory_anchors substring fallback named in FEATURE_PARITY.md 'Two specific things to watch' - the same failure in a second registry, and the pedagogy registry pair… |
 
 ---
 
@@ -449,7 +456,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 89
+## FIXED — 90
 
 
 ### Application state / lockbox — 26
@@ -521,14 +528,15 @@ Nothing is closed without a regression test named after it.
 | `SWEEP-024` | high | INVARIANT — reconcile_pipeline_columns: drift must self-heal loudly, never crash cryptically; its sibling reconcile_state_with_df is imported but never called | `CODE_REVIEW.md 2026-07 'Backstop'; CODE_REVIEW.md C7; utils/reconcile.py` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_reconcile_leaves_a_gated_pipeline_alone_when_nothing_drifted` — Both halves closed. The dormant-reconciler half was… |
 | `SWEEP-025` | high | INVARIANT — CV strategy is bound to the SPLIT strategy, and cv_strategy/cv_groups_train are cleared WITH the split | `CODE_REVIEW.md 2026-07 'Strategy-aware cross-validation' and 'Test-set slider guardrail'…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_grouped_split_matches_the_page` — Both halves of the invariant are implemented and tested. The CV scheme is… |
 
-### GUIDED — 8
+### Guided-door drive feedback — 9
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `GUIDED-001` | high | Import doctor proposes numeric coercion for True/False-coded binary columns (meds_hbp, meds_chol) instead of recognizing a binary variable with informative-missingness potential | `ml/import_doctor.py; screenshot meds_chol` | **test:** `turbotab/test_guided_drive.py::test_a_true_false_column_is_read_as_binary_not_coerced_to_numbers` — Fixed, and reproduced first: a True/False column with blanks is read… |
 | `GUIDED-002` | high | High-missingness finding reports a count but never names the features, and its card carries no snippet and no dtype-aware recommendation | `ml/dataset_profile.py; turbotab explore step; screenshots` | **test:** `turbotab/test_guided_drive.py::test_missingness_routes_by_dtype` — Fixed. Cards name their column in the question text and in a mono chip, carry the count, the share… |
 | `GUIDED-004` | high | No impossibility tier: bp_di values near 1e-15 are at best 'outliers' - the profile does not distinguish medically impossible from medically improbable | `ml/clinical_units.py; ml/physiology_reference.py; ml/dataset_profile.py; screenshot physiologic_check` | **test:** `turbotab/test_guided_drive.py::test_a_diastolic_of_zero_is_impossible_and_a_high_one_is_improbable` — Fixed. The bundled NHANES reference now carries floor/ceiling… |
-| `GUIDED-006` | high | Several pull chips do nothing when clicked (dose-response trends, collinearity heatmap, stratified trends per the drive) | `turbotab/web/index.html pull palette; screenshot other_analyses_not_running` | **test:** `turbotab/test_guided_drive.py::test_every_pull_chip_says_whether_it_runs` — Fixed, and the audit result is worse than the row states: BEFORE this change NO pull chip… |
+| `GUIDED-006` | high | Several pull chips do nothing when clicked (dose-response trends, collinearity heatmap, stratified trends per the drive) | `turbotab/web/index.html pull palette; screenshot other_analyses_not_running` | **test:** `turbotab/test_guided_drive.py::test_every_pull_chip_says_whether_it_runs` — SEVERITY CORRECTED, from measurement rather than from the row. The row says 'Several pull… |
+| `T0-BUILD-001` | high | The Guided preview's change count and its cell highlighting used two different definitions of 'changed', so the header and the table contradicted each other | `turbotab/engine.py preview_fix: the count from _differs vs the flags from b_txt != a_txt; reproduced on…` | **test:** `turbotab/test_guided_drive.py::test_the_change_count_and_the_highlighted_cells_agree` — Found while building the binary reading for GUIDED-001, described by no row.… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |
