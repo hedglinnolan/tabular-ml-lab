@@ -922,7 +922,10 @@
   "detail": "The rule reads as enforced (there is a property with a docstring quoting it) but is upheld only by the structural accident that utils/import_ui.py renders every fix as a button and auto-applies nothing. A Router that reaches for auto_suggestable inherits an untested, never-exercised code path — and worse, believes the rule is centrally enforced when it is not.",
   "ev": "ml/import_doctor.py:92-96. Repo-wide grep for `auto_suggestable` finds only its definition.",
   "act": "Either wire it into the renderer so it is exercised, or delete it and document the structural enforcement. Do not migrate it as-is: an unexercised safety property is a liability in a Router.",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "No longer a zero-caller property. turbotab/engine.py:196 reads auto_suggestable when flattening a ShapeFinding for the API and comments that it is the engine's property rather than a re-derivation - which is the point, since re-deriving it per widget is how the rule fragments. engine.py:207-221 forces it False for every DataWarning, so a profile warning can never pre-select. It is exercised end to end by turbotab/test_skeleton.py::test_only_high_confidence_is_auto_suggestable over the API dict, and at the source by tests/test_import_doctor.py::test_only_high_confidence_findings_are_auto_suggestable and ::test_no_lossy_fix_is_ever_auto_suggestable, which adds the second clause the property carries - lossy fixes are never pre-selectable at any confidence. Classic's structural enforcement (utils/import_ui.py renders every fix as a button) is unchanged and is now a redundancy rather than the only thing holding the rule up.",
+  "test": "turbotab/test_skeleton.py::test_only_high_confidence_is_auto_suggestable",
+  "verified_ev": "ml/import_doctor.py:99 (the property); consumers turbotab/engine.py:193-196, :207-221 (DataWarning always False), :412; tests/test_import_doctor.py:221-281; turbotab/test_skeleton.py:151, 191-202"
  },
  {
   "id": "COACH-015",
@@ -932,7 +935,9 @@
   "detail": "docs/FINDINGS_LEDGER.md:22 and ml/join_doctor.py:238-240 both state that 'high' is the only pre-selectable tier because high means the app is asserting. The selectbox pre-selects the top-ranked non-low candidate, which is routinely 'medium'. A user who accepts the default has accepted an assertion the app did not intend to make — and finding C1 in the ledger is exactly a wrong-join-key defect.",
   "ev": "utils/combine_ui.py:262-273 — `usable = [c for c in cands if c.confidence != 'low']` followed by `st.selectbox(..., options, key=f'combine_key_{other}')`, which defaults to index 0.",
   "act": "Report this as a live governing-rule violation independent of the rebuild. In TurboTab, make 'pre-selected' a property the Router computes from tier, so the rule is enforced in one place rather than re-derived per widget.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and it is a LIVE governing-rule violation, not a migration concern. The filter excludes only 'low', so the pre-selected option is the top-ranked candidate at whatever tier it happens to be - and ml/join_doctor.py:295-314 shows 'medium' is the routine answer for a partially-overlapping or moderately-similar key. A user who accepts the default has accepted an assertion the app deliberately did not make, and a wrong join key is finding C1's shape: it silently attaches the wrong people's rows. Note the constraint on fixing it: utils/combine*.py is inside the TRANSITION_PLAN 05 freeze, so this cannot be repaired until the docs/FINDINGS_LEDGER.md tail closes - which makes it a reason to prioritize closing that tail, not a reason to leave it unrecorded. In the rebuild, 'pre-selected' must be a property the Router computes from the tier, in one place.",
+  "verified_ev": "utils/combine_ui.py:261-280 - usable = [c for c in cands if c.confidence != 'low'] at :262, then st.selectbox(options, key=f'combine_key_{other}') at :278-280 with no index argument, so it defaults to options[0]; ml/join_doctor.py:295-314 (a 'medium' tier is routine)"
  },
  {
   "id": "COACH-016",
@@ -942,7 +947,9 @@
   "detail": "An off-vocabulary category means: __post_init__ auto-fills no tripod_keys (so the TRIPOD checklist under-reports unless the producer passes them by hand, which the upload site happens to do); _manuscript_topic_bucket falls through to 'Workflow Observations'; and get_by_category / get_unresolved(category=…) silently return nothing. Nothing raises. The two-taxonomy problem will bite the moment the rebuild merges DataWarning into Record.",
   "ev": "utils/insight_ledger.py:465-476 declares CATEGORIES (10 values); pages/01_Upload_and_Audit.py:1091 writes `category='study_design'`, which is in neither CATEGORIES nor TRIPOD_CATEGORY_MAP. Meanwhile ml/dataset_profile.py:363-491 constructs …",
   "act": "Make category an enum validated in __post_init__ before the merge, and decide explicitly whether DataWarning becomes an Insight or stays a separate engine output. Do not let two `category` fields with different vocabularies land in the same…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. CATEGORIES is still a plain tuple with no validation anywhere in Insight.__post_init__, and pages/01:1125 still writes 'study_design', a value in neither the tuple nor the TRIPOD map. The consequences are all silent, as described: no tripod_keys auto-fill, _manuscript_topic_bucket falls through to 'Workflow Observations', and get_by_category / get_unresolved(category=...) return nothing for it. The two-taxonomy half is also intact - DataWarning carries its own category vocabulary, and turbotab/engine.py already flattens both kinds into one findings list for the API, which is the merge this row warned about happening before the enum exists. Validate in __post_init__ and decide the DataWarning question explicitly before the Record migration, not during it.",
+  "verified_ev": "utils/insight_ledger.py:465-476 (CATEGORIES, ten values, no validation in __post_init__); pages/01_Upload_and_Audit.py:1125 writes category='study_design', which is in neither CATEGORIES nor TRIPOD_CATEGORY_MAP; ml/dataset_profile.py DataWarning.category is a separate vocabulary"
  },
  {
   "id": "COACH-017",
@@ -952,7 +959,9 @@
   "detail": "Today the Train page hides the mismatch because it iterates the task-filtered registry (pages/06_Train_and_Compare.py:846-880). A Router that reads model_viability directly to order questions will propose logistic regression for a continuous outcome, with a confident 'good' verdict.",
   "ev": "ml/model_coach.py:1393-1400 unconditionally sets v['logreg'], v['lda'], v['gaussian_nb'] regardless of task_type; the `low_epv` flag that drives them is defined at line 1354 as classification-only, so on regression data it is always False a…",
   "act": "Take task_type as an explicit parameter and return only keys valid for it. Extend tests/test_coach_intelligence.py::test_covers_full_registry to assert the complement: no classification key appears in a regression verdict map.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. model_viability still writes logreg, lda and gaussian_nb verdicts on both arms of the low_epv branch, and low_epv is defined at :402 as classification-only, so on regression data the else arm always fires and emits three confident 'good'/'ok' verdicts for classifiers. The only thing hiding it is that the Train page iterates the task-filtered registry at pages/06:676-677 - i.e. the guard is in the view, which is precisely the arrangement the migration removes. A Router reading model_viability directly to order questions would propose logistic regression for a continuous outcome with a 'good' verdict attached. Take task_type as a parameter and return only valid keys; extend test_covers_full_registry to assert the complement.",
+  "verified_ev": "ml/model_coach.py:391 (task_type read), :402 (low_epv is classification-only), :1393-1400 - v['logreg'], v['lda'], v['gaussian_nb'] are set in BOTH arms of the low_epv branch, so they are populated unconditionally including on regression data; the task filter is in pages/06_Train_and_Compare.py:676-677, not in the engine"
  },
  {
   "id": "COACH-018",
@@ -962,7 +971,9 @@
   "detail": "No error, no missing-anchor warning — the card just renders without a theory link, or with the wrong one. The failure has already occurred once in this codebase.",
   "ev": "utils/theory_anchors.py:438-461 — a 19-entry keyword scan over insight.finding.lower(). ml/model_coach.py:765-767 carries an in-code note that the scaling demo 'previously rendered only via an accidental text match'.",
   "act": "Make theory_anchor mandatory on every producer and delete the prose-matching stage, or at minimum add a test that every insight id the codebase can produce resolves to an anchor via stage 1 or 2 only.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The third stage still matches on finding PROSE, so rewording a coach message can silently change or remove the theory link with no error and no missing-anchor warning - the card simply renders without one, or with the wrong one. The codebase's own comment at ml/model_coach.py:765-767 records that this has already happened once. This is the exact landmine class TRANSITION_PLAN 04 names ('silent semantic links by string'), and a rebuild that rewrites finding text - which is most of what a rebuild does to a coach - triggers it broadly. Make theory_anchor mandatory at construction and delete stage 3, or at minimum add a test that every producible insight id resolves via stage 1 or 2 alone.",
+  "verified_ev": "utils/theory_anchors.py:421-461 - infer_theory_anchor's stage 3 still scans insight.finding.lower() (:439) against a keyword table; ml/model_coach.py:765-767 still carries the in-code note that the scaling demo 'previously rendered only via an accidental text match'"
  },
  {
   "id": "COACH-019",
@@ -972,7 +983,9 @@
   "detail": "A whole analysis record — every finding, every resolution, every TRIPOD credit — is replaced by an empty ledger with no message. The user's next export is a manuscript with no methodology narrative and no explanation of why.",
   "ev": "utils/insight_ledger.py:1400-1404 — `if not isinstance(ledger, InsightLedger): st.session_state.insight_ledger = InsightLedger()`, commented 'Recover from serialization edge cases'.",
   "act": "During the Project/Record migration this is the moment a deserialization bug will be masked. Make rehydration failure loud: keep the raw payload, surface an error, and refuse to export rather than exporting an empty record.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. A ledger that failed to rehydrate is still replaced by an empty one with no message, no retained payload and no export refusal - so an entire analysis record (findings, resolutions, TRIPOD credit) can vanish and the next export is a manuscript with no methodology narrative and no explanation. Worth noting the timing: this is the accessor the Record migration will exercise hardest, and 'recover from serialization edge cases' is exactly the branch that will mask a deserialization bug introduced by the move. Rehydration failure must keep the raw payload, surface an error, and refuse to export. Related but distinct from COACH-012 and TEST-010, which lose parts of the record; this one loses all of it.",
+  "verified_ev": "utils/insight_ledger.py:1408-1415 - get_ledger still does 'if not isinstance(ledger, InsightLedger): st.session_state.insight_ledger = InsightLedger()' with the comment 'Recover from serialization edge cases'"
  },
  {
   "id": "COACH-020",
@@ -982,7 +995,9 @@
   "detail": "A researcher can find a heteroscedasticity limitation or a below-NIR warning in their exported manuscript that they were never shown in the app. New detectors added to run_post_training_diagnostics are invisible by default — the allowlist is opt-in and nothing reminds you to update it.",
   "ev": "pages/06_Train_and_Compare.py:2277-2280 — `_coaching_ids = ['train_prefer_simpler','train_low_performance','train_cv_variance']` plus `f'train_overfit_{k}'`. Not listed: train_accuracy_below_nir, train_ci_overlap_top_models, train_heterosce…",
   "act": "Render by query (source_page + category), not by id list. If an allowlist must exist, derive it from the detector registry so adding a detector adds its display.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD (the allowlist moved from :2277 to :2207 but is identical). Three of the seven post-training detectors still reach the ledger and therefore the manuscript, but never the screen, so a researcher can find a heteroscedasticity limitation or a below-NIR warning in their export that the app never showed them. That is the advise/witness/publish authority order inverted - advice reaching the manuscript without ever having been seen, let alone acted on. It also compounds two other rows: COACH-002 and COACH-004 mean two of the three invisible detectors never fire anyway, so nobody has noticed the display gap. Render by query (source_page + category), or derive the list from the detector registry.",
+  "verified_ev": "pages/06_Train_and_Compare.py:2207-2212 - _coaching_ids = ['train_prefer_simpler','train_low_performance','train_cv_variance'] plus f'train_overfit_{k}', then _guidance_ledger.get(iid) for iid in _coaching_ids; not listed: train_accuracy_below_nir, train_ci_overlap_top_models, train_heteroscedastic_residuals"
  },
  {
   "id": "COACH-021",
@@ -992,7 +1007,9 @@
   "detail": "A user who switches from Ridge to Random Forest keeps a coaching note (and, per landmine 7, a manuscript limitation) about scale sensitivity for models they are no longer training. The coach's own output contradicts the current model lineup with no error.",
   "ev": "pages/05_Preprocess.py:153-158 calls `_get_hc_ledger().remove('preprocess_high_cardinality')` in both else-branches — the only self-heal pattern in the codebase. By contrast, generate_preprocessing_insights simply stops emitting preprocess_…",
   "act": "Make production idempotent in both directions: a producer must be able to declare 'this id should not exist right now'. This is a Record API gap, not a page bug — add a `sync(source, ids_that_should_exist)` primitive before migrating any pr…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. pages/05:156 and :159 are still the only place in the app where a producer declares that an insight should no longer exist; every other producer simply stops emitting, which leaves the old insight standing in the ledger. So a user who switches from Ridge to Random Forest keeps a scale-sensitivity coaching note - and, through COACH-007, a manuscript limitation - about models they are not training. The Record API gap the action names is real and unfilled: InsightLedger has upsert, resolve, remove, rollback_resolutions and prune_auto_generated, but nothing that expresses 'these are the ids this source should have right now'. Add that primitive before migrating any producer, or every producer will need its own hand-written removal branch.",
+  "verified_ev": "pages/05_Preprocess.py:153-159 (two remove('preprocess_high_cardinality') calls - still the only self-heal in the codebase); utils/insight_ledger.py:843 offers remove() only; no sync(source, ids_that_should_exist) primitive exists"
  },
  {
   "id": "MODELS-001",
@@ -1002,7 +1019,10 @@
   "detail": "Feed the shim to cross_val_score / GridSearchCV / RFECV / CalibratedClassifierCV / learning_curve and every fold returns predictions from a model fitted on the full dataset. No exception, no warning — just uniformly excellent CV scores that get written into the manuscript. sklearn's clone() makes it worse: clone reconstructs from get_params() (which reports only wrapper_instance), so is_fitted_ resets to False, fit() flips it back to True without training, and predictions still come from the original network.",
   "ev": "models/nn_whuber.py:115-128 (regressor) and 174-188 (classifier); reachable through NNWeightedHuberWrapper.get_model() (line 577-582) and get_sklearn_estimator() (561-575). Currently fenced off by two string comparisons: pages/06_Train_and_…",
   "act": "Before moving anything: write a test that asserts SklearnCompatibleNNRegressor(wrapper).fit(X, y) does NOT change the network's parameters. Then rename the class PredictOnlyAdapter, make fit() raise NotImplementedError, and give it a marker…",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Closed the right way round. fit() no longer marks fitted without training: it calls _refuse_if_not_pretrained, which raises NotFittedError unless mark_pretrained() was called - and mark_pretrained is deliberately NOT a constructor parameter, with a docstring saying why: sklearn.base.clone rebuilds from get_params(), so anything passed to __init__ survives the clone, and surviving the clone is exactly what must not happen. The mark is therefore dropped by clone and the clone's fit() raises instead of answering from the original network. Three tests hold it: test_clone_and_refit_now_raises_instead_of_answering_from_the_old_model is the one that would catch the regression, with test_nn_adapter_refuses_to_fit_without_a_model and test_nn_sklearn_adapter_refuses_to_fit_unless_marked_pretrained covering the construction path. Same defect as T0-LIVE-003.",
+  "test": "tests/test_characterization_wrappers.py::test_clone_and_refit_now_raises_instead_of_answering_from_the_old_model",
+  "verified_ev": "models/nn_whuber.py:107-140 (_check_is_fitted, mark_pretrained, _refuse_if_not_pretrained); tests/test_characterization_wrappers.py:155-227"
  },
  {
   "id": "MODELS-002",
@@ -1012,7 +1032,9 @@
   "detail": "Consolidating on 'the registry' — the obviously correct engine choice — changes RF from 500 trees / min_leaf 10 to 100 trees / min_leaf 1, and changes the untuned NN from [32,32] to [128,128,128]. Both still train, both still report metrics, and every previously published number shifts. Nobody will suspect the defaults; they will suspect the migration broke the data.",
   "ev": "models/rf.py:12-13; utils/session_state.py:96-98 (ModelConfig); ml/model_registry.py:142 (_create_rf) and 594 (default_params). models/nn_whuber.py:253; ml/model_registry.py:512-513; pages/06_Train_and_Compare.py:1351-1352, 1153-1154, 1410-…",
   "act": "Before consolidating, run every registry model on a fixed dataset and snapshot the exact constructor kwargs and the resulting metrics to a golden file. Then pick ONE source, and diff against the golden file — accept the deltas explicitly, i…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, all three sources still disagree. RFWrapper.__init__ still defaults to 500 trees / min_samples_leaf 10 while ml/model_registry.py:142 constructs it with 100 / 1, and the registry's advertised default_params at :327 say 100 as well. The NN fallbacks at pages/06:1049-1050 and :1256-1257 still resolve to a [32,32] network while the wrapper and the registry both describe [128,128,128]. This is the one row in the batch where doing the obviously right thing - consolidate on the registry - silently changes published numbers, and nobody will suspect the defaults. The golden-snapshot step the action names is not optional here: snapshot constructor kwargs AND resulting metrics per registry model before consolidating, then accept each delta explicitly.",
+  "verified_ev": "models/rf.py:12-13 (n_estimators=500, min_samples_leaf=10) vs ml/model_registry.py:142 (_create_rf: RFWrapper(n_estimators=100, max_depth=None, min_samples_leaf=1)) and :327 (default_params 100/None); NN: models/nn_whuber.py hidden default vs ml/model_registry.py NN default_params vs pages/06_Train_and_Compare.py:1049-1050 and :1256-1257 (params.get('num_layers', 2), params.get('layer_width', 32))"
  },
  {
   "id": "MODELS-003",
@@ -1022,7 +1044,9 @@
   "detail": "Two ways. (1) Any generic 'lower is better' ranking on best_val_rmse silently INVERTS for classification, picking the worst model. (2) A TurboTab feed that renders learning curves uniformly KeyErrors on all 21 non-NN models — currently masked only by the `if name == 'nn'` guard at pages/06:2586. The mislabeling is currently harmless only because best_val_* has ZERO consumers anywhere in the codebase — verified by grep; the moment the Router starts ranking on it, it breaks.",
   "ev": "models/nn_whuber.py:432-437 and 551-555; models/glm.py:44-47; models/huber_glm.py:39-42; models/rf.py:64-67; models/registry_wrappers.py:51-54. Consumed at pages/06:1572 (`results.get('history', {})`) and rendered by visualizations.py:12 pl…",
   "act": "Define one TrainResult TypedDict now: {history: {metric_name: [values]}, best: {metric_name: value}, epochs_run: int, task_type: str} with metric names that state what they are. Write a parametrized test that constructs every wrapper for bo…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD - three incompatible shapes, and the mislabeling is verbatim. models/glm.py:42 computes accuracy and models/glm.py:46 stores it under 'best_val_rmse'; huber_glm and rf do the same; registry_wrappers uses a different key entirely ('best_val_metric'); nn emits both names conditionally. So any generic lower-is-better ranking on best_val_rmse INVERTS for classification and picks the worst model. It is harmless today only because best_val_* still has no consumers - which is exactly the condition that ends the moment the Router ranks on it. Define one TrainResult shape with metric names that state what they are, and parameterize a test across every wrapper and both task types before anything reads these.",
+  "verified_ev": "models/glm.py:36-46 and models/huber_glm.py:39-42 ({'history':{'val_rmse':[v]},'best_val_rmse':v}, where v is ACCURACY on the classification path - glm.py:42); models/rf.py:64-67 (same); models/registry_wrappers.py:41-56 ({'history':{'val_metric':[v]},'best_val_metric':v}); models/nn_whuber.py:611-612 (best_val_rmse / best_val_accuracy, both from best_val_metric)"
  },
  {
   "id": "MODELS-004",
@@ -1032,7 +1056,9 @@
   "detail": "Three distinct failures. (a) override=regression + config=classification: UnboundLocalError on y_test_proba at line 1575, swallowed by the broad `except Exception` at 1605 into a red 'Training failed' box that names a variable, not the cause. (b) override=classification + config=regression: probabilities ARE computed then discarded as None, so ROC/PR at line 2722-2730 does `y_proba[:, 1]` on None. (c) CV silently picks the wrong scorer and fold strategy (StratifiedKFold on a continuous target), fails, and is swallowed at 1562 into 'Cross-validation failed... Skipping CV' — the user just loses CV and never learns why. Additionally, because y_test_proba is a function-scope local reused across …",
   "ev": "pages/06_Train_and_Compare.py:161 (`task_type_final = task_type_detection.final if task_type_detection.final else data_config.task_type`; TaskTypeDetection.final returns override_value when override_enabled, utils/session_state.py:22-27). A…",
   "act": "Resolve task_type ONCE at the top of the engine's train function, pass it as a parameter, and never read data_config.task_type below that point. Initialize y_test_proba = None before the branch. Add a test that sets override_enabled=True wi…",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "The divergence is reconciled; the guard against its return is not. pages/06:174-175 now assigns data_config.task_type = task_type_final immediately after resolving the override, so the two cannot disagree below that line and none of the three failures this row describes can occur: no UnboundLocalError at the results dict, no probabilities computed then discarded, no StratifiedKFold on a continuous target. WHAT REMAINS, and it is why this is not FIXED: (1) no test anywhere exercises the override path - grep for override_enabled and task_type_final across tests/ returns nothing at all - so a future edit that reads data_config.task_type below :175 before the assignment, or that moves the assignment, reintroduces the whole class silently; (2) y_test_proba is still never initialized before the branch at :1405-1408, so the reconciliation at :175 is the only thing preventing the UnboundLocalError, with no defence in depth.",
+  "verified_ev": "pages/06_Train_and_Compare.py:169-175 (task_type_final resolved once, then data_config.task_type = task_type_final at :175); :1405-1408 (y_test_proba assigned in the classification arm only, still no initialization before the branch); :1480 (read guarded on data_config.task_type); grep for override_enabled / task_type_final across tests/ returns NOTHING"
  },
  {
   "id": "MODELS-005",
@@ -1042,7 +1068,10 @@
   "detail": "Users believe long runs are cancellable. They are not — the flag is set and the loop never consults it. Migrating the training loop verbatim into a job worker carries the illusion forward: the job API will expose a cancel() that appears wired (the flag exists!) but cannot interrupt anything.",
   "ev": "pages/06_Train_and_Compare.py:1252-1253 (init), 1263-1264 (set to True). grep for 'cancel_training' across the whole repo returns only these lines plus the button key. No file in models/ or ml/ contains any cancel, abort, stop, or interrupt…",
   "act": "Treat cancellation as NEW code, not a port. Thread `should_cancel: Callable[[], bool]` into (1) NNWeightedHuberWrapper.fit — check per epoch AND per batch; (2) the bootstrap_metric resample and jackknife loops — check every ~50 iterations; …",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Closed by removal plus an honest replacement, which is the right shape. The decorative button is gone from pages/06 and the surviving warning says the run cannot be interrupted - the comment at :1150-1157 gives the reason wiring the flag would still have lied: Streamlit runs one script per session on one thread, so while the loop trains no widget is interactive and the button cannot be clicked at all. Real cancellation now exists where something owns the work: turbotab/jobs.py hands the worker a threading.Event, and a job that ignores its token is reported as finished rather than cancelled (test_the_queue_does_not_claim_a_cancel_it_did_not_achieve). RESIDUAL, deliberately not blocking this row: the engine itself still has no cancel hooks - NNWeightedHuberWrapper.fit, the bootstrap resample loop and the jackknife loop take no should_cancel - so a job wrapping them will be cooperative in name only until those are threaded. That is new construction, as the action says, and belongs with the L9 train step.",
+  "test": "turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor",
+  "verified_ev": "pages/06_Train_and_Compare.py:1143-1170 (the button is gone; the comment records why removal beat wiring, and the warning now states plainly 'This cannot be interrupted once started'); turbotab/jobs.py:33-37, 175-215; turbotab/test_jobs.py:146-193"
  },
  {
   "id": "MODELS-006",
@@ -1052,7 +1081,9 @@
   "detail": "Under a job queue running two trainings concurrently, np.random.seed from job B silently reseeds the global numpy RNG that job A's sklearn estimators (any without an explicit random_state) are drawing from — results become non-reproducible in a way that only shows up as small metric drift between identical runs. Separately, n_jobs=-1 inside N concurrent workers spawns N x cores threads; the symptom is a machine that thrashes and a job that 'hangs', not an error. torch.cuda.manual_seed (not manual_seed_all) leaves multi-GPU nondeterministic.",
   "ev": "models/nn_whuber.py:313-317 — `torch.manual_seed(random_seed)`, `np.random.seed(random_seed)`, `torch.cuda.manual_seed(random_seed)`. models/rf.py:34 and 42 (`n_jobs=-1`); ml/eval.py:161 (`cross_val_score(..., n_jobs=-1)`). Also models/nn_w…",
   "act": "Replace the global seeding with a local torch.Generator passed to the DataLoader plus np.random.default_rng(seed) for any numpy draws, before any concurrency exists. Make n_jobs a parameter defaulting to 1 inside workers. Pin the current be…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD in every particular. The NN wrapper still reseeds process-global numpy and torch RNG inside fit, torch.cuda.manual_seed is still the single-device call so multi-GPU stays nondeterministic, and both RFWrapper constructions plus cross_val_score still hardcode n_jobs=-1. Under the queue this is contained rather than fixed: turbotab/jobs.py serializes any job declared uses_global_rng and snapshots/restores around it, so neighbours are safe - but the containment is a lock, i.e. it converts a correctness bug into a throughput cost, and it does nothing about n_jobs=-1, which under N workers still spawns N x cores threads and presents as a hung job rather than an error. Fix the seeding with a local torch.Generator plus np.random.default_rng, and make n_jobs a parameter defaulting to 1 inside workers.",
+  "verified_ev": "models/nn_whuber.py:371-375 (torch.manual_seed, np.random.seed, torch.cuda.manual_seed - still not manual_seed_all); models/rf.py:34,42 (n_jobs=-1); ml/eval.py:161 (cross_val_score n_jobs=-1); contrast turbotab/jobs.py:206 (ctx.rng) and :128-156 (isolated_rng)"
  },
  {
   "id": "MODELS-007",
@@ -1062,7 +1093,9 @@
   "detail": "A user changes the project seed to 7, reruns everything, and the CIs are byte-identical — they will reasonably conclude the CIs are stable when in fact they were never reseeded. And the external-validation CIs in the manuscript are computed from half as many resamples as the internal ones, with no annotation anywhere.",
   "ev": "pages/06:2046 and 2067 call bootstrap_all_*_metrics with no random_state; pages/06:2135-2139 calls train_baseline_models with no random_state (so its LogisticRegression is seeded 42 regardless of the project); ml/baseline_models.py:56 and 1…",
   "act": "Thread Project.seed and a single Project.n_bootstrap through every call site, and record both in the Record next to each interval. If you change the effective seed, expect every published interval to shift — snapshot the current intervals t…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, both halves. Every bootstrap call site still omits random_state, so ml/bootstrap.py:115 builds RandomState(42) regardless of the project seed - a user who changes the seed to 7 and reruns gets byte-identical CIs and will reasonably conclude the intervals are stable when they were simply never reseeded. That is the app asserting something false about its own reproducibility, and reproducibility is a manuscript claim. And the resample count still differs by call site: 1000 for the internal intervals on pages/06, 500 for the external-validation intervals on pages/07, with no annotation anywhere that the two were computed differently. Thread Project.seed and one Project.n_bootstrap through every site and record both next to each interval.",
+  "verified_ev": "pages/06_Train_and_Compare.py:1976 and :1997 (bootstrap_all_*_metrics with n_resamples=1000 and NO random_state) vs pages/07_Explainability.py:1156,1158 (n_resamples=500); ml/bootstrap.py:94-115 (n_resamples=1000, random_state=42 defaults, rng = np.random.RandomState(random_state)); pages/07_Explainability.py:389 (random_state=42 hardcoded)"
  },
  {
   "id": "MODELS-008",
