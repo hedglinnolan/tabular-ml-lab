@@ -617,7 +617,16 @@ class Insight:
             ]
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize for session state / JSON export."""
+        """Serialize for session state / JSON export.
+
+        The field list is enumerated rather than derived so the mutable
+        containers are copied on the way out. That hand-written list is also
+        how `manuscript_text` went missing for a release: it is a declared
+        field, `from_dict` would have restored it, and nothing wrote it — so
+        every save/restore quietly returned the Discussion to coaching voice.
+        `test_to_dict_covers_every_declared_field` now fails if the list and
+        the dataclass ever diverge again.
+        """
         return {
             "id": self.id,
             "source_page": self.source_page,
@@ -626,6 +635,7 @@ class Insight:
             "finding": self.finding,
             "implication": self.implication,
             "recommended_action": self.recommended_action,
+            "manuscript_text": self.manuscript_text,
             "relevant_pages": list(self.relevant_pages),
             "affected_features": list(self.affected_features),
             "tripod_keys": list(self.tripod_keys),
@@ -1347,11 +1357,16 @@ class InsightLedger:
 
     @classmethod
     def from_list(cls, items: List[Dict[str, Any]]) -> "InsightLedger":
-        """Deserialize from list of dicts."""
+        """Deserialize from list of dicts.
+
+        `upsert`, not `add`: a save file is a record of what happened, read in
+        order, so the later entry for an id is the current one. `add` skips
+        duplicates, which silently kept the first and dropped the second.
+        """
         ledger = cls()
         for item in items:
             try:
-                ledger.add(Insight.from_dict(item))
+                ledger.upsert(Insight.from_dict(item))
             except (TypeError, KeyError):
                 continue  # skip malformed entries
         return ledger

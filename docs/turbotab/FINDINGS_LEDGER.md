@@ -20,21 +20,21 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**71 of 411 closed.**
+**73 of 411 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 306 |
+| `OPEN` | 304 |
 | `PARTIAL` | 34 |
-| `FIXED` | 71 |
+| `FIXED` | 73 |
 
 ---
 
-## OPEN — 306
+## OPEN — 304
 
 
-### Application state / lockbox — 69
+### Application state / lockbox — 68
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -83,7 +83,6 @@ Nothing is closed without a regression test named after it.
 | `STATE-052` | landmine | Every provenance and ledger write in pages/ is wrapped in a bare `except Exception: pass`. | `utils/session_state._log_to_ledger:655-656; pages/01:1105-1106 and :1194; pages/03:1268-1269…` | Unchanged at HEAD; the count is now 20 across nine pages. Any schema drift in the Record layer during the migration - a renamed section, a changed record_* signature, a page id… |
 | `STATE-053` | landmine | All three import cycles are currently invisible because every edge is a function-local import, and the obvious refactor (methods on AnalysisProject) turns them into module-level cycles. | `Cycle 1: utils/insight_ledger.py:1077 ↔ ml/publication.py:98,155,1739,1829. Cycle 2: utils/cohorts.py:474 ↔…` | Unchanged at HEAD: the cycles are all still there and all still invisible, because every edge is a deferred import inside a function. Nothing fails today, which is the hazard - a… |
 | `STATE-054` | landmine | engineering_log is not persisted while df_engineered, feature_engineering_applied and engineered_feature_names are. | `utils/session_manager.py:91-117 _PLAIN_KEYS includes engineered_feature_names, engineered_feature_transforms…` | Unchanged at HEAD. Save and restore a session with engineered features and the frame, the flag, the column names and the double-transform map all come back - so the app looks… |
-| `STATE-056` | landmine | InsightLedger.from_list uses .add() (skip duplicates) rather than .upsert(), and Insight.to_dict omits manuscript_text. | `utils/insight_ledger.py:1346-1355 (from_list → ledger.add(...) inside `except (TypeError, KeyError)…` | Unchanged at HEAD, both halves. (a) from_list uses add(), which skips duplicates, so a save file containing two entries with one id silently keeps the first and drops the second… |
 | `STATE-058` | invariant | Preprocessing is FIT ON TRAINING ROWS ONLY and merely applied to val/test. | `pages/06_Train_and_Compare.py:1312-1315 (`model_pipeline.fit(X_train)` then `.transform(X_val)` /…` | The invariant holds on the training path and is violated on two others, so it stays OPEN. Training is correct: the pipeline is fitted on X_train and merely applied to val and… |
 | `STATE-059` | invariant | Cross-validation re-fits preprocessing inside every fold; CV never scores a pre-transformed matrix. | `ml/eval.py:182 make_cv_pipeline(preprocessing, estimator) with its `clone(preprocessing)`; called at…` | The invariant is implemented correctly and both of its failure modes degrade to a warning, so it stays OPEN. The composition is right - CV runs on raw X_train through a cloned… |
 | `STATE-061` | invariant | Target-aware steps upstream of Train & Compare (feature selection, stateful FE fits, target-association views) see TRAINING ROWS ONLY. | `utils/test_lockbox.py:237 train_row_mask(index); applied at pages/04:128 (`mask = df[target_col].notna() &…` | One of the two failure modes is closed and the other is live. The index-renumbering route is gone - apply_plausibility_filter keeps its labels now, so train_row_mask can no longer… |
@@ -212,11 +211,10 @@ Nothing is closed without a regression test named after it.
 | `MINE-043` | low | pages/06 defines fallback plotting stubs that shadow visualizations.py on ImportError | `pages/06_Train_and_Compare.py:66-90; visualizations.py:53-88, 91-126` | Unchanged at HEAD. visualizations.py is a first-party module in the repository root and cannot legitimately be missing, so the fallback can only fire on an unrelated ImportError… |
 | `MINE-044` | low | visualizations.plot_residuals will pandas-align if handed two Series with different indexes | `visualizations.py:91-126 vs 141-142; pages/06_Train_and_Compare.py:2604, 2623` | Unchanged at HEAD, and the inconsistency inside one file is the tell: plot_bland_altman coerces both arguments and plot_residuals does not, so the safe idiom was known and applied… |
 
-### Record / narrative / export — 29
+### Record / narrative / export — 28
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `RECORD-001` | landmine | Insight.to_dict() does not serialize manuscript_text. The hand-written field list at utils/insight_ledger.py:617-644 omits it even though it is a declared dataclass field (line 571) and from_dict… | `utils/insight_ledger.py:617 (to_dict) vs :571 (field) vs :1188 (discussion_points_for_manuscript's `text =…` | Unchanged at HEAD and this is the most consequential row in the batch. Insight.to_dict still writes id, source_page, category, severity, finding, implication, recommended_action… |
 | `RECORD-002` | landmine | Numeric metric values are stored in the Record as whatever object the trainer produced (numpy scalars), and the save path uses json.dumps(default=str). | `pages/06_Train_and_Compare.py:1660 passes res['metrics'] straight through; utils/workflow_provenance.py…` | Unchanged at HEAD. Metric values still reach the Record as whatever the trainer produced (numpy scalars) and the save path still stringifies them through default=str, so after a… |
 | `RECORD-003` | landmine | record_training stores SHALLOW copies: dict(hyperparameters) and dict(metrics_by_model) share their inner per-model dicts with st.session_state['model_results'][name]['metrics'] and… | `utils/workflow_provenance.py:386-400` | Unchanged at HEAD: record_training still takes shallow copies, so the Record shares its inner per-model dicts with live session state. Any later mutation - retraining in place… |
 | `RECORD-004` | landmine | ml/manuscript_validator.py is written against ml/narrative_engine.py's heading vocabulary ONLY. It extracts level-3 sections named exactly 'Study Design', 'Predictor Variables', 'Model Development'… | `ml/manuscript_validator.py:159-162 vs ml/publication.py:413 and :1156; path switch at…` | Unchanged at HEAD. The validator's section extractor requires the heading text to be followed directly by a newline, so '### Study Design and Participants' does not match a… |
@@ -471,10 +469,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 71
+## FIXED — 73
 
 
-### Application state / lockbox — 21
+### Application state / lockbox — 22
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -486,6 +484,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-039` | landmine | pages/03_Feature_Engineering.py's Save button hand-rolls a cascade clear instead of calling reset_downstream_results, and the two have drifted. | `pages/03_Feature_Engineering.py:1229-1250 (21 keys) vs utils/session_state.py:283-415 (~60 keys + provenance…` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_page_03_no_longer_hand_rolls_its_own_cascade` — Third sighting of the same defect (CONTRACT-002, STATE-006), and… |
 | `STATE-042` | landmine | session_manager's lockbox serialization is LOSSY (7 of 10 fields) while preserving the signature that suppresses a redraw. | `utils/session_manager.py:298-306 encodes only labels/fraction/seed/n_total/n_test/signature/stratified…` | **test:** `tests/test_state_survives_the_round_trip.py::test_a_restored_lockbox_still_knows_it_was_drawn_by_subject` — Closed. The serialization is no longer lossy in the way this… |
 | `STATE-055` | landmine | cohort_runs_done is not persisted, and completed_runs() filters on isinstance(r, CohortRun). | `utils/cohorts.py:462-465 and :488; utils/session_manager.py — cohort_runs_done appears in no bucket, so it is…` | **test:** `tests/test_session_carries_the_run.py::test_the_banked_comparison_comes_back` — Closed. cohort_runs_done is persisted and restored as reconstructed CohortRun OBJECTS… |
+| `STATE-056` | landmine | InsightLedger.from_list uses .add() (skip duplicates) rather than .upsert(), and Insight.to_dict omits manuscript_text. | `utils/insight_ledger.py:1346-1355 (from_list → ledger.add(...) inside `except (TypeError, KeyError)…` | **test:** `tests/test_the_manuscript_voice_survives_the_save_file.py::test_the_ledger_round_trips_through_json` — Both halves fixed. (a) from_list now calls upsert rather than… |
 | `STATE-057` | invariant | Every selected model has its OWN preprocessing pipeline. Two models must be able to receive genuinely different transformed matrices from the same raw data. | `tests/workflow/test_per_model_pipelines.py::TestPerModelPipelineConfigs::test_ridge_and_rf_get_different_train…` | **test:** `tests/workflow/test_per_model_pipelines.py::TestPipelineTrainingIntegration::test_ridge_and_rf_get_different_training_data` — The differentiator is intact on both sides… |
 | `STATE-060` | invariant | The CV fold scheme matches the split's leakage semantics: group split -> GroupKFold/StratifiedGroupKFold, time split -> TimeSeriesSplit, else KFold/StratifiedKFold. | `pages/06:496,507,528 set st.session_state['cv_strategy'] and ['cv_groups_train'] at split time…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_grouped_split_matches_the_page` — Both halves closed. The fold scheme is no longer a parallel field that… |
 | `STATE-062` | invariant | The lockbox test set is drawn once, before feature engineering/selection, and is THE test set at Train & Compare — the split only divides the remaining rows. | `utils/test_lockbox.py module docstring (lines 4-17); pages/06:552-582 (the `elif _lockbox_applicable:`…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page` — The invariant moved into the engine, which is what makes it closeable.… |
@@ -547,6 +546,16 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-016` | high | Active cohort run and completed runs are not persisted at all | `utils/cohorts.py:334-344 (CohortRun), :389-407 (_ACTIVE_KEY/_DONE_KEY); utils/session_manager.py:73-162 (key…` | **test:** `tests/test_session_carries_the_run.py::test_the_active_run_comes_back` — Closed for both keys. The failure this row describes - a save taken mid-cohort-run restoring… |
 | `CONTRACT-050` | medium | Boundary FeatureSel: feature_selection_results and consensus_features | `pages/04_Feature_Selection.py:277-282, :447-448, :493-494; utils/session_state.py:283-298, :355-357` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_keeping_a_stage_does_not_keep_its_descendants` — The subtlety survived the port, and in the form the action… |
 
+### Record / narrative / export — 5
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `RECORD-001` | landmine | Insight.to_dict() does not serialize manuscript_text. The hand-written field list at utils/insight_ledger.py:617-644 omits it even though it is a declared dataclass field (line 571) and from_dict… | `utils/insight_ledger.py:617 (to_dict) vs :571 (field) vs :1188 (discussion_points_for_manuscript's `text =…` | **test:** `tests/test_the_manuscript_voice_survives_the_save_file.py::test_limitations_stay_in_manuscript_voice_after_a_save_and_restore` — Fixed. manuscript_text is written by… |
+| `RECORD-009` | landmine | ml/narrative_engine.py, ml/manuscript_validator.py and ml/latex_report.py all require streamlit AT IMPORT TIME, transitively, because utils/insight_ledger.py has `import streamlit as st` at module… | `ml/narrative_engine.py:25 `from utils.insight_ledger import InsightLedger, MODEL_DISPLAY_NAMES`…` | **test:** `tests/test_engine_is_headless.py::test_no_core_module_needs_streamlit_to_import` — Closed, and the fix is exactly the one this row proposed. The module-level 'import… |
+| `RECORD-023` | invariant | The software never certifies adequacy: no unconditional effectiveness claim, a negative R² is stated plainly as below a mean-only baseline, 'strongest' is claimed only when more than one model was… | `ml/narrative_engine.py _gen_discussion() (_comparative flag, the r2>=0 branch, the Conclusions [AUTHOR…` | **test:** `tests/test_manuscript_trust.py::TestDiscussionHonesty::test_no_unconditional_effectiveness_claim` — All five clauses of the invariant have a test each, which is unusual… |
+| `RECORD-027` | invariant | Exported LaTeX contains no markdown artifacts, no raw bare [PLACEHOLDER] tags, no internal model keys, no coaching phrases and no dangling punctuation or 'Table X'/'Figure X' references. | `ml/manuscript_validator.py checks 10-12 (artifact_patterns, internal_keys from _MODEL_NAMES…` | **test:** `tests/test_manuscript_validator.py::test_validate_manuscript_bundle_allows_investigator_placeholders_but_rejects_raw_markdown_artifacts` — The invariant is enforced by… |
+| `RECORD-028` | invariant | Reported population and predictor counts are identical across abstract, Methods, Table 1 and the split arithmetic: analysis_total == train_n+val_n+test_n == abstract N == Study Design N == Table 1… | `ml/manuscript_validator.py checks 1-5, driven by the regex templates in _extract_analysis_n /…` | **test:** `tests/test_manuscript_validator.py::test_validate_manuscript_bundle_flags_table1_population_and_feature_coverage` — The consistency invariant is enforced and tested in… |
+
 ### Silent-failure landmines — 4
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -573,15 +582,6 @@ Nothing is closed without a regression test named after it.
 | `MODELS-005` | landmine | The 'Cancel Training' button is decorative — st.session_state.cancel_training is written and NEVER read anywhere in the codebase. | `pages/06_Train_and_Compare.py:1252-1253 (init), 1263-1264 (set to True). grep for 'cancel_training' across…` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Closed by removal plus an honest replacement, which is the right shape. The decorative… |
 | `MODELS-017` | invariant | ModelCapabilities.requires_scaled_numeric determines each model's preprocessing pipeline; a model that needs scaling must not be trained on an unscaled pipeline. | `pages/05_Preprocess.py:487, 801, 847, 1059 read spec.capabilities.requires_scaled_numeric to build per-model…` | **test:** `tests/workflow/test_per_model_pipelines.py::test_scaled_vs_unscaled_outputs_differ` — The invariant holds on both sides of the migration and has a test that would catch… |
 | `MODELS-022` | invariant | Degenerate bootstrap resamples are DROPPED, never substituted with the point estimate, and a run with too few valid replicates returns a NaN CI rather than a narrow one. | `ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot =…` | **test:** `tests/test_review_fixes.py::TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples` — The invariant is implemented with the reasoning in the… |
-
-### Record / narrative / export — 4
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `RECORD-009` | landmine | ml/narrative_engine.py, ml/manuscript_validator.py and ml/latex_report.py all require streamlit AT IMPORT TIME, transitively, because utils/insight_ledger.py has `import streamlit as st` at module… | `ml/narrative_engine.py:25 `from utils.insight_ledger import InsightLedger, MODEL_DISPLAY_NAMES`…` | **test:** `tests/test_engine_is_headless.py::test_no_core_module_needs_streamlit_to_import` — Closed, and the fix is exactly the one this row proposed. The module-level 'import… |
-| `RECORD-023` | invariant | The software never certifies adequacy: no unconditional effectiveness claim, a negative R² is stated plainly as below a mean-only baseline, 'strongest' is claimed only when more than one model was… | `ml/narrative_engine.py _gen_discussion() (_comparative flag, the r2>=0 branch, the Conclusions [AUTHOR…` | **test:** `tests/test_manuscript_trust.py::TestDiscussionHonesty::test_no_unconditional_effectiveness_claim` — All five clauses of the invariant have a test each, which is unusual… |
-| `RECORD-027` | invariant | Exported LaTeX contains no markdown artifacts, no raw bare [PLACEHOLDER] tags, no internal model keys, no coaching phrases and no dangling punctuation or 'Table X'/'Figure X' references. | `ml/manuscript_validator.py checks 10-12 (artifact_patterns, internal_keys from _MODEL_NAMES…` | **test:** `tests/test_manuscript_validator.py::test_validate_manuscript_bundle_allows_investigator_placeholders_but_rejects_raw_markdown_artifacts` — The invariant is enforced by… |
-| `RECORD-028` | invariant | Reported population and predictor counts are identical across abstract, Methods, Table 1 and the split arithmetic: analysis_total == train_n+val_n+test_n == abstract N == Study Design N == Table 1… | `ml/manuscript_validator.py checks 1-5, driven by the regex templates in _extract_analysis_n /…` | **test:** `tests/test_manuscript_validator.py::test_validate_manuscript_bundle_flags_table1_population_and_feature_coverage` — The consistency invariant is enforced and tested in… |
 
 ### Migration safety net — 2
 
