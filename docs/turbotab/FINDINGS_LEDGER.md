@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**94 of 421 closed.**
+**107 of 434 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 293 |
 | `PARTIAL` | 34 |
-| `FIXED` | 94 |
+| `FIXED` | 107 |
 
 ---
 
@@ -458,7 +458,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 94
+## FIXED — 107
 
 
 ### Application state / lockbox — 26
@@ -516,6 +516,24 @@ Nothing is closed without a regression test named after it.
 | `T0-PREREG-003` | high | The value check's recorded result was rewritten by every suite run, so the 'permanent record' it is cited as had no provenance and no permanence | `tests/integration/test_routing_value_check.py RESULT.write_text (removed)…` | **test:** `tests/integration/test_routing_value_check.py::test_routing_value_check (via _assert_matches_the_recorded_verdict)` — Fixed at L9c, on the adjudicator's extension of… |
 | `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |
+
+### Multi-file / JSON import — 13
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `IMPORT-001` | critical | A predicted 25,000,000-row many-to-many join was allowed through with only a warning | `tests/test_stress_regressions.py::TestBlowUpIsRefused; ml/import_doctor.py, ml/join_doctor.py…` | **test:** `tests/test_stress_regressions.py::TestBlowUpIsRefused` — Recovered at L10 from the regression test that guards it. The finding's original text was lost with the two… |
+| `IMPORT-002` | critical | The join rewrote the researcher's identifier into its own canonical form, retyping numeric IDs and corrupting zero-padded ones | `tests/test_stress_regressions.py::TestTheJoinDoesNotRetypeYourIdentifier; ml/import_doctor.py…` | **test:** `tests/test_stress_regressions.py::TestTheJoinDoesNotRetypeYourIdentifier` — Recovered at L10 from the regression test that guards it. The finding's original text was… |
+| `IMPORT-003` | critical | US thousands separators were read as European decimals: $45,000 became 45.0 at high confidence, pre-selected | `tests/test_stress_regressions.py::TestCommaReading; ml/import_doctor.py, ml/join_doctor.py, utils/combine.py…` | **test:** `tests/test_stress_regressions.py::TestCommaReading` — Recovered at L10 from the regression test that guards it. The finding's original text was lost with the two audit… |
+| `IMPORT-004` | critical | Sentinel detection manufactured the gap that condemned real answers: a 1-9 Likert scale had its 9s recoded to missing | `tests/test_stress_regressions.py::TestSentinelFalsePositives; ml/import_doctor.py, ml/join_doctor.py…` | **test:** `tests/test_stress_regressions.py::TestSentinelFalsePositives` — Recovered at L10 from the regression test that guards it. The finding's original text was lost with the… |
+| `IMPORT-005` | critical | Two survey cycles sharing no participants were classed as the same people and proposed for linking | `tests/test_stress_regressions.py::TestSamePeopleDecidesGrouping; ml/import_doctor.py, ml/join_doctor.py…` | **test:** `tests/test_stress_regressions.py::TestSamePeopleDecidesGrouping` — Recovered at L10 from the regression test that guards it. The finding's original text was lost with… |
+| `IMPORT-006` | landmine | The preview could not tell 'we never measured this person' from 'this person was not in that file', though it claimed to | `tests/test_stress_regressions.py::TestBlankCellsAreToldApart; ml/import_doctor.py, ml/join_doctor.py…` | **test:** `tests/test_stress_regressions.py::TestBlankCellsAreToldApart` — Recovered at L10 from the regression test that guards it. The finding's original text was lost with the… |
+| `IMPORT-007` | landmine | The before/after change map was not checked against the frame the engine actually produces | `tests/test_stress_regressions.py::TestChangeMapMatchesReality; ml/import_doctor.py, ml/join_doctor.py…` | **test:** `tests/test_stress_regressions.py::TestChangeMapMatchesReality` — Recovered at L10 from the regression test that guards it. The finding's original text was lost with the… |
+| `IMPORT-008` | landmine | Join type-compatibility was judged on the container rather than the values, blocking working joins and misdiagnosing broken ones | `tests/test_stress_regressions.py::TestDtypeMismatchIsJudgedOnTheUnderlyingType; ml/import_doctor.py…` | **test:** `tests/test_stress_regressions.py::TestDtypeMismatchIsJudgedOnTheUnderlyingType` — Recovered at L10 from the regression test that guards it. The finding's original text… |
+| `IMPORT-009` | landmine | Blocking messages gave advice about the wrong thing: 'Check you picked the right columns' when the columns were right and something invisible stopped the match | `tests/test_stress_regressions.py::TestBlockingMessagesNameTheCause; ml/import_doctor.py, ml/join_doctor.py…` | **test:** `tests/test_stress_regressions.py::TestBlockingMessagesNameTheCause` — Recovered at L10 from the regression test that guards it. The finding's original text was lost… |
+| `IMPORT-010` | landmine | A left join where half the rows matched nothing produced no warning at all | `tests/test_stress_regressions.py::TestBlankFillIsDisclosed; ml/import_doctor.py, ml/join_doctor.py…` | **test:** `tests/test_stress_regressions.py::TestBlankFillIsDisclosed` — Recovered at L10 from the regression test that guards it. The finding's original text was lost with the… |
+| `IMPORT-011` | landmine | The merge preview reported row counts, which are mechanically true and analytically useless | `tests/test_stress_regressions.py::TestConsequencesAreAboutTheStudy; ml/import_doctor.py, ml/join_doctor.py…` | **test:** `tests/test_stress_regressions.py::TestConsequencesAreAboutTheStudy` — Recovered at L10 from the regression test that guards it. The finding's original text was lost… |
+| `IMPORT-012` | high | MultiIndex columns crashed the join diagnosis and could not be merged at all | `tests/test_stress_regressions.py::TestMultiIndexColumns; ml/import_doctor.py, ml/join_doctor.py…` | **test:** `tests/test_stress_regressions.py::TestMultiIndexColumns` — Recovered at L10 from the regression test that guards it. The finding's original text was lost with the two… |
+| `IMPORT-013` | high | Repairs that discard values were offered at a confidence tier the UI pre-selects, without saying what would be lost | `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected; ml/import_doctor.py, ml/join_doctor.py…` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Recovered at L10 from the regression test that guards it. The finding's original text was lost… |
 
 ### Guided-door drive feedback — 10
 

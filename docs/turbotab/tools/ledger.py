@@ -62,6 +62,11 @@ AREA_NAME = {
     # adjudication and absent from this table until `add` started validating
     # against it — the map was a display convenience and is now a schema.
     "GUIDED": "Guided-door drive feedback",
+    # The multi-file / JSON import tail. `docs/FINDINGS_LEDGER.md` confirmed 48
+    # defects there and lost the text of most of them when two audit runs never
+    # wrote their results. These rows are the recovery: the ones the regression
+    # tests still remember, and the ones a fresh audit re-derives.
+    "IMPORT": "Multi-file / JSON import",
     "MISC": "Other",
 }
 SEV_ORDER = {"critical": 0, "landmine": 1, "high": 2, "invariant": 3, "medium": 4, "low": 5}
