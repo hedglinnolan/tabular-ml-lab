@@ -119,25 +119,45 @@ feature_cols = (
 )
 _has_target = target_col is not None and target_col in df.columns
 
-# Lightweight fingerprint for @st.cache_data invalidation when dataset changes.
-# Streamlit skips hashing _-prefixed params (like _df), so we pass this as a
-# non-prefixed param to ensure cache misses on dataset switch.
-_data_fingerprint = (len(df), len(df.columns), tuple(sorted(df.columns)))
+def _content_fingerprint(d):
+    """Cache key for every cached computation on this page.
 
+    Streamlit skips hashing `_`-prefixed params (like `_df`), so the key has to
+    be passed as a separate non-prefixed argument. What that argument *contains*
+    is the whole question.
 
-def _macro_fp(d):
-    """Content fingerprint for the macro-shape caches.
+    **Shape and column names are not enough** (`T0-LIVE-005`). Two cohort runs
+    of the same study have identical row counts and identical columns and
+    different rows — a median split, a 1:1 matched case-control, a balanced sex
+    split. Under a shape-only key those two runs collide, and cohort A's
+    correlation matrix, skew list, outlier heatmap and interaction ranking are
+    served to cohort B. Cohort runs are the newest subsystem in the app, so the
+    collision lands exactly where it is least expected.
 
-    Shape and column names are not enough on their own: two cohort runs of the
-    same study have identical shape and columns and different rows. The value
-    sum makes the key follow the data.
+    The digest makes the key follow the values. Cheap: `hash_pandas_object` is
+    a vectorised row hash, and it runs once per rerun rather than per cache
+    lookup.
     """
     import hashlib
     try:
         digest = int(pd.util.hash_pandas_object(d, index=True).sum())
     except Exception:
+        # Unhashable cells (a list from nested JSON) must not collapse the key
+        # to something stable — that would stop every cache from ever missing.
         digest = hashlib.md5(repr(d.head(50).values.tobytes()).encode()).hexdigest()
     return (len(d), len(d.columns), tuple(map(str, d.columns)), str(digest))
+
+
+# One fingerprint, used by every cache on this page. There used to be two: a
+# shape-only tuple for the eight older caches and a content digest for the four
+# macro-shape ones added with T0-LIVE-001. Having both meant the principle was
+# written down in one place and applied in the other.
+_data_fingerprint = _content_fingerprint(df)
+
+
+def _macro_fp(d):
+    """Kept as the name the macro-shape wrappers call; same function now."""
+    return _content_fingerprint(d)
 
 # Detection values
 task_type_detection: TaskTypeDetection = st.session_state.get(

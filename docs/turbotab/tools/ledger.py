@@ -65,6 +65,24 @@ def save(rows: list[dict]) -> None:
     DATA.write_text(json.dumps(rows, indent=1, ensure_ascii=False), encoding="utf-8")
 
 
+def clip(text: str, limit: int) -> str:
+    """Truncate at a word boundary, never mid-word.
+
+    A hard slice cut "Analysis" one and two characters short, leaving a partial
+    word in a tracked artifact — and, because the remaining stem is the one the
+    British-spelling checker looks for, a spelling failure nobody had written.
+    The generator was the bug, not the prose.
+    """
+    text = text or ""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    space = cut.rfind(" ")
+    if space > limit * 0.6:          # keep most of the budget, lose the part word
+        cut = cut[:space]
+    return cut.rstrip(" ,;:—-") + "…"
+
+
 def norm(s: str | None) -> str:
     return re.sub(r"\s+", " ", s or "").strip()
 
@@ -208,8 +226,8 @@ def cmd_regen(rows, _args) -> int:
                 if r.get("test"):
                     tail = f"**test:** `{r['test']}` — {tail}" if tail else f"**test:** `{r['test']}`"
                 md.append(
-                    f"| `{r['id']}` | {r['sev']} | {norm(r['item'])[:200]} "
-                    f"| `{norm(r.get('ev'))[:110]}` | {norm(tail)[:180]} |"
+                    f"| `{r['id']}` | {r['sev']} | {clip(norm(r['item']), 200)} "
+                    f"| `{clip(norm(r.get('ev')), 110)}` | {clip(norm(tail), 180)} |"
                 )
 
     body = "\n".join(md) + "\n"

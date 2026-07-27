@@ -4040,8 +4040,23 @@
   "detail": "The L7 fix for T0-LIVE-001 added a content fingerprint (_macro_fp) whose own docstring states the principle: 'two cohort runs of the same study have identical shape and columns and different rows.' But only the four macro-shape caches use it. The eight older caches — profile, signals, skewed features, outlier heatmap, correlation matrix, top pairs, target sort, interactions — still key on _data_fingerprint = (len(df), len(df.columns), tuple(sorted(df.columns))). Two cohort runs with equal row counts (median split, 1:1 matched case-control, a balanced sex split) share that key, so cohort A's correlations and outliers are served to cohort B. Same class as T0-LIVE-001, narrower trigger, and it lands on cohort runs — the newest feature.",
   "ev": "pages/02_EDA.py:125 (_data_fingerprint, shape-only) vs :127-140 (_macro_fp, content); consumers at :179,192,426,842,941,989,1008,1129",
   "act": "One-line fix: make _data_fingerprint use _macro_fp's content digest. Regression test: two equal-shaped frames with different values produce different cached correlations.",
-  "status": "OPEN",
+  "status": "FIXED",
   "verified_against": "TurboTab @ 2e1792f",
-  "note": "The agent's cohort-collision reasoning was correct and is the evidence; the retrofit of the older caches was simply outside L7's macro_shape scope."
+  "note": "Fixed by collapsing the page's two fingerprints into one. Having a shape-only key for the eight older caches and a content digest for the four macro-shape ones is exactly how the principle came to be written down in one place and applied in the other -- my own _macro_fp docstring stated it. _content_fingerprint now hashes values via hash_pandas_object and every cache on the page uses it. Three tests: a same-shape cohort pair (balanced sex split, genuinely different correlation structure) produces different keys; the shape-only tuple cannot come back; and every cached helper is called with the content key by name, so a ninth cache added without one is visible rather than silent.",
+  "test": "tests/test_eda_caches_follow_the_data.py::test_the_page_has_one_fingerprint_and_it_follows_the_values",
+  "verified_ev": "pages/02_EDA.py _content_fingerprint"
+ },
+ {
+  "id": "T0-ENV-001",
+  "area": "TIER0",
+  "sev": "med",
+  "item": "Missing plotting dependencies produced a misleading test baseline, not a legible gap",
+  "detail": "matplotlib and plotly are imported at module scope by pages/02 and pages/07, so without them those pages fail at import and every AppTest that renders them fails with them. That surfaced as 26 integration failures which looked like real breakage and were adopted as the pre-existing baseline across several move-then-verify comparisons. Installing the two turned 26 failures into 0 with no application change. A stable-looking wall of failures is worse than a red test, because every later comparison is then made against noise.",
+  "ev": "requirements-dev.txt",
+  "act": "Added requirements-dev.txt pinning matplotlib, plotly, kaleido and the harness.",
+  "status": "FIXED",
+  "test": "requirements-dev.txt (documentation fix; no behavior to regress)",
+  "note": "Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline, check whether the environment caused it. shap is deliberately left out -- the three tests needing it are a small and legible gap rather than a misleading one.",
+  "verified_against": "origin/TurboTab @ 2da15b5"
  }
 ]

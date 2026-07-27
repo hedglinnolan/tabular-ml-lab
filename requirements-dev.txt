@@ -1,0 +1,31 @@
+# Development and test dependencies.
+#
+# These are not optional extras. Without them the suite does not merely skip a
+# few tests — it reports a *different and misleading* baseline: 26 integration
+# failures that look like real breakage, all of them a missing plotting import
+# surfacing as a page that will not render. Installing matplotlib and plotly
+# turned 26 failures into 0 while changing no application code.
+#
+# That is worse than a red test, because a stable-looking wall of failures gets
+# adopted as "the baseline" and then every subsequent comparison is made against
+# noise. It cost several move-then-verify comparisons in this work before the
+# cause was found. See T0-ENV-001.
+#
+#     pip install -r requirements.txt -r requirements-dev.txt
+
+# ── needed for the app's own pages to import ─────────────────────────────────
+# pages/02 and pages/07 import these at module scope, so a missing one fails the
+# page at import and cascades into every AppTest that renders it.
+matplotlib>=3.7.0
+plotly>=5.14.0
+kaleido>=0.2.1
+
+# ── the test harness ─────────────────────────────────────────────────────────
+pytest>=8.0
+pytest-timeout>=2.1
+
+# ── optional analysis extras the suite covers ────────────────────────────────
+# Not installed here by default: shap pulls numba/llvmlite and is slow to build.
+# The three tests that need it are the only ones expected to fail without it,
+# which is a small and *legible* gap rather than a misleading one.
+#   shap>=0.42.0
