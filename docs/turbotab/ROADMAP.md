@@ -48,13 +48,17 @@ Anything short of all five is a milestone, not a finish.
                      │
               ◆ DECISION B — ANSWERED: skip only when a high-confidence finding
                      │           makes the question moot; visible + reversible
-  L8  Router, EDA only  ← IN PROGRESS — step 1 (baseline) ✓ DONE
+  L8  Router, EDA only      ✓ DONE — messy-clinic: coverage 1/9→9/9
+              │                       with questions 34→9, irrelevant 25→0
+       ◆ ROUTING VALUE CHECK — ✓ PASSED against the frozen prereg
+              │    (one edge ambiguity adjudicated in
+              │     VALUE_CHECK_ADJUDICATION.md; prereg unedited)
               │
-       ◆ ROUTING VALUE CHECK — criteria PRE-REGISTERED in
-              │    VALUE_CHECK_PREREG.md, frozen before Router code;
-              │    editing it after Router code exists = failing it
-              │
-  L9  feed frontend, one step per loop  ← the long one
+  L9  feed frontend, one step per loop  ← NEXT — the long one.
+              │    The routing harness becomes a STANDING rail: re-run at
+              │    every L9 step. When the pull palette lands, the harness
+              │    must distinguish pushed questions (thresholds bind) from
+              │    pull affordances (offered, not asked, not counted).
   L10 parity harness + manuscript chain
                      │
               ◆ DECISION C — ANSWERED: never delete
@@ -134,6 +138,17 @@ the transcript; (c) full gating with a new severity model.
 
 **Recommendation: (b).** It honors the rule, it is testable, and the transcript records the skip
 so the manuscript can still describe what happened.
+
+**Refinement from the L8 implementation — the fact/choice distinction, now canonical:**
+
+> A `high`-confidence finding can settle a question of **fact** — "is this categorical?" — because
+> the engine is certain and the transcript can state it. It can never settle a question of
+> **choice**. Whether to apply a repair is the user's decision however confident the engine is,
+> because applying without preview is the blind consent the preview exists to end.
+
+Repairs are always asked; only detected facts are skippable. This is the routing constitution in
+two sentences, and `router.audit()` enforces it before any run is scored — a run that breaks the
+rule has no number, it has a failure.
 
 **Unblocks:** L8, and the shape of L9.
 

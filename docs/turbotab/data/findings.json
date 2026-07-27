@@ -4058,5 +4058,17 @@
   "test": "requirements-dev.txt (documentation fix; no behavior to regress)",
   "note": "Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline, check whether the environment caused it. shap is deliberately left out -- the three tests needing it are a small and legible gap rather than a misleading one.",
   "verified_against": "origin/TurboTab @ 2da15b5"
+ },
+ {
+  "id": "T0-PREREG-001",
+  "area": "TIER0",
+  "sev": "medium",
+  "item": "The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable",
+  "detail": "VALUE_CHECK_PREREG.md demanded 'exactly 1.0' for deferral closure while defining the failure condition as 'a deferred item that fails to resurface' — a quota and an event-definition that conflict when the set of deferrals is empty. Both clean datasets hit the edge (None). The builder computed BOTH readings into routing-value-check.json (passes_under_literal_reading: false is permanent record), did not edit the frozen prereg, and referred the ruling upward. Adjudicated in VALUE_CHECK_ADJUDICATION.md: vacuous satisfaction is the binding reading, on the prereg's own event-definition, its clean-dataset guard, and its treatment of Classic's NaN as correctly recorded. The drafting defect was the adjudicator's, not the builder's.",
+  "ev": "VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block; VALUE_CHECK_ADJUDICATION.md",
+  "act": "Precedent recorded for future preregs: structurally-inapplicable metrics must state empty-set behavior; a harness facing an ambiguous threshold computes every reading and records all of them, and the builder never picks silently.",
+  "status": "FIXED",
+  "test": "data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)",
+  "note": "Process note: this is the pre-registration discipline working, not failing — the ambiguity surfaced loudly, the adverse number is permanent, and the ruling is published against the drafter's own clause."
  }
 ]

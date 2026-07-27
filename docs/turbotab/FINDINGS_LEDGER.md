@@ -20,7 +20,7 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**12 of 399 closed.**
+**13 of 400 closed.**
 
 
 | Status | Count |
@@ -28,7 +28,7 @@ Nothing is closed without a regression test named after it.
 | `UNVERIFIED` | 370 |
 | `OPEN` | 14 |
 | `PARTIAL` | 3 |
-| `FIXED` | 12 |
+| `FIXED` | 13 |
 
 ---
 
@@ -484,10 +484,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 12
+## FIXED — 13
 
 
-### Verified against main — 12
+### Verified against main — 13
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -502,4 +502,5 @@ Nothing is closed without a regression test named after it.
 | `T0-DOC-003` | high | ARCHITECTURE.md inverted the persistence contract, creating a false conflict with the door-switch gate | `utils/session_manager.py:23-34,138,531; docs/turbotab/ARCHITECTURE.md §02 (previous revision)…` | **test:** `docs/turbotab/ARCHITECTURE.md §02 (corrected); L5 gate now names session_manager as prior art` — Third documentation error found by the build agent's runtime checking.… |
 | `T0-PROC-001` | high | Branch merge blind-copied an older FEATURE_PARITY.md over the newer one, silently destroying the Data & Target feature register | `git: 9211566 (register added) vs b4bff25 (register gone); flagged by the build agent at 4366b23` | **test:** `tools/register.py check (artifact-currency + BUILT_STEPS coverage; verified by deleting the markdown)` — Process rule going forward: on any merge, tracked artifacts are… |
 | `T0-LIVE-005` | high | pages/02's eight pre-existing caches still key on the shape-only fingerprint — equal-sized cohort runs of one study collide | `pages/02_EDA.py:125 (_data_fingerprint, shape-only) vs :127-140 (_macro_fp, content); consumers at…` | **test:** `tests/test_eda_caches_follow_the_data.py::test_the_page_has_one_fingerprint_and_it_follows_the_values` — Fixed by collapsing the page's two fingerprints into one.… |
+| `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |
