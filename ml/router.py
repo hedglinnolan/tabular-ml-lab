@@ -64,6 +64,12 @@ class Question:
     why: str
     step: str
     kind: str                       # target | task_type | repair | explore
+    # push | pull. "Push the notable, pull the rest" (`PRODUCT_VISION.md` §04):
+    # a pushed item is asked and awaits an answer; a pull affordance is offered
+    # beside it and costs nothing to ignore. The interview's question count is
+    # pushed items only — otherwise offering a distribution gallery would read
+    # as the interview becoming more talkative when it is doing the opposite.
+    mode: str = "push"
     triggering_finding: Optional[str] = None
     confidence: Optional[str] = None
     severity: Optional[str] = None
@@ -93,7 +99,7 @@ class Question:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "key": self.key, "title": self.title, "why": self.why,
-            "step": self.step, "kind": self.kind,
+            "step": self.step, "kind": self.kind, "mode": self.mode,
             "triggering_finding": self.triggering_finding,
             "confidence": self.confidence, "severity": self.severity,
             "status": self.status, "skip_reason": self.skip_reason,
@@ -120,6 +126,40 @@ def _skip_is_permitted(confidence: Optional[str], kind: str) -> bool:
 # The plan
 # ─────────────────────────────────────────────────────────────────────────────
 
+def palette(recommendations: Sequence[Any], step: str = "explore") -> List[Question]:
+    """The pull side: what else the user may look at, offered not asked.
+
+    Built from `ml.eda_recommender.recommend_eda`, which is already engine code
+    and already ranks its cards — the page only rendered them. Each is returned
+    with ``mode="pull"``, so it is present in the interface and absent from the
+    question count.
+
+    This is the second half of *"push the notable, pull the rest"*. Without it
+    the interview only ever shows what it found, which is the wall-of-plots
+    problem inverted: nothing to explore unless something was wrong.
+    """
+    out: List[Question] = []
+    for rec in recommendations:
+        rid = getattr(rec, "id", None) or (rec.get("id") if isinstance(rec, dict) else None)
+        if not rid:
+            continue
+        if isinstance(rec, dict):
+            def get(k, d=None, _r=rec):
+                return _r.get(k, d)
+        else:
+            def get(k, d=None, _r=rec):
+                return getattr(_r, k, d)
+        if get("enabled", True) is False:
+            continue
+        why = get("why") or []
+        out.append(Question(
+            key=f"look::{rid}", kind="explore", step=step, mode="pull",
+            title=get("title") or rid,
+            why="; ".join(why) if isinstance(why, (list, tuple)) else str(why or ""),
+            options=["show me"]))
+    return out
+
+
 def plan(
     findings: Sequence[Dict[str, Any]],
     *,
@@ -128,6 +168,7 @@ def plan(
     step: str = "data",
     deferred: Optional[Dict[str, str]] = None,
     answered: Sequence[str] = (),
+    recommendations: Sequence[Any] = (),
 ) -> List[Question]:
     """Every question this step asks, in order, derived from the record.
 
@@ -194,6 +235,10 @@ def plan(
         if key in deferred:
             q.deferred_from = "data"
         out.append(q)
+
+    # The pull palette sits beside the questions, never among them.
+    if recommendations:
+        out.extend(palette(recommendations, step=step))
 
     return out
 
@@ -278,6 +323,11 @@ def audit(questions: Sequence[Question]) -> None:
                 raise RouterError(
                     f"{q.key} was skipped with no reason in the transcript. Every "
                     "skip must be visible and reversible.")
+        if q.mode == "pull" and q.status != "asked":
+            raise RouterError(
+                f"{q.key} is a pull affordance with status {q.status!r}. Pull "
+                "affordances are offered, never skipped or deferred — ignoring "
+                "one is free, which is what makes it pull rather than push.")
         if q.status == "deferred" and not q.defer_target:
             raise RouterError(
                 f"{q.key} was deferred with no target step, so it would never "

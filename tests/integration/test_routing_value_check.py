@@ -114,8 +114,20 @@ def _run_guided(dataset: str, csv_path: pathlib.Path, target: str) -> Measuremen
                 deferred_at="data", target_step=q.defer_target))
 
     # ── step 2 · explore, where the deferral must come back ──────────────
+    # The palette ships with the Explore step, so it is measured from here on.
+    # If the thresholds moved when it landed, they were counting offers as
+    # questions and "push the notable, pull the rest" would read as regression.
+    recommendations = []
+    try:
+        from ml.eda_recommender import compute_dataset_signals, recommend_eda
+        recommendations = recommend_eda(compute_dataset_signals(
+            df, target, detection.get("detected"), "cross_sectional", None))
+    except Exception:
+        recommendations = []
+
     at_explore = router.plan(findings, target=target, detection=detection,
-                             step="explore", deferred=deferred, answered=answered)
+                             step="explore", deferred=deferred, answered=answered,
+                             recommendations=recommendations)
     router.audit(at_explore)
 
     for q in at_explore:
@@ -133,7 +145,9 @@ def _run_guided(dataset: str, csv_path: pathlib.Path, target: str) -> Measuremen
         notes=["Scored on the baseline's window: the exploration phase, steps "
                "data and explore.",
                "Every plan passed ml.router.audit before being scored, so a "
-               "Decision B violation fails rather than scoring."],
+               "Decision B violation fails rather than scoring.",
+               "The Explore step's pull palette is present and counted "
+               "separately: offers are reported, never scored."],
     )
 
 
@@ -148,6 +162,7 @@ def _record(q, dataset: str, required) -> QuestionRecord:
     return QuestionRecord(
         key=q.key, label=q.title, door="guided", step=q.step,
         triggering_finding=q.triggering_finding,
+        mode=q.mode,
         skipped=(q.status != "asked"),
         skip_reason=q.skip_reason or (
             f"deferred to {q.defer_target}" if q.status == "deferred" else None),

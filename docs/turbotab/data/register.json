@@ -230,5 +230,221 @@
   "classic": "removed — the button set a flag nothing read",
   "state": "guided-only",
   "reason": "T0-LIVE-002. Classic's button is removed rather than wired: Streamlit runs one script per session on one thread, so during training no widget is interactive and the button could not be clicked at all. The page now says a run cannot be interrupted, which is true. Guided has real cancellation via the job queue."
+ },
+ {
+  "id": "explore-eda-sufficiency-insufficient",
+  "step": "explore",
+  "capability": "EDA trigger: eda_sufficiency_insufficient (blocker)",
+  "classic": "pages/02_EDA.py:245",
+  "state": "both",
+  "reason": "Raised by the profile as a critical warning and rendered in Explore. One of the two blocker-severity triggers that only the page emitted; it is engine-derived now."
+ },
+ {
+  "id": "explore-eda-sufficiency-borderline",
+  "step": "explore",
+  "capability": "EDA trigger: eda_sufficiency_borderline (warning)",
+  "classic": "pages/02_EDA.py:261",
+  "state": "both",
+  "reason": "Same source as the insufficient case, at warning severity."
+ },
+ {
+  "id": "explore-eda-leakage-col",
+  "step": "explore",
+  "capability": "EDA trigger: eda_leakage_<var> (blocker)",
+  "classic": "pages/02_EDA.py:279",
+  "state": "classic-only",
+  "reason": "Per-column leakage, the second blocker severity. The signal exists in eda_recommender (r4_leakage) and is offered as a pull affordance, but Guided does not yet ASK about a leaking column. Owed: it is a blocker, and a blocker that only offers is not gating."
+ },
+ {
+  "id": "explore-eda-corr-cluster-col",
+  "step": "explore",
+  "capability": "EDA trigger: eda_corr_cluster_<var> (warning)",
+  "classic": "pages/02_EDA.py:338",
+  "state": "classic-only",
+  "reason": "Collinearity clusters. Offered via the collinearity heatmap card; not yet a question."
+ },
+ {
+  "id": "explore-eda-missing-severe",
+  "step": "explore",
+  "capability": "EDA trigger: eda_missing_severe (warning)",
+  "classic": "pages/02_EDA.py:363",
+  "state": "both",
+  "reason": "Surfaced as a profile finding in the Explore stack and as the missingness pull card."
+ },
+ {
+  "id": "explore-eda-missing-moderate",
+  "step": "explore",
+  "capability": "EDA trigger: eda_missing_moderate (info)",
+  "classic": "pages/02_EDA.py:380",
+  "state": "both",
+  "reason": "Same source, info severity."
+ },
+ {
+  "id": "explore-eda-target-skew",
+  "step": "explore",
+  "capability": "EDA trigger: eda_target_skew (warning)",
+  "classic": "pages/02_EDA.py:395",
+  "state": "classic-only",
+  "reason": "The action is a target transform on the Train page, which is outside the explore window. Belongs to the Train step's pre-list."
+ },
+ {
+  "id": "explore-eda-class-imbalance",
+  "step": "explore",
+  "capability": "EDA trigger: eda_class_imbalance (warning)",
+  "classic": "pages/02_EDA.py:415",
+  "state": "both",
+  "reason": "Raised by the profile and rendered; the imbalance finding is in the Explore stack."
+ },
+ {
+  "id": "explore-eda-skew-group",
+  "step": "explore",
+  "capability": "EDA trigger: eda_skew_group (info)",
+  "classic": "pages/02_EDA.py:451",
+  "state": "classic-only",
+  "reason": "Feature-level skew grouping. Its action is a Preprocess transform; deferred to that step."
+ },
+ {
+  "id": "explore-eda-opportunity-clean-data",
+  "step": "explore",
+  "capability": "EDA trigger: eda_opportunity_clean_data (opportunity)",
+  "classic": "pages/02_EDA.py:475",
+  "state": "classic-only",
+  "reason": "An encouragement, not a decision. Deliberately not surfaced: an interview that congratulates the user on clean data is ceremony, which the clean-dataset guard forbids."
+ },
+ {
+  "id": "explore-eda-opportunity-strong-signal",
+  "step": "explore",
+  "capability": "EDA trigger: eda_opportunity_strong_signal (opportunity)",
+  "classic": "pages/02_EDA.py:503",
+  "state": "classic-only",
+  "reason": "Model-selection guidance; Train step."
+ },
+ {
+  "id": "explore-eda-opportunity-nonlinear",
+  "step": "explore",
+  "capability": "EDA trigger: eda_opportunity_nonlinear (opportunity)",
+  "classic": "pages/02_EDA.py:525",
+  "state": "classic-only",
+  "reason": "Model-selection guidance; Train step."
+ },
+ {
+  "id": "explore-eda-opportunity-high-np",
+  "step": "explore",
+  "capability": "EDA trigger: eda_opportunity_high_np (opportunity)",
+  "classic": "pages/02_EDA.py:544",
+  "state": "classic-only",
+  "reason": "Model-selection guidance; Train step."
+ },
+ {
+  "id": "explore-eda-opportunity-balanced",
+  "step": "explore",
+  "capability": "EDA trigger: eda_opportunity_balanced (opportunity)",
+  "classic": "pages/02_EDA.py:563",
+  "state": "classic-only",
+  "reason": "Metric guidance; Train step."
+ },
+ {
+  "id": "explore-eda-low-dimensionality",
+  "step": "explore",
+  "capability": "EDA trigger: eda_low_dimensionality (opportunity)",
+  "classic": "pages/02_EDA.py:1228",
+  "state": "classic-only",
+  "reason": "Raised from the macro-shape panel, which Guided does not render yet."
+ },
+ {
+  "id": "explore-eda-tda-loops",
+  "step": "explore",
+  "capability": "EDA trigger: eda_tda_loops (opportunity)",
+  "classic": "pages/02_EDA.py:1300",
+  "state": "classic-only",
+  "reason": "Raised from the persistence diagram; requires the optional TDA extra and the macro-shape panel. Neither is in Guided."
+ },
+ {
+  "id": "explore-rec-r1-plausibility",
+  "step": "explore",
+  "capability": "EDA recommendation card: Physiologic Plausibility Check",
+  "classic": "ml/eda_recommender.py:267 (already engine)",
+  "state": "both",
+  "reason": "Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question."
+ },
+ {
+  "id": "explore-rec-r2-missingness",
+  "step": "explore",
+  "capability": "EDA recommendation card: Missingness Pattern Analysis",
+  "classic": "ml/eda_recommender.py:290 (already engine)",
+  "state": "both",
+  "reason": "Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question."
+ },
+ {
+  "id": "explore-rec-r3-cohort-structure",
+  "step": "explore",
+  "capability": "EDA recommendation card: Longitudinal Data Split Guidance",
+  "classic": "ml/eda_recommender.py:322 (already engine)",
+  "state": "both",
+  "reason": "Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question."
+ },
+ {
+  "id": "explore-rec-r4-leakage",
+  "step": "explore",
+  "capability": "EDA recommendation card: Target Leakage Risk Assessment",
+  "classic": "ml/eda_recommender.py:345 (already engine)",
+  "state": "both",
+  "reason": "Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question."
+ },
+ {
+  "id": "explore-rec-r5-target-regression",
+  "step": "explore",
+  "capability": "EDA recommendation card: Target Distribution & Outliers",
+  "classic": "ml/eda_recommender.py:378 (already engine)",
+  "state": "both",
+  "reason": "Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question."
+ },
+ {
+  "id": "explore-rec-r5-target-classification",
+  "step": "explore",
+  "capability": "EDA recommendation card: Class Balance & Baseline",
+  "classic": "ml/eda_recommender.py:403 (already engine)",
+  "state": "both",
+  "reason": "Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question."
+ },
+ {
+  "id": "explore-rec-r6-dose-response",
+  "step": "explore",
+  "capability": "EDA recommendation card: Dose-Response Trends",
+  "classic": "ml/eda_recommender.py:428 (already engine)",
+  "state": "both",
+  "reason": "Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question."
+ },
+ {
+  "id": "explore-rec-r7-interactions",
+  "step": "explore",
+  "capability": "EDA recommendation card: Stratified Trends by Demographics",
+  "classic": "ml/eda_recommender.py:458 (already engine)",
+  "state": "both",
+  "reason": "Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question."
+ },
+ {
+  "id": "explore-rec-r8-collinearity",
+  "step": "explore",
+  "capability": "EDA recommendation card: Collinearity Heatmap",
+  "classic": "ml/eda_recommender.py:483 (already engine)",
+  "state": "both",
+  "reason": "Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question."
+ },
+ {
+  "id": "explore-rec-r9-outlier-influence",
+  "step": "explore",
+  "capability": "EDA recommendation card: Outlier Influence Analysis",
+  "classic": "ml/eda_recommender.py:517 (already engine)",
+  "state": "both",
+  "reason": "Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question."
+ },
+ {
+  "id": "explore-rec-r10-baselines",
+  "step": "explore",
+  "capability": "EDA recommendation card: Quick Baseline Models",
+  "classic": "ml/eda_recommender.py:541 (already engine)",
+  "state": "both",
+  "reason": "Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question."
  }
 ]

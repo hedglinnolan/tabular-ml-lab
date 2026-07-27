@@ -4,9 +4,9 @@
 
 | State | Meaning | Count |
 |---|---|---:|
-| `both` | exposed in Classic and Guided | 8 |
+| `both` | exposed in Classic and Guided | 24 |
 | `core` | extracted into the shared core | 4 |
-| `classic-only` | a claim to be justified, never a shrug | 13 |
+| `classic-only` | a claim to be justified, never a shrug | 24 |
 | `guided-only` | a debt owed back to Classic | 4 |
 
 ## Data & Target (Classic: pages/01, Step 4) — 22
@@ -47,3 +47,35 @@
 | `core-lockbox-barrier` | Lockbox + identity barrier | utils/test_lockbox.py (no barrier) | **core** | L5: sealing raises the barrier; promote_header/melt_repeated unreachable behind it, enforced at the API apply path. Guided-ahead-of-Classic on the barrier itself. |
 | `core-readiness-model` | Step-completion / readiness model (ten predicates + quick/advanced) | utils/theme.py:685 render_sidebar_workflow | **core** | Extracted to turbotab/readiness.py in L6; the page asks instead of computing, and a test asserts the expressions are gone. The Router's first real input. |
 | `engine-headless` | Engine imports and runs with no Streamlit in the process | n/a — this is the core | **core** | All 45 core modules import with streamlit blocked, enforced by tests/test_engine_is_headless.py with a stub-first blocker so it cannot pass vacuously. Six were tainted; four went with two deleted lines (insight_ledger's module-level import, which also freed narrative_engine and manuscript_validator, and eda_actions' dead one). |
+
+## Explore / EDA (Classic: pages/02) — 27
+
+| ID | Capability | Classic | State | Reason |
+|---|---|---|---|---|
+| `explore-eda-class-imbalance` | EDA trigger: eda_class_imbalance (warning) | pages/02_EDA.py:415 | **both** | Raised by the profile and rendered; the imbalance finding is in the Explore stack. |
+| `explore-eda-missing-moderate` | EDA trigger: eda_missing_moderate (info) | pages/02_EDA.py:380 | **both** | Same source, info severity. |
+| `explore-eda-missing-severe` | EDA trigger: eda_missing_severe (warning) | pages/02_EDA.py:363 | **both** | Surfaced as a profile finding in the Explore stack and as the missingness pull card. |
+| `explore-eda-sufficiency-borderline` | EDA trigger: eda_sufficiency_borderline (warning) | pages/02_EDA.py:261 | **both** | Same source as the insufficient case, at warning severity. |
+| `explore-eda-sufficiency-insufficient` | EDA trigger: eda_sufficiency_insufficient (blocker) | pages/02_EDA.py:245 | **both** | Raised by the profile as a critical warning and rendered in Explore. One of the two blocker-severity triggers that only the page emitted; it is engine-derived now. |
+| `explore-rec-r1-plausibility` | EDA recommendation card: Physiologic Plausibility Check | ml/eda_recommender.py:267 (already engine) | **both** | Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question. |
+| `explore-rec-r10-baselines` | EDA recommendation card: Quick Baseline Models | ml/eda_recommender.py:541 (already engine) | **both** | Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question. |
+| `explore-rec-r2-missingness` | EDA recommendation card: Missingness Pattern Analysis | ml/eda_recommender.py:290 (already engine) | **both** | Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question. |
+| `explore-rec-r3-cohort-structure` | EDA recommendation card: Longitudinal Data Split Guidance | ml/eda_recommender.py:322 (already engine) | **both** | Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question. |
+| `explore-rec-r4-leakage` | EDA recommendation card: Target Leakage Risk Assessment | ml/eda_recommender.py:345 (already engine) | **both** | Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question. |
+| `explore-rec-r5-target-classification` | EDA recommendation card: Class Balance & Baseline | ml/eda_recommender.py:403 (already engine) | **both** | Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question. |
+| `explore-rec-r5-target-regression` | EDA recommendation card: Target Distribution & Outliers | ml/eda_recommender.py:378 (already engine) | **both** | Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question. |
+| `explore-rec-r6-dose-response` | EDA recommendation card: Dose-Response Trends | ml/eda_recommender.py:428 (already engine) | **both** | Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question. |
+| `explore-rec-r7-interactions` | EDA recommendation card: Stratified Trends by Demographics | ml/eda_recommender.py:458 (already engine) | **both** | Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question. |
+| `explore-rec-r8-collinearity` | EDA recommendation card: Collinearity Heatmap | ml/eda_recommender.py:483 (already engine) | **both** | Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question. |
+| `explore-rec-r9-outlier-influence` | EDA recommendation card: Outlier Influence Analysis | ml/eda_recommender.py:517 (already engine) | **both** | Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question. |
+| `explore-eda-corr-cluster-col` | EDA trigger: eda_corr_cluster_<var> (warning) | pages/02_EDA.py:338 | **classic-only** | Collinearity clusters. Offered via the collinearity heatmap card; not yet a question. |
+| `explore-eda-leakage-col` | EDA trigger: eda_leakage_<var> (blocker) | pages/02_EDA.py:279 | **classic-only** | Per-column leakage, the second blocker severity. The signal exists in eda_recommender (r4_leakage) and is offered as a pull affordance, but Guided does not yet ASK about a leaking column. Owed: it is a blocker, and a blocker that only offers is not gating. |
+| `explore-eda-low-dimensionality` | EDA trigger: eda_low_dimensionality (opportunity) | pages/02_EDA.py:1228 | **classic-only** | Raised from the macro-shape panel, which Guided does not render yet. |
+| `explore-eda-opportunity-balanced` | EDA trigger: eda_opportunity_balanced (opportunity) | pages/02_EDA.py:563 | **classic-only** | Metric guidance; Train step. |
+| `explore-eda-opportunity-clean-data` | EDA trigger: eda_opportunity_clean_data (opportunity) | pages/02_EDA.py:475 | **classic-only** | An encouragement, not a decision. Deliberately not surfaced: an interview that congratulates the user on clean data is ceremony, which the clean-dataset guard forbids. |
+| `explore-eda-opportunity-high-np` | EDA trigger: eda_opportunity_high_np (opportunity) | pages/02_EDA.py:544 | **classic-only** | Model-selection guidance; Train step. |
+| `explore-eda-opportunity-nonlinear` | EDA trigger: eda_opportunity_nonlinear (opportunity) | pages/02_EDA.py:525 | **classic-only** | Model-selection guidance; Train step. |
+| `explore-eda-opportunity-strong-signal` | EDA trigger: eda_opportunity_strong_signal (opportunity) | pages/02_EDA.py:503 | **classic-only** | Model-selection guidance; Train step. |
+| `explore-eda-skew-group` | EDA trigger: eda_skew_group (info) | pages/02_EDA.py:451 | **classic-only** | Feature-level skew grouping. Its action is a Preprocess transform; deferred to that step. |
+| `explore-eda-target-skew` | EDA trigger: eda_target_skew (warning) | pages/02_EDA.py:395 | **classic-only** | The action is a target transform on the Train page, which is outside the explore window. Belongs to the Train step's pre-list. |
+| `explore-eda-tda-loops` | EDA trigger: eda_tda_loops (opportunity) | pages/02_EDA.py:1300 | **classic-only** | Raised from the persistence diagram; requires the optional TDA extra and the macro-shape panel. Neither is in Guided. |

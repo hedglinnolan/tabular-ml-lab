@@ -239,8 +239,13 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
     if decision.kind not in {"defer", "dismiss", "undismiss", "flag", "unflag", "note"}:
         raise HTTPException(400, f"Unknown decision kind '{decision.kind}'.")
 
+    payload = dict(decision.payload)
+    if decision.kind == "defer" and "target_step" not in payload:
+        # A deferral without a target is a discard with manners. The Router
+        # refuses one, so the record must carry it.
+        payload["target_step"] = "explore"
     project.record(decision.kind, _sentence(project, decision),
-                   subject=decision.subject, payload=decision.payload)
+                   subject=decision.subject, payload=payload)
     return _payload(project)
 
 
@@ -301,6 +306,85 @@ async def preview_finding(project_id: str, finding_id: str) -> Dict[str, Any]:
         return engine.preview_fix(project.df, live)
     except engine.EngineRefusal as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /project/{id}/interview — the Router's plan
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/project/{project_id}/interview")
+async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
+    """What the interview asks next, and what it offers alongside.
+
+    The Router is a pure function of the record, so this endpoint holds no state
+    of its own: `answered` and `deferred` are folded out of the project's
+    decisions, which is the same fold the frontend does for finding dispositions.
+    Two readers of one record cannot drift.
+    """
+    try:
+        project = STORE.get(project_id)
+    except ProjectError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+    from ml import router
+
+    answered, deferred = [], {}
+    for d in project.decisions:
+        if d.kind == "set_target":
+            answered.append("choose_target")
+        elif d.kind == "set_task_type":
+            answered.append("confirm_task_type")
+        elif d.kind in ("apply", "dismiss"):
+            answered.append(f"repair::{d.subject}")
+        elif d.kind == "defer":
+            deferred[f"repair::{d.subject}"] = d.payload.get("target_step", "explore")
+        elif d.kind == "undismiss":
+            key = f"repair::{d.subject}"
+            if key in answered:
+                answered.remove(key)
+
+    detection = None
+    if project.target and project.task_type:
+        detection = {"detected": project.task_type,
+                     "confidence": project.task_confidence,
+                     "reasons": list(project.task_reasons)}
+
+    structural = [f for f in project.findings if f.get("source") == "structure"]
+
+    # The pull palette, from the recommender that was already engine code.
+    recommendations = []
+    if step == "explore" and project.target:
+        try:
+            from ml.eda_recommender import compute_dataset_signals, recommend_eda
+            signals = compute_dataset_signals(
+                project.working_table, project.target, project.task_type,
+                "cross_sectional", None)
+            recommendations = recommend_eda(signals)
+        except Exception:
+            # The palette is an offer, not a promise. Losing it must not take
+            # the interview's questions with it.
+            recommendations = []
+
+    try:
+        questions = router.plan(structural, target=project.target,
+                                detection=detection, step=step,
+                                deferred=deferred, answered=answered,
+                                recommendations=recommendations)
+        router.audit(questions)
+    except router.RouterError as exc:
+        # A plan that breaks a governing rule is not rendered at all.
+        raise HTTPException(500, f"The interview broke a governing rule: {exc}") from exc
+
+    return {
+        "project_id": project.id,
+        "step": step,
+        "steps": list(router.STEPS),
+        "questions": [q.to_dict() for q in questions],
+        "n_asked": sum(1 for q in questions if q.mode == "push" and q.status == "asked"),
+        "n_offered": sum(1 for q in questions if q.mode == "pull"),
+        "next": next((q.to_dict() for q in questions
+                      if q.mode == "push" and q.status == "asked"), None),
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────

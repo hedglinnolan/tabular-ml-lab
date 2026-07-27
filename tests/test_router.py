@@ -190,3 +190,68 @@ def test_a_deferred_question_resurfaces_at_the_step_it_names(messy):
 def test_router_imports_without_streamlit():
     src = open(router.__file__, encoding="utf-8").read()
     assert "streamlit" not in src
+
+
+# ── push the notable, pull the rest ──────────────────────────────────────
+
+def test_the_palette_is_offered_not_asked(messy):
+    """A pull affordance is present in the plan and absent from the questions.
+
+    Counting the distribution gallery as a question would make the exploration
+    palette read as the interview becoming more talkative at the exact moment it
+    starts doing what the design asks.
+    """
+    df, findings, detection = messy
+    from ml.eda_recommender import compute_dataset_signals, recommend_eda
+
+    signals = compute_dataset_signals(df, "outcome", "classification",
+                                      "cross_sectional", None)
+    recs = recommend_eda(signals)
+    assert recs, "the recommender produced no cards to offer"
+
+    full = router.plan(findings, target="outcome", detection=detection,
+                       step="explore", answered=["choose_target"],
+                       recommendations=recs)
+    pulls = [q for q in full if q.mode == "pull"]
+    pushes = [q for q in full if q.mode == "push"]
+
+    assert pulls, "the palette is empty — nothing to pull"
+    assert all(q.status == "asked" for q in pulls), (
+        "a pull affordance was skipped or deferred; ignoring one must be free")
+    assert all(q.key.startswith("look::") for q in pulls)
+    # And the palette never displaces a question.
+    assert [q.key for q in pushes] == [
+        q.key for q in router.plan(findings, target="outcome", detection=detection,
+                                   step="explore", answered=["choose_target"])]
+
+
+def test_a_pull_affordance_may_not_be_deferred():
+    """The audit enforces the distinction, not just the docstring."""
+    bad = Question(key="look::x", title="t", why="w", step="explore",
+                   kind="explore", mode="pull", status="deferred",
+                   defer_target="report")
+    with pytest.raises(RouterError, match="offered, never skipped or deferred"):
+        router.audit([bad])
+
+
+def test_the_palette_does_not_change_the_question_count(messy):
+    """The property the thresholds depend on when L9 adds the palette."""
+    from turbotab.measure import Measurement, QuestionRecord
+
+    df, findings, detection = messy
+    from ml.eda_recommender import compute_dataset_signals, recommend_eda
+    signals = compute_dataset_signals(df, "outcome", "classification",
+                                      "cross_sectional", None)
+    plan = router.plan(findings, target="outcome", detection=detection,
+                       step="explore", answered=["choose_target"],
+                       recommendations=recommend_eda(signals))
+
+    m = Measurement(door="guided", dataset="x", n_rows=len(df), n_columns=3,
+                    questions=[QuestionRecord(key=q.key, label=q.title,
+                                              door="guided", step=q.step,
+                                              mode=q.mode,
+                                              skipped=q.status != "asked")
+                               for q in plan])
+    assert m.pull_affordances > 0
+    assert m.questions_asked == sum(1 for q in plan
+                                    if q.mode == "push" and q.status == "asked")

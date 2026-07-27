@@ -28,7 +28,24 @@ Four metrics, operationalizing `PRODUCT_VISION.md` §04:
 
 ``deferral_closes``
     Of noticings deferred, the fraction that resurface at a step able to act on
-    them. Deferral is a first-class disposition only if it comes back.
+    them. Deferral is a first-class disposition only if it comes back. When a
+    dataset offers nothing to defer the metric is `None` — not applicable rather
+    than perfect or failing (see `VALUE_CHECK_ADJUDICATION.md`).
+
+**Pushed questions versus pull affordances.** *"Push the notable, pull the
+rest"* (`PRODUCT_VISION.md` §04) means the interview asks about what it found
+and offers everything else quietly alongside. Only the first kind is a question:
+
+* a **pushed** question is put to the user and awaits an answer — the interview
+  raised it, so the thresholds bind on it;
+* a **pull affordance** is offered and costs nothing to ignore — the
+  distribution gallery, the correlation matrix, Table One. It is present, and it
+  is *not* a question.
+
+Counting a pull affordance as a question would make the exploration palette read
+as a threshold regression at the exact moment the product starts working as
+designed. `QuestionRecord.mode` carries the distinction and every metric counts
+pushed questions only.
 
 The derived claim is ``irrelevant_questions = questions_asked -
 required_decisions`` when positive: questions the dataset did not call for.
@@ -87,6 +104,14 @@ class QuestionRecord:
     # explicit mapping rather than by comparing key strings — otherwise every
     # door scores zero against every requirement and the metric says nothing.
     covers: Optional[str] = None
+    # push | pull. A pull affordance is offered, not asked: ignoring it costs
+    # nothing and it never blocks. The thresholds bind on pushed questions only,
+    # or the palette reads as a regression the moment it lands.
+    mode: str = "push"
+
+    @property
+    def is_question(self) -> bool:
+        return self.mode == "push"
 
     @property
     def is_findings_driven(self) -> bool:
@@ -131,12 +156,21 @@ class Measurement:
 
     @property
     def questions_asked(self) -> int:
-        """Questions actually put to the user. A skipped question is not asked."""
-        return sum(1 for q in self.questions if not q.skipped)
+        """Pushed questions actually put to the user.
+
+        A skipped question is not asked, and a pull affordance was never a
+        question.
+        """
+        return sum(1 for q in self.questions if q.is_question and not q.skipped)
+
+    @property
+    def pull_affordances(self) -> int:
+        """Offered and ignorable. Reported, never scored."""
+        return sum(1 for q in self.questions if not q.is_question)
 
     @property
     def findings_driven(self) -> float:
-        asked = [q for q in self.questions if not q.skipped]
+        asked = [q for q in self.questions if q.is_question and not q.skipped]
         if not asked:
             return 0.0
         return sum(1 for q in asked if q.is_findings_driven) / len(asked)
@@ -191,6 +225,8 @@ class Measurement:
                 "findings_driven": _round(self.findings_driven),
                 "deferral_closes": _round(self.deferral_closes),
                 "coverage": _round(self.coverage),
+                # Reported beside the scored metrics, never inside them.
+                "pull_affordances": self.pull_affordances,
             },
             "uncovered": self.uncovered,
             "required": [asdict(r) for r in self.required],

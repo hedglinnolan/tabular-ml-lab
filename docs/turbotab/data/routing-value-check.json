@@ -10,7 +10,8 @@
     "irrelevant_questions": 25,
     "findings_driven": 0.0,
     "deferral_closes": null,
-    "coverage": 0.1111
+    "coverage": 0.1111,
+    "pull_affordances": 0
    },
    "guided": {
     "required_decisions": 9,
@@ -19,6 +20,7 @@
     "findings_driven": 0.8889,
     "deferral_closes": 1.0,
     "coverage": 1.0,
+    "pull_affordances": 7,
     "surfaced_coverage": 1.0,
     "asked_coverage": 1.0
    }
@@ -31,7 +33,8 @@
     "irrelevant_questions": 30,
     "findings_driven": 0.0,
     "deferral_closes": null,
-    "coverage": 1.0
+    "coverage": 1.0,
+    "pull_affordances": 0
    },
    "guided": {
     "required_decisions": 1,
@@ -40,6 +43,7 @@
     "findings_driven": 0.0,
     "deferral_closes": null,
     "coverage": 1.0,
+    "pull_affordances": 3,
     "surfaced_coverage": 1.0,
     "asked_coverage": 1.0
    }
@@ -52,7 +56,8 @@
     "irrelevant_questions": 31,
     "findings_driven": 0.0,
     "deferral_closes": null,
-    "coverage": 1.0
+    "coverage": 1.0,
+    "pull_affordances": 0
    },
    "guided": {
     "required_decisions": 1,
@@ -61,6 +66,7 @@
     "findings_driven": 0.0,
     "deferral_closes": null,
     "coverage": 1.0,
+    "pull_affordances": 5,
     "surfaced_coverage": 1.0,
     "asked_coverage": 1.0
    }
