@@ -6,6 +6,22 @@ from __future__ import annotations
 from typing import Optional, Sequence, Dict
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.utils.validation import check_is_fitted
+
+
+def _bounds_array(bounds: Sequence[Optional[float]]) -> np.ndarray:
+    """Coerce a bounds sequence to a float array, `None` becoming NaN.
+
+    This runs at fit time, never in `__init__`. `sklearn.base.clone`
+    reconstructs an estimator from `get_params()` and then asserts that each
+    parameter is the *same object* it passed in, so a constructor that coerces
+    what it was handed cannot be cloned — and every refit path in this app
+    clones (`reconcile_pipeline_columns` before each training run,
+    `make_cv_pipeline` once per fold, seed sensitivity, feature dropout).
+    """
+    return np.array(
+        [np.nan if v is None else float(v) for v in bounds], dtype=float
+    )
 
 
 class UnitHarmonizer(BaseEstimator, TransformerMixin):
@@ -44,25 +60,32 @@ def plausibility_row_mask(
 
 
 class PlausibilityGate(BaseEstimator, TransformerMixin):
-    """Set values outside empirical plausibility bounds to NaN."""
+    """Set values outside empirical plausibility bounds to NaN.
+
+    Constructor arguments are stored by reference, exactly as UnitHarmonizer
+    documents; the coercion to float arrays happens in `fit` and lands on
+    `lower_bounds_` / `upper_bounds_`. Doing it in `__init__` made this class
+    unclonable, which silently disabled cross-validation and turned the
+    pipeline-drift reconciler from self-heal-loudly into crash-quietly for
+    every project with plausibility bounds configured.
+    """
 
     def __init__(self, lower_bounds: Sequence[Optional[float]], upper_bounds: Sequence[Optional[float]]):
-        self.lower_bounds = np.array(
-            [np.nan if v is None else float(v) for v in lower_bounds], dtype=float
-        )
-        self.upper_bounds = np.array(
-            [np.nan if v is None else float(v) for v in upper_bounds], dtype=float
-        )
+        self.lower_bounds = lower_bounds
+        self.upper_bounds = upper_bounds
 
     def fit(self, X, y=None):
+        self.lower_bounds_ = _bounds_array(self.lower_bounds)
+        self.upper_bounds_ = _bounds_array(self.upper_bounds)
         return self
 
     def transform(self, X):
+        check_is_fitted(self, ("lower_bounds_", "upper_bounds_"))
         X_arr = np.asarray(X, dtype=float).copy()
-        n_cols = min(X_arr.shape[1], len(self.lower_bounds), len(self.upper_bounds))
+        n_cols = min(X_arr.shape[1], len(self.lower_bounds_), len(self.upper_bounds_))
         for idx in range(n_cols):
-            lower = self.lower_bounds[idx]
-            upper = self.upper_bounds[idx]
+            lower = self.lower_bounds_[idx]
+            upper = self.upper_bounds_[idx]
             if not np.isnan(lower):
                 mask_lo = X_arr[:, idx] < lower
                 X_arr[mask_lo, idx] = np.nan
@@ -73,32 +96,38 @@ class PlausibilityGate(BaseEstimator, TransformerMixin):
 
 
 class OutlierCapping(BaseEstimator, TransformerMixin):
-    """Cap outliers based on percentile or MAD bounds computed at fit time."""
+    """Cap outliers based on percentile or MAD bounds computed at fit time.
+
+    `params` is stored unmodified — `params or {}` returned a *different*
+    empty dict than the one it was handed, which broke `clone` for exactly the
+    configuration `ml/pipeline.py` builds when no outlier parameters are set.
+    The fitted bounds are not created until `fit`, so a rebuilt-but-unfitted
+    capper refuses to transform rather than passing uncapped data through
+    while the recorded configuration says capping is on.
+    """
 
     def __init__(self, method: str = "percentile", params: Optional[Dict] = None):
         self.method = method
-        self.params = params or {}
-        self.lower_bounds_: Optional[np.ndarray] = None
-        self.upper_bounds_: Optional[np.ndarray] = None
+        self.params = params
 
     def fit(self, X, y=None):
         X_arr = np.asarray(X, dtype=float)
+        params = self.params or {}
         if self.method == "mad":
-            threshold = float(self.params.get("threshold", 3.5))
+            threshold = float(params.get("threshold", 3.5))
             med = np.nanmedian(X_arr, axis=0)
             mad = np.nanmedian(np.abs(X_arr - med), axis=0)
             scale = 1.4826 * mad
             self.lower_bounds_ = med - threshold * scale
             self.upper_bounds_ = med + threshold * scale
         else:
-            lower_q = float(self.params.get("lower_q", 0.01))
-            upper_q = float(self.params.get("upper_q", 0.99))
+            lower_q = float(params.get("lower_q", 0.01))
+            upper_q = float(params.get("upper_q", 0.99))
             self.lower_bounds_ = np.nanpercentile(X_arr, lower_q * 100, axis=0)
             self.upper_bounds_ = np.nanpercentile(X_arr, upper_q * 100, axis=0)
         return self
 
     def transform(self, X):
+        check_is_fitted(self, ("lower_bounds_", "upper_bounds_"))
         X_arr = np.asarray(X, dtype=float)
-        if self.lower_bounds_ is None or self.upper_bounds_ is None:
-            return X_arr
         return np.clip(X_arr, self.lower_bounds_, self.upper_bounds_)

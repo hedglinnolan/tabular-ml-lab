@@ -20,25 +20,24 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**73 of 411 closed.**
+**80 of 411 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 304 |
-| `PARTIAL` | 34 |
-| `FIXED` | 73 |
+| `OPEN` | 298 |
+| `PARTIAL` | 33 |
+| `FIXED` | 80 |
 
 ---
 
-## OPEN — 304
+## OPEN — 298
 
 
-### Application state / lockbox — 68
+### Application state / lockbox — 64
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `STATE-002` | landmine | PlausibilityGate cannot be sklearn-cloned. It mutates its constructor parameters in __init__, violating the sklearn clone identity contract — and reconcile_pipeline_columns clones UNCONDITIONALLY on… | `ml/preprocess_operators.py:50-55 `self.lower_bounds = np.array([np.nan if v is None else float(v) for v in…` | Unchanged at HEAD. sibling-of: TEST-003 - the same defect from the state pass, and this row carries the consequence chain the other does not. reconcile_pipeline_columns clones… |
 | `STATE-003` | landmine | unit_harmonization_factors and plausibility_bounds are POSITIONAL lists aligned to the full numeric_features, but pages/05 passes a FILTERED numeric_features to build_preprocessing_pipeline.… | `Built against the full list: ml/pipeline.py:45 `for col in numeric_features`…` | Unchanged at HEAD. sibling-of: MINE-001 - the positional-alignment class from the state pass, and this row names the asymmetry that makes it dangerous. UnitHarmonizer fails LOUDLY… |
 | `STATE-004` | landmine | The pipelines stored in preprocessing_pipelines_by_model are FITTED ON THE FULL DATASET at build time — including the lockbox test rows — and they are what gets exported as the reproducibility… | `Fit on all rows: pages/05_Preprocess.py:945 `temp_pipeline.fit(X_sample)` and :999 `pipeline.fit(X_sample)`…` | Unchanged at HEAD, both failures. (1) The exported joblib is not the pipeline the model was trained with: pages/05 fits on all rows and stores that in… |
 | `STATE-005` | landmine | get_preprocessing_pipeline(model_key) silently falls back to an arbitrary other model's pipeline, and returns a SHARED MUTABLE OBJECT that the caller then fits in place. | `utils/session_state.py:448-454 (the fallback) and :468 `default_pipeline = pipelines_by_model.get('default')…` | Unchanged at HEAD. sibling-of: T0-STRUCT-001. Both halves are intact: (A) a model selected in Train but never configured in Preprocess still silently trains under another model's… |
@@ -84,11 +83,8 @@ Nothing is closed without a regression test named after it.
 | `STATE-053` | landmine | All three import cycles are currently invisible because every edge is a function-local import, and the obvious refactor (methods on AnalysisProject) turns them into module-level cycles. | `Cycle 1: utils/insight_ledger.py:1077 ↔ ml/publication.py:98,155,1739,1829. Cycle 2: utils/cohorts.py:474 ↔…` | Unchanged at HEAD: the cycles are all still there and all still invisible, because every edge is a deferred import inside a function. Nothing fails today, which is the hazard - a… |
 | `STATE-054` | landmine | engineering_log is not persisted while df_engineered, feature_engineering_applied and engineered_feature_names are. | `utils/session_manager.py:91-117 _PLAIN_KEYS includes engineered_feature_names, engineered_feature_transforms…` | Unchanged at HEAD. Save and restore a session with engineered features and the frame, the flag, the column names and the double-transform map all come back - so the app looks… |
 | `STATE-058` | invariant | Preprocessing is FIT ON TRAINING ROWS ONLY and merely applied to val/test. | `pages/06_Train_and_Compare.py:1312-1315 (`model_pipeline.fit(X_train)` then `.transform(X_val)` /…` | The invariant holds on the training path and is violated on two others, so it stays OPEN. Training is correct: the pipeline is fitted on X_train and merely applied to val and… |
-| `STATE-059` | invariant | Cross-validation re-fits preprocessing inside every fold; CV never scores a pre-transformed matrix. | `ml/eval.py:182 make_cv_pipeline(preprocessing, estimator) with its `clone(preprocessing)`; called at…` | The invariant is implemented correctly and both of its failure modes degrade to a warning, so it stays OPEN. The composition is right - CV runs on raw X_train through a cloned… |
 | `STATE-061` | invariant | Target-aware steps upstream of Train & Compare (feature selection, stateful FE fits, target-association views) see TRAINING ROWS ONLY. | `utils/test_lockbox.py:237 train_row_mask(index); applied at pages/04:128 (`mask = df[target_col].notna() &…` | One of the two failure modes is closed and the other is live. The index-renumbering route is gone - apply_plausibility_filter keeps its labels now, so train_row_mask can no longer… |
 | `STATE-064` | invariant | Features already transformed in Feature Engineering are not transformed again in Preprocessing. | `pages/05:954-972 partitions numeric_features into numeric_features_safe (gets log/power/PCA) and…` | Unchanged at HEAD, both weaknesses. The double-transform guard is real and correctly separates already-transformed columns into a passthrough branch - but it depends on… |
-| `STATE-065` | invariant | A stored pipeline whose column selectors no longer match the data must self-heal loudly rather than crash the run. | `ml/pipeline.py:504 reconcile_pipeline_columns; tests/test_feature_drift.py:56-72 covers the drop path and the…` | Unchanged at HEAD and the row's diagnosis is exact: reconcile clones BEFORE it knows whether anything drifted, so a pipeline containing a transformer that fails clone() raises on… |
-| `STATE-068` | invariant | sklearn custom transformers must store constructor parameters unmodified so clone() works. | `Only by convention and one comment: ml/preprocess_operators.py:13 'Store conversion_factors by reference (no…` | Unchanged at HEAD: the rule is stated once, in a comment, on the ONE class that obeys it, and both of its neighbours break it. UnitHarmonizer's docstring says it stores… |
 | `STATE-069` | invariant | The pipeline recipe printed into the manuscript describes what the pipeline actually did. | `Nothing. ml/pipeline.py:326 get_pipeline_recipe() introspects the fitted object; pages/10:1226 and :1243…` | Duplicate of STATE-008 from the invariant pass, unchanged at HEAD, and this framing states the stake plainly: the recipe string is pasted into the manuscript, so every unrendered… |
 | `STATE-070` | invariant | The held-out test set is drawn EXACTLY ONCE, at upload, before feature engineering, feature selection, or any target-aware EDA can see it; page 06 is the only page permitted to open it. | `pages/01 lines 1062-1081 (ensure_lockbox after target/task are fixed); utils/test_lockbox.train_row_mask()…` | The 'opened only by page 06' half is now stronger than when this was written - the applicability rule moved into make_split, so no page decides it - and the 'drawn once' half is… |
 | `STATE-072` | invariant | Once ANY result has been computed in exploratory mode, the manuscript is permanently watermarked until those results are cleared. | `pages/01 _on_exploratory_toggle (line 1111) sets exploratory_used; only…` | Duplicate of STATE-040 from the invariant pass, unchanged at HEAD, and this framing names the exact laundering path: the OR at pages/10 is correct and the stickiness it depends on… |
@@ -168,15 +164,14 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-067` | low | RFWrapper defines predict_proba and supports_proba twice | `models/rf.py:75-97` | Unchanged at HEAD. Behaviorally harmless because the bodies are identical, and that is exactly why it is worth recording: it is direct evidence the file was edited by paste and… |
 | `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` | Accurate at HEAD: structurally portable as-is, and the row's own last clause is the condition - add tests BEFORE the port, not after. Two live defects in this file argue the point… |
 
-### Silent-failure landmines — 38
+### Silent-failure landmines — 37
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `MINE-001` | critical | Positional unit-conversion factors + reconcile_pipeline_columns silently misalign to the wrong variables | `ml/pipeline.py:41-64, 84, 178, 185-188, 528-531; ml/preprocess_operators.py:21-24, 60-72` | Unchanged at HEAD. build_unit_harmonization_config still builds a bare list by appending once per column while iterating numeric_features; build_plausibility_bounds still zips… |
+| `MINE-001` | critical | Positional unit-conversion factors + reconcile_pipeline_columns silently misalign to the wrong variables | `ml/pipeline.py:41-64, 84, 178, 185-188, 528-531; ml/preprocess_operators.py:21-24, 60-72` | Unchanged at HEAD, and now REACHABLE where it previously crashed first. build_unit_harmonization_config still builds a bare list by appending once per column while iterating… |
 | `MINE-002` | critical | Test-set lockbox stores index LABELS but session save writes parquet with index=False | `utils/test_lockbox.py:16-17, 213, 248; utils/session_manager.py:73-78, 171, 485-489` | resolved-in-core; closes at L11 convergence of utils/session_manager.py. Duplicate of CONTRACT-005 from the landmine pass. Confirmed at HEAD: the lockbox still stores… |
 | `MINE-004` | critical | Target-leakage detection is wrapped in `except Exception: pass` | `ml/eda_recommender.py:170-183` | Unchanged at HEAD: the >0.95 feature-target correlation scan that populates signals.leakage_flags / leakage_candidate_cols is still inside a bare try ending 'except Exception… |
 | `MINE-005` | critical | train_row_mask silently returns all-True when the lockbox is absent, and render_lockbox_status returns silently too | `utils/test_lockbox.py:36-40, 244-246, 261-263` | Unchanged at HEAD. train_row_mask still returns pd.Series(True, index=index) when get_lockbox() is None, so every row is visible to target-aware steps; render_lockbox_status still… |
-| `MINE-006` | critical | OutlierCapping sets fitted attributes in __init__ and returns X unchanged when unfitted | `ml/preprocess_operators.py:13, 78-82, 100-104` | Unchanged at HEAD, both halves. OutlierCapping.__init__ still assigns the trailing-underscore lower_bounds_/upper_bounds_ (sklearn's fitted marker, so check_is_fitted sees a… |
 | `MINE-007` | critical | _log_to_ledger swallows every exception, so methodology decisions vanish from the record while methodology_log looks fine | `utils/session_state.py:543-544, 599, 639-656; ml/publication.py:153-166` | Duplicate of CONTRACT-006 from the landmine pass, and confirmed at HEAD with the aggravating half intact. log_methodology appends to methodology_log first (:602) and calls… |
 | `MINE-008` | critical | ml/eda_actions.py imports a function that does not exist, inside bare `except:` — 4 EDA insight classes have been silently dead | `ml/eda_actions.py:196, 280, 427, 617 (and bare `except:` at 199, 430, 620); utils/storyline.py:4 (module…` | Duplicate of CONTRACT-004 from the landmine pass. Confirmed unchanged at HEAD, including the reason it survived: the guard test that would have caught it only walks pages/, so… |
 | `MINE-009` | critical | set_global_seed runs at page-06 module scope, so determinism depends on Streamlit rerun ordering | `pages/06_Train_and_Compare.py:95, 120-122; utils/seed.py:14-29, 34-37` | Unchanged at HEAD. set_global_seed(st.session_state.get('random_seed', 42)) still sits at module scope in pages/06 (:90), so every Streamlit rerun of that page reseeds numpy's… |
@@ -308,12 +303,11 @@ Nothing is closed without a regression test named after it.
 | `COACH-031` | invariant | Coaching voice must never reach the manuscript verbatim. | `utils/insight_ledger.py:1188 — `text = (i.manuscript_text or '').strip() or…` | The invariant is stated correctly and is broken in exactly the way this row predicts, unchanged at HEAD. The register separation works - manuscript_text is preferred and the regex… |
 | `COACH-032` | invariant | 'high' confidence is the only tier the UI pre-selects, so 'high' means the app is asserting (docs/FINDINGS_LEDGER.md, Governing rule, lines 20-27). | `PARTIALLY, and only in the import/join domain: ml/join_doctor.py:922 `if include_low or c.confidence !=…` | All three weakenings confirmed at HEAD. (1) is COACH-015: a medium-confidence join key IS pre-selected. (2) is exact - final returns detected with no tier check, so a… |
 
-### Migration safety net — 24
+### Migration safety net — 23
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `TEST-002` | critical | Test fixtures compute a DIFFERENT invalidation hash than production — target-swap invalidation is untested by construction | `pages/01_Upload_and_Audit.py:1047-1051 vs tests/conftest.py:81-83, tests/integration/conftest.py:73-76…` | Unchanged at HEAD, both sides. Production still hashes the whole modeling problem at pages/01:1079-1083 - sorted(feature_cols) + target + task_type - with a comment at :1075-1078… |
-| `TEST-003` | critical | PlausibilityGate violates sklearn's clone() contract — cross-validation raises RuntimeError whenever plausibility bounds are configured | `ml/preprocess_operators.py:49-55; ml/pipeline.py:185; ml/eval.py:161; contrast ml/preprocess_operators.py:13` | Unchanged at HEAD. PlausibilityGate.__init__ still does self.lower_bounds = np.array([...]) and the same for upper_bounds, so sklearn.base.clone - which calls… |
 | `TEST-004` | critical | build_preprocessing_pipeline embeds an unpicklable local closure — the Jobs layer cannot ship pipelines to workers | `ml/pipeline.py:210-213; contrast ml/eval.py:177-180 ('Named (picklable, for n_jobs=-1)')` | Unchanged at HEAD. ml/pipeline.py:219 still defines log_transform as a local closure inside build_preprocessing_pipeline and hands it to FunctionTransformer at :221, so… |
 | `TEST-005` | critical | Cross-layer imports of PRIVATE symbols inside bare `except Exception: pass` — renames degrade manuscripts silently, with no error | `ml/publication.py:1739-1744 and :154-162; AST scan: 47 swallow-blocks across 16 files` | Unchanged and slightly worse. A fresh AST scan at HEAD counts 52 blocks whose try body contains an import and whose handler is a bare pass, across 17 files - ml/eda_actions.py… |
 | `TEST-007` | critical | 40 of 58 test modules break the moment Streamlit is removed; only 18 survive untouched | `AST transitive dependency scan over 58 test modules rooted at tests/` | Still OPEN, with the numbers restated against HEAD rather than the fbe422a baseline. The suite grew from 58 modules to 92 and the clean set from 18 to 35, so the ratio improved… |
@@ -390,7 +384,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 34
+## PARTIAL — 33
 
 
 ### Migration safety net — 7
@@ -428,15 +422,6 @@ Nothing is closed without a regression test named after it.
 | `STATE-087` | invariant | reset_downstream_results is the SINGLE source of truth for downstream invalidation; any page that introduces a new result key must add it there. | `utils/session_state.py:288-291 docstring; tests/test_review_fixes.py::TestDownstreamReset::test_reset_clears_e…` | Duplicate of STATE-066 / STATE-074 from the invariant pass. The first of the row's two breakages is closed - pages/03's competing 21-key cascade is gone and an AST guard fails if… |
 | `STATE-095` | invariant | set_data distinguishes three cases: schema change (full reset), same-schema content change (results cleared, config kept), identical content (no-op) — because page 01 re-sets the same working table… | `utils/session_state.set_data:266-280 with the _raw_data_fingerprint comparison. Tests…` | The three cases are implemented and well tested - including the subtle one, that re-setting the SAME frame on every page-01 visit must not end a cohort run - and four tests cover… |
 
-### Completeness sweep — 4
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `SWEEP-009` | critical | INVARIANT — reset_downstream_results supports PARTIAL resets; a naive 'invalidate everything downstream of node N' DAG cannot express them | `CODE_REVIEW.md '2026-07 · Feature-engineering state drift' (04:440, 04:483); ARCHITECTURE.md:278` | Per-edge suppression is done and tested; the restore-previous-value path is not in the graph. turbotab/cascade.py:189-210 expresses partial invalidation as keys_to_clear(changed… |
-| `SWEEP-013` | critical | INVARIANT — 'Absent is better than false': the invalidation cascade must visibly clear ALL FOUR planes, not just the data plane | `docs/ARCHITECTURE_SCROLLYTELLING_BRIEF.md §4B, §9; CODE_REVIEW.md C5; brief §0 table (InsightLedger…` | Two of the planes the row names are in the graph; the Record plane is not. Data and provenance are modeled - Stage carries provenance_sections, provenance_sections_to_clear walks… |
-| `SWEEP-015` | critical | Known test-fidelity hole exactly at the model-object boundary — the transition's safety net does not cover models/ | `CODE_REVIEW.md 'Dynamic testing summary' note; tests/integration/conftest.py:67…` | The named instance is fixed and models/ now has coverage; the fixture-fidelity hole itself is not. FIXED half: pages/08:419 now does _est_for_dropout = model_obj.get_model() if… |
-| `SWEEP-024` | high | INVARIANT — reconcile_pipeline_columns: drift must self-heal loudly, never crash cryptically; its sibling reconcile_state_with_df is imported but never called | `CODE_REVIEW.md 2026-07 'Backstop'; CODE_REVIEW.md C7; utils/reconcile.py` | The dormant-reconciler half is closed; the invariant it protects is actively broken by a different row. reconcile_state_with_df is no longer imported-but-never-called… |
-
 ### Verified against main — 3
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -444,6 +429,14 @@ Nothing is closed without a regression test named after it.
 | `T0-STRUCT-001` | critical | Global fallback pipeline slot picks an arbitrary member by dict insertion order AND returns a shared object that .fit() mutates in place | `utils/session_state.py:501; pages/06:1813-1821 now DISCLOSES borrowers but root cause unchanged` | PR #145 added disclosure, not a fix |
 | `T0-STRUCT-002` | critical | Row identity: lockbox seals index LABELS, splits store POSITIONS (np.where(mask)[0]), page 07 reads df_raw.iloc[test_indices] | `pages/06:398,696-702; pages/07:185,196; utils/test_lockbox.py train_row_mask` | PR #145 fixed the reset_index instance + test_row_labels_are_identities.py; conventions still dual |
 | `T0-STATE-001` | medium | reset_downstream_results clears keys three different ways — pop, = None, and = {} — so 'cleared' has three observable meanings | `utils/session_state.py reset_downstream_results; L5 gate probe (agent report at 4366b23)` | The pages/03 half is done: its nineteen-line hand-rolled cascade now calls reset_downstream_results, so the fifteen keys it missed (cv_results, dataset_profile, eda_results… |
+
+### Completeness sweep — 3
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `SWEEP-009` | critical | INVARIANT — reset_downstream_results supports PARTIAL resets; a naive 'invalidate everything downstream of node N' DAG cannot express them | `CODE_REVIEW.md '2026-07 · Feature-engineering state drift' (04:440, 04:483); ARCHITECTURE.md:278` | Per-edge suppression is done and tested; the restore-previous-value path is not in the graph. turbotab/cascade.py:189-210 expresses partial invalidation as keys_to_clear(changed… |
+| `SWEEP-013` | critical | INVARIANT — 'Absent is better than false': the invalidation cascade must visibly clear ALL FOUR planes, not just the data plane | `docs/ARCHITECTURE_SCROLLYTELLING_BRIEF.md §4B, §9; CODE_REVIEW.md C5; brief §0 table (InsightLedger…` | Two of the planes the row names are in the graph; the Record plane is not. Data and provenance are modeled - Stage carries provenance_sections, provenance_sections_to_clear walks… |
+| `SWEEP-015` | critical | Known test-fidelity hole exactly at the model-object boundary — the transition's safety net does not cover models/ | `CODE_REVIEW.md 'Dynamic testing summary' note; tests/integration/conftest.py:67…` | The named instance is fixed and models/ now has coverage; the fixture-fidelity hole itself is not. FIXED half: pages/08:419 now does _est_for_dropout = model_obj.get_model() if… |
 
 ### Models / training / eval — 3
 
@@ -469,14 +462,15 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 73
+## FIXED — 80
 
 
-### Application state / lockbox — 22
+### Application state / lockbox — 26
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `STATE-001` | landmine | apply_plausibility_filter calls reset_index(drop=True), and its output becomes the app's active dataframe — which silently voids the test lockbox for every downstream step. | `ml/pipeline.py:124 `return df.loc[mask].reset_index(drop=True)` -> pages/05_Preprocess.py:863…` | **test:** `tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given` — Closed, and closed at the source rather than at the consumer.… |
+| `STATE-002` | landmine | PlausibilityGate cannot be sklearn-cloned. It mutates its constructor parameters in __init__, violating the sklearn clone identity contract — and reconcile_pipeline_columns clones UNCONDITIONALLY on… | `ml/preprocess_operators.py:50-55 `self.lower_bounds = np.array([np.nan if v is None else float(v) for v in…` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_a_pipeline_with_plausibility_bounds_can_be_cloned` — Fixed as the row prescribed: PlausibilityGate.__init__ is bare… |
 | `STATE-006` | landmine | pages/03_Feature_Engineering.py hand-rolls its own cascade invalidation instead of calling reset_downstream_results(), and the copy has drifted. | `pages/03_Feature_Engineering.py:1229-1252 (the block after `st.session_state['engineered_feature_transforms']…` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_page_03_no_longer_hand_rolls_its_own_cascade` — Duplicate of CONTRACT-002 from the state pass, and closed the… |
 | `STATE-007` | landmine | Split provenance reads three attributes that SplitConfig does not have, so target trimming is never recorded in the Methods section. | `pages/06_Train_and_Compare.py:704-706: `target_trim_enabled=bool(getattr(split_config, 'trim_target'…` | **test:** `tests/test_provenance_records_the_trim_the_page_set.py::test_the_split_provenance_reads_the_trim_the_page_set` — Fixed with CONTRACT-009 and STATE-016 - one edit, three… |
 | `STATE-016` | landmine | Provenance always records target trimming as DISABLED, with thresholds 0.0/1.0, no matter what the user chose. | `pages/06_Train_and_Compare.py lines 714-716: `target_trim_enabled=bool(getattr(split_config, 'trim_target'…` | **test:** `tests/test_provenance_records_the_trim_the_page_set.py::test_no_getattr_default_hides_a_renamed_split_config_field` — Fixed with CONTRACT-009 and STATE-007. This row… |
@@ -486,10 +480,13 @@ Nothing is closed without a regression test named after it.
 | `STATE-055` | landmine | cohort_runs_done is not persisted, and completed_runs() filters on isinstance(r, CohortRun). | `utils/cohorts.py:462-465 and :488; utils/session_manager.py — cohort_runs_done appears in no bucket, so it is…` | **test:** `tests/test_session_carries_the_run.py::test_the_banked_comparison_comes_back` — Closed. cohort_runs_done is persisted and restored as reconstructed CohortRun OBJECTS… |
 | `STATE-056` | landmine | InsightLedger.from_list uses .add() (skip duplicates) rather than .upsert(), and Insight.to_dict omits manuscript_text. | `utils/insight_ledger.py:1346-1355 (from_list → ledger.add(...) inside `except (TypeError, KeyError)…` | **test:** `tests/test_the_manuscript_voice_survives_the_save_file.py::test_the_ledger_round_trips_through_json` — Both halves fixed. (a) from_list now calls upsert rather than… |
 | `STATE-057` | invariant | Every selected model has its OWN preprocessing pipeline. Two models must be able to receive genuinely different transformed matrices from the same raw data. | `tests/workflow/test_per_model_pipelines.py::TestPerModelPipelineConfigs::test_ridge_and_rf_get_different_train…` | **test:** `tests/workflow/test_per_model_pipelines.py::TestPipelineTrainingIntegration::test_ridge_and_rf_get_different_training_data` — The differentiator is intact on both sides… |
+| `STATE-059` | invariant | Cross-validation re-fits preprocessing inside every fold; CV never scores a pre-transformed matrix. | `ml/eval.py:182 make_cv_pipeline(preprocessing, estimator) with its `clone(preprocessing)`; called at…` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_the_cv_composite_is_scored_on_raw_training_data` — The invariant is now tested on both of the failure modes this row… |
 | `STATE-060` | invariant | The CV fold scheme matches the split's leakage semantics: group split -> GroupKFold/StratifiedGroupKFold, time split -> TimeSeriesSplit, else KFold/StratifiedKFold. | `pages/06:496,507,528 set st.session_state['cv_strategy'] and ['cv_groups_train'] at split time…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_grouped_split_matches_the_page` — Both halves closed. The fold scheme is no longer a parallel field that… |
 | `STATE-062` | invariant | The lockbox test set is drawn once, before feature engineering/selection, and is THE test set at Train & Compare — the split only divides the remaining rows. | `utils/test_lockbox.py module docstring (lines 4-17); pages/06:552-582 (the `elif _lockbox_applicable:`…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page` — The invariant moved into the engine, which is what makes it closeable.… |
 | `STATE-063` | invariant | Target trimming thresholds are computed from TRAINING rows only, and test rows are never trimmed away. | `pages/06:420-425: `_trim_basis = y[~is_test_row] if _lockbox_applicable else y` and `trim_mask = trim_mask |…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page` — The invariant is now engine code with its rationale beside it, rather… |
+| `STATE-065` | invariant | A stored pipeline whose column selectors no longer match the data must self-heal loudly rather than crash the run. | `ml/pipeline.py:504 reconcile_pipeline_columns; tests/test_feature_drift.py:56-72 covers the drop path and the…` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_reconcile_self_heals_a_gated_pipeline_instead_of_raising` — The invariant holds again and now has the test this row… |
 | `STATE-067` | invariant | Fitted sklearn objects are never persisted; pipelines are derived artifacts rebuilt from config. | `utils/session_manager.py:138-162 _NEVER_PERSIST explicitly lists preprocessing_pipeline…` | **test:** `turbotab/test_project_model.py::test_derivatives_are_not_persisted` — The invariant holds on both sides of the migration and the core has a test for it. The allow-list… |
+| `STATE-068` | invariant | sklearn custom transformers must store constructor parameters unmodified so clone() works. | `Only by convention and one comment: ml/preprocess_operators.py:13 'Store conversion_factors by reference (no…` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_clone_does_not_raise` — Fixed, and it was as cheap as this row said. The rule is no longer a comment on the one… |
 | `STATE-071` | invariant | Group-based and time-based splits BYPASS the lockbox and must say so out loud. | `pages/06 lines 395-404 (two 🔓 st.warning blocks) and lines 250-254 (caption when the slider is not…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_branch_priority_is_group_then_time_then_lockbox` — Closed in the way that makes it survive a view rewrite… |
 | `STATE-078` | invariant | Applying a feature selection preserves the selection and its record while destroying everything built on the previous feature set. | `pages/04 lines 447-448 and 494-495: reset_downstream_results(clear_feature_engineering=False…` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_keeping_a_stage_does_not_keep_its_descendants` — The asymmetry is preserved and now has a test that asserts the… |
 | `STATE-085` | invariant | When two runs analyze different cohorts, the lockbox is drawn BEFORE the filter, so every cohort inherits its slice of one split. | `utils/cohorts.py module docstring invariant #1; pages/01 draws it from get_data(full_study=True)…` | **test:** `tests/test_cohort_lockbox_invariant.py::test_engineering_inside_a_run_cannot_redraw_the_lockbox` — The invariant is implemented and the test file exists for this… |
@@ -522,7 +519,7 @@ Nothing is closed without a regression test named after it.
 | `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |
 
-### Completeness sweep — 8
+### Completeness sweep — 9
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -533,6 +530,7 @@ Nothing is closed without a regression test named after it.
 | `SWEEP-011` | critical | INVARIANT — per-model pipeline forking is the differentiator and it is real; a Project schema that collapses to one pipeline destroys the product | `ARCHITECTURE.md:29,215,324-338; CODE_REVIEW.md 'What genuinely holds' rows 1-2` | **test:** `turbotab/test_project_model.py::test_pipeline_specs_are_specs_not_fitted_objects` — The schema did not collapse. AnalysisProject carries pipeline_specs as a per-model… |
 | `SWEEP-014` | critical | tests/test_insight_id_integrity.py — an AST scanner that will silently stop testing anything the moment the rebuild renames Insight or the ledger variable | `tests/test_insight_id_integrity.py:1-27,39-42; CODE_REVIEW.md 'Bucket-1 hardening wave'` | **test:** `tests/test_insight_id_integrity.py::TestInsightIdIntegrity::test_the_scan_actually_scanned_something` — The vacuous-pass hole is closed, and closed in the way the row… |
 | `SWEEP-018` | high | The EDA cache fingerprint is SCHEMA-only while set_data() invalidation is CONTENT-based — a same-shape cleaning action resets results but not the profile | `pages/02_EDA.py:125 vs utils/session_state.py:220-226,259-263` | **test:** `tests/test_eda_caches_follow_the_data.py::test_no_cache_on_the_page_keys_on_shape_alone` — Closed - the two notions of invalidation are now one. The page's fingerprint… |
+| `SWEEP-024` | high | INVARIANT — reconcile_pipeline_columns: drift must self-heal loudly, never crash cryptically; its sibling reconcile_state_with_df is imported but never called | `CODE_REVIEW.md 2026-07 'Backstop'; CODE_REVIEW.md C7; utils/reconcile.py` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_reconcile_leaves_a_gated_pipeline_alone_when_nothing_drifted` — Both halves closed. The dormant-reconciler half was… |
 | `SWEEP-025` | high | INVARIANT — CV strategy is bound to the SPLIT strategy, and cv_strategy/cv_groups_train are cleared WITH the split | `CODE_REVIEW.md 2026-07 'Strategy-aware cross-validation' and 'Test-set slider guardrail'…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_grouped_split_matches_the_page` — Both halves of the invariant are implemented and tested. The CV scheme is… |
 
 ### Stage-boundary contracts — 6
@@ -546,6 +544,16 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-016` | high | Active cohort run and completed runs are not persisted at all | `utils/cohorts.py:334-344 (CohortRun), :389-407 (_ACTIVE_KEY/_DONE_KEY); utils/session_manager.py:73-162 (key…` | **test:** `tests/test_session_carries_the_run.py::test_the_active_run_comes_back` — Closed for both keys. The failure this row describes - a save taken mid-cohort-run restoring… |
 | `CONTRACT-050` | medium | Boundary FeatureSel: feature_selection_results and consensus_features | `pages/04_Feature_Selection.py:277-282, :447-448, :493-494; utils/session_state.py:283-298, :355-357` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_keeping_a_stage_does_not_keep_its_descendants` — The subtlety survived the port, and in the form the action… |
 
+### Silent-failure landmines — 5
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `MINE-003` | critical | macro_shape's four @st.cache_data functions hash NOTHING — every dataset gets the first dataset's PCA/UMAP/TDA | `ml/macro_shape.py:82-85, 240-247, 337-343, 495-502; pages/02_EDA.py:122-125, 1163, 1205, 1226, 1265` | **test:** `tests/test_macro_shape_serves_the_right_dataset.py::test_two_datasets_get_their_own_pca` — Duplicate of CONTRACT-003 and T0-LIVE-001 from the landmine pass. All four… |
+| `MINE-006` | critical | OutlierCapping sets fitted attributes in __init__ and returns X unchanged when unfitted | `ml/preprocess_operators.py:13, 78-82, 100-104` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_outlier_capping_refuses_to_transform_before_fit` — Fixed, both halves. (1) lower_bounds_/upper_bounds_ are no longer… |
+| `MINE-016` | high | EDA's _data_fingerprint is schema-only — it cannot see value changes | `pages/02_EDA.py:122-125, 146-169, 809, 920, 957, 988, 1082; ml/import_doctor.py:876-895` | **test:** `tests/test_eda_caches_follow_the_data.py::test_the_page_has_one_fingerprint_and_it_follows_the_values` — Closed, and closed against a stronger requirement than this row… |
+| `MINE-021` | high | apply_plausibility_filter resets the index, destroying lockbox and cohort label correspondence | `ml/pipeline.py:109-124; pages/05_Preprocess.py:860; utils/test_lockbox.py:16-17, 248` | **test:** `tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given` — Duplicate of STATE-001 from the landmine pass, and closed. The filter returns… |
+| `MINE-039` | medium | GroupShuffleSplit failure silently degrades the lockbox to a non-grouped split | `utils/test_lockbox.py:176-210, 282-294` | **test:** `tests/test_grouping_picks_the_person.py::test_too_few_groups_to_split_by_is_said_out_loud` — Closed, and the test's own assertion message is the invariant: 'the… |
+
 ### Record / narrative / export — 5
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -555,15 +563,6 @@ Nothing is closed without a regression test named after it.
 | `RECORD-023` | invariant | The software never certifies adequacy: no unconditional effectiveness claim, a negative R² is stated plainly as below a mean-only baseline, 'strongest' is claimed only when more than one model was… | `ml/narrative_engine.py _gen_discussion() (_comparative flag, the r2>=0 branch, the Conclusions [AUTHOR…` | **test:** `tests/test_manuscript_trust.py::TestDiscussionHonesty::test_no_unconditional_effectiveness_claim` — All five clauses of the invariant have a test each, which is unusual… |
 | `RECORD-027` | invariant | Exported LaTeX contains no markdown artifacts, no raw bare [PLACEHOLDER] tags, no internal model keys, no coaching phrases and no dangling punctuation or 'Table X'/'Figure X' references. | `ml/manuscript_validator.py checks 10-12 (artifact_patterns, internal_keys from _MODEL_NAMES…` | **test:** `tests/test_manuscript_validator.py::test_validate_manuscript_bundle_allows_investigator_placeholders_but_rejects_raw_markdown_artifacts` — The invariant is enforced by… |
 | `RECORD-028` | invariant | Reported population and predictor counts are identical across abstract, Methods, Table 1 and the split arithmetic: analysis_total == train_n+val_n+test_n == abstract N == Study Design N == Table 1… | `ml/manuscript_validator.py checks 1-5, driven by the regex templates in _extract_analysis_n /…` | **test:** `tests/test_manuscript_validator.py::test_validate_manuscript_bundle_flags_table1_population_and_feature_coverage` — The consistency invariant is enforced and tested in… |
-
-### Silent-failure landmines — 4
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `MINE-003` | critical | macro_shape's four @st.cache_data functions hash NOTHING — every dataset gets the first dataset's PCA/UMAP/TDA | `ml/macro_shape.py:82-85, 240-247, 337-343, 495-502; pages/02_EDA.py:122-125, 1163, 1205, 1226, 1265` | **test:** `tests/test_macro_shape_serves_the_right_dataset.py::test_two_datasets_get_their_own_pca` — Duplicate of CONTRACT-003 and T0-LIVE-001 from the landmine pass. All four… |
-| `MINE-016` | high | EDA's _data_fingerprint is schema-only — it cannot see value changes | `pages/02_EDA.py:122-125, 146-169, 809, 920, 957, 988, 1082; ml/import_doctor.py:876-895` | **test:** `tests/test_eda_caches_follow_the_data.py::test_the_page_has_one_fingerprint_and_it_follows_the_values` — Closed, and closed against a stronger requirement than this row… |
-| `MINE-021` | high | apply_plausibility_filter resets the index, destroying lockbox and cohort label correspondence | `ml/pipeline.py:109-124; pages/05_Preprocess.py:860; utils/test_lockbox.py:16-17, 248` | **test:** `tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given` — Duplicate of STATE-001 from the landmine pass, and closed. The filter returns… |
-| `MINE-039` | medium | GroupShuffleSplit failure silently degrades the lockbox to a non-grouped split | `utils/test_lockbox.py:176-210, 282-294` | **test:** `tests/test_grouping_picks_the_person.py::test_too_few_groups_to_split_by_is_said_out_loud` — Closed, and the test's own assertion message is the invariant: 'the… |
 
 ### Coach to Router — 4
 
@@ -583,9 +582,10 @@ Nothing is closed without a regression test named after it.
 | `MODELS-017` | invariant | ModelCapabilities.requires_scaled_numeric determines each model's preprocessing pipeline; a model that needs scaling must not be trained on an unscaled pipeline. | `pages/05_Preprocess.py:487, 801, 847, 1059 read spec.capabilities.requires_scaled_numeric to build per-model…` | **test:** `tests/workflow/test_per_model_pipelines.py::test_scaled_vs_unscaled_outputs_differ` — The invariant holds on both sides of the migration and has a test that would catch… |
 | `MODELS-022` | invariant | Degenerate bootstrap resamples are DROPPED, never substituted with the point estimate, and a run with too few valid replicates returns a NaN CI rather than a narrow one. | `ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot =…` | **test:** `tests/test_review_fixes.py::TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples` — The invariant is implemented with the reasoning in the… |
 
-### Migration safety net — 2
+### Migration safety net — 3
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `TEST-001` | critical | The invalidation DAG has NO test that calls the production function — three separate re-implementations test themselves | `utils/session_state.py:283 vs tests/workflow/test_state_invalidation.py:40-51 and…` | **test:** `tests/integration/test_characterization_cascade.py::test_full_reset_clears_every_downstream_key` — The production function is now called by a test, which is the whole… |
+| `TEST-003` | critical | PlausibilityGate violates sklearn's clone() contract — cross-validation raises RuntimeError whenever plausibility bounds are configured | `ml/preprocess_operators.py:49-55; ml/pipeline.py:185; ml/eval.py:161; contrast ml/preprocess_operators.py:13` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_cross_validation_runs_with_plausibility_bounds_configured` — Fixed with STATE-002 - same defect, same edit, and this… |
 | `TEST-013` | high | tests/integration/test_lockbox_split.py is the ONLY integration test that exercises real behavior end-to-end — it must be ported, not dropped | `tests/integration/test_lockbox_split.py:45-112` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page` — Ported before the cut, exactly as this row instructed, and strengthened… |
