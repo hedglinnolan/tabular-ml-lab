@@ -20,18 +20,18 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**94 of 420 closed.**
+**94 of 421 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 292 |
+| `OPEN` | 293 |
 | `PARTIAL` | 34 |
 | `FIXED` | 94 |
 
 ---
 
-## OPEN — 292
+## OPEN — 293
 
 
 ### Application state / lockbox — 64
@@ -302,7 +302,7 @@ Nothing is closed without a regression test named after it.
 | `COACH-031` | invariant | Coaching voice must never reach the manuscript verbatim. | `utils/insight_ledger.py:1188 — `text = (i.manuscript_text or '').strip() or…` | The invariant is stated correctly and is broken in exactly the way this row predicts, unchanged at HEAD. The register separation works - manuscript_text is preferred and the regex… |
 | `COACH-032` | invariant | 'high' confidence is the only tier the UI pre-selects, so 'high' means the app is asserting (docs/FINDINGS_LEDGER.md, Governing rule, lines 20-27). | `PARTIALLY, and only in the import/join domain: ml/join_doctor.py:922 `if include_low or c.confidence !=…` | All three weakenings confirmed at HEAD. (1) is COACH-015: a medium-confidence join key IS pre-selected. (2) is exact - final returns detected with no tier check, so a… |
 
-### Migration safety net — 24
+### Migration safety net — 25
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -324,6 +324,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-024` | high | Only 3 of 12 pages' state contracts involve any value assertion; page-to-page handoff shape is effectively unspecified | `tests/integration/conftest.py:48-123 (12 keys) vs tests/integration/test_cascade_invalidation.py:57-121 (25…` | Unchanged at HEAD. The two 'complete pipeline' fixtures still disagree about what a complete pipeline is - 12 keys against 25 - and that divergence is itself the finding: if a… |
 | `TEST-025` | high | CI runs only two pytest invocations and has no coverage gate — a migration can delete tests without turning CI red | `.github/workflows/ci.yml Tier 1/Tier 2 steps and the `deploy: needs: test` gate` | Unchanged at HEAD. Two pytest invocations, no coverage gate, no minimum collected-test count, and a deploy job to a self-hosted runner gated on nothing but 'tests passed and the… |
 | `T0-BUILD-002` | high | tests/integration/test_cascade_dag_equivalence.py::test_the_dag_matches_the_production_cascade[full-reset] failed once in a full tier-2 run and has not reproduced | `tests/integration/test_cascade_dag_equivalence.py:139 (the full-reset param), :70 _production_cleared runs…` | 1 failure observed in 1 full tier-2 run; 0 failures in 3 subsequent full tier-2 runs and 3 isolated runs of the file (13 tests each). Recorded rather than dismissed, per the rule… |
+| `TEST-034` | high | The SHAP path has had no live coverage for two loops: its three tests cannot run locally and CI never fires on this branch | `tests/test_shap_and_sensitivity.py:65-132 (TestSHAPComputation, three tests); requirements.txt:21 (shap…` | Filed at L9c on the adjudicator's ruling that an untested subsystem must stop reading as background noise. Reported at the end of L9, L9b and L9c as 'the same three pre-existing… |
 | `TEST-027` | medium | utils/persistence.py is dead code — zero importers — yet contains the reproducibility manifest the new Project layer needs | `utils/persistence.py:1-158; zero import sites repo-wide` | Unchanged at HEAD - verified unreachable, not merely uncovered. The trap the row names is the one to record: it is tempting to adopt this wholesale as the Project serializer, and… |
 | `TEST-028` | medium | visualizations.py returns figures nobody inspects — the safest module to move and the easiest to break unnoticed | `visualizations.py:12,53,91,129,170; consumers pages/06_Train_and_Compare.py:69…` | Unchanged at HEAD: the module is genuinely pure and genuinely untested - the two tests that name it check that it imports, not what it draws. That combination is the row's point… |
 | `TEST-029` | medium | ml.feature_steps and ml.baseline_models are uncovered and produce the numbers the manuscript compares against | `ml/feature_steps.py:11,39; ml/baseline_models.py:21,150` | Unchanged at HEAD: both still uncovered, and both still produce published numbers. The seed sensitivity is the specific hazard - PCA's sign convention and KMeans' init are… |

@@ -5158,5 +5158,19 @@
   "verified_against": "TurboTab @ 23a9123",
   "test": "",
   "verified_ev": "ml/splits.py:294-301 (LabelEncoder on a categorical target); no Classic page renders or offers the class order; contrast ml/binary_text.positive_class_finding"
+ },
+ {
+  "id": "TEST-034",
+  "area": "TEST",
+  "sev": "high",
+  "item": "The SHAP path has had no live coverage for two loops: its three tests cannot run locally and CI never fires on this branch",
+  "detail": "tests/test_shap_and_sensitivity.py::TestSHAPComputation has three tests that import shap. They error with ModuleNotFoundError in the environment this branch is verified in - turbotab/.venv, built from turbotab/requirements.txt, which is the thin engine slice and does not include shap. That is a DELIBERATE and documented exclusion: requirements-dev.txt says shap pulls numba/llvmlite and is slow to build, and calls the three failures 'a small and legible gap rather than a misleading one'. The half that is neither deliberate nor documented is the other side. The root requirements.txt DOES pin shap>=0.42.0 and .github/workflows CI installs it, so CI would run these three - but the workflow triggers only on push to main and pull_request to main, and this work is on TurboTab under hard rules that forbid pushing to main and opening a PR. So the tests do not run locally by design and do not run in CI by branch, and the intersection is: they have not executed at all for L9, L9b and L9c. TestPermutationImportance and TestSensitivityAnalysis in the same file DO run; the uncovered surface is SHAP value computation specifically - the LinearExplainer and TreeExplainer paths and the assertion that SHAP feature names line up with SHAP values.",
+  "ev": "tests/test_shap_and_sensitivity.py:65-132 (TestSHAPComputation, three tests); requirements.txt:21 (shap pinned); requirements-dev.txt:28-31 (deliberately excluded); .github/workflows CI triggers on main only",
+  "act": "Decide the gap rather than inherit it. Either (a) run the SHAP tests in an environment that has shap before pages/07 is extracted, or (b) mark them skipif-shap-absent so the suite reports a SKIP rather than a FAIL and the gap is legible in the output instead of in a requirements comment. Do NOT solve it by installing shap into turbotab/.venv: it pulls numba/llvmlite into a pinned pandas<3 envelope and would trade a legible gap for a dependency risk.",
+  "status": "OPEN",
+  "note": "Filed at L9c on the adjudicator's ruling that an untested subsystem must stop reading as background noise. Reported at the end of L9, L9b and L9c as 'the same three pre-existing failures, unrelated' - true each time, and cumulatively it means the SHAP path has been unverified across three loops of engine changes. Nothing in those loops touched SHAP, which is why the failures stayed identical; that is reassurance about the past and no guarantee about the next change. IT MATTERS NOW because pages/07's SHAP orchestration is on the extraction list, and extraction without characterization is exactly what TRANSITION_PLAN warns against - the same argument SWEEP-015 makes about models/. Whichever option is taken should land before that extraction starts. The skipif option is the cheaper one and closes only the legibility half: a SKIP says 'not run here' where a FAIL says 'broken', and the current output says the wrong one of those three times per loop.",
+  "verified_against": "TurboTab @ fa8f326",
+  "test": "",
+  "verified_ev": "tests/test_shap_and_sensitivity.py:65-132 (TestSHAPComputation, three tests); requirements.txt:21 (shap pinned); requirements-dev.txt:28-31 (deliberately excluded); .github/workflows CI triggers on main only"
  }
 ]
