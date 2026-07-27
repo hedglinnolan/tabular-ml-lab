@@ -742,7 +742,9 @@
   "detail": "LANDS: engine (consumed by router). ml/triage.py:10 `detect_task_type(df: pd.DataFrame, target: str) -> Dict` and :102 `detect_cohort_structure(df: pd.DataFrame, sample_size: int = 1000) -> Dict`. In the new architecture the Router promotes the coach to deciding 'which question is asked next', and task type is the first branch — regression vs classification changes every downstream question, metric, and plot. A threshold shift in this function silently reroutes the entire interview. It also feeds the invalidation signature (task_type is in the hash, finding #2), so a drift here silently invalidates or fails to invalidate everything.",
   "ev": "ml/triage.py:10, :102; consumed via pages/01 task_type_detection and DataConfig.task_type",
   "act": "Golden test over a fixture matrix, asserting the FULL returned dict (not just the verdict): binary int target; binary string target; 3-class; 10-class int (the classification/regression boundary); continuous float; continuous int with <20 u…",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "Half the row is closed. detect_task_type is no longer uncovered - turbotab/test_skeleton.py pins the text/object, string-dtype, category and boolean branches, asserts the CONFIDENCE tier as well as the verdict (which is the part that matters for routing), covers the low-cardinality-integer low-confidence branch at :715, and pins the two refusals (duplicate target label, absent column). test_task_type_matches_a_direct_engine_call pins the adapter against the engine. WHAT REMAINS: detect_cohort_structure at ml/triage.py:123 still has zero coverage - its only importers are pages/01 and scripts/smoke_check.py, and no test calls it - and it is the function that decides whether a split must be grouped, i.e. whether the same person can appear on both sides. The full-dict golden the action asks for does not exist for either function; the tests assert selected fields.",
+  "verified_ev": "detect_task_type now covered: turbotab/test_skeleton.py:166-168, 221-305, 320-328, 715-758; consumed through turbotab/engine.py:140-157. detect_cohort_structure: ml/triage.py:123, importers pages/01_Upload_and_Audit.py:38 and scripts/smoke_check.py:106 only, zero tests."
  },
  {
   "id": "TEST-010",
@@ -752,7 +754,9 @@
   "detail": "LANDS: project/record seam. utils/session_state.py:377-407: the reset reaches INTO the record layer, setting provenance sections to None (`setattr(prov, section, None)` for eda/split/preprocessing/training/explainability/coach) and calling `ledger.rollback_resolutions(_rollback_pages)` then `ledger.prune_auto_generated({'02_EDA','05_Preprocess','06_Train_and_Compare'})`. Both are guarded by hasattr, so if the method is renamed during the Record extraction the call is SILENTLY SKIPPED (no AttributeError) and the manuscript keeps asserting resolved actions that were invalidated — exactly the failure the code comment at :389-395 says it exists to prevent. This directly contradicts the stated 'R…",
   "ev": "utils/session_state.py:377-407, esp. hasattr guards at :384, :398, :405",
   "act": "Replace hasattr guards with explicit protocol calls that raise. Characterization test: seed a ledger with resolutions earned on each rollback page plus auto-generated insights, call reset_downstream_results, assert the exact surviving insig…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and the guards are the defect. The invalidation path still reaches into the Record: it setattr's six (or seven) provenance sections to None and calls two ledger mutators, each behind a hasattr test. A rename during the Record extraction therefore does not raise - it makes the call SILENTLY SKIPPED, and the manuscript keeps asserting resolutions that were invalidated, which is exactly what the comment at :448-454 says the block exists to prevent. That is a guard that fails open in the one place the governing rule says it must fail closed. The characterization test the action asks for - seed resolutions on each rollback page plus auto-generated insights, call the real function, assert the exact surviving set - does not exist; tests/integration/test_characterization_cascade.py pins session-state keys only and never inspects the ledger.",
+  "verified_ev": "utils/session_state.py:435-469 - hasattr(prov, section) at :443, hasattr(prov,'feature_engineering') at :445, hasattr(ledger,'rollback_resolutions') at :457, hasattr(ledger,'prune_auto_generated') at :466"
  },
  {
   "id": "COACH-001",
@@ -762,7 +766,9 @@
   "detail": "Reproduced in this environment: importing ml.model_coach succeeds with streamlit absent; calling generate_preprocessing_insights raises ModuleNotFoundError. Because BOTH call sites (pages/05_Preprocess.py:302-322 and pages/06_Train_and_Compare.py:1706-1734) wrap everything in `except Exception: pass`, the failure is completely invisible — no coaching, no diagnostics, no log line. And since run_post_training_diagnostics has no internal error isolation, _detect_overfit's import failure discards the findings of all six other detectors with it.",
   "ev": "ml/model_coach.py:634 (inside generate_preprocessing_insights) and ml/model_coach.py:1080 (inside _detect_overfit), both doing `from utils.insight_ledger import …`; utils/insight_ledger.py:46 `import streamlit as st`.",
   "act": "Extract MODEL_TO_FAMILY / FAMILY_ALIASES / ISSUE_MODEL_RELEVANCE / FAMILY_DISPLAY_NAMES / MODEL_DISPLAY_NAMES into a leaf vocabulary module (e.g. ml/model_families.py) that both engine and record import; delete get_ledger's module-level str…",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "The reproduction in this row no longer reproduces; the coupling it diagnosed does. utils/insight_ledger.py no longer imports streamlit at module level - it is inside get_ledger() at :1407 with a comment explaining that a module-level import made 1,400 lines of pure domain logic unreachable and tainted ml.narrative_engine and ml.manuscript_validator by association. So calling generate_preprocessing_insights with streamlit absent no longer raises ModuleNotFoundError. WHAT REMAINS, all three: (1) the vocabulary is still in the record module - ml/model_coach.py:634-638 imports MODEL_TO_FAMILY, ISSUE_MODEL_RELEVANCE and the family constants from utils.insight_ledger, and the leaf module the action asks for (ml/model_families.py) does not exist, so the engine still depends on the record to name a model family; (2) nothing tests it - tests/test_engine_is_headless.py says in its own docstring that it covers import-time only and that call-time headlessness 'is a different problem with a different fix'; (3) both call sites still swallow (see COACH-005) and run_post_training_diagnostics still has no per-detector error isolation, so one detector's failure still discards the other six.",
+  "verified_ev": "utils/insight_ledger.py:1400-1407 (the streamlit import is now INSIDE get_ledger, with a comment naming the 1,400 lines it was blocking); ml/model_coach.py:634-638 and :1080 still import the vocabulary FROM the record module; no ml/model_families.py; tests/test_engine_is_headless.py:18-22 (imports only, explicitly not call-time)"
  },
  {
   "id": "COACH-002",
@@ -772,7 +778,9 @@
   "detail": "`.get('AUC', 0)` always returns 0 → `best_auc = 0` → the `if best_auc >= 0.60 or best_auc <= 0: return []` guard fires on every classification run. `train_low_performance` has never once been raised for a classifier in production. The test suite is green and gives false confidence.",
   "ev": "ml/model_coach.py:949-953 reads `r.get('metrics', {}).get('AUC', 0)`; ml/eval.py:80-82 writes `metrics['ROC-AUC']`. tests/test_complexity_coaching.py:111 and :121 feed the fictional key `{'AUC': 0.55}` / `{'AUC': 0.75}`.",
   "act": "Before the move, add an assertion that every metric key the coach reads is a key ml/eval.py actually produces — a small cross-module contract test over calculate_regression_metrics / calculate_classification_metrics output keys vs the liter…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, both halves. _detect_low_overall_performance still reads 'AUC' from the metrics dict while calculate_classification_metrics writes 'ROC-AUC', so best_auc is always 0, the '<= 0' arm of the guard at :953 fires on every classification run, and train_low_performance has never been raised for a classifier. The test that appears to cover it still constructs the fictional key, so the suite is green over a metric name production never emits - false confidence, which is worse than no test. The cross-module contract test the action asks for (every metric key the coach reads must be one ml/eval.py produces) does not exist, and TEST-008 records that ml/eval.py's output keys are themselves unpinned, so nothing on either side of this contract is nailed down.",
+  "verified_ev": "ml/model_coach.py:949-953 reads r.get('metrics', {}).get('AUC', 0) and the guard at :953 is 'if best_auc >= 0.60 or best_auc <= 0: return []'; ml/eval.py:80-82 writes metrics['ROC-AUC']; tests/test_complexity_coaching.py:111,121 still feed the fictional key {'AUC': ...}"
  },
  {
   "id": "COACH-003",
@@ -782,7 +790,9 @@
   "detail": "The fallback always fires. `train_heteroscedastic_residuals` reports Spearman rho for whichever model happens to be first in the dict — i.e. checkbox order — and its manuscript_text asserts 'residual variance was not constant across the predicted range' about a model that may not be the one reported.",
   "ev": "pages/06_Train_and_Compare.py:1714 passes `primary_model=st.session_state.get('primary_model', '')`; ml/model_coach.py:1263 `key = primary_model if primary_model in model_results else next(iter(model_results))`. Repo-wide grep finds only RE…",
   "act": "Make the Project object own `primary_model` explicitly and make the Router pass it. In the meantime change the fallback from `next(iter(...))` to an explicit best-by-metric selection so the choice is at least defensible, and put the model n…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The only write to a name like this is utils/workflow_provenance.py:616, which sets ctx['primary_model'] from the provenance object for template rendering - it never writes the session-state key. pages/06:1619 therefore always passes '', the fallback at model_coach.py:1263 always fires, and train_heteroscedastic_residuals reports Spearman rho for whichever model is first in dict order, i.e. checkbox order. Note that pages/06:1558 DOES compute the right answer one block earlier - it passes primary_model=best_model_name or '' into get_provenance().record_training - so the value exists at that point and simply is not stored anywhere the coach can read. That makes this cheap to fix in Classic and mandatory in the Project, which must own primary_model as first-class state.",
+  "verified_ev": "ml/model_coach.py:1255,1263 (key = primary_model if primary_model in model_results else next(iter(model_results))), :1312,:1326; pages/06_Train_and_Compare.py:1619 passes st.session_state.get('primary_model',''); repo-wide, nothing ever WRITES st.session_state['primary_model']"
  },
  {
   "id": "COACH-004",
@@ -792,7 +802,9 @@
   "detail": "bootstrap_results is None on the first pass → `if not bootstrap_results … return []`. The one detector that could tell a researcher 'your top-two ranking is not established' is inert. There is no log line and no empty-state message.",
   "ev": "pages/06_Train_and_Compare.py:1713 reads `st.session_state.get('bootstrap_results')` from inside the post-training block; the key is only written at pages/06_Train_and_Compare.py:2072, in a later section that requires a separate user action…",
   "act": "In TurboTab this is a Jobs dependency problem, not a page-order problem: make the diagnostics job depend on the bootstrap job's completion, or re-run the affected detector when bootstrap results land. Whatever the design, add a test that as…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: the read at :1618 still precedes the only write at :2002 by ~380 lines and a user action, so bootstrap_results is None on the pass that runs the diagnostics and _detect_ci_overlap returns [] every time. The one detector that could tell a researcher 'your top-two ranking is not established' is inert, and there is no log line and no empty state, so it is indistinguishable from 'the ranking is fine'. This is a job-dependency problem in the new architecture, not a page-order problem - and turbotab/jobs.py has no dependency edges between jobs at all today, so the mechanism that would fix it does not exist yet.",
+  "verified_ev": "pages/06_Train_and_Compare.py:1618 reads st.session_state.get('bootstrap_results') inside the post-training block; the key is first written at :2002, in a later section behind a separate user action; ml/model_coach.py:1198-1205 (_detect_ci_overlap returns [] when bootstrap_results is falsy)"
  },
  {
   "id": "COACH-005",
@@ -802,7 +814,9 @@
   "detail": "A coach that produces nothing is visually identical to a coach that has nothing to say. In the viability case (line 864) the model cards simply render with no verdict — the absence reads as 'the coach has no opinion about this model'. Every migration bug in this domain will land in one of these six wells.",
   "ev": "pages/05_Preprocess.py:296-298 `except Exception as _coach_err: logging.getLogger(__name__).debug(f'Model coach error: {_coach_err}')`; pages/05_Preprocess.py:323 `except Exception: pass`; pages/06_Train_and_Compare.py:863-864 `except Excep…",
   "act": "Before touching anything, downgrade the swallows to log.exception and add an explicit empty-state so 'no advice' and 'advice failed' are visually distinct. In the Router, a failed advisor must surface as a degraded-mode banner, never as sil…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The coach call sites still swallow, and the two on pages/05 do it at DEBUG level, which no default configuration shows. The consequence the row names is the one that matters for the interview: a coach that produced nothing and a coach that crashed render identically, so absence reads as 'no opinion about this model'. Every migration bug in this domain lands in one of these wells silently. Two things must change together and neither has: raise the swallows to log.exception, and give the UI an explicit empty state so 'no advice' and 'advice failed' are visually distinct. In the Router a failed advisor must be a degraded-mode banner - the governing rule allows silence about a fact, not silence about a failure.",
+  "verified_ev": "pages/05_Preprocess.py:296-298 (except Exception as _coach_err -> logging.debug), and the second coach block beginning at :301 whose handler swallows; pages/06_Train_and_Compare.py:1612-1618 (the run_post_training_diagnostics block) and its handler; ml/model_coach.py run_post_training_diagnostics has no per-detector isolation"
  },
  {
   "id": "COACH-006",
@@ -812,7 +826,9 @@
   "detail": "The coach's recommendation quietly evaporates between pages, and _get_selected_models falls back to `preprocess_built_model_keys`. Model-aware coaching then scopes to a different set of families than the coach advised — insights whose scope no longer matches are dropped outright by utils/coaching_ui.py:170-173. This is the mechanism by which the auto-select and the coaching display can disagree with no error.",
   "ev": "pages/05_Preprocess.py:290-294 sets `st.session_state[f'train_model_{pick.model_key}'] = True`; those same keys are bound to widgets at pages/06_Train_and_Compare.py:906-907 `st.checkbox('Select', value=is_selected, key=checkbox_key)`. util…",
   "act": "The Project object must own the selected-model list as first-class state, separate from any widget binding, AND must record PROVENANCE for it — 'coach-selected' vs 'user-selected'. Today narrative_engine.py:935 infers the user followed the …",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The coach's auto-selection still writes widget-bound keys, which Streamlit garbage-collects when the widget that owns them is not rendered, so the recommendation evaporates on navigation and the selection is re-derived by prefix-scanning session_state (pages/05:413, :850). Model-scoped coaching then filters against a different family set than the coach advised, and utils/coaching_ui.py:162-173 discards the mismatched insights silently - the mechanism by which auto-select and coaching display disagree with no error. The provenance half of the action is also untouched: nothing anywhere records whether a selected model was coach-selected or user-selected, so ml/narrative_engine.py's inference that the user followed the advice is still an inference.",
+  "verified_ev": "pages/05_Preprocess.py:291-294 writes st.session_state[f'train_model_{pick.model_key}'] = True; the same keys are widget-bound at pages/06_Train_and_Compare.py:772 (checkbox_key = f'train_model_{model_key}'); pages/05:413 and :850 re-derive the selection by scanning session_state for that prefix; utils/coaching_ui.py:162-173 drops scope-mismatched insights"
  },
  {
   "id": "COACH-007",
@@ -822,7 +838,9 @@
   "detail": "Reproduced directly: the limitations list comes back containing 'Your linear models (Ridge Regression, LASSO, etc.) are scale-sensitive; the app's default pipeline already standardizes features for them.' and '2 feature(s) have missing values.' — a reassurance and a neutral fact, both presented to a reviewer as study limitations, with '(s)' pluralization the rest of the codebase deliberately avoids. Gate #2 (pages/06:1698) makes it worse by marking them 'acknowledged', which discussion_points treats identically to unresolved.",
   "ev": "Produced at ml/model_coach.py:673-799 as preprocess_skewness_transform, preprocess_outlier_handling, preprocess_feature_scaling, preprocess_missing_tree_native. Only preprocess_outlier_handling is resolved (pages/05_Preprocess.py:1190-1203)…",
   "act": "Give every coach-authored insight an explicit manuscript_text (or an explicit `narrative: false`), and make 'positive/neutral advice' a first-class disposition rather than something inferred from an id prefix. Add a test that asserts no lim…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and fully reproducible. All four coach preprocessing insights are still produced without manuscript_text - the file's first manuscript_text is 200 lines later, at :886 - and three of the four have no resolver anywhere in the repository, so they can never be marked resolved and fall through to the manuscript's LIMITATIONS section. Two of the strings the row quotes are a reassurance ('the app's default pipeline already standardizes features for them') and a neutral fact ('N feature(s) have missing values'), presented to a reviewer as study limitations, with the '(s)' pluralization the rest of the codebase avoids. The structural fix is the one the action names and it has not started: positive/neutral advice must be a first-class disposition, not something inferred from an id prefix.",
+  "verified_ev": "ml/model_coach.py:674, 718, 746, 775 (the four preprocess_* insights); no 'manuscript_text' key appears in any of them - the first manuscript_text in the file is at :886, in the post-training detectors; no resolver anywhere in pages/, utils/ or ml/ for preprocess_skewness_transform, preprocess_feature_scaling or preprocess_missing_tree_native"
  },
  {
   "id": "COACH-008",
@@ -832,7 +850,9 @@
   "detail": "Two researchers with identical data and identical models get different named models in their findings — and therefore different manuscript_text — purely because they checked the boxes in a different order. Nothing flags the tie. The FINDINGS_LEDGER governing rule ('the app may be silent, it may refuse, but it must never assert something false') is violated the moment a tie is asserted as a ranking.",
   "ev": "ml/model_coach.py:847-850 (_detect_prefer_simpler min/max over dict, exact ties → first inserted), :1146-1151 (_detect_accuracy_vs_nir, strict `acc > best_acc` → first wins on ties), :1201-1202 (_detect_ci_overlap, stable sort → ties by ins…",
   "act": "Sort by (score, model_key) everywhere a single winner is chosen, and make an exact or near-exact tie produce a 'ranking not established' finding rather than a winner. The machinery for that already exists in _detect_ci_overlap's message — r…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD in all three named sites, and the mechanism is exactly as described: dict insertion order is checkbox order, so two researchers with identical data and identical models get different named models in their findings and therefore different manuscript_text. Nothing flags a tie. This is the governing rule broken by omission rather than by statement - a tie asserted as a ranking is an assertion the data does not support. The remedy the action names is cheap and unstarted: sort by (score, model_key) wherever a single winner is chosen, and make an exact or near-exact tie emit a 'ranking not established' finding. The vocabulary for that already exists in _detect_ci_overlap's own message.",
+  "verified_ev": "ml/model_coach.py:846-850 (_detect_prefer_simpler: min() over a dict, exact ties resolve to first inserted), :1146-1151 (_detect_accuracy_vs_nir: strict acc > best_acc, so first wins on a tie), :1201-1202 (_detect_ci_overlap: stable sort, ties by insertion order)"
  },
  {
   "id": "COACH-009",
@@ -842,7 +862,9 @@
   "detail": "Tune NONLINEAR_GAIN in coach_probe and the probe's own summary() changes while the coach's pick rationale and viability clauses keep the old boundary. The user sees 'linear ≈ trees in the probe' in one panel and '+0.04 for trees' reasoning in another, from the same numbers. No test compares them.",
   "ev": "ml/coach_probe.py:42-44 SIGNAL_MARGIN=0.05, NONLINEAR_GAIN=0.04, LEARNING_SLOPE=0.03; ml/model_coach.py:497 `_gain < 0.02`, :523 `_gain > 0.04`, :1361 `_gain > 0.04`, :1363 `_gain < 0.02`. model_coach never imports the constants.",
   "act": "Import the constants. Add a test asserting model_coach contains no bare float thresholds in the probe branches.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. ml/coach_probe.py still names the three thresholds and uses them through the names; ml/model_coach.py still hard-codes 0.04 and 0.02 in four probe branches and imports nothing from coach_probe. Tuning NONLINEAR_GAIN moves the probe's own summary and leaves the coach's pick rationale and viability clauses on the old boundary, so one panel can say 'linear approximately equals trees' while another reasons from '+0.04 for trees' over the same numbers. Note the second, unnamed half: 0.02 is not NONLINEAR_GAIN/2 by declaration, it just happens to equal it (coach_probe.py:118 uses NONLINEAR_GAIN / 2 for the same boundary), so the two files agree today by coincidence.",
+  "verified_ev": "ml/coach_probe.py:42-44 (SIGNAL_MARGIN=0.05, NONLINEAR_GAIN=0.04, LEARNING_SLOPE=0.03, used at :74-75, :88, :116-118); ml/model_coach.py:497 (_gain < 0.02), :523 (_gain > 0.04), :1360 (_gain > 0.04), :1363 (_gain < 0.02) - model_coach imports none of the constants"
  },
  {
   "id": "COACH-010",
@@ -852,7 +874,9 @@
   "detail": "A warning that was correct when it was written vanishes the moment the user changes their model lineup — and is actively replaced by a green reassurance. ml/model_coach.py:1076-1079 carries an in-code note that this exact failure already happened once with the coach's display groups.",
   "ev": "utils/coaching_ui.py:162-173 — the `else: pass` branch with the comment 'This means it's irrelevant — skip it'. Reinforced by lines 193-202, which then print '✅ No family-specific issues for …'.",
   "act": "In the interview, a scoped insight whose scope no longer applies should be shown as superseded, not deleted. Never print a reassurance derived from an empty filter result — distinguish 'checked and clean' from 'nothing matched the filter'.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, both halves, and they compound exactly as the row says. An insight whose model_scope matches none of the currently selected families is dropped with no trace at :171-173, and then :196-202 computes 'clean' as families no insight's scope mentions and prints a green reassurance for them. So a warning that was correct when written vanishes on a lineup change AND is replaced by a positive statement. That last step is the governing rule broken directly: 'checked and clean' and 'nothing matched the filter' produce the same sentence. The interview must show a scope-mismatched insight as superseded, not delete it, and must never derive a reassurance from an empty filter result.",
+  "verified_ev": "utils/coaching_ui.py:162-173 (the else branch is still a bare pass with the comment \"This means it's irrelevant - skip it\"); :196-202 (the trailing green line, computed from families with no matching scope)"
  },
  {
   "id": "COACH-011",
@@ -862,7 +886,9 @@
   "detail": "Fixed-id producers re-run on every render (pages/02_EDA.py:542 calls _auto_generate_insights unconditionally; pages/05_Preprocess.py:315 re-upserts the coach insights every pass). If the underlying numbers change, the finding text updates while resolved_by keeps describing the earlier action. to_manuscript_narrative (utils/insight_ledger.py:1282-1284) then emits `{new finding}. {old resolution}.` as one sentence.",
   "ev": "utils/insight_ledger.py:684-705. On an id match with `existing.resolved and not insight.resolved`, it copies resolved/resolved_by/resolved_on_page/resolved_at/resolution_details onto the NEW object, then `self._insights[idx] = insight`.",
   "act": "Either invalidate the resolution when the finding's material content changes (hash the numeric metadata), or version the insight so the record keeps both. Silently pairing a new fact with an old action is exactly the assert-something-false …",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. upsert still transplants the whole resolution block onto a new insight object whose finding text may describe different numbers, and fixed-id producers still re-run on every render, so the pairing happens routinely rather than exceptionally. to_manuscript_narrative then emits '{new finding}. {old resolution}.' as one sentence. This is the assert-something-false failure in its purest form: neither half is fabricated, the SENTENCE is. Neither remedy exists - there is no content hash on the insight's material metadata and no versioning that would let the record keep both observations.",
+  "verified_ev": "utils/insight_ledger.py:679-709 (upsert: on an id match with existing.resolved and not insight.resolved, it copies resolved/resolved_by/resolved_on_page/resolved_at/resolution_details onto the NEW object, then replaces the record at :706); pages/02_EDA.py _auto_generate_insights runs unconditionally; pages/05_Preprocess.py re-upserts the coach insights every pass; utils/insight_ledger.py:1274-1284 (to_manuscript_narrative pairs finding and resolved_by in one sentence)"
  },
  {
   "id": "COACH-012",
@@ -872,7 +898,9 @@
   "detail": "A downstream reset removes the 'preprocessing pipelines were configured' and 'models were trained' entries from get_methodology_log() and from to_manuscript_narrative(). The methods section loses steps it previously described, with no indication that anything was dropped. The docstring's premise — 'the producer page re-detects fresh insights on its next visit' — is false for these, because they are written on ACTION, not on visit.",
   "ev": "utils/session_state.py:407-411 passes {'02_EDA','05_Preprocess','06_Train_and_Compare'}; utils/workflow_provenance.py _log_to_ledger writes method_preprocessing / method_model_training with auto_generated=True and source_page in that set.",
   "act": "Split the record: detections (safe to prune) vs action log (append-only, never pruned, only marked superseded). The task brief already calls the Record 'append-mostly' — prune_auto_generated is the one place that is not, and it is deleting …",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. prune_auto_generated filters on auto_generated and source_page only - it has no notion of what KIND of entry it is deleting - so it removes the methodology audit-trail entries that _log_to_ledger writes with auto_generated=True from the same three pages, alongside the stale detections it is meant to remove. The Methods section then loses steps it previously described, with no indication anything was dropped. The docstring's premise at :828-830, that 'the producer page re-detects fresh insights on its next visit', is false for these: they are written on ACTION, not on visit, so nothing regenerates them. This is also the one place the 'append-mostly' Record is not append-mostly, and it is deleting the append-only part.",
+  "verified_ev": "utils/session_state.py:466-469 passes {'02_EDA','05_Preprocess','06_Train_and_Compare'} to prune_auto_generated; utils/insight_ledger.py:825-837 deletes on (auto_generated and source_page in source_pages) with no distinction of kind; utils/session_state.py:649-715 writes the methodology bridge entries with auto_generated=True and those same source pages"
  },
  {
   "id": "COACH-013",
@@ -882,7 +910,9 @@
   "detail": "A Router that gates on `confidence == 'medium'` silently never fires for task-type or cohort detection; one that gates on `'med'` silently never fires for join keys or import findings. Both are string comparisons against untyped values with no enum and no validation.",
   "ev": "ml/triage.py uses 'low'|'med'|'high' (lines 43,51,59,67,71,78,82,86,92,230,237,244,260,266,272) and utils/session_state.py:17,34 types it as Literal['low','med','high']; ml/import_doctor.py:92 and ml/join_doctor.py:235-259 use 'high'|'mediu…",
   "act": "One enum, one module, converted at the boundary — before any Router logic reads a tier. Include the tri-state None (triage returns confidence=None when the target column is missing, ml/triage.py:27).",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged, and now worse - the Router added a THIRD table. ml/router.py:65 ranks confidence with the keys high/medium/low, and ml/triage.py still emits 'med', so a triage confidence never matches that table: _rank falls to the .get default (1), which happens to equal 'medium' today, so ordering is right BY ACCIDENT and would silently change the moment the default or the tier set moves. _skip_is_permitted compares == 'high' and is unaffected, which is why nothing has surfaced. Four vocabularies now coexist: triage/clinical_units/session_state say 'med', import_doctor/join_doctor/router say 'medium', and triage returns confidence=None when the target column is missing (ml/triage.py:27) - a tri-state the enum must carry. This must be one enum converted at the boundary BEFORE any further Router gating reads a tier.",
+  "verified_ev": "ml/triage.py:42,88,92,99,134,144,251 ('low'|'med'|'high'); utils/session_state.py:17,34 (Literal['low','med','high']); ml/clinical_units.py:131,209,220 ('med'); ml/import_doctor.py:94,436,578 ('medium'); ml/join_doctor.py:295-314 ('medium'); NEW at HEAD: ml/router.py:65 _CONFIDENCE_RANK = {'high':0,'medium':1,'low':2}"
  },
  {
   "id": "COACH-014",
