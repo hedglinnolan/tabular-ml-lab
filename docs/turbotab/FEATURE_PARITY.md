@@ -130,6 +130,12 @@ step has no rows or the markdown goes stale.
 This is the same trick as the findings ledger: the failure mode is silence, so make silence a
 test failure.
 
+**Corollary — the principle-locality rule** (from the T0-LIVE-005 close): *a principle written in
+one place and applied in another is the same silence as a capability with no row.* The content-key
+principle lived in a docstring on four caches while eight caches beside it violated it. When a
+principle is worth a docstring, it is worth a test that applies it everywhere it binds — one
+fingerprint for the page, not one per author.
+
 ### Two specific things to watch
 
 - **The pedagogy layer** — `utils/theory_anchors.py` (532 loc) and `utils/theory_demos.py`

@@ -48,9 +48,11 @@ Anything short of all five is a milestone, not a finish.
                      │
               ◆ DECISION B — ANSWERED: skip only when a high-confidence finding
                      │           makes the question moot; visible + reversible
-  L8  Router, EDA only  ← NEXT — the differentiator; prove it here
+  L8  Router, EDA only  ← IN PROGRESS — step 1 (baseline) ✓ DONE
               │
-       ◆ ROUTING VALUE CHECK — is it better, or just prettier?
+       ◆ ROUTING VALUE CHECK — criteria PRE-REGISTERED in
+              │    VALUE_CHECK_PREREG.md, frozen before Router code;
+              │    editing it after Router code exists = failing it
               │
   L9  feed frontend, one step per loop  ← the long one
   L10 parity harness + manuscript chain
