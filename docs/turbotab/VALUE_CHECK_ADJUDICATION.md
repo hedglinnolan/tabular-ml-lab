@@ -156,12 +156,65 @@ in `test_the_frozen_baseline_is_the_one_the_prereg_names`. The new measurement s
   regression guard than 1.000 on a one-decision dataset was. The prereg's own reading — that the
   clean datasets are guards and not evidence — is unaffected, but the guard is now looser.
 
+---
+
+# Coverage carries its denominator
+
+**A standing ruling, not a one-off.** It comes out of the adjudication above, and it survives it.
+
+## The thing neither of us designed
+
+Classic's coverage **numerator is structurally frozen.** `pages/01` renders
+`import_doctor.diagnose`, and `ml/import_doctor.py` is frozen as engine-move-only
+(`TRANSITION_PLAN.md` §05), so Classic cannot learn any detector the engine gains — not the
+binary-text one, not the next one.
+
+The **denominator is not frozen.** `required_decisions` is derived from the engine's findings on
+purpose, so that neither door's UI biases the measuring stick. Every time the engine learns to see
+something new, the denominator rises.
+
+Put those together and the gap between the doors widens **on its own**, with no change to either
+door's routing. Classic's coverage on messy-clinic went 1/9 → 1/10 at L9 because the engine got
+better, not because Classic got worse. Left alone, the headline claim inflates itself loop after
+loop while measuring nothing new about the thing it exists to measure.
+
+## The rules
+
+1. **Every coverage figure is reported as `k/n @ <commit>`.** A bare ratio is not a result. Two
+   ratios with different denominators are not comparable, and nothing in a decimal says so.
+2. **The pre-registered claim stays pinned at `n=9` in perpetuity.** That is the number the
+   thresholds were banked against and it does not move. `routing-value-check.json` reports Guided
+   under the pinned denominator alongside the current one, on every run.
+3. **Re-measurements are new rows, never restatements.** A moved metric gets a new file beside the
+   old one and a ruling here — `routing-baseline-l9.json` is the first.
+
+## The caveat, in plain words
+
+> Classic's numerator cannot grow, because the import path it renders is frozen. A widening gap
+> between the doors is therefore not by itself evidence of better routing: part of it is the
+> engine improving underneath both doors while only one of them can act on the improvement.
+
+We would rather publish the caveat than enjoy the number. Anyone quoting a coverage figure from
+this project quotes it with its denominator and its commit, or is quoting something that has been
+drifting upward without being measured.
+
+**When the freeze lifts, this caveat gets revisited, not deleted** — Classic will be able to learn
+new detectors, and the two doors will start moving for comparable reasons again. Until then the
+gap is partly an artifact and is labeled as one.
+
+---
+
 ## Precedent added
 
 - **A protection that depends on "X does not exist yet" expires the moment X exists, and nothing
   will tell you.** The baseline harness carried that guarantee in its docstring and kept writing
   the file for three loops after the Router landed. Recorded in `FEATURE_PARITY.md` beside the
   principle-locality corollary, and filed as `T0-PREREG-002`.
+- **The measurements are frozen; the envelope may gain labels, never lose or alter one.** The
+  first phrasing — *never edited, ever* — was too blunt to state what it protected, and would have
+  forced provenance into a second file nobody checks. Safe because nothing depends on trusting the
+  envelope: a self-declared stamp is swappable, so the load-bearing assertion is the git-read
+  values check. Recorded in `FEATURE_PARITY.md` as the frozen-measurement rule.
 - **Measurement and comparison must not share a code path.** A suite that re-measures its own
   reference has no reference. `tests/integration/test_routing_baseline.py` compares;
   `scripts/remeasure_routing_baseline.py` measures, refuses to overwrite a frozen baseline, and

@@ -5088,5 +5088,19 @@
   "verified_against": "TurboTab @ aa6cbc4",
   "test": "",
   "verified_ev": "ml/physiology_reference.py match_variable_key (unchanged); ml/card_evidence.py interpretation_verdict, derived_from, rescues_the_column"
+ },
+ {
+  "id": "T0-PREREG-003",
+  "area": "TIER0",
+  "sev": "high",
+  "item": "The value check's recorded result was rewritten by every suite run, so the 'permanent record' it is cited as had no provenance and no permanence",
+  "detail": "T0-PREREG-001's adjudication cites data/routing-value-check.json as permanent record - specifically passes_under_literal_reading: false, the adverse reading of the deferral ambiguity, preserved in data so the ruling could be overruled rather than discovered. But tests/integration/test_routing_value_check.py wrote the file on every run, so the adverse reading was preserved only for as long as the code that computed it kept computing it. Any change to the harness, the Router or the engine silently rewrote the record that the ruling points at as its evidence. Same defect as T0-PREREG-002, one file over: a measurement and its comparison sharing a code path.",
+  "ev": "tests/integration/test_routing_value_check.py RESULT.write_text (removed); docs/turbotab/VALUE_CHECK_ADJUDICATION.md cites the file as permanent record",
+  "act": "Same split as the baseline: the suite compares and fails on divergence, an explicit script re-records with provenance. Make the adjudication note the authority and the JSON its evidence, not a mirror.",
+  "status": "FIXED",
+  "note": "Fixed at L9c, on the adjudicator's extension of the T0-PREREG-002 ruling. The suite no longer writes: test_routing_value_check computes the verdict and calls _assert_matches_the_recorded_verdict, which compares the recorded verdict and each dataset's scored metrics (questions_asked, irrelevant_questions, findings_driven, coverage) against what this run produced and fails with 'Do not fix this by re-recording. Record the new result beside the old one and adjudicate.' Everything else in the file is envelope and is not compared, per the frozen-measurement rule. scripts/rerecord_routing_value_check.py is the only writer: it requires an explicit --out, refuses to overwrite the recorded result without --replace AND a --reason, and writes that reason into the file as replaced_because, so a replacement carries its own justification. The file now carries measured_at for the first time; it was re-recorded once at 31e87ac with the reason stated, verdict unchanged (passes=true, passes_under_literal_reading=false), which is the evidence the ruling is quoting still saying what the ruling says it says. VALUE_CHECK_ADJUDICATION.md is the authority; the JSON is its evidence. NOT ADDRESSED HERE, and worth knowing: routing-baseline-leaky.json is guarded the same way but nothing cites it as a record of a ruling, so it carries no equivalent claim to be checked.",
+  "verified_against": "TurboTab @ 31e87ac",
+  "test": "tests/integration/test_routing_value_check.py::test_routing_value_check (via _assert_matches_the_recorded_verdict)",
+  "verified_ev": "tests/integration/test_routing_value_check.py RESULT.write_text (removed); docs/turbotab/VALUE_CHECK_ADJUDICATION.md cites the file as permanent record"
  }
 ]

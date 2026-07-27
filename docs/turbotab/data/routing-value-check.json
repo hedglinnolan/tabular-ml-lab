@@ -1,9 +1,10 @@
 {
  "schema_version": "1.0",
  "prereg": "VALUE_CHECK_PREREG.md",
+ "adjudication": "VALUE_CHECK_ADJUDICATION.md",
+ "measured_at": "31e87ac",
  "classic_reference": "routing-baseline-l9.json",
  "classic_frozen_reference": "routing-baseline.json",
- "adjudication": "VALUE_CHECK_ADJUDICATION.md",
  "rows": [
   {
    "dataset": "messy-clinic",
@@ -14,7 +15,8 @@
     "findings_driven": 0.0,
     "deferral_closes": null,
     "coverage": 0.1,
-    "pull_affordances": 0
+    "pull_affordances": 0,
+    "coverage_ratio": "1/10 @ aa6cbc4"
    },
    "classic_frozen": {
     "required_decisions": 9,
@@ -23,7 +25,8 @@
     "findings_driven": 0.0,
     "deferral_closes": null,
     "coverage": 0.1111,
-    "pull_affordances": 0
+    "pull_affordances": 0,
+    "coverage_ratio": "1/9 @ 6bfe598"
    },
    "guided": {
     "required_decisions": 10,
@@ -32,14 +35,21 @@
     "findings_driven": 0.9,
     "deferral_closes": 1.0,
     "coverage": 1.0,
+    "covered": 10,
+    "coverage_ratio": "10/10 @ 31e87ac",
+    "measured_at": "31e87ac",
     "pull_affordances": 7,
     "surfaced_coverage": 1.0,
-    "asked_coverage": 1.0
+    "asked_coverage": 1.0,
+    "surfaced_ratio": "10/10 @ 31e87ac",
+    "asked_ratio": "10/10 @ 31e87ac"
    },
    "guided_under_frozen_denominator": {
     "n_required": 9,
     "surfaced_coverage": 1.0,
-    "asked_coverage": 1.0
+    "asked_coverage": 1.0,
+    "surfaced_ratio": "9/9 @ 6bfe598",
+    "asked_ratio": "9/9 @ 6bfe598"
    }
   },
   {
@@ -51,7 +61,8 @@
     "findings_driven": 0.0,
     "deferral_closes": null,
     "coverage": 1.0,
-    "pull_affordances": 0
+    "pull_affordances": 0,
+    "coverage_ratio": "1/1 @ aa6cbc4"
    },
    "classic_frozen": {
     "required_decisions": 1,
@@ -60,7 +71,8 @@
     "findings_driven": 0.0,
     "deferral_closes": null,
     "coverage": 1.0,
-    "pull_affordances": 0
+    "pull_affordances": 0,
+    "coverage_ratio": "1/1 @ 6bfe598"
    },
    "guided": {
     "required_decisions": 1,
@@ -69,14 +81,21 @@
     "findings_driven": 0.0,
     "deferral_closes": null,
     "coverage": 1.0,
+    "covered": 1,
+    "coverage_ratio": "1/1 @ 31e87ac",
+    "measured_at": "31e87ac",
     "pull_affordances": 3,
     "surfaced_coverage": 1.0,
-    "asked_coverage": 1.0
+    "asked_coverage": 1.0,
+    "surfaced_ratio": "1/1 @ 31e87ac",
+    "asked_ratio": "1/1 @ 31e87ac"
    },
    "guided_under_frozen_denominator": {
     "n_required": 1,
     "surfaced_coverage": 1.0,
-    "asked_coverage": 1.0
+    "asked_coverage": 1.0,
+    "surfaced_ratio": "1/1 @ 6bfe598",
+    "asked_ratio": "1/1 @ 6bfe598"
    }
   },
   {
@@ -88,7 +107,8 @@
     "findings_driven": 0.0,
     "deferral_closes": null,
     "coverage": 0.5,
-    "pull_affordances": 0
+    "pull_affordances": 0,
+    "coverage_ratio": "1/2 @ aa6cbc4"
    },
    "classic_frozen": {
     "required_decisions": 1,
@@ -97,7 +117,8 @@
     "findings_driven": 0.0,
     "deferral_closes": null,
     "coverage": 1.0,
-    "pull_affordances": 0
+    "pull_affordances": 0,
+    "coverage_ratio": "1/1 @ 6bfe598"
    },
    "guided": {
     "required_decisions": 2,
@@ -106,14 +127,21 @@
     "findings_driven": 0.5,
     "deferral_closes": null,
     "coverage": 1.0,
+    "covered": 2,
+    "coverage_ratio": "2/2 @ 31e87ac",
+    "measured_at": "31e87ac",
     "pull_affordances": 5,
     "surfaced_coverage": 1.0,
-    "asked_coverage": 1.0
+    "asked_coverage": 1.0,
+    "surfaced_ratio": "2/2 @ 31e87ac",
+    "asked_ratio": "2/2 @ 31e87ac"
    },
    "guided_under_frozen_denominator": {
     "n_required": 1,
     "surfaced_coverage": 1.0,
-    "asked_coverage": 1.0
+    "asked_coverage": 1.0,
+    "surfaced_ratio": "1/1 @ 6bfe598",
+    "asked_ratio": "1/1 @ 6bfe598"
    }
   }
  ],
@@ -125,5 +153,6 @@
    "longitudinal: deferral_closes = None (nothing deferrable on this dataset; fails only under the literal reading of the prereg)"
   ],
   "passes_under_literal_reading": false
- }
+ },
+ "replaced_because": "First deliberate recording. T0-PREREG-003: the file was previously rewritten by every suite run, so its 'permanent record' had no provenance. Content is the same verdict, now stamped and carrying coverage as k/n @ commit."
 }

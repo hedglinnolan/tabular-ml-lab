@@ -214,7 +214,28 @@ class Measurement:
         raised = {q.covers for q in self.questions if q.covers}
         return sum(1 for r in self.required if r.key in raised) / len(self.required)
 
-    def to_dict(self) -> Dict[str, Any]:
+    @property
+    def covered(self) -> int:
+        """How many required decisions the door raised — coverage's numerator."""
+        raised = {q.covers for q in self.questions if q.covers}
+        return sum(1 for r in self.required if r.key in raised)
+
+    def coverage_ratio(self, measured_at: Optional[str] = None) -> str:
+        """Coverage as `k/n @ commit`. A bare ratio is not a result.
+
+        The denominator is derived from the engine's findings, so it rises
+        every time the engine learns to see something new — while Classic's
+        numerator is structurally frozen, because the import path it renders is
+        frozen. A coverage figure quoted without its denominator therefore
+        drifts upward on its own, loop after loop, measuring nothing new about
+        routing. Carrying `n` and the commit makes two figures comparable or
+        visibly not.
+        """
+        n = len(self.required)
+        stamp = f" @ {measured_at}" if measured_at else ""
+        return f"{self.covered}/{n}{stamp}" if n else f"n/a{stamp}"
+
+    def to_dict(self, measured_at: Optional[str] = None) -> Dict[str, Any]:
         return {
             "door": self.door, "dataset": self.dataset,
             "n_rows": self.n_rows, "n_columns": self.n_columns,
@@ -225,6 +246,12 @@ class Measurement:
                 "findings_driven": _round(self.findings_driven),
                 "deferral_closes": _round(self.deferral_closes),
                 "coverage": _round(self.coverage),
+                # Coverage never travels as a bare ratio: the numerator and the
+                # denominator go with it, and so does the commit they were
+                # measured at.
+                "covered": self.covered,
+                "coverage_ratio": self.coverage_ratio(measured_at),
+                "measured_at": measured_at,
                 # Reported beside the scored metrics, never inside them.
                 "pull_affordances": self.pull_affordances,
             },
@@ -350,7 +377,7 @@ def write_baseline(path, measurements: Sequence[Measurement],
         payload["measured_at"] = measured_at
     if prereg:
         payload["prereg"] = prereg
-    payload["measurements"] = [m.to_dict() for m in measurements]
+    payload["measurements"] = [m.to_dict(measured_at) for m in measurements]
     pathlib.Path(path).write_text(json.dumps(payload, indent=1), encoding="utf-8")
 
 

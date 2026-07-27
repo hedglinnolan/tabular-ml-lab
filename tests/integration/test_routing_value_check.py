@@ -38,6 +38,30 @@ ADJUDICATED = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9.json"
 PREREG = ROOT / "docs" / "turbotab" / "VALUE_CHECK_PREREG.md"
 RESULT = ROOT / "docs" / "turbotab" / "data" / "routing-value-check.json"
 
+
+def _stamp(path) -> str:
+    """The commit a baseline file records itself as measured at."""
+    return measure.baseline_provenance(path).get("measured_at") or "unknown"
+
+
+PREREG_AT = _stamp(BASELINE)
+ADJUDICATED_AT = _stamp(ADJUDICATED)
+
+
+def _ratio_from(row: dict, measured_at: str) -> str:
+    """`k/n @ commit` for a stored measurement, derived rather than stored.
+
+    The baselines predate the rule and the frozen-measurement rule says the
+    envelope may gain labels while the measurements may not be altered — so the
+    ratio is recomputed from what the file already holds (`coverage` and the
+    required-decision inventory) instead of being written into it.
+    """
+    n = len(row.get("required") or [])
+    coverage = row["metrics"].get("coverage")
+    if not n or coverage is None:
+        return f"n/a @ {measured_at}"
+    return f"{round(coverage * n)}/{n} @ {measured_at}"
+
 DATASETS = [
     ("messy-clinic", DATA / "clinic_visits.csv", "outcome"),
     ("wide-assay", DATA / "wide_assay.csv", "responder"),
@@ -235,16 +259,27 @@ def test_routing_value_check():
         surfaced_frozen = sum(1 for k in frozen_keys if k in raised) / len(frozen_keys)
         asked_frozen = sum(1 for k in frozen_keys if k in raised_asked) / len(frozen_keys)
 
+        # Coverage never travels as a bare ratio (VALUE_CHECK_ADJUDICATION.md
+        # §"Coverage carries its denominator"). Classic's numerator is
+        # structurally frozen, so a ratio quoted alone rises on its own.
+        n_now = len(g.required)
+        n_frozen = len(frozen_keys)
         rows.append({
             "dataset": name,
-            "classic": c,
-            "classic_frozen": frozen[name]["metrics"],
+            "classic": {**c,
+                        "coverage_ratio": _ratio_from(baseline[name], ADJUDICATED_AT)},
+            "classic_frozen": {**frozen[name]["metrics"],
+                               "coverage_ratio": _ratio_from(frozen[name], PREREG_AT)},
             "guided": {**gm, "surfaced_coverage": round(surfaced, 4),
-                       "asked_coverage": round(asked_cov, 4)},
+                       "asked_coverage": round(asked_cov, 4),
+                       "surfaced_ratio": f"{round(surfaced * n_now)}/{n_now} @ {ADJUDICATED_AT}",
+                       "asked_ratio": f"{round(asked_cov * n_now)}/{n_now} @ {ADJUDICATED_AT}"},
             "guided_under_frozen_denominator": {
-                "n_required": len(frozen_keys),
+                "n_required": n_frozen,
                 "surfaced_coverage": round(surfaced_frozen, 4),
                 "asked_coverage": round(asked_frozen, 4),
+                "surfaced_ratio": f"{round(surfaced_frozen * n_frozen)}/{n_frozen} @ {PREREG_AT}",
+                "asked_ratio": f"{round(asked_frozen * n_frozen)}/{n_frozen} @ {PREREG_AT}",
             },
         })
 
@@ -306,41 +341,92 @@ def test_routing_value_check():
                 f"{name}: deferral_closes = None (nothing deferrable on this "
                 "dataset; fails only under the literal reading of the prereg)")
 
-    RESULT.write_text(json.dumps({
-        "schema_version": "1.0", "prereg": "VALUE_CHECK_PREREG.md",
-        # Which Classic reference this run was scored beside, named in the
-        # output rather than inferable from the code that produced it.
-        "classic_reference": ADJUDICATED.name,
-        "classic_frozen_reference": BASELINE.name,
-        "adjudication": "VALUE_CHECK_ADJUDICATION.md",
-        "rows": rows,
-        "verdict": {
-            "passes": not failures,
-            "failures": failures,
-            # Recorded so the user can overrule the reading rather than
-            # discovering it was made silently.
-            "literal_reading_only_failures": strict_failures,
-            "passes_under_literal_reading": not (failures or strict_failures),
-        },
-    }, indent=1), encoding="utf-8")
+    # The verdict this run computed. NOT written to the recorded result: the
+    # same split the baseline got (T0-PREREG-002, T0-PREREG-003). A file called
+    # a permanent record and rewritten on every run is only as permanent as the
+    # code that computes it, so the suite COMPARES and
+    # `scripts/rerecord_routing_value_check.py` re-records with provenance.
+    # `VALUE_CHECK_ADJUDICATION.md` is the authority; the JSON is evidence.
+    verdict = {
+        "passes": not failures,
+        "failures": failures,
+        # Recorded so the user can overrule the reading rather than
+        # discovering it was made silently.
+        "literal_reading_only_failures": strict_failures,
+        "passes_under_literal_reading": not (failures or strict_failures),
+    }
+    _assert_matches_the_recorded_verdict(verdict, rows)
 
-    print("\n" + "=" * 78)
-    print(f"{'dataset':<15}{'door':<9}{'req':>4}{'asked':>7}{'irrel':>7}"
-          f"{'find-drv':>10}{'coverage':>10}")
-    print("-" * 78)
+    print("\n" + "=" * 86)
+    print(f"{'dataset':<15}{'door':<9}{'asked':>7}{'irrel':>7}"
+          f"{'find-drv':>10}{'coverage (k/n @ commit)':>38}")
+    print("-" * 86)
     for r in rows:
         c, g = r["classic"], r["guided"]
-        print(f"{r['dataset']:<15}{'classic':<9}{c['required_decisions']:>4}"
+        print(f"{r['dataset']:<15}{'classic':<9}"
               f"{c['questions_asked']:>7}{c['irrelevant_questions']:>7}"
-              f"{c['findings_driven']:>10}{c['coverage']:>10}")
-        print(f"{'':<15}{'guided':<9}{g['required_decisions']:>4}"
+              f"{c['findings_driven']:>10}{c['coverage_ratio']:>38}")
+        print(f"{'':<15}{'guided':<9}"
               f"{g['questions_asked']:>7}{g['irrelevant_questions']:>7}"
-              f"{g['findings_driven']:>10}{g['surfaced_coverage']:>10}")
-    print("=" * 78)
+              f"{g['findings_driven']:>10}{g['surfaced_ratio']:>38}")
+        print(f"{'':<15}{'  pinned:':<9}{'':>7}{'':>7}{'':>10}"
+              f"{r['classic_frozen']['coverage_ratio']:>38}")
+        print(f"{'':<15}{'':<9}{'':>7}{'':>7}{'':>10}"
+              f"{r['guided_under_frozen_denominator']['surfaced_ratio']:>38}")
+    print("=" * 86)
+    print("Classic's numerator cannot grow: the import path it renders is frozen,")
+    print("so it cannot learn any detector the engine gains. A widening gap is not,")
+    print("by itself, evidence of better routing. See VALUE_CHECK_ADJUDICATION.md.")
 
     assert not failures, (
         "ROUTING VALUE CHECK FAILED — write docs/turbotab/BLOCKED.md with these "
         "numbers and stop before L9:\n  " + "\n  ".join(failures))
+
+
+RESULT_DRIFT_MESSAGE = (
+    "The recorded value-check result no longer matches what this run computes. "
+    "Do not fix this by re-recording. Record the new result beside the old one "
+    "and adjudicate — docs/turbotab/VALUE_CHECK_ADJUDICATION.md is the "
+    "authority, and this file is its evidence."
+)
+
+
+def _assert_matches_the_recorded_verdict(verdict, rows) -> None:
+    """Compare this run against the recorded result. Never overwrite it.
+
+    `T0-PREREG-001`'s note calls `passes_under_literal_reading: false` a
+    permanent record. It was recomputed on every suite run, so it was permanent
+    only for as long as the code that computed it kept computing it — the same
+    defect as the baseline, one file over (`T0-PREREG-003`).
+
+    The comparison is on the verdict and on each dataset's scored metrics.
+    Anything else in the file is envelope.
+    """
+    if not RESULT.exists():
+        pytest.skip("no recorded result yet — run scripts/rerecord_routing_value_check.py")
+    recorded = json.loads(RESULT.read_text(encoding="utf-8"))
+
+    was, now = recorded.get("verdict", {}), verdict
+    drift = [f"verdict.{k}: recorded {was.get(k)!r} → now {now[k]!r}"
+             for k in ("passes", "passes_under_literal_reading")
+             if was.get(k) != now[k]]
+
+    by_dataset = {r["dataset"]: r for r in recorded.get("rows", [])}
+    for row in rows:
+        old = by_dataset.get(row["dataset"])
+        if old is None:
+            drift.append(f"{row['dataset']}: absent from the recorded result")
+            continue
+        for door in ("classic", "guided"):
+            for metric in ("questions_asked", "irrelevant_questions",
+                           "findings_driven", "coverage"):
+                a = (old.get(door) or {}).get(metric)
+                b = (row.get(door) or {}).get(metric)
+                if a != b:
+                    drift.append(f"{row['dataset']}.{door}.{metric}: "
+                                 f"recorded {a!r} → now {b!r}")
+
+    assert not drift, RESULT_DRIFT_MESSAGE + "\n  " + "\n  ".join(drift)
 
 
 def _check(failures, dataset, label, value, op, threshold):

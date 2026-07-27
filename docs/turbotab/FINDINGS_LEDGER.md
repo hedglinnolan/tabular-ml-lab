@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**90 of 415 closed.**
+**91 of 416 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 290 |
 | `PARTIAL` | 35 |
-| `FIXED` | 90 |
+| `FIXED` | 91 |
 
 ---
 
@@ -456,7 +456,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 90
+## FIXED — 91
 
 
 ### Application state / lockbox — 26
@@ -490,7 +490,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — Duplicate of COACH-024 from the state pass, and closed the same way: the… |
 | `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | **test:** `tests/test_cohort_runs.py::test_unrecognizable_rows_yield_nothing_not_everything` — The invariant is implemented, disclosed and tested, and the test's NAME is the… |
 
-### Verified against main — 19
+### Verified against main — 20
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -511,6 +511,7 @@ Nothing is closed without a regression test named after it.
 | `T0-PROC-001` | high | Branch merge blind-copied an older FEATURE_PARITY.md over the newer one, silently destroying the Data & Target feature register | `git: 9211566 (register added) vs b4bff25 (register gone); flagged by the build agent at 4366b23` | **test:** `tools/register.py check (artifact-currency + BUILT_STEPS coverage; verified by deleting the markdown)` — Process rule going forward: on any merge, tracked artifacts are… |
 | `T0-LIVE-005` | high | pages/02's eight pre-existing caches still key on the shape-only fingerprint — equal-sized cohort runs of one study collide | `pages/02_EDA.py:125 (_data_fingerprint, shape-only) vs :127-140 (_macro_fp, content); consumers at…` | **test:** `tests/test_eda_caches_follow_the_data.py::test_the_page_has_one_fingerprint_and_it_follows_the_values` — Fixed by collapsing the page's two fingerprints into one.… |
 | `T0-ROUTE-001` | high | A blocker-severity finding (eda_leakage) is offered as pull, not pushed — a blocker that only offers is not gating | `docs/turbotab/data/register.json explore-eda-leakage-col; pages/02_EDA.py:279 (Classic's blocker)…` | **test:** `tests/test_router.py::test_a_leaking_column_is_pushed_not_offered` — Built as its own slice before Loop 1, with the fourth dataset's Classic baseline measured first and… |
+| `T0-PREREG-003` | high | The value check's recorded result was rewritten by every suite run, so the 'permanent record' it is cited as had no provenance and no permanence | `tests/integration/test_routing_value_check.py RESULT.write_text (removed)…` | **test:** `tests/integration/test_routing_value_check.py::test_routing_value_check (via _assert_matches_the_recorded_verdict)` — Fixed at L9c, on the adjudicator's extension of… |
 | `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |
 

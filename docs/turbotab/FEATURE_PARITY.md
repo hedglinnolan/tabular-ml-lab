@@ -159,6 +159,25 @@ Three defenses, in order of strength:
   for guarantees phrased against its absence. `router.py` landing at L8 should have triggered
   exactly that sweep and did not.
 
+**Corollary — the frozen-measurement rule** (from the same close, after the first "never edited,
+ever" proved too blunt to state what it protected): *the measurements are frozen; the envelope may
+gain labels, never lose or alter one.*
+
+A pre-registered data file has two layers and only one of them is the experiment. The
+`measurements` are the result and are immutable — a value that moves is a re-measurement, and a
+re-measurement is a new row, never a restatement. Everything around them is envelope: schema
+version, `measured_at`, `prereg`, and whatever provenance a later loop finds it needs.
+`c8c5f51` added `pull_affordances` and `mode` to `routing-baseline.json` without moving a number,
+and L9b added `measured_at`; both are legitimate, and a rule that forbade them would have forced
+the provenance into a second file nobody checks.
+
+**Why adding a label is safe here, stated because it is the whole justification:** a self-declared
+stamp proves nothing on its own. Anyone who can swap the file can swap the stamp with it. So the
+stamp is a convenience, and the load-bearing assertion is the git-read values check —
+`test_the_frozen_baseline_is_the_one_the_prereg_names` reads the file as of the commit the
+pre-registration names and compares every metric the prereg quotes. The envelope may be edited
+precisely because nothing depends on trusting it.
+
 ### Two specific things to watch
 
 - **The pedagogy layer** — `utils/theory_anchors.py` (532 loc) and `utils/theory_demos.py`
