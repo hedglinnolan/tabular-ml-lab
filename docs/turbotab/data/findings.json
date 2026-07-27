@@ -192,7 +192,9 @@
   "detail": "utils/test_lockbox.py stores `labels` as index LABELS and `train_row_mask()` tests `lbl not in test_set`. But pages/06 computes `original_indices = np.where(mask)[0]` — POSITIONAL offsets into the frame returned by `get_data()` at split time — and stores `st.session_state.train_indices/val_indices/test_indices = original_indices[...].tolist()`. Page 07 then does `df_raw.iloc[test_indices]` against a FRESH `get_data()` call. If the row set changed between Train and Explain (cohort started/cleared, `filtered_data` written by page 05, FE re-applied, a cleaning action dropping rows) the .iloc selects DIFFERENT PEOPLE with no error — SHAP/permutation/subgroup results are then computed on the wron…",
   "ev": "pages/06_Train_and_Compare.py:383 (`original_indices = np.where(mask)[0]`), :683-693; pages/07_Explainability.py:185,196,1196; utils/test_lockbox.py:237-248",
   "act": "project — store split membership as index labels (Index/boolean mask) in the Project; drop the positional *_indices keys entirely",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Still OPEN, and the silent-corruption path is unchanged. The split block did move to ml/splits.py and it now reports LABELS (Split.train/val/test_labels), and pages/06:556-558 stores train/val/test_row_labels alongside. But the positional keys were NOT dropped: pages/06:551-553 still writes train/val/test_indices via df.index.get_indexer(...), and pages/07:185,196,1196 still does df_raw.iloc[test_indices] against a FRESHLY fetched get_data() frame. No consumer reads the labels. So the two conventions still coexist and any change to the row set between Train and Explain (cohort start/clear, filtered_data write, row-dropping repair) still selects different people with no error. What remains: page 07 must select by label (.loc on test_row_labels) and the positional keys must be deleted.",
+  "verified_ev": "pages/06_Train_and_Compare.py:551-558; pages/07_Explainability.py:185,196,1196; ml/splits.py:107-109,387-389; utils/test_lockbox.py:461-472"
  },
  {
   "id": "CONTRACT-002",
@@ -202,7 +204,10 @@
   "detail": "The Save handler clears 18 keys inline but MISSES: pdp_results, bootstrap_results, baseline_results, calibration_results, cv_results, train_indices/val_indices/test_indices, target_transformer, target_label_encoder, y_train_original/y_val_original/y_test_original, feature_names, feature_names_by_model, cv_strategy, cv_groups_train, eda_results, dataset_profile, plus the ledger rollback and provenance-section clearing that reset_downstream_results() performs. Result: after FE is applied, Report Export still shows bootstrap CIs, calibration slopes and baseline comparisons for models that no longer exist, and Explainability re-uses a stale target_label_encoder. reset_downstream_results' own doc…",
   "ev": "pages/03_Feature_Engineering.py:1219-1251 vs utils/session_state.py:283-415",
   "act": "project — the invalidation DAG must be the ONLY writer of downstream clears; delete the inline block",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The inline nineteen-key block is gone. pages/03:1276 now calls the production reset_downstream_results(clear_feature_engineering=False, restore_pre_fe_features=False, clear_feature_selection=True), and the Reset/Skip handlers at :185 and :198 route through it too. The guard is structural, not incidental: test_page_03_no_longer_hand_rolls_its_own_cascade AST-scans page 03's source and fails if it clears any key the cascade owns, and test_the_reconciled_call_clears_what_the_hand_rolled_one_missed pins the fifteen keys the copy forgot.",
+  "test": "tests/integration/test_cascade_dag_equivalence.py::test_page_03_no_longer_hand_rolls_its_own_cascade",
+  "verified_ev": "pages/03_Feature_Engineering.py:1261-1280 (calls reset_downstream_results); tests/integration/test_cascade_dag_equivalence.py:177-224"
  },
  {
   "id": "CONTRACT-003",
@@ -212,7 +217,10 @@
   "detail": "`compute_pca(_df_numeric, ...)`, `compute_umap(_df_numeric, ...)`, `compute_persistence(_df_numeric, ...)`, `compute_mapper(_df_numeric, ...)` all take the frame as a LEADING-UNDERSCORE argument, which is Streamlit's marker for 'do not hash this'. The remaining key is scalar defaults only, so a second dataset with identical scalar params returns the FIRST dataset's cached PCA/UMAP/persistence/Mapper result. The codebase already knows the correct pattern — pages/02_EDA.py:146 passes an explicit `data_id=_data_fingerprint` alongside `_df`. macro_shape omits it.",
   "ev": "ml/macro_shape.py:82-86, 240-247, 337-342, 495-501; correct pattern at pages/02_EDA.py:146-166",
   "act": "engine — make these pure functions with an explicit content-fingerprint argument; move memoization into the Jobs layer",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Fixed by detainting, not by re-keying: the four @st.cache_data decorators are gone from ml/macro_shape.py and it imports no streamlit at all. Memoization moved to pages/02, which keys on a fingerprint that hashes VALUES, so two cohort runs with identical shape and columns do not collide. Same defect as T0-LIVE-001 and MINE-003.",
+  "test": "tests/test_macro_shape_serves_the_right_dataset.py::test_two_datasets_get_their_own_pca",
+  "verified_ev": "ml/macro_shape.py:14-17 (comment recording the removal), 90/247/343/500 (undecorated); pages/02_EDA.py _macro_fp"
  },
  {
   "id": "CONTRACT-004",
@@ -222,7 +230,9 @@
   "detail": "`from utils.storyline import add_insight` appears 4 times; utils/storyline.py defines only render_breadcrumb, _get_navigation_order, get_prev_next_pages, render_page_navigation. Each call is wrapped in `try: ... except: pass`, so physio_plausibility, missingness_association, target_outliers and collinearity insights have been silently dropped. DANGER IN BOTH DIRECTIONS: leaving the dead import in place keeps hiding 4 findings; 'fixing' the import during migration will suddenly start emitting 4 new ledger entries that flow into the manuscript narrative, changing generated text and TRIPOD status for every existing project.",
   "ev": "ml/eda_actions.py:196-197, 280-281, 427-428, 617-618; utils/storyline.py (no add_insight)",
   "act": "record — decide deliberately: port them to insight_ledger.upsert() as a versioned behavior change, or drop them; never leave the silent except",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. All four sites still do a local 'from utils.storyline import add_insight' inside try/except (two of them a BARE except:, at :199 and :430 and :620), and utils/storyline.py still has no add_insight. physio_plausibility, missingness_association, target_outliers and collinearity insights are still silently never recorded. The two-directional danger in the finding also still holds: fixing the import turns on four new ledger entries that change generated Methods text and TRIPOD status for existing projects, so it needs to be a deliberate versioned change. Same defect as MINE-008.",
+  "verified_ev": "ml/eda_actions.py:197-199, 281-283, 428-430, 618-620; utils/storyline.py:37-81 (defines only render_breadcrumb/_get_navigation_order/get_prev_next_pages/render_page_navigation)"
  },
  {
   "id": "CONTRACT-005",
@@ -232,7 +242,9 @@
   "detail": "`_df_to_parquet_bytes` drops the index; on restore pandas assigns a fresh RangeIndex. lockbox.json restores `labels` verbatim (and deliberately coerces them to int/str to avoid a type mismatch). If raw_data/working_table carried anything other than a contiguous 0..n-1 RangeIndex at save time — any frame produced by a merge, a row-dropping cleaning action, or a cohort slice — the restored labels name different rows. `train_row_mask` then returns a wrong mask with no error, and the 'sealed' test set is silently no longer sealed.",
   "ev": "utils/session_manager.py:169-172, :278-306; utils/test_lockbox.py:16-17 (\"stores index LABELS ... so membership survives\"), :247-248",
   "act": "project — persist the index explicitly (to_parquet(index=True)) and add a restore-time assertion that every lockbox label exists in the restored index",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "resolved-in-core; closes at L11 convergence of utils/session_manager.py. The core got this right: turbotab/archive.py:275-278 writes to_parquet(index=True) with a comment naming row identity as the reason. Classic did not change - utils/session_manager.py:171 is still df.to_parquet(buf, index=False) and _read_parquet at :504-506 has no index restore and no restore-time assertion that every lockbox label survives. Any frame that carried a non-RangeIndex at save time (merge output, row-dropping repair, cohort slice) comes back renumbered and train_row_mask silently names different rows. Same defect as MINE-002.",
+  "verified_ev": "utils/session_manager.py:169-172 (_df_to_parquet_bytes, index=False), :211,:221, :504-506 (_read_parquet); utils/test_lockbox.py:7,461-472"
  },
  {
   "id": "CONTRACT-006",
@@ -242,7 +254,9 @@
   "detail": "`except Exception: pass # Never break methodology logging if ledger has issues`. Any schema drift in Insight (a renamed field, a new required arg) causes methodology decisions to stop reaching the ledger — and therefore stop reaching the Methods section, TRIPOD auto-completion and the narrative — with zero signal. This is the highest-value place in the codebase to add a loud failure during migration.",
   "ev": "utils/session_state.py:655-656",
   "act": "record — replace with explicit error surfacing; a dropped methodology entry is a silently wrong manuscript",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: _log_to_ledger still ends 'except Exception: pass # Never break methodology logging if ledger has issues'. Any Insight schema drift stops methodology decisions reaching the ledger, and therefore the Methods section, TRIPOD auto-completion and the narrative, with zero signal. Same defect as MINE-007, which adds the reason it is worse than it looks: ml/publication.py:154-161 only falls back to methodology_log when the ledger is EMPTY, so a partially populated ledger wins and the fallback never fires.",
+  "verified_ev": "utils/session_state.py:649-715 (_log_to_ledger), :714-715 (except Exception: pass)"
  },
  {
   "id": "CONTRACT-007",
@@ -252,7 +266,9 @@
   "detail": "`ledger.rollback_resolutions({'05_Preprocess','06_Train_and_Compare','07_Explainability','08_Sensitivity_Analysis','09_Hypothesis_Testing'} [+ FE/FS pages])` and `ledger.prune_auto_generated({'02_EDA','05_Preprocess','06_Train_and_Compare'})`. The Record — described as append-mostly — is mutated by the invalidation path using hard-coded PAGE NAME STRINGS. When pages disappear in the Feed rebuild, these string sets silently match nothing and stale resolutions survive into the manuscript.",
   "ev": "utils/session_state.py:396-410; utils/insight_ledger.py:803-836",
   "act": "record — key rollback on the DAG node that produced the insight, not on a page-name string that the migration deletes",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. reset_downstream_results still mutates the Record by hard-coded page-name string sets - {'05_Preprocess','06_Train_and_Compare','07_Explainability','08_Sensitivity_Analysis','09_Hypothesis_Testing'} plus {'03_Feature_Engineering','04_Feature_Selection'} when clear_feature_selection - and prunes on {'02_EDA','05_Preprocess','06_Train_and_Compare'}. Note the coupling the finding did not name: utils/session_state.py:606-619 maps log step names to the same page strings, so the rebuild has TWO string tables to keep in sync. When pages disappear in the Feed rebuild these sets match nothing and stale resolutions survive into the manuscript, silently.",
+  "verified_ev": "utils/session_state.py:455-469 (rollback_resolutions/prune_auto_generated over hard-coded page-name strings), :606-619 (_STEP_TO_PAGE map); utils/insight_ledger.py rollback_resolutions/prune_auto_generated"
  },
  {
   "id": "MINE-001",
@@ -262,7 +278,9 @@
   "detail": "build_unit_harmonization_config builds `conversion_factors = []` by appending once per column while iterating `numeric_features` in order (ml/pipeline.py:41-64); build_plausibility_bounds does the same with `zip(numeric_features, conversion_factors)` (ml/pipeline.py:84). Both lists are handed positionally into `UnitHarmonizer(unit_harmonization_factors)` (ml/pipeline.py:178) and `PlausibilityGate(lower_bounds, upper_bounds)` (ml/pipeline.py:185-188) as the FIRST steps of the numeric branch, which sees a bare ndarray. reconcile_pipeline_columns then trims the ColumnTransformer's column selector (`kept = [c for c in cols if c in available]`, ml/pipeline.py:528) but does `clone(trans)` (line 53…",
   "ev": "ml/pipeline.py:41-64, 84, 178, 185-188, 528-531; ml/preprocess_operators.py:21-24, 60-72",
   "act": "engine — make UnitHarmonizer/PlausibilityGate take Dict[column_name, factor] and resolve by name at transform time using feature_names_in_. WRONG-BUT-PLAUSIBLE OUTPUT: a mg/dL→mmol/L factor applied to age, and a cholesterol column gated aga…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. build_unit_harmonization_config still builds a bare list by appending once per column while iterating numeric_features; build_plausibility_bounds still zips positionally; UnitHarmonizer.__init__ and PlausibilityGate.__init__ still take Sequence[float] with no column names, so they see a bare ndarray at transform time and cannot detect misalignment. reconcile_pipeline_columns still trims the ColumnTransformer's selector without trimming the factor lists, so dropping one numeric column shifts every later factor by one - a mg/dL to mmol/L factor lands on age, and a cholesterol bound gates a different variable. Wrong-but-plausible numbers with no error.",
+  "verified_ev": "ml/pipeline.py:41-67 (conversion_factors appended positionally), :73-84 (zip(numeric_features, conversion_factors)), :187 UnitHarmonizer(unit_harmonization_factors), :193-197 PlausibilityGate(lower,upper), :512-540 reconcile_pipeline_columns kept=[c for c in cols if c in available]; ml/preprocess_operators.py:15 (Sequence[float]), :49 (Sequence bounds)"
  },
  {
   "id": "MINE-002",
@@ -272,7 +290,9 @@
   "detail": "The lockbox freezes `\"labels\": list(test_labels)` (utils/test_lockbox.py:213) and membership is tested by label: `return pd.Series([lbl not in test_set for lbl in index], index=index)` (utils/test_lockbox.py:248). The docstring states the contract: 'The lockbox stores index LABELS (not positions) so membership survives feature engineering and row filtering, which preserve the original index' (utils/test_lockbox.py:16-17). But `_df_to_parquet_bytes` does `df.to_parquet(buf, index=False)` (utils/session_manager.py:171), so raw_data / df_engineered / filtered_data / working_table all come back with a fresh RangeIndex. filtered_data and df_engineered are exactly the frames that PRESERVE a non-co…",
   "ev": "utils/test_lockbox.py:16-17, 213, 248; utils/session_manager.py:73-78, 171, 485-489",
   "act": "project — serialize dataframes with the index preserved (index=True + explicit index round-trip), or move the lockbox to a content-addressed row key. WRONG-BUT-PLAUSIBLE OUTPUT: after Save/Resume, labels [5,9,40] land on RangeIndex rows 5,9…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "resolved-in-core; closes at L11 convergence of utils/session_manager.py. Duplicate of CONTRACT-005 from the landmine pass. Confirmed at HEAD: the lockbox still stores list(test_labels) as index LABELS (utils/test_lockbox.py:423) and train_row_mask still tests membership by label (:471-472), while utils/session_manager.py:171 still writes index=False. turbotab/archive.py:275-278 fixed it in the core with index=True; Classic did not inherit it.",
+  "verified_ev": "utils/test_lockbox.py:7,423,461-472; utils/session_manager.py:169-172, 504-506"
  },
  {
   "id": "MINE-003",
@@ -282,7 +302,10 @@
   "detail": "Streamlit skips hashing parameters whose name starts with an underscore. compute_pca(_df_numeric, n_components=None, max_features=200), compute_umap(_df_numeric, ...), compute_persistence(_df_numeric, ...), compute_mapper(_df_numeric, ...) take the frame as `_df_numeric` and every other arg has a default. Call sites pass ONLY the frame: `compute_pca(df_numeric)` / `compute_umap(df_numeric)` / `compute_persistence(df_numeric)` / `compute_mapper(df_numeric)` (pages/02_EDA.py:1163, 1205, 1226, 1265). Cache key is therefore constant. pages/02_EDA.py:122-125 shows the team knew about this trap and added `_data_fingerprint` for its own caches — macro_shape never got one.",
   "ev": "ml/macro_shape.py:82-85, 240-247, 337-343, 495-502; pages/02_EDA.py:122-125, 1163, 1205, 1226, 1265",
   "act": "engine — delete the four decorators when macro_shape moves out of the view (its ONLY streamlit usage is these 4 decorators plus the import). Be aware this is a BEHAVIOR CHANGE that fixes a live bug: screenshots/goldens taken before the move…",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Duplicate of CONTRACT-003 and T0-LIVE-001 from the landmine pass. All four @st.cache_data decorators are gone and macro_shape imports no streamlit; the module carries a comment at :14-17 recording why. tests/test_macro_shape_serves_the_right_dataset.py::test_the_engine_carries_no_cache pins the absence of the decorator and ::test_the_page_cache_keys_on_content_not_shape pins the replacement key.",
+  "test": "tests/test_macro_shape_serves_the_right_dataset.py::test_two_datasets_get_their_own_pca",
+  "verified_ev": "ml/macro_shape.py:14-17, 90, 247, 343, 500 (no decorators, no streamlit import)"
  },
  {
   "id": "MINE-004",
@@ -292,7 +315,9 @@
   "detail": "The >0.95 feature-target correlation scan that populates `signals.leakage_flags` and `signals.leakage_candidate_cols` is inside a bare try, and any failure yields silence: `except Exception: pass # Skip leakage detection if correlation fails`. The EDA page then reports no leakage candidates, which is indistinguishable from 'checked and clean'.",
   "ev": "ml/eda_recommender.py:170-183",
   "act": "engine + record — on failure emit a ledger Insight ('leakage check could not run') exactly as ml/import_doctor.diagnose does with its `checks_failed` finding (ml/import_doctor.py:812-824). WRONG-BUT-PLAUSIBLE OUTPUT: a post-outcome lab valu…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: the >0.95 feature-target correlation scan that populates signals.leakage_flags / leakage_candidate_cols is still inside a bare try ending 'except Exception: pass # Skip leakage detection if correlation fails'. Because the r4_leakage recommendation at :344 is gated on those lists being non-empty, a failed scan and a clean dataset are indistinguishable downstream - the page reports no leakage candidates either way. This is the governing rule broken directly: silence is allowed, asserting a clean bill of health is not. ml/import_doctor.py already models the right shape with its checks_failed finding.",
+  "verified_ev": "ml/eda_recommender.py:170-186 (except Exception: pass on the >0.95 correlation scan), :344-362 (r4_leakage fires only when the flags are non-empty)"
  },
  {
   "id": "MINE-005",
@@ -302,7 +327,9 @@
   "detail": "`lb = get_lockbox(); if lb is None or is_exploratory(): return pd.Series(True, index=index)` (utils/test_lockbox.py:244-246) — no lockbox means every row is visible to target-aware steps. The status chip that would disclose this also returns without rendering anything: `lb = get_lockbox(); if lb is None: return` (utils/test_lockbox.py:261-263). Exploratory mode DOES warn (line 253-260); a missing lockbox does not. get_lockbox itself is a plain session_state read that returns None on any key rename.",
   "ev": "utils/test_lockbox.py:36-40, 244-246, 261-263",
   "act": "project + view — make the absence of a lockbox an explicit, rendered state, not None. WRONG-BUT-PLAUSIBLE OUTPUT: one renamed key during the session_state→Project move silently disables the entire methodological spine of the app. Feature se…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. train_row_mask still returns pd.Series(True, index=index) when get_lockbox() is None, so every row is visible to target-aware steps; render_lockbox_status still does 'lb = get_lockbox(); if lb is None: return' with nothing rendered. Note the asymmetry the finding names is still exactly true: exploratory mode DOES warn (:504-511) because it is a chosen state, but an ABSENT lockbox - which could be a key rename during the session_state to Project move - disables the whole methodological spine in silence. Absence must become a rendered state, not None.",
+  "verified_ev": "utils/test_lockbox.py:75-79 (get_lockbox returns None on any key rename), :461-472 (train_row_mask returns all-True), :504-514 (render_lockbox_status returns silently when lb is None)"
  },
  {
   "id": "MINE-006",
@@ -312,7 +339,9 @@
   "detail": "`self.lower_bounds_: Optional[np.ndarray] = None` and `self.upper_bounds_` are assigned in `__init__` (ml/preprocess_operators.py:81-82). Trailing-underscore attributes are sklearn's fitted marker, so check_is_fitted sees a fitted estimator. transform then does `if self.lower_bounds_ is None or self.upper_bounds_ is None: return X_arr` (lines 102-103) — a silent no-op. Separately, __init__ also rewrites its own params (`self.params = params or {}`, line 80), which breaks sklearn's clone contract that UnitHarmonizer's docstring explicitly calls out ('Store conversion_factors by reference (no copy) so sklearn clone works', line 13).",
   "ev": "ml/preprocess_operators.py:13, 78-82, 100-104",
   "act": "engine — move fitted attrs out of __init__ and raise NotFittedError in transform. WRONG-BUT-PLAUSIBLE OUTPUT: any migration path that reconstructs a pipeline from stored config and calls transform without fit produces uncapped data while th…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, both halves. OutlierCapping.__init__ still assigns the trailing-underscore lower_bounds_/upper_bounds_ (sklearn's fitted marker, so check_is_fitted sees a fitted estimator) and still rewrites its own param with self.params = params or {}, which breaks sklearn's clone contract that UnitHarmonizer's own docstring calls out at :13. transform still returns X_arr unchanged when the bounds are None - a silent no-op, so any path that rebuilds a pipeline from stored config and transforms without fitting produces uncapped data while the badge says capping is on.",
+  "verified_ev": "ml/preprocess_operators.py:78-82 (self.params = params or {}; lower_bounds_/upper_bounds_ assigned in __init__), :100-104 (transform returns X_arr unchanged when unfitted), contrast :13 (UnitHarmonizer docstring on the clone contract)"
  },
  {
   "id": "MINE-007",
@@ -322,7 +351,9 @@
   "detail": "The bridge that writes each log_methodology call into the unified ledger ends with `except Exception: pass # Never break methodology logging if ledger has issues` (utils/session_state.py:655-656). log_methodology appends to `st.session_state.methodology_log` FIRST (line 543) and calls _log_to_ledger after, so the plain log survives while the ledger silently does not. ml/publication.py:153-160 prefers `ledger.get_methodology_log()` and only falls back to methodology_log when the ledger is EMPTY — a PARTIALLY populated ledger wins and the fallback never fires.",
   "ev": "utils/session_state.py:543-544, 599, 639-656; ml/publication.py:153-166",
   "act": "record — the ledger write must be the primary path and must surface failures. WRONG-BUT-PLAUSIBLE OUTPUT: an Insight dataclass field rename during the Record migration makes ledger.upsert throw for, say, Preprocessing and Model Training onl…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of CONTRACT-006 from the landmine pass, and confirmed at HEAD with the aggravating half intact. log_methodology appends to methodology_log first (:602) and calls _log_to_ledger after (:599,:603), so the plain log survives while the ledger silently does not. ml/publication.py:157-161 takes the ledger log and only falls back to methodology_log when it is EMPTY ('if not log:'), so a PARTIALLY populated ledger wins and the fallback never fires - the Methods section then silently omits exactly the steps whose ledger write threw. generate_decision_audit_trail at :1836 has the same 'ledger_log or methodology_log' shape.",
+  "verified_ev": "utils/session_state.py:596-603 (methodology_log appended first, ledger written after), :649-715 (_log_to_ledger), :714-715 (except Exception: pass); ml/publication.py:154-161, 1826-1836"
  },
  {
   "id": "MINE-008",
@@ -332,7 +363,9 @@
   "detail": "Four sites do `from utils.storyline import add_insight` then `add_insight(...)`, wrapped in `except:` / `except Exception: pass`. utils/storyline.py has no add_insight — its docstring says 'Insight management has moved to utils/insight_ledger.py (InsightLedger)' (utils/storyline.py:4). So physio_plausibility, missingness_association, target_outliers and collinearity insights never reach the ledger and never raise. The existing guard test only scans pages/ (`for page_file in sorted(os.listdir(pages_dir))`), so ml/eda_actions.py is outside its blast radius.",
   "ev": "ml/eda_actions.py:196, 280, 427, 617 (and bare `except:` at 199, 430, 620); utils/storyline.py:4 (module defines only render_breadcrumb/_get_navigation_order/get_prev_next_pages/render_page_navigation); tests/test_unified_ledger_integration…",
   "act": "engine + record — rewrite these to return insight payloads the caller records, and widen the legacy-pattern test to ml/ and utils/. WRONG-BUT-PLAUSIBLE OUTPUT: the app has been asserting a clean bill of health on multicollinearity, target o…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of CONTRACT-004 from the landmine pass. Confirmed unchanged at HEAD, including the reason it survived: the guard test that would have caught it only walks pages/, so ml/eda_actions.py has always been outside its blast radius. Two of the four sites use a bare 'except:' (:199, :430, :620), which swallows KeyboardInterrupt and SystemExit as well. The app has been reporting a clean bill of health on multicollinearity, target outliers, missingness association and physiological plausibility because the recorder never ran.",
+  "verified_ev": "ml/eda_actions.py:197-199, 281-283, 428-430, 618-620; utils/storyline.py:37-81; tests/test_unified_ledger_integration.py (legacy-pattern scan is pages/-only)"
  },
  {
   "id": "MINE-009",
