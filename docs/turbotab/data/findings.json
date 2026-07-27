@@ -3836,7 +3836,9 @@
   "detail": "detect_repeated_subjects is run against the ENGINEERED frame (it is — page 01 passes get_data(full_study=True)) and picks up a generated column, or the name-substring heuristic is 'improved' without re-running the four pinning tests.",
   "ev": "utils/test_lockbox.detect_repeated_subjects + ensure_lockbox:130-133 (auto-detect only when the caller named no group_col) and :176-191 (GroupShuffleSplit when nunique >= 8). A declared cohort_structure_detection.entity_id_final always wins…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant is right and its stated trigger is LIVE, so it stays OPEN. The row asks 'what if detect_repeated_subjects runs against the ENGINEERED frame' and answers its own question in parentheses - it does. full_study=True escapes the cohort filter, not the df_engineered preference, so once FE exists the auto-detection scans generated column NAMES, and any engineered column containing id/case/record/person with 1.5-50 rows per level flips the split to GroupShuffleSplit and produces a sealed set the user never asked for (STATE-049). Credit where due: utils/test_lockbox.py:290-296 documents that a bare substring test matched uric_acid and folic_acid, so the heuristic was already hardened once - the remaining problem is the FRAME it is pointed at, not the matcher.",
+  "verified_ev": "utils/test_lockbox.py rank_grouping_candidates / detect_repeated_subjects, auto-detected inside ensure_lockbox only when the caller named no group_col; pages/01_Upload_and_Audit.py:651 passes get_data(full_study=True), which returns df_engineered once feature engineering exists; tests/test_grouping_picks_the_person.py covers the heuristic"
  },
  {
   "id": "STATE-091",
@@ -3846,7 +3848,10 @@
   "detail": "The function is refactored into 'decide the split strategy, then execute' — the natural cleanup reintroduces exactly the silent failure the comment describes.",
   "ev": "utils/test_lockbox.py:193-210 with an explicit six-line comment naming the bug this ordering fixed. Test: tests/test_cohorts.py::test_stratification_survives_a_grouped_split_falling_back asserts lb['group_col'] is None AND lb['strata'] == […",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The ordering is load-bearing and the test asserts the exact conjunction that proves it: after a grouped attempt fails for too few subjects, the lockbox reports no group column AND still carries its strata. That pairing is what a 'decide the strategy, then execute' refactor would break - the natural cleanup computes stratification once, up front, from the branch it expects to take, and a group column with fewer than the minimum subjects then yields an unstratified split silently. The comment in the source names that bug, so a reader has the reason as well as the shape. This is one of the better-defended invariants in the codebase.",
+  "test": "tests/test_cohorts.py::test_stratification_survives_a_grouped_split_falling_back",
+  "verified_ev": "utils/test_lockbox.py:403-417 - stratify is built AFTER the grouped attempt resolves (if test_labels is None), with the six-line comment naming the bug the ordering fixed; tests/test_cohorts.py:262 asserts lb['group_col'] is None AND the strata list survives"
  },
  {
   "id": "STATE-092",
@@ -3856,7 +3861,10 @@
   "detail": "The AnalysisProject artifact store is made loadable from a user-supplied project file. Artifacts must be server-side, written only by Jobs workers, never uploaded.",
   "ev": "utils/session_manager.py module docstring lines 4-16; _NEVER_PERSIST (all fitted objects); _looks_like_pickle() magic-byte rejection; _validate_zip() path-traversal + 64-member + 500MB caps; schema_version allowlist {'2.0','2.1'}. Tests: te…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "A security property with a test on both sides of the migration. The refusal is by MAGIC BYTES rather than by file extension, which is the right check - a pickle renamed .zip is still refused - and it is paired with the structural half: no fitted object is ever written, so there is nothing executable to deserialize even if the reader were fooled. The core ported the same shape rather than redesigning it (SWEEP-006). The row's forward-looking warning is the one to keep: an AnalysisProject artifact store loadable from a USER-SUPPLIED project file reintroduces the whole class, so artifacts must be server-side and written only by workers.",
+  "test": "tests/test_session_manager.py::test_rejects_pickle_file",
+  "verified_ev": "utils/session_manager.py:467 _looks_like_pickle (magic-byte check) applied at :579 on load; _NEVER_PERSIST covers every fitted object; the zip validator enforces path-traversal, member-count and size caps; the schema_version allowlist is {'2.0','2.1'}; turbotab/test_project_model.py::test_an_archive_that_is_a_pickle_is_refused mirrors it in the core"
  },
  {
   "id": "STATE-093",
@@ -3866,7 +3874,10 @@
   "detail": "The Router is given blanket 'advance past this question' authority without re-implementing the blocker carve-out.",
   "ev": "utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test: tests/test_review_fixes.py::test_gate_never_acknowledges_blockers.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Duplicate of COACH-024 from the state pass, and closed the same way: the carve-out keys on SEVERITY rather than on id or page, so a new blocker-severity producer inherits it automatically, and the reason is written next to the code so it cannot be removed without reading why it is there. The row states the migration risk precisely - a Router given blanket 'advance past this question' authority without re-implementing the carve-out - and ml/router.py has now implemented the same rule from its own side: a blocker is a question of consequence, always pushed, never skipped, and exiting past one requires an explicit recorded acknowledgment. Ledger and Router agree from two directions, which is what makes the invariant durable rather than duplicated.",
+  "test": "tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers",
+  "verified_ev": "utils/insight_ledger.py:787-796 - the severity check inside auto_acknowledge_gate with its four-line justification"
  },
  {
   "id": "STATE-094",
@@ -3876,7 +3887,9 @@
   "detail": "prune_auto_generated's source_pages set is not renamed in lockstep when the 10 page ids become stage ids — a set that matches nothing prunes nothing and the manuscript keeps asserting deleted work.",
   "ev": "utils/session_state.py:389-410 + InsightLedger.rollback_resolutions / prune_auto_generated. Tests: tests/test_review_fixes.py::test_downstream_reset_rolls_back_resolutions, ::test_rollback_keeps_finding_drops_resolution, ::test_reset_prunes…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The behavior is correct and tested - a rolled-back resolution leaves the FINDING standing and drops only the CLAIM, and auto-generated insights whose producer re-detects are deleted outright - so 'absent is better than false' is implemented. It stays OPEN for the reason the row itself gives: the sets are hard-coded PAGE-NAME strings, so when the ten page ids become stage ids a set that matches nothing prunes nothing, silently, and the manuscript keeps asserting deleted work. The hasattr guards make it worse (TEST-010): a renamed METHOD is also a silent no-op. Two string tables must move in lockstep with the rename (utils/session_state.py:606-619 maps log steps to the same page ids), and neither has a test that would fail if only one moved.",
+  "verified_ev": "utils/session_state.py:455-469 (rollback_resolutions and prune_auto_generated over hard-coded PAGE-NAME string sets, both behind hasattr guards); tests/test_review_fixes.py:361, :384 and :529 pin the behavior"
  },
  {
   "id": "STATE-095",
@@ -3886,7 +3899,9 @@
   "detail": "The fingerprint returns None (unhashable cells) or collides — both degrade to 'no reset' silently.",
   "ev": "utils/session_state.set_data:266-280 with the _raw_data_fingerprint comparison. Tests: tests/test_review_fixes.py::test_same_schema_content_change_resets_results, ::test_identical_content_rerun_is_noop; tests/test_cohort_runs.py::test_re_se…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "The three cases are implemented and well tested - including the subtle one, that re-setting the SAME frame on every page-01 visit must not end a cohort run - and four tests cover the transitions. What keeps this PARTIAL is the failure mode the row names, which no test reaches: _content_fingerprint returns None on unhashable cells and set_data's content branch requires BOTH fingerprints non-None, so 'cannot fingerprint' silently means 'unchanged' and a genuine content change keeps every stale model (MINE-010). Collision has the same effect (STATE-044). Unknown must mean dirty, and the tests should include a frame with a list-valued cell.",
+  "verified_ev": "utils/session_state.py:249-309 (the three-case set_data contract) with tests/test_review_fixes.py::test_same_schema_content_change_resets_results and ::test_identical_content_rerun_is_noop, plus tests/test_cohort_runs.py::test_re_setting_the_same_data_keeps_the_run and ::test_corrected_values_keep_the_run_but_kill_the_results; the degradation path is unchanged at :243-246 and :292-293"
  },
  {
   "id": "STATE-096",
@@ -3896,7 +3911,10 @@
   "detail": "An 'obvious' cleanup returns df unchanged on failure — a full table under a heading that says 'women' is a result the researcher would publish.",
   "ev": "utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and return df.iloc[0:0]) + cohort_ui.render_cohort_chip's repair button. Test: tests/test_cohort_runs.py asserts len(apply_cohort(stranger)…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The invariant is implemented, disclosed and tested, and the test's NAME is the invariant - unrecognizable rows yield nothing, not everything. This is the governing rule at its most concrete: a full table rendered under a heading that says 'women' is a result a researcher would write down and publish, so returning empty is the only honest failure. And it is not silent emptiness either - _cohort_filter_broken is set and the chip surfaces it with a repair path, so the user learns why the table is empty. Two adjacent tests cover the recoverable cases (the grouping column engineered away, rows dropped downstream), which is what makes the empty return a last resort rather than a first.",
+  "test": "tests/test_cohort_runs.py::test_unrecognizable_rows_yield_nothing_not_everything",
+  "verified_ev": "utils/cohorts.py:430 (_BROKEN_KEY) and :514 (return df.iloc[0:0] after the grouping-column fallback fails); utils/cohort_ui.py render_cohort_chip surfaces the broken state with a repair action; tests/test_cohort_runs.py:123"
  },
  {
   "id": "CONTRACT-039",
@@ -3906,7 +3924,9 @@
   "detail": "`train_n = len(st.session_state.get('X_train', []))` — init_session_state sets 'X_train': None, so .get returns None (not the default) and len(None) raises TypeError. Occurs in both _build_manuscript_context and _build_methods_section_for_export. Currently masked only because the page gates on trained_models existing; any reordering during migration exposes it.",
   "ev": "pages/10_Report_Export.py:395-397, :628-630; utils/session_state.py:136-141",
   "act": "project — Project.splits should be a single Optional[Splits] object; absent means absent, not a dict of Nones",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and the count is now SIX sites, not two. The idiom is wrong in the same way at each: init_session_state seeds X_train as None, so .get returns None rather than falling back to the [] default, and len(None) raises TypeError. It is masked today only because the page gates on trained_models existing, which is exactly the kind of ordering guarantee a migration removes - and the failure would surface as a TypeError in the export path, blamed on the data. The fix the action names removes the class rather than the six instances: Project.splits as a single Optional[Splits], where absent means absent rather than a dict of Nones that each caller has to re-guess.",
+  "verified_ev": "pages/10_Report_Export.py:395, 647, 982, 1102, 1204, 2143 - six sites doing len(st.session_state.get('X_train', [])); utils/session_state.py init sets 'X_train': None, so .get returns None and the [] default never applies"
  },
  {
   "id": "CONTRACT-040",
@@ -3916,7 +3936,9 @@
   "detail": "`Dict[dataset_id -> pd.DataFrame]`, plus `merge_steps: List`, `last_merge_columns: List[str]`, `_combine_signature: str`, `_working_table_source_id`. Serialization: DataFrames go to parquet under datasets/entry_N.parquet with a name map in datasets/index.json; dataset_id keys are stringified on save and never converted back, so an int id restores as a str id and `single_dataset['id'] in st.session_state.datasets_registry` fails silently → 'Dataset not in memory'.",
   "ev": "utils/session_manager.py:214-225; pages/01_Upload_and_Audit.py:541-545, :592-598, :560-567",
   "act": "project — typed DatasetId; restore must round-trip key types",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of MINE-023 from the boundary pass, unchanged at HEAD, and it traces the consequence one step further than the other: an int id restores as a str id, so the membership test 'single_dataset[\"id\"] in st.session_state.datasets_registry' fails and the roster reports 'Dataset not in memory' - a message that describes a lookup failure as a data-loss event, which sends the user looking in the wrong place. The whole boundary sits inside the TRANSITION_PLAN 05 freeze, so the available fix now is the cheap half: pin dataset_id to str at CREATION so the save-time coercion becomes a no-op rather than a conversion.",
+  "verified_ev": "utils/session_manager.py:222 (index[str(dataset_id)] = member_name on save) and :642 (registry[str(dataset_id)] on load); pages/01_Upload_and_Audit.py writes datasets_registry[dataset_id] with the caller's own type"
  },
  {
   "id": "CONTRACT-041",
@@ -3926,7 +3948,9 @@
   "detail": "`raw_data: pd.DataFrame` (parquet-serializable, index currently lost), `_raw_data_fingerprint: Optional[int]` from `hash((df.shape, pd.util.hash_pandas_object(df, index=False).sum()))` — returns None on unhashable cells, in which case set_data falls back to schema-only invalidation and a genuine content change is silently NOT invalidated. The fingerprint is not persisted, so the first set_data after a restore sees old_fp=None and skips the content-change branch.",
   "ev": "utils/session_state.py:220-230, :259-280; not in any session_manager key list",
   "act": "project — fingerprint is the DAG's invalidation input; it must be a first-class persisted field with an explicit 'unknown' state",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "The persistence half is closed and the 'unknown means clean' half is not. The row says the fingerprint is not persisted so the first set_data after a restore skips the content-change branch - that is fixed: session_manager pops the stale value and recomputes it from the restored frame at :624, and test_the_data_fingerprint_is_rebuilt pins it, with its docstring naming the consequence ('without it every restored run reads as belonging to other data'). WHAT REMAINS is the row's other claim, unchanged: _content_fingerprint returns None on unhashable cells and set_data then falls back to schema-only invalidation, so a genuine content change is silently NOT invalidated (MINE-010). The fingerprint needs an explicit unknown state that means dirty, not a None that means clean.",
+  "verified_ev": "utils/session_state.py:236-246 (_content_fingerprint, returns None on unhashable cells) and :292-293 (the content branch requires both non-None); utils/session_manager.py:536 pops _raw_data_fingerprint on restore and :624 RECOMPUTES it from the restored frame; tests/test_session_carries_the_run.py::test_the_data_fingerprint_is_rebuilt"
  },
  {
   "id": "CONTRACT-042",
@@ -3936,7 +3960,9 @@
   "detail": "cohort_run = `{column, value, label, labels: List[index-label], n_rows, n_total, position, of, order, target_col, dropped_features}`. cohort_runs_done = `List[CohortRun]` (dataclass: column, label, n_train, n_test, dropped_features, completed, metrics). apply_cohort() silently returns `df.iloc[0:0]` and sets `_cohort_filter_broken` when neither the labels nor the grouping column resolve — an EMPTY table rather than a wrong one, which is the right choice but only if the UI surfaces cohort_filter_broken().",
   "ev": "utils/cohorts.py:409-432, :434-455, :334-344",
   "act": "project (membership) + view (the broken-filter banner)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The engine half is correct and tested (STATE-096) and this row is right that it is only safe IF THE UI SURFACES cohort_filter_broken() - which render_cohort_chip does, from utils/theme.py's sidebar, with the comment 'A run filter you cannot see is a run filter you forget'. It stays OPEN as a boundary contract rather than a defect: the shape is an untyped dict of eleven keys carried through session state, its labels are index labels subject to every renumbering hazard in this ledger, and the broken-filter disclosure depends on one sidebar renderer that a Feed frontend will not inherit. turbotab/project.py already models the cohort as a field; what has no equivalent yet is the broken state and its repair path.",
+  "verified_ev": "utils/cohorts.py:409-455 (the cohort_run dict shape), :430 and :514 (the _cohort_filter_broken flag and the empty return), CohortRun's dataclass fields; utils/cohort_ui.py render_cohort_chip surfaces the broken state"
  },
  {
   "id": "CONTRACT-043",
@@ -3946,7 +3972,9 @@
   "detail": "`Dict[str, Any]` with keys 'cardinality': List[dict], 'dtypes': List[dict], 'missing': List[dict] (records), 'duplicates': int (numpy int64 — not JSON-safe without coercion), 'numeric_stats': dict-of-dicts from DataFrame.to_dict(). Fully recomputable from raw_data; listed in _NEVER_PERSIST is FALSE — it is simply absent from every taxonomy list, so it is dropped on save with no note.",
   "ev": "pages/01_Upload_and_Audit.py:657-743, :828; utils/session_manager.py:73-162",
   "act": "engine (recompute) — do not persist; but the report must stop reading it (see missing_counts finding)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and the row's correction to its own premise is the useful part: data_audit is NOT in _NEVER_PERSIST, it is simply absent from every taxonomy list, so it vanishes on save without appearing in the manifest's skipped_keys - which records encode FAILURES only (CONTRACT-038). It is genuinely recomputable, so dropping it is the right outcome reached by the wrong mechanism. The live consequence is separate and is CONTRACT-008 / STATE-021: the report reads data_audit['missing_counts'], a key page 01 never writes, so two dead branches sit in the export path looking load-bearing. Recompute rather than persist, and make the report stop reading it.",
+  "verified_ev": "pages/01_Upload_and_Audit.py builds audit_results with keys cardinality / dtypes / missing / duplicates / numeric_stats and assigns it to data_audit; the key appears in NO session_manager bucket (verified by scanning the file), so it is dropped on save with no note; 'duplicates' is a numpy int64"
  },
  {
   "id": "CONTRACT-044",
@@ -3956,7 +3984,9 @@
   "detail": "Nested dataclass tree: DatasetProfile{feature_profiles: Dict[str, FeatureProfile], target_profile: Optional[TargetProfile], warnings: List[DataWarning], data_sufficiency: DataSufficiencyLevel (an Enum), recommended/cautioned/discouraged_families: List[str], ...}. The Enum member makes plain asdict()+json fail without a converter. Currently in _NEVER_PERSIST (recomputed on page 02). Consumed by ml.model_coach.select_top_picks and model_viability, and by page 05/06's coach panels.",
   "ev": "ml/dataset_profile.py:109-165, :23-30 (DataSufficiencyLevel Enum); utils/session_manager.py:152; pages/02_EDA.py:166",
   "act": "engine (pure computation) + record (persist the derived verdicts the manuscript cites, not the whole object)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "A boundary description that is accurate at HEAD and carries one live consequence worth acting on. Not persisting the profile is correct - it is a pure function of the frame and the config - but combined with STATE-035, page 02 being its ONLY writer, it means the app's entire intelligence layer is gated on having visited a page, and after a restore it is gated on visiting it again. The Enum detail matters for the Project: a serializable project that carries derived VERDICTS rather than the whole object avoids the converter problem entirely, which is what the action recommends. Note utils/llm_ui.py already assumes the wrong shape here and silently drops the profile because it type-guards it as a dict (SWEEP-020).",
+  "verified_ev": "ml/dataset_profile.py DatasetProfile - a nested dataclass tree containing DataSufficiencyLevel, an Enum - which is why plain asdict() plus json fails without a converter; utils/session_manager.py lists dataset_profile in _NEVER_PERSIST; pages/02_EDA.py:201 is its only writer; consumed by ml.model_coach.select_top_picks and model_viability and by the page 05/06 coach panels"
  },
  {
   "id": "CONTRACT-045",
@@ -3966,7 +3996,9 @@
   "detail": "`compute_dataset_signals(df, target, task_type, cohort_type, entity_id, outlier_method, feature_cols)` -> DatasetSignals (all JSON-safe fields: lists, dicts, floats, Optional[Literal]). It is held only in a local, memoized by @st.cache_data with an explicit data_id. Every eda_action takes it as its 4th positional argument. Nothing downstream can see it — leakage_flags, collinearity_summary and physio_plausibility_flags never reach the Report except via whatever an action happened to write into the ledger.",
   "ev": "ml/eda_recommender.py:16-38, :57; pages/02_EDA.py:170-180",
   "act": "project — signals is a legitimate derived-state node in the DAG; materialize it so Router and Report can both read it",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and this is the most actionable of the boundary rows, because the object is already JSON-safe and already computed - it is simply never stored. leakage_flags, collinearity_summary and physio_plausibility_flags therefore reach the Report only if some action happened to write them into the ledger, which is why MINE-004's swallowed leakage scan is invisible downstream and why STATE-015's dead VIF recommendation was never noticed. The Router needs exactly this object to rank questions, and ml/router.py already takes a signals argument. Materializing DatasetSignals as a derived node in the DAG closes the gap for both doors at once.",
+  "verified_ev": "ml/eda_recommender.py compute_dataset_signals -> DatasetSignals (all JSON-safe: lists, dicts, floats, Optional[Literal]); pages/02_EDA.py holds it in a LOCAL, memoized by @st.cache_data with an explicit data_id; every eda_action takes it as its fourth positional argument; nothing downstream reads it"
  },
  {
   "id": "CONTRACT-046",
@@ -3976,7 +4008,9 @@
   "detail": "`Dict[action_id -> {'findings': List[str], 'warnings': List[str], 'figures': List[plotly/matplotlib Figure], 'stats': dict}]`. The 'figures' entries make this NOT JSON-serializable and not reliably picklable (matplotlib figures). Correctly in _NEVER_PERSIST. Page 09 also reads eda_results.",
   "ev": "pages/02_EDA.py:1501, :1515-1531; ml/eda_actions.py return shapes; utils/session_manager.py:150",
   "act": "engine returns (data, figure-spec); view renders — figures must never enter Project state",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD, and the disposition it argues for is the one the rebuild must adopt rather than a defect to fix in Classic: figures are correctly excluded from persistence, but they are IN session state, which is the same thing a Project would be. matplotlib figures are not reliably picklable and hold references to the data they were drawn from, so a Project carrying them cannot be serialized, cannot cross a job boundary, and quietly retains participant data in memory long after the frame is gone - which matters for the privacy claim as well as the plumbing. The split the action names is the right one: the engine returns (data, figure-spec) and the view renders. visualizations.py already returns figure objects rather than rendering, so the engine half is nearly there.",
+  "verified_ev": "pages/02_EDA.py stores eda_results as {action_id -> {findings, warnings, figures, stats}} where 'figures' holds live plotly and matplotlib objects; utils/session_manager.py lists eda_results in _NEVER_PERSIST; pages/09 also reads it"
  },
  {
   "id": "CONTRACT-047",
