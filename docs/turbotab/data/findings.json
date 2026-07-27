@@ -4020,7 +4020,9 @@
   "detail": "table1_df: pd.DataFrame; table1_metadata: dict; the four table1_* toggles are widget-keyed booleans/strings read directly by pages/10's _build_manuscript_table1. Page 10 REGENERATES its own manuscript Table 1 from _build_analysis_cohort_df() rather than using page 02's — so the Table 1 the user reviewed on page 02 and the one in the manuscript are computed from different row sets.",
   "ev": "pages/02_EDA.py:1718-1719; pages/10_Report_Export.py:572-597, :581-593",
   "act": "record — one Table 1 artifact produced once, at a defined boundary; view renders it in both places",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The Table 1 the user reviewed on page 02 and the one printed in the manuscript are computed from DIFFERENT row sets - page 10 re-derives the analysis cohort, with different trim semantics than the split actually used (CONTRACT-021). So a researcher checks a table, approves it, and publishes a different one, with no diff and no warning. The widget-keyed toggles compound it: the four table1_* switches are read straight from session state by the export path, so a toggle set on page 02 silently changes a manuscript table computed elsewhere. One Table 1 artifact, produced once at a defined boundary, rendered in both places - which is the same conclusion CONTRACT-021 and STATE-031 reach about the cohort it is built from.",
+  "verified_ev": "pages/02_EDA.py stores table1_df / table1_metadata; pages/10_Report_Export.py _build_manuscript_table1 REGENERATES its own Table 1 from _build_analysis_cohort_df() rather than reading page 02's; the four table1_* toggles are widget-keyed booleans read directly by page 10"
  },
  {
   "id": "CONTRACT-048",
@@ -4030,7 +4032,9 @@
   "detail": "`{'X_engineered': pd.DataFrame, 'engineered_features': List[str], 'engineering_log': List}` — an unsaved scratch buffer keyed by `fe_features_hash` (md5 of the sorted feature list). Not persisted, correctly. It holds a full DataFrame copy in memory alongside raw_data, working_table, df_engineered and filtered_data — up to five copies of the dataset simultaneously.",
   "ev": "pages/03_Feature_Engineering.py:145-156, :139-143",
   "act": "jobs — the interview's in-progress FE state is a draft the Jobs layer owns; do not persist the frame",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD, and the memory observation is the part worth acting on: raw_data, working_table, df_engineered, filtered_data and this scratch copy can all be live at once, so the app can hold five full copies of the dataset in a session. That is a privacy surface as well as a footprint - the no-disk claim says nothing about how many copies sit in process memory, and a server-side deployment multiplies it by concurrent users. Not persisting it is right. The rebuild should make the in-progress recipe a DRAFT of operations rather than a materialized frame, which is also what STATE-027 wants for a different reason: nine hand-mirrored write sites exist because the frame is the state.",
+  "verified_ev": "pages/03_Feature_Engineering.py:145-156 - fe_work_in_progress = {'X_engineered': DataFrame, 'engineered_features': [...], 'engineering_log': [...]} keyed by fe_features_hash; correctly absent from every persistence bucket"
  },
  {
   "id": "CONTRACT-049",
@@ -4040,7 +4044,9 @@
   "detail": "df_engineered: pd.DataFrame built as `pd.concat([X_engineered, y], axis=1)` — preserves the index (good: lockbox labels survive) but moves the target to the LAST column and changes column order. Satellites: feature_engineering_applied: bool, engineered_feature_names: List[str], engineering_log: List (or Dict — record_feature_engineering defensively handles both), engineered_feature_transforms: Dict[str, str] (double-transform guard consumed by page 05 and ml/publication.py:1403), pre_fe_feature_cols: List[str] (restore point for Reset/Skip).",
   "ev": "pages/03_Feature_Engineering.py:1218-1227, :1266-1270; ml/publication.py:1401-1403; pages/05_Preprocess.py (engineered_feature_transforms\")",
   "act": "project — engineered frame is derived state; the log + transform map are Record",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD, and the index-preserving concat is the good news - lockbox labels survive feature engineering, which is the whole reason the lockbox stores labels. Two live defects hang off the satellites and are recorded separately: engineering_log is not persisted while its three siblings are, so a restored session loses the record of HOW the features were built while keeping the features (STATE-054); and engineered_feature_transforms is never cleared by the cascade, so the double-transform guard keeps excluding columns by stale name (STATE-009 / STATE-064). The column REORDER is worth noting for the port: any consumer that assumed positional column order across the FE boundary is already wrong, which is one more argument for label- and name-keyed access throughout.",
+  "verified_ev": "pages/03_Feature_Engineering.py builds df_engineered as pd.concat([X_engineered, y], axis=1) - index preserved, target moved to the LAST column, column order changed; satellites feature_engineering_applied, engineered_feature_names, engineering_log, engineered_feature_transforms, pre_fe_feature_cols"
  },
  {
   "id": "CONTRACT-050",
@@ -4050,7 +4056,10 @@
   "detail": "feature_selection_results: `List[FeatureSelectionResult]` (@dataclass, ml/feature_selection.py:13). consensus_features: List[str]. Both are cleared by reset_downstream_results ONLY when clear_feature_selection=True — page 04's own Apply passes clear_feature_selection=False so the selection survives the cascade it triggers. This conditional-clear flag is the most subtle part of the existing invalidation contract and must survive the port verbatim.",
   "ev": "pages/04_Feature_Selection.py:277-282, :447-448, :493-494; utils/session_state.py:283-298, :355-357",
   "act": "project — the DAG needs an explicit 'this node is the one being recomputed, do not clear it' rule rather than a boolean parameter",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The subtlety survived the port, and in the form the action asked for. The row calls the conditional-clear flag the most delicate part of the invalidation contract and says it must survive verbatim; the DAG did better than verbatim - keep={stage} IS the explicit 'this node is the one being recomputed, do not clear it' rule the action wanted, instead of a boolean parameter per call site. test_keeping_a_stage_does_not_keep_its_descendants asserts both halves that matter: feature_selection_results and consensus_features survive, while preprocessing_pipeline, X_train and trained_models do not. And test_the_dag_matches_the_production_cascade pins the keep-selection flag combination against a real run of the production function, so the two implementations cannot drift.",
+  "test": "tests/integration/test_cascade_dag_equivalence.py::test_keeping_a_stage_does_not_keep_its_descendants",
+  "verified_ev": "pages/04_Feature_Selection.py:448 and :495 pass clear_feature_selection=False; turbotab/cascade.py:189-210 keys_to_clear(changed, keep={'feature_selection'}) expresses the same rule declaratively, with the asymmetry documented in the docstring"
  },
  {
   "id": "CONTRACT-051",
@@ -4060,7 +4069,9 @@
   "detail": "`Dict[model_key -> sklearn.pipeline.Pipeline]` — PICKLE-ONLY, explicitly in _NEVER_PERSIST. Rebuilt by ml.pipeline.build_preprocessing_pipeline(...23 kwargs...). The companion `preprocessing_config_by_model: Dict[model_key -> Dict]` IS JSON-safe and IS persisted, which is the correct split: recipe travels, fitted object does not. Note reconcile_pipeline_columns() exists purely to self-heal a pipeline whose ColumnTransformer names columns that no longer exist — a symptom of the missing DAG.",
   "ev": "utils/session_state.py:463-471; ml/pipeline.py:127-133, :504-510; utils/session_manager.py:99,140-142; pages/06_Train_and_Compare.py:1300-1315",
   "act": "project (config) + jobs (fitted artifact, cached by config hash)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The split this row praises is real and correct - the JSON recipe travels and the fitted object does not - and that is the pattern the Project should inherit. It stays OPEN for the observation in its own last sentence: reconcile_pipeline_columns exists ONLY to self-heal a pipeline whose ColumnTransformer names columns that no longer exist, which is a symptom of the missing DAG rather than a feature. And that self-heal is currently broken in the way STATE-065 / STATE-002 describe: it clones unconditionally, PlausibilityGate cannot be cloned, so with plausibility bounds configured it raises on every run and cross-validation is skipped into a banner. Rebuild from the config, keyed by a config hash, and the reconciler becomes unnecessary rather than fragile.",
+  "verified_ev": "utils/session_manager.py:138-145 lists preprocessing_pipelines_by_model, preprocessing_pipeline and fitted_preprocessing_pipelines in _NEVER_PERSIST, while preprocessing_config_by_model IS persisted; ml/pipeline.py build_preprocessing_pipeline takes ~23 kwargs; ml/pipeline.py:512-540 reconcile_pipeline_columns"
  },
  {
   "id": "CONTRACT-052",
@@ -4070,7 +4081,9 @@
   "detail": "preprocessing_summary: nested Dict of {method,label} pairs + n_numeric/n_categorical/models_configured — JSON-safe, consumed by the Methods generator. preprocess_built_model_keys: List[str] — drives page 06's model checkbox pre-selection AND the 'no pipeline' badge. unit_overrides: Dict[str,str] read by ml/eda_actions.plausibility_check. interpretability_mode: str. preprocessing_summary is NOT in any persistence list.",
   "ev": "pages/05_Preprocess.py:1011, :1037-1049; pages/06_Train_and_Compare.py:808-817, :825",
   "act": "record (summary) + router (built_model_keys is a readiness signal, not a UI detail)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD with one improvement: preprocess_built_model_keys IS now cleared by the cascade (STATE-009), which un-suppresses the 'training with unprocessed data' warning. preprocessing_summary is still neither persisted nor cleared, so it both vanishes on restore and survives a data change - the worst of both, and it feeds the Methods generator's preprocessing paragraph either way. The row's framing of preprocess_built_model_keys is the useful one for the rebuild: it is a READINESS SIGNAL, not a UI detail, and the Router needs it - turbotab/readiness.py currently derives pipeline_built from preprocessing_pipeline alone, which is the single-slot view of a per-model fact.",
+  "verified_ev": "pages/05_Preprocess.py:1071 writes preprocessing_summary; pages/06_Train_and_Compare.py reads preprocess_built_model_keys for both the checkbox pre-selection and the no-pipeline badge; preprocessing_summary is in NO persistence bucket (verified); unit_overrides is read by ml/eda_actions.plausibility_check"
  },
  {
   "id": "CONTRACT-053",
@@ -4080,7 +4093,9 @@
   "detail": "Fitted sklearn LabelEncoder, pickle-only, in _NEVER_PERSIST. Set only when the target dtype is object/category/bool; POPPED otherwise. Page 07 re-applies it to raw y (`if label_encoder is not None and y_raw.dtype == object`) — if the encoder is stale relative to the current frame's categories, .transform raises ValueError inside a bare `except Exception: pass`, silently degrading to the X_test fallback path.",
   "ev": "pages/06_Train_and_Compare.py:485-491; pages/07_Explainability.py:198-205",
   "act": "record the class mapping (JSON: List[str] classes_) in Project; rebuild the encoder in Jobs",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD, and the failure path is worse than the row states because of where the except sits. Page 07 re-applies a possibly-stale encoder to raw y, and if the current frame carries a class the encoder never saw, .transform raises ValueError inside the SAME bare except that wraps the whole positional-index reconstruction (STATE-025) - so the page silently falls back to X_test and the user gets permutation importance computed on a different matrix than they think, from an error about label classes. Recording the class mapping as JSON (classes_ as a list of strings) and rebuilding the encoder in the job removes both the pickle and the staleness, since a rebuilt encoder either matches the current classes or fails loudly.",
+  "verified_ev": "pages/06_Train_and_Compare.py:433-435 (set when the split produced an encoder, popped otherwise); pages/07_Explainability.py:198-205 re-applies it to raw y inside the bare except at :204-205; target_label_encoder is in _NEVER_PERSIST"
  },
  {
   "id": "CONTRACT-054",
@@ -4090,7 +4105,9 @@
   "detail": "`Dict[model_key -> BaseModelWrapper]` (NNWeightedHuberWrapper | RFWrapper | GLMWrapper | HuberGLMWrapper | RegistryModelWrapper). Interface: fit(X_train,y_train,X_val,y_val,**kw)->Dict, predict(X)->ndarray, predict_proba(X)->Optional[ndarray], get_model()->Any, supports_proba()->bool. The NN wrapper holds a torch nn.Module — picklable only with torch installed and only on a compatible device. In _NEVER_PERSIST by design (utils/session_manager.py:11-16 documents the security rationale: no pickle is ever loaded from user bytes).",
   "ev": "models/base.py:10-73; models/registry_wrappers.py:9-74; models/nn_whuber.py:226-636; utils/session_manager.py:139-140",
   "act": "jobs — fitted models are job outputs with a content-addressed cache key; Project stores only the key + config",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD and the exclusion is right for the stated reason - no pickle is ever loaded from user bytes (STATE-092). Two things belong on the record alongside it. First, the NN wrapper holds a torch nn.Module, so it is picklable only with torch installed and only onto a compatible device - which makes a content-addressed job cache the only sane home for it, as the action says. Second, this dict is one of THREE parallel per-model dicts that must stay key-aligned with nothing enforcing it (CONTRACT-031), and trained_models is the one holding WRAPPERS while fitted_estimators holds bare estimators - the distinction that MODELS-013 shows nothing tests. One TrainedModel record per key resolves both rows.",
+  "verified_ev": "models/base.py BaseModelWrapper's five-method interface; the five wrapper implementations; utils/session_manager.py:139-140 lists trained_models and fitted_estimators in _NEVER_PERSIST, with the security rationale in the module docstring"
  },
  {
   "id": "CONTRACT-055",
@@ -4100,7 +4117,9 @@
   "detail": "`Dict[model_key -> {'metrics': Dict[str,float], 'train_metrics': Dict[str,float], 'history': Dict[str,List[float]], 'y_test_pred': np.ndarray, 'y_test': np.ndarray|Series, 'y_test_proba': Optional[np.ndarray], 'cv_results': Optional[Dict]}]`. Mixed: metrics/history are JSON-safe, the three y_* arrays are not. Note the comment '(y_test and y_test_pred are always on original scale)' — which holds only if the y_*_original write/pop pair stayed in sync.",
   "ev": "pages/06_Train_and_Compare.py:1568-1577, :1579; utils/session_state.py:499-502",
   "act": "record (metrics, history) + jobs (prediction vectors as a job artifact)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD, and the row's closing caveat is the finding: the comment promising that y_test and y_test_pred are always on the original scale holds ONLY while the y_*_original write/pop pair stays in sync, and CONTRACT-028 shows the reader uses a .get default that silently substitutes the TRANSFORMED target when it does not. So the guarantee is a comment over an unchecked precondition, and its failure produces log-scale numbers under original-scale labels - smaller, and therefore read as better (STATE-075). The mixed serializability the row catalogues is the reason to split this at the port: metrics and history are Record facts, the three prediction vectors are job artifacts.",
+  "verified_ev": "pages/06_Train_and_Compare.py:1470-1482 builds the per-model result dict (metrics, train_metrics, history, y_test_pred, y_test, y_test_proba, cv_results); model_results is in _NEVER_PERSIST; the 'always on original scale' guarantee depends on the y_*_original write/pop pair"
  },
  {
   "id": "CONTRACT-056",
@@ -4110,7 +4129,9 @@
   "detail": "bootstrap_results: Dict[model -> Dict[metric -> BootstrapResult]] (@dataclass, ml/bootstrap.py:12). baseline_results: Dict[name -> {'description': str, 'metrics': Dict}]. calibration_results: Dict[model -> CalibrationResult] (@dataclass, ml/calibration.py:13 — holds numpy arrays for the curve). Only bootstrap_results and sensitivity_seed_results appear in _NEVER_PERSIST; baseline_results and calibration_results are in NEITHER list, so they are silently dropped on save with no 'skipped' note.",
   "ev": "pages/06_Train_and_Compare.py:2072, :2140, :2221-2222; ml/bootstrap.py:12-33; ml/calibration.py:13-34; utils/session_manager.py:138-162",
   "act": "record — CI/calibration numbers are manuscript facts; persist the scalars, recompute the curves",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged, and worse by one than the row states: bootstrap_results is not in _NEVER_PERSIST either - I checked the set directly - so FOUR result families fall through rather than two. They are silently dropped on save and never appear in the manifest's skipped_keys, which records encode failures only (CONTRACT-038). Bootstrap confidence intervals and calibration slopes are MANUSCRIPT FACTS: a restored session loses the intervals the paper quotes while keeping the metrics they qualify, so the numbers survive and their uncertainty does not. The action is the right split - persist the scalars, recompute the curves - and it needs the exhaustive taxonomy that STATE-038 and TEST-017 also conclude is the only durable fix.",
+  "verified_ev": "Verified against _NEVER_PERSIST at HEAD: sensitivity_seed_results IS listed; bootstrap_results, baseline_results, calibration_results and sensitivity_dropout_results are in NEITHER _NEVER_PERSIST nor any save bucket"
  },
  {
   "id": "CONTRACT-057",
@@ -4120,7 +4141,9 @@
   "detail": "`Dict[model -> {'shap_values': ndarray(2D), 'X_eval': ndarray, 'feature_names': List[str], 'class_label': Optional[str], 'all_shap_values': <original explainer output, list-or-ndarray, possibly 3D>, 'kernel_capped': bool, 'n_eval_samples': int}]`. 'all_shap_values' duplicates the full payload for class switching — memory doubles per model. shap_matplotlib_figs: Dict of matplotlib Figures (unpicklable across processes).",
   "ev": "pages/07_Explainability.py:512-520, :793",
   "act": "jobs (arrays as artifacts) + view (figures rendered on demand, never stored)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD. all_shap_values duplicates the full payload so the UI can switch classes, which doubles the SHAP memory per model on top of X_eval - and for a wide matrix that is the largest single allocation in the app. The stored matplotlib figures are unpicklable across processes, so they block the job-queue port outright rather than merely costing memory. And the class-switching feature that all_shap_values exists for is exactly where STATE-033's defect lives: for more than two classes the stored class_label can name a different class than the stored array holds. Arrays as job artifacts, figures rendered on demand and never stored, and ONE normalized {class_index, class_label, values} record closes the memory and the correctness problem together.",
+  "verified_ev": "pages/07_Explainability.py:512-520 stores shap_values, X_eval, feature_names, class_label, all_shap_values (the original explainer output, possibly 3D), kernel_capped and n_eval_samples per model; shap_matplotlib_figs holds matplotlib Figures"
  },
  {
   "id": "CONTRACT-058",
@@ -4130,7 +4153,9 @@
   "detail": "permutation_importance: Dict[model -> {'importances_mean': ndarray, 'importances_std': ndarray, 'feature_names': List[str]}]. pdp_results: Dict[model -> {'pd_per_feature': Dict[int, sklearn Bunch], 'pd_2d': Dict[Tuple[int,int], Bunch], 'feature_indices': List[int], 'feature_names': List[str]}]. pd_2d is keyed by a TUPLE — not JSON-serializable as a dict key. Note pdp_results is written under that name while init_session_state declares 'partial_dependence' — see the dead-key finding.",
   "ev": "pages/07_Explainability.py:406-411, :601-606; utils/session_state.py:158-159",
   "act": "jobs (arrays) + record (top-k importance table, which is what the manuscript cites)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD and it names the dead alias precisely: init_session_state declares partial_dependence, _NEVER_PERSIST lists partial_dependence, the export path reads partial_dependence - and page 07 writes pdp_results. So the key that is declared, cleared and read is not the key that is written, and the PDP section of the manuscript can never populate (CONTRACT-020). The tuple keys in pd_2d are the other half: they make the artifact non-JSON by construction, so it cannot travel as Record data even after the alias is fixed. The action's split is right - arrays as job artifacts, the top-k importance table as Record, because that table is what the manuscript actually cites.",
+  "verified_ev": "pages/07_Explainability.py writes permutation_importance and pdp_results (pd_2d keyed by a TUPLE, so not JSON-serializable as a dict key); utils/session_state.py:159 declares 'partial_dependence': {} - the name in _NEVER_PERSIST - while nothing ever writes it"
  },
  {
   "id": "CONTRACT-059",
@@ -4140,7 +4165,9 @@
   "detail": "Two pd.DataFrames (seed: columns seed + metric names + optional '_error'; dropout: feature, score_without, impact, optional '_error') and a float baseline. Only sensitivity_seed_results is in _NEVER_PERSIST; the dropout pair is in no list. ml/publication.py reads sensitivity_dropout_results directly from session_state at module scope (line 1382), which is one of the 32 publication↔streamlit couplings.",
   "ev": "pages/08_Sensitivity_Analysis.py:221, :499-500; ml/publication.py:1220-1222, :1381-1382; utils/session_manager.py:159",
   "act": "record — sensitivity verdicts are manuscript claims; pass them into publication as arguments, never via ambient state",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD. The dropout pair is in no list, so it is dropped on save with no note, and ml/publication.py reads it from AMBIENT STATE rather than as an argument - one of the ten guarded-import couplings (RECORD-010 / CONTRACT-036). Two other rows complete the picture and they compound badly: pages/10 reads a key nothing writes for this same result (sensitivity_feature_dropout, RECORD-006 / STATE-018), so feature dropout can never reach the manuscript even in a live session; and MINE-030 shows the seed analysis reports its SURVIVOR count as the analysis size. So the sensitivity section is unreachable, unpersisted, and would overstate its own n if it arrived.",
+  "verified_ev": "pages/08_Sensitivity_Analysis.py:499-500 writes sensitivity_dropout_results and sensitivity_dropout_baseline; only sensitivity_seed_results is in _NEVER_PERSIST (verified); ml/publication.py:1222 and :1382 read sensitivity_dropout_results directly from session state inside guarded imports"
  },
  {
   "id": "CONTRACT-060",
@@ -4150,7 +4177,9 @@
   "detail": "Six separate `st.session_state.hypothesis_test_results = {...}` assignments (correlation, t-test, chi-square, ANOVA, etc.), each overwriting the previous. The audit trail survives only because log_methodology appends a 'Statistical Validation' entry per test, and pages/10 rebuilds the list by filtering methodology_log for that step. So the Record is authoritative and the state key is vestigial.",
   "ev": "pages/09_Hypothesis_Testing.py:260,441,586,707,819,915; pages/10_Report_Export.py:272-284",
   "act": "record — make the ledger/methodology log the only store; drop the single-slot key",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD - six overwriting assignments, verified - and the row's conclusion is the interesting one: the Record is already authoritative and the state key is vestigial. The audit trail survives only because log_methodology appends per test and page 10 reconstructs from it, which means the single-slot key is a trap rather than a store: anything that reads hypothesis_test_results sees only the LAST test, and the on-screen result and the manuscript's list can disagree by five tests. It also interacts with STATE-047: the results key IS cleared by the cascade while StatisticalValidationProvenance is not, so after a reset the Record claims tests whose results are gone. Drop the key, keep the log, and clear the provenance with it.",
+  "verified_ev": "pages/09_Hypothesis_Testing.py - six separate assignments to st.session_state.hypothesis_test_results, each overwriting the previous; pages/10_Report_Export.py rebuilds the list by filtering methodology_log for the 'Statistical Validation' step; hypothesis_test_results is in _NEVER_PERSIST"
  },
  {
   "id": "CONTRACT-061",
@@ -4160,7 +4189,9 @@
   "detail": "utils/insight_ledger.py imports model_display_name, format_resolution_detail, models_to_families, families_display from ml.publication (lines 128-520 of publication are pure formatting helpers with no ML content), while ml.publication reads the ledger's output. The formatting helpers belong to neither: they are presentation.",
   "ev": "ml/publication.py:128,182,453,460; utils/insight_ledger.py (imports at module top)",
   "act": "view — extract the label/format helpers into a presentation module; both cycles dissolve",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "The inversion narrowed from four formatting helpers to one pure-data constant. The presentation helpers this row says belong to neither module are no longer imported from ml.publication - they are defined in utils/insight_ledger.py - so the heaviest edge of the cycle is gone. WHAT REMAINS is a single deferred import of TRIPOD_ITEMS, which is exactly the residue TEST-021 identifies as the cheapest cycle to break: it is pure data, so lifting it to a standalone module both sides import dissolves the cycle with no design decision. Until then the cycle still exists and is still invisible, because the import is inside a function - and STATE-053 explains why that matters: hoisting imports to module scope is the most natural cleanup during a move, and it would turn this into a boot failure.",
+  "verified_ev": "utils/insight_ledger.py now DEFINES model_display_name (:127), format_resolution_detail (:181), models_to_families (:455) and families_display (:462) locally; its only remaining import from ml.publication is TRIPOD_ITEMS at :1079, inside get_tripod_status"
  },
  {
   "id": "CONTRACT-062",

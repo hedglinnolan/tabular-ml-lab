@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**62 of 402 closed.**
+**63 of 402 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `UNVERIFIED` | 55 |
-| `OPEN` | 255 |
-| `PARTIAL` | 30 |
-| `FIXED` | 62 |
+| `UNVERIFIED` | 40 |
+| `OPEN` | 268 |
+| `PARTIAL` | 31 |
+| `FIXED` | 63 |
 
 ---
 
-## OPEN — 255
+## OPEN — 268
 
 
 ### Application state / lockbox — 71
@@ -111,7 +111,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-090` | invariant | Repeated measures split by SUBJECT, not by row — the same person must never appear in both training and the sealed test set. | `utils/test_lockbox.detect_repeated_subjects + ensure_lockbox:130-133 (auto-detect only when the caller named…` | The invariant is right and its stated trigger is LIVE, so it stays OPEN. The row asks 'what if detect_repeated_subjects runs against the ENGINEERED frame' and answers its own… |
 | `STATE-094` | invariant | An invalidated resolution is rolled back (the finding survives, the claim does not), and an auto-generated insight whose producer will re-detect is deleted outright — absent is better than false. | `utils/session_state.py:389-410 + InsightLedger.rollback_resolutions / prune_auto_generated. Tests…` | The behavior is correct and tested - a rolled-back resolution leaves the FINDING standing and drops only the CLAIM, and auto-generated insights whose producer re-detects are… |
 
-### Stage-boundary contracts — 37
+### Stage-boundary contracts — 50
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -152,6 +152,19 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-044` | medium | Boundary EDA: dataset_profile (DatasetProfile) | `ml/dataset_profile.py:109-165, :23-30 (DataSufficiencyLevel Enum); utils/session_manager.py:152…` | A boundary description that is accurate at HEAD and carries one live consequence worth acting on. Not persisting the profile is correct - it is a pure function of the frame and… |
 | `CONTRACT-045` | medium | Boundary EDA: DatasetSignals is recomputed on every page-02 load and NEVER stored | `ml/eda_recommender.py:16-38, :57; pages/02_EDA.py:170-180` | Unchanged at HEAD and this is the most actionable of the boundary rows, because the object is already JSON-safe and already computed - it is simply never stored. leakage_flags… |
 | `CONTRACT-046` | medium | Boundary EDA→FeatureEng: eda_results | `pages/02_EDA.py:1501, :1515-1531; ml/eda_actions.py return shapes; utils/session_manager.py:150` | Accurate at HEAD, and the disposition it argues for is the one the rebuild must adopt rather than a defect to fix in Classic: figures are correctly excluded from persistence, but… |
+| `CONTRACT-047` | medium | Boundary EDA→Report: table1_df / table1_metadata / custom_table1_tests / table1_group,pval,smd,miss | `pages/02_EDA.py:1718-1719; pages/10_Report_Export.py:572-597, :581-593` | Unchanged at HEAD. The Table 1 the user reviewed on page 02 and the one printed in the manuscript are computed from DIFFERENT row sets - page 10 re-derives the analysis cohort… |
+| `CONTRACT-048` | medium | Boundary FeatureEng: fe_work_in_progress | `pages/03_Feature_Engineering.py:145-156, :139-143` | Accurate at HEAD, and the memory observation is the part worth acting on: raw_data, working_table, df_engineered, filtered_data and this scratch copy can all be live at once, so… |
+| `CONTRACT-049` | medium | Boundary FeatureEng→FeatureSel: df_engineered and its five satellite keys | `pages/03_Feature_Engineering.py:1218-1227, :1266-1270; ml/publication.py:1401-1403; pages/05_Preprocess.py…` | Accurate at HEAD, and the index-preserving concat is the good news - lockbox labels survive feature engineering, which is the whole reason the lockbox stores labels. Two live… |
+| `CONTRACT-051` | medium | Boundary Preprocess→Train: preprocessing_pipelines_by_model | `utils/session_state.py:463-471; ml/pipeline.py:127-133, :504-510; utils/session_manager.py:99,140-142…` | The split this row praises is real and correct - the JSON recipe travels and the fitted object does not - and that is the pattern the Project should inherit. It stays OPEN for the… |
+| `CONTRACT-052` | medium | Boundary Preprocess→Train: preprocessing_summary, preprocess_built_model_keys, unit_overrides, interpretability_mode | `pages/05_Preprocess.py:1011, :1037-1049; pages/06_Train_and_Compare.py:808-817, :825` | Unchanged at HEAD with one improvement: preprocess_built_model_keys IS now cleared by the cascade (STATE-009), which un-suppresses the 'training with unprocessed data' warning.… |
+| `CONTRACT-053` | medium | Boundary Train: target_label_encoder (LabelEncoder) | `pages/06_Train_and_Compare.py:485-491; pages/07_Explainability.py:198-205` | Accurate at HEAD, and the failure path is worse than the row states because of where the except sits. Page 07 re-applies a possibly-stale encoder to raw y, and if the current… |
+| `CONTRACT-054` | medium | Boundary Train→Explain: trained_models | `models/base.py:10-73; models/registry_wrappers.py:9-74; models/nn_whuber.py:226-636…` | Accurate at HEAD and the exclusion is right for the stated reason - no pickle is ever loaded from user bytes (STATE-092). Two things belong on the record alongside it. First, the… |
+| `CONTRACT-055` | medium | Boundary Train→Explain: model_results | `pages/06_Train_and_Compare.py:1568-1577, :1579; utils/session_state.py:499-502` | Accurate at HEAD, and the row's closing caveat is the finding: the comment promising that y_test and y_test_pred are always on the original scale holds ONLY while the y_*_original… |
+| `CONTRACT-056` | medium | Boundary Train→Report: bootstrap_results, baseline_results, calibration_results | `pages/06_Train_and_Compare.py:2072, :2140, :2221-2222; ml/bootstrap.py:12-33; ml/calibration.py:13-34…` | Unchanged, and worse by one than the row states: bootstrap_results is not in _NEVER_PERSIST either - I checked the set directly - so FOUR result families fall through rather than… |
+| `CONTRACT-057` | medium | Boundary Explain→Report: shap_results carries raw arrays plus a duplicate | `pages/07_Explainability.py:512-520, :793` | Accurate at HEAD. all_shap_values duplicates the full payload so the UI can switch classes, which doubles the SHAP memory per model on top of X_eval - and for a wide matrix that… |
+| `CONTRACT-058` | medium | Boundary Explain→Report: permutation_importance and pdp_results | `pages/07_Explainability.py:406-411, :601-606; utils/session_state.py:158-159` | Accurate at HEAD and it names the dead alias precisely: init_session_state declares partial_dependence, _NEVER_PERSIST lists partial_dependence, the export path reads… |
+| `CONTRACT-059` | medium | Boundary Sensitivity→Report: sensitivity_seed_results / sensitivity_dropout_results / sensitivity_dropout_baseline | `pages/08_Sensitivity_Analysis.py:221, :499-500; ml/publication.py:1220-1222, :1381-1382…` | Accurate at HEAD. The dropout pair is in no list, so it is dropped on save with no note, and ml/publication.py reads it from AMBIENT STATE rather than as an argument - one of the… |
+| `CONTRACT-060` | medium | Boundary Hypothesis Testing: hypothesis_test_results holds only the LAST test run | `pages/09_Hypothesis_Testing.py:260,441,586,707,819,915; pages/10_Report_Export.py:272-284` | Accurate at HEAD - six overwriting assignments, verified - and the row's conclusion is the interesting one: the Record is already authoritative and the state key is vestigial. The… |
 
 ### Record / narrative / export — 29
 
@@ -337,7 +350,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 30
+## PARTIAL — 31
 
 
 ### Application state / lockbox — 6
@@ -351,6 +364,17 @@ Nothing is closed without a regression test named after it.
 | `STATE-087` | invariant | reset_downstream_results is the SINGLE source of truth for downstream invalidation; any page that introduces a new result key must add it there. | `utils/session_state.py:288-291 docstring; tests/test_review_fixes.py::TestDownstreamReset::test_reset_clears_e…` | Duplicate of STATE-066 / STATE-074 from the invariant pass. The first of the row's two breakages is closed - pages/03's competing 21-key cascade is gone and an AST guard fails if… |
 | `STATE-095` | invariant | set_data distinguishes three cases: schema change (full reset), same-schema content change (results cleared, config kept), identical content (no-op) — because page 01 re-sets the same working table… | `utils/session_state.set_data:266-280 with the _raw_data_fingerprint comparison. Tests…` | The three cases are implemented and well tested - including the subtle one, that re-setting the SAME frame on every page-01 visit must not end a cohort run - and four tests cover… |
 
+### Stage-boundary contracts — 6
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `CONTRACT-012` | high | y_test_proba can be referenced unbound when task_type_final and data_config.task_type disagree | `pages/06_Train_and_Compare.py:1556 (assignment) vs :1575 (use), handler at :1601-1605` | The unbound-name path is closed; the defence is one line and untested. Because pages/06:175 now sets data_config.task_type = task_type_final before the training loop, the two… |
+| `CONTRACT-026` | high | Boundary Train: X_train/X_val/X_test are DataFrames but y_* type varies by split branch | `pages/06_Train_and_Compare.py:511-517, :541-547, :571-577, :613-616, :655-660; ml/splits.py:9 (to_numpy_1d)…` | The heterogeneity is gone by construction; nothing guards it. Every branch now returns through one Split constructor that coerces y_train, y_val and y_test with to_numpy_1d, and… |
+| `CONTRACT-029` | high | Boundary Train: cv_strategy and cv_groups_train | `pages/06_Train_and_Compare.py:494-497, :507-508, :528, :1543-1546; utils/session_state.py:330-334` | The desync this row warns about is structurally closed; the parallel storage is not. cv_strategy and cv_groups_train are now derived INSIDE make_split from the branch actually… |
+| `CONTRACT-032` | high | Boundary Explain: cancel_explainability / cancel_training are cooperative flags polled inside the render loop | `pages/07_Explainability.py:321-352, :419-422, :540-543; pages/06_Train_and_Compare.py:1252-1266` | Half of this row is closed and half is untouched. cancel_training no longer exists - the button was removed rather than wired, because Streamlit blocks the script during training… |
+| `CONTRACT-041` | medium | Boundary Upload→Target: raw_data + _raw_data_fingerprint | `utils/session_state.py:220-230, :259-280; not in any session_manager key list` | The persistence half is closed and the 'unknown means clean' half is not. The row says the fingerprint is not persisted so the first set_data after a restore skips the… |
+| `CONTRACT-061` | medium | Import cycle ml.publication ↔ utils.insight_ledger is a genuine layering inversion | `ml/publication.py:128,182,453,460; utils/insight_ledger.py (imports at module top)` | The inversion narrowed from four formatting helpers to one pure-data constant. The presentation helpers this row says belong to neither module are no longer imported from… |
+
 ### Migration safety net — 5
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -360,16 +384,6 @@ Nothing is closed without a regression test named after it.
 | `TEST-012` | high | 95 of 98 integration tests are AppTest-bound and cannot survive; the 3 non-AppTest ones can | `grep AppTest over tests/integration; Makefile:27 `test-apptest` target; .github/workflows/ci.yml Tier 2 step` | The ratio moved and the conclusion did not. tests/integration/ has grown by seven files since this was written and three of them are NOT AppTest-bound… |
 | `TEST-014` | high | ALL of models/* is uncovered, and models/rf.py carries literal duplicate method definitions proving nothing exercises it | `models/rf.py:75-97 (duplicated block); models/base.py:10-76` | The coverage half is closed and the artifact it pointed at is still there. models/ is no longer untested - tests/test_characterization_wrappers.py parameterizes the base contract… |
 | `TEST-022` | high | perform_cross_validation's leakage semantics are documented in prose but only partially tested — and CV strategy is a cleared-but-unasserted key | `ml/eval.py:97-171; silent downgrade at :143-149; cv_strategy/cv_groups_train absent from all three test…` | The staleness half is closed; the fold-membership half is not. cv_strategy and cv_groups_train are no longer unasserted-on-clear - they are registered in the cascade and pinned by… |
-
-### Stage-boundary contracts — 5
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `CONTRACT-012` | high | y_test_proba can be referenced unbound when task_type_final and data_config.task_type disagree | `pages/06_Train_and_Compare.py:1556 (assignment) vs :1575 (use), handler at :1601-1605` | The unbound-name path is closed; the defence is one line and untested. Because pages/06:175 now sets data_config.task_type = task_type_final before the training loop, the two… |
-| `CONTRACT-026` | high | Boundary Train: X_train/X_val/X_test are DataFrames but y_* type varies by split branch | `pages/06_Train_and_Compare.py:511-517, :541-547, :571-577, :613-616, :655-660; ml/splits.py:9 (to_numpy_1d)…` | The heterogeneity is gone by construction; nothing guards it. Every branch now returns through one Split constructor that coerces y_train, y_val and y_test with to_numpy_1d, and… |
-| `CONTRACT-029` | high | Boundary Train: cv_strategy and cv_groups_train | `pages/06_Train_and_Compare.py:494-497, :507-508, :528, :1543-1546; utils/session_state.py:330-334` | The desync this row warns about is structurally closed; the parallel storage is not. cv_strategy and cv_groups_train are now derived INSIDE make_split from the branch actually… |
-| `CONTRACT-032` | high | Boundary Explain: cancel_explainability / cancel_training are cooperative flags polled inside the render loop | `pages/07_Explainability.py:321-352, :419-422, :540-543; pages/06_Train_and_Compare.py:1252-1266` | Half of this row is closed and half is untouched. cancel_training no longer exists - the button was removed rather than wired, because Streamlit blocks the script during training… |
-| `CONTRACT-041` | medium | Boundary Upload→Target: raw_data + _raw_data_fingerprint | `utils/session_state.py:220-230, :259-280; not in any session_manager key list` | The persistence half is closed and the 'unknown means clean' half is not. The row says the fingerprint is not persisted so the first set_data after a restore skips the… |
 
 ### Completeness sweep — 4
 
@@ -412,36 +426,8 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## UNVERIFIED — 55
+## UNVERIFIED — 40
 
-
-### Stage-boundary contracts — 23
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `CONTRACT-047` | medium | Boundary EDA→Report: table1_df / table1_metadata / custom_table1_tests / table1_group,pval,smd,miss | `pages/02_EDA.py:1718-1719; pages/10_Report_Export.py:572-597, :581-593` | record — one Table 1 artifact produced once, at a defined boundary; view renders it in both places |
-| `CONTRACT-048` | medium | Boundary FeatureEng: fe_work_in_progress | `pages/03_Feature_Engineering.py:145-156, :139-143` | jobs — the interview's in-progress FE state is a draft the Jobs layer owns; do not persist the frame |
-| `CONTRACT-049` | medium | Boundary FeatureEng→FeatureSel: df_engineered and its five satellite keys | `pages/03_Feature_Engineering.py:1218-1227, :1266-1270; ml/publication.py:1401-1403; pages/05_Preprocess.py…` | project — engineered frame is derived state; the log + transform map are Record |
-| `CONTRACT-050` | medium | Boundary FeatureSel: feature_selection_results and consensus_features | `pages/04_Feature_Selection.py:277-282, :447-448, :493-494; utils/session_state.py:283-298, :355-357` | project — the DAG needs an explicit 'this node is the one being recomputed, do not clear it' rule rather than a boolean parameter |
-| `CONTRACT-051` | medium | Boundary Preprocess→Train: preprocessing_pipelines_by_model | `utils/session_state.py:463-471; ml/pipeline.py:127-133, :504-510; utils/session_manager.py:99,140-142…` | project (config) + jobs (fitted artifact, cached by config hash) |
-| `CONTRACT-052` | medium | Boundary Preprocess→Train: preprocessing_summary, preprocess_built_model_keys, unit_overrides, interpretability_mode | `pages/05_Preprocess.py:1011, :1037-1049; pages/06_Train_and_Compare.py:808-817, :825` | record (summary) + router (built_model_keys is a readiness signal, not a UI detail) |
-| `CONTRACT-053` | medium | Boundary Train: target_label_encoder (LabelEncoder) | `pages/06_Train_and_Compare.py:485-491; pages/07_Explainability.py:198-205` | record the class mapping (JSON: List[str] classes_) in Project; rebuild the encoder in Jobs |
-| `CONTRACT-054` | medium | Boundary Train→Explain: trained_models | `models/base.py:10-73; models/registry_wrappers.py:9-74; models/nn_whuber.py:226-636…` | jobs — fitted models are job outputs with a content-addressed cache key; Project stores only the key + config |
-| `CONTRACT-055` | medium | Boundary Train→Explain: model_results | `pages/06_Train_and_Compare.py:1568-1577, :1579; utils/session_state.py:499-502` | record (metrics, history) + jobs (prediction vectors as a job artifact) |
-| `CONTRACT-056` | medium | Boundary Train→Report: bootstrap_results, baseline_results, calibration_results | `pages/06_Train_and_Compare.py:2072, :2140, :2221-2222; ml/bootstrap.py:12-33; ml/calibration.py:13-34…` | record — CI/calibration numbers are manuscript facts; persist the scalars, recompute the curves |
-| `CONTRACT-057` | medium | Boundary Explain→Report: shap_results carries raw arrays plus a duplicate | `pages/07_Explainability.py:512-520, :793` | jobs (arrays as artifacts) + view (figures rendered on demand, never stored) |
-| `CONTRACT-058` | medium | Boundary Explain→Report: permutation_importance and pdp_results | `pages/07_Explainability.py:406-411, :601-606; utils/session_state.py:158-159` | jobs (arrays) + record (top-k importance table, which is what the manuscript cites) |
-| `CONTRACT-059` | medium | Boundary Sensitivity→Report: sensitivity_seed_results / sensitivity_dropout_results / sensitivity_dropout_baseline | `pages/08_Sensitivity_Analysis.py:221, :499-500; ml/publication.py:1220-1222, :1381-1382…` | record — sensitivity verdicts are manuscript claims; pass them into publication as arguments, never via ambient state |
-| `CONTRACT-060` | medium | Boundary Hypothesis Testing: hypothesis_test_results holds only the LAST test run | `pages/09_Hypothesis_Testing.py:260,441,586,707,819,915; pages/10_Report_Export.py:272-284` | record — make the ledger/methodology log the only store; drop the single-slot key |
-| `CONTRACT-061` | medium | Import cycle ml.publication ↔ utils.insight_ledger is a genuine layering inversion | `ml/publication.py:128,182,453,460; utils/insight_ledger.py (imports at module top)` | view — extract the label/format helpers into a presentation module; both cycles dissolve |
-| `CONTRACT-062` | medium | Cleaning actions that drop rows leave the lockbox labels stale until the next config save | `pages/01_Upload_and_Audit.py:786-796; utils/session_state.py:274-280 vs :437-439…` | project — lockbox validity must be a DAG edge from raw_data, not a side effect of visiting a page |
-| `CONTRACT-063` | low | Boundary Upload→Target: DataConfig / SplitConfig / ModelConfig / TaskTypeDetection / CohortStructureDetection | `utils/session_state.py:13-102; utils/session_manager.py:82-88, :396-404` | project — these five dataclasses are the cleanest existing prototype for AnalysisProject sub-objects; keep them nearly as-is |
-| `CONTRACT-064` | low | Boundary FeatureSel→Preprocess: X is passed as .values, losing the index | `pages/04_Feature_Selection.py:126-140` | engine — selectors should take (DataFrame, mask) and return names; Project owns the mask |
-| `CONTRACT-065` | low | Boundary Preprocess→Train: coach_probe_result (ProbeResult) | `ml/coach_probe.py:47-70; utils/session_manager.py:309-318; utils/session_state.py:372-374` | record — a measured verdict is evidence; keep it in the Record with its data fingerprint attached |
-| `CONTRACT-066` | low | Boundary →Report: insight_ledger | `utils/insight_ledger.py:522-656, :1342-1355, :1140-1341` | record — this is already the Record; keep the schema, replace get_ledger()'s session_state lookup with injection |
-| `CONTRACT-067` | low | RFWrapper defines predict_proba and supports_proba twice | `models/rf.py:75-97` | drop the duplicate — and note models/* is entirely untested, so this is the class of defect that will not be caught during the port |
-| `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` | engine — move verbatim; add tests before the port, not after |
-| `CONTRACT-069` | low | models/* (7 files, 1000 loc) has zero streamlit and a single stable ABC — port it first | `models/base.py:10-73; models/nn_whuber.py:226; pages/06_Train_and_Compare.py:1371-1375` | engine — port first, with characterization tests written against the current behavior before any code moves |
 
 ### Silent-failure landmines — 13
 
@@ -478,6 +464,19 @@ Nothing is closed without a regression test named after it.
 | `SWEEP-038` | low | launcher/make_icon.py — 175 loc build-time asset generator, not app code; its docstring is the product's identity statement | `launcher/make_icon.py:1-13; .gitignore ('One-click launcher artifacts'); .github/workflows/release.yml` | drop (from the app); keep as a build script |
 | `SWEEP-039` | low | ml/__init__.py, utils/__init__.py, pages/__init__.py — one-line docstrings, no re-exports, no side effects | `ml/__init__.py:1; utils/__init__.py:1; pages/__init__.py:1` | engine (ml, utils); drop (pages) |
 
+### Stage-boundary contracts — 8
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `CONTRACT-062` | medium | Cleaning actions that drop rows leave the lockbox labels stale until the next config save | `pages/01_Upload_and_Audit.py:786-796; utils/session_state.py:274-280 vs :437-439…` | project — lockbox validity must be a DAG edge from raw_data, not a side effect of visiting a page |
+| `CONTRACT-063` | low | Boundary Upload→Target: DataConfig / SplitConfig / ModelConfig / TaskTypeDetection / CohortStructureDetection | `utils/session_state.py:13-102; utils/session_manager.py:82-88, :396-404` | project — these five dataclasses are the cleanest existing prototype for AnalysisProject sub-objects; keep them nearly as-is |
+| `CONTRACT-064` | low | Boundary FeatureSel→Preprocess: X is passed as .values, losing the index | `pages/04_Feature_Selection.py:126-140` | engine — selectors should take (DataFrame, mask) and return names; Project owns the mask |
+| `CONTRACT-065` | low | Boundary Preprocess→Train: coach_probe_result (ProbeResult) | `ml/coach_probe.py:47-70; utils/session_manager.py:309-318; utils/session_state.py:372-374` | record — a measured verdict is evidence; keep it in the Record with its data fingerprint attached |
+| `CONTRACT-066` | low | Boundary →Report: insight_ledger | `utils/insight_ledger.py:522-656, :1342-1355, :1140-1341` | record — this is already the Record; keep the schema, replace get_ledger()'s session_state lookup with injection |
+| `CONTRACT-067` | low | RFWrapper defines predict_proba and supports_proba twice | `models/rf.py:75-97` | drop the duplicate — and note models/* is entirely untested, so this is the class of defect that will not be caught during the port |
+| `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` | engine — move verbatim; add tests before the port, not after |
+| `CONTRACT-069` | low | models/* (7 files, 1000 loc) has zero streamlit and a single stable ABC — port it first | `models/base.py:10-73; models/nn_whuber.py:226; pages/06_Train_and_Compare.py:1371-1375` | engine — port first, with characterization tests written against the current behavior before any code moves |
+
 ### Migration safety net — 7
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -492,7 +491,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 62
+## FIXED — 63
 
 
 ### Application state / lockbox — 19
@@ -551,7 +550,7 @@ Nothing is closed without a regression test named after it.
 | `SWEEP-018` | high | The EDA cache fingerprint is SCHEMA-only while set_data() invalidation is CONTENT-based — a same-shape cleaning action resets results but not the profile | `pages/02_EDA.py:125 vs utils/session_state.py:220-226,259-263` | **test:** `tests/test_eda_caches_follow_the_data.py::test_no_cache_on_the_page_keys_on_shape_alone` — Closed - the two notions of invalidation are now one. The page's fingerprint… |
 | `SWEEP-025` | high | INVARIANT — CV strategy is bound to the SPLIT strategy, and cv_strategy/cv_groups_train are cleared WITH the split | `CODE_REVIEW.md 2026-07 'Strategy-aware cross-validation' and 'Test-set slider guardrail'…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_grouped_split_matches_the_page` — Both halves of the invariant are implemented and tested. The CV scheme is… |
 
-### Stage-boundary contracts — 4
+### Stage-boundary contracts — 5
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -559,6 +558,7 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-003` | critical | macro_shape's @st.cache_data functions exclude the DataFrame from the cache key | `ml/macro_shape.py:82-86, 240-247, 337-342, 495-501; correct pattern at pages/02_EDA.py:146-166` | **test:** `tests/test_macro_shape_serves_the_right_dataset.py::test_two_datasets_get_their_own_pca` — Fixed by detainting, not by re-keying: the four @st.cache_data decorators are… |
 | `CONTRACT-015` | high | Lockbox save/restore drops group_col, strata and n_test_groups | `utils/session_manager.py:290-301 vs utils/test_lockbox.py:212-224` | **test:** `tests/test_state_survives_the_round_trip.py::test_a_restored_lockbox_still_knows_it_was_drawn_by_subject` — Duplicate of STATE-042 from the contract pass, and closed.… |
 | `CONTRACT-016` | high | Active cohort run and completed runs are not persisted at all | `utils/cohorts.py:334-344 (CohortRun), :389-407 (_ACTIVE_KEY/_DONE_KEY); utils/session_manager.py:73-162 (key…` | **test:** `tests/test_session_carries_the_run.py::test_the_active_run_comes_back` — Closed for both keys. The failure this row describes - a save taken mid-cohort-run restoring… |
+| `CONTRACT-050` | medium | Boundary FeatureSel: feature_selection_results and consensus_features | `pages/04_Feature_Selection.py:277-282, :447-448, :493-494; utils/session_state.py:283-298, :355-357` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_keeping_a_stage_does_not_keep_its_descendants` — The subtlety survived the port, and in the form the action… |
 
 ### Coach to Router — 4
 
