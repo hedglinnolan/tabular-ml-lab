@@ -1285,7 +1285,10 @@
   "detail": "The measured fact 'only 3 files in ml/ touch streamlit' is about DIRECT references. In a streamlit-free TurboTab worker, importing the manuscript compiler raises ImportError at module load — not at a call site — so a Job that compiles a manuscript fails before it starts, and the failure looks like a packaging problem rather than a coupling problem.",
   "ev": "ml/narrative_engine.py:25 `from utils.insight_ledger import InsightLedger, MODEL_DISPLAY_NAMES`; ml/manuscript_validator.py:9 `from ml.narrative_engine import _MODEL_NAMES`; ml/latex_report.py:1004 `from ml.publication import generate_decis…",
   "act": "Move `import streamlit` inside get_ledger() (the only function that needs it, mirroring what workflow_provenance already does correctly), or extract the pure parts of insight_ledger (Insight, InsightLedger, MODEL_DISPLAY_NAMES, _clean_for_m…",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Closed, and the fix is exactly the one this row proposed. The module-level 'import streamlit as st' is gone from utils/insight_ledger.py - it now lives inside get_ledger() with a comment saying that a module-level import made 1,400 lines of pure domain logic unreachable and tainted ml.narrative_engine and ml.manuscript_validator by association, and that utils.workflow_provenance.get_provenance already did it this way. So the manuscript compiler imports in a streamlit-free worker. The guard is real rather than incidental: tests/test_engine_is_headless.py imports every module under ml/ and models/ plus utils.insight_ledger with streamlit BLOCKED, and it is non-vacuous by construction - it installs a stub streamlit first so blocking means something, and asserts the blocker bites before any core import runs.",
+  "test": "tests/test_engine_is_headless.py::test_no_core_module_needs_streamlit_to_import",
+  "verified_ev": "utils/insight_ledger.py:1400-1407 (the streamlit import is now inside get_ledger, with a comment naming narrative_engine and manuscript_validator as the modules it was tainting); ml/narrative_engine.py:25 and ml/manuscript_validator.py:9 now import clean; tests/test_engine_is_headless.py:38-47 (CORE_UTILS includes utils.insight_ledger), :119-131"
  },
  {
   "id": "RECORD-010",
@@ -1295,7 +1298,9 @@
   "detail": "Run generate_methods_section headlessly and it returns a SHORTER manuscript with no exception: the '### Feature Engineering' section vanishes, per-model preprocessing collapses to the single-config branch, SHAP and Bland-Altman disappear from Model Interpretability, the Sensitivity Analysis section and its seed-CV numbers vanish, and three of the four Methodological Considerations paragraphs vanish. generate_decision_audit_trail() returns '' so the LaTeX Supplementary loses the audit trail — while the Reproducibility paragraph directly above still tells reviewers it is there.",
   "ev": "ml/publication.py lines 160,164,212,597,731,1171,1220,1349,1381,1401,1826 (the 11 try-blocks) covering 12 session keys: methodology_log, pre_fe_feature_cols, engineered_feature_names, selected_features, feature_engineering_applied, engineer…",
   "act": "The logic/delivery split for this file is: there IS no delivery code — hoist all 12 keys to explicit keyword parameters, then the module is pure and the caller (Project) supplies them. Better: delete the module's manuscript half entirely, s…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Duplicate of MINE-012 from the record pass, and it adds the framing that matters: these 32 references are not delivery code, they are HIDDEN INPUTS. Run generate_methods_section headlessly and it returns a shorter manuscript with no exception - the Feature Engineering section vanishes, per-model preprocessing collapses to the single-config branch, SHAP and Bland-Altman leave Model Interpretability, the whole Sensitivity Analysis section goes, three of four Methodological Considerations paragraphs go, and generate_decision_audit_trail returns '' so the LaTeX Supplementary loses the audit trail while the Reproducibility paragraph directly above still tells reviewers it is there. That last pairing is the governing rule broken by omission. The logic/delivery split for this file is that there is no delivery half: hoist all 12 keys to keyword parameters and the module is pure.",
+  "verified_ev": "ml/publication.py:154-166, 211-215, 596-620, 730-737, 1170-1178, 1219-1235, 1348-1360, 1380-1392, 1400-1412, 1824-1836 - the guarded 'import streamlit as st' blocks reading 12 session keys"
  },
  {
   "id": "RECORD-011",
@@ -1305,7 +1310,9 @@
   "detail": "The seed-stability coefficient-of-variation sentence — the only quantitative sensitivity result in the whole Methods section — silently disappears with no log line at all.",
   "ev": "ml/publication.py:1219-1224 (import) and :1269-1285 (use, inside its own bare except)",
   "act": "Never reference an outer-scope conditional import. Pass seed_df in as a parameter. At minimum, log the exception.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The inner block at :1270 still reads st from the outer try's conditional import; if that import failed, st is unbound and the access raises NameError, which the inner bare except swallows with no log line at all. The casualty is the seed-stability coefficient-of-variation sentence - the only quantitative sensitivity result anywhere in the Methods section - and it disappears silently. Two rules broken at once: never reference an outer-scope conditional import, and never swallow without a log. Passing seed_df in as a parameter removes both.",
+  "verified_ev": "ml/publication.py:1219-1224 (the try-block that imports streamlit) and :1268-1286 (st.session_state.get('sensitivity_seed_results') at :1270, inside its own bare 'except Exception: pass' at :1285-1286)"
  },
  {
   "id": "RECORD-012",
@@ -1315,7 +1322,9 @@
   "detail": "The evidence map reports raw-provenance values for n_total, models_trained, primary_model, feature counts and metrics, while the draft reports the frozen export-scoped values (which can exclude models via included_models, override the primary model, and substitute population/feature counts). The artifact whose entire purpose is to make 'compiled from the audit trail' checkable can quietly contradict the draft. There is no check that compares them.",
   "ev": "pages/10_Report_Export.py:2094 `_em_engine = _NE_em(_get_prov_em(), _report_ledger)` — no manuscript_context — versus :616 `NarrativeEngine(prov, _report_ledger, manuscript_context=manuscript_context)`",
   "act": "Build the evidence map from the same _cached_bundle. Add a test that a draft and its evidence map, built from one context, agree on n_total, model list and primary model.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The evidence map is still built from a bare NarrativeEngine with no manuscript_context, while the draft is built from one that has it - and manuscript_context is what applies included_models, the primary-model override, and the substituted population and feature counts. So the artifact whose entire purpose is to make 'compiled from the audit trail' checkable reports raw provenance values that can differ from the draft's frozen export-scoped ones, and nothing compares the two. A reviewer using the evidence map to audit the draft is auditing a different document. Build it from the same _cached_bundle and add a test that a draft and its evidence map agree on n_total, model list and primary model.",
+  "verified_ev": "pages/10_Report_Export.py:2126-2127 (_em_engine = _NE_em(_get_prov_em(), _report_ledger) - no manuscript_context - then generate_evidence_map()) versus :635 (NarrativeEngine(prov, _report_ledger, manuscript_context=manuscript_context)) and the bundle built at :961-978"
  },
  {
   "id": "RECORD-013",
@@ -1325,7 +1334,9 @@
   "detail": "Add a model to the registry and update only MODEL_DISPLAY_NAMES: latex_report's fallback dict silently renders 'CATBOOST_REG' where the markdown renders 'CatBoost (Regressor)'. Worse, the leak check derives its vocabulary from the PRIVATE _MODEL_NAMES, so a key present in MODEL_DISPLAY_NAMES but absent from _MODEL_NAMES is never checked for leakage at all.",
   "ev": "utils/insight_ledger.py:101 MODEL_DISPLAY_NAMES; ml/narrative_engine.py:232 _MODEL_NAMES (= the former plus lasso/xgb/lgbm/svm/knn/logistic/dt); ml/latex_report.py:192-214 a 21-entry HARDCODED fallback dict inside an `except Exception:`; ml…",
   "act": "Single source of truth in a streamlit-free registry module; make _MODEL_NAMES public; delete latex_report's fallback dict (its `except Exception` was only there to avoid the streamlit import, which the extraction fixes anyway).",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD - all four mappings still exist and still have to be kept in agreement by hand. Add a model to the registry and update only MODEL_DISPLAY_NAMES: latex_report's fallback renders 'CATBOOST_REG' where the markdown renders the display name. The sharper half is the validator: check 11 ('no internal model keys leak into export text') derives its vocabulary from the private _MODEL_NAMES, so a key present in MODEL_DISPLAY_NAMES but absent from _MODEL_NAMES is never checked for leakage at all - the check silently narrows rather than failing. One streamlit-free registry module, _MODEL_NAMES made public, and latex_report's fallback deleted; its except existed only to dodge the streamlit import, which RECORD-009 has now removed.",
+  "verified_ev": "utils/insight_ledger.py:100 MODEL_DISPLAY_NAMES (used at :129 and :426); ml/narrative_engine.py:232 _MODEL_NAMES (used at :1832-1833); ml/latex_report.py:201-223 a hardcoded fallback_names dict inside an except; ml/manuscript_validator.py:9 imports the PRIVATE _MODEL_NAMES for its leak check"
  },
  {
   "id": "RECORD-014",
@@ -1335,7 +1346,9 @@
   "detail": "Any feed that orders cards by timestamp reorders itself when the user re-runs an earlier stage (re-running EDA after training places EDA below training). Any feed that orders by declaration puts the coach's shortlist rationale AFTER the training it informed. Neither ordering is wrong enough to look like a bug — it just makes the transcript incoherent.",
   "ev": "utils/workflow_provenance.py:198-208 (declaration order upload, eda, feature_engineering, feature_selection, split, preprocessing, training, …, coach) versus the actual writers: coach is written on page 05 but declared 11th; split is writte…",
   "act": "Add an explicit monotonically increasing sequence number and a stage_order constant to the Record, and record created_at separately from updated_at per section. Do this before any feed rendering is written.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, both halves. Every section still carries one timestamp set at write time, so re-running EDA after training places EDA below training in any timestamp-ordered feed; and the declaration order still puts the coach's shortlist rationale after the training it informed, so declaration-ordering is wrong in the other direction. Neither ordering is wrong enough to read as a bug - it just makes the transcript incoherent, which is worse in a feed than in a page-ordered app, because in a feed the transcript IS the interface. Add an explicit monotonic sequence number and a stage_order constant, and split created_at from updated_at per section, BEFORE any feed rendering is written - retrofitting an ordering onto a record that never captured one is not possible after the fact.",
+  "verified_ev": "utils/workflow_provenance.py section dataclasses each carry a single write-time 'timestamp: str' (e.g. CoachProvenance at :203-213) and the container declares its sections in a fixed order that does not match the writing order - coach is written on page 05 and declared last; there is no sequence number and no created_at/updated_at split anywhere"
  },
  {
   "id": "RECORD-015",
@@ -1345,7 +1358,9 @@
   "detail": "Rename or restructure any field during the rebuild and old saved sessions restore with that fact missing and schema_version still reporting 1. The manuscript compiler then treats the fact as 'NOT RECORDED' and honestly omits the section — the user sees a shorter, correct-looking manuscript with no indication that data was dropped.",
   "ev": "utils/workflow_provenance.py:584-655 (11 identical `{k: v for k, v in data[...].items() if k in X.__dataclass_fields__}` filters) and :588 (`prov.schema_version = data.get('schema_version', 1)`)",
   "act": "Branch on schema_version with explicit migrations, and log (or collect into the returned object) every dropped key. Test restoring a v1 payload into a v2 schema.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: eleven silent key-dropping filters, and a schema_version that is stored and never consulted. Rename or restructure any field during the rebuild and an old saved session restores with that fact missing, schema_version still reporting 1, and no signal anywhere. The manuscript compiler then treats the fact as NOT RECORDED and honestly omits the section, so the user sees a shorter, correct-looking manuscript and has no way to learn that data was dropped. That is the worst shape a silent failure can take - the app's honesty machinery working perfectly on corrupted input. Branch on schema_version with explicit migrations, collect every dropped key onto the returned object, and test restoring a v1 payload into a v2 schema.",
+  "verified_ev": "utils/workflow_provenance.py - eleven identical '{k: v for k, v in data[...].items() if k in X.__dataclass_fields__}' filters in from_dict; :244 (schema_version: int = 1) and :662 (prov.schema_version = data.get('schema_version', 1)), read and never branched on"
  },
  {
   "id": "RECORD-016",
@@ -1355,7 +1370,9 @@
   "detail": "The UI always reports one more outstanding author input than exist. The test that would catch it passes, because it tests the unused method.",
   "ev": "pages/10_Report_Export.py:2068 `st.session_state['methods_section'].count('[AUTHOR REQUIRED')` vs ml/narrative_engine.py:112-118 and tests/test_manuscript_trust.py::test_preamble_not_counted_as_author_input",
   "act": "Call count_author_inputs(). More generally: audit for other engine methods the app has re-implemented inline — ManuscriptDraft.to_latex() is dead in the app for the same reason.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The page still counts the raw substring, which includes the ownership preamble at :2084, so the UI always reports one more outstanding author input than exist - and the test that would catch it passes, because it exercises the engine method the app does not call. That is the same shape as COACH-002: a green test over a code path production never takes. The general form of this row is the actionable part and it should be run as a sweep: audit for every engine method the app has re-implemented inline. ManuscriptDraft.to_latex() is named as another instance and is likewise dead in the app.",
+  "verified_ev": "pages/10_Report_Export.py:2100 - _n_author_inputs = st.session_state['methods_section'].count('[AUTHOR REQUIRED'); ml/narrative_engine.py:112-118 ManuscriptDraft.count_author_inputs, which excludes the ownership preamble and is never called anywhere in pages/; tests/test_manuscript_trust.py::test_preamble_not_counted_as_author_input"
  },
  {
   "id": "RECORD-017",
@@ -1365,7 +1382,9 @@
   "detail": "Every line of the Decision Audit Trail in the LaTeX Supplementary is labeled 'YYYY-MM-DD HH:MM UTC' but is actually local wall-clock time, off by the machine's offset. A reviewer reconciling the audit trail against anything else finds a systematic skew.",
   "ev": "ml/publication.py:1747-1759 (`dt.replace(tzinfo=timezone.utc)`) versus utils/workflow_provenance.py (every record_* uses datetime.now()) and utils/insight_ledger.py:597 (created_at default)",
   "act": "Record timezone-aware UTC timestamps at the source (datetime.now(timezone.utc)) and render with an explicit conversion. Add a test asserting recorded timestamps carry tzinfo.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Every timestamp in the Record and the Ledger is still local wall-clock (datetime.now(), no tzinfo), and _format_audit_timestamp still ASSUMES naive means UTC, so every line of the Decision Audit Trail in the LaTeX Supplementary is labeled UTC while carrying local time - a systematic skew equal to the machine's offset, and one that changes across daylight saving within a single project. A reviewer reconciling the audit trail against anything else finds the skew and cannot explain it. Record datetime.now(timezone.utc) at the source, render with an explicit conversion, and assert recorded timestamps carry tzinfo. Note this also silently breaks ordering for any project that spans a DST boundary.",
+  "verified_ev": "ml/publication.py:1747-1759 (_format_audit_timestamp: if dt.tzinfo is None, dt = dt.replace(tzinfo=timezone.utc), then strftime '%Y-%m-%d %H:%M UTC'), used at :1850; sources are datetime.now().isoformat() throughout utils/workflow_provenance.py and utils/insight_ledger.py"
  },
  {
   "id": "RECORD-018",
@@ -1375,7 +1394,9 @@
   "detail": "metadata.json's dataset.n_rows is len(df) while the Record's n_total may be the analysis total; its splits come from split_config while SplitProvenance may hold different numbers; its models_trained comes from trained_models while TrainingProvenance.models_trained may differ after an invalidation. Two authoritative-looking records in the reviewer's hands, disagreeing, with no cross-check.",
   "ev": "pages/10_Report_Export.py:2242 generate_metadata() -> metadata.json; utils/session_manager.py:267-276 provenance.json (a different artifact, different file, different trigger)",
   "act": "Emit provenance.json (and the ledger) into the export package and derive metadata.json from the Record, or delete metadata.json. Add a consistency test asserting the two agree on n, splits and models.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The export ZIP still ships metadata.json, built independently from session_state, and still omits the Record itself - provenance.json and the ledger are written only by session_manager's save, a different artifact with a different trigger. So the reviewer receives two authoritative-looking records of the same facts that can disagree: metadata's dataset.n_rows is len(df) while the Record's n_total may be the analysis total; metadata's splits come from split_config while SplitProvenance may hold different numbers; metadata's models come from trained_models while TrainingProvenance.models_trained may differ after an invalidation. Nothing cross-checks them. Emit the Record into the package and derive metadata from it, or delete metadata.json.",
+  "verified_ev": "pages/10_Report_Export.py:150 generate_metadata(), :2288-2289 (metadata = generate_metadata(); zip_file.writestr('metadata.json', ...)) versus utils/session_manager.py:267-276 (provenance.json, written only by the separate session save)"
  },
  {
   "id": "RECORD-019",
@@ -1385,7 +1406,9 @@
   "detail": "A user who downloads 'Download Complete Package (ZIP)' does not get the TRIPOD checklist, Table 1 as CSV/TeX, the evidence map, or the flow diagram — while the LaTeX Supplementary explicitly says '[See exported TRIPOD checklist CSV/PDF]'. And evidence_map.md, flow_diagram.mmd, tripod_checklist.csv and the Table 1 exports download even when validation FAILED and every other export is blocked.",
   "ev": "pages/10_Report_Export.py — tripod_checklist.csv (:1907), table1_final.csv (:1941), table1_final.tex (:1946), methods_section.md (:2074), evidence_map.md (:2097), flow_diagram.mmd (:2132); ZIP builder at :2237-2445",
   "act": "Make the package the single artifact and generate it from one manifest; apply the gate uniformly. In TurboTab, packaging is a Job with an explicit member list that a test can assert against.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, both halves. A user who downloads 'Download Complete Package (ZIP)' still does not get the TRIPOD checklist, Table 1 as CSV or TeX, the evidence map, or the flow diagram - while the LaTeX Supplementary explicitly tells the reader '[See exported TRIPOD checklist CSV/PDF]', i.e. the package references an artifact it does not contain. And four of these bypass the validation gate entirely: evidence_map.md, flow_diagram.mmd, tripod_checklist.csv and the Table 1 exports download even when validation FAILED and every other export is blocked. A gate that four buttons walk around is not a gate. Generate the package from one manifest and apply the gate uniformly; in TurboTab packaging is a Job whose member list a test can assert.",
+  "verified_ev": "pages/10_Report_Export.py:1942 (tripod_checklist.csv), :2181 (flow_diagram.mmd), :2131-2133 (evidence_map.md), plus table1_final.csv/.tex and methods_section.md - all individual download buttons; ZIP builder at :2288 onward does not include them"
  },
  {
   "id": "STATE-001",
@@ -1395,7 +1418,10 @@
   "detail": "The lockbox stores index LABELS precisely so membership survives row filtering — its module docstring (test_lockbox.py:16-17) states: 'stores index LABELS (not positions) so membership survives feature engineering and row filtering, which preserve the original index.' apply_plausibility_filter is the one filter that does NOT preserve it. After enabling plausibility_mode='filter', the frozen labels are matched against a fresh 0..n-1 RangeIndex, so `is_test_row` selects an arbitrary, wrong set of rows. If enough rows happen to match, pages/06:411 does not trip its `< 2 / < 4` guard and the run proceeds with a test set that is not the quarantined one — while every UI chip and the exported manus…",
   "ev": "ml/pipeline.py:124 `return df.loc[mask].reset_index(drop=True)` -> pages/05_Preprocess.py:863 `st.session_state['filtered_data'] = filtered_df` -> utils/session_state.py:211-212 get_data() returns filtered_data ahead of raw_data -> utils/te…",
   "act": "Change apply_plausibility_filter to `return df.loc[mask]` (labels intact) or, better, return the boolean mask and let the Project apply it. Then add an assertion at the lockbox boundary: `matched = len(set(lockbox['labels']) & set(df.index)…",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Closed, and closed at the source rather than at the consumer. apply_plausibility_filter no longer renumbers: the docstring at :115-123 spells out why - the lockbox seals labels at upload and a cohort run banks the labels of the people in the group, so renumbering survivors would leave a 'Female' run quietly holding half men with nothing on screen to say so. Two tests hold it, and the second is the one that makes it durable: test_a_cohort_started_from_a_filtered_frame_holds_only_that_group asserts the downstream consequence rather than the implementation, so a re-introduction through some other route also fails. Note the CLASS is not closed - TRANSITION_PLAN 02.2 and T0-ID-001 cover the remaining renumbering repairs, and the lockbox-boundary assertion this row also asks for (matched = |lockbox labels and df.index|) still does not exist.",
+  "test": "tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given",
+  "verified_ev": "ml/pipeline.py:109-127 - the reset_index(drop=True) is gone and the docstring now states that the returned frame keeps the labels it came in with, naming the lockbox and the cohort run as the two identity holders; tests/test_row_labels_are_identities.py:49-95"
  },
  {
   "id": "STATE-002",
@@ -1405,7 +1431,9 @@
   "detail": "sklearn.base.clone reads get_params(), deep-copies each value, reconstructs the class, then asserts `param_new is param_old` and raises RuntimeError('Cannot clone object ... as the constructor either does not set or modifies parameter lower_bounds'). PlausibilityGate's __init__ builds a NEW array from whatever it is handed, so the identity check always fails. Consequences, all silent: (1) CROSS-VALIDATION IS SILENTLY DISABLED — pages/06:1561 catches it as `st.warning(f'Cross-validation failed for {model_name}: {cv_error}. Skipping CV.')`, a transient banner, while the results table and the manuscript render complete without CV; (2) SEED SENSITIVITY RETURNS ALL NaN — pages/08:211 appends `{'s…",
   "ev": "ml/preprocess_operators.py:50-55 `self.lower_bounds = np.array([np.nan if v is None else float(v) for v in lower_bounds], dtype=float)`. Clone sites: ml/pipeline.py:531/534/553 (inside reconcile_pipeline_columns, called at pages/06:1299 eve…",
   "act": "Move all coercion out of __init__ into fit(), storing as fitted attributes (self.lower_bounds_, self.upper_bounds_); keep __init__ as bare assignment, exactly as UnitHarmonizer does. Change OutlierCapping to `self.params = params` and defau…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. sibling-of: TEST-003 - the same defect from the state pass, and this row carries the consequence chain the other does not. reconcile_pipeline_columns clones UNCONDITIONALLY on every training run, so with plausibility bounds configured: (1) cross-validation is silently disabled, surfacing as a transient st.warning while the results table and the manuscript render complete WITHOUT CV; (2) seed sensitivity returns all NaN; (3) any refit path fails the same way. Each failure is caught by a different broad except and presents as a different, unrelated-looking symptom. The fix is the one UnitHarmonizer already documents at :13 - bare assignment in __init__, coercion in fit() onto trailing-underscore attributes - plus self.params = params in OutlierCapping (see MINE-006).",
+  "verified_ev": "ml/preprocess_operators.py:46-56 (PlausibilityGate.__init__ rebuilds both bound arrays); clone sites ml/pipeline.py:512-540 (reconcile_pipeline_columns, called on every training run) and ml/eval.py:161 (cross_val_score); ml/preprocess_operators.py:78-82 (OutlierCapping rewrites self.params)"
  },
  {
   "id": "STATE-003",
@@ -1415,7 +1443,9 @@
   "detail": "UnitHarmonizer fails LOUDLY (numpy broadcast ValueError, caught by pages/05's try/except into st.error), but PlausibilityGate does NOT: min() truncates to the shorter length and applies the first k bounds to the first k columns of a differently-ordered, differently-sized column set. A glucose bound of [70, 140] mg/dL gets applied to, say, creatinine; every creatinine value becomes NaN and is then median-imputed by the very next pipeline step. The output has no NaNs, the shape is right, the model trains, and the recipe string cheerfully says 'Plausibility gate (NHANES)'. The same truncation makes reconcile_pipeline_columns dangerous even after the clone bug is fixed: dropping one column from …",
   "ev": "Built against the full list: ml/pipeline.py:45 `for col in numeric_features` (build_unit_harmonization_config) and ml/pipeline.py:84 `for col, factor in zip(numeric_features, conversion_factors)` (build_plausibility_bounds), both called at …",
   "act": "Delete the positional interfaces. build_plausibility_bounds already returns 'bounds_by_feature': {col -> {lower, upper, unit}} — make that the ONLY return, and have PlausibilityGate take a dict keyed by column name plus the ordered column l…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. sibling-of: MINE-001 - the positional-alignment class from the state pass, and this row names the asymmetry that makes it dangerous. UnitHarmonizer fails LOUDLY on a length mismatch (numpy broadcast ValueError, caught into an st.error); PlausibilityGate does NOT, because transform truncates with min() and applies the first k bounds to the first k columns of a differently-ordered, differently-sized set. A glucose bound of [70,140] landing on creatinine turns every creatinine value into NaN, which the very next pipeline step median-imputes - so the output has no NaNs, the shape is right, the model trains, and the recipe string says 'Plausibility gate (NHANES)'. build_plausibility_bounds already returns bounds_by_feature keyed by column name; making that the only return and keying the gate by name closes the class.",
+  "verified_ev": "ml/pipeline.py:41-67 (build_unit_harmonization_config appends over the full numeric_features), :73-84 (build_plausibility_bounds zips over it), call sites in pages/05_Preprocess.py passing a FILTERED numeric_features to build_preprocessing_pipeline; ml/preprocess_operators.py:60-73 (PlausibilityGate.transform uses n_cols = min(X.shape[1], len(lower), len(upper)))"
  },
  {
   "id": "STATE-004",
@@ -1425,7 +1455,9 @@
   "detail": "Two distinct silent failures. (1) The exported joblib is NOT the pipeline the model was trained with — pages/06:1312 refits on X_train and stores that in the separate `fitted_preprocessing_pipelines` dict, which page 10 never exports. A reviewer who loads preprocessing/ridge_pipeline.joblib and applies it to new data gets different scaler means/imputer medians/encoder categories than the published model saw. The manifest calls it the model's pipeline. (2) The Preprocess-page CSV download contains data transformed with statistics learned from the held-out test rows. Neither is detectable from the artifact. The exported config JSON is correct, which makes the mismatch harder to notice.",
   "ev": "Fit on all rows: pages/05_Preprocess.py:945 `temp_pipeline.fit(X_sample)` and :999 `pipeline.fit(X_sample)`, where X_sample = df[all_features] (05:864 or :867). Stored fitted at 05:1005 -> set_preprocessing_pipelines. Consumed WITHOUT refit…",
   "act": "Export fitted_preprocessing_pipelines (train-fitted), not preprocessing_pipelines_by_model. Better, in the rebuild: never store fitted objects in the Project at all — store PreprocessSpec, and have the job that trains a model emit a single …",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, both failures. (1) The exported joblib is not the pipeline the model was trained with: pages/05 fits on all rows and stores that in preprocessing_pipelines_by_model, pages/06 refits on X_train into fitted_preprocessing_pipelines, and pages/10:284/:2323 exports the FORMER. A reviewer who loads preprocessing/<model>_pipeline.joblib and applies it to new data gets different scaler means, imputer medians and encoder categories than the published model saw - and the manifest calls it the model's pipeline. (2) The Preprocess-page CSV preview contains data transformed with statistics learned from the held-out test rows, which is the lockbox leaking through a download button. Neither is detectable from the artifact, and the exported config JSON is correct, which makes the mismatch harder to notice. Export the train-fitted pipelines; in the rebuild, store a PreprocessSpec and never a fitted object.",
+  "verified_ev": "pages/05_Preprocess.py:898-901 (X_sample = filtered_df[all_features] or df[all_features] - all rows), :979-980 and :1033-1034 (temp_pipeline.fit(X_sample) / pipeline.fit(X_sample)); pages/06_Train_and_Compare.py refits on X_train into the separate fitted_preprocessing_pipelines dict; pages/10_Report_Export.py:284 and :2323-2325 export from preprocessing_pipelines_by_model"
  },
  {
   "id": "STATE-005",
