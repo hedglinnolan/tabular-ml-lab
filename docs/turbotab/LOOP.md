@@ -28,7 +28,18 @@ status, **no `FIXED` without a named regression test**, and no `PARTIAL` / `NOT-
 `UNVERIFIED`. Until they are re-checked they are research, not a backlog.
 
 This loop **reads application code and writes only to `docs/turbotab/`**. That is what makes it
-safe to run unattended. Paste this:
+safe to run unattended.
+
+**Run it in a fresh session, not the builder's — verification and construction are different
+hands.** This rule was added after L3–L9 landed, for two reasons that did not exist when the loop
+was written. First, the builder now *wrote or moved* a large share of the code the findings
+describe, and a builder verifying their own work reads intent where the job is to read code —
+the same reason the workflow pattern never lets the finder be the judge. Second, both the loop
+and the builder write the same data files (`findings.json`, `register.json`), and this project
+has already lost a register to two writers on one artifact. One writer at a time: the loop runs
+alone, the builder resumes after it lands.
+
+Paste this into the fresh session:
 
 > You are working the TurboTab transition ledger on branch `TurboTab`. Read
 > `docs/turbotab/README.md` and `docs/turbotab/LOOP.md` first.

@@ -4084,5 +4084,17 @@
   "note": "Built as its own slice before Loop 1, with the fourth dataset's Classic baseline measured first and written to its own file — the three original baselines are frozen and every pre-registered threshold is banked against them, so injecting a leak into one would have invalidated the lot. turbotab/sample_data/leaky_sepsis.csv carries abx_escalation_score at r=0.9996 with the outcome. Classic's baseline records the precise gap: it offers a Run leakage detection action but never names the leaking column, and has no acknowledgment path. Guided now pushes one question per leaking column, named, ranked first in the plan. router.audit refuses a blocker offered as pull and refuses a skipped blocker at any confidence — consequence is the one kind certainty does not make moot, since being sure a column leaks is a reason to ask. Exiting unresolved is permitted and recorded: acknowledge_blocker requires a sentence and 400s without one. The standing harness still passes unchanged on the original three datasets.",
   "test": "tests/test_router.py::test_a_leaking_column_is_pushed_not_offered",
   "verified_ev": "ml/router.py blockers/unresolved_blockers/acknowledgment_required; turbotab/api.py acknowledge_blocker"
+ },
+ {
+  "id": "T0-CLASSIC-002",
+  "area": "TIER0",
+  "sev": "high",
+  "item": "Classic's leakage detection requires prior suspicion — it offers 'Run leakage detection' but never names the leaking column unprompted",
+  "detail": "Measured while baselining leaky-sepsis for T0-ROUTE-001. The capability is present but discovery is inverted: the user must already suspect a leak to go looking for one, which defeats the purpose of detection — the users who most need the warning are the ones who do not suspect. There is also no acknowledgment path: a user can proceed past a known leak with nothing recorded. Guided now pushes one named question per leaking column, ranked first, with a required-sentence acknowledgment to proceed unresolved. Recorded in the leaky-sepsis baseline data as the before.",
+  "ev": "docs/turbotab/data/routing-baseline.json leaky-sepsis notes; pages/02_EDA.py leakage action; register rows explore-eda-leakage-col, explore-blocker-acknowledgment",
+  "act": "resolved-in-core; closes at L11 convergence of pages/02 — Classic gains the named push and the acknowledgment path when it converges onto the Router.",
+  "status": "OPEN",
+  "verified_against": "TurboTab @ 26fc6ce",
+  "note": "The queue phrase is deliberate: this row is the first entry in the L11 convergence queue for pages/02."
  }
 ]

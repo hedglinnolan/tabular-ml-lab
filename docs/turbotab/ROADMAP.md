@@ -164,6 +164,14 @@ exit past it unresolved is itself a recorded decision. This is the routing const
 clauses, and `router.audit()` enforces all of it before any run is scored — a run that breaks a
 rule has no number, it has a failure.
 
+Two refinements from the T0-ROUTE-001 build, now binding:
+
+- **Certainty does not make a question of consequence moot.** Being certain a column leaks is a
+  reason to ask, not a reason to stay quiet — the one place where `high` confidence must not
+  skip. This is why consequence could never fit under fact.
+- **Blockers rank first.** A blocker third in a list of nine is a blocker in name only. Ordering
+  is part of the gate.
+
 **Unblocks:** L8, and the shape of L9.
 
 ### ◆ Decision C — cutover · **ANSWERED: Streamlit is never deleted**

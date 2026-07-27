@@ -446,5 +446,13 @@
   "classic": "ml/eda_recommender.py:541 (already engine)",
   "state": "both",
   "reason": "Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question."
+ },
+ {
+  "id": "explore-blocker-acknowledgment",
+  "step": "explore",
+  "capability": "Recorded acknowledgment to proceed past an unresolved blocker (required sentence; 400 without one)",
+  "classic": "(none — Classic has no acknowledgment path at all)",
+  "state": "guided-only",
+  "reason": "The tool refuses silence, not the user's judgment. Classic lets a user proceed past a known leak with no record; owed to Classic with the named-column push at L11 convergence of pages/02."
  }
 ]

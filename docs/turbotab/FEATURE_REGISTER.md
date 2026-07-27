@@ -7,7 +7,7 @@
 | `both` | exposed in Classic and Guided | 25 |
 | `core` | extracted into the shared core | 4 |
 | `classic-only` | a claim to be justified, never a shrug | 23 |
-| `guided-only` | a debt owed back to Classic | 4 |
+| `guided-only` | a debt owed back to Classic | 5 |
 
 ## Data & Target (Classic: pages/01, Step 4) — 22
 
@@ -48,10 +48,11 @@
 | `core-readiness-model` | Step-completion / readiness model (ten predicates + quick/advanced) | utils/theme.py:685 render_sidebar_workflow | **core** | Extracted to turbotab/readiness.py in L6; the page asks instead of computing, and a test asserts the expressions are gone. The Router's first real input. |
 | `engine-headless` | Engine imports and runs with no Streamlit in the process | n/a — this is the core | **core** | All 45 core modules import with streamlit blocked, enforced by tests/test_engine_is_headless.py with a stub-first blocker so it cannot pass vacuously. Six were tainted; four went with two deleted lines (insight_ledger's module-level import, which also freed narrative_engine and manuscript_validator, and eda_actions' dead one). |
 
-## Explore / EDA (Classic: pages/02) — 27
+## Explore / EDA (Classic: pages/02) — 28
 
 | ID | Capability | Classic | State | Reason |
 |---|---|---|---|---|
+| `explore-blocker-acknowledgment` | Recorded acknowledgment to proceed past an unresolved blocker (required sentence; 400 without one) | (none — Classic has no acknowledgment path at all) | **guided-only** | The tool refuses silence, not the user's judgment. Classic lets a user proceed past a known leak with no record; owed to Classic with the named-column push at L11 convergence of pages/02. |
 | `explore-eda-class-imbalance` | EDA trigger: eda_class_imbalance (warning) | pages/02_EDA.py:415 | **both** | Raised by the profile and rendered; the imbalance finding is in the Explore stack. |
 | `explore-eda-leakage-col` | EDA trigger: eda_leakage_<var> (blocker) | pages/02_EDA.py:279 | **both** | T0-ROUTE-001 built: leakage is now a pushed question of consequence, not a palette offer. The Router raises one question per column correlating above 0.95 with the target, naming the column, ranked first in the plan. router.audit refuses a blocker offered as pull or skipped at any confidence. Leaving the step with one unresolved is permitted and recorded — the tool does not refuse the user's judgment, it refuses silence, and the acknowledgment is what the manuscript carries as a stated limitation. Classic still only offers a Run leakage detection action and never names the leaking column, so the Classic side of this row remains owed at L11 convergence of pages/02. |
 | `explore-eda-missing-moderate` | EDA trigger: eda_missing_moderate (info) | pages/02_EDA.py:380 | **both** | Same source, info severity. |
