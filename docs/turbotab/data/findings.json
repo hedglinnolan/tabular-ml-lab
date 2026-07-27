@@ -4442,7 +4442,9 @@
   "detail": "LANDS: drop the module, salvage one function. A repo-wide search for `from utils.persistence` / `import utils.persistence` returns 0 hits outside the file itself (the many 'persistence' greps are topological persistence in ml/macro_shape.py). It is 158 loc defining save_dataframe, load_dataframe, save_model (joblib.dump at :57), load_model, save_session_metadata, load_session_metadata, list_cached_sessions, data_hash(df) at :109, and generate_reproducibility_manifest at :116. It is listed as 'uncovered' but the real status is unreachable. Note the trap: it is tempting to adopt it wholesale as the Project serializer, which would import the unpicklable-pipeline bug (finding above) straight int…",
   "ev": "utils/persistence.py:1-158; zero import sites repo-wide",
   "act": "Do not adopt as-is. Lift `data_hash` and `generate_reproducibility_manifest` into project with tests, delete the rest. Verify save_model against a pipeline containing the log_transform step before relying on joblib.dump.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD - verified unreachable, not merely uncovered. The trap the row names is the one to record: it is tempting to adopt this wholesale as the Project serializer, and doing so would import two defects at once - joblib.dump of a pipeline containing the local log_transform closure (TEST-004) fails, and save_dataframe writes parquet with the index dropped, which is the lockbox-identity class (STATE-084). It also reintroduces a DISK path into a product whose privacy claim is that nothing is written to disk (SWEEP-007), the same objection as utils/dataset_db.py. Lift data_hash and generate_reproducibility_manifest with tests - pages/10 already has its own manifest builder that fails silently to None (RECORD-031), so there is a real consumer for a tested one - and delete the rest.",
+  "verified_ev": "utils/persistence.py defines save_dataframe, load_dataframe, save_model (joblib.dump), load_model, save_session_metadata, load_session_metadata, list_cached_sessions, data_hash and generate_reproducibility_manifest; a repo-wide grep for 'from utils.persistence' / 'import utils.persistence' / 'from utils import persistence' returns ZERO hits"
  },
  {
   "id": "TEST-028",
@@ -4452,7 +4454,9 @@
   "detail": "LANDS: engine. 5 public functions: visualizations.py:12 `plot_training_history(history: Dict[str, List[float]]) -> go.Figure`, :53 plot_predictions_vs_actual, :91 plot_residuals, :129 plot_bland_altman, :170 `create_metrics_display(metrics: Dict[str, float]) -> str`. Confirmed it never calls st.pyplot/st.plotly_chart, so it is pure. But zero coverage means a refactor can silently swap which trace is which (predicted vs actual axes), invert a residual sign, or change create_metrics_display's string format — all of which render fine and are wrong. Consumers: pages/06 (:69), pages/07 (:1078), scripts/smoke_check.py.",
   "ev": "visualizations.py:12,53,91,129,170; consumers pages/06_Train_and_Compare.py:69, pages/07_Explainability.py:1078",
   "act": "Structural golden test, not image comparison: assert len(fig.data), each trace's .name/.type/.mode, axis titles, and the first/last 3 values of trace .x/.y against frozen literals. For create_metrics_display assert the exact returned string…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: the module is genuinely pure and genuinely untested - the two tests that name it check that it imports, not what it draws. That combination is the row's point: it is the safest module to move and the easiest to break unnoticed, because a swapped axis, an inverted residual sign or a changed metric-string format all render fine and are wrong, and a figure is the one artifact nobody diffs. The action's shape is right and worth following literally: assert trace count, each trace's name/type/mode, the axis titles, and the first and last three values of x and y against frozen literals - structural, not image comparison. MINE-043 and MINE-044 are two live defects in this same file that such a test would have caught.",
+  "verified_ev": "visualizations.py:12, 53, 91, 129, 170 - five public functions, no streamlit import, no st.pyplot or st.plotly_chart; the only test files mentioning visualizations are tests/test_engine_is_headless.py and tests/test_page_imports.py, both of which only IMPORT it"
  },
  {
   "id": "TEST-029",
@@ -4462,7 +4466,9 @@
   "detail": "LANDS: engine. ml/feature_steps.py:11 `create_pca_step(...)` and :39 `class KMeansFeatures(BaseEstimator, TransformerMixin)` — both stochastic (PCA sign convention, KMeans init) so their outputs are seed-sensitive and will differ across sklearn versions unless random_state is pinned; a migration that touches the seed changes engineered feature VALUES silently. ml/baseline_models.py:21 `train_baseline_models(...)` and :150 `format_comparison_table(...)` produce the reference numbers a model is claimed to beat. Both have 1 importer each (low fan-in, borderline) but high consequence because their outputs are published.",
   "ev": "ml/feature_steps.py:11,39; ml/baseline_models.py:21,150",
   "act": "Pin random_state explicitly in a golden test and assert baseline metric dicts to 10 dp on tests/conftest.py build_regression_df(seed=42). For KMeansFeatures also assert cluster-label counts (not labels, which permute) to survive sklearn ver…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: both still uncovered, and both still produce published numbers. The seed sensitivity is the specific hazard - PCA's sign convention and KMeans' init are version- and seed-dependent, so a migration that touches the seed changes engineered feature VALUES with no error, and MODELS-007 shows the project seed does not currently reach several call sites anyway. The baselines are worse in consequence: they are the reference a model is claimed to beat, and MODELS-009 shows they are transformed through whichever model's pipeline happens to be first in dict order. So the number a paper compares against is both unpinned and computed under an arbitrary preprocessing. The action's detail about asserting cluster-label COUNTS rather than labels is the right way to survive sklearn version drift.",
+  "verified_ev": "ml/feature_steps.py:11 create_pca_step and :39 KMeansFeatures (both stochastic); ml/baseline_models.py:21 train_baseline_models and :150 format_comparison_table; no test file in the repository imports either module"
  },
  {
   "id": "TEST-030",
@@ -4472,7 +4478,9 @@
   "detail": "LANDS: project (port carefully). tests/workflow/conftest.py:9-12 warns in caps: 'Tests using these mutable state fixtures MUST be defined in sequential order within a class (test_step1, test_step2, etc.). Pytest runs class methods in definition order by default. Do NOT reorder test methods or add parallel execution — state is shared and mutated.' The fixtures are scope='module' mutable dicts. tests/workflow/test_state_invalidation.py:145 test_phase5 explicitly depends on phase 3 having run ('No test indices (phase 3 must run first)'). Adding pytest-xdist for a faster migration loop — an obvious move when the suite grows — silently breaks the state chain, and several phases assert `is not Non…",
   "ev": "tests/workflow/conftest.py:9-15; tests/workflow/test_state_invalidation.py:145-150",
   "act": "Port these to explicit fixture chaining (each phase returns state consumed by the next) rather than module-scoped mutation, so ordering is expressed in the dependency graph. Do this during the port, not after; never enable -n auto against t…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and the adjacent test is worth naming precisely because it looks like a fix and is not: tests/test_suite_is_order_independent.py guards RNG reseeding - that every shared generator is reseeded per test and that the reseed is autouse so it cannot be forgotten - which is a different property from the one this row is about. The workflow suite's shared MUTABLE STATE chain is untouched, and a phase asserting 'is not None' passes vacuously if an earlier phase did not run. Adding pytest-xdist for a faster migration loop is the obvious move that breaks it silently. Port to explicit fixture chaining, where each phase RETURNS the state the next consumes, so ordering lives in the dependency graph rather than in a comment.",
+  "verified_ev": "tests/workflow/conftest.py:9-15 still carries the capitalized warning that tests using the mutable state fixtures MUST be defined in sequential order and that parallel execution must not be added; the fixtures are module-scoped mutable dicts; tests/test_suite_is_order_independent.py covers RNG reseeding only (test_every_shared_rng_is_reseeded_per_test, test_the_reseed_is_autouse_so_it_cannot_be_forgotten)"
  },
  {
   "id": "TEST-031",
@@ -4482,7 +4490,9 @@
   "detail": "LANDS: project. tests/workflow/conftest.py:43 `state = {}` then `inject_uploaded_state(state, regression_df, ...)`; tests/conftest.py:60 `inject_uploaded_state(session_state, df, target_col='glucose', task_type='regression')` accepts ANY mapping — it never touches streamlit, only `session_state[key] = value`. This means tests/conftest.py's helpers (build_regression_df:14, build_classification_df:40, make_data_config:49, prepare_splits:88, train_ridge_model:125, inject_trained_state:148) already run against a dict and will run unchanged against a Project that implements __getitem__/__setitem__. This is the cheapest possible migration bridge and should anchor the sequencing.",
   "ev": "tests/conftest.py:60-85, :88-122, :125-145; tests/workflow/conftest.py:41-45",
   "act": "Give Project a dict-like adapter early so tests/conftest.py helpers work verbatim; that converts the 25 transitive-streamlit test modules from 'rewrite' to 'reimport'. Highest leverage single step in the whole migration.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and this is the most useful row in the batch, because it is an ASSET rather than a defect. The test helpers already run against a plain dict, so a Project that implements __getitem__/__setitem__ makes them work verbatim - which converts the ~24 transitively-tainted test modules (TEST-007) from 'rewrite' to 'reimport'. That is the difference between porting a suite and rebuilding one. It also gives the produces/consumes contract TEST-024 says is missing a concrete starting point, since the fixtures ARE an executable statement of what each stage needs. Give Project a dict-like adapter early; the sequencing argument in the action holds.",
+  "verified_ev": "tests/conftest.py inject_uploaded_state(session_state, df, ...) writes only via session_state[key] = value and never imports streamlit; tests/workflow/conftest.py passes a plain dict; the same helpers build_regression_df, build_classification_df, make_data_config, prepare_splits, train_ridge_model and inject_trained_state all operate on any mapping"
  },
  {
   "id": "TEST-032",
@@ -4492,7 +4502,9 @@
   "detail": "LANDS: drop the harness, keep the rule. Both parse source: tests/test_page_imports.py:123 `tree = ast.parse(f.read())` and tests/test_insight_id_integrity.py:52 same. They are in the streamlit-FREE list (they never import streamlit, they read pages/ as text), so they will keep 'passing' after the migration while silently checking a directory that no longer exists or is empty — a vacuous-green risk identical to the source-grep tests. test_insight_id_integrity in particular enforces that Insight ids are unique across the codebase, which remains a real Record-layer invariant.",
   "ev": "tests/test_page_imports.py:123; tests/test_insight_id_integrity.py:52",
   "act": "Re-point insight-id uniqueness at the Record layer (assert over the registry of emitted Insight ids at runtime, not over source text) and add an explicit guard that the scanned directory is non-empty so the test fails loudly rather than pas…",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "Half the row is closed. test_insight_id_integrity can no longer pass vacuously over an empty or renamed directory - that is SWEEP-014, and it was fixed in exactly the way this row asks for, with an explicit non-empty guard plus floors. test_page_imports.py is unchanged: it reads pages/ as text with no directory-existence check and no count floor, so it will keep 'passing' against a directory that no longer exists. The row's deeper point still stands for both: the RULE (insight ids are unique across the codebase) is a Record-layer invariant and should be asserted over the registry of emitted ids at runtime, not over source text - a runtime assertion survives the rename that the AST scan is designed to catch.",
+  "verified_ev": "tests/test_insight_id_integrity.py now carries SCAN_DIRS including models and turbotab, REQUIRED_SCAN_DIRS making a missing directory an ERROR, and MIN_FILES_SCANNED / MIN_PRODUCED_IDS / MIN_REFERENCED_IDS floors with test_the_scan_actually_scanned_something; tests/test_page_imports.py still ast.parses pages/ with no such guard"
  },
  {
   "id": "CONTRACT-063",
@@ -4502,7 +4514,9 @@
   "detail": "All five are plain @dataclass, all fields JSON-safe, all round-tripped via asdict() + field-filtered reconstruction. DataConfig(target_col, feature_cols, datetime_col, task_type). SplitConfig(train_size, val_size, test_size, random_state, stratify, use_time_split, datetime_col, target_trim_enabled, target_trim_lower, target_trim_upper, target_transform). TaskTypeDetection and CohortStructureDetection each expose a computed `.final` property that asdict() does NOT capture — restore is lossless only because the underlying fields are stored.",
   "ev": "utils/session_state.py:13-102; utils/session_manager.py:82-88, :396-404",
   "act": "project — these five dataclasses are the cleanest existing prototype for AnalysisProject sub-objects; keep them nearly as-is",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD and this is the row that says what to KEEP, which the ledger has few of. These five are the cleanest existing prototype for AnalysisProject sub-objects and should move nearly as-is. Two caveats belong with them. The computed .final property is not captured by asdict() - correct, since it is derived, and restore is lossless only because the underlying fields are stored, which is a property to preserve deliberately rather than by luck. And DataConfig.task_type is marked DEPRECATED in its own comment while remaining the value most pages read (CONTRACT-011), so 'keep nearly as-is' means keeping the shape and resolving that one field to a single accessor.",
+  "verified_ev": "utils/session_state.py:13-102 - DataConfig, SplitConfig, ModelConfig, TaskTypeDetection and CohortStructureDetection, all plain dataclasses with JSON-safe fields; round-tripped by asdict() plus field-filtered reconstruction in utils/session_manager.py"
  },
  {
   "id": "CONTRACT-064",
@@ -4512,7 +4526,9 @@
   "detail": "`X = df.loc[mask, numeric_features].values; y = df.loc[mask, target_col].values`, then median-imputed with a throwaway SimpleImputer. The mask correctly ANDs `df[target_col].notna() & train_row_mask(df.index)` — page 04 is the ONE page that honors the lockbox properly. But the numpy conversion means the selection results carry no row provenance.",
   "ev": "pages/04_Feature_Selection.py:126-140",
   "act": "engine — selectors should take (DataFrame, mask) and return names; Project owns the mask",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD, and the row's parenthetical is the important half: page 04 is the ONE page that honors the lockbox properly, and it says so on screen. That makes it the reference implementation for CONTRACT-017's fix on page 02. What this row adds is the cost of the .values conversion - the selection results carry no row provenance, so nothing downstream can state which rows the selection was computed over, and the manuscript's variable-selection paragraph cannot cite an n. Selectors should take (DataFrame, mask) and return names, with the Project owning the mask - which is also what would let the same function serve both doors.",
+  "verified_ev": "pages/04_Feature_Selection.py:126-140 - mask = df[target_col].notna() & train_row_mask(df.index), then X = df.loc[mask, numeric_features].values and y = df.loc[mask, target_col].values, followed by a throwaway median SimpleImputer"
  },
  {
   "id": "CONTRACT-065",
@@ -4522,7 +4538,9 @@
   "detail": "@dataclass with float/str/List[str] fields plus four computed @property verdicts (has_signal, nonlinearity_gain, data_hungry, underpowered). asdict() captures fields but NOT the properties — correct, since they are derived. Persisted as coach_probe.json (schema 2.1). Cleared by reset_downstream_results with an explicit comment that a probe verdict must never outlive the data it measured.",
   "ev": "ml/coach_probe.py:47-70; utils/session_manager.py:309-318; utils/session_state.py:372-374",
   "act": "record — a measured verdict is evidence; keep it in the Record with its data fingerprint attached",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD and one of the better-behaved boundaries: the fields are JSON-safe, the derived verdicts are correctly NOT serialized, it round-trips, and the cascade clears it with a stated reason. The row's action is what keeps it that way in the rebuild - a measured verdict is EVIDENCE, so it belongs in the Record with its data fingerprint attached, rather than in a session slot cleared by a cascade. Attaching the fingerprint is what would let a restored session decide whether the verdict still applies instead of discarding it, and it is the same mechanism STATE-013 wants for the sensitivity results and MODELS-016 wants for metric scale.",
+  "verified_ev": "ml/coach_probe.py:47-70 (ProbeResult: float/str/List[str] fields plus four computed verdict properties); utils/session_manager.py persists it as coach_probe.json under schema 2.1; utils/session_state.py:432 pops coach_probe_result with the comment that a probe verdict must never outlive the data it measured"
  },
  {
   "id": "CONTRACT-066",
@@ -4532,7 +4550,9 @@
   "detail": "InsightLedger of Insight dataclasses (id, source_page, category, severity, finding, implication, recommended_action, manuscript_text, relevant_pages, affected_features, tripod_keys, model_scope, auto_generated, theory_anchor, action_page, resolved/resolved_by/resolved_on_page/resolved_at/resolution_details, acknowledged, metadata, created_at). Has to_dict/from_dict/to_list/from_list, all JSON-safe. Consumed for narrative_for_report(), to_manuscript_narrative(), discussion_points_for_manuscript(), get_tripod_status(), provenance_timeline(), get_methodology_log().",
   "ev": "utils/insight_ledger.py:522-656, :1342-1355, :1140-1341",
   "act": "record — this is already the Record; keep the schema, replace get_ledger()'s session_state lookup with injection",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD and the conclusion is right - this IS the Record, and the schema should be kept with get_ledger's session_state lookup replaced by injection. Two defects sit inside the schema the row enumerates and must be fixed BEFORE it is adopted, because adopting it freezes them: to_dict omits manuscript_text, so the manuscript register is lost on every round trip and the Discussion reverts to coaching voice (RECORD-001 / STATE-056); and from_list uses add() rather than upsert(), so a duplicate id silently drops the second entry. The missing test is the same one both rows name - to_list, from_list, to_list must be identity - and it would fail today.",
+  "verified_ev": "utils/insight_ledger.py:522-656 (Insight and its to_dict/from_dict), :1342-1357 (to_list/from_list), :1140-1341 (the manuscript consumers); get_ledger at :1400-1415 is still a session_state singleton"
  },
  {
   "id": "CONTRACT-067",
@@ -4542,7 +4562,9 @@
   "detail": "Lines 75-85 and 87-97 are byte-identical duplicates; the second pair silently shadows the first. Harmless today, but it means the file has been edited by paste at least once and models/ has zero test coverage to catch a divergence.",
   "ev": "models/rf.py:75-97",
   "act": "drop the duplicate — and note models/* is entirely untested, so this is the class of defect that will not be caught during the port",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Behaviorally harmless because the bodies are identical, and that is exactly why it is worth recording: it is direct evidence the file was edited by paste and that nothing read it closely afterwards. models/ is no longer untested (tests/test_characterization_wrappers.py landed), but the new suite did not catch this and could not - identical duplicates are invisible to behavioral tests, which is TEST-014's real point. Delete it in the same commit that moves models/, and note that if the two bodies had DIVERGED the suite would still have passed while half the file was dead.",
+  "verified_ev": "models/rf.py:75-85 and :87-97 - predict_proba and supports_proba each defined twice, byte-identical, the second silently shadowing the first"
  },
  {
   "id": "CONTRACT-068",
@@ -4552,7 +4574,9 @@
   "detail": "Five functions, all returning plotly go.Figure or a formatted string, zero streamlit imports, zero session_state: plot_training_history(history), plot_predictions_vs_actual(y_true, y_pred), plot_residuals(y_true, y_pred), plot_bland_altman(...), create_metrics_display(metrics). Untested but structurally portable as-is.",
   "ev": "visualizations.py:12,53,91,129,170",
   "act": "engine — move verbatim; add tests before the port, not after",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD: structurally portable as-is, and the row's own last clause is the condition - add tests BEFORE the port, not after. Two live defects in this file argue the point rather than merely illustrating it: plot_residuals subtracts two Series without coercion and will pandas-align on labels (MINE-044), and pages/06 carries fallback stubs that silently draw a DIFFERENT figure when the import fails (MINE-043). Both render fine. So 'move verbatim' is correct for the code and insufficient as a plan - the module is portable and currently wrong in two places, and only a structural golden test distinguishes those states.",
+  "verified_ev": "visualizations.py:12, 53, 91, 129, 170 - five functions returning go.Figure or a formatted string, zero streamlit imports, zero session_state reads"
  },
  {
   "id": "CONTRACT-069",
@@ -4562,7 +4586,9 @@
   "detail": "BaseModelWrapper(ABC) with abstract fit/predict and concrete predict_proba/get_model/supports_proba. Five concrete wrappers all conform. The only environmental dependency is torch in nn_whuber (guarded: page 06 raises 'The neural network needs the optional torch package' when NNWeightedHuberWrapper is None). This is the lowest-risk, highest-confidence first migration slice — and it is also entirely untested, which is the reason to do it first with tests attached.",
   "ev": "models/base.py:10-73; models/nn_whuber.py:226; pages/06_Train_and_Compare.py:1371-1375",
   "act": "engine — port first, with characterization tests written against the current behavior before any code moves",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "The row's blocking condition is satisfied and its recommendation still stands. 'Entirely untested, which is the reason to do it first WITH TESTS ATTACHED' - the tests are attached now: the base contract is parameterized across the regression wrappers, the registry wrapper is pinned against the estimator it wraps, proba support is pinned for classification, and the unfitted-predict refusal is pinned. So models/ is genuinely the lowest-risk first slice and the prerequisite is met. WHAT REMAINS before the move: three known defects inside the layer that the port would carry (MODELS-002's three disagreeing default sources, MODELS-003's three incompatible fit-result shapes, CONTRACT-067's duplicate methods), and none is caught by the new suite.",
+  "verified_ev": "models/base.py BaseModelWrapper(ABC) with abstract fit/predict and concrete predict_proba/get_model/supports_proba; five conforming wrappers; the only environmental dependency is torch in nn_whuber, guarded at the page; tests/test_characterization_wrappers.py now covers the layer"
  },
  {
   "id": "MINE-042",
@@ -4572,7 +4598,9 @@
   "detail": "`def table(df, width=\"stretch\", hide_index=True, **kwargs)` calls st.dataframe and, only when a `key` kwarg is supplied, emits a TSV download button (utils/table_export.py:9, 38-56). It has 9 importers across 9 pages. Whether a table is exportable is currently a side effect of whether a caller happened to pass `key=`.",
   "ev": "utils/table_export.py:9, 37-56",
   "act": "view — port as a Feed table component. Flagged because the export-availability rule is implicit: a mechanical port that drops the `key` argument silently removes the download button from every table, and nobody will notice until a researche…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Whether a table is exportable is still a side effect of whether the caller happened to pass key=, so 'every result is downloadable' is not true today and nothing states which tables are meant to be. The migration hazard is precise and easy to hit: a mechanical port that normalizes call sites and drops the key argument silently removes the download button from every table, and nobody notices until a researcher looks for a number they saw on screen. Make export unconditional in the rebuild, or make UI-only an explicit, declared property of the component - CODE_REVIEW design principle 6 already asks for exactly that split.",
+  "verified_ev": "utils/table_export.py:39 (table_key = kwargs.pop('key', None)) and :45 (if table_key: emit the TSV download button); nine importers across nine pages"
  },
  {
   "id": "MINE-043",
@@ -4582,7 +4610,9 @@
   "detail": "`_get_visualization_functions()` catches ImportError and defines inline replacements for plot_training_history, plot_predictions_vs_actual and plot_residuals (pages/06_Train_and_Compare.py:66-90). The stubs differ from the real ones: the fallback plot_predictions_vs_actual omits the y=x perfect-agreement reference line that visualizations.py:70-79 draws, and the fallback plot_residuals omits the zero line (visualizations.py:110-117).",
   "ev": "pages/06_Train_and_Compare.py:66-90; visualizations.py:53-88, 91-126",
   "act": "drop the fallback; visualizations.py is a first-party module in the repo root and cannot legitimately be missing. WRONG-BUT-PLAUSIBLE OUTPUT: an unrelated import error inside visualizations.py (it imports matplotlib at module level, visuali…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. visualizations.py is a first-party module in the repository root and cannot legitimately be missing, so the fallback can only fire on an unrelated ImportError raised INSIDE it - and it imports matplotlib at module level, so a broken matplotlib install silently swaps every training figure for a stripped-down one. The stripped versions are the dangerous part rather than the outage: a predictions-vs-actual plot with no y=x reference line and a residual plot with no zero line are still plausible figures, and they go into the manuscript. Delete the fallback and let the import error surface. TEST-028's structural golden test would also catch the swap, since the trace count differs.",
+  "verified_ev": "pages/06_Train_and_Compare.py:64-90 - _get_visualization_functions catches ImportError and defines inline replacements; the fallback plot_predictions_vs_actual omits the y=x perfect-agreement line that visualizations.py:70-79 draws, and the fallback plot_residuals omits the zero line at visualizations.py:110-117"
  },
  {
   "id": "MINE-044",
@@ -4592,7 +4622,9 @@
   "detail": "`residuals = y_true - y_pred` (visualizations.py:94) with no np.asarray coercion, unlike plot_bland_altman which does `a = np.asarray(a).ravel()` (lines 141-142). Called as `plot_residuals(results[\"y_test\"], results[\"y_test_pred\"], ...)` (pages/06_Train_and_Compare.py:2623). plot_predictions_vs_actual similarly calls `y_true.min()` / `y_pred.min()` (lines 71-72), which works on Series and ndarray but not on a list.",
   "ev": "visualizations.py:91-126 vs 141-142; pages/06_Train_and_Compare.py:2604, 2623",
   "act": "engine — add the same np.asarray().ravel() coercion plot_bland_altman already has. WRONG-BUT-PLAUSIBLE OUTPUT: if y_test keeps its original labels and y_test_pred is ever wrapped in a Series with a RangeIndex, subtraction aligns on labels a…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and the inconsistency inside one file is the tell: plot_bland_altman coerces both arguments and plot_residuals does not, so the safe idiom was known and applied unevenly. If y_test keeps its original labels and y_test_pred is ever wrapped in a Series with a fresh RangeIndex, the subtraction ALIGNS ON LABELS rather than position - producing NaNs where labels do not match and silently wrong residuals where they coincidentally do. Given that this ledger contains a dozen rows about frames being renumbered mid-analysis, that pairing is not hypothetical. Add the same np.asarray().ravel() coercion; it is a one-line change in a file that is otherwise ready to move.",
+  "verified_ev": "visualizations.py:94 - residuals = y_true - y_pred with no coercion - contrast plot_bland_altman at :141-142, which does np.asarray(a).ravel() on both inputs; called from pages/06_Train_and_Compare.py with results['y_test'] and results['y_test_pred']"
  },
  {
   "id": "SWEEP-036",
@@ -4602,7 +4634,9 @@
   "detail": "table(df, width='stretch', hide_index=True, **kwargs) wraps st.dataframe and adds a TSV download button — but ONLY when a `key` kwarg is supplied (`table_key = kwargs.pop('key', None)`; `if table_key:`). Most call sites pass no key, so 'every table is downloadable' is not true today. It also carries a compatibility shim mapping the removed `use_container_width` onto `width` (CODE_REVIEW records a repo-wide sweep of that deprecation). Importers: pages 01,02,04,05,06(:1898),07,08,09,10.",
   "ev": "utils/table_export.py:9,40-56",
   "act": "view (in the rebuild make export unconditional — CODE_REVIEW design principle #6 makes every result either exportable or explicitly UI-only)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of MINE-042 from the sweep pass, unchanged at HEAD, and it adds the count that makes the case: nine of eleven pages import this one renderer, and most call sites pass no key, so the implicit promise that every table is downloadable is false across most of the app today. The rebuild should make export unconditional and UI-only explicit, per CODE_REVIEW design principle 6. The compatibility shim is worth keeping in mind for a different reason - it is evidence this module already absorbed one framework deprecation on behalf of nine pages, which is the argument for it being a real component rather than a helper.",
+  "verified_ev": "utils/table_export.py:39-56 - the TSV download button is emitted only when a key kwarg is supplied; importers in nine of eleven pages; the module also carries the use_container_width to width compatibility shim"
  },
  {
   "id": "SWEEP-037",
@@ -4612,7 +4646,9 @@
   "detail": "safe_option_index(options: List[str], value: Any, default: str) -> int returns options.index(default) when value is None or absent. If `default` is itself not in `options` it raises ValueError — the 'safe' helper is only safe on one of its two arguments. Sole importer: pages/05_Preprocess.py:34.",
   "ev": "utils/widget_helpers.py:7-21; pages/05_Preprocess.py:34",
   "act": "view (or drop — trivially reimplemented in the new form layer)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD and it is the smallest finding in the ledger with the clearest lesson: a helper named 'safe' that is safe on one of its two arguments. The failure is loud rather than silent, which is why it is low severity - but it fires at render time in a page, so a config whose stored default has since been removed from the options list crashes the Preprocess page rather than falling back. One caller, twenty-one lines, trivially reimplemented in the new form layer; the disposition is drop rather than port.",
+  "verified_ev": "utils/widget_helpers.py:7-21 - safe_option_index returns options.index(default) when value is None or absent, and raises ValueError if default itself is not in options; sole importer pages/05_Preprocess.py"
  },
  {
   "id": "SWEEP-038",
@@ -4622,7 +4658,9 @@
   "detail": "Renders icon.png/.ico/.icns from numpy+Pillow at 4096px, run manually (`python launcher/make_icon.py`). No app module imports it. Worth noting for the transition because the icon encodes the app's thesis: '…the bottom-right cell held out as a sealed ring (the test-set lockbox)'. Also flags a shipping surface the rebuild inherits: .gitignore lists '.tools/', 'Tabular ML Lab.app/', '.venv-stamp' — there is a one-click desktop launcher, plus .github/workflows/release.yml and sync-university-docker.yml.",
   "ev": "launcher/make_icon.py:1-13; .gitignore ('One-click launcher artifacts'); .github/workflows/release.yml",
   "act": "drop (from the app); keep as a build script",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD. The row's real contribution is not the script but the shipping surface it points at: there is a one-click desktop launcher, a release workflow and a university Docker sync, none of which appear in the transition plan, and all of which the rebuild inherits. L12 is packaging, so those three are its inputs and should be named there before someone discovers them at cutover. Keep make_icon.py as a build script, out of the app. The docstring detail is a genuine nicety worth preserving - the icon encodes the product's thesis, with the bottom-right cell held out as a sealed ring for the test-set lockbox.",
+  "verified_ev": "launcher/make_icon.py - 175 loc, run manually, imported by no app module; .gitignore lists the one-click launcher artifacts; .github/workflows/release.yml and sync-university-docker.yml exist"
  },
  {
   "id": "SWEEP-039",
@@ -4632,7 +4670,9 @@
   "detail": "ml/__init__.py = '\"\"\"Machine learning utilities.\"\"\"'; utils/__init__.py = '\"\"\"Utility modules for the modeling lab.\"\"\"'; pages/__init__.py = '\"\"\"Pages module for multi-page Streamlit app.\"\"\"'. Nothing is exported, so no import surface is lost by restructuring these packages — a genuinely free move, and the only one in this inventory.",
   "ev": "ml/__init__.py:1; utils/__init__.py:1; pages/__init__.py:1",
   "act": "engine (ml, utils); drop (pages)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD and it is the only genuinely free move in the whole inventory: nothing is exported from any of the three, so no import surface is lost by restructuring these packages, and no consumer can be depending on a package-level name. Worth recording precisely because most of this ledger is the opposite - places where a move looks free and is not. Keep ml/ and utils/ as packages in the engine, drop pages/. The one thing to preserve is the absence itself: a rebuilt package that starts re-exporting names at __init__ scope re-creates an import surface nobody asked for, and with it the cycles STATE-053 catalogues.",
+  "verified_ev": "ml/__init__.py, utils/__init__.py and pages/__init__.py are each a single docstring line - no re-exports, no side effects (verified by reading all three)"
  },
  {
   "id": "T0-LIVE-004",
