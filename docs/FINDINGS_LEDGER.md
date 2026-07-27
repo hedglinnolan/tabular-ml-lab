@@ -44,28 +44,65 @@ published.
 
 ---
 
-## Still open
+## Still open — now tracked in the live ledger
 
-Populated from the two audit runs in flight:
+**This section used to point at two workflow IDs that never wrote results.** It
+pointed at them for long enough that the paths went away underneath it:
+`scratchpad/audit/orig48/` is empty, `subagents/` does not exist, and the
+journal named below is gone. A pointer to a dead artifact is worse than no
+pointer, because it reads as a plan.
 
-- `wf_70254f26-494` — fresh exhaustive hunt, ten lenses over the multi-file
-  path and JSON, every finding independently reproduced and adversarially
-  judged twice.
-- `wf_5446c57b-3f6` — all 48 recovered findings re-run against current HEAD,
-  every verdict adversarially rechecked in both directions.
+The tail now lives in `docs/turbotab/data/findings.json` as the `IMPORT-*` rows,
+worked through `docs/turbotab/tools/ledger.py` like everything else:
 
-Nothing is closed on a verdict alone. Each surviving finding gets a repro, a
-fix, and a named test here.
+```bash
+python docs/turbotab/tools/ledger.py stats
+python docs/turbotab/tools/ledger.py check     # schema guard, before every commit
+```
+
+Recovered at L10, in two passes:
+
+- **Thirteen from the tests that remember them** (`IMPORT-001` … `IMPORT-013`,
+  `FIXED`). `tests/test_stress_regressions.py` has 21 classes and this file
+  names 8; the other 13 guard defects whose text was lost. Each row is
+  reconstructed from its regression class — what broke, what the fix asserts,
+  what would regress — and says in its note that it is a reconstruction from
+  executable evidence rather than a transcription.
+- **Six re-derived by a fresh adversarial pass** (`IMPORT-014` … `IMPORT-019`,
+  `OPEN`), each with a runnable reproduction in its evidence field. These may or
+  may not be among the ~24 whose statements are gone; there is no way to tell,
+  and the rows say so.
+
+**Roughly two dozen of the original 48 have neither surviving text nor a
+guard.** That gap is real and is not closed by the above. It is the reason the
+freeze condition below is written the way it is.
 
 ---
 
-## Where the original 48 live
+## The freeze, and what lifts it
 
-Recovered from the stress-test run's journal and written to
-`scratchpad/audit/orig48/finding_NN.md` (title, confirmed severity, verifier
-reasoning, and the repro as recorded). The raw journal is at:
+`TRANSITION_PLAN.md` §05 freezes `ml/import_doctor.py`, `ml/join_doctor.py`,
+`utils/combine*.py` and `pages/01` as **engine-move-only** pending this tail.
+The old condition — "until that ledger closes" — could not be evaluated, because
+the ledger it referred to had no open items written down.
 
-    subagents/workflows/wf_e5abb4fe-e32/journal.jsonl
+**The new condition: the freeze lifts when no `IMPORT-*` row is
+un-dispositioned.** Every row is `OPEN`, `PARTIAL`, `FIXED` with a named test,
+`NOT-A-DEFECT` with a reason, or `WONTFIX` with a reason — which is checkable by
+`ledger.py check` rather than by memory.
 
-102 raw findings across 8 families; 48 survived verification
-(11 critical, 30 major, 7 minor).
+That is a lower bar than "no open defects", deliberately: the product owner has
+ruled that Guided ships multi-file assembly, and a build cannot start on an
+engine whose defect state is *unknown*. Known and open is a backlog. Unknown is
+a hazard, and a live preview asserts continuously rather than once.
+
+---
+
+## Where the original 48 lived
+
+Recovered from the stress-test run's journal to
+`scratchpad/audit/orig48/finding_NN.md`, with the raw journal at
+`subagents/workflows/wf_e5abb4fe-e32/journal.jsonl`. **Both paths are gone.**
+102 raw findings across 8 families; 48 survived verification (11 critical, 30
+major, 7 minor) — the counts are all that is left of them, and they are recorded
+here so the size of the loss stays legible.

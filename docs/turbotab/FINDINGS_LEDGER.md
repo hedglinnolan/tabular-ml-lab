@@ -20,18 +20,18 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**107 of 434 closed.**
+**107 of 440 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 293 |
+| `OPEN` | 299 |
 | `PARTIAL` | 34 |
 | `FIXED` | 107 |
 
 ---
 
-## OPEN — 293
+## OPEN — 299
 
 
 ### Application state / lockbox — 64
@@ -370,6 +370,17 @@ Nothing is closed without a regression test named after it.
 | `T0-PAGES-001` | medium | Duplicate-row detection has no engine home — it is inline in pages/01 | `pages/01_Upload_and_Audit.py (inline)` | Extract to the engine when pages/01 unfreezes; register the capability meanwhile. |
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
+
+### Multi-file / JSON import — 6
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `IMPORT-014` | critical | Stacking two files that share participants silently duplicates subjects, and nothing warns | `REPRO: frames = {'c17': DataFrame({'SEQN':[1,2,3],'age':[40,50,60]}), 'c19'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
+| `IMPORT-015` | critical | When the identifier signal is inconclusive, the combine plan falls back to column-name overlap — the exact heuristic a critical finding already disqualified | `REPRO: utils.combine._same_people returns None for (DataFrame({'SEQN':[1],'age':[40]})…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
+| `IMPORT-016` | high | A yes/no key stored as boolean against the same key stored as 0/1 matches nothing, and the message blames the user's column choice | `REPRO: left=DataFrame({'id':[True,False,True],'a':[1,2,3]}), right=DataFrame({'id':[1,0,1],'b':[7,8,9]})…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
+| `IMPORT-017` | high | The stack change map omits a consequence the planner has already computed: that a column was coerced to text | `REPRO: frames = {'c17': DataFrame({'SEQN':range(5),'site':['A']*5}), 'c19'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
+| `IMPORT-018` | high | A user column named __source_file is renamed out of the way without disclosure | `REPRO: frames = {'a': DataFrame({'SEQN':[1,2],'__source_file':['mine','mine']}), 'b'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
+| `IMPORT-019` | medium | A list-valued JSON field is silently converted to its Python repr and becomes a text column | `REPRO: data_processor.load_tabular_data on json.dumps([{'SEQN':1,'visits':[1,2,3]},{'SEQN':2,'visits':[4,5]}])…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
 
 ### Features / preprocessing — 1
 
