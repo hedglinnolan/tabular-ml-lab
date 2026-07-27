@@ -20,18 +20,18 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**92 of 417 closed.**
+**94 of 420 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 291 |
+| `OPEN` | 292 |
 | `PARTIAL` | 34 |
-| `FIXED` | 92 |
+| `FIXED` | 94 |
 
 ---
 
-## OPEN — 291
+## OPEN — 292
 
 
 ### Application state / lockbox — 64
@@ -331,7 +331,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-031` | medium | The plain-dict fake state in tests/workflow/ is the ready-made bridge to the Project object — the only asset that transfers directly | `tests/conftest.py:60-85, :88-122, :125-145; tests/workflow/conftest.py:41-45` | Unchanged at HEAD and this is the most useful row in the batch, because it is an ASSET rather than a defect. The test helpers already run against a plain dict, so a Project that… |
 | `TEST-033` | low | _NOT_STAGE_RESULTS in tests/integration/test_cascade_dag_equivalence.py:31 is defined and never referenced - a dead exclusion set that reads as if it were enforcing something | `tests/integration/test_cascade_dag_equivalence.py:31` | Filed post-Loop-1; not part of the 370 Tier-1 rows. |
 
-### Models / training / eval — 17
+### Models / training / eval — 18
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -344,6 +344,7 @@ Nothing is closed without a regression test named after it.
 | `MODELS-010` | landmine | The 'slow model' cost model keys off strings that are not registry keys, so the warning is wrong for the models that need it. | `pages/06_Train_and_Compare.py:1248 — `slow_models = {'nn', 'extratrees', 'svc', 'svr'}`. The registry has NO…` | Unchanged at HEAD. The cost model still keys off four strings, three of which are not registry keys, so ExtraTrees (the actual slow one) never triggers the slow-model warning and… |
 | `MODELS-012` | landmine | BCa acceleration is computed from a jackknife that is capped at 200 leave-one-out replicates and then PADDED to length n with the mean of those 200. | `ml/bootstrap.py:152-166 — `n_jack = min(n, 200)`, `jack_stats = np.full(n, np.nan)`, the loop runs only `for…` | Unchanged at HEAD, byte for byte. For n > 200 the BCa acceleration is still computed over an array whose tail is a constant, damping the third and second moments by an amount that… |
 | `MODELS-013` | landmine | The weighted_huber emphasis window is derived during fit and stored only on the instance as _whuber_t0 / _whuber_s, with legacy glucose constants (t0=180.0, s=20.0) as the getattr fallback. | `models/nn_whuber.py:376-378 sets them only in the `elif self.loss_function == 'weighted_huber'` branch; lines…` | Unchanged at HEAD. The emphasis window is still derived during fit, stored only on the instance, and read back through getattr with the legacy glucose constants 180.0 and 20.0 as… |
+| `T0-BUILD-006` | landmine | Classic decides which class is the event by alphabetical order, silently and with no way to see or change it | `ml/splits.py:294-301 (LabelEncoder on a categorical target); no Classic page renders or offers the class…` | Found at L9c while writing the register row for target-positive-class, and worth recording how: the row was first written asserting the opposite mapping from memory, then checked… |
 | `MODELS-015` | invariant | Preprocessing is fit on training rows only, and cross-validation re-fits it inside every fold — a pre-transformed matrix must never be scored directly. | `ml/eval.py:182 make_cv_pipeline() composes Pipeline([('prep', clone(preprocessing)), ('densify', ...)…` | The invariant is implemented where it cannot be bypassed by accident, and NOTHING TESTS IT - so it stays OPEN. ml/eval.py:182-190 make_cv_pipeline composes Pipeline([('prep'… |
 | `MODELS-016` | invariant | Metrics are reported on the ORIGINAL target scale: when target_transformer is active, predictions are inverse-transformed and compared against y_*_original. | `pages/06:1486-1497 (test) and 1508-1517 (train), plus the CV branch wrapping the estimator in…` | The invariant is real, currently honored, and unguarded - so it stays OPEN. Every consumer inverse-transforms before scoring and prefers y_*_original, which is correct. What makes… |
 | `MODELS-018` | invariant | Every model factory has the signature (task_type: str, random_state: int) -> estimator, and every model object satisfies fit/predict, with predict_proba only reachable through the runtime… | `ml/model_registry.py:44 declares factory: Callable[[str, int], Any]; all 22 factories honor it.…` | The invariant holds today and nothing enforces either half, so it stays OPEN. The factory signature is declared in a type annotation that Python does not check and no test… |
@@ -456,7 +457,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 92
+## FIXED — 94
 
 
 ### Application state / lockbox — 26
@@ -515,6 +516,21 @@ Nothing is closed without a regression test named after it.
 | `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |
 
+### Guided-door drive feedback — 10
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `GUIDED-001` | high | Import doctor proposes numeric coercion for True/False-coded binary columns (meds_hbp, meds_chol) instead of recognizing a binary variable with informative-missingness potential | `ml/import_doctor.py; screenshot meds_chol` | **test:** `turbotab/test_guided_drive.py::test_a_true_false_column_is_read_as_binary_not_coerced_to_numbers` — Fixed, and reproduced first: a True/False column with blanks is read… |
+| `GUIDED-002` | high | High-missingness finding reports a count but never names the features, and its card carries no snippet and no dtype-aware recommendation | `ml/dataset_profile.py; turbotab explore step; screenshots` | **test:** `turbotab/test_guided_drive.py::test_missingness_routes_by_dtype` — Fixed. Cards name their column in the question text and in a mono chip, carry the count, the share… |
+| `GUIDED-004` | high | No impossibility tier: bp_di values near 1e-15 are at best 'outliers' - the profile does not distinguish medically impossible from medically improbable | `ml/clinical_units.py; ml/physiology_reference.py; ml/dataset_profile.py; screenshot physiologic_check` | **test:** `turbotab/test_guided_drive.py::test_a_diastolic_of_zero_is_impossible_and_a_high_one_is_improbable` — Fixed. The bundled NHANES reference now carries floor/ceiling… |
+| `GUIDED-006` | high | Several pull chips do nothing when clicked (dose-response trends, collinearity heatmap, stratified trends per the drive) | `turbotab/web/index.html pull palette; screenshot other_analyses_not_running` | **test:** `turbotab/test_guided_drive.py::test_every_pull_chip_says_whether_it_runs` — SEVERITY CORRECTED, from measurement rather than from the row. The row says 'Several pull… |
+| `T0-BUILD-001` | high | The Guided preview's change count and its cell highlighting used two different definitions of 'changed', so the header and the table contradicted each other | `turbotab/engine.py preview_fix: the count from _differs vs the flags from b_txt != a_txt; reproduced on…` | **test:** `turbotab/test_guided_drive.py::test_the_change_count_and_the_highlighted_cells_agree` — Found while building the binary reading for GUIDED-001, described by no row.… |
+| `GUIDED-009` | high | The outcome was asked a feature's question - 'is this binary?' - instead of the only one that matters for a target: which level is the event | `ml/binary_text.py positive_class_finding / apply_positive_class; turbotab/engine.py diagnose(target=...) and…` | **test:** `tests/test_the_target_is_asked_a_different_question.py::test_the_event_is_never_pre_selected` — Raised by the adjudicator from the L9b report, where it was recorded as… |
+| `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
+| `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
+| `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |
+| `GUIDED-008` | medium | 'Remind me later' does not tell the user where or when the item resurfaces, though the deferral contract already requires a target_step | `turbotab/api.py (defer requires target_step); screenshots` | **test:** `turbotab/test_guided_drive.py::test_every_finding_carries_the_step_its_deferral_goes_to` — Fixed. The Router owns the destination, because it owns which step can act on… |
+
 ### Completeness sweep — 9
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -528,20 +544,6 @@ Nothing is closed without a regression test named after it.
 | `SWEEP-018` | high | The EDA cache fingerprint is SCHEMA-only while set_data() invalidation is CONTENT-based — a same-shape cleaning action resets results but not the profile | `pages/02_EDA.py:125 vs utils/session_state.py:220-226,259-263` | **test:** `tests/test_eda_caches_follow_the_data.py::test_no_cache_on_the_page_keys_on_shape_alone` — Closed - the two notions of invalidation are now one. The page's fingerprint… |
 | `SWEEP-024` | high | INVARIANT — reconcile_pipeline_columns: drift must self-heal loudly, never crash cryptically; its sibling reconcile_state_with_df is imported but never called | `CODE_REVIEW.md 2026-07 'Backstop'; CODE_REVIEW.md C7; utils/reconcile.py` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_reconcile_leaves_a_gated_pipeline_alone_when_nothing_drifted` — Both halves closed. The dormant-reconciler half was… |
 | `SWEEP-025` | high | INVARIANT — CV strategy is bound to the SPLIT strategy, and cv_strategy/cv_groups_train are cleared WITH the split | `CODE_REVIEW.md 2026-07 'Strategy-aware cross-validation' and 'Test-set slider guardrail'…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_grouped_split_matches_the_page` — Both halves of the invariant are implemented and tested. The CV scheme is… |
-
-### Guided-door drive feedback — 9
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `GUIDED-001` | high | Import doctor proposes numeric coercion for True/False-coded binary columns (meds_hbp, meds_chol) instead of recognizing a binary variable with informative-missingness potential | `ml/import_doctor.py; screenshot meds_chol` | **test:** `turbotab/test_guided_drive.py::test_a_true_false_column_is_read_as_binary_not_coerced_to_numbers` — Fixed, and reproduced first: a True/False column with blanks is read… |
-| `GUIDED-002` | high | High-missingness finding reports a count but never names the features, and its card carries no snippet and no dtype-aware recommendation | `ml/dataset_profile.py; turbotab explore step; screenshots` | **test:** `turbotab/test_guided_drive.py::test_missingness_routes_by_dtype` — Fixed. Cards name their column in the question text and in a mono chip, carry the count, the share… |
-| `GUIDED-004` | high | No impossibility tier: bp_di values near 1e-15 are at best 'outliers' - the profile does not distinguish medically impossible from medically improbable | `ml/clinical_units.py; ml/physiology_reference.py; ml/dataset_profile.py; screenshot physiologic_check` | **test:** `turbotab/test_guided_drive.py::test_a_diastolic_of_zero_is_impossible_and_a_high_one_is_improbable` — Fixed. The bundled NHANES reference now carries floor/ceiling… |
-| `GUIDED-006` | high | Several pull chips do nothing when clicked (dose-response trends, collinearity heatmap, stratified trends per the drive) | `turbotab/web/index.html pull palette; screenshot other_analyses_not_running` | **test:** `turbotab/test_guided_drive.py::test_every_pull_chip_says_whether_it_runs` — SEVERITY CORRECTED, from measurement rather than from the row. The row says 'Several pull… |
-| `T0-BUILD-001` | high | The Guided preview's change count and its cell highlighting used two different definitions of 'changed', so the header and the table contradicted each other | `turbotab/engine.py preview_fix: the count from _differs vs the flags from b_txt != a_txt; reproduced on…` | **test:** `turbotab/test_guided_drive.py::test_the_change_count_and_the_highlighted_cells_agree` — Found while building the binary reading for GUIDED-001, described by no row.… |
-| `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
-| `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
-| `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |
-| `GUIDED-008` | medium | 'Remind me later' does not tell the user where or when the item resurfaces, though the deferral contract already requires a target_step | `turbotab/api.py (defer requires target_step); screenshots` | **test:** `turbotab/test_guided_drive.py::test_every_finding_carries_the_step_its_deferral_goes_to` — Fixed. The Router owns the destination, because it owns which step can act on… |
 
 ### Stage-boundary contracts — 6
 
@@ -574,6 +576,15 @@ Nothing is closed without a regression test named after it.
 | `RECORD-027` | invariant | Exported LaTeX contains no markdown artifacts, no raw bare [PLACEHOLDER] tags, no internal model keys, no coaching phrases and no dangling punctuation or 'Table X'/'Figure X' references. | `ml/manuscript_validator.py checks 10-12 (artifact_patterns, internal_keys from _MODEL_NAMES…` | **test:** `tests/test_manuscript_validator.py::test_validate_manuscript_bundle_allows_investigator_placeholders_but_rejects_raw_markdown_artifacts` — The invariant is enforced by… |
 | `RECORD-028` | invariant | Reported population and predictor counts are identical across abstract, Methods, Table 1 and the split arithmetic: analysis_total == train_n+val_n+test_n == abstract N == Study Design N == Table 1… | `ml/manuscript_validator.py checks 1-5, driven by the regex templates in _extract_analysis_n /…` | **test:** `tests/test_manuscript_validator.py::test_validate_manuscript_bundle_flags_table1_population_and_feature_coverage` — The consistency invariant is enforced and tested in… |
 
+### Migration safety net — 4
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `TEST-001` | critical | The invalidation DAG has NO test that calls the production function — three separate re-implementations test themselves | `utils/session_state.py:283 vs tests/workflow/test_state_invalidation.py:40-51 and…` | **test:** `tests/integration/test_characterization_cascade.py::test_full_reset_clears_every_downstream_key` — The production function is now called by a test, which is the whole… |
+| `TEST-003` | critical | PlausibilityGate violates sklearn's clone() contract — cross-validation raises RuntimeError whenever plausibility bounds are configured | `ml/preprocess_operators.py:49-55; ml/pipeline.py:185; ml/eval.py:161; contrast ml/preprocess_operators.py:13` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_cross_validation_runs_with_plausibility_bounds_configured` — Fixed with STATE-002 - same defect, same edit, and this… |
+| `TEST-013` | high | tests/integration/test_lockbox_split.py is the ONLY integration test that exercises real behavior end-to-end — it must be ported, not dropped | `tests/integration/test_lockbox_split.py:45-112` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page` — Ported before the cut, exactly as this row instructed, and strengthened… |
+| `T0-BUILD-005` | high | The routing harness diagnosed without a target while the API diagnosed with one, so it measured a door that no longer existed - and a composition change in the inventory moves no metric, so nothing… | `tests/integration/test_routing_value_check.py _run_guided; tests/integration/test_routing_baseline.py…` | **test:** `tests/integration/test_routing_baseline.py::test_both_doors_are_scored_against_one_inventory` — Found at L9c while implementing the target-question ruling. Both halves… |
+
 ### Coach to Router — 4
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -591,14 +602,6 @@ Nothing is closed without a regression test named after it.
 | `MODELS-005` | landmine | The 'Cancel Training' button is decorative — st.session_state.cancel_training is written and NEVER read anywhere in the codebase. | `pages/06_Train_and_Compare.py:1252-1253 (init), 1263-1264 (set to True). grep for 'cancel_training' across…` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Closed by removal plus an honest replacement, which is the right shape. The decorative… |
 | `MODELS-017` | invariant | ModelCapabilities.requires_scaled_numeric determines each model's preprocessing pipeline; a model that needs scaling must not be trained on an unscaled pipeline. | `pages/05_Preprocess.py:487, 801, 847, 1059 read spec.capabilities.requires_scaled_numeric to build per-model…` | **test:** `tests/workflow/test_per_model_pipelines.py::test_scaled_vs_unscaled_outputs_differ` — The invariant holds on both sides of the migration and has a test that would catch… |
 | `MODELS-022` | invariant | Degenerate bootstrap resamples are DROPPED, never substituted with the point estimate, and a run with too few valid replicates returns a NaN CI rather than a narrow one. | `ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot =…` | **test:** `tests/test_review_fixes.py::TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples` — The invariant is implemented with the reasoning in the… |
-
-### Migration safety net — 3
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `TEST-001` | critical | The invalidation DAG has NO test that calls the production function — three separate re-implementations test themselves | `utils/session_state.py:283 vs tests/workflow/test_state_invalidation.py:40-51 and…` | **test:** `tests/integration/test_characterization_cascade.py::test_full_reset_clears_every_downstream_key` — The production function is now called by a test, which is the whole… |
-| `TEST-003` | critical | PlausibilityGate violates sklearn's clone() contract — cross-validation raises RuntimeError whenever plausibility bounds are configured | `ml/preprocess_operators.py:49-55; ml/pipeline.py:185; ml/eval.py:161; contrast ml/preprocess_operators.py:13` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_cross_validation_runs_with_plausibility_bounds_configured` — Fixed with STATE-002 - same defect, same edit, and this… |
-| `TEST-013` | high | tests/integration/test_lockbox_split.py is the ONLY integration test that exercises real behavior end-to-end — it must be ported, not dropped | `tests/integration/test_lockbox_split.py:45-112` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page` — Ported before the cut, exactly as this row instructed, and strengthened… |
 
 ### Features / preprocessing — 1
 

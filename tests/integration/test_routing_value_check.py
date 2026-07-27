@@ -34,7 +34,7 @@ BASELINE = ROOT / "docs" / "turbotab" / "data" / "routing-baseline.json"
 # the ground truth today; the frozen one is reported beside it so the reader can
 # see the movement rather than take it on trust. See
 # VALUE_CHECK_ADJUDICATION.md §"The denominator moved".
-ADJUDICATED = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9.json"
+ADJUDICATED = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9c.json"
 PREREG = ROOT / "docs" / "turbotab" / "VALUE_CHECK_PREREG.md"
 RESULT = ROOT / "docs" / "turbotab" / "data" / "routing-value-check.json"
 
@@ -108,7 +108,10 @@ def _run_guided(dataset: str, csv_path: pathlib.Path, target: str) -> Measuremen
     `explore`, which is what `pages/01`–`02` cover in Classic.
     """
     df = engine.read_table(csv_path.read_bytes(), csv_path.name)
-    findings = engine.rank_findings(engine.diagnose(df), None)
+    # With the target, as `api.py::_recompute` does once one is chosen. Without
+    # it the harness would measure a door that no longer exists: the outcome
+    # column would be asked how to read it rather than which level is the event.
+    findings = engine.rank_findings(engine.diagnose(df, target=target), None)
     detection = engine.detect_task_type(df, target)
     required = required_decisions(findings, target_chosen=False)
 

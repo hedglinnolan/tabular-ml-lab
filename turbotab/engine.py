@@ -128,7 +128,7 @@ def read_table(raw: bytes, filename: str = "upload.csv") -> pd.DataFrame:
 # The three engine calls
 # ─────────────────────────────────────────────────────────────────────────────
 
-def diagnose(df: pd.DataFrame) -> List[ShapeFinding]:
+def diagnose(df: pd.DataFrame, target: Optional[str] = None) -> List[ShapeFinding]:
     """Structural diagnosis, from two engine modules rather than one.
 
     `ml.import_doctor.diagnose` is pure — it never mutates `df` and applies no
@@ -142,10 +142,17 @@ def diagnose(df: pd.DataFrame) -> List[ShapeFinding]:
     the numeric one for the columns it claims — two proposals for one column
     would make the user adjudicate the engine's own disagreement (GUIDED-001).
 
+    Once a target is known it is routed to a different question. For a feature
+    the reading is the decision; for the outcome the reading is nearly forced
+    and the decision is *which level is the event*, because that sets the sign
+    of every effect estimate. Before a target is chosen there is no such
+    column, and every column is read as a feature.
+
     Both merges are decisions about *which* finding to show, not new statistics;
     the statistics are computed in `ml/`.
     """
-    return binary_text.diagnose_with_binary(df, import_doctor.diagnose(df))
+    return binary_text.diagnose_with_binary(df, import_doctor.diagnose(df),
+                                            target=target)
 
 
 def detect_task_type(df: pd.DataFrame, target: str) -> Dict[str, Any]:
@@ -315,7 +322,8 @@ def _cell(v: Any) -> str:
     return "" if v is None or (isinstance(v, float) and math.isnan(v)) or v is pd.NaT else str(v)
 
 
-def preview_fix(df: pd.DataFrame, finding: ShapeFinding) -> Dict[str, Any]:
+def preview_fix(df: pd.DataFrame, finding: ShapeFinding,
+                choice: Optional[str] = None) -> Dict[str, Any]:
     """What this finding's fix would change, computed but not applied.
 
     The frame handed to `apply_fix` is a copy, and the result is described and
@@ -344,7 +352,7 @@ def preview_fix(df: pd.DataFrame, finding: ShapeFinding) -> Dict[str, Any]:
         }
 
     before = df
-    after, description = _dispatch_fix(df.copy(deep=True), finding)
+    after, description = _dispatch_fix(df.copy(deep=True), finding, choice=choice)
 
     cols_before, cols_after = list(before.columns), list(after.columns)
     added = [c for c in cols_after if c not in cols_before]
@@ -480,26 +488,35 @@ def preview_fix(df: pd.DataFrame, finding: ShapeFinding) -> Dict[str, Any]:
     }
 
 
-def _dispatch_fix(df: pd.DataFrame, finding: ShapeFinding) -> Tuple[pd.DataFrame, str]:
+def _dispatch_fix(df: pd.DataFrame, finding: ShapeFinding,
+                  choice: Optional[str] = None) -> Tuple[pd.DataFrame, str]:
     """Route one fix to the engine module that owns its kind.
 
     `ml/import_doctor.py` owns nine kinds and is frozen as engine-move-only
-    (`TRANSITION_PLAN.md` §05), so `read_as_binary` lives in `ml/binary_text.py`
-    and is dispatched here rather than added to the doctor's own table.
+    (`TRANSITION_PLAN.md` §05), so `read_as_binary` and `set_positive_class`
+    live in `ml/binary_text.py` and are dispatched here rather than added to the
+    doctor's own table.
     """
     if finding.fix_kind == "read_as_binary":
         return binary_text.apply_read_as_binary(df, finding)
+    if finding.fix_kind == "set_positive_class":
+        return binary_text.apply_positive_class(df, finding, event=choice)
     return import_doctor.apply_fix(df, finding)
 
 
-def apply_fix(df: pd.DataFrame, finding: ShapeFinding) -> Tuple[pd.DataFrame, str]:
+def apply_fix(df: pd.DataFrame, finding: ShapeFinding,
+              choice: Optional[str] = None) -> Tuple[pd.DataFrame, str]:
     """Apply one fix, on a deep copy of the frame.
 
     The engine documents that it never mutates its input; the copy means a
     future change to that promise cannot corrupt a project that is still
     holding the original frame.
+
+    `choice` carries an answer the finding cannot supply itself — today, which
+    level of the outcome is the event. A fix that needs one raises rather than
+    defaulting.
     """
-    return _dispatch_fix(df.copy(deep=True), finding)
+    return _dispatch_fix(df.copy(deep=True), finding, choice=choice)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -1305,7 +1305,7 @@
     return h;
   }
 
-  function previewHTML(f, pv){
+  function previewHTML(f, pv, choice){
     var s = pv.sample || { columns: [], rows: [] };
     var note = pv.changed_cells
       ? pv.changed_cells.toLocaleString() + " cell" + (pv.changed_cells === 1 ? "" : "s") +
@@ -1347,7 +1347,8 @@
        legitimate an answer as accepting it, and the buttons have to look it. */
     h += '<div class="choice-acts">' +
          '<span class="said">' + esc(pv.description) + " Nothing has happened yet.</span>" +
-         '<button class="cbtn" data-apply="' + esc(f.id) + '" type="button">' +
+         '<button class="cbtn" data-apply="' + esc(f.id) + '"' +
+         (choice ? ' data-choice="' + esc(choice) + '"' : "") + ' type="button">' +
          esc(pv.fix_label || "Apply repair") + "</button>" +
          '<button class="cbtn" data-pv-close="' + esc(f.id) + '" type="button">Keep as is</button>' +
          deferButton(f) +
@@ -1426,7 +1427,41 @@
     band.innerHTML = open + settled;
   }
 
-  function openPanel(id){
+  /* The outcome's question. Never "is this binary?" — the reading is forced,
+     and the decision is which level is the event, because that sets the sign of
+     every effect estimate and what sensitivity and specificity are measuring.
+     Never pre-selected at any confidence: convention is offered with its
+     reasoning shown, and `alive`/`dead` has no correct default because whether
+     the event is death or survival is the research question. */
+  function positiveClassHTML(f, pv){
+    var choices = pv.choices || {};
+    var keys = Object.keys(choices);
+    var h = '<div class="pv-head"><span class="pv-title">The event</span>' +
+            '<span class="pv-note">nothing is chosen yet</span></div>';
+    h += '<div style="padding:14px 15px;background:var(--surface);">';
+    h += '<p style="margin:0 0 11px;font-size:13.5px;line-height:1.6;color:var(--muted);">' +
+         esc(f.why_it_matters) + "</p>";
+    h += '<div class="answers">';
+    keys.forEach(function(k){
+      var suggested = pv.suggested === k;
+      h += '<button class="answer" data-event-for="' + esc(f.id) + '" data-event="' +
+           esc(k) + '" type="button">' + esc(choices[k]) +
+           (suggested ? '<span class="chip">conventional</span>' : "") + "</button>";
+    });
+    h += "</div>";
+    if (pv.suggested_reason){
+      h += '<p style="margin:11px 0 0;font-size:12.5px;color:var(--faint);">' +
+           esc(pv.suggested_reason) +
+           " — shown as a suggestion, not applied. Nothing is selected for you here.</p>";
+    }
+    h += "</div>";
+    h += '<div class="choice-acts"><span class="said"></span>' +
+         '<button class="f-act" data-pv-close="' + esc(f.id) + '" type="button">Close</button>' +
+         deferButton(f) + "</div>";
+    return h;
+  }
+
+  function openPanel(id, choice){
     var f = findingById(id);
     if (!f) return;
     var box = $("pv-" + id);
@@ -1442,10 +1477,16 @@
     box.innerHTML = '<div class="pv-head"><span class="pv-title">What this would change</span>' +
                     '<span class="pv-note">working it out…</span></div>';
     box.classList.remove("is-hidden");
-    job("Working out what that would change…",
-        api("/project/" + P.id + "/finding/" + encodeURIComponent(id) + "/preview"))
+    var url = "/project/" + P.id + "/finding/" + encodeURIComponent(id) + "/preview" +
+              (choice ? "?choice=" + encodeURIComponent(choice) : "");
+    job("Working out what that would change…", api(url))
       .then(function(pv){
-        box.innerHTML = pv.applicable ? previewHTML(f, pv) : explainOnly(f, pv.description);
+        if (pv.fix_kind === "set_positive_class" && !pv.applicable){
+          box.innerHTML = positiveClassHTML(f, pv);
+        } else {
+          box.innerHTML = pv.applicable ? previewHTML(f, pv, choice)
+                                        : explainOnly(f, pv.description);
+        }
         anim(box, "arrive", 360);
         nudge(box);
       })
@@ -2081,6 +2122,7 @@
     var t = e.target.closest ? e.target.closest(
       "[data-target-col],[data-panel],[data-pv-close],[data-defer],[data-dismiss]," +
       "[data-undismiss],[data-flag],[data-apply],[data-revert],[data-task]," +
+      "[data-event-for]," +
       "[data-look],[data-unskip],[data-blk-resolve],[data-blk-attest],[data-att-send]," +
       "[data-impossible],[data-keep-impossible],[data-miss-choose],[data-miss-preview]," +
       "[data-hist-page]") : null;
@@ -2203,10 +2245,18 @@
       return;
     }
 
+    if (t.hasAttribute("data-event-for")){
+      // Choosing the event opens the before/after for that choice. It is still
+      // not applied: the human confirms, as every CHOICE card requires.
+      openPanel(t.dataset.eventFor, t.dataset.event);
+      return;
+    }
     if (t.hasAttribute("data-panel")){ openPanel(t.dataset.panel); return; }
     if (t.hasAttribute("data-pv-close")){ $("pv-" + t.dataset.pvClose).classList.add("is-hidden"); return; }
     if (t.hasAttribute("data-apply")){
-      decide("apply", t.dataset.apply, {}, "Applying that change and re-checking the table…");
+      decide("apply", t.dataset.apply,
+             t.dataset.choice ? { choice: t.dataset.choice } : {},
+             "Applying that change and re-checking the table…");
       return;
     }
     if (t.hasAttribute("data-revert")){

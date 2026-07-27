@@ -60,7 +60,10 @@ LEAKY_BASELINE = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-leaky.j
 # is what `VALUE_CHECK_ADJUDICATION.md` §"The denominator moved" rules. Every
 # difference between the two is enumerated there and asserted below, so a
 # second drift cannot hide inside the first.
-ADJUDICATED = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9.json"
+ADJUDICATED = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9c.json"
+# The measurement this one superseded. Kept named so the chain of
+# re-measurements is readable rather than implied by filenames.
+ADJUDICATED_PRIOR = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9.json"
 
 # What the adjudication permits the two references to disagree about, and by
 # how much. Anything else is drift.
@@ -71,6 +74,19 @@ ADJUDICATED_DELTAS = {
     ("longitudinal", "required_decisions"): (1, 2),
     ("longitudinal", "irrelevant_questions"): (31, 30),
     ("longitudinal", "coverage"): (1.0, 0.5),
+}
+
+# The inventory keys the adjudication permits to differ from the frozen one.
+# A *composition* change moves no metric — L9c swapped
+# `repair::binary_text__outcome` for `repair::positive_class__outcome` and every
+# number stayed identical — so comparing metrics alone cannot see it. That is
+# the hole this table closes.
+ADJUDICATED_KEY_DELTAS = {
+    "messy-clinic": {"added": {"repair::positive_class__outcome"},
+                     "removed": set()},
+    "wide-assay": {"added": set(), "removed": set()},
+    "longitudinal": {"added": {"repair::positive_class__outcome"},
+                     "removed": set()},
 }
 
 # Three shapes, as the roadmap asks. Multi-file stays frozen
@@ -211,7 +227,12 @@ def _classic_questions(csv_path: pathlib.Path, target: str, dataset: str):
 def _measure_classic(dataset: str, csv_path: pathlib.Path, target: str) -> Measurement:
     df, questions = _classic_questions(csv_path, target, dataset)
 
-    findings = engine.rank_findings(engine.diagnose(df), None)
+    # Diagnosed WITH the target, because the engine's answer depends on it: the
+    # outcome column is asked "which level is the event", a feature is asked how
+    # to read it. Both doors are scored against this one inventory, so it has to
+    # be the inventory the engine actually produces for a dataset whose target
+    # is known — which every fixture's is.
+    findings = engine.rank_findings(engine.diagnose(df, target=target), None)
     required = required_decisions(findings, target_chosen=False)
 
     for q in questions:
@@ -417,13 +438,42 @@ def test_the_adjudicated_reference_differs_from_the_frozen_one_only_as_ruled():
         "the adjudicated reference has moved beyond what was ruled. "
         + DRIFT_MESSAGE + "\n  " + "\n  ".join(unruled))
 
-    # And the ruling's own cause, asserted rather than described.
-    for name in ("messy-clinic", "longitudinal"):
-        added = ({r["key"] for r in now[name]["required"]}
-                 - {r["key"] for r in frozen[name]["required"]})
-        assert added == {"repair::binary_text__outcome"}, (
-            f"{name}: the inventory grew by {sorted(added)}, not by the one "
-            "decision the adjudication attributes it to")
+    # And the ruling's own cause, asserted rather than described. Composition,
+    # not just size: L9c swapped one required decision for another without
+    # moving a single metric, so a size-only check would have missed it.
+    for name in frozen:
+        was = {r["key"] for r in frozen[name]["required"]}
+        is_ = {r["key"] for r in now[name]["required"]}
+        ruled = ADJUDICATED_KEY_DELTAS[name]
+        assert is_ - was == ruled["added"], (
+            f"{name}: the inventory gained {sorted(is_ - was)}; the "
+            f"adjudication accounts for {sorted(ruled['added'])}. "
+            + DRIFT_MESSAGE)
+        assert was - is_ == ruled["removed"], (
+            f"{name}: the inventory lost {sorted(was - is_)}, which the "
+            "adjudication does not account for. " + DRIFT_MESSAGE)
+
+
+def test_both_doors_are_scored_against_one_inventory():
+    """The harness's core promise, asserted rather than assumed.
+
+    `required_decisions` is derived from the engine so neither door's UI biases
+    the measuring stick — which only holds if both doors are handed the same
+    inventory. L9c made the engine's answer depend on whether a target is known
+    (the outcome is asked *which level is the event*, a feature is asked how to
+    read it), so the two harnesses had to start diagnosing the same way. If they
+    drift apart the doors are scored against different denominators and the
+    comparison is meaningless while still producing numbers.
+    """
+    from tests.integration.test_routing_value_check import _run_guided
+
+    for name, path, target in DATASETS:
+        classic = [r.key for r in _measure_classic(name, path, target).required]
+        guided = [r.key for r in _run_guided(name, path, target).required]
+        assert classic == guided, (
+            f"{name}: the doors are scored against different inventories.\n"
+            f"  classic only: {sorted(set(classic) - set(guided))}\n"
+            f"  guided only:  {sorted(set(guided) - set(classic))}")
 
 
 def test_classic_still_measures_what_the_baseline_recorded():

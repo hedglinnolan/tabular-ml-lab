@@ -50,6 +50,16 @@ _BLANK_TOKENS = frozenset({"", "na", "n/a", "nan", "none", "null", ".", "-", "--
 
 MIN_ROWS = 5
 
+# Levels that are conventionally the event in a clinical or trial dataset.
+# Offered as a suggestion with its reasoning shown, never as a default: the
+# tokens below are habits of the literature, and `alive`/`dead` is deliberately
+# absent because whether the event is death or survival is the research
+# question rather than a property of the data.
+EVENT_CONVENTIONS = frozenset({
+    "responder", "response", "case", "event", "improved", "positive", "pos",
+    "yes", "true", "present", "1", "success", "relapse", "readmitted",
+})
+
 
 def _normalize(value: Any) -> Optional[str]:
     """One cell as a comparison token, or None when it carries no answer."""
@@ -124,6 +134,79 @@ def _original_labels(s: pd.Series, token: str) -> List[str]:
     return seen
 
 
+def positive_class_finding(column: str, s: pd.Series) -> Optional[ShapeFinding]:
+    """The target's question, which is different in kind from a feature's.
+
+    For a feature, binary-versus-numeric is a *reading*: the values mean the
+    same thing either way and the question is how to store them. For the
+    outcome, the reading is nearly forced — two-level text is binary
+    classification — and the decision that actually matters is **which level is
+    the event being predicted**.
+
+    That choice sets the sign of every effect estimate, what sensitivity and
+    specificity are the sensitivity and specificity *of*, and what the model is
+    optimized to detect. So the target is never asked "is this binary?"; it is
+    asked "which of these is the event you are predicting?".
+
+    **Never pre-selected, at any confidence.** Convention may be offered as a
+    suggestion with its reasoning shown — `responder`, `improved`, `case` are
+    conventionally the event — but `alive`/`dead` has no correct default.
+    Whether the event is death or survival is the research question, not a
+    property of the data, so `auto_suggestable` is False here regardless of how
+    familiar the vocabulary looks.
+    """
+    plan = read_as_binary_plan(s)
+    if plan is None:
+        return None
+
+    levels = plan["levels"]
+    spellings = {lvl: (_original_labels(s, lvl) or [lvl])[0] for lvl in levels}
+    counts = plan["counts"]
+    conventional = plan["positive"] if plan["positive_known"] else None
+    for lvl in levels:
+        if lvl in EVENT_CONVENTIONS:
+            conventional = lvl
+            break
+
+    detail = (f"'{column}' is the outcome and holds two values — "
+              + " and ".join(f"{spellings[lvl]!r} ({counts[lvl]:,} rows)"
+                             for lvl in levels) + ".")
+    if plan["n_missing"]:
+        detail += f" {plan['n_missing']:,} rows have no outcome recorded."
+
+    why = ("Which of these is the event decides the sign of every effect "
+           "estimate, what sensitivity and specificity are measuring, and what "
+           "the model is trained to detect. Nothing in the file says which one "
+           "you are predicting.")
+    if conventional:
+        why += (f" By convention {spellings[conventional]!r} is usually the "
+                f"event, and it is the smaller group here"
+                if counts.get(conventional, 0) == min(counts.values())
+                else f" By convention {spellings[conventional]!r} is usually the event")
+        why += " — but convention is a suggestion, not an answer."
+
+    return ShapeFinding(
+        id=f"positive_class__{column}",
+        severity="warning",
+        title=f"Which of these is the event you are predicting?",
+        detail=detail,
+        why_it_matters=why,
+        fix_label=f"Set the event for '{column}'",
+        fix_kind="set_positive_class",
+        # Never high: `auto_suggestable` is `confidence == "high"`, and this
+        # question may not be pre-selected at any confidence.
+        confidence="medium",
+        params={"column": column, "is_target": True,
+                "levels": levels, "spellings": spellings, "counts": counts,
+                "suggested": conventional,
+                "suggested_reason": (
+                    f"{spellings[conventional]!r} is conventionally the event"
+                    if conventional else None),
+                "n_missing": plan["n_missing"], "n_rows": plan["n_rows"]},
+        affected_columns=[column],
+    )
+
+
 def binary_text_finding(column: str, s: pd.Series) -> Optional[ShapeFinding]:
     """One finding proposing that a binary-coded column be read as binary."""
     plan = read_as_binary_plan(s)
@@ -173,8 +256,16 @@ def binary_text_finding(column: str, s: pd.Series) -> Optional[ShapeFinding]:
     )
 
 
-def detect_binary_text(df: pd.DataFrame) -> List[ShapeFinding]:
-    """Every binary-coded text column in the frame, as findings."""
+def detect_binary_text(df: pd.DataFrame,
+                       target: Optional[str] = None) -> List[ShapeFinding]:
+    """Every binary-coded column in the frame, as findings.
+
+    The target gets a different question from a feature. For a feature the
+    question is how to read the column; for the outcome the reading is nearly
+    forced and the decision is which level is the event. Passing `target` routes
+    that column to `positive_class_finding`; omitting it treats every column as
+    a feature, which is right before a target has been chosen.
+    """
     out: List[ShapeFinding] = []
     if df is None or df.empty:
         return out
@@ -183,7 +274,10 @@ def detect_binary_text(df: pd.DataFrame) -> List[ShapeFinding]:
             s = df.iloc[:, position]
             if isinstance(s, pd.DataFrame):     # duplicate labels
                 continue
-            finding = binary_text_finding(str(column), s)
+            name = str(column)
+            finding = (positive_class_finding(name, s)
+                       if target is not None and name == str(target)
+                       else binary_text_finding(name, s))
         except Exception:
             continue
         if finding is not None:
@@ -209,9 +303,55 @@ def supersede_numeric_coercion(
 
 
 def diagnose_with_binary(df: pd.DataFrame,
-                         findings: Sequence[ShapeFinding]) -> List[ShapeFinding]:
+                         findings: Sequence[ShapeFinding],
+                         target: Optional[str] = None) -> List[ShapeFinding]:
     """`import_doctor.diagnose` output with the binary reading folded in."""
-    return supersede_numeric_coercion(findings, detect_binary_text(df))
+    return supersede_numeric_coercion(findings, detect_binary_text(df, target))
+
+
+def apply_positive_class(df: pd.DataFrame,
+                         finding: ShapeFinding,
+                         event: Optional[str] = None) -> Tuple[pd.DataFrame, str]:
+    """Encode the outcome with the chosen level as 1. Never mutates the input.
+
+    `event` is the level the user named. It is required: there is no default,
+    at any confidence, because which level is the event is the research
+    question rather than a property of the data.
+    """
+    params = finding.params or {}
+    column = params.get("column") or (finding.affected_columns or [None])[0]
+    if column is None or column not in df.columns:
+        raise KeyError(f"'{column}' is not a column of this table.")
+    if not event:
+        raise ValueError(
+            "Setting the event needs the level being predicted. There is no "
+            "default: whether the event is (say) death or survival is the "
+            "research question, not something the file can say.")
+
+    chosen = _normalize(event)
+    levels = list(params.get("levels") or [])
+    if chosen not in levels:
+        raise ValueError(
+            f"{event!r} is not one of the two levels of '{column}' "
+            f"({', '.join(map(repr, levels))}).")
+    other = next(lvl for lvl in levels if lvl != chosen)
+    spellings = params.get("spellings") or {}
+
+    out = df.copy(deep=True)
+    tokens = out[column].map(_normalize)
+    out[column] = tokens.map(
+        lambda t: (1 if t == chosen else 0) if t is not None else None)
+    out[column] = pd.to_numeric(out[column], errors="coerce").astype("Int64")
+
+    event_text = spellings.get(chosen, chosen)
+    other_text = spellings.get(other, other)
+    description = (f"'{column}' was encoded with {event_text} as the event "
+                   f"(1) and {other_text} as the comparison (0).")
+    n_missing = int(out[column].isna().sum())
+    if n_missing:
+        description += (f" {n_missing:,} row(s) have no outcome recorded and "
+                        "are excluded from modeling.")
+    return out, description
 
 
 def apply_read_as_binary(df: pd.DataFrame,

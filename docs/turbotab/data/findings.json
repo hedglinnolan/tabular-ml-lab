@@ -5116,5 +5116,47 @@
   "verified_against": "TurboTab @ 57a6460",
   "test": "",
   "verified_ev": "ml/clinical_units.py:139-142 (`if var_name in col_lower`); ml/pipeline.py:60 build_unit_harmonization_config; ml/preprocess_operators.py UnitHarmonizer.transform multiplies by the factor"
+ },
+ {
+  "id": "GUIDED-009",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The outcome was asked a feature's question - 'is this binary?' - instead of the only one that matters for a target: which level is the event",
+  "detail": "ml/binary_text.py, built at L9 for GUIDED-001, made no distinction between a feature and the target. On two of the three pre-registered fixtures it fired on the outcome column itself and proposed 'read as binary', which is the wrong question in kind. For a feature, binary-versus-numeric is a READING: the values mean the same thing either way and the question is how to store them. For the outcome the reading is nearly forced - two-level text is binary classification - and the decision that matters is which level is the EVENT being predicted. That choice sets the sign of every effect estimate, decides what sensitivity and specificity are the sensitivity and specificity OF, and determines what the model is trained to detect. Asking 'is this binary?' about an outcome answers a question nobody had and skips the one that does.",
+  "ev": "ml/binary_text.py positive_class_finding / apply_positive_class; turbotab/engine.py diagnose(target=...) and _dispatch_fix; turbotab/api.py apply and preview carry the choice",
+  "act": "Route the target to its own question. Never pre-select the event at any confidence; offer convention as a suggestion with its reasoning shown.",
+  "status": "FIXED",
+  "note": "Raised by the adjudicator from the L9b report, where it was recorded as an observation rather than a row - which was the wrong disposition and is corrected here. Fixed as ruled. detect_binary_text takes the target and routes that column to positive_class_finding, titled 'Which of these is the event you are predicting?' and never the word binary; every other column keeps the feature question. Before a target is chosen there is no outcome column, so every column is read as a feature, which is right. NEVER PRE-SELECTED, AT ANY CONFIDENCE: confidence is pinned at medium so auto_suggestable is False regardless of vocabulary, and a parametrized test covers the conventional case (responder), a known boolean pair (yes/no), the case with no correct default (alive/dead) and one with no convention at all (arm_a/arm_b). Convention is offered with its reasoning shown - responder, improved, case and friends - and alive/dead is deliberately absent from that table with a test asserting it stays absent, because whether the event is death or survival is the research question rather than a property of the data. Applying refuses without a named level and honors a choice that contradicts the suggestion. The API returns the two levels and the suggestion instead of a preview when no event is named, because previewing 'set the event' with no event would have to pick one. DENOMINATOR CONSEQUENCE, adjudicated: the inventory swapped repair::binary_text__outcome for repair::positive_class__outcome on two datasets. Composition changed, no metric moved, every threshold still passes - see VALUE_CHECK_ADJUDICATION.md 'The denominator moved again'.",
+  "verified_against": "TurboTab @ 23a9123",
+  "test": "tests/test_the_target_is_asked_a_different_question.py::test_the_event_is_never_pre_selected",
+  "verified_ev": "ml/binary_text.py positive_class_finding / apply_positive_class; turbotab/engine.py diagnose(target=...) and _dispatch_fix; turbotab/api.py apply and preview carry the choice"
+ },
+ {
+  "id": "T0-BUILD-005",
+  "area": "TEST",
+  "sev": "high",
+  "item": "The routing harness diagnosed without a target while the API diagnosed with one, so it measured a door that no longer existed - and a composition change in the inventory moves no metric, so nothing could see it",
+  "detail": "Two defects, one cause. (1) FIDELITY: tests/integration/test_routing_value_check._run_guided and test_routing_baseline._measure_classic both called engine.diagnose(df) with no target, while turbotab/api.py::_recompute calls engine.diagnose(project.df, target=project.target) as soon as a target is chosen. Harmless until L9c made the engine's answer depend on the target - the outcome asked which level is the event, a feature asked how to read it - at which point the harness would have scored the doors against an inventory the real door never produces. Worse, if only one of the two harnesses had been updated the doors would have been scored against DIFFERENT denominators while still producing numbers, which breaks the harness's stated core promise that both doors are judged by one measuring stick. (2) BLINDNESS: every drift guard compared metric VALUES. The L9c change replaced repair::binary_text__outcome with repair::positive_class__outcome and left every number identical - required_decisions 10, coverage 1.0, irrelevant 0 - so the guard passed on a changed experiment.",
+  "ev": "tests/integration/test_routing_value_check.py _run_guided; tests/integration/test_routing_baseline.py _measure_classic; turbotab/api.py::_recompute",
+  "act": "Diagnose with the target in both harnesses; assert the two doors share one inventory; compare inventory KEYS in the drift detector, not only metric values.",
+  "status": "FIXED",
+  "note": "Found at L9c while implementing the target-question ruling. Both halves fixed. The two harnesses now diagnose with the target, as the API does, and test_both_doors_are_scored_against_one_inventory asserts key-for-key that Classic and Guided are handed the same required-decision list on all three datasets - the promise was previously stated in a docstring and enforced by nothing. test_the_adjudicated_reference_differs_from_the_frozen_one_only_as_ruled now compares inventory keys against a table of what the adjudication accounts for, so a swap that moves no number fails. THE GENERAL FORM, worth carrying: a guard that compares values cannot see a change of identity. The same shape of hole exists anywhere a test asserts counts and not names - and this ledger has several such tests. FLAGGED FOR A SECOND PAIR OF EYES per the different-hands rule: the harness changes and the ruling that exposed them were both implemented by the same hand in this loop.",
+  "verified_against": "TurboTab @ 23a9123",
+  "test": "tests/integration/test_routing_baseline.py::test_both_doors_are_scored_against_one_inventory",
+  "verified_ev": "tests/integration/test_routing_value_check.py _run_guided; tests/integration/test_routing_baseline.py _measure_classic; turbotab/api.py::_recompute"
+ },
+ {
+  "id": "T0-BUILD-006",
+  "area": "MODELS",
+  "sev": "landmine",
+  "item": "Classic decides which class is the event by alphabetical order, silently and with no way to see or change it",
+  "detail": "ml/splits.py:300 encodes a categorical target with LabelEncoder().fit_transform(y.astype(str)). LabelEncoder sorts classes, so class 1 - the event, the positive class, the one every metric is about - is whichever level sorts LAST alphabetically. Measured on the project's own fixtures: messy-clinic gets responder over non-responder, which happens to match convention; the longitudinal fixture gets 'stable' over 'improved', so the model is trained to detect NOT improving; alive/dead would make death the event. Everything downstream inherits it - the sign of every coefficient, which class precision and recall describe, which way a calibration curve bends, what an odds ratio is an odds ratio OF - and nothing in the Classic interface states the choice or offers to change it. The numbers are internally consistent and answer a question the analyst may not have asked.",
+  "ev": "ml/splits.py:294-301 (LabelEncoder on a categorical target); no Classic page renders or offers the class order; contrast ml/binary_text.positive_class_finding",
+  "act": "Ask, as Guided now does (GUIDED-009): the event is a decision, not a property of the string. Until then, at minimum DISCLOSE the encoding - the Methods section can state which level was treated as the event, which costs nothing and removes the silent half.",
+  "status": "OPEN",
+  "note": "Found at L9c while writing the register row for target-positive-class, and worth recording how: the row was first written asserting the opposite mapping from memory, then checked against LabelEncoder and ml/splits.py and corrected. The claim as filed is measured. This is the Classic half of GUIDED-009 and the reason that row's register entry is a dated debt rather than a permanent classic-only: PRODUCT_VISION says Guided is never the less capable door, and here Classic is the less careful one. Note the interaction with T0-BUILD-004 and the label-encoder: neither is a crash, both are silent wrong-direction answers, and both are invisible in a results table that looks entirely reasonable. Closes at the L11 convergence of pages/01, or sooner if the disclosure half is taken on its own.",
+  "verified_against": "TurboTab @ 23a9123",
+  "test": "",
+  "verified_ev": "ml/splits.py:294-301 (LabelEncoder on a categorical target); no Classic page renders or offers the class order; contrast ml/binary_text.positive_class_finding"
  }
 ]

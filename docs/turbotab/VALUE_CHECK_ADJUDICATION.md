@@ -158,6 +158,71 @@ in `test_the_frozen_baseline_is_the_one_the_prereg_names`. The new measurement s
 
 ---
 
+# The denominator moved again — this time without moving a number
+
+**Third adjudication, L9c.** Same discipline. Recorded before the change landed, not after.
+
+## What happened
+
+The product owner ruled that **the target's question is different in kind from a feature's**. For
+a feature, binary-versus-numeric is a *reading* — the values mean the same either way and the
+question is how to store them. For the outcome the reading is nearly forced (two-level text is
+binary classification) and the decision that matters is **which level is the event being
+predicted**, because that sets the sign of every effect estimate, what sensitivity and specificity
+are the sensitivity and specificity *of*, and what the model is trained to detect.
+
+So `ml/binary_text.py` now routes the target column to `positive_class_finding` — *"Which of these
+is the event you are predicting?"* — instead of `binary_text_finding`. The required-decision
+inventory changed accordingly:
+
+| dataset | removed | added |
+|---|---|---|
+| messy-clinic | `repair::binary_text__outcome` | `repair::positive_class__outcome` |
+| longitudinal | `repair::binary_text__outcome` | `repair::positive_class__outcome` |
+| wide-assay | — | — (its outcome is already `int64`) |
+
+## Both readings
+
+**Every number is unchanged.** The denominator's *size* did not move: messy-clinic stays at 10,
+longitudinal at 2, wide-assay at 1. Its *composition* did — one required decision was replaced by
+another. Guided asks the new question, so:
+
+| dataset | Classic | Guided | Guided @ pinned n |
+|---|---|---|---|
+| messy-clinic | 1/10 @ `23a9123` | 10/10 @ `23a9123` | 9/9 @ `6bfe598` |
+| wide-assay | 1/1 @ `23a9123` | 1/1 @ `23a9123` | 1/1 @ `6bfe598` |
+| longitudinal | 1/2 @ `23a9123` | 2/2 @ `23a9123` | 1/1 @ `6bfe598` |
+
+Every threshold passes, under both denominators, as before.
+
+## The ruling
+
+**The new composition is binding. The measurement is recorded as a new row** —
+`routing-baseline-l9c.json`, superseding `routing-baseline-l9.json`, which stays on disk so the
+chain is readable.
+
+## What this exposed, which is the part worth keeping
+
+**A composition change moves no metric, so the drift detector could not see it.** Every guard we
+had compared numbers; this change swapped one required decision for another and every number
+stayed identical. It would have passed silently.
+
+Two things now close that:
+
+- `test_the_adjudicated_reference_differs_from_the_frozen_one_only_as_ruled` compares the
+  **inventory keys**, not just the metrics, against a table of what the adjudication accounts for.
+- `test_both_doors_are_scored_against_one_inventory` asserts the harness's core promise directly.
+  It had quietly stopped holding: `_run_guided` diagnosed *without* the target while
+  `api.py::_recompute` diagnoses *with* it, so the harness was measuring a door that no longer
+  existed — and once the engine's answer depended on whether a target was known, that gap would
+  have scored the two doors against different denominators while still producing numbers. Filed as
+  `T0-BUILD-005`.
+
+**The general form, worth stating:** *a guard that compares values cannot see a change of
+identity.* The ledger has the same shape of hole wherever a test asserts counts and not names.
+
+---
+
 # Coverage carries its denominator
 
 **A standing ruling, not a one-off.** It comes out of the adjudication above, and it survives it.

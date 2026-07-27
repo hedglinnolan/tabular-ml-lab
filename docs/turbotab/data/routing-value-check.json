@@ -2,8 +2,8 @@
  "schema_version": "1.0",
  "prereg": "VALUE_CHECK_PREREG.md",
  "adjudication": "VALUE_CHECK_ADJUDICATION.md",
- "measured_at": "31e87ac",
- "classic_reference": "routing-baseline-l9.json",
+ "measured_at": "23a9123",
+ "classic_reference": "routing-baseline-l9c.json",
  "classic_frozen_reference": "routing-baseline.json",
  "rows": [
   {
@@ -15,8 +15,10 @@
     "findings_driven": 0.0,
     "deferral_closes": null,
     "coverage": 0.1,
-    "pull_affordances": 0,
-    "coverage_ratio": "1/10 @ aa6cbc4"
+    "covered": 1,
+    "coverage_ratio": "1/10 @ 23a9123",
+    "measured_at": "23a9123",
+    "pull_affordances": 0
    },
    "classic_frozen": {
     "required_decisions": 9,
@@ -36,13 +38,13 @@
     "deferral_closes": 1.0,
     "coverage": 1.0,
     "covered": 10,
-    "coverage_ratio": "10/10 @ 31e87ac",
-    "measured_at": "31e87ac",
+    "coverage_ratio": "10/10 @ 23a9123",
+    "measured_at": "23a9123",
     "pull_affordances": 7,
     "surfaced_coverage": 1.0,
     "asked_coverage": 1.0,
-    "surfaced_ratio": "10/10 @ 31e87ac",
-    "asked_ratio": "10/10 @ 31e87ac"
+    "surfaced_ratio": "10/10 @ 23a9123",
+    "asked_ratio": "10/10 @ 23a9123"
    },
    "guided_under_frozen_denominator": {
     "n_required": 9,
@@ -61,8 +63,10 @@
     "findings_driven": 0.0,
     "deferral_closes": null,
     "coverage": 1.0,
-    "pull_affordances": 0,
-    "coverage_ratio": "1/1 @ aa6cbc4"
+    "covered": 1,
+    "coverage_ratio": "1/1 @ 23a9123",
+    "measured_at": "23a9123",
+    "pull_affordances": 0
    },
    "classic_frozen": {
     "required_decisions": 1,
@@ -82,13 +86,13 @@
     "deferral_closes": null,
     "coverage": 1.0,
     "covered": 1,
-    "coverage_ratio": "1/1 @ 31e87ac",
-    "measured_at": "31e87ac",
+    "coverage_ratio": "1/1 @ 23a9123",
+    "measured_at": "23a9123",
     "pull_affordances": 3,
     "surfaced_coverage": 1.0,
     "asked_coverage": 1.0,
-    "surfaced_ratio": "1/1 @ 31e87ac",
-    "asked_ratio": "1/1 @ 31e87ac"
+    "surfaced_ratio": "1/1 @ 23a9123",
+    "asked_ratio": "1/1 @ 23a9123"
    },
    "guided_under_frozen_denominator": {
     "n_required": 1,
@@ -107,8 +111,10 @@
     "findings_driven": 0.0,
     "deferral_closes": null,
     "coverage": 0.5,
-    "pull_affordances": 0,
-    "coverage_ratio": "1/2 @ aa6cbc4"
+    "covered": 1,
+    "coverage_ratio": "1/2 @ 23a9123",
+    "measured_at": "23a9123",
+    "pull_affordances": 0
    },
    "classic_frozen": {
     "required_decisions": 1,
@@ -128,13 +134,13 @@
     "deferral_closes": null,
     "coverage": 1.0,
     "covered": 2,
-    "coverage_ratio": "2/2 @ 31e87ac",
-    "measured_at": "31e87ac",
+    "coverage_ratio": "2/2 @ 23a9123",
+    "measured_at": "23a9123",
     "pull_affordances": 5,
     "surfaced_coverage": 1.0,
     "asked_coverage": 1.0,
-    "surfaced_ratio": "2/2 @ 31e87ac",
-    "asked_ratio": "2/2 @ 31e87ac"
+    "surfaced_ratio": "2/2 @ 23a9123",
+    "asked_ratio": "2/2 @ 23a9123"
    },
    "guided_under_frozen_denominator": {
     "n_required": 1,
@@ -154,5 +160,5 @@
   ],
   "passes_under_literal_reading": false
  },
- "replaced_because": "First deliberate recording. T0-PREREG-003: the file was previously rewritten by every suite run, so its 'permanent record' had no provenance. Content is the same verdict, now stamped and carrying coverage as k/n @ commit."
+ "replaced_because": "L9c ruling 5: the target now gets its own question (which level is the event), so the required-decision inventory swapped repair::binary_text__outcome for repair::positive_class__outcome. Composition changed, no metric moved. Classic reference repointed to routing-baseline-l9c.json. Adjudicated in VALUE_CHECK_ADJUDICATION.md."
 }

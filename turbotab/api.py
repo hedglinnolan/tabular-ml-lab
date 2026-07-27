@@ -70,7 +70,7 @@ def _recompute(project: AnalysisProject) -> None:
     Called on upload and whenever the target changes. Both engine calls are pure
     and read-only, so this is safe to repeat.
     """
-    structural = engine.diagnose(project.df)
+    structural = engine.diagnose(project.df, target=project.target)
     prof = None
     try:
         prof = engine.profile(project.df, project.target, project.task_type)
@@ -209,16 +209,28 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         # it is reached only by asking for it by name. A preview never lands
         # here: it computes on a copy and throws the copy away.
         try:
-            live = engine.find_shape_finding(engine.diagnose(project.df), decision.subject)
+            live = engine.find_shape_finding(
+                engine.diagnose(project.df, target=project.target), decision.subject)
             # The identity barrier (T0-ID-001). Refused here rather than
             # detected afterwards: once the lockbox is sealed there is no way to
             # recover which rows its labels meant.
             project.check_repair_allowed(live.fix_kind)
-            prev = engine.preview_fix(project.df, live)
+            # An answer the finding cannot supply itself. Today that is which
+            # level of the outcome is the event — never defaulted, at any
+            # confidence, because it is the research question rather than a
+            # property of the data.
+            choice = decision.payload.get("choice") or decision.payload.get("event")
+            if live.fix_kind == "set_positive_class" and not choice:
+                raise HTTPException(
+                    400, "Setting the event needs the level being predicted. "
+                         "There is no default: whether the event is (say) death "
+                         "or survival is the research question, not something "
+                         "the file can say.")
+            prev = engine.preview_fix(project.df, live, choice=choice)
             if not prev.get("applicable"):
                 raise HTTPException(
                     400, "That finding has no automatic repair — it needs a human decision.")
-            new_df, description = engine.apply_fix(project.df, live)
+            new_df, description = engine.apply_fix(project.df, live, choice=choice)
             project.apply_fix(new_df, live.id, live.title, description,
                               prev["row_identity_preserved"])
         except engine.EngineRefusal as exc:
@@ -343,7 +355,8 @@ async def get_findings(project_id: str) -> Dict[str, Any]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/project/{project_id}/finding/{finding_id}/preview")
-async def preview_finding(project_id: str, finding_id: str) -> Dict[str, Any]:
+async def preview_finding(project_id: str, finding_id: str,
+                          choice: Optional[str] = None) -> Dict[str, Any]:
     """What this fix would change, without changing it.
 
     A `GET`, because it is a question. It runs `import_doctor.apply_fix` on a
@@ -357,8 +370,23 @@ async def preview_finding(project_id: str, finding_id: str) -> Dict[str, Any]:
     except ProjectError as exc:
         raise HTTPException(404, str(exc)) from exc
     try:
-        live = engine.find_shape_finding(engine.diagnose(project.df), finding_id)
-        return engine.preview_fix(project.df, live)
+        live = engine.find_shape_finding(
+            engine.diagnose(project.df, target=project.target), finding_id)
+        if live.fix_kind == "set_positive_class" and not choice:
+            # A preview of "set the event" with no event named would have to
+            # pick one, and picking one is the thing this question forbids.
+            return {
+                "finding_id": live.id, "fix_kind": live.fix_kind,
+                "fix_label": live.fix_label, "applicable": False,
+                "description": (
+                    "Choose which level is the event and this will show what "
+                    "changes. There is no default — the choice sets the sign of "
+                    "every effect estimate."),
+                "choices": (live.params or {}).get("spellings", {}),
+                "suggested": (live.params or {}).get("suggested"),
+                "suggested_reason": (live.params or {}).get("suggested_reason"),
+            }
+        return engine.preview_fix(project.df, live, choice=choice)
     except engine.EngineRefusal as exc:
         raise HTTPException(404, str(exc)) from exc
 
