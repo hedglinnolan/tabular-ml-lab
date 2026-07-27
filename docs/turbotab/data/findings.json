@@ -2374,7 +2374,9 @@
   "detail": "trained_models holds the WRAPPER; fitted_estimators holds the bare sklearn estimator via `model.get_model()`, EXCEPT for 'nn' where it holds `model.get_sklearn_estimator()` and force-fits it on one row if unfitted (`fitted_estimator.fit(X_train_model[:1], y_train[:1])`). Page 07 builds `SklearnPipeline([('preprocess', prep), ('model', estimator)])` from fitted_estimators + fitted_preprocessing_pipelines. Three dicts must stay key-aligned; nothing enforces it.",
   "ev": "pages/06_Train_and_Compare.py:1583-1594; pages/07_Explainability.py:171-177",
   "act": "jobs — one TrainedModel record per key holding {wrapper, estimator, pipeline, feature_names_out}; three parallel dicts is the bug factory",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD - three parallel dicts keyed by model name with nothing enforcing alignment, and one special case in the middle of it. The force-fit at :1492-1493 is now less dangerous than when this was written, because the NN adapter refuses to fit unless marked pretrained (MODELS-001), so that line either finds it already marked or raises rather than producing an untrained answer - worth re-reading when the adapter is touched. What is unchanged is the shape: fitted_estimators holds a bare estimator for 21 models and an adapter for one, page 07 reconstructs a pipeline by joining two dicts on a string key, and a model present in one dict and absent from another degrades silently. One TrainedModel record per key holding wrapper, estimator, pipeline and feature_names_out; three parallel dicts is a bug factory.",
+  "verified_ev": "pages/06_Train_and_Compare.py:1484-1501 (add_trained_model stores the WRAPPER; fitted_estimators gets model.get_model(), except 'nn' which gets get_sklearn_estimator() and is force-fitted on one row at :1492-1493; fitted_preprocessing_pipelines is a third dict); pages/07_Explainability.py:171-177 builds a SklearnPipeline from two of them"
  },
  {
   "id": "CONTRACT-032",
@@ -2384,7 +2386,9 @@
   "detail": "Both are booleans set by an st.button inside the same script run that is doing the work, then polled between models (`if st.session_state.cancel_explainability: break`). This only works because Streamlit re-runs the script; there is no actual cancellation of an in-flight sklearn call. permutation_importance at 3000 features is explicitly documented as ~141s uninterruptible.",
   "ev": "pages/07_Explainability.py:321-352, :419-422, :540-543; pages/06_Train_and_Compare.py:1252-1266",
   "act": "jobs — this is the concrete requirement the Jobs layer exists to satisfy; the current flags cannot interrupt anything and must be replaced, not ported",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "Half of this row is closed and half is untouched. cancel_training no longer exists - the button was removed rather than wired, because Streamlit blocks the script during training so the button could never be clicked (T0-LIVE-002 / MODELS-005). cancel_explainability is unchanged: still a boolean set by a button inside the same script run that is doing the work, still polled between models at :354, :419 and :542, so it can only take effect at a boundary and cannot interrupt an in-flight sklearn call - permutation_importance at 3000 features is documented in this file as roughly 141 seconds uninterruptible. It is more honest than cancel_training was, because the poll does exist and does something between units, but the promise on the button is still larger than the mechanism. Replace, do not port: turbotab/jobs.py already has the token-and-honest-report shape.",
+  "verified_ev": "pages/06_Train_and_Compare.py:1143-1170 (cancel_training and its button are GONE, with a comment recording why removal beat wiring); pages/07_Explainability.py:320-354, :419, :542 (cancel_explainability still initialized, set by a button and polled between models); turbotab/jobs.py:175-215"
  },
  {
   "id": "CONTRACT-033",
@@ -2394,7 +2398,9 @@
   "detail": "`List[{timestamp, step, action, details}]`. REPLACE_STEPS = {'Upload & Audit','Feature Engineering','Feature Selection Applied','Preprocessing','Model Training','Explainability'} scan backwards and replace in place; everything else appends. Every call ALSO writes a pre-resolved Insight to the ledger via _log_to_ledger with a fixed id for replace-steps and an action-slug id for additive ones — so the ledger inherits the same replace/append duality through id collision, not through explicit logic.",
   "ev": "utils/session_state.py:505-544, :578-587, :590-656",
   "act": "record — this dual-write bridge is the most load-bearing undocumented contract in the app; the id-collision-as-upsert trick must be made explicit",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and the description is exactly right about why it matters: the ledger inherits methodology_log's replace/append duality through ID COLLISION rather than through any explicit logic - a replace-step re-logs under the same fixed id, upsert overwrites, and that is the whole mechanism. Nothing states this, no test pins it, and it is load-bearing for whether the Methods section describes the latest preprocessing or all six attempts. Two other rows sit on top of it: COACH-011 (upsert keeps the old resolution while replacing the finding) is this trick's failure mode, and CONTRACT-006 / MINE-007 (the bridge swallows) is what makes the failure silent. Make the upsert-by-id semantics explicit before the Record moves.",
+  "verified_ev": "utils/session_state.py:590-603 (REPLACE_STEPS scanned backwards and replaced in place; everything else appended), :599 and :603 (both paths then call _log_to_ledger), :649-715 (the bridge, with a fixed id for replace-steps and an action-slug id for additive ones)"
  },
  {
   "id": "CONTRACT-034",
@@ -2404,7 +2410,9 @@
   "detail": "WorkflowProvenance with 11 optional section dataclasses (upload, eda, feature_engineering, feature_selection, split, preprocessing{shared, per_model: Dict[str, ModelPreprocessingConfig]}, training, explainability, sensitivity, statistical_validation, coach). to_dict via asdict(); from_dict reconstructs each section with field filtering and hand-rolls the nested per_model dict. Fully JSON-safe. reset_downstream_results nulls sections by setattr on a hard-coded name list ['eda','split','preprocessing','training','explainability','coach'] — 'statistical_validation' and 'sensitivity' are NOT in that list and therefore survive a data change, describing analyses of data that no longer exists.",
   "ev": "utils/workflow_provenance.py:190-214, :580-655; utils/session_state.py:377-387",
   "act": "record — the section list must be derived from the DAG, not typed by hand; the two omissions are live bugs",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of STATE-047 from the contract pass, unchanged at HEAD, and it names both omissions where the other names one: statistical_validation AND sensitivity survive a data change, so the Methods draft can assert hypothesis tests and seed-stability numbers computed on data that no longer exists, and get_completeness() reports both stages as done - which is what a Router keys off to decide the question has been answered. The structural point is the durable one: the section list is TYPED BY HAND in session_state while the sections are declared in workflow_provenance, so the two drift by construction. Derive the list from the DAG - turbotab/cascade.py already models provenance_sections per stage and simply does not carry these two.",
+  "verified_ev": "utils/workflow_provenance.py:190-214 (eleven optional section dataclasses), :580-655 (from_dict, hand-rolled per section); utils/session_state.py:438-441 (the hard-coded null list: eda, split, preprocessing, training, explainability, coach, plus feature_selection/feature_engineering under their flags)"
  },
  {
   "id": "CONTRACT-035",
@@ -2414,7 +2422,9 @@
   "detail": "_build_manuscript_context() freezes selected_results, selected_bootstrap, workflow_feature_names, train_n/val_n/test_n, dataset_descriptor and feature_counts so 'markdown and LaTeX share the same boundary'. Its feature-name resolution has a FOUR-level fallback (selected_features → data_config.feature_cols → X_train.columns → feature_names → []), each level describing a different stage of the pipeline. Whichever level fires determines the predictor count printed in the abstract.",
   "ev": "pages/10_Report_Export.py:370-400; ml/publication.py:332-356 (_resolve_manuscript_context), :178-246 (_resolve_workflow_feature_counts)",
   "act": "project — a single authoritative final-predictor list removes the whole fallback chain and the abstract/methods disagreement it causes",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The freeze itself is good design and worth keeping - markdown and LaTeX reading one boundary is why those two exports agree on their numbers at all. The defect is what gets frozen: a four-level fallback where each level describes a DIFFERENT stage of the pipeline (the user's selection, the config's list, the training matrix's columns, the raw input names), so whichever level happens to fire determines the predictor count printed in the abstract, and the four can legitimately differ by feature engineering and by selection. CONTRACT-022 is the same disagreement seen upstream. One authoritative final-predictor list on the Project removes the chain and the abstract/methods disagreement it causes.",
+  "verified_ev": "pages/10_Report_Export.py:370-400 (_build_manuscript_context freezes selected_results, selected_bootstrap, workflow_feature_names, train/val/test n, dataset_descriptor, feature_counts); ml/publication.py _resolve_manuscript_context and _resolve_workflow_feature_counts carry the four-level feature-name fallback (selected_features -> data_config.feature_cols -> X_train.columns -> feature_names -> [])"
  },
  {
   "id": "CONTRACT-036",
@@ -2424,7 +2434,9 @@
   "detail": "generate_methods_from_log (methodology_log), _resolve_workflow_feature_counts (pre_fe_feature_cols, engineered_feature_names, selected_features), generate_methods_section (feature_engineering_applied, engineering_log, engineered_feature_names, preprocessing_config_by_model), plus shap_results, bland_altman_results, sensitivity_seed_results, sensitivity_dropout_results, engineered_feature_transforms, methodology_log. All use local `import streamlit as st`. This is the 32-reference coupling and it is entirely READ-ONLY — every one can become a parameter.",
   "ev": "ml/publication.py:160-165, :212-215, :597-611, :731-732, :1171-1174, :1220-1222, :1349-1350, :1381-1382, :1401-1403, :1826-1827",
   "act": "engine — mechanical: thread a single ManuscriptInputs dataclass through; no logic changes needed",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of MINE-012 / RECORD-010 from the contract pass, unchanged at HEAD, and this row states the most useful fact about it: the coupling is entirely READ-ONLY, so every one of the twelve keys can become a parameter and the change is mechanical with no logic edits. That makes it the cheapest large detaint left in the codebase, and RECORD-009 has already shown what one such move buys - relocating a single import untainted narrative_engine, manuscript_validator and latex_report at once. Thread one ManuscriptInputs dataclass; the module then has no host dependency and the silent-shortening failure (RECORD-010) disappears with it, because a missing field becomes a constructor error.",
+  "verified_ev": "ml/publication.py:154-166, 211-215, 596-620, 730-737, 1170-1178, 1219-1235, 1348-1360, 1380-1392, 1400-1412, 1824-1836 - ten function-scope 'import streamlit as st' sites reading twelve session keys, all READ-ONLY"
  },
  {
   "id": "CONTRACT-037",
@@ -2434,7 +2446,9 @@
   "detail": "All three are resolved today by FUNCTION-LOCAL imports: test_lockbox.render_lockbox_status does `from utils.cohorts import active_cohort` (line 269), cohorts.record_run does `from utils.test_lockbox import get_lockbox` (line 466), session_state.get_data does `from utils.cohorts import apply_cohort` (line 216), set_data/reset_data_dependent_state do `from utils.cohorts import clear_cohort` (lines 278, 428), test_lockbox.ensure_lockbox does `from utils.session_state import reset_downstream_results` (line 228). The cycles exist because row-membership state is split across three modules that each mutate the others.",
   "ev": "utils/test_lockbox.py:228,269; utils/cohorts.py:216 (in session_state),466; utils/session_state.py:216,278,428",
   "act": "project — lockbox + cohort + active-rows are ONE concern; merging them into the Project object removes all three cycles without any deferred-import tricks",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of STATE-053 from the contract pass, unchanged at HEAD, and it states the root cause more precisely than the other: the cycles exist because ROW-MEMBERSHIP STATE is split across three modules that each mutate the others - the lockbox owns which rows are sealed, cohorts owns which rows are in the run, and session_state owns which frame is current, and every question about rows needs two of the three. Function-local imports hide it and a move to module scope exposes it as a boot failure. Merging lockbox, cohort and active-rows into the Project removes all three cycles with no deferred-import tricks, which is why turbotab/project.py holding lockbox, cohort and working_table together is the right shape.",
+  "verified_ev": "utils/test_lockbox.py:452 (from utils.session_state import reset_downstream_results, inside a function) and :520 (from utils.cohorts import active_cohort); utils/cohorts.py imports get_lockbox from utils.test_lockbox; utils/session_state.py:230-233 imports apply_cohort/active_cohort from utils.cohorts inside get_data, and clear_cohort inside set_data and reset_data_dependent_state"
  },
  {
   "id": "CONTRACT-038",
@@ -2444,7 +2458,9 @@
   "detail": "The taxonomy comment says 'Anything not listed is dropped on save (not persisted) and ignored on load'. Eight consequential keys fall through: they are neither in _PLAIN_KEYS nor _NEVER_PERSIST, so they vanish without appearing in the manifest's skipped_keys list. A restored session silently loses its feature-selection record and its calibration numbers.",
   "ev": "utils/session_manager.py:69-162, :323-330 (manifest skipped_keys only records encode FAILURES, not omissions)",
   "act": "project — make the taxonomy exhaustive-by-construction (every Project field declares its persistence class) so omission becomes a compile-time error",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD - all eight keys verified absent from every bucket. They are neither persisted nor listed in _NEVER_PERSIST, so they vanish on save without appearing anywhere in the manifest, and a restored session silently loses its feature-selection record, its consensus list, its calibration numbers and its baselines. The manifest is the aggravating part: skipped_keys exists and would be the natural place to surface this, but it only records keys whose ENCODING threw, so an omitted key is invisible to the one artifact designed to report what did not make it. Make the taxonomy exhaustive by construction - every Project field declares its persistence class - so omission is a schema error rather than a silence. Overlaps STATE-054 (engineering_log) and STATE-038.",
+  "verified_ev": "utils/session_manager.py - preprocessing_summary, baseline_results, calibration_results, sensitivity_dropout_results, data_audit, engineering_log, consensus_features and feature_selection_results appear in NO bucket (verified by scanning the file for each name); the manifest's skipped_keys records encode FAILURES only, not omissions"
  },
  {
   "id": "MINE-015",
@@ -2454,7 +2470,9 @@
   "detail": "At import time ml/macro_shape.py rebinds `_skval.check_array = _compat_check_array` (line 41) and `_skutils.check_array = _compat_check_array` (line 45) — process-wide, affecting all sklearn code, not just gtda/umap. ml/compat.py implements the same fix properly (surgical, opt-in, idempotent via `global _PATCHED`, patches only gtda modules — ml/compat.py:22-78) and its docstring says 'This is surgical — it only affects gtda's calls, not the rest of the application' (lines 9-10). Two implementations of the same patch coexist; importing macro_shape wins because it is unconditional.",
   "ev": "ml/macro_shape.py:16-45; ml/compat.py:22-30, 48-56",
   "act": "engine — delete the macro_shape block and call ml.compat.patch_gtda_for_sklearn() explicitly from the job that needs TDA. WRONG-BUT-PLAUSIBLE OUTPUT: in a long-lived worker process, whether sklearn's check_array is patched depends on whethe…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and note that the module got cleaner in one respect while this survived: the @st.cache_data decorators are gone (T0-LIVE-001) and the file now opens with a comment explaining why, but the monkey-patch block directly below it is untouched. Two implementations of one fix coexist and the unconditional one wins by import order. In a long-lived worker the behavior of sklearn's check_array then depends on whether some earlier job happened to import macro_shape - which is a global, order-dependent, invisible difference in a validation function every estimator calls. Delete the block and call ml.compat.patch_gtda_for_sklearn() from the job that needs TDA.",
+  "verified_ev": "ml/macro_shape.py:24-48 - at module import it computes _compat_check_array and rebinds sklearn.utils.validation.check_array (and the sklearn.utils alias) process-wide, unconditionally; ml/compat.py implements the same fix surgically, idempotently and opt-in, patching only gtda modules, and says so in its docstring"
  },
  {
   "id": "MINE-016",
@@ -2464,7 +2482,10 @@
   "detail": "`_data_fingerprint = (len(df), len(df.columns), tuple(sorted(df.columns)))` (pages/02_EDA.py:125) is threaded as `data_id=` into _compute_profile, _compute_signals, _get_skewed_features, _compute_outlier_heatmap, _compute_corr, _top_corr_pairs, _sort_by_target_corr and _compute_interactions. It captures shape and column NAMES only. Contrast utils/session_state._content_fingerprint, which hashes values (utils/session_state.py:228). Any cleaning action that changes values without changing shape — recode_missing (ml/import_doctor.py:876-887 sets values to NaN in place, same shape), coerce_numeric, unit override — leaves the fingerprint identical.",
   "ev": "pages/02_EDA.py:122-125, 146-169, 809, 920, 957, 988, 1082; ml/import_doctor.py:876-895",
   "act": "project — the invalidation DAG must key on a content hash, not a schema tuple. WRONG-BUT-PLAUSIBLE OUTPUT: the researcher recodes 999 → missing in a blood-pressure column, returns to EDA, and every cached panel (profile, signals, skew list,…",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Closed, and closed against a stronger requirement than this row asked for. The page's key is no longer the (len, ncols, sorted-columns) tuple - it hashes contents, so a cleaning action that changes values without changing shape (recode_missing, coerce_numeric, a unit override) now invalidates every cached panel. The case that forced it is the one this row did not anticipate and the test suite pins: two cohort runs of one study have identical shape and identical columns and different rows, so a shape-only key collided across runs. Four tests hold the whole surface - one fingerprint and it follows the values, no cache keys on shape alone, every cached helper receives the content key, and two cohorts produce different correlations.",
+  "test": "tests/test_eda_caches_follow_the_data.py::test_the_page_has_one_fingerprint_and_it_follows_the_values",
+  "verified_ev": "pages/02_EDA.py:122-155 (_content_fingerprint hashes VALUES, with a comment naming T0-LIVE-005 and the cohort-collision case), :199, :212, :446 and the other cached helpers all threaded with data_id=_data_fingerprint"
  },
  {
   "id": "MINE-017",
@@ -2474,7 +2495,9 @@
   "detail": "`@st.cache_resource def _get_registry_cached(): return get_registry()` appears three times (pages/05_Preprocess.py:31-33, pages/06_Train_and_Compare.py:795-799, pages/07_Explainability.py:30-32). cache_resource returns THE SAME object to all sessions — not a copy. get_registry() itself builds a fresh dict per call (ml/model_registry.py:178-180), so the singleton-ness comes entirely from the decorator. ModelSpec.default_params and ModelCapabilities.notes are mutable and live inside it. Page 06 defensively copies — `spec.default_params.copy()` (pages/06_Train_and_Compare.py:1437) — but Report Export does not: `params = selected_model_params.get(model_key, spec.default_params if spec else {})` …",
   "ev": "pages/05_Preprocess.py:31-33; pages/06_Train_and_Compare.py:795-799, 1437; pages/07_Explainability.py:30-32; pages/10_Report_Export.py:1372; ml/model_registry.py:41-46, 178-180",
   "act": "engine — get_registry() is already pure; drop the cache_resource wrappers entirely and let the Project hold per-analysis params. WRONG-BUT-PLAUSIBLE OUTPUT (borderline, requires a mutating caller): any code path that writes into the dict re…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, including the asymmetry that makes it a real hazard rather than a theoretical one: page 06 copies the shared default_params dict and page 10 hands out the shared object. cache_resource returns THE SAME object to every session in the process, so any caller that mutates what page 10 returns edits the registry defaults for every concurrent user of the deployment - and the university Docker deployment is multi-user. get_registry() is already pure and builds a fresh dict per call, so the singleton-ness comes entirely from the decorator: dropping the three wrappers costs nothing and removes the class. Same family as SWEEP-003 and MODELS-006 - process-global state that is safe single-threaded and silently wrong shared.",
+  "verified_ev": "pages/05_Preprocess.py:31, pages/06_Train_and_Compare.py:667 and pages/07_Explainability.py:30 all still wrap get_registry() in @st.cache_resource; pages/06:1342 defensively copies (spec.default_params.copy()) and pages/10_Report_Export.py:1391 does NOT (params = selected_model_params.get(model_key, spec.default_params if spec else {}))"
  },
  {
   "id": "MINE-018",
@@ -2484,7 +2507,9 @@
   "detail": "For FEATURE columns: `profile.has_outliers = profile.outlier_rate > 0.01 # >1% outliers` (ml/dataset_profile.py:215). For the TARGET: `profile.has_outliers = profile.outlier_rate > 0.05` (ml/dataset_profile.py:258). ml/model_coach.py then applies a THIRD check to the already-thresholded target field: `target_outliers = bool(tp and tp.has_outliers and (tp.outlier_rate or 0) > 0.01)` (lines 394 and 1355).",
   "ev": "ml/dataset_profile.py:214-215, 257-258; ml/model_coach.py:394, 460, 1355, 1387",
   "act": "engine — decide one threshold and make the coach read outlier_rate directly rather than the pre-thresholded boolean. WRONG-BUT-PLAUSIBLE OUTPUT today: a target with 3% outliers gets has_outliers=False, so the coach never recommends Huber lo…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. One field name, has_outliers, still means two different thresholds depending on whether the profile describes a feature or the target, and the coach then re-thresholds the already-thresholded boolean at a THIRD value - and because it ANDs the two, the effective target rule is the stricter one. So a target with 3% outliers is has_outliers=False and the coach never recommends Huber loss for it, which is exactly the case Huber exists for. The re-threshold at :394 and :1355 is the tell that a reader of that code did not trust the boolean, correctly. Pick one threshold, and have the coach read outlier_rate directly rather than a pre-thresholded flag.",
+  "verified_ev": "ml/dataset_profile.py:219 (feature columns: has_outliers = outlier_rate > 0.01) and :262 (target: has_outliers = outlier_rate > 0.05); ml/model_coach.py:394 and :1355 (target_outliers = tp.has_outliers AND outlier_rate > 0.01)"
  },
  {
   "id": "MINE-019",
@@ -2494,7 +2519,9 @@
   "detail": "After the iqr/mad/zscore/percentile branches, the function falls through to `return mask, info` where mask is still `pd.Series(False, index=series.index)` from line 27. An unknown method is indistinguishable from 'zero outliers found'. The EDA heatmap compounds this: `except Exception: row[method.upper()] = 0.0` (pages/02_EDA.py:822-823).",
   "ev": "ml/outliers.py:27, 38-89; pages/02_EDA.py:819-823",
   "act": "engine — raise ValueError on an unknown method. WRONG-BUT-PLAUSIBLE OUTPUT: rename 'zscore' to 'z_score' anywhere during the migration (it is a user-facing selectbox value at pages/02_EDA.py:398-403 and a config string in preprocessing) and…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: an unrecognized method name still returns an all-False mask, indistinguishable from 'checked, and there are no outliers'. The migration trigger the row names is concrete and likely - 'zscore' is a user-facing selectbox value and a preprocessing config string, so any rename during the rebuild silently turns outlier detection off everywhere at once, with the EDA heatmap reporting 0.0% and the profile reporting has_outliers=False. Raise ValueError on an unknown method. Note the same function is careful in the other direction (it returns early and honestly for fewer than three values and for boolean dtype), so the fall-through reads as an oversight rather than a decision.",
+  "verified_ev": "ml/outliers.py:27 (mask = pd.Series(False, index=series.index)) and :90 - after the iqr/mad/zscore/percentile branches the function falls through to 'return mask, info' with the mask still all-False; pages/02_EDA.py compounds it with 'except Exception: row[method.upper()] = 0.0'"
  },
  {
   "id": "MINE-020",
@@ -2504,7 +2531,9 @@
   "detail": "FINDINGS_LEDGER C4 ('Several wrapper keys present → resolved by _JSON_WRAPPER_KEYS iteration order, silently') was fixed by adding inspect_json, which computes candidates and returns a note the page renders (data_processor.py:400-420). But _json_obj_to_frame still contains the original silent first-wins loop for when records_key is None: `for wrapper in _JSON_WRAPPER_KEYS: value = obj.get(wrapper); if isinstance(value, list) and value: return ...` (data_processor.py:283-287). The user's answer travels as a Streamlit WIDGET KEY: `st.session_state.get(f\"records_key_{_fk}\", \"\")` → cached_parse_upload → load_tabular_data (pages/01_Upload_and_Audit.py:311, 385-413; utils/perf_cache.py:22-35).",
   "ev": "data_processor.py:124, 236-239, 283-287, 400-420; pages/01_Upload_and_Audit.py:311, 385-388, 413; utils/perf_cache.py:22-35",
   "act": "jobs + engine — the ingest job must carry records_key as an explicit parameter, and _json_obj_to_frame should refuse (not guess) when multiple wrapper keys are present and no key was supplied. WRONG-BUT-PLAUSIBLE OUTPUT: the upload job is w…",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "The disclosure landed; the guess did not change. inspect_json now computes the candidate wrapper keys and returns a note the page renders, which is what closed FINDINGS_LEDGER C4 - and a new branch at :290-292 handles the unambiguous single-list case honestly. WHAT REMAINS: the original first-wins loop still runs BEFORE that branch, so when several recognized wrapper keys are present and records_key is None, _json_obj_to_frame still silently takes whichever comes first in the tuple. And the user's answer still travels as a Streamlit WIDGET KEY into a cached parse, so a job that re-parses without the widget present gets the guess rather than the answer. The ingest job must carry records_key explicitly, and the loop must refuse rather than guess when it is ambiguous. Note this file is inside the TRANSITION_PLAN 05 freeze.",
+  "verified_ev": "data_processor.py:283-287 (the silent first-wins loop over _JSON_WRAPPER_KEYS is unchanged) versus :290-292 (a new 'exactly one key holds a list of records' branch below it) and inspect_json at :400-420 (computes candidates and returns a note the page renders); the answer still travels as a widget key (records_key_<file>) through the cached parse"
  },
  {
   "id": "MINE-021",
@@ -2514,7 +2543,10 @@
   "detail": "`return df.loc[mask].reset_index(drop=True)` (ml/pipeline.py:124). Called from the Preprocess page (pages/05_Preprocess.py:860). Every downstream label-based mechanism — test_lockbox labels (utils/test_lockbox.py:213, 248) and cohort labels (utils/cohorts.py:420, 446-447) — assumes the original index survives row filtering; the lockbox docstring states this as a contract (utils/test_lockbox.py:16-17).",
   "ev": "ml/pipeline.py:109-124; pages/05_Preprocess.py:860; utils/test_lockbox.py:16-17, 248",
   "act": "engine — return `df.loc[mask]` without the reset. WRONG-BUT-PLAUSIBLE OUTPUT: cohorts partially survive because apply_cohort has a fallback that re-derives membership from the grouping column (`if col and col in df.columns: return df.loc[co…",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Duplicate of STATE-001 from the landmine pass, and closed. The filter returns df.loc[mask] with labels intact. Two tests hold it and the second is the durable one: test_a_cohort_started_from_a_filtered_frame_holds_only_that_group asserts the downstream consequence rather than the implementation, so a re-introduction by any other route also fails. The fallback this row mentions - apply_cohort re-deriving membership from the grouping column when labels miss - is still there and is still a partial mask; it is worth keeping precisely because it is a second line of defence, not a fix, and the lockbox has no equivalent.",
+  "test": "tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given",
+  "verified_ev": "ml/pipeline.py:109-127 - the reset_index(drop=True) is gone and the docstring names the lockbox and the cohort run as the two label-keyed mechanisms it would have broken; tests/test_row_labels_are_identities.py:49-95"
  },
  {
   "id": "MINE-022",

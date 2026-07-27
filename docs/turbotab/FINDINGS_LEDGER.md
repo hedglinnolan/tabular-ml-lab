@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**36 of 402 closed.**
+**38 of 402 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `UNVERIFIED` | 190 |
-| `OPEN` | 159 |
-| `PARTIAL` | 17 |
-| `FIXED` | 36 |
+| `UNVERIFIED` | 175 |
+| `OPEN` | 170 |
+| `PARTIAL` | 19 |
+| `FIXED` | 38 |
 
 ---
 
-## OPEN — 159
+## OPEN — 170
 
 
 ### Application state / lockbox — 48
@@ -88,7 +88,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-054` | landmine | engineering_log is not persisted while df_engineered, feature_engineering_applied and engineered_feature_names are. | `utils/session_manager.py:91-117 _PLAIN_KEYS includes engineered_feature_names, engineered_feature_transforms…` | Unchanged at HEAD. Save and restore a session with engineered features and the frame, the flag, the column names and the double-transform map all come back - so the app looks… |
 | `STATE-056` | landmine | InsightLedger.from_list uses .add() (skip duplicates) rather than .upsert(), and Insight.to_dict omits manuscript_text. | `utils/insight_ledger.py:1346-1355 (from_list → ledger.add(...) inside `except (TypeError, KeyError)…` | Unchanged at HEAD, both halves. (a) from_list uses add(), which skips duplicates, so a save file containing two entries with one id silently keeps the first and drops the second… |
 
-### Stage-boundary contracts — 23
+### Stage-boundary contracts — 30
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -115,6 +115,13 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-027` | high | Boundary Train: target_transformer is a UNION of a string sentinel and a fitted object | `pages/06_Train_and_Compare.py:644, :1560-1566, :1590-1598, :1531-1546; pages/08_Sensitivity_Analysis.py…` | Unchanged at HEAD. target_transformer is still a union of a string sentinel and a fitted sklearn object, and the branch that distinguishes them is duplicated at four sites across… |
 | `CONTRACT-028` | high | Boundary Train: y_train_original / y_val_original / y_test_original | `pages/06_Train_and_Compare.py:645-647, :679-682 (pop branch), :1559, :1587` | Unchanged at HEAD. The write/pop pair is still the only thing keeping the .get default from firing, and the default is not a neutral fallback - it substitutes the transformed… |
 | `CONTRACT-030` | high | Boundary Train: feature_names vs feature_names_by_model | `utils/session_state.py:488-496; pages/06_Train_and_Compare.py:1595-1598; ml/pipeline.py:427-433…` | Unchanged at HEAD. feature_names holds the raw input columns while feature_names_by_model holds post-transform names (PCA gives PC1..PCn, KMeans gives kmeans_*), and page 07 still… |
+| `CONTRACT-031` | high | Boundary Train→Explain: fitted_estimators vs trained_models — two objects per model with different semantics | `pages/06_Train_and_Compare.py:1583-1594; pages/07_Explainability.py:171-177` | Unchanged at HEAD - three parallel dicts keyed by model name with nothing enforcing alignment, and one special case in the middle of it. The force-fit at :1492-1493 is now less… |
+| `CONTRACT-033` | high | Boundary →Report: methodology_log has last-wins semantics for six steps and append for the rest | `utils/session_state.py:505-544, :578-587, :590-656` | Unchanged at HEAD, and the description is exactly right about why it matters: the ledger inherits methodology_log's replace/append duality through ID COLLISION rather than through… |
+| `CONTRACT-034` | high | Boundary →Report: workflow_provenance | `utils/workflow_provenance.py:190-214, :580-655; utils/session_state.py:377-387` | Duplicate of STATE-047 from the contract pass, unchanged at HEAD, and it names both omissions where the other names one: statistical_validation AND sensitivity survive a data… |
+| `CONTRACT-035` | high | Boundary →Report: manuscript_context is a frozen snapshot that markdown and LaTeX both read | `pages/10_Report_Export.py:370-400; ml/publication.py:332-356 (_resolve_manuscript_context), :178-246…` | Unchanged at HEAD. The freeze itself is good design and worth keeping - markdown and LaTeX reading one boundary is why those two exports agree on their numbers at all. The defect… |
+| `CONTRACT-036` | high | ml/publication.py reaches into st.session_state from 8 separate call sites at function scope | `ml/publication.py:160-165, :212-215, :597-611, :731-732, :1171-1174, :1220-1222, :1349-1350, :1381-1382…` | Duplicate of MINE-012 / RECORD-010 from the contract pass, unchanged at HEAD, and this row states the most useful fact about it: the coupling is entirely READ-ONLY, so every one… |
+| `CONTRACT-037` | high | Import cycles utils.cohorts ↔ utils.test_lockbox and utils.cohorts ↔ utils.session_state ↔ utils.test_lockbox | `utils/test_lockbox.py:228,269; utils/cohorts.py:216 (in session_state),466; utils/session_state.py:216,278,428` | Duplicate of STATE-053 from the contract pass, unchanged at HEAD, and it states the root cause more precisely than the other: the cycles exist because ROW-MEMBERSHIP STATE is… |
+| `CONTRACT-038` | high | session_manager persists preprocessing_config but not preprocessing_summary, baseline_results, calibration_results, sensitivity_dropout_results, data_audit, engineering_log, consensus_features or… | `utils/session_manager.py:69-162, :323-330 (manifest skipped_keys only records encode FAILURES, not omissions)` | Unchanged at HEAD - all eight keys verified absent from every bucket. They are neither persisted nor listed in _NEVER_PERSIST, so they vanish on save without appearing anywhere in… |
 
 ### Coach to Router — 19
 
@@ -163,6 +170,28 @@ Nothing is closed without a regression test named after it.
 | `RECORD-018` | landmine | The ZIP omits the Record itself, and ships a competing copy of the same facts. provenance.json and coaching.json are written only by utils/session_manager's separate session-save; the export ZIP… | `pages/10_Report_Export.py:2242 generate_metadata() -> metadata.json; utils/session_manager.py:267-276…` | Unchanged at HEAD. The export ZIP still ships metadata.json, built independently from session_state, and still omits the Record itself - provenance.json and the ledger are written… |
 | `RECORD-019` | landmine | Seven export artifacts are reachable only via individual buttons and are absent from the ZIP; four of them also bypass the validation gate. | `pages/10_Report_Export.py — tripod_checklist.csv (:1907), table1_final.csv (:1941), table1_final.tex (:1946)…` | Unchanged at HEAD, both halves. A user who downloads 'Download Complete Package (ZIP)' still does not get the TRIPOD checklist, Table 1 as CSV or TeX, the evidence map, or the… |
 
+### Silent-failure landmines — 17
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `MINE-001` | critical | Positional unit-conversion factors + reconcile_pipeline_columns silently misalign to the wrong variables | `ml/pipeline.py:41-64, 84, 178, 185-188, 528-531; ml/preprocess_operators.py:21-24, 60-72` | Unchanged at HEAD. build_unit_harmonization_config still builds a bare list by appending once per column while iterating numeric_features; build_plausibility_bounds still zips… |
+| `MINE-002` | critical | Test-set lockbox stores index LABELS but session save writes parquet with index=False | `utils/test_lockbox.py:16-17, 213, 248; utils/session_manager.py:73-78, 171, 485-489` | resolved-in-core; closes at L11 convergence of utils/session_manager.py. Duplicate of CONTRACT-005 from the landmine pass. Confirmed at HEAD: the lockbox still stores… |
+| `MINE-004` | critical | Target-leakage detection is wrapped in `except Exception: pass` | `ml/eda_recommender.py:170-183` | Unchanged at HEAD: the >0.95 feature-target correlation scan that populates signals.leakage_flags / leakage_candidate_cols is still inside a bare try ending 'except Exception… |
+| `MINE-005` | critical | train_row_mask silently returns all-True when the lockbox is absent, and render_lockbox_status returns silently too | `utils/test_lockbox.py:36-40, 244-246, 261-263` | Unchanged at HEAD. train_row_mask still returns pd.Series(True, index=index) when get_lockbox() is None, so every row is visible to target-aware steps; render_lockbox_status still… |
+| `MINE-006` | critical | OutlierCapping sets fitted attributes in __init__ and returns X unchanged when unfitted | `ml/preprocess_operators.py:13, 78-82, 100-104` | Unchanged at HEAD, both halves. OutlierCapping.__init__ still assigns the trailing-underscore lower_bounds_/upper_bounds_ (sklearn's fitted marker, so check_is_fitted sees a… |
+| `MINE-007` | critical | _log_to_ledger swallows every exception, so methodology decisions vanish from the record while methodology_log looks fine | `utils/session_state.py:543-544, 599, 639-656; ml/publication.py:153-166` | Duplicate of CONTRACT-006 from the landmine pass, and confirmed at HEAD with the aggravating half intact. log_methodology appends to methodology_log first (:602) and calls… |
+| `MINE-008` | critical | ml/eda_actions.py imports a function that does not exist, inside bare `except:` — 4 EDA insight classes have been silently dead | `ml/eda_actions.py:196, 280, 427, 617 (and bare `except:` at 199, 430, 620); utils/storyline.py:4 (module…` | Duplicate of CONTRACT-004 from the landmine pass. Confirmed unchanged at HEAD, including the reason it survived: the guard test that would have caught it only walks pages/, so… |
+| `MINE-009` | critical | set_global_seed runs at page-06 module scope, so determinism depends on Streamlit rerun ordering | `pages/06_Train_and_Compare.py:95, 120-122; utils/seed.py:14-29, 34-37` | Unchanged at HEAD. set_global_seed(st.session_state.get('random_seed', 42)) still sits at module scope in pages/06 (:90), so every Streamlit rerun of that page reseeds numpy's… |
+| `MINE-010` | critical | _content_fingerprint returns None on unhashable cells, downgrading invalidation to schema-only without saying so | `utils/session_state.py:220-230, 266-280; data_processor.py:205-218` | Unchanged at HEAD, and now documented as intended rather than fixed: the docstring at :239-241 states 'Returns None when the frame contains unhashable cells - callers treat None… |
+| `MINE-011` | critical | Stability-selection probability divides by n_bootstrap, not by the number of fits that actually succeeded | `ml/feature_selection.py:245-258` | Unchanged at HEAD. Failed bootstrap fits are still skipped with a bare 'except Exception: continue' that decrements nothing, and the probability is still counts / n_bootstrap… |
+| `MINE-012` | critical | publication.py's 12 session_state reads are each wrapped in `except ImportError: pass`, so Methods paragraphs disappear silently once Streamlit is removed | `ml/publication.py:159-166, 212-215, 597-620, 731-737, 1171-1178, 1220-1235, 1349-1360, 1381-1392, 1401-1412…` | Unchanged at HEAD: ten guarded streamlit imports remain in the manuscript generator, each written so that removing Streamlit silently drops the section it guards instead of… |
+| `MINE-013` | critical | models/* use `is_fitted` but ml/estimator_utils only recognizes `is_fitted_` | `models/base.py:22; models/registry_wrappers.py:37, 58, 64; models/nn_whuber.py:104…` | The marker divergence is real and unchanged at HEAD: BaseModelWrapper and every GLM/Huber/RF/registry wrapper set is_fitted, only nn_whuber uses is_fitted_, and… |
+| `MINE-014` | critical | Explainability re-derives the test set POSITIONALLY from a frame that may have changed since training | `pages/06_Train_and_Compare.py:383, 683-693; pages/07_Explainability.py:182, 184, 198…` | Duplicate of CONTRACT-001 from the landmine pass, and the half it names is entirely unfixed. The derivation changed - pages/06:551-553 now computes positions with… |
+| `MINE-015` | high | macro_shape monkey-patches sklearn.utils.validation at MODULE IMPORT, globally and unconditionally | `ml/macro_shape.py:16-45; ml/compat.py:22-30, 48-56` | Unchanged at HEAD, and note that the module got cleaner in one respect while this survived: the @st.cache_data decorators are gone (T0-LIVE-001) and the file now opens with a… |
+| `MINE-017` | high | @st.cache_resource shares one mutable model registry across every session, and one call site hands out the shared params dict | `pages/05_Preprocess.py:31-33; pages/06_Train_and_Compare.py:795-799, 1437; pages/07_Explainability.py:30-32…` | Unchanged at HEAD, including the asymmetry that makes it a real hazard rather than a theoretical one: page 06 copies the shared default_params dict and page 10 hands out the… |
+| `MINE-018` | high | Two different has_outliers thresholds for the same field name, and the coach re-thresholds on top of them | `ml/dataset_profile.py:214-215, 257-258; ml/model_coach.py:394, 460, 1355, 1387` | Unchanged at HEAD. One field name, has_outliers, still means two different thresholds depending on whether the profile describes a feature or the target, and the coach then… |
+| `MINE-019` | high | detect_outliers returns an all-False mask for an unrecognized method name | `ml/outliers.py:27, 38-89; pages/02_EDA.py:819-823` | Unchanged at HEAD: an unrecognized method name still returns an all-False mask, indistinguishable from 'checked, and there are no outliers'. The migration trigger the row names is… |
+
 ### Verified against main — 15
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -182,24 +211,6 @@ Nothing is closed without a regression test named after it.
 | `T0-PAGES-001` | medium | Duplicate-row detection has no engine home — it is inline in pages/01 | `pages/01_Upload_and_Audit.py (inline)` | Extract to the engine when pages/01 unfreezes; register the capability meanwhile. |
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
-
-### Silent-failure landmines — 13
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `MINE-001` | critical | Positional unit-conversion factors + reconcile_pipeline_columns silently misalign to the wrong variables | `ml/pipeline.py:41-64, 84, 178, 185-188, 528-531; ml/preprocess_operators.py:21-24, 60-72` | Unchanged at HEAD. build_unit_harmonization_config still builds a bare list by appending once per column while iterating numeric_features; build_plausibility_bounds still zips… |
-| `MINE-002` | critical | Test-set lockbox stores index LABELS but session save writes parquet with index=False | `utils/test_lockbox.py:16-17, 213, 248; utils/session_manager.py:73-78, 171, 485-489` | resolved-in-core; closes at L11 convergence of utils/session_manager.py. Duplicate of CONTRACT-005 from the landmine pass. Confirmed at HEAD: the lockbox still stores… |
-| `MINE-004` | critical | Target-leakage detection is wrapped in `except Exception: pass` | `ml/eda_recommender.py:170-183` | Unchanged at HEAD: the >0.95 feature-target correlation scan that populates signals.leakage_flags / leakage_candidate_cols is still inside a bare try ending 'except Exception… |
-| `MINE-005` | critical | train_row_mask silently returns all-True when the lockbox is absent, and render_lockbox_status returns silently too | `utils/test_lockbox.py:36-40, 244-246, 261-263` | Unchanged at HEAD. train_row_mask still returns pd.Series(True, index=index) when get_lockbox() is None, so every row is visible to target-aware steps; render_lockbox_status still… |
-| `MINE-006` | critical | OutlierCapping sets fitted attributes in __init__ and returns X unchanged when unfitted | `ml/preprocess_operators.py:13, 78-82, 100-104` | Unchanged at HEAD, both halves. OutlierCapping.__init__ still assigns the trailing-underscore lower_bounds_/upper_bounds_ (sklearn's fitted marker, so check_is_fitted sees a… |
-| `MINE-007` | critical | _log_to_ledger swallows every exception, so methodology decisions vanish from the record while methodology_log looks fine | `utils/session_state.py:543-544, 599, 639-656; ml/publication.py:153-166` | Duplicate of CONTRACT-006 from the landmine pass, and confirmed at HEAD with the aggravating half intact. log_methodology appends to methodology_log first (:602) and calls… |
-| `MINE-008` | critical | ml/eda_actions.py imports a function that does not exist, inside bare `except:` — 4 EDA insight classes have been silently dead | `ml/eda_actions.py:196, 280, 427, 617 (and bare `except:` at 199, 430, 620); utils/storyline.py:4 (module…` | Duplicate of CONTRACT-004 from the landmine pass. Confirmed unchanged at HEAD, including the reason it survived: the guard test that would have caught it only walks pages/, so… |
-| `MINE-009` | critical | set_global_seed runs at page-06 module scope, so determinism depends on Streamlit rerun ordering | `pages/06_Train_and_Compare.py:95, 120-122; utils/seed.py:14-29, 34-37` | Unchanged at HEAD. set_global_seed(st.session_state.get('random_seed', 42)) still sits at module scope in pages/06 (:90), so every Streamlit rerun of that page reseeds numpy's… |
-| `MINE-010` | critical | _content_fingerprint returns None on unhashable cells, downgrading invalidation to schema-only without saying so | `utils/session_state.py:220-230, 266-280; data_processor.py:205-218` | Unchanged at HEAD, and now documented as intended rather than fixed: the docstring at :239-241 states 'Returns None when the frame contains unhashable cells - callers treat None… |
-| `MINE-011` | critical | Stability-selection probability divides by n_bootstrap, not by the number of fits that actually succeeded | `ml/feature_selection.py:245-258` | Unchanged at HEAD. Failed bootstrap fits are still skipped with a bare 'except Exception: continue' that decrements nothing, and the probability is still counts / n_bootstrap… |
-| `MINE-012` | critical | publication.py's 12 session_state reads are each wrapped in `except ImportError: pass`, so Methods paragraphs disappear silently once Streamlit is removed | `ml/publication.py:159-166, 212-215, 597-620, 731-737, 1171-1178, 1220-1235, 1349-1360, 1381-1392, 1401-1412…` | Unchanged at HEAD: ten guarded streamlit imports remain in the manuscript generator, each written so that removing Streamlit silently drops the section it guards instead of… |
-| `MINE-013` | critical | models/* use `is_fitted` but ml/estimator_utils only recognizes `is_fitted_` | `models/base.py:22; models/registry_wrappers.py:37, 58, 64; models/nn_whuber.py:104…` | The marker divergence is real and unchanged at HEAD: BaseModelWrapper and every GLM/Huber/RF/registry wrapper set is_fitted, only nn_whuber uses is_fitted_, and… |
-| `MINE-014` | critical | Explainability re-derives the test set POSITIONALLY from a frame that may have changed since training | `pages/06_Train_and_Compare.py:383, 683-693; pages/07_Explainability.py:182, 184, 198…` | Duplicate of CONTRACT-001 from the landmine pass, and the half it names is entirely unfixed. The derivation changed - pages/06:551-553 now computes positions with… |
 
 ### Models / training / eval — 9
 
@@ -241,8 +252,17 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 17
+## PARTIAL — 19
 
+
+### Stage-boundary contracts — 4
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `CONTRACT-012` | high | y_test_proba can be referenced unbound when task_type_final and data_config.task_type disagree | `pages/06_Train_and_Compare.py:1556 (assignment) vs :1575 (use), handler at :1601-1605` | The unbound-name path is closed; the defence is one line and untested. Because pages/06:175 now sets data_config.task_type = task_type_final before the training loop, the two… |
+| `CONTRACT-026` | high | Boundary Train: X_train/X_val/X_test are DataFrames but y_* type varies by split branch | `pages/06_Train_and_Compare.py:511-517, :541-547, :571-577, :613-616, :655-660; ml/splits.py:9 (to_numpy_1d)…` | The heterogeneity is gone by construction; nothing guards it. Every branch now returns through one Split constructor that coerces y_train, y_val and y_test with to_numpy_1d, and… |
+| `CONTRACT-029` | high | Boundary Train: cv_strategy and cv_groups_train | `pages/06_Train_and_Compare.py:494-497, :507-508, :528, :1543-1546; utils/session_state.py:330-334` | The desync this row warns about is structurally closed; the parallel storage is not. cv_strategy and cv_groups_train are now derived INSIDE make_split from the branch actually… |
+| `CONTRACT-032` | high | Boundary Explain: cancel_explainability / cancel_training are cooperative flags polled inside the render loop | `pages/07_Explainability.py:321-352, :419-422, :540-543; pages/06_Train_and_Compare.py:1252-1266` | Half of this row is closed and half is untouched. cancel_training no longer exists - the button was removed rather than wired, because Streamlit blocks the script during training… |
 
 ### Verified against main — 3
 
@@ -268,14 +288,6 @@ Nothing is closed without a regression test named after it.
 | `MODELS-011` | landmine | RegistryModelWrapper re-derives the task type from the data with a fragile heuristic instead of being told, and it is the only wrapper honoring sample_weight. | `models/registry_wrappers.py:44 — `if len(np.unique(y_train)) < 20 and y_train.dtype in [np.int64, np.int32…` | The dtype half was repaired; the cardinality half was not. The test is no longer dtype-identity against ['int64','int32'] - it now asks through pd.api.types.is_integer_dtype with… |
 | `MODELS-014` | landmine | NN classification silently remaps unseen validation classes to index 0, and models/base, glm, huber_glm, rf and registry_wrappers have literally zero test coverage. | `models/nn_whuber.py:337 — `y_val_mapped = np.array([class_to_idx.get(cls, 0) for cls in y_val])` (note: the…` | The coverage half is closed; the silent remap is not. models/base, glm, huber_glm, rf and registry_wrappers are no longer untested - tests/test_characterization_wrappers.py… |
 
-### Stage-boundary contracts — 3
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `CONTRACT-012` | high | y_test_proba can be referenced unbound when task_type_final and data_config.task_type disagree | `pages/06_Train_and_Compare.py:1556 (assignment) vs :1575 (use), handler at :1601-1605` | The unbound-name path is closed; the defence is one line and untested. Because pages/06:175 now sets data_config.task_type = task_type_final before the training loop, the two… |
-| `CONTRACT-026` | high | Boundary Train: X_train/X_val/X_test are DataFrames but y_* type varies by split branch | `pages/06_Train_and_Compare.py:511-517, :541-547, :571-577, :613-616, :655-660; ml/splits.py:9 (to_numpy_1d)…` | The heterogeneity is gone by construction; nothing guards it. Every branch now returns through one Split constructor that coerces y_train, y_val and y_test with to_numpy_1d, and… |
-| `CONTRACT-029` | high | Boundary Train: cv_strategy and cv_groups_train | `pages/06_Train_and_Compare.py:494-497, :507-508, :528, :1543-1546; utils/session_state.py:330-334` | The desync this row warns about is structurally closed; the parallel storage is not. cv_strategy and cv_groups_train are now derived INSIDE make_split from the branch actually… |
-
 ### Migration safety net — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -296,9 +308,15 @@ Nothing is closed without a regression test named after it.
 |---|---|---|---|---|
 | `COACH-001` | landmine | ml/model_coach.py is streamlit-clean on import and streamlit-DIRTY on call. | `ml/model_coach.py:634 (inside generate_preprocessing_insights) and ml/model_coach.py:1080 (inside…` | The reproduction in this row no longer reproduces; the coupling it diagnosed does. utils/insight_ledger.py no longer imports streamlit at module level - it is inside get_ledger()… |
 
+### Silent-failure landmines — 1
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `MINE-020` | high | The JSON wrapper-key guess still lives in the engine while the disclosure lives in the view | `data_processor.py:124, 236-239, 283-287, 400-420; pages/01_Upload_and_Audit.py:311, 385-388, 413…` | The disclosure landed; the guess did not change. inspect_json now computes the candidate wrapper keys and returns a note the page renders, which is what closed FINDINGS_LEDGER C4… |
+
 ---
 
-## UNVERIFIED — 190
+## UNVERIFIED — 175
 
 
 ### Application state / lockbox — 40
@@ -346,18 +364,10 @@ Nothing is closed without a regression test named after it.
 | `STATE-095` | invariant | set_data distinguishes three cases: schema change (full reset), same-schema content change (results cleared, config kept), identical content (no-op) — because page 01 re-sets the same working table… | `utils/session_state.set_data:266-280 with the _raw_data_fingerprint comparison. Tests…` | preserve |
 | `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | preserve |
 
-### Stage-boundary contracts — 39
+### Stage-boundary contracts — 31
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `CONTRACT-031` | high | Boundary Train→Explain: fitted_estimators vs trained_models — two objects per model with different semantics | `pages/06_Train_and_Compare.py:1583-1594; pages/07_Explainability.py:171-177` | jobs — one TrainedModel record per key holding {wrapper, estimator, pipeline, feature_names_out}; three parallel dicts is the bug factory |
-| `CONTRACT-032` | high | Boundary Explain: cancel_explainability / cancel_training are cooperative flags polled inside the render loop | `pages/07_Explainability.py:321-352, :419-422, :540-543; pages/06_Train_and_Compare.py:1252-1266` | jobs — this is the concrete requirement the Jobs layer exists to satisfy; the current flags cannot interrupt anything and must be replaced, not ported |
-| `CONTRACT-033` | high | Boundary →Report: methodology_log has last-wins semantics for six steps and append for the rest | `utils/session_state.py:505-544, :578-587, :590-656` | record — this dual-write bridge is the most load-bearing undocumented contract in the app; the id-collision-as-upsert trick must be made explicit |
-| `CONTRACT-034` | high | Boundary →Report: workflow_provenance | `utils/workflow_provenance.py:190-214, :580-655; utils/session_state.py:377-387` | record — the section list must be derived from the DAG, not typed by hand; the two omissions are live bugs |
-| `CONTRACT-035` | high | Boundary →Report: manuscript_context is a frozen snapshot that markdown and LaTeX both read | `pages/10_Report_Export.py:370-400; ml/publication.py:332-356 (_resolve_manuscript_context), :178-246…` | project — a single authoritative final-predictor list removes the whole fallback chain and the abstract/methods disagreement it causes |
-| `CONTRACT-036` | high | ml/publication.py reaches into st.session_state from 8 separate call sites at function scope | `ml/publication.py:160-165, :212-215, :597-611, :731-732, :1171-1174, :1220-1222, :1349-1350, :1381-1382…` | engine — mechanical: thread a single ManuscriptInputs dataclass through; no logic changes needed |
-| `CONTRACT-037` | high | Import cycles utils.cohorts ↔ utils.test_lockbox and utils.cohorts ↔ utils.session_state ↔ utils.test_lockbox | `utils/test_lockbox.py:228,269; utils/cohorts.py:216 (in session_state),466; utils/session_state.py:216,278,428` | project — lockbox + cohort + active-rows are ONE concern; merging them into the Project object removes all three cycles without any deferred-import tricks |
-| `CONTRACT-038` | high | session_manager persists preprocessing_config but not preprocessing_summary, baseline_results, calibration_results, sensitivity_dropout_results, data_audit, engineering_log, consensus_features or… | `utils/session_manager.py:69-162, :323-330 (manifest skipped_keys only records encode FAILURES, not omissions)` | project — make the taxonomy exhaustive-by-construction (every Project field declares its persistence class) so omission becomes a compile-time error |
 | `CONTRACT-039` | medium | Report Export computes n_train/n_val/n_test with len() over values that are legitimately None | `pages/10_Report_Export.py:395-397, :628-630; utils/session_state.py:136-141` | project — Project.splits should be a single Optional[Splits] object; absent means absent, not a dict of Nones |
 | `CONTRACT-040` | medium | Boundary Upload→WorkingTable: datasets_registry | `utils/session_manager.py:214-225; pages/01_Upload_and_Audit.py:541-545, :592-598, :560-567` | project — typed DatasetId; restore must round-trip key types |
 | `CONTRACT-041` | medium | Boundary Upload→Target: raw_data + _raw_data_fingerprint | `utils/session_state.py:220-230, :259-280; not in any session_manager key list` | project — fingerprint is the DAG's invalidation input; it must be a first-class persisted field with an explicit 'unknown' state |
@@ -390,17 +400,10 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` | engine — move verbatim; add tests before the port, not after |
 | `CONTRACT-069` | low | models/* (7 files, 1000 loc) has zero streamlit and a single stable ABC — port it first | `models/base.py:10-73; models/nn_whuber.py:226; pages/06_Train_and_Compare.py:1371-1375` | engine — port first, with characterization tests written against the current behavior before any code moves |
 
-### Silent-failure landmines — 30
+### Silent-failure landmines — 23
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `MINE-015` | high | macro_shape monkey-patches sklearn.utils.validation at MODULE IMPORT, globally and unconditionally | `ml/macro_shape.py:16-45; ml/compat.py:22-30, 48-56` | engine — delete the macro_shape block and call ml.compat.patch_gtda_for_sklearn() explicitly from the job that needs TDA. WRONG-BUT-PLAUSIBLE OUTPUT: in a long-lived worker… |
-| `MINE-016` | high | EDA's _data_fingerprint is schema-only — it cannot see value changes | `pages/02_EDA.py:122-125, 146-169, 809, 920, 957, 988, 1082; ml/import_doctor.py:876-895` | project — the invalidation DAG must key on a content hash, not a schema tuple. WRONG-BUT-PLAUSIBLE OUTPUT: the researcher recodes 999 → missing in a blood-pressure column, returns… |
-| `MINE-017` | high | @st.cache_resource shares one mutable model registry across every session, and one call site hands out the shared params dict | `pages/05_Preprocess.py:31-33; pages/06_Train_and_Compare.py:795-799, 1437; pages/07_Explainability.py:30-32…` | engine — get_registry() is already pure; drop the cache_resource wrappers entirely and let the Project hold per-analysis params. WRONG-BUT-PLAUSIBLE OUTPUT (borderline, requires a… |
-| `MINE-018` | high | Two different has_outliers thresholds for the same field name, and the coach re-thresholds on top of them | `ml/dataset_profile.py:214-215, 257-258; ml/model_coach.py:394, 460, 1355, 1387` | engine — decide one threshold and make the coach read outlier_rate directly rather than the pre-thresholded boolean. WRONG-BUT-PLAUSIBLE OUTPUT today: a target with 3% outliers… |
-| `MINE-019` | high | detect_outliers returns an all-False mask for an unrecognized method name | `ml/outliers.py:27, 38-89; pages/02_EDA.py:819-823` | engine — raise ValueError on an unknown method. WRONG-BUT-PLAUSIBLE OUTPUT: rename 'zscore' to 'z_score' anywhere during the migration (it is a user-facing selectbox value at… |
-| `MINE-020` | high | The JSON wrapper-key guess still lives in the engine while the disclosure lives in the view | `data_processor.py:124, 236-239, 283-287, 400-420; pages/01_Upload_and_Audit.py:311, 385-388, 413…` | jobs + engine — the ingest job must carry records_key as an explicit parameter, and _json_obj_to_frame should refuse (not guess) when multiple wrapper keys are present and no key… |
-| `MINE-021` | high | apply_plausibility_filter resets the index, destroying lockbox and cohort label correspondence | `ml/pipeline.py:109-124; pages/05_Preprocess.py:860; utils/test_lockbox.py:16-17, 248` | engine — return `df.loc[mask]` without the reset. WRONG-BUT-PLAUSIBLE OUTPUT: cohorts partially survive because apply_cohort has a fallback that re-derives membership from the… |
 | `MINE-022` | high | Session save reports only a COUNT of skipped items, and load silently drops unknown keys | `utils/session_manager.py:236-237, 264-265, 275-276, 309-310, 320-321, 421-425, 514-523, 728-729` | project — this module is the direct ancestor of Project serialization; name every skipped key in the message and make an unrecognized key a loud migration event.… |
 | `MINE-023` | high | datasets_registry keys are coerced to str on both save and load | `utils/session_manager.py:214-225, 492-507; pages/01_Upload_and_Audit.py:285, 518` | project — pin dataset_id to str at creation, or store the original type alongside. WRONG-BUT-PLAUSIBLE OUTPUT: if dataset_id is ever an int or UUID object, `registry[dataset_id]`… |
 | `MINE-024` | high | data_processor can install a caller-supplied index from JSON, breaking every label invariant downstream | `data_processor.py:271-277; utils/session_state.py:249-253; utils/test_lockbox.py:213…` | engine — normalize to a RangeIndex on ingest and keep the file's index as an ordinary column. WRONG-BUT-PLAUSIBLE OUTPUT: lockbox labels become the JSON's strings; _plain_label… |
@@ -533,7 +536,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 36
+## FIXED — 38
 
 
 ### Verified against main — 14
@@ -586,18 +589,20 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-015` | high | Lockbox save/restore drops group_col, strata and n_test_groups | `utils/session_manager.py:290-301 vs utils/test_lockbox.py:212-224` | **test:** `tests/test_state_survives_the_round_trip.py::test_a_restored_lockbox_still_knows_it_was_drawn_by_subject` — Duplicate of STATE-042 from the contract pass, and closed.… |
 | `CONTRACT-016` | high | Active cohort run and completed runs are not persisted at all | `utils/cohorts.py:334-344 (CohortRun), :389-407 (_ACTIVE_KEY/_DONE_KEY); utils/session_manager.py:73-162 (key…` | **test:** `tests/test_session_carries_the_run.py::test_the_active_run_comes_back` — Closed for both keys. The failure this row describes - a save taken mid-cohort-run restoring… |
 
+### Silent-failure landmines — 3
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `MINE-003` | critical | macro_shape's four @st.cache_data functions hash NOTHING — every dataset gets the first dataset's PCA/UMAP/TDA | `ml/macro_shape.py:82-85, 240-247, 337-343, 495-502; pages/02_EDA.py:122-125, 1163, 1205, 1226, 1265` | **test:** `tests/test_macro_shape_serves_the_right_dataset.py::test_two_datasets_get_their_own_pca` — Duplicate of CONTRACT-003 and T0-LIVE-001 from the landmine pass. All four… |
+| `MINE-016` | high | EDA's _data_fingerprint is schema-only — it cannot see value changes | `pages/02_EDA.py:122-125, 146-169, 809, 920, 957, 988, 1082; ml/import_doctor.py:876-895` | **test:** `tests/test_eda_caches_follow_the_data.py::test_the_page_has_one_fingerprint_and_it_follows_the_values` — Closed, and closed against a stronger requirement than this row… |
+| `MINE-021` | high | apply_plausibility_filter resets the index, destroying lockbox and cohort label correspondence | `ml/pipeline.py:109-124; pages/05_Preprocess.py:860; utils/test_lockbox.py:16-17, 248` | **test:** `tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given` — Duplicate of STATE-001 from the landmine pass, and closed. The filter returns… |
+
 ### Models / training / eval — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `MODELS-001` | landmine | SklearnCompatibleNNRegressor.fit() and SklearnCompatibleNNClassifier.fit() do not train. They set is_fitted_=True, record n_features_in_ (and classes_), and return self. Any sklearn utility that… | `models/nn_whuber.py:115-128 (regressor) and 174-188 (classifier); reachable through…` | **test:** `tests/test_characterization_wrappers.py::test_clone_and_refit_now_raises_instead_of_answering_from_the_old_model` — Closed the right way round. fit() no longer marks… |
 | `MODELS-005` | landmine | The 'Cancel Training' button is decorative — st.session_state.cancel_training is written and NEVER read anywhere in the codebase. | `pages/06_Train_and_Compare.py:1252-1253 (init), 1263-1264 (set to True). grep for 'cancel_training' across…` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Closed by removal plus an honest replacement, which is the right shape. The decorative… |
-
-### Silent-failure landmines — 1
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `MINE-003` | critical | macro_shape's four @st.cache_data functions hash NOTHING — every dataset gets the first dataset's PCA/UMAP/TDA | `ml/macro_shape.py:82-85, 240-247, 337-343, 495-502; pages/02_EDA.py:122-125, 1163, 1205, 1226, 1265` | **test:** `tests/test_macro_shape_serves_the_right_dataset.py::test_two_datasets_get_their_own_pca` — Duplicate of CONTRACT-003 and T0-LIVE-001 from the landmine pass. All four… |
 
 ### Migration safety net — 1
 
