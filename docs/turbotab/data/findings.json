@@ -3284,7 +3284,9 @@
   "detail": "Insight.manuscript_text is lost — which it is, on every save/restore, because Insight.to_dict() does not serialize it (see landmines). Also breaks if a new coaching phrase is added to a producer without adding it to both _clean_for_manuscript and the validator's coaching_patterns list.",
   "ev": "utils/insight_ledger.py discussion_points_for_manuscript() (manuscript_text preferred) and _clean_for_manuscript(); ml/manuscript_validator.py coaching_patterns check ('no action needed', 'favorable to analysis', 'workflow-derived abstract'…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant is broken today by the exact mechanism this row predicts. Insight.to_dict does not serialize manuscript_text (RECORD-001), so it IS lost on every save/restore and every Record round trip through a job queue, and the Discussion then falls back to the coaching-register finding. The second failure mode is live too: all four coach preprocessing producers omit the field outright (COACH-031), so they never had it to lose. The structural weakness the row names is the third: a new coaching phrase must be added in THREE places - the producer, _clean_for_manuscript and the validator's coaching_patterns - or it slips through, and nothing links the three lists. The register separation is the right design; it is enforced by a preference, a regex and a grep, none of which is the producer's responsibility.",
+  "verified_ev": "utils/insight_ledger.py:617-646 (to_dict omits manuscript_text) and :1190 (the preference); ml/manuscript_validator.py coaching_patterns; ml/model_coach.py:674,718,746,775 (four producers with no manuscript_text)"
  },
  {
   "id": "RECORD-023",
@@ -3294,7 +3296,10 @@
   "detail": "A Results/Discussion generator is rewritten to summarize metrics without the _comparative and negative-R² branches, or the frontend renders its own 'headline' summary card from raw metrics bypassing the engine.",
   "ev": "ml/narrative_engine.py _gen_discussion() (_comparative flag, the r2>=0 branch, the Conclusions [AUTHOR REQUIRED] block); tests/test_manuscript_trust.py::TestDiscussionHonesty (all five)",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "All five clauses of the invariant have a test each, which is unusual in this ledger and is what makes it closeable. The software does not certify adequacy: it refuses an unconditional effectiveness claim, states a negative R-squared plainly as below a mean-only baseline rather than hiding it, claims 'strongest' only when more than one model was compared - with the positive case pinned separately so the guard is not merely a blanket refusal - and ends Conclusions by stating the recorded fact and handing adequacy to the author. The row's own risk remains worth watching at L9: a frontend that renders its own headline summary card from raw metrics bypasses all five, because these guards live in the generator rather than in the data.",
+  "test": "tests/test_manuscript_trust.py::TestDiscussionHonesty::test_no_unconditional_effectiveness_claim",
+  "verified_ev": "ml/narrative_engine.py _gen_discussion (the _comparative flag, the r2 >= 0 branch, the Conclusions [AUTHOR REQUIRED] block); tests/test_manuscript_trust.py:92-118 - test_no_unconditional_effectiveness_claim, test_negative_r2_stated_plainly, test_single_model_never_called_strongest, test_multi_model_may_claim_strongest, test_conclusions_hand_adequacy_to_author"
  },
  {
   "id": "RECORD-024",
@@ -3304,7 +3309,9 @@
   "detail": "CoachProvenance.picks stops carrying 'model_key' (it is an untyped List[Dict[str, Any]]), or the Router starts writing picks in a different shape — _pick_keys silently becomes {None}, _followed goes False, and the TRIPOD model-selection rationale silently vanishes from every manuscript.",
   "ev": "ml/narrative_engine.py _gen_model_development(): _pick_keys = {p.get('model_key') …}; _followed = bool(_pick_keys & set(models)); both the headline and the probe sentence are gated on _followed",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of COACH-025 from the record pass, and it adds the failure this row is really about: picks is an UNTYPED List[Dict[str, Any]], so a producer that stops carrying 'model_key' - or a Router that writes picks in a different shape - makes _pick_keys silently become {None}, _followed goes False, and the TRIPOD model-selection rationale vanishes from every manuscript with no error. Both failure directions are live: the shape is unenforced, and the overlap is already tautological because pages/05 auto-selects the picks (COACH-025). Type CoachProvenance.picks, and fix the widget-key auto-select, and the guard means something again.",
+  "verified_ev": "ml/narrative_engine.py:1000-1011 (_pick_keys = {p.get('model_key') ...}; _followed = bool(_pick_keys & set(models)); both sentences gated on it); CoachProvenance.picks is an untyped List[Dict[str, Any]]; pages/05_Preprocess.py:291-294 auto-checks the picks"
  },
  {
   "id": "RECORD-025",
@@ -3314,7 +3321,9 @@
   "detail": "The literal ledger id 'upload_test_lockbox' (created at pages/01_Upload_and_Audit.py:1089) is renamed — the guarantee sentence disappears with no error; or exploratory_used is cleared on a path that does not also discard the results computed under it.",
   "ev": "pages/10_Report_Export.py:469 ('exploratory_mode' OR sticky 'exploratory_used'); ml/narrative_engine.py _gen_discussion() (appends the exploratory limitation) and _gen_study_design() (lockbox sentence gated on NOT exploratory_mode AND ledge…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant is stated correctly and both failure modes are live. The stickiness is broken outright: exploratory_used is popped by EVERY reset_downstream_results call, including the one that deliberately KEEPS df_engineered, so the sequence 'engineer in exploratory mode, toggle it off, train, export' produces a manuscript claiming a clean held-out evaluation (STATE-040). And the guarantee sentence is gated on a LITERAL ledger id, 'upload_test_lockbox', so renaming it during the Record migration deletes the sentence with no error - the same string-identity fragility COACH-026 catalogues. The limitation and the guarantee are the two halves of the app's honesty claim about its own test set, and both are currently held up by a string and an unconditional pop.",
+  "verified_ev": "utils/session_state.py:474 (st.session_state.pop('exploratory_used', None), unconditional); ml/narrative_engine.py _gen_discussion appends the exploratory limitation and _gen_study_design gates the lockbox sentence on NOT exploratory AND the ledger id 'upload_test_lockbox'; pages/01_Upload_and_Audit.py creates that id"
  },
  {
   "id": "RECORD-026",
@@ -3324,7 +3333,9 @@
   "detail": "Any consumer rebuilds its own context — which already happens three times: the 'Compile Draft from Workflow' button at :2057, generate_report's fallback at :1088, and the evidence map at :2094.",
   "ev": "pages/10_Report_Export.py:1802 _cached_bundle = _build_latex_export_bundle(...), reused as table1_bundle (:1858) and validation_bundle (:1951) and passed to _generate_latex (:1820)",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The invariant is the right one and the page half-implements it: one frozen bundle IS computed and IS shared by the LaTeX, Table 1 and validation paths, which is why those three agree. The three consumers that rebuild are the finding, and the evidence map is the worst of them, because it is the artifact whose purpose is to certify the draft and it is built from a context the draft was not built from (RECORD-012 / RECORD-020). Note the failure this creates is undetectable from the outputs: every document is internally consistent and they disagree with each other. Route all consumers through the one bundle and add a test asserting draft and evidence map agree on n_total, model list and primary model.",
+  "verified_ev": "pages/10_Report_Export.py builds _cached_bundle once and reuses it for the LaTeX, Table 1 and validation paths - but three consumers rebuild their own: the 'Compile Draft from Workflow' button, generate_report's fallback, and the evidence map at :2126-2127"
  },
  {
   "id": "RECORD-027",
@@ -3334,7 +3345,10 @@
   "detail": "_MODEL_NAMES gains a key containing '_' that is also an ordinary word or appears in prose, or a generator emits **bold** into a path that skips _convert_markdown_to_latex.",
   "ev": "ml/manuscript_validator.py checks 10-12 (artifact_patterns, internal_keys from _MODEL_NAMES, coaching_patterns, punctuation_issues); tests/test_manuscript_validator.py::test_validate_manuscript_bundle_allows_investigator_placeholders_but_re…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The invariant is enforced by the pre-export validator and pinned from both directions: one test asserts a clean bundle passes with legitimate investigator placeholders, the other asserts a bundle carrying raw markdown artifacts FAILS - which is the half that matters, since a validator that only ever passes is not a validator. The residual risks this row names are real and are recorded elsewhere rather than here: the internal-keys check derives its vocabulary from the PRIVATE _MODEL_NAMES, so a key present in MODEL_DISPLAY_NAMES but absent there is never checked (RECORD-013), and _contains_any_variant's substring matching makes check 6 pass vacuously for short keys (RECORD-005). Those weaken the neighbouring checks, not this one.",
+  "test": "tests/test_manuscript_validator.py::test_validate_manuscript_bundle_allows_investigator_placeholders_but_rejects_raw_markdown_artifacts",
+  "verified_ev": "ml/manuscript_validator.py checks 10-12 (artifact_patterns, internal_keys derived from _MODEL_NAMES, coaching_patterns, punctuation_issues); tests/test_manuscript_validator.py:222 and :65 (test_validate_manuscript_bundle_flags_cross_section_and_artifact_failures)"
  },
  {
   "id": "RECORD-028",
@@ -3344,7 +3358,10 @@
   "detail": "Any generated sentence is reworded so it no longer matches one of the three regex templates per quantity — the validator reads None, the check FAILs, and every download is disabled with a message that blames the data rather than the wording.",
   "ev": "ml/manuscript_validator.py checks 1-5, driven by the regex templates in _extract_analysis_n / _extract_final_predictor_count / _extract_table1_overall_n / _table1_contains_feature; the sentence templates in ml/narrative_engine.py _gen_study…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The consistency invariant is enforced and tested in both directions - a consistent bundle passes, an inconsistent one fails, and the Table 1 population and per-feature coverage case has its own test. That closes the row as written. The fragility it names is genuine and belongs on the record: the checks read numbers out of PROSE via three regex templates per quantity, so rewording a generated sentence makes the extractor return None, the check FAIL, and every download disable behind a message that blames the data rather than the wording. The durable version is for the generator and the validator to share one structured source rather than for the validator to re-parse the generator's English - which is the same conclusion RECORD-007 reaches about LaTeX.",
+  "test": "tests/test_manuscript_validator.py::test_validate_manuscript_bundle_flags_table1_population_and_feature_coverage",
+  "verified_ev": "ml/manuscript_validator.py checks 1-5 with the regex templates in _extract_analysis_n / _extract_final_predictor_count / _extract_table1_overall_n / _table1_contains_feature; tests/test_manuscript_validator.py:8 (consistent bundle passes), :65 (cross-section failures flagged), :276 (Table 1 population and feature coverage flagged)"
  },
  {
   "id": "RECORD-029",
@@ -3354,7 +3371,9 @@
   "detail": "Either generator changes the phrase 'selected as the primary model' or 'no manuscript-primary model was explicitly selected'; or a regression manuscript legitimately discusses an 'accuracy' of imputation etc. in the Model Development prose (the term check is task-global, not context-aware).",
   "ev": "ml/manuscript_validator.py checks 7-8, which grep the literal strings emitted by ml/narrative_engine.py _gen_model_development and ml/latex_report.py generate_latex_report; tests/test_manuscript_validator.py::{test_validate_manuscript_bundl…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The validator half works and the invariant is broken UPSTREAM of it, which is why this stays OPEN. Checks 7 and 8 do catch a rendered selection metric that contradicts the task and a primary-model statement that conflicts with 'no manuscript-primary model was explicitly selected', and both have tests. But STATE-017 / CONTRACT-010 show the RECORD itself is wrong before the prose is generated: TrainingProvenance.selection_criteria is always 'validation Accuracy', for regression projects too, because pages/06:1553 reads st.session_state['task_type'], which no code writes. So a regression manuscript can carry an accuracy-based selection claim that the validator has no reason to flag - the sentence is internally consistent with a record that is itself false. Fix the read; the validator is not the problem here.",
+  "verified_ev": "ml/manuscript_validator.py checks 7-8 grep the literal strings emitted by narrative_engine and latex_report; tests/test_manuscript_validator.py:122 and :175; against that, pages/06_Train_and_Compare.py:1553-1554 always records selection_criteria as 'validation Accuracy' because it reads a session key nothing writes"
  },
  {
   "id": "RECORD-030",
@@ -3364,7 +3383,9 @@
   "detail": "A new download path is added without the disabled= flag. Already broken for four artifacts today: tripod_checklist.csv (:1907), table1_final.csv/.tex (:1941,:1946), evidence_map.md (:2097) and flow_diagram.mmd (:2132) all download regardless of validation state.",
   "ev": "pages/10_Report_Export.py:1985 exports_blocked = (not validation_report.passed) and (not validation_override); applied as disabled= on the ZIP, report.md, metrics.csv, manuscript.tex, manuscript.pdf, PDF-preview and methods_section.md butto…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: the invariant is implemented for seven artifacts and bypassed by four, so a user whose manuscript failed validation can still download the TRIPOD checklist, both Table 1 exports, the evidence map and the flow diagram. The evidence map is again the pointed one - the artifact that certifies the draft is downloadable when the draft is not. And the LaTeX Supplementary explicitly tells reviewers to see the exported TRIPOD checklist, so the blocked package references an artifact that walks around the block (RECORD-019). A gate four buttons route around is not a gate; generate the package from one manifest and apply the flag from that manifest rather than per button.",
+  "verified_ev": "pages/10_Report_Export.py computes exports_blocked = (not validation_report.passed) and (not validation_override) and applies it as disabled= on the ZIP, report.md, metrics.csv, manuscript.tex, manuscript.pdf, the PDF preview and methods_section.md - but tripod_checklist.csv (:1942), table1_final.csv/.tex, evidence_map.md (:2131-2133) and flow_diagram.mmd (:2181) carry no disabled flag"
  },
  {
   "id": "RECORD-031",
@@ -3374,7 +3395,9 @@
   "detail": "The manifest write is skipped or the hash computation raises (it is wrapped in a bare `except Exception: pass`, leaving data_sha256=None) while the LaTeX still asserts the manifest exists.",
   "ev": "pages/10_Report_Export.py _build_reproducibility_manifest() written into manifest.json['reproducibility'] at :2434; the promise text lives in ml/latex_report.py generate_latex_report Supplementary block",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The manifest is built and written, and both of its content probes fail silently to None - so a hash computation that raises (unhashable cells from a nested-JSON import is the obvious route, and MINE-010 shows that path is real) leaves data_sha256 null while the LaTeX Supplementary still tells reviewers the package documents a data hash. That is the app promising a reproducibility artifact it did not produce, in the one section reviewers read to decide whether the work can be checked. Credit where due: the manifest correctly discloses that data_sha256 and data_shape describe the COHORT rather than the study when a one-group run is active (:511-524), which is exactly the kind of scoping honesty the rest of this row wants. Make a null hash a stated absence rather than a silent one.",
+  "verified_ev": "pages/10_Report_Export.py:474-512 _build_reproducibility_manifest - the version probe and the hash computation are each wrapped in try/except that leave the value None (data_hash = None at :492, the except at :500), written into manifest['reproducibility'] at :2480; the promise text is in ml/latex_report.py's Supplementary block"
  },
  {
   "id": "RECORD-032",
@@ -3384,7 +3407,9 @@
   "detail": "A recorded value is not natively JSON-serializable — json.dumps(..., default=str) then converts it to a STRING and from_dict restores the string, changing the TYPE of the fact without any error. numpy float metrics do exactly this today.",
   "ev": "tests/test_workflow_provenance.py::{test_to_dict_from_dict_round_trip,test_to_dict_is_json_serializable}; utils/session_manager.py:268-276 and :544-556",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant is stated as lossless and is lossy today by the exact route this row names. Both tests pass and neither can see it: the round-trip test names about twenty fields individually and never asserts to_dict() == d (TEST-015), and the serializability test asserts json.dumps SUCCEEDS - which it always does, because default=str converts anything unserializable rather than raising. numpy float metrics take that path on every save, so TrainingProvenance.metrics_by_model restores as STRINGS and the type of the fact changes with no error (RECORD-002). The one assertion that closes this row and TEST-015 together is from_dict(d).to_dict() == d over a maximally populated provenance; it would fail today, which is the point.",
+  "verified_ev": "tests/test_workflow_provenance.py:342 (test_to_dict_from_dict_round_trip, field-by-field) and :416 (test_to_dict_is_json_serializable); utils/session_manager.py:272 json.dumps(provenance.to_dict(), default=str)"
  },
  {
   "id": "RECORD-033",
@@ -3394,7 +3419,9 @@
   "detail": "Nothing — and that is the problem. This invariant is currently implemented as total silence: a broken recorder loses the entire manuscript basis with zero user-visible signal. In TurboTab it must become 'record failures are surfaced as feed warnings', not swallowed.",
   "ev": "Bare `except Exception: pass` around every get_provenance().record_* call site (e.g. pages/06_Train_and_Compare.py:1646-1666)",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of STATE-052 from the record pass, and its framing is the sharpest in the ledger: the invariant as WRITTEN is correct and the invariant as IMPLEMENTED is total silence, so a broken recorder loses the entire manuscript basis with zero user-visible signal. 'Never break the workflow' and 'never tell anyone' were collapsed into one except clause. The fix keeps the first and drops the second - append a structured error to a Project-level record_errors list the feed surfaces - and it is the single highest-leverage change in this ledger, because roughly a dozen other OPEN rows say 'and nothing surfaces it' about a failure that lands in one of these twenty wells.",
+  "verified_ev": "20 bare 'except Exception: pass' sites across nine pages carrying the comment 'Provenance recording should never break the workflow', plus utils/session_state.py:714-715 in the ledger bridge"
  },
  {
   "id": "STATE-057",
@@ -3404,7 +3431,10 @@
   "detail": "AnalysisProject stores a single pipeline/spec slot, or the rebuild collapses per-model configs into one 'preprocessing' section of the interview. This is the app's stated core differentiator (ARCHITECTURE.md:29 and :215).",
   "ev": "tests/workflow/test_per_model_pipelines.py::TestPerModelPipelineConfigs::test_ridge_and_rf_get_different_training_data asserts `not np.allclose(X_ridge, X_rf, atol=1e-6)`; ::test_pipelines_by_model_dict_contract asserts the dict shape; page…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The differentiator is intact on both sides of the migration and the test asserts the property rather than the plumbing: two models must receive genuinely different transformed matrices from the same raw data, checked numerically, which is exactly what a collapse to one shared pipeline fails. The dict-shape contract test guards the container. The Project kept the shape as per-model SPECS rather than fitted objects (SWEEP-011), which is the stronger form. Duplicate of MODELS-017 and SWEEP-011 from the state pass. NOTE what this does not cover and stays open: the global fallback slot (T0-STRUCT-001 / STATE-005), where a model with no spec of its own silently borrows another model's entire transform chain.",
+  "test": "tests/workflow/test_per_model_pipelines.py::TestPipelineTrainingIntegration::test_ridge_and_rf_get_different_training_data",
+  "verified_ev": "tests/workflow/test_per_model_pipelines.py:191 (asserts not np.allclose(X_ridge, X_rf, atol=1e-6)) and :299 (test_pipelines_by_model_dict_contract pins the dict shape); turbotab/project.py:155 pipeline_specs keyed per model"
  },
  {
   "id": "STATE-058",
@@ -3414,7 +3444,9 @@
   "detail": "Any code path calls .transform() on a pipeline object taken from preprocessing_pipelines_by_model without refitting. Those objects ARE fitted — on the full dataframe, at build time (pages/05:945 and :999). pages/05:1275 and pages/10:2285 both do exactly this.",
   "ev": "pages/06_Train_and_Compare.py:1312-1315 (`model_pipeline.fit(X_train)` then `.transform(X_val)` / `.transform(X_test)`); the page's own contract text at pages/05_Preprocess.py:66-72 ('The settings you configure here are not applied yet... f…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant holds on the training path and is violated on two others, so it stays OPEN. Training is correct: the pipeline is fitted on X_train and merely applied to val and test. But the objects in preprocessing_pipelines_by_model are already fitted - on the FULL frame, at build time - and two consumers use them as-is: the Preprocess page's CSV preview transforms with statistics learned from the held-out rows, and the export writes that same object out as the model's pipeline (STATE-004 / CONTRACT-018). So the lockbox leaks through a download button, and the reproducibility artifact a reviewer loads is not the transform the published model saw. The page's own contract text says the settings are not applied yet, which is true of training and false of both of these.",
+  "verified_ev": "pages/06_Train_and_Compare.py:1310-1315 does the right thing (model_pipeline.fit(X_train) then .transform on val and test); against that, pages/05_Preprocess.py:979-980 and :1033-1034 FIT on X_sample = the full frame and store that object, and pages/05:1319-1320 and pages/10_Report_Export.py:2323-2325 then transform/export from it without refitting"
  },
  {
   "id": "STATE-059",
@@ -3424,7 +3456,9 @@
   "detail": "clone() raises (PlausibilityGate), or the caller passes X_train_model instead of X_train. Both degrade to a warning, not an error: pages/06:1561 `except Exception as cv_error: st.warning(...). Skipping CV.`",
   "ev": "ml/eval.py:182 make_cv_pipeline(preprocessing, estimator) with its `clone(preprocessing)`; called at pages/06:1555 with RAW X_train (not X_train_model).",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant is implemented correctly and both of its failure modes degrade to a warning, so it stays OPEN. The composition is right - CV runs on raw X_train through a cloned, unfitted preprocessing pipeline, so every fold refits its own transformers - but clone() RAISES for PlausibilityGate (STATE-002 / TEST-003), and the caller catches it into a transient banner while the results table and the manuscript render complete WITHOUT cross-validation. So for any project with plausibility bounds configured, the invariant is not violated, it is skipped, silently. And nothing tests it: make_cv_pipeline has exactly three references in the repo, all production (MODELS-015), so a caller that passed the already-transformed X_train_model would pass the whole suite while raising every CV score.",
+  "verified_ev": "ml/eval.py:182-190 make_cv_pipeline with its clone(preprocessing); pages/06_Train_and_Compare.py:1460 calls it with RAW X_train; the failure handler at :1465-1470 degrades a raised clone to st.warning('... Skipping CV') rather than an error; no test imports make_cv_pipeline"
  },
  {
   "id": "STATE-060",
