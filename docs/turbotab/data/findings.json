@@ -2737,7 +2737,9 @@
   "detail": "session_manager.py:134 defines _PENDING_WIDGET_RESTORE_KEY; on session restore it defers widget keys rather than setting them (comment :120). Then llm_ui._apply_pending_llm_widget_restore() (:663) POPS the entire dict, claims six LLM keys, and re-stores everything else for 'the next owner' (:684-686). theme.render_sidebar_workflow (:719-725) then reads it for 'workflow_mode_selector' and re-stores the remainder. pages/01:1131-1139 does the same for its own key. theme.py:694 calls render_llm_settings_sidebar() FIRST, before theme's own read at :719 — reverse that order and llm_ui's pop discards nothing but theme's read runs against a dict llm_ui hasn't yet re-stored. There is no registry, no …",
   "ev": "utils/session_manager.py:120,134; utils/llm_ui.py:663-686; utils/theme.py:694,719-725; pages/01_Upload_and_Audit.py:1131-1139",
   "act": "project (make widget-restore an explicit, ordered, tested Project.restore step; the pop-and-repost relay cannot survive a rewrite)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Three modules still pass one dict between them by pop-and-repost, and the correctness depends on call ORDER inside render_sidebar_workflow - llm_ui's pop must run before theme's read, which it does only because :697 precedes :719 in the same function. There is no registry, no ownership declaration and no test; reversing two lines silently drops a restored widget value. This will not survive a rewrite in any form, because the mechanism IS the ordering. Make widget restore an explicit, ordered, tested Project.restore step with each key claimed by a declared owner.",
+  "verified_ev": "utils/session_manager.py defines _PENDING_WIDGET_RESTORE_KEY and defers widget keys rather than setting them; utils/llm_ui.py:663-686 pops the whole dict, claims its six keys and re-stores the remainder; utils/theme.py:719-725 then reads it for workflow_mode_selector and re-stores again; pages/01_Upload_and_Audit.py does the same for its own key; theme.py:697 calls render_llm_settings_sidebar() BEFORE its own read at :719"
  },
  {
   "id": "SWEEP-023",
@@ -2747,7 +2749,9 @@
   "detail": "`def get_global_seed() -> int: import streamlit as st; return st.session_state.get('random_seed', 42)`. The seed is the single most manuscript-critical scalar in the app (CODE_REVIEW C3: the Methods section omitted the split design and seed; the fix was calling record_split). Its accessor lives behind st.session_state with a silent default of 42 — so a Project that forgets to carry random_seed does not error, it publishes a paper claiming seed 42.",
   "ev": "utils/seed.py:32-35",
   "act": "project (seed is Project state with no default; record must read it from Project, not from a fallback)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and this row states the consequence better than MINE-009 does: the seed is the single most manuscript-critical scalar in the app, and its accessor is a session-state read with a SILENT DEFAULT of 42. So a Project that forgets to carry random_seed does not error - it publishes a paper claiming seed 42, and the claim is reproducible-looking and false. The in-function streamlit import is also what keeps utils.seed out of the headless engine. Seed is Project state with no default; the Record must read it from the Project, and a missing seed must be a refusal rather than a fallback. Compare MODELS-007, where the bootstrap already hard-codes 42 for a different reason and produces the same false reproducibility claim.",
+  "verified_ev": "utils/seed.py:34-37 - def get_global_seed() -> int: import streamlit as st; return st.session_state.get('random_seed', 42)"
  },
  {
   "id": "SWEEP-024",
@@ -2757,7 +2761,9 @@
   "detail": "CODE_REVIEW 2026-07 'Backstop (defense in depth)': 'pages/06 reconciles the feature list vs the data before Prepare Splits, and rebuilds any preprocessing pipeline whose columns drifted before fit() (ml.pipeline.reconcile_pipeline_columns) — loud warning, self-heal, never a cryptic crash. Any future drift path degrades gracefully.' That is a design stance, not a function: the rebuild must keep a reconciliation checkpoint at the split boundary even if the DAG is 'correct'. Contrast utils/reconcile.py's reconcile_state_with_df() — CODE_REVIEW C7: 'The intended safety net… is imported but never called by any page (only scripts/smoke_check.py).' Two reconcilers, one wired, one not.",
   "ev": "CODE_REVIEW.md 2026-07 'Backstop'; CODE_REVIEW.md C7; utils/reconcile.py",
   "act": "project (keep an explicit reconciliation checkpoint before every fit); drop or wire reconcile_state_with_df — do not port it dormant",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "The dormant-reconciler half is closed; the invariant it protects is actively broken by a different row. reconcile_state_with_df is no longer imported-but-never-called - pages/01:829 invokes it after a repair, so the C7 gap is filled and there is one wired reconciler rather than two, one dormant. WHAT REMAINS is the stance itself: 'loud warning, self-heal, never a cryptic crash'. reconcile_pipeline_columns clones unconditionally, and PlausibilityGate cannot be cloned, so with plausibility bounds configured the reconciliation checkpoint RAISES rather than self-heals, and the raise is caught into a transient warning while the manuscript renders complete without cross-validation. Fix STATE-002 and this invariant holds again; keep the checkpoint at the split boundary in the rebuild even when the DAG is believed correct.",
+  "verified_ev": "pages/01_Upload_and_Audit.py:24 and :829 - reconcile_state_with_df IS now imported and CALLED (the module moved to utils/state_reconcile.py); ml/pipeline.py:512-540 reconcile_pipeline_columns is still called on every training run and still clones (see STATE-002 / TEST-003)"
  },
  {
   "id": "SWEEP-025",
@@ -2767,7 +2773,10 @@
   "detail": "CODE_REVIEW 2026-07: 'CV previously used shuffled KFold regardless of the split. A group split (longitudinal) or time split now gets GroupKFold/StratifiedGroupKFold / TimeSeriesSplit, so CV can't leak across entities or time and inflate the score. CV still runs on training rows only; cv_strategy/cv_groups_train are recorded at split time and cleared with the split.' Also: 'Under the lockbox, the Train & Compare Test % slider is now disabled and pinned to the lockbox fraction… so a live control can never contradict the actual held-out set. Group/time splits (which draw their own test set) keep the slider live and say so.' Both are couplings between two Project fields that a field-by-field por…",
   "ev": "CODE_REVIEW.md 2026-07 'Strategy-aware cross-validation' and 'Test-set slider guardrail'; tests/test_cv_strategies.py",
   "act": "project (cv_strategy is a derived field of the split, with a shared lifetime); router (a control that cannot contradict state must be disabled, not merely validated)",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Both halves of the invariant are implemented and tested. The CV scheme is no longer a parallel field that can desync: it is computed in the same expression that chooses the split branch and returned on the Split object, so a group split gets cv_strategy='group' with cv_groups_train aligned to X_train, and a time split gets 'time'. The named test asserts the binding AND the promise the branch exists for - no subject appears in both train and test - and test_chronological_split_matches_the_page asserts the time ordering across all three partitions. tests/test_cv_strategies.py covers the fold-construction side including the clamp and the no-groups fallback. The slider guardrail is in place at pages/06:202 and :233, so a live control cannot contradict the actual held-out set.",
+  "test": "tests/integration/test_split_extraction_equivalence.py::test_grouped_split_matches_the_page",
+  "verified_ev": "ml/splits.py:303-330 and :393-394 (cv_strategy and cv_groups_train derived inside make_split from the branch actually taken, returned on Split); pages/06_Train_and_Compare.py:202 (slider disabled under a group split) and :233 (slider disabled and pinned to the lockbox fraction); tests/test_cv_strategies.py:19-85; tests/integration/test_split_extraction_equivalence.py:99-135"
  },
  {
   "id": "SWEEP-026",
@@ -2777,7 +2786,9 @@
   "detail": "docs/audit/RESUME.md:91-95: '(a) Page 01: transpose preview/apply consistency has a regression test gap (preview and commit now share one frame, but the Excel-sheet × transpose combination is untested). (b) The remaining tail of the original 48 that neither I nor the adjudication has reached — the ledger table is the source of truth.' Plus the trap at :70-72: 'Note both [audit runs] were launched against the FROZEN tree at 413671a, so a \"still_broken\" verdict on findings 5, 7, 11, 13 or 27 refers to the pre-fix code — check the ledger before re-fixing.' Anyone reading the audit output cold will re-fix already-fixed code. Verification harness note at :51-54: 'Driving the multi-file screen end…",
   "ev": "docs/audit/RESUME.md:43-54,70-72,91-95; tests/integration/test_combine_ui.py",
   "act": "project (replace the sp_projects AppTest harness with a Project-level fixture BEFORE porting pages/01)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD - the same conclusion SWEEP-016 reaches from the other direction, and this row carries the two specific gaps and the trap. The Excel-sheet x transpose combination is still untested; the tail of the original 48 is still untriaged; and the stale-verdict warning still matters, because anyone reading the audit output cold will re-fix findings 5, 7, 11, 13 and 27 against code that was already repaired. That trap is the strongest argument for closing the tail before touching pages/01 rather than after. The harness note also stands: driving the multi-file screen through AppTest is what makes those tests both slow and unportable (see TEST-012), so the Project-level fixture has to exist BEFORE pages/01 is ported, not during.",
+  "verified_ev": "docs/audit/RESUME.md:91-95 (the two named gaps) and :70-72 (the stale-verdict trap on findings 5, 7, 11, 13, 27); docs/FINDINGS_LEDGER.md:47-72 (the 'Still open' section, still empty of findings); tests/integration/test_combine_ui.py still drives the multi-file screen through AppTest"
  },
  {
   "id": "SWEEP-027",
@@ -2787,7 +2798,9 @@
   "detail": "The last five commits are all cohort work: b299a8a 'Cohort runs: the engine for \"same question, different people\"', e72f2ec 'Put the cohort-run engine on screen', c3cef15 'Walk both cohort runs in a browser; two more numbers that contradicted', c56bf0b 'Four defects only a screenshot could find', fbe422a (HEAD) 'Write the app in American English, and stop mixing \"cohort\" with \"group\"'. Surface: utils/cohorts.py (21.5k), utils/cohort_ui.py (14k), the apply_cohort() call inside get_data() (session_state.py:216-217), render_cohort_chip() called from theme.render_sidebar_workflow:713 ('A run filter you cannot see is a run filter you forget, and every number on every page below is then quietly ab…",
   "ev": "git log -5; utils/session_state.py:216-217; utils/theme.py:711-714; tests/test_cohort_runs.py; tests/test_american_spelling.py",
   "act": "project (model the active cohort filter as a first-class Project field from day one — a Project that models only 'the working table' silently deletes the newest feature)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The warning was heeded in the core and the Classic entanglement is unchanged. turbotab/project.py carries the cohort as a FIELD with working_table derived from it (:413-424), which is exactly what this row asked for - a Project that models only 'the working table' would have deleted the newest feature, and it did not. What remains is everything on the Classic side that this row catalogues: get_data() still applies the filter implicitly with escapes enforced by a default parameter (SWEEP-010), the cohort is entangled with the lockbox through two of the three import cycles (STATE-053 / CONTRACT-037), and cohort persistence only landed recently (CONTRACT-016 / STATE-055). Kept OPEN because the row is a standing instruction for L11 convergence rather than a defect that closes.",
+  "verified_ev": "utils/cohorts.py and utils/cohort_ui.py are unchanged in shape; utils/session_state.py:230-233 still applies the cohort filter inside get_data; utils/theme.py:711-714 still renders the cohort chip with the comment 'A run filter you cannot see is a run filter you forget'; turbotab/project.py:141-144 and :413-424 model cohort as a first-class field"
  },
  {
   "id": "TEST-011",
@@ -2797,7 +2810,9 @@
   "detail": "LANDS: drop (replace with project contract tests). Despite its name and docstring claim to 'verify that data actually flows correctly across the multi-page workflow', every test body ends in `assert_no_exception(at, page_name)` (defined at :35-38, fails only if at.exception is non-empty). The only value assertions in the whole file are existence checks: `assert at.session_state['raw_data'] is not None` (:79), `assert profile is not None` (:93), `assert len(...feature_cols) > 0` (:82). No metric, no shape, no numeric output is compared. It therefore cannot detect a refactor that produces correct-shaped but WRONG numbers — the exact failure mode a Streamlit-to-Python port produces.",
   "ev": "tests/integration/test_state_contracts.py:35-38, and all 17 test bodies terminating in assert_no_exception",
   "act": "Do not port. Replace with Project-level contract tests asserting the produced VALUES (split index sets, feature name lists, metric dicts) at each stage boundary.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and the count is now 20. Despite the file's name and its docstring claim to verify that data flows correctly across the multi-page workflow, no metric, no shape and no numeric output is ever compared - every test body terminates in a no-exception assertion. So it cannot detect a refactor that produces correct-SHAPED but WRONG numbers, which is precisely the failure mode a Streamlit-to-Python port produces. It is worth being explicit that this is not a useless file: render-smoke over nineteen page paths does catch import errors and crashes. It just does not test what its name claims, and porting it would carry that claim forward. Replace with Project-level contract tests asserting produced VALUES at each stage boundary.",
+  "verified_ev": "tests/integration/test_state_contracts.py - 20 assert_no_exception calls; the only value assertions in the file are existence checks (raw_data is not None, data_config is not None, target_col == 'glucose', len(feature_cols) > 0, profile is not None)"
  },
  {
   "id": "TEST-012",
@@ -2807,7 +2822,9 @@
   "detail": "LANDS: view (rewrite) / drop. AppTest-bound counts: test_pages.py 19, test_state_contracts.py 17, test_widget_interactions.py 14, test_upload_roster.py 13, test_import_ui.py 10, test_cascade_invalidation.py 10, test_combine_ui.py 6, test_wide_guards.py 4, test_lockbox_split.py 2. All construct `AppTest.from_file(\"pages/NN_*.py\")`, which requires both Streamlit AND the pages/ directory that is being deleted. tests/integration/test_pdf_pipeline.py is the exception — it is streamlit-transitive but not AppTest, so it can be salvaged. Verdict: tests/integration/ as a directory does not survive. Roughly 10% of its content (the behavioral assertions, not the smoke) is worth re-expressing at the Pro…",
   "ev": "grep AppTest over tests/integration; Makefile:27 `test-apptest` target; .github/workflows/ci.yml Tier 2 step",
   "act": "Rewrite as Feed/Router tests driving the Project object directly. Budget for ~10 real tests, not 95 — most of the 95 are duplicate render-smoke across pages.",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "The ratio moved and the conclusion did not. tests/integration/ has grown by seven files since this was written and three of them are NOT AppTest-bound - test_readiness_equivalence, test_routing_value_check and test_pdf_pipeline - so the directory is no longer uniformly unportable. But the count is wrong in the row's favor rather than against it: the new characterization suites (cascade, lockbox, split) deliberately USE AppTest, and correctly so, because they exist to call the production function inside a real script rather than re-implement it. So 'AppTest-bound' no longer means 'disposable'. WHAT REMAINS: the ~65 render-smoke assertions in test_pages, test_state_contracts and test_widget_interactions are still duplicate smoke that should become roughly ten real Project-level tests, and the estimate in the action still holds for them.",
+  "verified_ev": "AppTest construction counts at HEAD across tests/integration: test_pages.py 19, test_state_contracts.py 19, test_widget_interactions.py 13, test_cascade_invalidation.py 10, test_wide_guards.py 5, test_characterization_cascade.py 4, test_characterization_lockbox.py 2, test_characterization_split.py 2, plus one each in seven more files; NOT AppTest-bound: test_readiness_equivalence.py, test_routing_value_check.py, test_pdf_pipeline.py"
  },
  {
   "id": "TEST-013",
@@ -2817,7 +2834,10 @@
   "detail": "LANDS: project. Unlike its neighbors it clicks the real button (`_click_button(at, \"Prepare Splits\")` at :67) and asserts a hard set equality on production output: `assert set(test_indices) == set(test_labels)` (:77) plus disjointness `assert not (train_indices & set(test_labels))` (:84-85). Its second test (:88) pins the negative case — exploratory_mode ignores the lockbox. This is the only place the structural-leakage guarantee is verified at the orchestration level; every other lockbox test is unit-level. If it is dropped with the rest of tests/integration/, the migration loses its only end-to-end leakage check.",
   "ev": "tests/integration/test_lockbox_split.py:45-112",
   "act": "Port FIRST, before the cut: re-express as a Project-level test calling the extracted prepare_splits engine function with a frozen lockbox dict, keeping the identical set-equality and disjointness assertions.",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Ported before the cut, exactly as this row instructed, and strengthened on the way. The re-expression calls the extracted engine function with a frozen lockbox dict and keeps the set-equality assertion in a stronger form - by LABEL rather than by position, which is the identity the lockbox actually seals. Disjointness moved from the test into the engine as Split.assert_disjoint ('No row may appear in two partitions. The leak, checked.'), so it now holds for every split rather than for the one the test constructs, and assert_identity_preserved adds the barrier check. The original file survives and still pins the exploratory-mode negative case, so nothing was lost in the move.",
+  "test": "tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page",
+  "verified_ev": "tests/integration/test_split_extraction_equivalence.py:82-95 (calls the extracted make_split with a frozen lockbox and asserts set(split.test_labels) == set(labels)), :50-58 (_same_partition compares all three partitions against the page's own output), :99-115 (the grouped branch asserts no subject spans train and test); ml/splits.py:131-139 (Split.assert_disjoint); tests/integration/test_lockbox_split.py still present, exploratory case intact"
  },
  {
   "id": "TEST-014",
@@ -2827,7 +2847,9 @@
   "detail": "LANDS: engine. models/rf.py defines predict_proba at :75-81 and AGAIN identically at :87-93, and supports_proba at :83-85 and again at :95-97. The second definition silently wins. Behaviorally harmless today (bodies are identical) but it is direct evidence that no test ever imported the class — a copy-paste artifact that survived review. models/ is 1,000 loc across 7 files with ZERO streamlit, so it is the cheapest and safest thing to move to engine — but 'safe to move' is not 'verified to move' without golden outputs. BaseModelWrapper's contract (models/base.py:10-76) is `fit(X_train, y_train, X_val=None, y_val=None, **kwargs) -> Dict[str, Any]`, `predict(X) -> np.ndarray`, `predict_proba(X…",
   "ev": "models/rf.py:75-97 (duplicated block); models/base.py:10-76",
   "act": "Write tests/characterization/test_model_wrappers_golden.py: for each of GLMWrapper, HuberGLMWrapper, RFWrapper, RegistryModelWrapper, on tests/conftest.py build_regression_df(n=200, seed=42) with numeric features only, assert (a) fit() retu…",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "The coverage half is closed and the artifact it pointed at is still there. models/ is no longer untested - tests/test_characterization_wrappers.py parameterizes the base contract across the regression wrappers, pins the registry wrapper against the estimator it wraps, pins proba support for classification and pins the unfitted-predict refusal. But models/rf.py STILL carries the duplicated predict_proba and supports_proba definitions verbatim, which is behaviorally harmless (the bodies are identical) and is exactly the evidence this row used: a copy-paste artifact that survived review because nothing read the file closely. Worth deleting in the same commit that moves models/, and worth noting that the new tests did not catch it - identical duplicates are invisible to behavioral tests, which is why the row's real point stands.",
+  "verified_ev": "models/rf.py:75-97 - predict_proba is still defined at :75 and again at :87, supports_proba at :83 and again at :95, the second definition silently winning; coverage half now addressed by tests/test_characterization_wrappers.py:62-269"
  },
  {
   "id": "TEST-015",
@@ -2837,7 +2859,9 @@
   "detail": "LANDS: record. utils/workflow_provenance.py:585-655 filters every section through `{k: v for k, v in data[X].items() if k in XProvenance.__dataclass_fields__}`. Rename a dataclass field and old saved state silently loads the DEFAULT — no KeyError, no warning. The guarding test tests/test_workflow_provenance.py:342 asserts ~20 individually-named fields (prov2.upload.target_col, prov2.split.random_seed, ...) and never asserts `prov2.to_dict() == d`, so any field it does not name can vanish undetected. Worse, two whole sections are never round-tripped: the test never calls record_feature_engineering() or record_coach(), and never asserts prov2.feature_engineering or prov2.coach. `coach` is prec…",
   "ev": "utils/workflow_provenance.py:585-655; tests/test_workflow_provenance.py:342-407 (no equality assert; no coach/feature_engineering)",
   "act": "Add `assert WorkflowProvenance.from_dict(d).to_dict() == d` over a MAXIMALLY populated provenance (all 12 sections incl. record_feature_engineering and record_coach). Add a meta-test asserting the set of keys in to_dict() equals a frozen li…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Substantially unchanged at HEAD, with one correction to the row: record_feature_engineering IS called in the suite - the claim that it is never exercised is wrong. What is not wrong, and is the actual finding, is that no test asserts EQUALITY of the round trip. The guard still names about twenty fields one by one, so any field it does not name can vanish through the filters undetected, and the coach section in particular is never asserted after a from_dict. Add assert WorkflowProvenance.from_dict(d).to_dict() == d over a maximally populated provenance covering all sections, plus a meta-test pinning the key set - that single assertion closes this row and RECORD-015's detection gap at once.",
+  "verified_ev": "utils/workflow_provenance.py:585-655 (eleven per-section __dataclass_fields__ filters); tests/test_workflow_provenance.py asserts individually-named fields and never asserts prov2.to_dict() == d; record_feature_engineering IS exercised at :120-126, :276 and :482, but no round-trip test asserts prov2.feature_engineering or prov2.coach survives"
  },
  {
   "id": "TEST-016",
@@ -2847,7 +2871,9 @@
   "detail": "LANDS: drop. tests/test_review_fixes.py:424-426 and :292-294 define `_read(self, rel)` returning file text, then assert on substrings: `assert \"feature_options[:min(10\" not in src` and `assert \"default_features = list(feature_options)\" in src` (:433-434), reading 'pages/01_Upload_and_Audit.py'. When pages/ is deleted the negative assertions pass trivially (nothing to find) and the positive ones raise FileNotFoundError. Same pattern in tests/test_issues_7_15.py (:94, :196, :220, :242) and tests/test_distribution.py:17-18. These encode real past bugs (the wide-data first-10-features truncation) whose protection evaporates silently for the negative form.",
   "ev": "tests/test_review_fixes.py:424-434; tests/test_issues_7_15.py:94,196,220,242; tests/test_distribution.py:17-18",
   "act": "Convert each to a behavioral assertion against the extracted engine function before the move (e.g. call the default-feature-selection function with a 3000-column frame and assert len(defaults) == 3000), then delete the text-scraping form.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The source-text assertions are still there and still have the asymmetry that makes them dangerous: when pages/ is deleted the NEGATIVE assertions (substring not in src) pass trivially over a file that no longer exists or over content that moved, while the POSITIVE ones raise FileNotFoundError - so half the suite goes green for the wrong reason and half goes red for the wrong reason, and neither outcome names the real problem. Each of these encodes a real past bug, the wide-data first-ten-features truncation among them, so the protection is worth keeping - as behavior. Convert each to a call against the extracted engine function before the move, then delete the text-scraping form. Compare tests/integration/test_cascade_dag_equivalence.py, which reads source too but does it by AST against a live key set, so it cannot pass vacuously.",
+  "verified_ev": "tests/test_review_fixes.py:292 and :424 (two _read helpers returning file text, asserted on with substring in/not-in), tests/test_distribution.py:16 (_read); tests/test_issues_7_15.py carries the same pattern"
  },
  {
   "id": "TEST-017",
@@ -2857,7 +2883,9 @@
   "detail": "LANDS: project. tests/test_review_fixes.py:141-152 hardcodes 22 keys with an inline comment dating the last manual sync ('2026-07 layer-contract audit'). The production function's docstring at utils/session_state.py:290-291 states the coupling explicitly: 'Any page that introduces a new result key must add it here' — a convention enforced by nothing. The test at :162 loops RESULT_KEYS, so a key added to production but not to RESULT_KEYS is simply never checked; a key added to neither is never cleared at all. This is the mechanism that produced the 21-key gap above.",
   "ev": "tests/test_review_fixes.py:141-152; utils/session_state.py:286-297",
   "act": "In the Project layer make result fields declarative (a dataclass or registry) so the clear-set is DERIVED, not listed. The characterization test then asserts derived-set == frozen golden set.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD in the file this row names, though the surrounding situation improved: tests/integration/test_characterization_cascade.py and test_cascade_dag_equivalence.py now cover the production key set from two directions, so RESULT_KEYS is no longer the only list (see TEST-006). It is still a hand-maintained duplicate that gives false confidence - a key added to production but not to it is simply never checked - and the production docstring still states the coupling as a convention enforced by nothing. The durable fix is the one this row names and TEST-006 and STATE-038 also arrive at: make result fields declarative so the clear-set is DERIVED, and assert derived-set == frozen golden.",
+  "verified_ev": "tests/test_review_fixes.py:141-152 (RESULT_KEYS, 22 hand-listed keys with an inline note dating the last manual sync) and :165-168 (the loop that only checks what is listed); utils/session_state.py:286-297 (the docstring's 'Any page that introduces a new result key must add it here')"
  },
  {
   "id": "TEST-018",
@@ -2867,7 +2895,9 @@
   "detail": "LANDS: engine. ml/preprocess_operators.py:86-92: when method=='mad', `mad = np.nanmedian(np.abs(X_arr - med), axis=0)`, `scale = 1.4826 * mad`, bounds = med -/+ threshold*scale. For a constant column mad==0, so lower_bounds_ == upper_bounds_ == med, and transform's `np.clip(X_arr, self.lower_bounds_, self.upper_bounds_)` (:104) forces every value in that column to the median. Any near-constant column (mad==0 with a few outliers, common in clinical flags and one-hot-ish integer codes) is silently flattened — the feature becomes constant, contributes nothing, and no warning is emitted. Zero test coverage on this module.",
   "ev": "ml/preprocess_operators.py:86-92 and :100-104",
   "act": "Characterization test with a deliberately constant column and a near-constant column (mad==0 plus one outlier); assert current behavior explicitly so the migration cannot change it accidentally, then decide whether to guard scale==0. Note a…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and still uncovered. For a constant column mad == 0, so lower_bounds_ == upper_bounds_ == med and the clip forces every value to the median - and a NEAR-constant column (mad == 0 with a few outliers, which is what clinical flags and integer codes look like) is silently flattened into a constant, contributing nothing to the model with no warning anywhere. Note the interaction with MINE-006 in the same class: the bounds attributes are assigned in __init__, so an unfitted OutlierCapping returns X unchanged while a fitted one on a constant column destroys it - two opposite silent behaviors from one operator. Characterize both cases explicitly before deciding whether to guard scale == 0, so the migration cannot change either by accident.",
+  "verified_ev": "ml/preprocess_operators.py:86-92 (mad = nanmedian(|X - med|); scale = 1.4826 * mad; bounds = med -/+ threshold * scale) and :100-104 (np.clip against those bounds)"
  },
  {
   "id": "TEST-019",
@@ -2877,7 +2907,9 @@
   "detail": "LANDS: engine. ml/outliers.py:12 `detect_outliers(...)` and :93 `outlier_rate(series: pd.Series, method: str = 'iqr', params: Optional[Dict] = None) -> float`. Six importers make it the highest-blast-radius zero-coverage module in ml/. outlier_rate returns a float that drives displayed rates and (via the ledger) manuscript claims about data quality; detect_outliers drives the preprocessing recommendation. A change in the iqr/mad/percentile boundary condition (inclusive vs exclusive) shifts reported rates with no test to catch it.",
   "ev": "ml/outliers.py:12, :93; 6 import sites",
   "act": "Golden test: pd.Series([1..100] + [1000, -1000]); assert outlier_rate to 10 decimals for each of method='iqr','mad','percentile' with default and explicit params, and assert detect_outliers returns the exact index positions of the two injec…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: still zero coverage, still the widest fan-in of any uncovered ml module. outlier_rate returns a float that drives the displayed rates and, through the ledger, manuscript claims about data quality; detect_outliers drives the preprocessing recommendation and the has_outliers flags that MINE-018 shows are already thresholded inconsistently. So a change to an inclusive/exclusive boundary in the iqr, mad or percentile branch shifts reported rates across four modules with nothing to catch it - and MINE-019's silent all-False return for an unknown method sits in the same function. The golden test the action describes would close MINE-019 and TEST-019 together and give MINE-018 a fixed point to argue thresholds against.",
+  "verified_ev": "ml/outliers.py:12 detect_outliers and :93 outlier_rate; importers at HEAD: ml/dataset_profile.py, ml/eda_actions.py, ml/eda_recommender.py, pages/02_EDA.py and scripts/smoke_check.py; no test file imports the module"
  },
  {
   "id": "TEST-020",

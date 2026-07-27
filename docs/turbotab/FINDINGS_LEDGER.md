@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**39 of 402 closed.**
+**41 of 402 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `UNVERIFIED` | 160 |
-| `OPEN` | 183 |
-| `PARTIAL` | 20 |
-| `FIXED` | 39 |
+| `UNVERIFIED` | 145 |
+| `OPEN` | 193 |
+| `PARTIAL` | 23 |
+| `FIXED` | 41 |
 
 ---
 
-## OPEN — 183
+## OPEN — 193
 
 
 ### Application state / lockbox — 48
@@ -221,7 +221,7 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Completeness sweep — 11
+### Completeness sweep — 15
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -236,6 +236,28 @@ Nothing is closed without a regression test named after it.
 | `SWEEP-019` | high | utils/llm_ui.py:225 reads session_state['working_df'] — a key nothing writes; ctx['sample_size'] is never populated | `utils/llm_ui.py:225; pages/01_Upload_and_Audit.py:596 (writes working_table, not working_df)` | Unchanged at HEAD, and the framing this row adds is the one worth keeping: CODE_REVIEW design principle 2 ('State first, widgets second - name who writes, who reads, who… |
 | `SWEEP-020` | high | utils/llm_ui.py:213 type-guards dataset_profile as a dict, but the session holds a DatasetProfile dataclass — the profile never reaches the LLM | `utils/llm_ui.py:212-214,268-275; pages/02_EDA.py:166; ml/dataset_profile.py:110; ARCHITECTURE.md:324` | Unchanged at HEAD. The isinstance(profile, dict) guard is always False against a DatasetProfile dataclass, so the profile never reaches the LLM - the app asks a model to advise on… |
 | `SWEEP-021` | high | utils/llm_ui.py:532 spawns `ollama serve` via subprocess.Popen on the request thread, behind a spinner that promises ~60s but waits up to 120s | `utils/llm_ui.py:14,507,532,621,641` | Unchanged at HEAD. The only process spawn anywhere in utils/, ml/ or models/ still happens on the request thread, behind a spinner that promises about 60 seconds while the wait… |
+| `SWEEP-022` | high | utils/llm_ui.py + utils/theme.py + pages/01 share an undocumented three-way protocol over session_state['_pending_widget_state_restore'], and the ORDER is load-bearing | `utils/session_manager.py:120,134; utils/llm_ui.py:663-686; utils/theme.py:694,719-725…` | Unchanged at HEAD. Three modules still pass one dict between them by pop-and-repost, and the correctness depends on call ORDER inside render_sidebar_workflow - llm_ui's pop must… |
+| `SWEEP-023` | high | utils/seed.py:33 get_global_seed() reads st.session_state directly — the reproducibility module is Streamlit-coupled | `utils/seed.py:32-35` | Unchanged at HEAD, and this row states the consequence better than MINE-009 does: the seed is the single most manuscript-critical scalar in the app, and its accessor is a… |
+| `SWEEP-026` | high | WORK IN PROGRESS — named open items carried in RESUME.md, plus a stale-verdict trap | `docs/audit/RESUME.md:43-54,70-72,91-95; tests/integration/test_combine_ui.py` | Unchanged at HEAD - the same conclusion SWEEP-016 reaches from the other direction, and this row carries the two specific gaps and the trap. The Excel-sheet x transpose… |
+| `SWEEP-027` | high | WORK IN PROGRESS — cohort runs are the NEWEST subsystem (landed 5 commits ago) and they change the meaning of get_data() itself | `git log -5; utils/session_state.py:216-217; utils/theme.py:711-714; tests/test_cohort_runs.py…` | The warning was heeded in the core and the Classic entanglement is unchanged. turbotab/project.py carries the cohort as a FIELD with working_table derived from it (:413-424)… |
+
+### Migration safety net — 13
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `TEST-002` | critical | Test fixtures compute a DIFFERENT invalidation hash than production — target-swap invalidation is untested by construction | `pages/01_Upload_and_Audit.py:1047-1051 vs tests/conftest.py:81-83, tests/integration/conftest.py:73-76…` | Unchanged at HEAD, both sides. Production still hashes the whole modeling problem at pages/01:1079-1083 - sorted(feature_cols) + target + task_type - with a comment at :1075-1078… |
+| `TEST-003` | critical | PlausibilityGate violates sklearn's clone() contract — cross-validation raises RuntimeError whenever plausibility bounds are configured | `ml/preprocess_operators.py:49-55; ml/pipeline.py:185; ml/eval.py:161; contrast ml/preprocess_operators.py:13` | Unchanged at HEAD. PlausibilityGate.__init__ still does self.lower_bounds = np.array([...]) and the same for upper_bounds, so sklearn.base.clone - which calls… |
+| `TEST-004` | critical | build_preprocessing_pipeline embeds an unpicklable local closure — the Jobs layer cannot ship pipelines to workers | `ml/pipeline.py:210-213; contrast ml/eval.py:177-180 ('Named (picklable, for n_jobs=-1)')` | Unchanged at HEAD. ml/pipeline.py:219 still defines log_transform as a local closure inside build_preprocessing_pipeline and hands it to FunctionTransformer at :221, so… |
+| `TEST-005` | critical | Cross-layer imports of PRIVATE symbols inside bare `except Exception: pass` — renames degrade manuscripts silently, with no error | `ml/publication.py:1739-1744 and :154-162; AST scan: 47 swallow-blocks across 16 files` | Unchanged and slightly worse. A fresh AST scan at HEAD counts 52 blocks whose try body contains an import and whose handler is a bare pass, across 17 files - ml/eda_actions.py… |
+| `TEST-007` | critical | 40 of 58 test modules break the moment Streamlit is removed; only 18 survive untouched | `AST transitive dependency scan over 58 test modules rooted at tests/` | Still OPEN, with the numbers restated against HEAD rather than the fbe422a baseline. The suite grew from 58 modules to 92 and the clean set from 18 to 35, so the ratio improved… |
+| `TEST-008` | critical | No golden-number test exists for calculate_regression_metrics / calculate_classification_metrics — the numbers the whole manuscript rests on | `ml/eval.py:14-52, :55-94 (silent metric drop at :90-92); consumers listed by grep for ml.eval across tests/` | Unchanged where it matters. The four-key regression contract and the conditional classification keys are still unpinned by any test: no golden-number test exists anywhere in the… |
+| `TEST-010` | critical | reset_downstream_results mutates the ledger and provenance as a side effect — an ordering hazard when Record becomes append-mostly | `utils/session_state.py:377-407, esp. hasattr guards at :384, :398, :405` | Unchanged at HEAD, and the guards are the defect. The invalidation path still reaches into the Record: it setattr's six (or seven) provenance sections to None and calls two ledger… |
+| `TEST-011` | high | tests/integration/test_state_contracts.py pins no numbers at all — it is 17 render-smoke assertions | `tests/integration/test_state_contracts.py:35-38, and all 17 test bodies terminating in assert_no_exception` | Unchanged at HEAD and the count is now 20. Despite the file's name and its docstring claim to verify that data flows correctly across the multi-page workflow, no metric, no shape… |
+| `TEST-015` | high | WorkflowProvenance.from_dict silently drops renamed/unknown fields — and the round-trip test hand-picks fields so it cannot detect the loss | `utils/workflow_provenance.py:585-655; tests/test_workflow_provenance.py:342-407 (no equality assert; no…` | Substantially unchanged at HEAD, with one correction to the row: record_feature_engineering IS called in the suite - the claim that it is never exercised is wrong. What is not… |
+| `TEST-016` | high | Source-text grep assertions go vacuously green the instant a file moves | `tests/test_review_fixes.py:424-434; tests/test_issues_7_15.py:94,196,220,242; tests/test_distribution.py:17-18` | Unchanged at HEAD. The source-text assertions are still there and still have the asymmetry that makes them dangerous: when pages/ is deleted the NEGATIVE assertions (substring not… |
+| `TEST-017` | high | RESULT_KEYS is a hand-maintained duplicate of the production key list — adding a result key gives false confidence | `tests/test_review_fixes.py:141-152; utils/session_state.py:286-297` | Unchanged at HEAD in the file this row names, though the surrounding situation improved: tests/integration/test_characterization_cascade.py and test_cascade_dag_equivalence.py now… |
+| `TEST-018` | high | OutlierCapping in MAD mode silently collapses constant columns to a single value | `ml/preprocess_operators.py:86-92 and :100-104` | Unchanged at HEAD and still uncovered. For a constant column mad == 0, so lower_bounds_ == upper_bounds_ == med and the clip forces every value to the median - and a NEAR-constant… |
+| `TEST-019` | high | ml.outliers has the widest fan-in of any uncovered ml module (6 importers) and gates EDA-to-preprocess handoff | `ml/outliers.py:12, :93; 6 import sites` | Unchanged at HEAD: still zero coverage, still the widest fan-in of any uncovered ml module. outlier_rate returns a float that drives the displayed rates and, through the ledger… |
 
 ### Models / training / eval — 9
 
@@ -251,22 +273,28 @@ Nothing is closed without a regression test named after it.
 | `MODELS-012` | landmine | BCa acceleration is computed from a jackknife that is capped at 200 leave-one-out replicates and then PADDED to length n with the mean of those 200. | `ml/bootstrap.py:152-166 — `n_jack = min(n, 200)`, `jack_stats = np.full(n, np.nan)`, the loop runs only `for…` | Unchanged at HEAD, byte for byte. For n > 200 the BCa acceleration is still computed over an array whose tail is a constant, damping the third and second moments by an amount that… |
 | `MODELS-013` | landmine | The weighted_huber emphasis window is derived during fit and stored only on the instance as _whuber_t0 / _whuber_s, with legacy glucose constants (t0=180.0, s=20.0) as the getattr fallback. | `models/nn_whuber.py:376-378 sets them only in the `elif self.loss_function == 'weighted_huber'` branch; lines…` | Unchanged at HEAD. The emphasis window is still derived during fit, stored only on the instance, and read back through getattr with the legacy glucose constants 180.0 and 20.0 as… |
 
-### Migration safety net — 7
+---
+
+## PARTIAL — 23
+
+
+### Completeness sweep — 4
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `TEST-002` | critical | Test fixtures compute a DIFFERENT invalidation hash than production — target-swap invalidation is untested by construction | `pages/01_Upload_and_Audit.py:1047-1051 vs tests/conftest.py:81-83, tests/integration/conftest.py:73-76…` | Unchanged at HEAD, both sides. Production still hashes the whole modeling problem at pages/01:1079-1083 - sorted(feature_cols) + target + task_type - with a comment at :1075-1078… |
-| `TEST-003` | critical | PlausibilityGate violates sklearn's clone() contract — cross-validation raises RuntimeError whenever plausibility bounds are configured | `ml/preprocess_operators.py:49-55; ml/pipeline.py:185; ml/eval.py:161; contrast ml/preprocess_operators.py:13` | Unchanged at HEAD. PlausibilityGate.__init__ still does self.lower_bounds = np.array([...]) and the same for upper_bounds, so sklearn.base.clone - which calls… |
-| `TEST-004` | critical | build_preprocessing_pipeline embeds an unpicklable local closure — the Jobs layer cannot ship pipelines to workers | `ml/pipeline.py:210-213; contrast ml/eval.py:177-180 ('Named (picklable, for n_jobs=-1)')` | Unchanged at HEAD. ml/pipeline.py:219 still defines log_transform as a local closure inside build_preprocessing_pipeline and hands it to FunctionTransformer at :221, so… |
-| `TEST-005` | critical | Cross-layer imports of PRIVATE symbols inside bare `except Exception: pass` — renames degrade manuscripts silently, with no error | `ml/publication.py:1739-1744 and :154-162; AST scan: 47 swallow-blocks across 16 files` | Unchanged and slightly worse. A fresh AST scan at HEAD counts 52 blocks whose try body contains an import and whose handler is a bare pass, across 17 files - ml/eda_actions.py… |
-| `TEST-007` | critical | 40 of 58 test modules break the moment Streamlit is removed; only 18 survive untouched | `AST transitive dependency scan over 58 test modules rooted at tests/` | Still OPEN, with the numbers restated against HEAD rather than the fbe422a baseline. The suite grew from 58 modules to 92 and the clean set from 18 to 35, so the ratio improved… |
-| `TEST-008` | critical | No golden-number test exists for calculate_regression_metrics / calculate_classification_metrics — the numbers the whole manuscript rests on | `ml/eval.py:14-52, :55-94 (silent metric drop at :90-92); consumers listed by grep for ml.eval across tests/` | Unchanged where it matters. The four-key regression contract and the conditional classification keys are still unpinned by any test: no golden-number test exists anywhere in the… |
-| `TEST-010` | critical | reset_downstream_results mutates the ledger and provenance as a side effect — an ordering hazard when Record becomes append-mostly | `utils/session_state.py:377-407, esp. hasattr guards at :384, :398, :405` | Unchanged at HEAD, and the guards are the defect. The invalidation path still reaches into the Record: it setattr's six (or seven) provenance sections to None and calls two ledger… |
+| `SWEEP-009` | critical | INVARIANT — reset_downstream_results supports PARTIAL resets; a naive 'invalidate everything downstream of node N' DAG cannot express them | `CODE_REVIEW.md '2026-07 · Feature-engineering state drift' (04:440, 04:483); ARCHITECTURE.md:278` | Per-edge suppression is done and tested; the restore-previous-value path is not in the graph. turbotab/cascade.py:189-210 expresses partial invalidation as keys_to_clear(changed… |
+| `SWEEP-013` | critical | INVARIANT — 'Absent is better than false': the invalidation cascade must visibly clear ALL FOUR planes, not just the data plane | `docs/ARCHITECTURE_SCROLLYTELLING_BRIEF.md §4B, §9; CODE_REVIEW.md C5; brief §0 table (InsightLedger…` | Two of the planes the row names are in the graph; the Record plane is not. Data and provenance are modeled - Stage carries provenance_sections, provenance_sections_to_clear walks… |
+| `SWEEP-015` | critical | Known test-fidelity hole exactly at the model-object boundary — the transition's safety net does not cover models/ | `CODE_REVIEW.md 'Dynamic testing summary' note; tests/integration/conftest.py:67…` | The named instance is fixed and models/ now has coverage; the fixture-fidelity hole itself is not. FIXED half: pages/08:419 now does _est_for_dropout = model_obj.get_model() if… |
+| `SWEEP-024` | high | INVARIANT — reconcile_pipeline_columns: drift must self-heal loudly, never crash cryptically; its sibling reconcile_state_with_df is imported but never called | `CODE_REVIEW.md 2026-07 'Backstop'; CODE_REVIEW.md C7; utils/reconcile.py` | The dormant-reconciler half is closed; the invariant it protects is actively broken by a different row. reconcile_state_with_df is no longer imported-but-never-called… |
 
----
+### Migration safety net — 4
 
-## PARTIAL — 20
-
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `TEST-006` | critical | 21 of 65 keys that reset_downstream_results actually clears are asserted by no test in any suite | `utils/session_state.py:301-415 (65 keys) vs tests/test_review_fixes.py:141-152…` | All 21 named keys are now asserted; the drift guard the action asked for is one-sided. Every key this row listed as unasserted is now covered - 19 directly by FULL_RESET_KEYS in… |
+| `TEST-009` | critical | ml.triage.detect_task_type is the Router's foundation and has zero coverage | `ml/triage.py:10, :102; consumed via pages/01 task_type_detection and DataConfig.task_type` | Half the row is closed. detect_task_type is no longer uncovered - turbotab/test_skeleton.py pins the text/object, string-dtype, category and boolean branches, asserts the… |
+| `TEST-012` | high | 95 of 98 integration tests are AppTest-bound and cannot survive; the 3 non-AppTest ones can | `grep AppTest over tests/integration; Makefile:27 `test-apptest` target; .github/workflows/ci.yml Tier 2 step` | The ratio moved and the conclusion did not. tests/integration/ has grown by seven files since this was written and three of them are NOT AppTest-bound… |
+| `TEST-014` | high | ALL of models/* is uncovered, and models/rf.py carries literal duplicate method definitions proving nothing exercises it | `models/rf.py:75-97 (duplicated block); models/base.py:10-76` | The coverage half is closed and the artifact it pointed at is still there. models/ is no longer untested - tests/test_characterization_wrappers.py parameterizes the base contract… |
 
 ### Stage-boundary contracts — 4
 
@@ -285,14 +313,6 @@ Nothing is closed without a regression test named after it.
 | `T0-STRUCT-002` | critical | Row identity: lockbox seals index LABELS, splits store POSITIONS (np.where(mask)[0]), page 07 reads df_raw.iloc[test_indices] | `pages/06:398,696-702; pages/07:185,196; utils/test_lockbox.py train_row_mask` | PR #145 fixed the reset_index instance + test_row_labels_are_identities.py; conventions still dual |
 | `T0-STATE-001` | medium | reset_downstream_results clears keys three different ways — pop, = None, and = {} — so 'cleared' has three observable meanings | `utils/session_state.py reset_downstream_results; L5 gate probe (agent report at 4366b23)` | The pages/03 half is done: its nineteen-line hand-rolled cascade now calls reset_downstream_results, so the fifteen keys it missed (cv_results, dataset_profile, eda_results… |
 
-### Completeness sweep — 3
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `SWEEP-009` | critical | INVARIANT — reset_downstream_results supports PARTIAL resets; a naive 'invalidate everything downstream of node N' DAG cannot express them | `CODE_REVIEW.md '2026-07 · Feature-engineering state drift' (04:440, 04:483); ARCHITECTURE.md:278` | Per-edge suppression is done and tested; the restore-previous-value path is not in the graph. turbotab/cascade.py:189-210 expresses partial invalidation as keys_to_clear(changed… |
-| `SWEEP-013` | critical | INVARIANT — 'Absent is better than false': the invalidation cascade must visibly clear ALL FOUR planes, not just the data plane | `docs/ARCHITECTURE_SCROLLYTELLING_BRIEF.md §4B, §9; CODE_REVIEW.md C5; brief §0 table (InsightLedger…` | Two of the planes the row names are in the graph; the Record plane is not. Data and provenance are modeled - Stage carries provenance_sections, provenance_sections_to_clear walks… |
-| `SWEEP-015` | critical | Known test-fidelity hole exactly at the model-object boundary — the transition's safety net does not cover models/ | `CODE_REVIEW.md 'Dynamic testing summary' note; tests/integration/conftest.py:67…` | The named instance is fixed and models/ now has coverage; the fixture-fidelity hole itself is not. FIXED half: pages/08:419 now does _est_for_dropout = model_obj.get_model() if… |
-
 ### Models / training / eval — 3
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -300,13 +320,6 @@ Nothing is closed without a regression test named after it.
 | `MODELS-004` | landmine | task_type_final and data_config.task_type can diverge (the user's task-type override), and the training loop mixes them. y_test_proba is assigned only in the classification branch but read… | `pages/06_Train_and_Compare.py:161 (`task_type_final = task_type_detection.final if task_type_detection.final…` | The divergence is reconciled; the guard against its return is not. pages/06:174-175 now assigns data_config.task_type = task_type_final immediately after resolving the override… |
 | `MODELS-011` | landmine | RegistryModelWrapper re-derives the task type from the data with a fragile heuristic instead of being told, and it is the only wrapper honoring sample_weight. | `models/registry_wrappers.py:44 — `if len(np.unique(y_train)) < 20 and y_train.dtype in [np.int64, np.int32…` | The dtype half was repaired; the cardinality half was not. The test is no longer dtype-identity against ['int64','int32'] - it now asks through pd.api.types.is_integer_dtype with… |
 | `MODELS-014` | landmine | NN classification silently remaps unseen validation classes to index 0, and models/base, glm, huber_glm, rf and registry_wrappers have literally zero test coverage. | `models/nn_whuber.py:337 — `y_val_mapped = np.array([class_to_idx.get(cls, 0) for cls in y_val])` (note: the…` | The coverage half is closed; the silent remap is not. models/base, glm, huber_glm, rf and registry_wrappers are no longer untested - tests/test_characterization_wrappers.py… |
-
-### Migration safety net — 2
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `TEST-006` | critical | 21 of 65 keys that reset_downstream_results actually clears are asserted by no test in any suite | `utils/session_state.py:301-415 (65 keys) vs tests/test_review_fixes.py:141-152…` | All 21 named keys are now asserted; the drift guard the action asked for is one-sided. Every key this row listed as unasserted is now covered - 19 directly by FULL_RESET_KEYS in… |
-| `TEST-009` | critical | ml.triage.detect_task_type is the Router's foundation and has zero coverage | `ml/triage.py:10, :102; consumed via pages/01 task_type_detection and DataConfig.task_type` | Half the row is closed. detect_task_type is no longer uncovered - turbotab/test_skeleton.py pins the text/object, string-dtype, category and boolean branches, asserts the… |
 
 ### Application state / lockbox — 2
 
@@ -330,7 +343,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## UNVERIFIED — 160
+## UNVERIFIED — 145
 
 
 ### Application state / lockbox — 40
@@ -414,56 +427,6 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` | engine — move verbatim; add tests before the port, not after |
 | `CONTRACT-069` | low | models/* (7 files, 1000 loc) has zero streamlit and a single stable ABC — port it first | `models/base.py:10-73; models/nn_whuber.py:226; pages/06_Train_and_Compare.py:1371-1375` | engine — port first, with characterization tests written against the current behavior before any code moves |
 
-### Migration safety net — 22
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `TEST-011` | high | tests/integration/test_state_contracts.py pins no numbers at all — it is 17 render-smoke assertions | `tests/integration/test_state_contracts.py:35-38, and all 17 test bodies terminating in assert_no_exception` | Do not port. Replace with Project-level contract tests asserting the produced VALUES (split index sets, feature name lists, metric dicts) at each stage boundary. |
-| `TEST-012` | high | 95 of 98 integration tests are AppTest-bound and cannot survive; the 3 non-AppTest ones can | `grep AppTest over tests/integration; Makefile:27 `test-apptest` target; .github/workflows/ci.yml Tier 2 step` | Rewrite as Feed/Router tests driving the Project object directly. Budget for ~10 real tests, not 95 — most of the 95 are duplicate render-smoke across pages. |
-| `TEST-013` | high | tests/integration/test_lockbox_split.py is the ONLY integration test that exercises real behavior end-to-end — it must be ported, not dropped | `tests/integration/test_lockbox_split.py:45-112` | Port FIRST, before the cut: re-express as a Project-level test calling the extracted prepare_splits engine function with a frozen lockbox dict, keeping the identical set-equality… |
-| `TEST-014` | high | ALL of models/* is uncovered, and models/rf.py carries literal duplicate method definitions proving nothing exercises it | `models/rf.py:75-97 (duplicated block); models/base.py:10-76` | Write tests/characterization/test_model_wrappers_golden.py: for each of GLMWrapper, HuberGLMWrapper, RFWrapper, RegistryModelWrapper, on tests/conftest.py… |
-| `TEST-015` | high | WorkflowProvenance.from_dict silently drops renamed/unknown fields — and the round-trip test hand-picks fields so it cannot detect the loss | `utils/workflow_provenance.py:585-655; tests/test_workflow_provenance.py:342-407 (no equality assert; no…` | Add `assert WorkflowProvenance.from_dict(d).to_dict() == d` over a MAXIMALLY populated provenance (all 12 sections incl. record_feature_engineering and record_coach). Add a… |
-| `TEST-016` | high | Source-text grep assertions go vacuously green the instant a file moves | `tests/test_review_fixes.py:424-434; tests/test_issues_7_15.py:94,196,220,242; tests/test_distribution.py:17-18` | Convert each to a behavioral assertion against the extracted engine function before the move (e.g. call the default-feature-selection function with a 3000-column frame and assert… |
-| `TEST-017` | high | RESULT_KEYS is a hand-maintained duplicate of the production key list — adding a result key gives false confidence | `tests/test_review_fixes.py:141-152; utils/session_state.py:286-297` | In the Project layer make result fields declarative (a dataclass or registry) so the clear-set is DERIVED, not listed. The characterization test then asserts derived-set == frozen… |
-| `TEST-018` | high | OutlierCapping in MAD mode silently collapses constant columns to a single value | `ml/preprocess_operators.py:86-92 and :100-104` | Characterization test with a deliberately constant column and a near-constant column (mad==0 plus one outlier); assert current behavior explicitly so the migration cannot change… |
-| `TEST-019` | high | ml.outliers has the widest fan-in of any uncovered ml module (6 importers) and gates EDA-to-preprocess handoff | `ml/outliers.py:12, :93; 6 import sites` | Golden test: pd.Series([1..100] + [1000, -1000]); assert outlier_rate to 10 decimals for each of method='iqr','mad','percentile' with default and explicit params, and assert… |
-| `TEST-020` | high | ml.stats_tests (7 public functions, 4 importers) is uncovered and its p-values are quoted verbatim in manuscripts | `ml/stats_tests.py:12-153 (7 functions); 4 import sites; pages/09_Hypothesis_Testing.py` | Golden test with fixed seeds pinning BOTH the numeric statistic/p-value (10 dp) AND the returned test-name string for each function, including the parametric/non-parametric branch… |
-| `TEST-021` | high | All three import cycles are held together only by function-local deferred imports; hoisting any one to module level is an instant startup ImportError | `ml/publication.py:98,155,1739,1829 / utils/insight_ledger.py:1077; utils/cohorts.py:474 /…` | Break the cycles BEFORE moving files: TRIPOD_ITEMS is pure data — lift it to a standalone module both sides import. Move reset_downstream_results' invocation out of test_lockbox… |
-| `TEST-022` | high | perform_cross_validation's leakage semantics are documented in prose but only partially tested — and CV strategy is a cleared-but-unasserted key | `ml/eval.py:97-171; silent downgrade at :143-149; cv_strategy/cv_groups_train absent from all three test…` | Golden test asserting the returned 'strategy' and 'folds' for each branch, plus the concrete fold membership (list of test-index arrays) for a fixed 60-row frame with 12 groups… |
-| `TEST-023` | high | Insight is a mutable dataclass with normalization in __post_init__ that from_dict must re-trigger — a silent record-corruption path | `utils/insight_ledger.py:523,602,617,647,1342,1347; tests/test_review_fixes.py:395-398 (manual __post_init__…` | Characterization test: construct an Insight with DENORMALIZED model_scope and un-normalized fields, round-trip through to_dict/from_dict and to_list/from_list, and assert the… |
-| `TEST-024` | high | Only 3 of 12 pages' state contracts involve any value assertion; page-to-page handoff shape is effectively unspecified | `tests/integration/conftest.py:48-123 (12 keys) vs tests/integration/test_cascade_invalidation.py:57-121 (25…` | Derive the produces/consumes table from the two fixtures plus the 65-key clear list BEFORE writing Project, and encode it as a stage-contract test: for each stage, assert the… |
-| `TEST-025` | high | CI runs only two pytest invocations and has no coverage gate — a migration can delete tests without turning CI red | `.github/workflows/ci.yml Tier 1/Tier 2 steps and the `deploy: needs: test` gate` | Before the first file moves: add a collected-test-count floor (assert >= N collected) and a coverage gate on engine/ + project/, and disable auto-deploy on main for the duration… |
-| `TEST-026` | medium | scripts/integration_test_apptest.py and scripts/integration_test.py are unreachable from CI and duplicate tests/integration/ | `.github/workflows/ci.yml (only `pytest tests/` and `pytest tests/integration`); Makefile:22-40…` | Delete both at the start of the migration and state explicitly that E2E coverage is being rebuilt against the new frontend, so nobody budgets time porting them. |
-| `TEST-027` | medium | utils/persistence.py is dead code — zero importers — yet contains the reproducibility manifest the new Project layer needs | `utils/persistence.py:1-158; zero import sites repo-wide` | Do not adopt as-is. Lift `data_hash` and `generate_reproducibility_manifest` into project with tests, delete the rest. Verify save_model against a pipeline containing the… |
-| `TEST-028` | medium | visualizations.py returns figures nobody inspects — the safest module to move and the easiest to break unnoticed | `visualizations.py:12,53,91,129,170; consumers pages/06_Train_and_Compare.py:69…` | Structural golden test, not image comparison: assert len(fig.data), each trace's .name/.type/.mode, axis titles, and the first/last 3 values of trace .x/.y against frozen… |
-| `TEST-029` | medium | ml.feature_steps and ml.baseline_models are uncovered and produce the numbers the manuscript compares against | `ml/feature_steps.py:11,39; ml/baseline_models.py:21,150` | Pin random_state explicitly in a golden test and assert baseline metric dicts to 10 dp on tests/conftest.py build_regression_df(seed=42). For KMeansFeatures also assert… |
-| `TEST-030` | medium | tests/workflow/* is order-dependent by design and silently degrades to false passes if pytest ordering changes | `tests/workflow/conftest.py:9-15; tests/workflow/test_state_invalidation.py:145-150` | Port these to explicit fixture chaining (each phase returns state consumed by the next) rather than module-scoped mutation, so ordering is expressed in the dependency graph. Do… |
-| `TEST-031` | medium | The plain-dict fake state in tests/workflow/ is the ready-made bridge to the Project object — the only asset that transfers directly | `tests/conftest.py:60-85, :88-122, :125-145; tests/workflow/conftest.py:41-45` | Give Project a dict-like adapter early so tests/conftest.py helpers work verbatim; that converts the 25 transitive-streamlit test modules from 'rewrite' to 'reimport'. Highest… |
-| `TEST-032` | medium | tests/test_page_imports.py and tests/test_insight_id_integrity.py are AST-based over pages/ — they die with pages/ but encode rules worth keeping | `tests/test_page_imports.py:123; tests/test_insight_id_integrity.py:52` | Re-point insight-id uniqueness at the Record layer (assert over the registry of emitted Insight ids at runtime, not over source text) and add an explicit guard that the scanned… |
-
-### Completeness sweep — 18
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `SWEEP-022` | high | utils/llm_ui.py + utils/theme.py + pages/01 share an undocumented three-way protocol over session_state['_pending_widget_state_restore'], and the ORDER is load-bearing | `utils/session_manager.py:120,134; utils/llm_ui.py:663-686; utils/theme.py:694,719-725…` | project (make widget-restore an explicit, ordered, tested Project.restore step; the pop-and-repost relay cannot survive a rewrite) |
-| `SWEEP-023` | high | utils/seed.py:33 get_global_seed() reads st.session_state directly — the reproducibility module is Streamlit-coupled | `utils/seed.py:32-35` | project (seed is Project state with no default; record must read it from Project, not from a fallback) |
-| `SWEEP-024` | high | INVARIANT — reconcile_pipeline_columns: drift must self-heal loudly, never crash cryptically; its sibling reconcile_state_with_df is imported but never called | `CODE_REVIEW.md 2026-07 'Backstop'; CODE_REVIEW.md C7; utils/reconcile.py` | project (keep an explicit reconciliation checkpoint before every fit); drop or wire reconcile_state_with_df — do not port it dormant |
-| `SWEEP-025` | high | INVARIANT — CV strategy is bound to the SPLIT strategy, and cv_strategy/cv_groups_train are cleared WITH the split | `CODE_REVIEW.md 2026-07 'Strategy-aware cross-validation' and 'Test-set slider guardrail'…` | project (cv_strategy is a derived field of the split, with a shared lifetime); router (a control that cannot contradict state must be disabled, not merely validated) |
-| `SWEEP-026` | high | WORK IN PROGRESS — named open items carried in RESUME.md, plus a stale-verdict trap | `docs/audit/RESUME.md:43-54,70-72,91-95; tests/integration/test_combine_ui.py` | project (replace the sp_projects AppTest harness with a Project-level fixture BEFORE porting pages/01) |
-| `SWEEP-027` | high | WORK IN PROGRESS — cohort runs are the NEWEST subsystem (landed 5 commits ago) and they change the meaning of get_data() itself | `git log -5; utils/session_state.py:216-217; utils/theme.py:711-714; tests/test_cohort_runs.py…` | project (model the active cohort filter as a first-class Project field from day one — a Project that models only 'the working table' silently deletes the newest feature) |
-| `SWEEP-028` | medium | utils/theme.py:924 flash() / :929 render_flash() — a rerun-survival hack that has no meaning after Streamlit | `utils/theme.py:919-940; pages/01_Upload_and_Audit.py:819; pages/03_Feature_Engineering.py:1276` | view (keep the requirement, drop the mechanism) |
-| `SWEEP-029` | medium | utils/perf_cache.py — 4 pure computations wearing Streamlit caching; bodies are engine-ready, one carries a documented numerical approximation | `utils/perf_cache.py:21,30,38,114,129,136-141` | engine (bodies); jobs (upload parse); carry the 3rd-decimal caveat forward as a test, not a comment |
-| `SWEEP-030` | medium | utils/theory_demos.py — 869 loc, 19 pure-render Plotly demos, ZERO session_state refs; but its widget-key namespacing assumption dies in a single-scroll feed | `utils/theory_demos.py:19,29,57,833,856-868; utils/theory_anchors.py:518` | view (keys must namespace on instance, not page; assert DEMO_REGISTRY.keys() == THEORY_ANCHORS.keys() — 19/19 today) |
-| `SWEEP-031` | medium | utils/column_utils.py:7 make_unique_columns — 19 loc, order-dependent renaming, 4 production callers | `utils/column_utils.py:7-19; data_processor.py:54; ml/import_doctor.py:848,863` | engine |
-| `SWEEP-032` | medium | setup.py — stale and currently uninstallable; python_requires excludes the repo's own Python | `setup.py:20,22 vs .python-version (3.12)` | drop (replace with pyproject.toml naming the real packages) |
-| `SWEEP-033` | medium | WORK IN PROGRESS — RESUME.md's git instructions are stale; the branch it says is unmerged is identical to HEAD and its stated merge target no longer exists | `docs/audit/RESUME.md:9-22; `git merge-base --all` → fbe422a; `git branch -r` → only the two claude/* remotes` | project (correct RESUME.md's branch story before it misdirects the transition; the audit-fix work IS in HEAD) |
-| `SWEEP-034` | medium | Deferred-work list from CODE_REVIEW that a rebuild will otherwise inherit silently | `CODE_REVIEW.md 'Known remaining work'; utils/theory_anchors.py:421,438-462…` | record (make theory_anchor mandatory at construction — the substring fallback cannot survive a copy rewrite); drop (decision_curve_analysis, example_data.csv) |
-| `SWEEP-035` | medium | THEORY_ANCHORS and DEMO_REGISTRY are a 19/19 key-for-key pair with no test asserting it | `utils/theory_anchors.py:27-372; utils/theory_demos.py:833-868; utils/theory_anchors.py:518,530` | view (add an equality assertion on the two key sets — cheap, and it is the only guard on the pedagogy layer) |
-| `SWEEP-036` | low | utils/table_export.py:9 table() — the universal table renderer imported by 9 of 11 pages, and its export promise is conditional | `utils/table_export.py:9,40-56` | view (in the rebuild make export unconditional — CODE_REVIEW design principle #6 makes every result either exportable or explicitly UI-only) |
-| `SWEEP-037` | low | utils/widget_helpers.py:7 safe_option_index — 21 loc, one caller, raises on a bad default | `utils/widget_helpers.py:7-21; pages/05_Preprocess.py:34` | view (or drop — trivially reimplemented in the new form layer) |
-| `SWEEP-038` | low | launcher/make_icon.py — 175 loc build-time asset generator, not app code; its docstring is the product's identity statement | `launcher/make_icon.py:1-13; .gitignore ('One-click launcher artifacts'); .github/workflows/release.yml` | drop (from the app); keep as a build script |
-| `SWEEP-039` | low | ml/__init__.py, utils/__init__.py, pages/__init__.py — one-line docstrings, no re-exports, no side effects | `ml/__init__.py:1; utils/__init__.py:1; pages/__init__.py:1` | engine (ml, utils); drop (pages) |
-
 ### Record / narrative / export — 14
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -482,6 +445,24 @@ Nothing is closed without a regression test named after it.
 | `RECORD-031` | invariant | The exported package actually contains what the manuscript's Supplementary section promises reviewers: software versions, random seeds and a data hash. | `pages/10_Report_Export.py _build_reproducibility_manifest() written into manifest.json['reproducibility'] at…` | preserve |
 | `RECORD-032` | invariant | WorkflowProvenance round-trips losslessly through to_dict/from_dict as JSON. | `tests/test_workflow_provenance.py::{test_to_dict_from_dict_round_trip,test_to_dict_is_json_serializable}…` | preserve |
 | `RECORD-033` | invariant | Recording provenance must never break the workflow. | `Bare `except Exception: pass` around every get_provenance().record_* call site (e.g.…` | preserve |
+
+### Migration safety net — 13
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `TEST-020` | high | ml.stats_tests (7 public functions, 4 importers) is uncovered and its p-values are quoted verbatim in manuscripts | `ml/stats_tests.py:12-153 (7 functions); 4 import sites; pages/09_Hypothesis_Testing.py` | Golden test with fixed seeds pinning BOTH the numeric statistic/p-value (10 dp) AND the returned test-name string for each function, including the parametric/non-parametric branch… |
+| `TEST-021` | high | All three import cycles are held together only by function-local deferred imports; hoisting any one to module level is an instant startup ImportError | `ml/publication.py:98,155,1739,1829 / utils/insight_ledger.py:1077; utils/cohorts.py:474 /…` | Break the cycles BEFORE moving files: TRIPOD_ITEMS is pure data — lift it to a standalone module both sides import. Move reset_downstream_results' invocation out of test_lockbox… |
+| `TEST-022` | high | perform_cross_validation's leakage semantics are documented in prose but only partially tested — and CV strategy is a cleared-but-unasserted key | `ml/eval.py:97-171; silent downgrade at :143-149; cv_strategy/cv_groups_train absent from all three test…` | Golden test asserting the returned 'strategy' and 'folds' for each branch, plus the concrete fold membership (list of test-index arrays) for a fixed 60-row frame with 12 groups… |
+| `TEST-023` | high | Insight is a mutable dataclass with normalization in __post_init__ that from_dict must re-trigger — a silent record-corruption path | `utils/insight_ledger.py:523,602,617,647,1342,1347; tests/test_review_fixes.py:395-398 (manual __post_init__…` | Characterization test: construct an Insight with DENORMALIZED model_scope and un-normalized fields, round-trip through to_dict/from_dict and to_list/from_list, and assert the… |
+| `TEST-024` | high | Only 3 of 12 pages' state contracts involve any value assertion; page-to-page handoff shape is effectively unspecified | `tests/integration/conftest.py:48-123 (12 keys) vs tests/integration/test_cascade_invalidation.py:57-121 (25…` | Derive the produces/consumes table from the two fixtures plus the 65-key clear list BEFORE writing Project, and encode it as a stage-contract test: for each stage, assert the… |
+| `TEST-025` | high | CI runs only two pytest invocations and has no coverage gate — a migration can delete tests without turning CI red | `.github/workflows/ci.yml Tier 1/Tier 2 steps and the `deploy: needs: test` gate` | Before the first file moves: add a collected-test-count floor (assert >= N collected) and a coverage gate on engine/ + project/, and disable auto-deploy on main for the duration… |
+| `TEST-026` | medium | scripts/integration_test_apptest.py and scripts/integration_test.py are unreachable from CI and duplicate tests/integration/ | `.github/workflows/ci.yml (only `pytest tests/` and `pytest tests/integration`); Makefile:22-40…` | Delete both at the start of the migration and state explicitly that E2E coverage is being rebuilt against the new frontend, so nobody budgets time porting them. |
+| `TEST-027` | medium | utils/persistence.py is dead code — zero importers — yet contains the reproducibility manifest the new Project layer needs | `utils/persistence.py:1-158; zero import sites repo-wide` | Do not adopt as-is. Lift `data_hash` and `generate_reproducibility_manifest` into project with tests, delete the rest. Verify save_model against a pipeline containing the… |
+| `TEST-028` | medium | visualizations.py returns figures nobody inspects — the safest module to move and the easiest to break unnoticed | `visualizations.py:12,53,91,129,170; consumers pages/06_Train_and_Compare.py:69…` | Structural golden test, not image comparison: assert len(fig.data), each trace's .name/.type/.mode, axis titles, and the first/last 3 values of trace .x/.y against frozen… |
+| `TEST-029` | medium | ml.feature_steps and ml.baseline_models are uncovered and produce the numbers the manuscript compares against | `ml/feature_steps.py:11,39; ml/baseline_models.py:21,150` | Pin random_state explicitly in a golden test and assert baseline metric dicts to 10 dp on tests/conftest.py build_regression_df(seed=42). For KMeansFeatures also assert… |
+| `TEST-030` | medium | tests/workflow/* is order-dependent by design and silently degrades to false passes if pytest ordering changes | `tests/workflow/conftest.py:9-15; tests/workflow/test_state_invalidation.py:145-150` | Port these to explicit fixture chaining (each phase returns state consumed by the next) rather than module-scoped mutation, so ordering is expressed in the dependency graph. Do… |
+| `TEST-031` | medium | The plain-dict fake state in tests/workflow/ is the ready-made bridge to the Project object — the only asset that transfers directly | `tests/conftest.py:60-85, :88-122, :125-145; tests/workflow/conftest.py:41-45` | Give Project a dict-like adapter early so tests/conftest.py helpers work verbatim; that converts the 25 transitive-streamlit test modules from 'rewrite' to 'reimport'. Highest… |
+| `TEST-032` | medium | tests/test_page_imports.py and tests/test_insight_id_integrity.py are AST-based over pages/ — they die with pages/ but encode rules worth keeping | `tests/test_page_imports.py:123; tests/test_insight_id_integrity.py:52` | Re-point insight-id uniqueness at the Record layer (assert over the registry of emitted Insight ids at runtime, not over source text) and add an explicit guard that the scanned… |
 
 ### Silent-failure landmines — 13
 
@@ -518,6 +499,23 @@ Nothing is closed without a regression test named after it.
 | `COACH-032` | invariant | 'high' confidence is the only tier the UI pre-selects, so 'high' means the app is asserting (docs/FINDINGS_LEDGER.md, Governing rule, lines 20-27). | `PARTIALLY, and only in the import/join domain: ml/join_doctor.py:922 `if include_low or c.confidence !=…` | preserve |
 | `COACH-033` | invariant | ml/ is engine code: pure, importable, streamlit-free. | `Convention plus the structural measurement (only eda_actions, macro_shape and publication touch streamlit).…` | preserve |
 
+### Completeness sweep — 12
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `SWEEP-028` | medium | utils/theme.py:924 flash() / :929 render_flash() — a rerun-survival hack that has no meaning after Streamlit | `utils/theme.py:919-940; pages/01_Upload_and_Audit.py:819; pages/03_Feature_Engineering.py:1276` | view (keep the requirement, drop the mechanism) |
+| `SWEEP-029` | medium | utils/perf_cache.py — 4 pure computations wearing Streamlit caching; bodies are engine-ready, one carries a documented numerical approximation | `utils/perf_cache.py:21,30,38,114,129,136-141` | engine (bodies); jobs (upload parse); carry the 3rd-decimal caveat forward as a test, not a comment |
+| `SWEEP-030` | medium | utils/theory_demos.py — 869 loc, 19 pure-render Plotly demos, ZERO session_state refs; but its widget-key namespacing assumption dies in a single-scroll feed | `utils/theory_demos.py:19,29,57,833,856-868; utils/theory_anchors.py:518` | view (keys must namespace on instance, not page; assert DEMO_REGISTRY.keys() == THEORY_ANCHORS.keys() — 19/19 today) |
+| `SWEEP-031` | medium | utils/column_utils.py:7 make_unique_columns — 19 loc, order-dependent renaming, 4 production callers | `utils/column_utils.py:7-19; data_processor.py:54; ml/import_doctor.py:848,863` | engine |
+| `SWEEP-032` | medium | setup.py — stale and currently uninstallable; python_requires excludes the repo's own Python | `setup.py:20,22 vs .python-version (3.12)` | drop (replace with pyproject.toml naming the real packages) |
+| `SWEEP-033` | medium | WORK IN PROGRESS — RESUME.md's git instructions are stale; the branch it says is unmerged is identical to HEAD and its stated merge target no longer exists | `docs/audit/RESUME.md:9-22; `git merge-base --all` → fbe422a; `git branch -r` → only the two claude/* remotes` | project (correct RESUME.md's branch story before it misdirects the transition; the audit-fix work IS in HEAD) |
+| `SWEEP-034` | medium | Deferred-work list from CODE_REVIEW that a rebuild will otherwise inherit silently | `CODE_REVIEW.md 'Known remaining work'; utils/theory_anchors.py:421,438-462…` | record (make theory_anchor mandatory at construction — the substring fallback cannot survive a copy rewrite); drop (decision_curve_analysis, example_data.csv) |
+| `SWEEP-035` | medium | THEORY_ANCHORS and DEMO_REGISTRY are a 19/19 key-for-key pair with no test asserting it | `utils/theory_anchors.py:27-372; utils/theory_demos.py:833-868; utils/theory_anchors.py:518,530` | view (add an equality assertion on the two key sets — cheap, and it is the only guard on the pedagogy layer) |
+| `SWEEP-036` | low | utils/table_export.py:9 table() — the universal table renderer imported by 9 of 11 pages, and its export promise is conditional | `utils/table_export.py:9,40-56` | view (in the rebuild make export unconditional — CODE_REVIEW design principle #6 makes every result either exportable or explicitly UI-only) |
+| `SWEEP-037` | low | utils/widget_helpers.py:7 safe_option_index — 21 loc, one caller, raises on a bad default | `utils/widget_helpers.py:7-21; pages/05_Preprocess.py:34` | view (or drop — trivially reimplemented in the new form layer) |
+| `SWEEP-038` | low | launcher/make_icon.py — 175 loc build-time asset generator, not app code; its docstring is the product's identity statement | `launcher/make_icon.py:1-13; .gitignore ('One-click launcher artifacts'); .github/workflows/release.yml` | drop (from the app); keep as a build script |
+| `SWEEP-039` | low | ml/__init__.py, utils/__init__.py, pages/__init__.py — one-line docstrings, no re-exports, no side effects | `ml/__init__.py:1; utils/__init__.py:1; pages/__init__.py:1` | engine (ml, utils); drop (pages) |
+
 ### Models / training / eval — 10
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -535,7 +533,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 39
+## FIXED — 41
 
 
 ### Verified against main — 14
@@ -557,7 +555,7 @@ Nothing is closed without a regression test named after it.
 | `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |
 
-### Completeness sweep — 7
+### Completeness sweep — 8
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -568,6 +566,7 @@ Nothing is closed without a regression test named after it.
 | `SWEEP-011` | critical | INVARIANT — per-model pipeline forking is the differentiator and it is real; a Project schema that collapses to one pipeline destroys the product | `ARCHITECTURE.md:29,215,324-338; CODE_REVIEW.md 'What genuinely holds' rows 1-2` | **test:** `turbotab/test_project_model.py::test_pipeline_specs_are_specs_not_fitted_objects` — The schema did not collapse. AnalysisProject carries pipeline_specs as a per-model… |
 | `SWEEP-014` | critical | tests/test_insight_id_integrity.py — an AST scanner that will silently stop testing anything the moment the rebuild renames Insight or the ledger variable | `tests/test_insight_id_integrity.py:1-27,39-42; CODE_REVIEW.md 'Bucket-1 hardening wave'` | **test:** `tests/test_insight_id_integrity.py::TestInsightIdIntegrity::test_the_scan_actually_scanned_something` — The vacuous-pass hole is closed, and closed in the way the row… |
 | `SWEEP-018` | high | The EDA cache fingerprint is SCHEMA-only while set_data() invalidation is CONTENT-based — a same-shape cleaning action resets results but not the profile | `pages/02_EDA.py:125 vs utils/session_state.py:220-226,259-263` | **test:** `tests/test_eda_caches_follow_the_data.py::test_no_cache_on_the_page_keys_on_shape_alone` — Closed - the two notions of invalidation are now one. The page's fingerprint… |
+| `SWEEP-025` | high | INVARIANT — CV strategy is bound to the SPLIT strategy, and cv_strategy/cv_groups_train are cleared WITH the split | `CODE_REVIEW.md 2026-07 'Strategy-aware cross-validation' and 'Test-set slider guardrail'…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_grouped_split_matches_the_page` — Both halves of the invariant are implemented and tested. The CV scheme is… |
 
 ### Application state / lockbox — 6
 
@@ -597,18 +596,19 @@ Nothing is closed without a regression test named after it.
 | `MINE-016` | high | EDA's _data_fingerprint is schema-only — it cannot see value changes | `pages/02_EDA.py:122-125, 146-169, 809, 920, 957, 988, 1082; ml/import_doctor.py:876-895` | **test:** `tests/test_eda_caches_follow_the_data.py::test_the_page_has_one_fingerprint_and_it_follows_the_values` — Closed, and closed against a stronger requirement than this row… |
 | `MINE-021` | high | apply_plausibility_filter resets the index, destroying lockbox and cohort label correspondence | `ml/pipeline.py:109-124; pages/05_Preprocess.py:860; utils/test_lockbox.py:16-17, 248` | **test:** `tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given` — Duplicate of STATE-001 from the landmine pass, and closed. The filter returns… |
 
+### Migration safety net — 2
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `TEST-001` | critical | The invalidation DAG has NO test that calls the production function — three separate re-implementations test themselves | `utils/session_state.py:283 vs tests/workflow/test_state_invalidation.py:40-51 and…` | **test:** `tests/integration/test_characterization_cascade.py::test_full_reset_clears_every_downstream_key` — The production function is now called by a test, which is the whole… |
+| `TEST-013` | high | tests/integration/test_lockbox_split.py is the ONLY integration test that exercises real behavior end-to-end — it must be ported, not dropped | `tests/integration/test_lockbox_split.py:45-112` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page` — Ported before the cut, exactly as this row instructed, and strengthened… |
+
 ### Models / training / eval — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `MODELS-001` | landmine | SklearnCompatibleNNRegressor.fit() and SklearnCompatibleNNClassifier.fit() do not train. They set is_fitted_=True, record n_features_in_ (and classes_), and return self. Any sklearn utility that… | `models/nn_whuber.py:115-128 (regressor) and 174-188 (classifier); reachable through…` | **test:** `tests/test_characterization_wrappers.py::test_clone_and_refit_now_raises_instead_of_answering_from_the_old_model` — Closed the right way round. fit() no longer marks… |
 | `MODELS-005` | landmine | The 'Cancel Training' button is decorative — st.session_state.cancel_training is written and NEVER read anywhere in the codebase. | `pages/06_Train_and_Compare.py:1252-1253 (init), 1263-1264 (set to True). grep for 'cancel_training' across…` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Closed by removal plus an honest replacement, which is the right shape. The decorative… |
-
-### Migration safety net — 1
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `TEST-001` | critical | The invalidation DAG has NO test that calls the production function — three separate re-implementations test themselves | `utils/session_state.py:283 vs tests/workflow/test_state_invalidation.py:40-51 and…` | **test:** `tests/integration/test_characterization_cascade.py::test_full_reset_clears_every_downstream_key` — The production function is now called by a test, which is the whole… |
 
 ### Coach to Router — 1
 
