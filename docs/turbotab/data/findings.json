@@ -4201,7 +4201,9 @@
   "detail": "`new_df = apply_fn(df)` then `set_data(new_df, is_schema_change=False)`. set_data clears the cohort and calls reset_downstream_results on a fingerprint change, but reset_downstream_results does NOT pop test_lockbox (only reset_data_dependent_state does). ensure_lockbox re-runs later on the same page render and its signature includes a content hash, so it self-heals in practice — but only if the user reaches the Step-4 config block. Navigate away first and train_row_mask silently quarantines fewer rows than n_test claims.",
   "ev": "pages/01_Upload_and_Audit.py:786-796; utils/session_state.py:274-280 vs :437-439; utils/test_lockbox.py:137-141",
   "act": "project — lockbox validity must be a DAG edge from raw_data, not a side effect of visiting a page",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and the row's own diagnosis is the right one: this self-heals IN PRACTICE and only because of where the user happens to walk. A row-dropping cleaning action leaves the sealed labels naming rows that no longer exist; ensure_lockbox would notice, because the signature hashes content - but only if the render reaches the Step-4 config block. Navigate away first and train_row_mask quarantines fewer rows than n_test claims, with the chip still reporting the old number. Lockbox validity has to be a DAG edge from raw_data, not a side effect of visiting a page. Note the adjacent already-good behavior to preserve: utils/test_lockbox.py:367-375 records a refused mid-run redraw with n_sealed and n_scoreable, so the disclosure vocabulary for this already exists.",
+  "verified_ev": "pages/01_Upload_and_Audit.py applies a cleaning action then calls set_data(new_df, is_schema_change=False); utils/session_state.py reset_downstream_results never pops test_lockbox (only reset_data_dependent_state does, at :497); utils/test_lockbox.py:82-96 (the signature includes a content hash, so ensure_lockbox self-heals on the next visit to the Step-4 block)"
  },
  {
   "id": "MINE-032",
@@ -4211,7 +4213,9 @@
   "detail": "The main check loop collects failures and appends an explicit `checks_failed` ShapeFinding whose why_it_matters says 'treat a clean result here as incomplete rather than as a guarantee' (ml/import_doctor.py:800-824) — this is the fix for FINDINGS_LEDGER finding 13. But the duplicate-label early-return branch above it does `for check in (check_empty_rows_and_columns, check_footer_rows): try: out.extend(check(df)) except Exception: continue` (lines 792-796) with no such disclosure and an early `return out` at line 798.",
   "ev": "ml/import_doctor.py:786-798 vs 800-824; docs/FINDINGS_LEDGER.md:36, 42",
   "act": "engine — apply the same `failed`/`checks_failed` disclosure to the duplicate-label branch. WRONG-BUT-PLAUSIBLE OUTPUT: a file with duplicate column labels AND a footer row reports only the rename suggestion; the footer check crashed and not…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The main check loop carries the fix for FINDINGS_LEDGER finding 13 - it collects failures and emits a checks_failed finding whose why_it_matters tells the reader to treat a clean result as incomplete rather than as a guarantee - and the duplicate-label branch directly above it swallows with no such disclosure and returns early. So a file with duplicate column labels AND a crashing footer check reports only the rename suggestion, and the missing footer diagnosis is indistinguishable from a clean one. The branch's own comment explains why it exists and is correct (per-column fixes are ambiguous with duplicate labels), which makes this a gap in the disclosure rather than in the logic. This file is inside the TRANSITION_PLAN 05 freeze, so it lands with the ledger tail.",
+  "verified_ev": "ml/import_doctor.py:870-878 - the duplicate-label early-return branch runs check_empty_rows_and_columns and check_footer_rows under 'except Exception: continue' and returns at :878, with no checks_failed finding; contrast the main loop's explicit checks_failed disclosure"
  },
  {
   "id": "MINE-033",
@@ -4221,7 +4225,9 @@
   "detail": "`try: profile.skewness = float(valid.skew()) except: profile.skewness = 0.0` at ml/dataset_profile.py:203-206 and again at 250-253. Bare except also catches KeyboardInterrupt and SystemExit.",
   "ev": "ml/dataset_profile.py:203-206, 250-253",
   "act": "engine — use None and let consumers treat it as unknown. WRONG-BUT-PLAUSIBLE OUTPUT: skewness=0.0 is the value that means 'no transform needed'. A column whose skew computation fails is reported as perfectly symmetric, the Feature Engineeri…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, both sites. 0.0 is not a neutral default here - it is the value that MEANS perfectly symmetric, i.e. no transform needed - so a column whose skew computation fails is reported as needing nothing, the Feature Engineering skew list omits it, and the coach's transform advice silently excludes it. The bare except also catches KeyboardInterrupt and SystemExit. Use None and let consumers treat it as unknown, which is the same conclusion MINE-010 reaches about the fingerprint: a failure must not be spelled with the value that means everything is fine. Note this feeds MINE-018's threshold tangle too - has_outliers and skewness are read together by the coach, and both have defaults that mean 'nothing to do'.",
+  "verified_ev": "ml/dataset_profile.py:209-210 and :256-257 - 'except: profile.skewness = 0.0' at both the feature-profile and target-profile sites, bare except in each case"
  },
  {
   "id": "MINE-034",
@@ -4231,7 +4237,9 @@
   "detail": "`spearman = sub.rank().corrwith(target.rank())` (utils/perf_cache.py:145). The docstring is honest about it: 'With missing values the rank-based Spearman can differ from pairwise-deletion Spearman in the 3rd decimal; the consumers threshold at coarse cutoffs (0.7, 0.08) where this is immaterial.' That justification is a statement about the CURRENT consumers.",
   "ev": "utils/perf_cache.py:129-146",
   "act": "engine — keep the fast path but tag the returned Series with the method used, so a future consumer cannot silently inherit the approximation. WRONG-BUT-PLAUSIBLE OUTPUT (borderline): if any new consumer reports these numbers rather than thr…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and the row's framing is right: this is a documented, currently-immaterial approximation whose justification is a statement about the CURRENT consumers. That is exactly the kind of caveat a migration loses, because the comment lives in the producer and the risk lives in whoever reads the number next. If any new consumer REPORTS these correlations rather than thresholding them - a manuscript table of target correlations is the obvious candidate - the third decimal becomes a published figure computed by a method the Methods section does not describe. Tag the returned Series with the method used so a future consumer cannot inherit the approximation silently, and carry the caveat forward as a test rather than a comment.",
+  "verified_ev": "utils/perf_cache.py:129-146 - spearman computed as sub.rank().corrwith(target.rank()), with the docstring stating that missing values can move it from pairwise-deletion Spearman in the third decimal and that current consumers threshold at 0.7 and 0.08"
  },
  {
   "id": "MINE-035",
@@ -4241,7 +4249,9 @@
   "detail": "`@st.cache_data(show_spinner=\"Parsing uploaded file…\", max_entries=8)` (utils/perf_cache.py:21). The key includes file_bytes, filename, transpose, excel_sheet and records_key — this one is correctly keyed (no leading underscores). The hazard is the opposite of macro_shape: the cache is doing real work in the ingest path and the multi-file combine flow can exceed 8 entries, causing silent re-parses (slow, not wrong) — and the cache is the ONLY thing making the upload page's repeated re-parse tolerable.",
   "ev": "utils/perf_cache.py:21-35; pages/01_Upload_and_Audit.py:307-313, 405-413",
   "act": "jobs — the ingest job replaces this cache entirely; parse once, store the frame in the Project. Listed so it is not mistaken for a correctness cache that must be preserved. WRONG-BUT-PLAUSIBLE OUTPUT: none for correctness, but dropping it w…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and it is correctly keyed - the opposite of the macro_shape defect, which is why it is worth recording separately rather than folding into the cache-key class. The hazard is performance and it is load-bearing: the multi-file combine flow can exceed eight entries, causing silent re-parses, and this cache is the only thing making the upload page's repeated re-parse tolerable. It is listed so nobody mistakes it for a correctness cache that must be preserved, and equally so nobody deletes it as 'just a Streamlit cache' without replacing what it does. The ingest job replaces it outright: parse once, store the frame on the Project.",
+  "verified_ev": "utils/perf_cache.py:21-35 - @st.cache_data(max_entries=8) over cached_parse_upload(file_bytes, filename, transpose, excel_sheet, records_key), all non-underscore so the key is real; pages/01_Upload_and_Audit.py re-parses on every render through it"
  },
  {
   "id": "MINE-036",
@@ -4251,7 +4261,9 @@
   "detail": "`def get_global_seed() -> int: import streamlit as st; return st.session_state.get('random_seed', 42)` (utils/seed.py:34-37). It is imported by pages/06_Train_and_Compare.py:17 alongside set_global_seed but the page then reads session_state directly anyway (`st.session_state.get('random_seed', 42)` at lines 95, 117, 120, 263).",
   "ev": "utils/seed.py:34-37; pages/06_Train_and_Compare.py:17, 95, 117, 120-122, 263",
   "act": "project — the seed is Project state; get_global_seed becomes project.random_seed. set_global_seed (utils/seed.py:14-31) stays in jobs as a per-job initializer. Flagged because utils/seed.py is a 37-line file that looks trivially portable bu…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of SWEEP-023 / MINE-009 from the landmine pass, unchanged at HEAD, and it adds the observation that makes the file worth flagging: pages/06 imports get_global_seed AND then reads the session key directly at several sites anyway, so the accessor is already bypassed by its only consumer. utils/seed.py is 37 lines and looks trivially portable, which is the trap - one of its two functions is a per-job initializer that belongs in jobs, and the other is Project state with a silent default of 42 that would publish a false reproducibility claim if the seed were ever missing. Port them to different layers, not together.",
+  "verified_ev": "utils/seed.py:34-37 (get_global_seed does an in-function streamlit import and returns st.session_state.get('random_seed', 42)); pages/06_Train_and_Compare.py:17 imports it alongside set_global_seed, then reads st.session_state.get('random_seed', 42) DIRECTLY at :90, :117 and elsewhere"
  },
  {
   "id": "MINE-037",
@@ -4261,7 +4273,9 @@
   "detail": "`st.session_state[\"_flash\"] = (level, message)` (utils/theme.py:926) — one slot. render_flash pops and renders it (lines 930-936). The comment explains why it exists: 'Disclosure banners rendered immediately before st.rerun() are destroyed before the user can read them' (lines 920-922).",
   "ev": "utils/theme.py:920-936",
   "act": "view — becomes a message list in the Feed. WRONG-BUT-PLAUSIBLE OUTPUT: two disclosures queued before one rerun (e.g. 'lockbox redrawn' from utils/test_lockbox.py:231 plus a cleaning-action confirmation) and only the second is ever shown. Th…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The single slot is the finding: two disclosures queued before one rerun - a lockbox redraw plus a cleaning-action confirmation is the realistic pair, and both happen on page 01 - and only the second is ever shown. So the mechanism built to stop disclosures being lost loses them, silently, whenever two arrive together. The REQUIREMENT it encodes is sound and must survive: a disclosure raised by an action has to still be visible after the action completes. The mechanism must not - a feed has no rerun, and a message LIST rather than a slot is the whole fix. Same row as SWEEP-028 from the sweep pass.",
+  "verified_ev": "utils/theme.py:924 (st.session_state['_flash'] = (level, message) - one slot) and :927-936 (render_flash pops and dispatches), with the comment at :919-922 explaining that banners rendered immediately before st.rerun() are destroyed before the user can read them"
  },
  {
   "id": "MINE-038",
@@ -4271,7 +4285,9 @@
   "detail": "`pending_widget_restore = st.session_state.get(\"_pending_widget_state_restore\", {})` then `st.session_state[\"workflow_mode\"] = pending_widget_restore.pop(\"workflow_mode_selector\")` — popping from a dict fetched by reference, then conditionally writing it back or deleting the key (utils/theme.py:719-725). The mechanism exists because 'Streamlit requires setting widget keys via _pending_widget_state_restore on the next rerun' (utils/session_manager.py:119-121).",
   "ev": "utils/theme.py:719-725; utils/session_manager.py:119-134, 249-258",
   "act": "drop — the entire deferred-widget-restore mechanism is a Streamlit workaround with no analogue in a real frontend. _SAFE_WIDGET_KEYS (utils/session_manager.py:123-132) becomes ordinary Project fields. Flagged so it is not faithfully ported:…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The mutation-during-read is real - the dict is fetched by reference, popped from, then conditionally re-stored or deleted - and it is the middle link of the three-way relay SWEEP-022 catalogues, where correctness depends on llm_ui's pop running before theme's read. The disposition matters more than the defect: this is a pure Streamlit workaround with no analogue in a real frontend, so it must be DROPPED rather than faithfully ported, and _SAFE_WIDGET_KEYS becomes ordinary Project fields. Flagged because a careful porter would preserve it precisely BECAUSE it looks deliberate and carries an explanatory comment.",
+  "verified_ev": "utils/theme.py:719-725 - pending_widget_restore = st.session_state.get(...) then .pop() on the fetched reference, then conditionally writing it back or deleting the key; utils/session_manager.py defers widget keys rather than setting them, with the reason in the comment"
  },
  {
   "id": "MINE-039",
@@ -4281,7 +4297,10 @@
   "detail": "`try: gss = GroupShuffleSplit(...); _, test_pos = next(gss.split(eligible, groups=groups)); test_labels = eligible[test_pos]; grouped = True except Exception: test_labels = None` then `if test_labels is None: group_col = None # too few groups to split by subject` (utils/test_lockbox.py:183-191). The subsequent stratified fallback also swallows: `except ValueError: stratify, strata_used = None, []` (lines 206-210).",
   "ev": "utils/test_lockbox.py:176-210, 282-294",
   "act": "engine — record WHY the grouped split was abandoned into the lockbox dict so the record can state it. Partially mitigated: render_lockbox_status only claims 'split by <col> so no subject appears on both sides' when lb['group_col'] is set (l…",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Closed, and the test's own assertion message is the invariant: 'the fallback to a row-wise split was silent'. The degradation is no longer silent in either direction - an abandoned grouped split records WHY (which column, how many groups, what the minimum was, and the right noun for the thing that repeats) and the warning tells the researcher in plain terms to treat the numbers as exploratory; and an abandoned stratification is recoverable from the difference between strata_requested and strata on the lockbox dict, which render_lockbox_status reports. RESIDUAL worth noting rather than blocking: the grouping note lives in session state rather than on the lockbox dict, so it reaches the screen and not the manuscript.",
+  "test": "tests/test_grouping_picks_the_person.py::test_too_few_groups_to_split_by_is_said_out_loud",
+  "verified_ev": "utils/test_lockbox.py:386-397 records _lockbox_grouping_abandoned with column, n_groups, noun and minimum, and the comment explains that falling back to a row-wise split reinstates the exact leak the detector exists to catch; :566-575 renders it as a warning stating that the same subject can appear on both sides and that held-out performance will read better than it is; the strata fallback is disclosed through the strata / strata_requested pair on the lockbox"
  },
  {
   "id": "MINE-040",
@@ -4291,7 +4310,9 @@
   "detail": "`X_arr = np.asarray(X, dtype=float)` in UnitHarmonizer.transform (ml/preprocess_operators.py:22), PlausibilityGate.transform (line 61), plausibility_row_mask (line 33) and OutlierCapping.fit/transform (lines 85, 101). Column names are gone after the first numeric step. plausibility_row_mask additionally truncates: `n_cols = min(X_arr.shape[1], len(lower_bounds), len(upper_bounds))` (line 34) — a short bounds list silently leaves trailing columns ungated — and NaN comparisons are False, so `keep &= X_arr[:, idx] >= float(low)` (line 40) DROPS every row with a missing value in a gated column.",
   "ev": "ml/preprocess_operators.py:22, 33-43, 61, 85, 101",
   "act": "engine — this is the mechanism behind the critical misalignment finding above; listed separately because the NaN-drop and the min() truncation are independent silent behaviors. WRONG-BUT-PLAUSIBLE OUTPUT: 'filter' plausibility mode quietly …",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and the row is right to separate the two silent behaviors from the misalignment they compound. The min() truncation means a short bounds list leaves trailing columns UNGATED with no error - so a plausibility gate can silently cover only part of what the recipe says it covers. And NaN comparisons are False, so 'keep &= X_arr[:, idx] >= low' DROPS every row with a missing value in a gated column: in 'filter' mode that quietly removes the incomplete cases, which changes the analysis population without appearing anywhere in the flow diagram or the Methods n. Both are independent of MINE-001's positional misalignment and would survive fixing it. Key by column name and treat NaN explicitly.",
+  "verified_ev": "ml/preprocess_operators.py:22 (UnitHarmonizer.transform), :33-43 (plausibility_row_mask: n_cols = min(X.shape[1], len(lower), len(upper)), then keep &= X_arr[:, idx] >= float(low)), :61 (PlausibilityGate.transform), :85 and :101 (OutlierCapping) - all coercing to float and returning bare ndarrays"
  },
  {
   "id": "MINE-041",
@@ -4301,7 +4322,9 @@
   "detail": "ml/eval.py is entirely streamlit-free and pure (34 of 70 core modules are test-imported; eval is among the covered ones). Its only reporting channel for degraded results is `logging.getLogger(__name__).warning` (ml/eval.py:30-35). Classification metrics swallow ROC-AUC failures in a try that starts at line 74. No function returns a 'quality' or 'n_dropped' field.",
   "ev": "ml/eval.py:29-37, 74-80",
   "act": "engine + jobs — jobs must capture the module logger and attach records to the job result, otherwise every degradation notice in ml/ disappears. This is a cross-cutting requirement: 108 broad except blocks across ml/, models/, utils/ and dat…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and this row states the cross-cutting requirement the others imply: ml/eval.py is pure and streamlit-free, which is exactly why its only channel for a degraded result is a module logger nobody captures. The Jobs layer must capture module loggers and attach the records to the job result, or every degradation notice in ml/ disappears at the moment the engine finally becomes headless - which is a regression the migration would introduce, not inherit. Concretely this row is the delivery half of MINE-027 (n_dropped never returned) and TEST-008 (the metric dict can be silently shorter): the numbers need a quality channel, and the channel needs a listener.",
+  "verified_ev": "ml/eval.py:28-40 (the non-finite drop reports only through logging.getLogger(__name__).warning) and :88-92 (classification metrics swallow ROC-AUC/LogLoss/PR-AUC failures into a shorter dict); no function in the module returns a quality or n_dropped field"
  },
  {
   "id": "SWEEP-028",
@@ -4311,7 +4334,9 @@
   "detail": "flash(level,message) writes session_state['_flash']; render_flash() pops and dispatches to getattr(st, level). It exists solely because 'disclosure banners rendered immediately before st.rerun() are destroyed before the user can read them' (comment at :919-922). CODE_REVIEW lists 'flash messages that survive reruns' as a shipped fix from the design-review round. In a feed there is no rerun, so the mechanism is obsolete — but the REQUIREMENT it encodes (a disclosure raised by an action must still be visible after the action completes) is not. Callers: pages/01:819, pages/03:1276.",
   "ev": "utils/theme.py:919-940; pages/01_Upload_and_Audit.py:819; pages/03_Feature_Engineering.py:1276",
   "act": "view (keep the requirement, drop the mechanism)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of MINE-037 from the sweep pass, unchanged at HEAD, and its framing is the one to keep for L9: in a feed there is no rerun, so the MECHANISM is obsolete - but the REQUIREMENT it encodes is not, and it is easy to lose exactly because the mechanism looks like a Streamlit quirk. A disclosure raised by an action must still be visible after the action completes. CODE_REVIEW lists 'flash messages that survive reruns' as a shipped fix, so this was already once a bug that someone had to notice; dropping the mechanism without carrying the requirement re-opens it in the new frontend, where it will look like a fresh defect rather than a regression.",
+  "verified_ev": "utils/theme.py:919-940 (flash writes one slot, render_flash pops and dispatches via getattr(st, level)); callers in pages/01_Upload_and_Audit.py and pages/03_Feature_Engineering.py"
  },
  {
   "id": "SWEEP-029",
@@ -4321,7 +4346,9 @@
   "detail": "cached_parse_upload(file_bytes, filename, transpose, excel_sheet, records_key) at :21 (function-local `from data_processor import load_tabular_data` at :30 to dodge an import cycle); cached_audit_tables(df) -> Tuple[List[dict], List[dict]] at :38; cached_numeric_summary(df, cols: Tuple[str,...]) at :114; cached_target_correlations(df, target_col, cols) -> Tuple[pd.Series, pd.Series] at :129. Importers: pages/01:35, pages/02:34, plus two tests. Note cached_target_correlations' own docstring: Spearman is computed via the rank-transform identity, and 'with missing values the rank-based Spearman can differ from pairwise-deletion Spearman in the 3rd decimal; the consumers threshold at coarse cuto…",
   "ev": "utils/perf_cache.py:21,30,38,114,129,136-141",
   "act": "engine (bodies); jobs (upload parse); carry the 3rd-decimal caveat forward as a test, not a comment",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD. All four bodies are pure and engine-ready; the Streamlit decorators are the only host coupling, and the function-local import at :30 is a fifth instance of the deferred-import-hides-a-cycle pattern STATE-053 catalogues. Two things must travel with the bodies rather than being left behind as comments: the ingest parse belongs in a job, not a cache (MINE-035), and cached_target_correlations carries a documented third-decimal Spearman approximation whose justification is about its current consumers (MINE-034). The action's last clause is the durable one - carry the caveat forward as a TEST, because a comment does not survive a rewrite and a threshold-dependent approximation is invisible until someone reports the number.",
+  "verified_ev": "utils/perf_cache.py:21 cached_parse_upload (with a function-local data_processor import to dodge a cycle), :38 cached_audit_tables, :114 cached_numeric_summary, :129 cached_target_correlations; importers pages/01 and pages/02 plus two tests"
  },
  {
   "id": "SWEEP-030",
@@ -4331,7 +4358,9 @@
   "detail": "Every demo has the identical signature demo_X(page_context: str = 'ref', expanded: bool = False, wrapped: bool = True) -> None. DEMO_REGISTRY at :833 maps 19 keys; render_inline_demo(anchor_key, page_context, expanded, wrapped) -> bool at :856 returns False when no demo exists. Widget keys are namespaced by page only: demo_skewness uses key=f\"{page_context}_demo_skew_alpha\" (:29) and key=f\"{page_context}_skew_chart\" (:57). In a TurboTax-style single scrolling document the same demo can legitimately appear twice (inline on a coaching card via theory_anchors.py:518, and again in a reference section) — page_context no longer disambiguates and the keys collide. Second trap: render_inline_demo re…",
   "ev": "utils/theory_demos.py:19,29,57,833,856-868; utils/theory_anchors.py:518",
   "act": "view (keys must namespace on instance, not page; assert DEMO_REGISTRY.keys() == THEORY_ANCHORS.keys() — 19/19 today)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Accurate at HEAD and the trap is specific to the target design rather than to the current app. In a single scrolling document the same demo can legitimately appear twice - inline on a coaching card and again in a reference section - and page_context no longer disambiguates, so the widget keys collide and the two instances share state: moving the slider on the card moves it in the appendix. The second trap is the silent one: render_inline_demo returns False on a miss, so a renamed anchor drops its demo with no error (SWEEP-035). Namespace on INSTANCE rather than page, and assert the two key sets are equal - both are cheap and both must land before the education layer is ported.",
+  "verified_ev": "utils/theory_demos.py - 19 demos with the identical demo_X(page_context, expanded, wrapped) signature, DEMO_REGISTRY mapping 19 keys, render_inline_demo returning False when no demo exists; widget keys namespaced by page only, e.g. f'{page_context}_demo_skew_alpha'"
  },
  {
   "id": "SWEEP-031",
@@ -4341,7 +4370,9 @@
   "detail": "make_unique_columns(cols: List[Any]) -> List[str] dedupes by appending _1, _2. The FIRST occurrence keeps its bare name and later ones get suffixes, so column identity depends on input column order: reorder the source columns and 'age'/'age_1' swap which physical column they name, silently. Callers: data_processor.py:54, ml/import_doctor.py:848 and :863, pages/01:27. Relevant because docs/FINDINGS_LEDGER.md finding 13 records that duplicate column labels previously crashed two import-doctor checks and diagnose() swallowed it, showing a clean bill of health.",
   "ev": "utils/column_utils.py:7-19; data_processor.py:54; ml/import_doctor.py:848,863",
   "act": "engine",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Column identity depends on input column ORDER: reorder the source columns and 'age' and 'age_1' swap which physical column they name, silently, and every downstream artifact keyed by column name - the lockbox is keyed by row, but the plausibility bounds, the unit factors, the transform map and the manuscript's predictor list are all keyed by name - follows the swap. It matters here specifically because docs/FINDINGS_LEDGER.md finding 13 records that duplicate labels previously crashed two import-doctor checks while diagnose() reported a clean bill of health, so this function runs on exactly the files where things have already gone wrong once. Make the suffix deterministic in the source's own terms, or refuse and ask.",
+  "verified_ev": "utils/column_utils.py:7-19 - make_unique_columns keeps the FIRST occurrence's bare name and suffixes later ones; callers data_processor.py, ml/import_doctor.py (two sites) and pages/01_Upload_and_Audit.py"
  },
  {
   "id": "SWEEP-032",
@@ -4351,7 +4382,9 @@
   "detail": "python_requires='>=3.8,<3.10' while .python-version pins 3.12 (and the classifiers in the same file list 3.10 and 3.11) — `pip install .` refuses outright. py_modules=['app','data_processor','models','visualizations'] treats models/ as a module though it is a package, and omits ml/, utils/, pages/ entirely. name='regression-model-trainer', url='.../glucose-mlp-interactive' — both predate the 'Tabular ML Lab' rename (QUICKSTART also carries the stale project name per CODE_REVIEW).",
   "ev": "setup.py:20,22 vs .python-version (3.12)",
   "act": "drop (replace with pyproject.toml naming the real packages)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and verified: python_requires excludes the repo's own interpreter, so 'pip install .' refuses outright - the package has been uninstallable for as long as the pin has been wrong. The name and URL both predate the Tabular ML Lab rename. This is a clear drop, and ROADMAP keeps deletion supervised, so it stays OPEN rather than closing as WONTFIX. Worth pairing with L12: packaging is the loop where a real pyproject.toml naming the actual packages has to exist anyway, so the replacement is scheduled work rather than a chore - and shipping a signed installer from a setup.py that cannot install is not a starting point.",
+  "verified_ev": "setup.py:13 (name='regression-model-trainer') and :22 (python_requires='>=3.8,<3.10') against .python-version pinning 3.12; py_modules names models/ as a module though it is a package and omits ml/, utils/ and pages/ entirely"
  },
  {
   "id": "SWEEP-033",
@@ -4361,7 +4394,9 @@
   "detail": "RESUME.md:20-22: 'Not yet merged. The intended finish is a single merge into claude/tabular-ml-lab-review-nashh7 once the outstanding findings are fixed.' Reality: `git log A..B` and `git log B..A` are both EMPTY and merge-base --all returns fbe422a — claude/all-of-us-framework-exploration-smydgz (current, checked out) and claude/tabular-ml-lab-review-nashh7-audit-fixes point at the same commit. The stated merge target claude/tabular-ml-lab-review-nashh7 exists neither locally nor on origin; there is no main branch. RESUME.md:12-16 also describes a git worktree setup ('developed in a separate git worktree so the audits could keep measuring a frozen tree') — `git worktree list` shows only the…",
   "ev": "docs/audit/RESUME.md:9-22; `git merge-base --all` → fbe422a; `git branch -r` → only the two claude/* remotes",
   "act": "project (correct RESUME.md's branch story before it misdirects the transition; the audit-fix work IS in HEAD)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged and now MORE misleading than when this was written. The row observed that the stated merge target was absent and there was no main branch; at HEAD origin/main EXISTS and is the repository's default, TurboTab is the working branch, and RESUME.md still describes a worktree and an unmerged audit-fixes branch whose merge target is gone. So a reader following RESUME.md would look for a branch that does not exist, and would not learn that the audit-fix work is already in the mainline. That misdirection sits in the same document as the stale-verdict trap (SWEEP-026), which is the one file a future loop is most likely to read cold. Correct the branch story before it costs someone an afternoon.",
+  "verified_ev": "docs/audit/RESUME.md:9-22 still says the work is on claude/tabular-ml-lab-review-nashh7-audit-fixes, branched from 413671a, developed in a separate worktree, and 'Not yet merged' into claude/tabular-ml-lab-review-nashh7; at HEAD the repository has origin/main, origin/TurboTab and origin/claude/tabular-ml-lab-review-nashh7-audit-fixes, and the named merge target does not exist"
  },
  {
   "id": "SWEEP-034",
@@ -4371,7 +4406,9 @@
   "detail": "CODE_REVIEW 'Known remaining work (deliberately deferred, none demo-blocking)': (a) 'explicit theory anchors at every EDA producer (inference fallback is currently benign but fragile)' — confirmed: utils/theory_anchors.py:421 infer_theory_anchor falls through category matching to raw substring matching on finding text (:438-462, e.g. 'skew'→skewness, 'ece'→calibration), and repo-wide there is exactly ONE literal theory_anchor= outside ml/model_coach.py (which sets four: skewness :692, outliers :735, scaling :767, missing_data :798). Reword a finding string during the rewrite and its theory link vanishes silently. (b) 'coaching badge counts vs scoped body coherence'. (c) 'removing or wiring t…",
   "ev": "CODE_REVIEW.md 'Known remaining work'; utils/theory_anchors.py:421,438-462; ml/model_coach.py:692,735,767,798; ml/calibration.py:264",
   "act": "record (make theory_anchor mandatory at construction — the substring fallback cannot survive a copy rewrite); drop (decision_curve_analysis, example_data.csv)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and the measurement is worth repeating because it is what makes the fallback load-bearing rather than defensive: FOUR producers in the entire codebase set theory_anchor explicitly, all in one file, so every other insight's theory link is INFERRED - and the last inference stage matches raw substrings in finding prose. A rebuild rewrites finding text as a matter of course, so the pedagogy layer silently unlinks itself. This is COACH-018 seen from the deferred-work list, and the action is the same: make theory_anchor mandatory at construction and delete the prose stage. The other deferred items on the same list (decision_curve_analysis, example_data.csv) are supervised drops and stay open with SWEEP-017 and T0-DROP-003.",
+  "verified_ev": "utils/theory_anchors.py:421-462 (infer_theory_anchor falls through to substring matching on finding text); repo-wide there are exactly four literal theory_anchor= assignments, all in ml/model_coach.py (:692, :735, :767, :798); CODE_REVIEW's 'Known remaining work' list"
  },
  {
   "id": "SWEEP-035",
@@ -4381,7 +4418,9 @@
   "detail": "utils/theory_anchors.py:27 THEORY_ANCHORS declares skewness, outliers, collinearity, class_imbalance, sample_size, high_dimensionality, missing_data, leakage, scaling, transforms, calibration, cross_validation, threshold_choice, shap, pdp_ice, seed_sensitivity, bootstrap, regularization, bias_variance. utils/theory_demos.py:833 DEMO_REGISTRY declares the identical 19 keys. Nothing asserts the correspondence; render_inline_demo returns False silently on a miss (:865-868) and render_theory_link degrades to a caption on exception (:530-531). CODE_REVIEW already caught adjacent rot: 'theory-anchor feature_scale key doesn't exist (works by accidental text match)' and 'several theory breadcrumbs p…",
   "ev": "utils/theory_anchors.py:27-372; utils/theory_demos.py:833-868; utils/theory_anchors.py:518,530",
   "act": "view (add an equality assertion on the two key sets — cheap, and it is the only guard on the pedagogy layer)",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Two hand-maintained 19-key tables that must agree, with both failure paths silent by design - a missing demo returns False and a broken link degrades to a caption - so a rename on either side removes a demo from the app and nothing anywhere goes red. CODE_REVIEW already caught adjacent rot in this layer (a theory anchor keyed on a name that did not exist and worked only by accidental text match), which is the evidence that this drifts in practice rather than in principle. A single assertion that the two key sets are equal is the cheapest guard in this ledger after STATE-068's clone test, and it is the ONLY guard the education layer would have.",
+  "verified_ev": "utils/theory_anchors.py THEORY_ANCHORS declares 19 keys; utils/theory_demos.py DEMO_REGISTRY declares the same 19; nothing asserts the correspondence; render_inline_demo returns False on a miss and render_theory_link degrades to a caption on exception"
  },
  {
   "id": "TEST-026",
@@ -4391,7 +4430,9 @@
   "detail": "LANDS: drop. scripts/integration_test_apptest.py (655 loc) builds its own build_test_dataframe() at :44 duplicating tests/integration/conftest.py:18, and defines 16 AppTest page tests (test_01_upload_page at :157 through test_enriched_feature_scaling at :570) that overlap tests/integration/test_pages.py. It is invoked by no Makefile target and no CI step. scripts/integration_test.py (511 loc) is the Playwright suite, reachable only via `make test-e2e` which requires a live server at localhost:8501 and is explicitly excluded from `make ci`. Both are 100% Streamlit/browser-coupled. Retaining them creates the illusion of coverage that the migration would then try to preserve.",
   "ev": ".github/workflows/ci.yml (only `pytest tests/` and `pytest tests/integration`); Makefile:22-40; scripts/integration_test_apptest.py:157-570",
   "act": "Delete both at the start of the migration and state explicitly that E2E coverage is being rebuilt against the new frontend, so nobody budgets time porting them.",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "Half the row's premise is wrong at HEAD and the correction changes the disposition. scripts/integration_test.py is NOT unreachable from CI - ci.yml:90-94 runs it as the E2E smoke test against the live service after deploy, so it is the only end-to-end check the project has against a running app, and deleting it at the start of the migration would remove that with nothing replacing it. scripts/integration_test_apptest.py IS unreachable, is 100% AppTest-coupled, and does duplicate tests/integration/test_pages.py, so that half of the recommendation stands. Disposition: drop the apptest duplicate, keep the Playwright suite until the new frontend has an equivalent, and state explicitly that E2E is being rebuilt so nobody budgets time porting the duplicate.",
+  "verified_ev": ".github/workflows/ci.yml:90-94 runs scripts/integration_test.py as an E2E smoke test against the live service in the DEPLOY job; scripts/integration_test_apptest.py is invoked by no Makefile target and no CI step; both files still exist, and integration_test_apptest.py duplicates build_test_dataframe and ~16 AppTest page tests that overlap tests/integration/test_pages.py"
  },
  {
   "id": "TEST-027",
