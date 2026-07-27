@@ -1,10 +1,22 @@
 {
  "schema_version": "1.0",
  "prereg": "VALUE_CHECK_PREREG.md",
+ "classic_reference": "routing-baseline-l9.json",
+ "classic_frozen_reference": "routing-baseline.json",
+ "adjudication": "VALUE_CHECK_ADJUDICATION.md",
  "rows": [
   {
    "dataset": "messy-clinic",
    "classic": {
+    "required_decisions": 10,
+    "questions_asked": 34,
+    "irrelevant_questions": 24,
+    "findings_driven": 0.0,
+    "deferral_closes": null,
+    "coverage": 0.1,
+    "pull_affordances": 0
+   },
+   "classic_frozen": {
     "required_decisions": 9,
     "questions_asked": 34,
     "irrelevant_questions": 25,
@@ -14,13 +26,18 @@
     "pull_affordances": 0
    },
    "guided": {
-    "required_decisions": 9,
-    "questions_asked": 9,
+    "required_decisions": 10,
+    "questions_asked": 10,
     "irrelevant_questions": 0,
-    "findings_driven": 0.8889,
+    "findings_driven": 0.9,
     "deferral_closes": 1.0,
     "coverage": 1.0,
     "pull_affordances": 7,
+    "surfaced_coverage": 1.0,
+    "asked_coverage": 1.0
+   },
+   "guided_under_frozen_denominator": {
+    "n_required": 9,
     "surfaced_coverage": 1.0,
     "asked_coverage": 1.0
    }
@@ -28,6 +45,15 @@
   {
    "dataset": "wide-assay",
    "classic": {
+    "required_decisions": 1,
+    "questions_asked": 31,
+    "irrelevant_questions": 30,
+    "findings_driven": 0.0,
+    "deferral_closes": null,
+    "coverage": 1.0,
+    "pull_affordances": 0
+   },
+   "classic_frozen": {
     "required_decisions": 1,
     "questions_asked": 31,
     "irrelevant_questions": 30,
@@ -46,11 +72,25 @@
     "pull_affordances": 3,
     "surfaced_coverage": 1.0,
     "asked_coverage": 1.0
+   },
+   "guided_under_frozen_denominator": {
+    "n_required": 1,
+    "surfaced_coverage": 1.0,
+    "asked_coverage": 1.0
    }
   },
   {
    "dataset": "longitudinal",
    "classic": {
+    "required_decisions": 2,
+    "questions_asked": 32,
+    "irrelevant_questions": 30,
+    "findings_driven": 0.0,
+    "deferral_closes": null,
+    "coverage": 0.5,
+    "pull_affordances": 0
+   },
+   "classic_frozen": {
     "required_decisions": 1,
     "questions_asked": 32,
     "irrelevant_questions": 31,
@@ -60,13 +100,18 @@
     "pull_affordances": 0
    },
    "guided": {
-    "required_decisions": 1,
-    "questions_asked": 1,
+    "required_decisions": 2,
+    "questions_asked": 2,
     "irrelevant_questions": 0,
-    "findings_driven": 0.0,
+    "findings_driven": 0.5,
     "deferral_closes": null,
     "coverage": 1.0,
     "pull_affordances": 5,
+    "surfaced_coverage": 1.0,
+    "asked_coverage": 1.0
+   },
+   "guided_under_frozen_denominator": {
+    "n_required": 1,
     "surfaced_coverage": 1.0,
     "asked_coverage": 1.0
    }

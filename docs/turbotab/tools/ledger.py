@@ -10,8 +10,16 @@ Usage
     python docs/turbotab/tools/ledger.py next --n 15
     python docs/turbotab/tools/ledger.py next --n 15 --area STATE
     python docs/turbotab/tools/ledger.py set FIND-ID --status FIXED --note "..." --test test_foo
+    python docs/turbotab/tools/ledger.py add --id FIND-ID --area STATE --sev high \
+        --item "..." --status OPEN --evidence "file:line"
     python docs/turbotab/tools/ledger.py regen
     python docs/turbotab/tools/ledger.py check          # exits 1 if the schema is violated
+
+`add` exists because work discovered during a build is a finding too, and until
+L9 the tool could only *dispose* of rows the audit passes had written. A defect
+found while fixing another one, with no way into the ledger, is the same silence
+the ledger exists to remove — so it gets a door, through the tool, with the
+schema guard applied.
 
 Status values
 -------------
@@ -143,6 +151,54 @@ def cmd_set(rows, args) -> int:
     return 0
 
 
+def cmd_add(rows, args) -> int:
+    """Append a finding discovered during a build.
+
+    Same guards as `set`, applied before the row exists rather than after: a
+    `FIXED` row needs its test named at birth, and a `PARTIAL` needs its note.
+    Ids are unique and never reused — a reused id is a rewritten history.
+    """
+    if any(r["id"] == args.id for r in rows):
+        print(f"{args.id} already exists; use `set` to change it", file=sys.stderr)
+        return 1
+    status = args.status.upper()
+    if status not in VALID:
+        print(f"invalid status {status}; valid: {sorted(VALID)}", file=sys.stderr)
+        return 1
+    if status == "FIXED" and not args.test:
+        print("FIXED requires --test naming a regression test", file=sys.stderr)
+        return 1
+    if status in {"PARTIAL", "NOT-A-DEFECT", "WONTFIX"} and not args.note:
+        print(f"{status} requires --note", file=sys.stderr)
+        return 1
+    if args.sev not in SEV_ORDER:
+        print(f"invalid severity {args.sev!r}; valid: {sorted(SEV_ORDER)}",
+              file=sys.stderr)
+        return 1
+    if args.area not in AREA_NAME:
+        print(f"invalid area {args.area!r}; valid: {sorted(AREA_NAME)}",
+              file=sys.stderr)
+        return 1
+
+    rows.append({
+        "id": args.id,
+        "area": args.area,
+        "sev": args.sev,
+        "item": norm(args.item),
+        "detail": norm(args.detail),
+        "ev": norm(args.evidence),
+        "act": norm(args.act),
+        "status": status,
+        "note": norm(args.note),
+        "verified_against": norm(args.verified_against),
+        "test": norm(args.test),
+        "verified_ev": norm(args.evidence),
+    })
+    save(rows)
+    print(f"added {args.id} [{status}]")
+    return 0
+
+
 def cmd_check(rows, _args) -> int:
     """Schema guard. Non-zero exit means the ledger broke its own rules."""
     bad = []
@@ -253,6 +309,18 @@ def main() -> int:
     p_set.add_argument("--note")
     p_set.add_argument("--test")
     p_set.add_argument("--evidence")
+    p_add = sub.add_parser("add")
+    p_add.add_argument("--id", required=True)
+    p_add.add_argument("--area", required=True)
+    p_add.add_argument("--sev", required=True)
+    p_add.add_argument("--item", required=True)
+    p_add.add_argument("--status", default="OPEN")
+    p_add.add_argument("--detail", default="")
+    p_add.add_argument("--evidence", default="")
+    p_add.add_argument("--act", default="")
+    p_add.add_argument("--note", default="")
+    p_add.add_argument("--test", default="")
+    p_add.add_argument("--verified-against", dest="verified_against", default="")
     sub.add_parser("regen")
     sub.add_parser("check")
     args = ap.parse_args()
@@ -262,6 +330,7 @@ def main() -> int:
         "stats": cmd_stats,
         "next": cmd_next,
         "set": cmd_set,
+        "add": cmd_add,
         "regen": cmd_regen,
         "check": cmd_check,
     }[args.cmd](rows, args)

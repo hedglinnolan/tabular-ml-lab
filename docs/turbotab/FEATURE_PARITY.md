@@ -136,6 +136,29 @@ principle lived in a docstring on four caches while eight caches beside it viola
 principle is worth a docstring, it is worth a test that applies it everywhere it binds — one
 fingerprint for the page, not one per author.
 
+**Corollary — the expiring-guarantee rule** (from the `T0-PREREG-002` close): *a protection that
+depends on "X does not exist yet" expires the moment X exists, and nothing will tell you.*
+`tests/integration/test_routing_baseline.py` wrote the pre-registered Classic baseline and said
+why in its docstring — *"written now, while the Router does not exist, so it cannot be fitted
+to."* True when written. False from the moment L8 landed, and no test, check or reviewer noticed:
+for three loops afterwards every suite run re-measured the reference the value check is judged
+against, with the Router present, and committed the new numbers over the old.
+
+The sibling relationship to principle-locality is exact — both are **silence rather than
+failure**, and both are invisible precisely because the thing that was true is still written
+down. The difference is the axis: locality fails across *space* (stated here, violated there),
+this one fails across *time* (true then, false now, unannounced).
+
+Three defenses, in order of strength:
+
+- **Do not write a temporal guarantee you cannot enforce.** Split the acts: measurement and
+  comparison must not share a code path, or the comparison silently becomes a re-measurement.
+- **Name the expiry condition in the artifact**, not in prose. A baseline carries `measured_at`;
+  a test asserts it against the document that banks thresholds on it.
+- **Audit every "before X exists" claim when X ships.** A loop that lands a component should grep
+  for guarantees phrased against its absence. `router.py` landing at L8 should have triggered
+  exactly that sweep and did not.
+
 ### Two specific things to watch
 
 - **The pedagogy layer** — `utils/theory_anchors.py` (532 loc) and `utils/theory_demos.py`

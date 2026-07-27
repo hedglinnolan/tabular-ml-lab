@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**88 of 411 closed.**
+**89 of 412 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 289 |
 | `PARTIAL` | 34 |
-| `FIXED` | 88 |
+| `FIXED` | 89 |
 
 ---
 
@@ -449,7 +449,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 88
+## FIXED — 89
 
 
 ### Application state / lockbox — 26
@@ -483,7 +483,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — Duplicate of COACH-024 from the state pass, and closed the same way: the… |
 | `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | **test:** `tests/test_cohort_runs.py::test_unrecognizable_rows_yield_nothing_not_everything` — The invariant is implemented, disclosed and tested, and the test's NAME is the… |
 
-### Verified against main — 18
+### Verified against main — 19
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -494,6 +494,7 @@ Nothing is closed without a regression test named after it.
 | `T0-TEST-003` | critical | No test calls the production reset_downstream_results(); three re-implementations test themselves | `utils/session_state.py; tests/test_cascade_invalidation.py` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_the_dag_matches_the_production_cascade` — Stale self-report, caught by Loop 1's final sweep: the equivalence… |
 | `T0-LIVE-004` | critical | pandas 3 silently turns a classification target into a regression one — dtype identity checks compare against legacy string names | `ml/triage.py:41; requirements.txt:2; plus 10 further sites listed in detail` | **test:** `turbotab/test_skeleton.py::test_the_same_answer_under_a_pandas_3_string_dtype` — All eleven dtype-identity sites replaced with pd.api.types predicates. Verified against… |
 | `T0-ID-001` | critical | Four of nine repair kinds renumber rows, invalidating row identity mid-analysis | `ml/import_doctor.py apply_fix — promote_header / drop_empty_rows / drop_rows / melt_repeated` | **test:** `turbotab/test_project_model.py::test_pre_barrier_repairs_are_unreachable_once_the_lockbox_exists` — The barrier is a phase rule now. The project owns the lockbox, so… |
+| `T0-PREREG-002` | critical | The pre-registered routing baseline was not frozen: the test suite rewrote it on every run, and had done so since the Router landed | `tests/integration/test_routing_baseline.py:299 (write_baseline on the frozen path) and :342 (the leaky one)…` | **test:** `tests/integration/test_routing_baseline.py::test_the_frozen_baseline_is_the_one_the_prereg_names` — Fixed at L9, and the damage was contained: the frozen file's… |
 | `T0-LIVE-002` | high | Cancel Training writes st.session_state.cancel_training; nothing ever reads it | `pages/06_Train_and_Compare.py:1289-1301 (grep returns only these 4 lines)` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Resolved both ways, as the two doors need. Guided gets real cancellation… |
 | `T0-LIVE-003` | high | SklearnCompatible NN fit() marks fitted without training; clone-and-refit yields a silently untrained model that still predicts | `models/nn_whuber.py fit() in both regressor and classifier` | **test:** `tests/test_characterization_wrappers.py::test_clone_and_refit_now_raises_instead_of_answering_from_the_old_model` — fit() now raises NotFittedError unless the adapter… |
 | `T0-DOC-001` | high | ARCHITECTURE.md over-reported Streamlit coupling: static analysis counted function-level imports as module-level | `ml/model_coach.py:634,1080; docs/turbotab/ARCHITECTURE.md §01` | **test:** `docs/turbotab/ARCHITECTURE.md §01 runtime blocker snippet` — Corrected 2026-07; the empirical run had already disagreed with the static pass and the static pass was… |

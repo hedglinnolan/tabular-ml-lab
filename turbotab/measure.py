@@ -328,15 +328,38 @@ def _gte(a: Optional[float], b: Optional[float]) -> bool:
     return True if b is None else a >= b - 1e-9
 
 
-def write_baseline(path, measurements: Sequence[Measurement]) -> None:
-    """Commit a baseline as data, before the thing it will judge exists."""
+def write_baseline(path, measurements: Sequence[Measurement],
+                   measured_at: Optional[str] = None,
+                   prereg: Optional[str] = None) -> None:
+    """Write a baseline as data.
+
+    **Not called by the test suite.** A baseline is raw data from a
+    pre-registered experiment: measurement and comparison are different acts and
+    must not share a code path, or every run silently re-measures the reference
+    it is supposed to be judged against. `scripts/remeasure_routing_baseline.py`
+    is the only invocation, and it refuses to overwrite.
+
+    `measured_at` records the commit the numbers were taken at, and `prereg`
+    the document that banks thresholds against them. Both are provenance about
+    the artifact, never part of a measurement.
+    """
     import pathlib
 
-    payload = {
-        "schema_version": SCHEMA_VERSION,
-        "measurements": [m.to_dict() for m in measurements],
-    }
+    payload: Dict[str, Any] = {"schema_version": SCHEMA_VERSION}
+    if measured_at:
+        payload["measured_at"] = measured_at
+    if prereg:
+        payload["prereg"] = prereg
+    payload["measurements"] = [m.to_dict() for m in measurements]
     pathlib.Path(path).write_text(json.dumps(payload, indent=1), encoding="utf-8")
+
+
+def baseline_provenance(path) -> Dict[str, Any]:
+    """The `measured_at` / `prereg` stamps on a baseline file, if any."""
+    import pathlib
+
+    data = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+    return {"measured_at": data.get("measured_at"), "prereg": data.get("prereg")}
 
 
 def read_baseline(path) -> List[Dict[str, Any]]:

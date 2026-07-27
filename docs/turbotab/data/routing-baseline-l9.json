@@ -1,6 +1,6 @@
 {
  "schema_version": "1.0",
- "measured_at": "6bfe598",
+ "measured_at": "aa6cbc4",
  "prereg": "VALUE_CHECK_PREREG.md",
  "measurements": [
   {
@@ -9,12 +9,12 @@
    "n_rows": 140,
    "n_columns": 14,
    "metrics": {
-    "required_decisions": 9,
+    "required_decisions": 10,
     "questions_asked": 34,
-    "irrelevant_questions": 25,
+    "irrelevant_questions": 24,
     "findings_driven": 0.0,
     "deferral_closes": null,
-    "coverage": 0.1111,
+    "coverage": 0.1,
     "pull_affordances": 0
    },
    "uncovered": [
@@ -25,6 +25,7 @@
     "repair::numeric_as_text__weight",
     "repair::text_missing__notes",
     "repair::unnamed_columns",
+    "repair::binary_text__outcome",
     "repair::numeric_as_text__income"
    ],
    "required": [
@@ -91,6 +92,14 @@
      "source_finding": "unnamed_columns",
      "confidence": "high",
      "fix_label": "Drop 1 unnamed column(s)"
+    },
+    {
+     "key": "repair::binary_text__outcome",
+     "reason": "'outcome' is a binary variable written as text",
+     "severity": "warning",
+     "source_finding": "binary_text__outcome",
+     "confidence": "medium",
+     "fix_label": "Read 'outcome' as binary (responder = 1, non-responder = 0)"
     },
     {
      "key": "repair::numeric_as_text__income",
@@ -865,15 +874,17 @@
    "n_rows": 135,
    "n_columns": 7,
    "metrics": {
-    "required_decisions": 1,
+    "required_decisions": 2,
     "questions_asked": 32,
-    "irrelevant_questions": 31,
+    "irrelevant_questions": 30,
     "findings_driven": 0.0,
     "deferral_closes": null,
-    "coverage": 1.0,
+    "coverage": 0.5,
     "pull_affordances": 0
    },
-   "uncovered": [],
+   "uncovered": [
+    "repair::binary_text__outcome"
+   ],
    "required": [
     {
      "key": "choose_target",
@@ -882,6 +893,14 @@
      "source_finding": null,
      "confidence": null,
      "fix_label": null
+    },
+    {
+     "key": "repair::binary_text__outcome",
+     "reason": "'outcome' is a binary variable written as text",
+     "severity": "warning",
+     "source_finding": "binary_text__outcome",
+     "confidence": "medium",
+     "fix_label": "Read 'outcome' as binary (stable = 1, improved = 0)"
     }
    ],
    "questions": [

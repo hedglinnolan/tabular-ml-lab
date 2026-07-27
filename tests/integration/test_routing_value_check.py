@@ -30,6 +30,11 @@ pytestmark = pytest.mark.timeout(900)
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DATA = ROOT / "turbotab" / "sample_data"
 BASELINE = ROOT / "docs" / "turbotab" / "data" / "routing-baseline.json"
+# The Classic column is reported from the adjudicated reference, because that is
+# the ground truth today; the frozen one is reported beside it so the reader can
+# see the movement rather than take it on trust. See
+# VALUE_CHECK_ADJUDICATION.md §"The denominator moved".
+ADJUDICATED = ROOT / "docs" / "turbotab" / "data" / "routing-baseline-l9.json"
 PREREG = ROOT / "docs" / "turbotab" / "VALUE_CHECK_PREREG.md"
 RESULT = ROOT / "docs" / "turbotab" / "data" / "routing-value-check.json"
 
@@ -209,7 +214,8 @@ def test_the_prereg_predates_the_router():
 def test_routing_value_check():
     """The verdict. Reports the full table, then asserts every threshold."""
     thresholds = _prereg_thresholds()
-    baseline = {m["dataset"]: m for m in measure.read_baseline(BASELINE)}
+    baseline = {m["dataset"]: m for m in measure.read_baseline(ADJUDICATED)}
+    frozen = {m["dataset"]: m for m in measure.read_baseline(BASELINE)}
 
     rows, failures, strict_failures = [], [], []
     for name, path, target in DATASETS:
@@ -219,11 +225,27 @@ def test_routing_value_check():
         surfaced = _surfaced_coverage(g)
         asked_cov = _asked_coverage(g)
 
+        # The same Guided run, scored against the pre-registration's original
+        # denominator. Both readings are reported for the same reason the
+        # deferral ambiguity's were: a threshold met under one denominator and
+        # missed under the other is a result, not a detail.
+        frozen_keys = [r["key"] for r in frozen[name]["required"]]
+        raised = {q.covers for q in g.questions if q.covers}
+        raised_asked = {q.covers for q in g.questions if q.covers and not q.skipped}
+        surfaced_frozen = sum(1 for k in frozen_keys if k in raised) / len(frozen_keys)
+        asked_frozen = sum(1 for k in frozen_keys if k in raised_asked) / len(frozen_keys)
+
         rows.append({
             "dataset": name,
             "classic": c,
+            "classic_frozen": frozen[name]["metrics"],
             "guided": {**gm, "surfaced_coverage": round(surfaced, 4),
                        "asked_coverage": round(asked_cov, 4)},
+            "guided_under_frozen_denominator": {
+                "n_required": len(frozen_keys),
+                "surfaced_coverage": round(surfaced_frozen, 4),
+                "asked_coverage": round(asked_frozen, 4),
+            },
         })
 
         t = thresholds[name]
@@ -286,6 +308,11 @@ def test_routing_value_check():
 
     RESULT.write_text(json.dumps({
         "schema_version": "1.0", "prereg": "VALUE_CHECK_PREREG.md",
+        # Which Classic reference this run was scored beside, named in the
+        # output rather than inferable from the code that produced it.
+        "classic_reference": ADJUDICATED.name,
+        "classic_frozen_reference": BASELINE.name,
+        "adjudication": "VALUE_CHECK_ADJUDICATION.md",
         "rows": rows,
         "verdict": {
             "passes": not failures,
