@@ -24,6 +24,8 @@ Findings: GUIDED-003, GUIDED-004, GUIDED-005.
 from __future__ import annotations
 
 import math
+import re
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
@@ -46,14 +48,231 @@ MAX_FEATURES_FOR_GALLERY = 50
 # list is capped, and says so, because a card is not a data export.
 MAX_ENTRIES = 12
 
-# Above this share, "these entries are impossible" is the less likely reading.
-# A quarter of a column outside a hard physiologic floor is what a unit mismatch
-# looks like, or a column whose name merely resembles a reference variable —
-# `hba1c_proxy` matching `hba1c` is enough. Proposing per-entry deletion there
-# would delete real data over a naming coincidence, and §09's budget rule says a
-# false positive that cannot be cleanly resolved costs more than a missed
-# advisory. So the block is still reported, with the reading corrected.
+# ─────────────────────────────────────────────────────────────────────────────
+# When to doubt the reading instead of the data
+#
+# The rule this implements, which is general and not about plausibility:
+# **escalate on evidence that the interpretation is wrong, not on the magnitude
+# of the consequence.** "Seventy-five rows would be deleted, that is a lot" is
+# not a reason to hesitate; "seventy-five rows out of eighty are outside a hard
+# physiologic floor, which is a property of the column and not of its entries"
+# is. The first is squeamishness about the size of the harm and would make the
+# tool hesitate exactly where it is most useful. The second is evidence.
+#
+# Three kinds of evidence, each one nameable in the verdict it produces:
+#
+#   * **derived name** — the column carries a modifier beside the reference key
+#     (`hba1c_proxy`, `bp_sys_delta`, `weight_change`). `match_variable_key`
+#     matches by substring, so a derived column inherits its parent's reference
+#     intervals wholesale. Evidence the column is not the variable (T0-BUILD-003).
+#   * **scale shift** — after unit conversion, the column still sits off the
+#     reference by a factor the variable's own unit table knows about, or by a
+#     power of ten. Evidence the unit inference picked wrong.
+#   * **coherence** — the violations are one-sided and numerous. Entry errors
+#     scatter; a systematic misreading does not.
+#
+# Only when none of these hold are the entries themselves the likely fault, and
+# only then is a per-entry repair proposed.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Share above which the violation is a property of the column rather than of its
+# entries, even with no other evidence about which misreading it is.
 WHOLE_COLUMN_SUSPECT_SHARE = 0.25
+
+# Share above which one-sidedness stops being coincidence.
+COHERENCE_MIN_SHARE = 0.10
+ONE_SIDED_SHARE = 0.95
+
+# Share of the column a candidate unit must land inside the reference interval
+# before it counts as having rescued it.
+RESCUE_MIN_SHARE = 0.80
+
+# Name segments that mark a column as derived from a variable rather than being
+# it. Deliberately a closed list: guessing that an unfamiliar suffix means
+# "derived" would suppress real findings on columns that are simply named oddly.
+DERIVED_MARKERS = frozenset({
+    "proxy", "flag", "delta", "change", "diff", "pct", "percent", "percentile",
+    "score", "index", "ratio", "rate", "bin", "bins", "quartile", "quintile",
+    "tertile", "decile", "quantile", "group", "grp", "cat", "category", "class",
+    "band", "level", "z", "zscore", "log", "sqrt", "norm", "scaled", "std",
+    "imputed", "pred", "predicted", "residual", "resid", "rank", "lag", "lead",
+    "baseline", "followup", "prev", "next", "avg", "mean", "median", "max",
+    "min", "sum", "count", "n", "missing", "isna", "any", "ever",
+})
+
+READING_ENTRIES = "entries"
+READING_UNITS = "units"
+READING_IDENTITY = "identity"
+READING_UNCLEAR = "unclear"
+
+
+def name_segments(column: str) -> List[str]:
+    """A column name split into its words, lowercased."""
+    return [s for s in re.split(r"[^0-9a-z]+", str(column).lower()) if s]
+
+
+def derived_from(column: str, var_key: str) -> Optional[str]:
+    """The modifier marking `column` as derived from `var_key`, or None.
+
+    `match_variable_key` matches by substring, so `hba1c_proxy` inherits HbA1c's
+    reference intervals and its impossibility band. This is the cheap, closed
+    check for "the name says this is not that variable".
+    """
+    key_parts = name_segments(var_key)
+    segments = name_segments(column)
+    if not key_parts or not segments:
+        return None
+    # The key must actually be present as whole segments; otherwise this is a
+    # different question (a raw substring match) that the caller already made.
+    extras = [s for s in segments if s not in key_parts]
+    for segment in extras:
+        if segment in DERIVED_MARKERS:
+            return segment
+    return None
+
+
+def known_scale_factors(var_key: str) -> List[float]:
+    """Conversion factors the variable's own unit table knows about.
+
+    A residual ratio matching one of these is evidence that unit inference
+    picked the wrong hypothesis — not that the values are impossible.
+    """
+    factors = {10.0, 100.0, 1000.0, 0.1, 0.01, 0.001}
+    try:
+        from ml.clinical_units import CLINICAL_VARIABLES
+        for unit_name, factor, _range in CLINICAL_VARIABLES.get(var_key, {}).get(
+                "hypotheses", []):
+            f = _finite(factor)
+            if f and f > 0 and abs(f - 1.0) > 1e-9:
+                factors.add(f)
+                factors.add(1.0 / f)
+    except Exception:
+        pass
+    return sorted(factors)
+
+
+@dataclass
+class InterpretationVerdict:
+    """Whether to doubt the reading of a column instead of its entries.
+
+    `reading` is one of `entries` / `units` / `identity` / `unclear`, and only
+    `entries` licenses a per-entry repair proposal. `evidence` lists the signals
+    that fired, by name, so the verdict is arguable rather than a threshold
+    nobody can see.
+    """
+    reading: str
+    evidence: List[str] = field(default_factory=list)
+    statement: Optional[str] = None
+    factor: Optional[float] = None
+
+    @property
+    def suspect(self) -> bool:
+        """True when the reading is doubted and no repair may be proposed."""
+        return self.reading != READING_ENTRIES
+
+
+def rescues_the_column(values, reference, factors) -> Optional[float]:
+    """The factor that would bring this column into the reference interval.
+
+    The direct question, rather than a ratio of summary statistics: *does
+    multiplying by a unit the variable actually has put the values where the
+    reference says they belong?* If one does, the unit inference picked wrong
+    and the values were never out of range at all.
+
+    Returns the factor, or None when no known unit rescues the column.
+    """
+    if reference is None:
+        return None
+    ref_low, ref_high = float(reference[0]), float(reference[1])
+    inside_now = float(((values >= ref_low) & (values <= ref_high)).mean())
+    if inside_now >= RESCUE_MIN_SHARE:
+        return None                      # already where it belongs
+    for factor in factors:
+        scaled = values * factor
+        inside = float(((scaled >= ref_low) & (scaled <= ref_high)).mean())
+        if inside >= RESCUE_MIN_SHARE:
+            return factor
+    return None
+
+
+def interpretation_verdict(column: str, var_key: str, values, low: float,
+                           high: float, flagged,
+                           reference: Optional[Sequence[float]] = None) -> InterpretationVerdict:
+    """The named predicate: is the reading wrong, or are the entries?
+
+    `values` and `flagged` are the column and its violations, both already
+    expressed in the reference unit. `low`/`high` are the bounds they broke;
+    `reference` is the variable's reference interval, which is where the values
+    would sit if the unit were right.
+    """
+    n_present = int(len(values))
+    n_flagged = int(len(flagged))
+    if not n_present or not n_flagged:
+        return InterpretationVerdict(READING_ENTRIES)
+
+    share = n_flagged / n_present
+    evidence: List[str] = []
+
+    marker = derived_from(column, var_key)
+    if marker:
+        evidence.append(f"derived-name:{marker}")
+
+    below = int((flagged < low).sum())
+    above = int((flagged > high).sum())
+    one_sided = max(below, above) >= ONE_SIDED_SHARE * n_flagged
+    if one_sided and share >= COHERENCE_MIN_SHARE:
+        evidence.append("one-sided:" + ("below" if below >= above else "above"))
+
+    factor = rescues_the_column(values, reference, known_scale_factors(var_key))
+    if factor is not None:
+        evidence.append(f"rescued-by:{factor:g}x")
+
+    if share > WHOLE_COLUMN_SUSPECT_SHARE:
+        evidence.append(f"share:{share:.0%}")
+
+    # The ruling, in order of how directly each signal speaks to the reading.
+    # A factor that puts the whole column inside its reference interval is the
+    # strongest evidence available: it does not merely suggest the reading is
+    # wrong, it names the right one.
+    if factor is not None:
+        reading = READING_UNITS
+    elif marker:
+        reading = READING_IDENTITY
+    elif share > WHOLE_COLUMN_SUSPECT_SHARE:
+        reading = READING_UNCLEAR
+    else:
+        return InterpretationVerdict(READING_ENTRIES)
+
+    return InterpretationVerdict(
+        reading=reading, evidence=evidence, factor=factor,
+        statement=_reading_statement(column, var_key, reading, share, factor,
+                                     marker, low, high))
+
+
+def _reading_statement(column, var_key, reading, share, factor, marker,
+                       low, high) -> str:
+    """What the card says instead of flagging entries.
+
+    The correction is about the column, in the user's terms. It never names a
+    row, because no row is the problem.
+    """
+    if reading == READING_UNITS:
+        return (f"`{column}` is probably not in the units we assumed. Multiplying "
+                f"it by {factor:g} — a unit `{var_key}` is recorded in — puts the "
+                f"column inside its reference range, so these values are not out "
+                f"of range; they are in a different unit. Nothing here is "
+                f"proposed as an error. Fix the unit and the check runs again.")
+    if reading == READING_IDENTITY:
+        return (f"`{column}` is probably not `{var_key}`. The reference range "
+                f"({low:g}–{high:g}) was matched to this column by name, and the "
+                f"name says it is a *{marker}* of `{var_key}` rather than the "
+                f"measurement itself. The values below are shown as recorded; "
+                f"nothing here is proposed as an error.")
+    return (f"`{column}` is probably not in the units we assumed, or is not "
+            f"`{var_key}` at all. {share:.0%} of it falls outside the range no "
+            f"living person can be outside, which is a property of the column "
+            f"rather than of its entries. Check the unit and the variable before "
+            f"treating any of these as errors.")
 
 
 def _label(value: Any) -> Any:
@@ -116,6 +335,7 @@ def plausibility_report(df: pd.DataFrame,
             continue
         converted = present * factor
 
+        interval = get_reference_interval(ref, var_key)
         band = get_impossibility_band(ref, var_key)
         if band is not None:
             floor, ceiling, unit = band
@@ -123,9 +343,11 @@ def plausibility_report(df: pd.DataFrame,
             if len(hit):
                 impossible.append(_entry_block(
                     col, var_key, present, converted, hit, floor, ceiling, unit,
-                    tier="impossible"))
+                    tier="impossible",
+                    # The interval, not the band, is where a correctly-united
+                    # column belongs — so it is what the rescue check aims at.
+                    reference=interval[:2] if interval else None))
 
-        interval = get_reference_interval(ref, var_key)
         if interval is not None:
             low, high, unit = interval
             outside = converted[(converted < low) | (converted > high)]
@@ -152,7 +374,8 @@ def plausibility_report(df: pd.DataFrame,
 
 
 def _entry_block(column, var_key, present, converted, hit,
-                 low, high, unit, tier) -> Dict[str, Any]:
+                 low, high, unit, tier,
+                 reference: Optional[Sequence[float]] = None) -> Dict[str, Any]:
     entries = []
     for label in list(hit.index)[:MAX_ENTRIES]:
         value = _finite(present.loc[label])
@@ -167,7 +390,12 @@ def _entry_block(column, var_key, present, converted, hit,
             "bound": low if shown < low else high,
         })
     share = float(len(hit) / len(present)) if len(present) else 0.0
-    suspect = bool(tier == "impossible" and share > WHOLE_COLUMN_SUSPECT_SHARE)
+    # The reading is doubted only on the tier that would propose a repair. An
+    # advisory tier makes no claim strong enough to need it.
+    verdict = (interpretation_verdict(column, var_key, converted, low, high, hit,
+                                      reference=reference)
+               if tier == "impossible"
+               else InterpretationVerdict(READING_ENTRIES))
     return {
         "column": str(column),
         "variable": var_key,
@@ -180,18 +408,16 @@ def _entry_block(column, var_key, present, converted, hit,
         "share": share,
         "entries": entries,
         "truncated": bool(len(hit) > len(entries)),
-        # When most of a column is outside a hard bound, the entries are not the
-        # problem — the reading of the column is. Carried as a flag rather than
-        # by dropping the block, because staying silent about the values would
-        # be the other way of asserting something false.
-        "whole_column_suspect": suspect,
-        "suspect_reason": (
-            f"{share:.0%} of `{column}` falls outside the impossibility band for "
-            f"`{var_key}`. That is what a unit mismatch looks like, or a column "
-            f"whose name merely resembles a reference variable — not a column of "
-            f"entry errors. No per-entry repair is proposed here; check the unit "
-            f"and whether `{column}` is really `{var_key}`."
-        ) if suspect else None,
+        # The verdict travels with the block rather than the block being
+        # dropped: staying silent about the values would be the other way of
+        # asserting something false.
+        "reading": verdict.reading,
+        "reading_evidence": list(verdict.evidence),
+        "reading_statement": verdict.statement,
+        "scale_factor": verdict.factor,
+        # Kept as the name the frontend and the earlier tests already use.
+        "whole_column_suspect": verdict.suspect,
+        "suspect_reason": verdict.statement,
     }
 
 

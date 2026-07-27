@@ -25,13 +25,13 @@ Nothing is closed without a regression test named after it.
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 291 |
-| `PARTIAL` | 34 |
+| `OPEN` | 290 |
+| `PARTIAL` | 35 |
 | `FIXED` | 90 |
 
 ---
 
-## OPEN — 291
+## OPEN — 290
 
 
 ### Application state / lockbox — 64
@@ -369,15 +369,9 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Features / preprocessing — 1
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `T0-BUILD-003` | high | physiology_reference.match_variable_key matches by substring, so any column whose name contains a reference key is measured against that variable's intervals | `ml/physiology_reference.py match_variable_key (`if key in col_lower`); ml/card_evidence.py…` | sibling-of: the theory_anchors substring fallback named in FEATURE_PARITY.md 'Two specific things to watch' - the same failure in a second registry, and the pedagogy registry pair… |
-
 ---
 
-## PARTIAL — 34
+## PARTIAL — 35
 
 
 ### Stage-boundary contracts — 8
@@ -453,6 +447,12 @@ Nothing is closed without a regression test named after it.
 |---|---|---|---|---|
 | `MINE-020` | high | The JSON wrapper-key guess still lives in the engine while the disclosure lives in the view | `data_processor.py:124, 236-239, 283-287, 400-420; pages/01_Upload_and_Audit.py:311, 385-388, 413…` | The disclosure landed; the guess did not change. inspect_json now computes the candidate wrapper keys and returns a note the page renders, which is what closed FINDINGS_LEDGER C4… |
 | `MINE-028` | high | The de-facto Router logic lives in the view, and four modules disagree about what 'done' means | `utils/theme.py:744-758; utils/workflow_provenance.py:461-477; utils/insight_ledger.py:495-501…` | One of the four definitions was removed; three remain. The theme.py probe this row names as the de-facto Router is gone - the page asks turbotab.readiness now and a source-reading… |
+
+### Features / preprocessing — 1
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `T0-BUILD-003` | high | physiology_reference.match_variable_key matches by substring, so any column whose name contains a reference key is measured against that variable's intervals | `ml/physiology_reference.py match_variable_key (`if key in col_lower`); ml/card_evidence.py…` | Contained at L9, then GENERALIZED at L9b - the containment became a named predicate rather than a threshold. ml/card_evidence.interpretation_verdict is the rule 'escalate on… |
 
 ---
 

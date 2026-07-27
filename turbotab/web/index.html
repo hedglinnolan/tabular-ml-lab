@@ -1140,6 +1140,29 @@
     return h;
   }
 
+  /* The reading correction. Headlined by what is doubted rather than by a
+     count, because the count is not the finding — no row is the problem. The
+     values still appear, below the correction and labeled as recorded: refusing
+     to show them would be the other way of asserting something false. */
+  var READING_HEAD = {
+    units: "Check the unit",
+    identity: "Check the variable",
+    unclear: "Check the unit or the variable"
+  };
+  function readingCorrection(b){
+    var head = (READING_HEAD[b.reading] || "Check the reading") + " — " + b.column;
+    var body = '<p style="margin:0 0 11px;font-size:13.5px;line-height:1.6;">' +
+               esc(b.reading_statement || "").replace(/`([^`]+)`/g, function(_, m){
+                 return '<span class="v">' + esc(m) + "</span>"; }) + "</p>" +
+               '<p style="margin:0 0 7px;font-size:11.5px;color:var(--faint);">' +
+               "Values as recorded — none of these is proposed as an error.</p>" +
+               entryTable(b);
+    var note = (b.reading_evidence || []).length
+      ? "evidence: " + b.reading_evidence.join(" · ")
+      : "the reading is doubted, not the data";
+    return evBlock(head, note, body, "");
+  }
+
   function evBlock(label, note, body, more){
     return '<div class="ev"><div class="ev-head"><span class="ev-lab">' + esc(label) +
            '</span><span class="ev-note">' + esc(note) + "</span></div>" +
@@ -1163,16 +1186,12 @@
 
     var h = "";
     (rep.impossible || []).forEach(function(b){
-      /* A column that is mostly outside a hard physiologic bound is not a
-         column of entry errors — it is a unit mismatch or a name collision.
-         Reported, with the reading corrected, and no repair proposed. */
+      /* When the engine doubts its own reading of a column, the correction is
+         the card — not a list of flagged entries. Escalating on evidence that
+         the interpretation is wrong, rather than on how many rows a repair
+         would touch, is what keeps the impossible tier worth its authority. */
       if (b.whole_column_suspect){
-        h += evBlock(
-          "Check the unit — " + b.column,
-          pct(b.share) + " of the column falls outside " + num(b.low, 2) + "–" +
-            num(b.high, 2) + " " + b.unit,
-          '<p style="margin:0 0 9px;font-size:13px;line-height:1.55;color:var(--muted);">' +
-            esc(b.suspect_reason) + "</p>" + entryTable(b), "");
+        h += readingCorrection(b);
         return;
       }
       h += evBlock(
@@ -2023,6 +2042,7 @@
         return notBuiltPanel("No variable in this table matches the physiologic reference, " +
                              "so there is nothing to check it against.");
       return blocks.map(function(b){
+        if (b.whole_column_suspect) return readingCorrection(b);
         return evBlock((b.tier === "impossible" ? "Impossible — " : "Improbable — ") + b.column,
                        b.n_flagged.toLocaleString() + " of " + b.n_present.toLocaleString() +
                        " outside " + num(b.low, 2) + "–" + num(b.high, 2) + " " + b.unit,

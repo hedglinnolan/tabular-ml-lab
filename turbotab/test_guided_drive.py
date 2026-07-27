@@ -314,18 +314,21 @@ def test_the_two_tiers_do_not_double_count_the_same_entry(client, project):
 
 
 def test_a_column_that_is_mostly_impossible_is_read_as_a_unit_problem():
-    """§09's budget rule, applied. A quarter of a column outside a hard floor is
-    a unit mismatch or a name collision, not a column of entry errors, and
-    proposing per-entry deletion there deletes real data over a coincidence."""
-    from ml.card_evidence import plausibility_report
+    """The predicate escalates on evidence, not on how much a repair would cost.
+
+    `hba1c_proxy` matches the reference key `hba1c` by substring and holds
+    values nowhere near an HbA1c percentage. Proposing per-entry deletion there
+    deletes real data over a naming coincidence.
+    """
+    from ml.card_evidence import READING_IDENTITY, plausibility_report
     rng = np.random.default_rng(2)
-    # `hba1c_proxy` matches the reference key `hba1c` by substring, and holds
-    # values nowhere near an HbA1c percentage.
     df = pd.DataFrame({"hba1c_proxy": rng.normal(0.4, 0.1, 80)})
     rep = plausibility_report(df)
     block = next(b for b in rep["impossible"] if b["column"] == "hba1c_proxy")
+
+    assert block["reading"] == READING_IDENTITY
     assert block["whole_column_suspect"] is True
-    assert "unit" in block["suspect_reason"]
+    assert "derived-name:proxy" in block["reading_evidence"]
     assert rep["n_impossible"] == 0, (
         "a suspect column inflated the count of entries that earn a repair")
     assert block["entries"], "the values are still shown; silence is the other lie"
