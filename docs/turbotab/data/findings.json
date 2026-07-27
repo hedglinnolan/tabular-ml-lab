@@ -3468,7 +3468,10 @@
   "detail": "cv_strategy or cv_groups_train survive an invalidation. Both ARE popped by reset_downstream_results (utils/session_state.py:330-334) — but NOT by pages/03_Feature_Engineering.py's hand-rolled cascade at 1229-1252. Save FE after preparing a group split and the next standard split silently inherits cv_strategy='group'.",
   "ev": "pages/06:496,507,528 set st.session_state['cv_strategy'] and ['cv_groups_train'] at split time; ml/eval.py:134-157 branches on cv_strategy; pages/06:1559-1560 passes both through.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Both halves closed. The fold scheme is no longer a parallel field that could disagree with the split - it is computed in the same expression that chooses the branch and returned on the Split object, so a group split gets GroupKFold semantics and a time split gets TimeSeriesSplit by construction. And the specific staleness route this row names is gone: pages/03's hand-rolled cascade, which omitted cv_strategy and cv_groups_train, has been replaced by a call to reset_downstream_results with an AST guard against its return. The named test asserts cv_strategy == 'group', that cv_groups_train aligns with X_train, and the leakage promise itself - no subject in both train and test. Duplicate of SWEEP-025 from the state pass.",
+  "test": "tests/integration/test_split_extraction_equivalence.py::test_grouped_split_matches_the_page",
+  "verified_ev": "ml/splits.py:303-330, :393-394 (cv_strategy and cv_groups_train derived inside make_split from the branch actually taken); ml/eval.py:134-157 branches on cv_strategy; pages/03_Feature_Engineering.py:1261-1280 now calls the production cascade so the FE-Save bypass is gone (CONTRACT-002)"
  },
  {
   "id": "STATE-061",
@@ -3478,7 +3481,9 @@
   "detail": "The active dataframe no longer carries the ORIGINAL index labels. train_row_mask returns all-False or a nonsense mask rather than raising. ml/pipeline.py:124 apply_plausibility_filter is the one function in the codebase that resets the index.",
   "ev": "utils/test_lockbox.py:237 train_row_mask(index); applied at pages/04:128 (`mask = df[target_col].notna() & train_row_mask(df.index)`) and pages/03:637,775,910,954 (KBinsDiscretizer, StandardScaler, PCA, UMAP fits).",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "One of the two failure modes is closed and the other is live. The index-renumbering route is gone - apply_plausibility_filter keeps its labels now, so train_row_mask can no longer be handed a frame whose labels mean nothing. But the invariant as WRITTEN covers 'target-association views', and pages/02 never calls train_row_mask at all: the target profile, dose-response trends, the collinearity map, the leakage scan and quick_probe_baselines - which runs its own 80/20 split and fits models - all see the sealed rows (CONTRACT-017). So feature selection and the stateful FE fits honour the invariant and the EDA views do not, which is worse than a uniform gap because the discipline visibly exists one page over.",
+  "verified_ev": "utils/test_lockbox.py:461-472 train_row_mask; applied at pages/04_Feature_Selection.py:128 and at the stateful FE fits in pages/03 (binning, TDA, PCA, UMAP); ml/pipeline.py:109-127 no longer resets the index (STATE-001 FIXED); NOT applied anywhere in pages/02_EDA.py"
  },
  {
   "id": "STATE-062",
@@ -3488,7 +3493,10 @@
   "detail": "Group split or time split is selected (documented, disclosed), OR fewer than 2 lockbox rows survive filtering (pages/06:411-417 falls back to a fresh random split with a warning), OR page 08's seed sensitivity pools train+val+test and re-splits (08:130-141).",
   "ev": "utils/test_lockbox.py module docstring (lines 4-17); pages/06:552-582 (the `elif _lockbox_applicable:` branch); pages/06:391-405 explicitly WARNS and disables the lockbox for group and time splits.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The invariant moved into the engine, which is what makes it closeable. make_split now owns the decision: the sealed labels become THE test set and only train/val are drawn from the rest, with both documented bypasses - a group or time split drawing its own test set, and fewer than 2 sealed or 4 unsealed rows surviving - recorded as notes rather than done silently. pages/06:412-422 no longer decides anything; it passes the labels in and surfaces _split.notes. The named test asserts set(split.test_labels) == set(the sealed labels) by LABEL, and Split.assert_disjoint enforces the partition for every branch. The exploratory bypass is pinned separately by tests/integration/test_lockbox_split.py, and page 08's pooling is its own row (STATE-013).",
+  "test": "tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page",
+  "verified_ev": "ml/splits.py:250-263 (the lockbox branch, with both documented bypasses producing entries in Split.notes) and :211; pages/06_Train_and_Compare.py:391-423 (the page passes the sealed labels in and only REPORTS what the engine decided); utils/test_lockbox.py:4-17 (the contract)"
  },
  {
   "id": "STATE-063",
@@ -3498,7 +3506,10 @@
   "detail": "_lockbox_applicable is False (group/time/exploratory/too-few-rows) — then thresholds come from the full target distribution including whatever will become the test set.",
   "ev": "pages/06:420-425: `_trim_basis = y[~is_test_row] if _lockbox_applicable else y` and `trim_mask = trim_mask | pd.Series(is_test_row, index=y.index)`.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The invariant is now engine code with its rationale beside it, rather than a page behavior. Trim thresholds are computed from non-test rows whenever the lockbox applies, and sealed rows are OR'd back into the keep mask so trimming can never remove them - which closes both halves at once, the leak and the shrinkage. The equivalence suite pins the whole partition against the page's pre-extraction behavior for the lockbox branch, so a change to the trim basis changes the partition and fails. The row's caveat still holds and is correctly designed for: when the lockbox does not apply (group, time, exploratory, too few rows) the basis IS the full distribution - which is right, because there is no sealed set to protect, and the notes disclose that the lockbox did not apply.",
+  "test": "tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page",
+  "verified_ev": "ml/splits.py:268-280 - basis = y[~is_test_row] if lockbox_applied else y; q_lo/q_hi from that basis; trim_mask = trim_mask | pd.Series(is_test_row, index=y.index) - with the reason in the comment at :271-273 ('otherwise the trim both leaks test-target information and shrinks the sealed set')"
  },
  {
   "id": "STATE-064",
@@ -3508,7 +3519,9 @@
   "detail": "engineered_feature_transforms is stale (it is NOT cleared by reset_downstream_results) or misclassifies (pages/03:26 _build_transform_map keys on column-name string patterns). Also this partition is what misaligns the positional unit/plausibility arrays.",
   "ev": "pages/05:954-972 partitions numeric_features into numeric_features_safe (gets log/power/PCA) and numeric_features_passthrough (imputation + scaling only); ml/pipeline.py:270-287 builds the 'numeric_passthrough' ColumnTransformer branch.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, both weaknesses. The double-transform guard is real and correctly separates already-transformed columns into a passthrough branch - but it depends on engineered_feature_transforms, which survives every reset, so after a data change the guard keeps excluding columns by NAME that no longer exist or are no longer engineered. And the map is built by matching column-name string patterns, so a user-named column that happens to look engineered is silently exempted from log, power and PCA. Note the third consequence this row alone connects: this partition is what makes numeric_features shorter than the list the positional unit and plausibility arrays were built against, which is the misalignment in MINE-001 / STATE-003.",
+  "verified_ev": "pages/05_Preprocess.py partitions numeric_features into a safe set and a passthrough set using engineered_feature_transforms; ml/pipeline.py:270-295 builds the numeric_passthrough branch; engineered_feature_transforms is still NOT cleared by reset_downstream_results (STATE-009); pages/03 _build_transform_map keys on column-name string patterns"
  },
  {
   "id": "STATE-065",
@@ -3518,7 +3531,9 @@
   "detail": "The pipeline contains a transformer that fails sklearn clone() — reconcile clones unconditionally before it knows whether anything drifted. Then EVERY training run raises, not just drifted ones. tests/test_feature_drift.py uses a plain scaler pipeline and cannot catch this.",
   "ev": "ml/pipeline.py:504 reconcile_pipeline_columns; tests/test_feature_drift.py:56-72 covers the drop path and the no-op path; pages/06:1298-1308 warns with the dropped names.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and the row's diagnosis is exact: reconcile clones BEFORE it knows whether anything drifted, so a pipeline containing a transformer that fails clone() raises on EVERY training run rather than on drifted ones - and PlausibilityGate is exactly such a transformer (STATE-002 / TEST-003). So the self-heal-loudly stance inverts into crash-quietly for any project with plausibility bounds configured, because the raise is caught into a transient warning while the manuscript renders complete without cross-validation. The existing test cannot see it: tests/test_feature_drift.py builds a plain scaler pipeline, which clones fine. Fix STATE-002, and add a drift test whose pipeline contains a PlausibilityGate.",
+  "verified_ev": "ml/pipeline.py:512-540 reconcile_pipeline_columns clones unconditionally, before it knows whether anything drifted; tests/test_feature_drift.py covers the drop path and the no-op path with a plain scaler pipeline; pages/06_Train_and_Compare.py:1298-1308 warns with the dropped names"
  },
  {
   "id": "STATE-066",
@@ -3528,7 +3543,9 @@
   "detail": "A key is missed. Already missed today: preprocess_built_model_keys, preprocessing_summary, engineered_feature_transforms, filtered_data. And pages/03:1229-1252 bypasses the function entirely with a drifted hand-rolled copy.",
   "ev": "utils/session_state.py:283 reset_downstream_results() (its own docstring states the rule); tests/workflow/test_state_invalidation.py and tests/integration/test_cascade_invalidation.py assert specific keys are cleared.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "The competing implementation is gone; the key list is still incomplete. pages/03 no longer bypasses the function - all three of its paths route through it and an AST guard fails if that changes - so 'the single source of truth' is true again in the structural sense. WHAT REMAINS is the enumeration: preprocessing_summary still feeds the manuscript's preprocessing paragraph after the pipelines it describes are gone, engineered_feature_transforms still drives the double-transform guard by stale names (STATE-064), filtered_data still shrinks the dataset across resets (STATE-037), and STATE-038 lists nine more that the export path reads. The docstring's rule - any page that introduces a result key must add it here - is still a convention enforced by nothing, which is what TEST-017 and STATE-038 both conclude must become a derived set.",
+  "verified_ev": "pages/03_Feature_Engineering.py:1261-1280 now calls the production cascade (CONTRACT-002 FIXED); utils/session_state.py:372 now clears preprocess_built_model_keys; still missing: preprocessing_summary, engineered_feature_transforms, filtered_data, and the keys listed in STATE-038"
  },
  {
   "id": "STATE-067",
@@ -3538,7 +3555,10 @@
   "detail": "AnalysisProject is made serializable by pickling the sklearn objects instead of storing PreprocessSpec + SplitConfig. The existing save layer already made the right call — do not regress it for convenience.",
   "ev": "utils/session_manager.py:138-162 _NEVER_PERSIST explicitly lists preprocessing_pipeline, preprocessing_pipelines_by_model, fitted_preprocessing_pipelines, all splits and index lists.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "The invariant holds on both sides of the migration and the core has a test for it. The allow-list design is the load-bearing part: a new fitted artifact is dropped by DEFAULT rather than requiring someone to remember to exclude it, so the failure direction is towards losing a derived object rather than persisting one. turbotab/test_project_model.py::test_the_archive_uses_session_managers_schema pins the port rather than a redesign, and test_an_archive_that_is_a_pickle_is_refused keeps the security half. The row's warning is the one to carry into L5's remaining work: making AnalysisProject serializable by pickling sklearn objects instead of storing a PreprocessSpec would regress this for convenience, and turbotab/project.py:155 already chose the spec.",
+  "test": "turbotab/test_project_model.py::test_derivatives_are_not_persisted",
+  "verified_ev": "utils/session_manager.py _NEVER_PERSIST explicitly lists preprocessing_pipeline, preprocessing_pipelines_by_model, fitted_preprocessing_pipelines, trained_models, fitted_estimators, model_results, cv_results and the split arrays; the save is an ALLOW-LIST, so an unlisted key is dropped rather than accidentally saved; turbotab/archive.py ports the same schema"
  },
  {
   "id": "STATE-068",
@@ -3548,7 +3568,9 @@
   "detail": "PlausibilityGate.__init__ (preprocess_operators.py:50-55) converts its lists to np.arrays; OutlierCapping.__init__ (line 79) does `self.params = params or {}`. Add a parametrized test that calls sklearn.base.clone on every transformer in the module — it is three lines and it would have caught both.",
   "ev": "Only by convention and one comment: ml/preprocess_operators.py:13 'Store conversion_factors by reference (no copy) so sklearn clone works.' There is NO test.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD: the rule is stated once, in a comment, on the ONE class that obeys it, and both of its neighbours break it. UnitHarmonizer's docstring says it stores conversion_factors by reference so clone works - and PlausibilityGate three classes down rebuilds its arrays, and OutlierCapping rewrites its own params dict. The action is the cheapest fix in this ledger: a parametrized test that calls clone() on every transformer in the module is about three lines and would have caught both. Its absence is why STATE-002, STATE-065, SWEEP-024 and STATE-059 are all separate live rows - one missing three-line test is upstream of four failures, one of which silently disables cross-validation.",
+  "verified_ev": "ml/preprocess_operators.py:46-56 (PlausibilityGate.__init__ converts both bound lists to np.array) and :78-82 (OutlierCapping does self.params = params or {}); the only statement of the rule is the comment at :13 on UnitHarmonizer; no test calls sklearn.base.clone on anything in the module"
  },
  {
   "id": "STATE-069",
@@ -3558,7 +3580,9 @@
   "detail": "Any step the renderer does not have a branch for. Currently unrendered: power_transform / power_nan_guard, MinMaxScaler, TargetEncoder, OrdinalEncoder, the entire numeric_passthrough branch, and the actual outlier thresholds. Add a round-trip test: build a pipeline from a spec, render it, assert every configured option appears.",
   "ev": "Nothing. ml/pipeline.py:326 get_pipeline_recipe() introspects the fitted object; pages/10:1226 and :1243 paste the string into the report; pages/06:2576 shows it in the UI.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of STATE-008 from the invariant pass, unchanged at HEAD, and this framing states the stake plainly: the recipe string is pasted into the manuscript, so every unrendered step is a silent omission from a Methods section - Yeo-Johnson invisible, MinMax scaling invisible, target and ordinal encoding invisible, the passthrough branch invisible, and outlier capping reported without its thresholds. The design flaw is that an INTROSPECTOR can only report what it has a branch for, so every new option is absent until someone remembers to add one. Render from the PreprocessSpec, where omission is impossible by construction, and add the round-trip test the action names: build a pipeline from a spec, render it, assert every configured option appears.",
+  "verified_ev": "ml/pipeline.py:334-424 get_pipeline_recipe introspects the fitted object; unrendered at HEAD: power_transform and power_nan_guard, MinMaxScaler, TargetEncoder, OrdinalEncoder, the entire numeric_passthrough branch, and the real outlier thresholds (the percentile branch reads lower_percentile, which OutlierCapping never sets); consumed by pages/10_Report_Export.py and pages/06"
  },
  {
   "id": "STATE-070",
@@ -3568,7 +3592,9 @@
   "detail": "Any new target-aware step forgets train_row_mask; or the lockbox is drawn after FE/FS; or the page-06 applicability rule loses one of its two documented bypass tests. Failure is silent — metrics simply get better.",
   "ev": "pages/01 lines 1062-1081 (ensure_lockbox after target/task are fixed); utils/test_lockbox.train_row_mask() gating in 03 (binning 637-649, TDA 775-794, PCA 908-913, UMAP 954-960), 04 (line 128), 05 (probe, line 222); pages/06 lines 393-418 d…",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The 'opened only by page 06' half is now stronger than when this was written - the applicability rule moved into make_split, so no page decides it - and the 'drawn once' half is intact at pages/01. What keeps this OPEN is the middle clause: 'before any target-aware EDA can see it' is FALSE, because pages/02 never calls train_row_mask (CONTRACT-017), and the lockbox is drawn against the ENGINEERED frame once feature engineering exists, so it is not reliably drawn before FE either (STATE-049). The row's own description of the failure is right and worth keeping: it is silent, and the symptom is that metrics simply get better. Five of the six gating sites exist; the sixth is the one that runs first.",
+  "verified_ev": "pages/01_Upload_and_Audit.py:1106 (ensure_lockbox after target and task are fixed); train_row_mask gating present in pages/03 (binning, TDA, PCA, UMAP), pages/04:128 and pages/05:222 - and ABSENT from pages/02_EDA.py; pages/06:391-423 owns the applicability rule, now delegated to ml/splits.py"
  },
  {
   "id": "STATE-071",
@@ -3578,7 +3604,10 @@
   "detail": "The warnings are treated as UI chrome and dropped during the view rewrite — the bypass then happens with no disclosure, and the manuscript still claims a protected holdout.",
   "ev": "pages/06 lines 395-404 (two 🔓 st.warning blocks) and lines 250-254 (caption when the slider is not lockbox-governed).",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Closed in the way that makes it survive a view rewrite, which is what this row was actually worried about. The disclosures are no longer page chrome that could be dropped: they are produced by the engine as Split.notes, and the page only decides whether to render each one as a warning or an info. So a Feed frontend that renders nothing else still has the bypass text, and a frontend that forgets it is dropping engine output rather than decoration. The branch-priority test pins that group and time really do take precedence over the lockbox, which is the condition that triggers the note. The comment at ml/splits.py:211 states the rule directly: the bypass is disclosed in Split.notes rather than done silently.",
+  "test": "tests/integration/test_split_extraction_equivalence.py::test_branch_priority_is_group_then_time_then_lockbox",
+  "verified_ev": "ml/splits.py:250-263 - the ENGINE appends the bypass disclosures to Split.notes ('...so the upload lockbox does not apply to this split', and the fallback note when too few sealed rows survive); pages/06_Train_and_Compare.py:419-423 renders _split.notes as warnings, choosing warning over info by matching 'does not apply' or 'falling back'"
  },
  {
   "id": "STATE-072",
@@ -3588,7 +3617,9 @@
   "detail": "Anyone 'simplifies' the OR to the live toggle, or clears exploratory_used outside the reset. Toggling exploratory off would then launder full-data feature selection into a clean-looking manuscript.",
   "ev": "pages/01 _on_exploratory_toggle (line 1111) sets exploratory_used; only utils/session_state.reset_downstream_results pops it (final lines); pages/10 _build_manuscript_context lines 469-470 reads `exploratory_mode OR exploratory_used`.",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of STATE-040 from the invariant pass, unchanged at HEAD, and this framing names the exact laundering path: the OR at pages/10 is correct and the stickiness it depends on is not. exploratory_used is popped by EVERY reset, including the one the toggle itself calls with clear_feature_engineering=False - so turning exploratory mode back ON keeps df_engineered, which was fitted with the test rows visible, and removes the watermark that would have disclosed it. Nobody has to 'simplify the OR' for this to fail; the reset does it. Make the flag monotone - clearable only by a full data reset - or, better, tag each artifact with the quarantine state it was produced under and let the manuscript ask the artifacts rather than a single session flag.",
+  "verified_ev": "utils/session_state.py:474 - st.session_state.pop('exploratory_used', None), unconditional and outside every flag block; pages/01_Upload_and_Audit.py's toggle sets it and calls reset_downstream_results(clear_feature_engineering=False); pages/10_Report_Export.py reads exploratory_mode OR exploratory_used"
  },
  {
   "id": "STATE-073",
@@ -3598,7 +3629,9 @@
   "detail": "The hash drops the target or task component (the comment at 1043-1046 records that exact historical bug: a target swap kept the previous outcome's models, metrics, and SHAP alive under the new outcome's name).",
   "ev": "pages/01 lines 1042-1060: md5 over sorted(feature_cols) + '|target=' + target + '|task=' + task_type → reset_downstream_results(clear_feature_engineering=False).",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "The invariant is implemented correctly at HEAD - the signature covers features, target and task type, and the comment records the exact bug it was added for, a target swap that kept the old outcome's models, metrics and SHAP alive under the new outcome's name. It stays OPEN because nothing guards it: every test fixture computes a FEATURES-ONLY hash (tests/conftest.py, tests/integration/conftest.py which narrows further to numeric features, tests/workflow/conftest.py and test_state_invalidation), so no test can produce the target-swap or task-swap transition, and no test asserts the signature differs across them. The signature is also inline in a page rather than an importable function, so there is nothing to test directly. Extract config_signature() and assert the three transitions.",
+  "verified_ev": "pages/01_Upload_and_Audit.py:1079-1090 - md5 over ','.join(sorted(feature_cols)) + '|target=' + target_col + '|task=' + task_type, then reset_downstream_results(clear_feature_engineering=False), with the historical bug recorded in the comment at :1075-1078; all four test fixtures hash FEATURES ONLY (TEST-002)"
  },
  {
   "id": "STATE-074",
@@ -3608,7 +3641,9 @@
   "detail": "Already partially broken: pages/03 lines 1229-1250 hand-rolls a 22-key competing cascade that omits the ledger rollback, the provenance sections, coach_probe_result, and exploratory_used. Any second copy drifts.",
   "ev": "utils/session_state.reset_downstream_results docstring and body (pipelines, splits, targets, models, 11 analysis keys, report artifacts, coach probe, provenance sections, ledger rollback+prune, exploratory_used).",
   "act": "preserve",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "The 'second copy' half is closed and the 'every new key is registered' half is not. The 22-key competing cascade in pages/03 is gone - it omitted the ledger rollback, the provenance sections, coach_probe_result and exploratory_used, and all four now happen because the page calls the real function - and an AST guard fails if any page starts hand-clearing a cascade-owned key again, so a third copy cannot appear quietly. WHAT REMAINS is that registration is still a convention: the docstring asks every page introducing a result key to add it here, nothing enforces that, and several keys are missing today (STATE-066). Deriving the clear-set from a declared result registry is the change that closes this, and turbotab/cascade.py is the registry that exists but is not yet authoritative.",
+  "verified_ev": "pages/03_Feature_Engineering.py:1261-1280 now calls reset_downstream_results (CONTRACT-002 / STATE-006 / STATE-039 FIXED), with tests/integration/test_cascade_dag_equivalence.py::test_page_03_no_longer_hand_rolls_its_own_cascade guarding the return; the key list itself is still incomplete (STATE-066, STATE-038)"
  },
  {
   "id": "STATE-075",
