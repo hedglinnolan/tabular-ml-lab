@@ -102,6 +102,12 @@ class Question:
     confidence: Optional[str] = None
     severity: Optional[str] = None
     options: List[str] = field(default_factory=list)
+    # Who consumes this answer, and what for. DESIGN_LANGUAGE §09: "Every FACT
+    # carries a 'Why we ask' disclosure that names who consumes the answer and
+    # what for. A FACT that cannot state its consumer is a question we have no
+    # right to ask." Held on the Question rather than written into the page, so
+    # `audit()` can refuse a plan that asks one without it.
+    consumer: Optional[str] = None
 
     # asked | skipped | deferred — every one of which is visible in the
     # transcript. There is no fourth state, because a question that is neither
@@ -133,6 +139,7 @@ class Question:
             "status": self.status, "skip_reason": self.skip_reason,
             "defer_target": self.defer_target, "deferred_from": self.deferred_from,
             "options": list(self.options),
+            "consumer": self.consumer,
         }
 
 
@@ -140,6 +147,15 @@ class Question:
 # word, and `ARCHITECTURE.md` records that only `pages/02` ever emitted it — the
 # coach cannot gate. Now the Router can.
 BLOCKER_SEVERITIES = frozenset({"blocker"})
+
+# The three types of DESIGN_LANGUAGE §09, by the `kind` this module already
+# used. FACT is a question of fact — the lightest object on screen, answered;
+# CHOICE is a repair, decided; CONSEQUENCE is a blocker, resolved or attested.
+# Named here so the audit rules can speak in the design language's vocabulary
+# rather than re-listing kinds at each site.
+FACT_KINDS = frozenset({"target", "task_type"})
+CHOICE_KINDS = frozenset({"repair"})
+CONSEQUENCE_KINDS = frozenset({"blocker"})
 
 
 def _skip_is_permitted(confidence: Optional[str], kind: str) -> bool:
@@ -256,6 +272,14 @@ def plan(
             why=("Pick the column your paper is about. Everything after this — "
                  "which findings matter, which models are viable, what the test "
                  "set is drawn against — follows from it."),
+            consumer=(
+                "`ml.triage.detect_task_type` reads this column to decide whether "
+                "the problem is classification or regression; "
+                "`ml.dataset_profile.compute_dataset_profile` uses it to compute "
+                "class balance or target distribution, which is what the model "
+                "coach ranks models against; and the lockbox draws the held-out "
+                "test set stratified on it. Choosing a different column later "
+                "recomputes all three and marks everything below stale."),
             options=["<column>"]))
 
     # ── the task type: a question of FACT, so skippable at high confidence ──
@@ -266,6 +290,13 @@ def plan(
             title=f"Is {target} a {detection.get('detected')} problem?",
             why=" ".join(detection.get("reasons") or []),
             confidence=conf,
+            consumer=(
+                "The answer chooses the whole downstream vocabulary: which "
+                "metrics are computed (AUC and calibration, or R² and residuals), "
+                "which models `ml.model_registry` offers, and whether the split "
+                "is stratified. Getting it wrong does not raise an error — it "
+                "produces a complete set of numbers for a question you did not "
+                "ask."),
             options=["classification", "regression"])
         if _skip_is_permitted(conf, "task_type"):
             q.status = "skipped"
@@ -468,5 +499,13 @@ def audit(questions: Sequence[Question]) -> None:
             raise RouterError(
                 f"{q.key} was deferred with no target step, so it would never "
                 "resurface. Deferral is a disposition, not a discard.")
+        if q.kind in FACT_KINDS and q.mode == "push" and not q.consumer:
+            # DESIGN_LANGUAGE §09: a FACT that cannot name who consumes its
+            # answer is a question we have no right to ask. Enforced here rather
+            # than left to the page, so a new FACT cannot ship without one.
+            raise RouterError(
+                f"{q.key} is a question of fact with no stated consumer. A FACT "
+                "must be able to name what reads its answer and what changes as "
+                "a result; one that cannot is a question we have no right to ask.")
         if not q.is_visible:
             raise RouterError(f"{q.key} is not visible in the transcript.")

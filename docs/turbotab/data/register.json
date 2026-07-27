@@ -542,5 +542,13 @@
   "classic": "(none) - Classic renders a leakage warning box in the same style as every other warning",
   "state": "guided-only",
   "reason": "DESIGN_LANGUAGE §09. The costume is what makes the tier legible before a word is read, and it is reserved: --stop, the signal word and the notched square appear in exactly one component, enforced by a test that scans the page for the tokens outside it. Both exits are terminal - Resolve drops the column through import_doctor's own drop_columns repair, Acknowledge records the typed object-specific sentence - and the blocker never re-fires on the same facts afterwards. Classic has no acknowledgment path and no reserved tier; owed to Classic with explore-blocker-acknowledgment at L11."
+ },
+ {
+  "id": "target-why-we-ask",
+  "step": "data-target",
+  "capability": "Every question of fact carries a 'Why we ask' disclosure naming who consumes the answer and what changes; the Router refuses to emit one that cannot",
+  "classic": "pages/01 help tooltips on the target and task-type widgets",
+  "state": "guided-only",
+  "reason": "DESIGN_LANGUAGE §09: 'A FACT that cannot state its consumer is a question we have no right to ask.' Classic's tooltips explain what the control does; they do not name what reads the answer or what changes downstream, which is the part that lets a user judge whether to think hard about it. The text lives on ml.router.Question.consumer and router.audit raises on a pushed question of fact without one, so the rule is enforced where a new question would have to pass it rather than in the page. The Router is shared, so Classic can adopt this by asking instead of computing - the same move readiness already made."
  }
 ]

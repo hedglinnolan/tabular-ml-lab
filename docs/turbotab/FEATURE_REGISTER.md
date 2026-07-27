@@ -7,15 +7,16 @@
 | `both` | exposed in Classic and Guided | 27 |
 | `core` | extracted into the shared core | 4 |
 | `classic-only` | a claim to be justified, never a shrug | 24 |
-| `guided-only` | a debt owed back to Classic | 13 |
+| `guided-only` | a debt owed back to Classic | 14 |
 
-## Data & Target (Classic: pages/01, Step 4) — 23
+## Data & Target (Classic: pages/01, Step 4) — 24
 
 | ID | Capability | Classic | State | Reason |
 |---|---|---|---|---|
 | `audit-binary-text` | Binary-coded text detected as binary, outranking numeric coercion, with a 'read as binary' repair | (none) - import_doctor proposes coerce_numeric for the same column | **guided-only** | GUIDED-001. ml/binary_text.py is engine code and Classic could call it, but pages/01 renders import_doctor.diagnose directly and would show both proposals for one column. The merge lives in turbotab/engine.diagnose because ml/import_doctor.py is frozen as engine-move-only (TRANSITION_PLAN §05) and folding it into diagnose() there would be a behavior change to a frozen file. Owed back to Classic when the freeze lifts. |
 | `audit-preview` | Preview before apply | (none) | **guided-only** | Classic applies straight from a button — the blind consent PRODUCT_VISION §04 argues against. Debt owed to Classic: T0-CLASSIC-001. |
 | `audit-undo` | Undo an applied repair | (none) | **guided-only** | Engine always supported it (apply_fix never mutates); Classic never exposed it. Owed to Classic with the preview. |
+| `target-why-we-ask` | Every question of fact carries a 'Why we ask' disclosure naming who consumes the answer and what changes; the Router refuses to emit one that cannot | pages/01 help tooltips on the target and task-type widgets | **guided-only** | DESIGN_LANGUAGE §09: 'A FACT that cannot state its consumer is a question we have no right to ask.' Classic's tooltips explain what the control does; they do not name what reads the answer or what changes downstream, which is the part that lets a user judge whether to think hard about it. The text lives on ml.router.Question.consumer and router.audit raises on a pushed question of fact without one, so the rule is enforced where a new question would have to pass it rather than in the page. The Router is shared, so Classic can adopt this by asking instead of computing - the same move readiness already made. |
 | `audit-apply-repair` | Apply a proposed repair | 'Suggested Actions' | **both** | import_doctor.apply_fix, same nine fix kinds |
 | `audit-diagnosis` | Structural diagnosis | import_doctor.diagnose | **both** | Same function, same findings — asserted field-for-field by test_findings_match_a_direct_engine_call |
 | `audit-profile` | Dataset profile (types, missingness, cardinality, numeric stats) | Step 3 expanders | **both** | compute_dataset_profile; rendered as one ranked stack rather than six expanders |

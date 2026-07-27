@@ -558,6 +558,26 @@
                  text-transform:uppercase;color:var(--stop);display:block;margin-bottom:5px}
   .attested .said{font-family:var(--serif);font-size:15.5px;line-height:1.5;margin:0}
 
+  /* ——— FACT: the lightest object on screen ———
+     No border, no icon, no background tint of its own — the step card is the
+     container, the question is not. A teal marker sits on the one currently
+     being asked, and on nothing else. */
+  .fact-mark{display:inline-block;width:7px;height:7px;border-radius:50%;
+             background:var(--accent);margin-right:9px;vertical-align:middle}
+  .sub.answered-fact .fact-mark{display:none}
+  .whyask{margin:-6px 0 15px}
+  .whyask summary{display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+                  font-size:12px;font-weight:600;color:var(--muted);list-style:none;
+                  border-bottom:1px dotted var(--line);padding-bottom:1px}
+  .whyask summary::-webkit-details-marker{display:none}
+  .whyask summary::after{content:"›";font-family:var(--mono);font-size:11px;color:var(--faint);
+                         transition:transform .18s ease}
+  .whyask[open] summary::after{transform:rotate(90deg)}
+  .whyask summary:hover{color:var(--accent-ink);border-bottom-color:var(--accent)}
+  .whyask .ans{font-family:var(--serif);font-size:13.5px;line-height:1.6;color:var(--muted);
+               margin:9px 0 0;max-width:62ch;border-left:2px solid var(--line);padding-left:13px}
+  .whyask .ans:empty{display:none}
+
   /* ——— FACT: a rendered skip is muted provenance, never green ——— */
   .skips{display:flex;flex-direction:column;gap:0;border:1px solid var(--line-soft);
          border-radius:10px;background:var(--surface);overflow:hidden}
@@ -775,10 +795,16 @@
         <div class="stepcard" id="card-target">
           <div class="sub" id="sub-target">
             <div class="subhead"><span class="sub-num">01</span></div>
-            <h2>What are you predicting?</h2>
+            <h2><span class="fact-mark" id="targetMark" aria-hidden="true"></span>What are you predicting?</h2>
             <p class="why">Pick the column your paper is about. The task type is read off that column by
               the engine. Nothing is pre-selected here: below <em>high</em> confidence the app is not
               allowed to choose for you, and it cannot know which column matters before you say.</p>
+            <!-- §09: every FACT names who consumes the answer. The text comes
+                 from the Router, which refuses to ask one that cannot. -->
+            <details class="whyask" id="why-target">
+              <summary>Why we ask</summary>
+              <p class="ans" id="why-target-text"></p>
+            </details>
             <div class="answers" id="targetCols"></div>
             <div id="taskOverride"></div>
           </div>
@@ -1498,12 +1524,17 @@
       if (conf !== "high" || P.task_overridden){
         var other = P.task_type === "classification" ? "regression" : "classification";
         ov.innerHTML =
-          '<div class="pull" style="margin-top:14px;">' +
-          "<span>Is that right? It is your call, not the engine's.</span>" +
+          '<details class="whyask" id="why-task" style="margin-top:14px;">' +
+          "<summary>Why we ask</summary>" +
+          '<p class="ans" id="why-task-text"></p></details>' +
+          '<div class="pull" style="margin-top:6px;">' +
+          '<span><span class="fact-mark" aria-hidden="true"></span>' +
+          "Is that right? It is your call, not the engine's.</span>" +
           '<button class="pill" aria-pressed="true" data-task="' + esc(P.task_type) + '" type="button">' +
           "Yes — " + esc(P.task_type) + "</button>" +
           '<button class="pill" aria-pressed="false" data-task="' + esc(other) + '" type="button">' +
           "No — treat it as " + esc(other) + "</button></div>";
+        fillConsumers();
       } else {
         ov.innerHTML = "";
       }
@@ -1571,10 +1602,48 @@
      The Router decides what is asked; the page renders it. Nothing here
      re-derives an order or a skip — those are decisions, and they belong to the
      one component that can be tested for obeying Decision B. */
+  /* The last Data plan, held for the same reason as the Explore one: the
+     "Why we ask" text is the Router's, and the page must not compose one. */
+  var LAST_DATA_PLAN = { questions: [] };
+
+  function consumerFor(key){
+    var out = null;
+    (LAST_DATA_PLAN.questions || []).forEach(function(q){
+      if (q.key === key && q.consumer) out = q.consumer;
+    });
+    return out;
+  }
+
+  /* A FACT that cannot name its consumer is one we have no right to ask, so
+     the disclosure is hidden rather than shown empty. The Router refuses to
+     emit such a question at all; this is the second door on the same rule. */
+  function fillConsumers(){
+    [["choose_target", "why-target"], ["confirm_task_type", "why-task"]]
+      .forEach(function(pair){
+        var box = $(pair[1]), text = consumerFor(pair[0]);
+        if (!box) return;
+        var slot = $(pair[1] + "-text");
+        if (text && slot){
+          slot.innerHTML = esc(text).replace(/`([^`]+)`/g, function(_, m){
+            return '<span class="v">' + esc(m) + "</span>"; });
+          box.style.display = "";
+        } else {
+          box.style.display = "none";
+        }
+      });
+    // The teal marker sits on the one question currently being asked.
+    var mark = $("targetMark");
+    if (mark) mark.style.display = P && P.target ? "none" : "";
+  }
+
   function renderInterview(){
     if (!P) return;
     api("/project/" + P.id + "/interview?step=data")
-      .then(function(plan){ renderSkips(plan); })
+      .then(function(plan){
+        LAST_DATA_PLAN = plan;
+        renderSkips(plan);
+        fillConsumers();
+      })
       .catch(function(){ /* the interview is an overlay on findings, not a gate */ });
 
     if (!P.target) return;
