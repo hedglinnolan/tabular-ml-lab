@@ -1467,7 +1467,9 @@
   "detail": "Two effects. (A) FALLBACK: a model selected in Train & Compare but never configured in Preprocess trains under a different model's entire transform chain — log transform, Yeo-Johnson, PCA, KMeans replacement, scaling — chosen for a model with different assumptions. The only signal is a small '⚠️ No pipeline' badge at pages/06:896, and it is rendered only when `_has_preprocessing` is truthy (06:903). Which model donates its pipeline depends on checkbox render order, so the same project can behave differently between sessions. The manuscript's per-model preprocessing section (pages/10:1223) lists only the CONFIGURED models, so the borrowed one is invisible in the writeup. (B) ALIASING: reconci…",
   "ev": "utils/session_state.py:448-454 (the fallback) and :468 `default_pipeline = pipelines_by_model.get('default') or next(iter(pipelines_by_model.values()), None)` (which model becomes the default). Consumed at pages/06_Train_and_Compare.py:1286…",
   "act": "This is the question the brief asked, and the answer is: keep per-model, DELETE THE GLOBAL. In AnalysisProject, pipeline resolution must be total and explicit — when the interview lands on a model with no spec, the Router asks the question …",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. sibling-of: T0-STRUCT-001. Both halves are intact: (A) a model selected in Train but never configured in Preprocess still silently trains under another model's entire transform chain, and which model donates depends on dict insertion order, i.e. checkbox render order, so the same project can behave differently between sessions; (B) the default is the same object, and pages/06 fits it in place, so two models' fitted pipelines can alias one instance. The manuscript's per-model preprocessing section lists only the CONFIGURED models, so the borrower is invisible in the writeup. PR #145 added disclosure and did not change the root cause. The answer this row asks for is settled in the core - turbotab/project.py:155 keeps per-model pipeline_specs and no global slot - so what remains is deleting the global in Classic, which is L11 work.",
+  "verified_ev": "utils/session_state.py:507-513 (get_preprocessing_pipeline falls back to the global preprocessing_pipeline when model_key is absent from the per-model dict) and :524-534 (set_preprocessing_pipelines picks default_pipeline = pipelines_by_model.get('default') or next(iter(pipelines_by_model.values()), None) and hands back the same OBJECT)"
  },
  {
   "id": "STATE-006",
@@ -1477,7 +1479,10 @@
   "detail": "Saving engineered features clears pipelines, models, and X/y splits — but leaves behind: train_indices/val_indices/test_indices (stale row positions into a dataframe whose column set just changed), feature_names and feature_names_by_model, target_transformer and y_train_original/y_val_original/y_test_original (so a stale log1p inverse can be applied to a fresh untransformed target), cv_strategy and cv_groups_train (a 'group' strategy leaks into a subsequent standard split), preprocess_built_model_keys and preprocessing_summary (page 06 still believes preprocessing exists; page 10's Methods section still describes the deleted pipelines), cv_results, explainability_robustness, and every report…",
   "ev": "pages/03_Feature_Engineering.py:1229-1252 (the block after `st.session_state['engineered_feature_transforms'] = ...`), versus the real thing at utils/session_state.py:283-416.",
   "act": "Replace the block with `reset_downstream_results(clear_feature_engineering=False)` before porting anything. Then, in the rebuild, make invalidation IMPOSSIBLE to hand-roll: AnalysisProject nodes declare `derives_from`, and there is exactly …",
-  "status": "UNVERIFIED"
+  "status": "FIXED",
+  "note": "Duplicate of CONTRACT-002 from the state pass, and closed the same way. The inline block is gone and all three page-03 paths - Save, Reset, Skip - now call the production cascade. The guard is structural: test_page_03_no_longer_hand_rolls_its_own_cascade AST-scans the page's source and fails if it clears any key the cascade owns, so the copy cannot come back quietly; test_the_reconciled_call_clears_what_the_hand_rolled_one_missed pins the fifteen keys the copy used to forget, which is the list this row enumerates.",
+  "test": "tests/integration/test_cascade_dag_equivalence.py::test_page_03_no_longer_hand_rolls_its_own_cascade",
+  "verified_ev": "pages/03_Feature_Engineering.py:1261-1280 (calls reset_downstream_results with explicit flags), :185 and :198 (Reset and Skip route through it too); tests/integration/test_cascade_dag_equivalence.py:177-224"
  },
  {
   "id": "STATE-007",
@@ -1487,7 +1492,9 @@
   "detail": "getattr with a default never raises. record_split() is always told trimming was off with bounds [0.0, 1.0], regardless of what the researcher configured. Meanwhile pages/06:441-458 DOES log the trim correctly to methodology_log, so the two provenance channels disagree and whichever one the Methods generator reads determines whether a published paper discloses that rows were removed from the outcome distribution before splitting. This one is worth fixing before the port simply because the fix is renaming three strings and the consequence is an undisclosed exclusion criterion.",
   "ev": "pages/06_Train_and_Compare.py:704-706: `target_trim_enabled=bool(getattr(split_config, 'trim_target', False)), target_trim_lower=float(getattr(split_config, 'trim_lower', 0.0)), target_trim_upper=float(getattr(split_config, 'trim_upper', 1.…",
   "act": "Rename to the real attributes. Then eliminate the class of bug: provenance recorders should take the SplitConfig object itself (or a typed dict built from it), not string-named getattr lookups. Any getattr(obj, 'literal', default) against a…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD and directly reproducible. The page sets split_config.target_trim_enabled / target_trim_lower / target_trim_upper at :312-316 and reads those same names for its own widget defaults at :279-291 - but the provenance call at :586-588 asks for trim_target / trim_lower / trim_upper, which do not exist, so getattr returns the defaults and record_split is ALWAYS told trimming was off with bounds [0.0, 1.0]. The on-screen caption and the methodology log use the correct fields, so the screen and the manuscript disagree and nothing reconciles them. The consequence is an undisclosed exclusion criterion in a published paper. Three strings, and it should be fixed before the port on that ground alone. The class fix is banning getattr-with-default for reading a typed config: pass the SplitConfig itself.",
+  "verified_ev": "pages/06_Train_and_Compare.py:586-588 - record_split(target_trim_enabled=bool(getattr(split_config,'trim_target',False)), target_trim_lower=float(getattr(split_config,'trim_lower',0.0)), target_trim_upper=float(getattr(split_config,'trim_upper',1.0))) against the REAL attribute names set at :312-316 (target_trim_enabled / target_trim_lower / target_trim_upper) and read correctly at :279,290,291"
  },
  {
   "id": "STATE-008",
@@ -1497,7 +1504,9 @@
   "detail": "The renderer has no branch for: the 'power_transform' / 'log' / 'power_nan_guard' steps in most configurations (only step_name=='log' is handled, so Yeo-Johnson is invisible), MinMaxScaler (only StandardScaler and RobustScaler have branches at :382-385), TargetEncoder and OrdinalEncoder (only OneHotEncoder at :399), and the entire 'numeric_passthrough' transformer (the loop at :341 only matches names 'numeric' and 'categorical'). Worse, the outlier branch reads attributes OutlierCapping never sets: `hasattr(step_transformer, 'lower_percentile')` is always False so percentile capping degrades to the generic 'Outlier treatment (percentile)' with no thresholds, and the mad branch does `getattr(…",
   "ev": "ml/pipeline.py:326-424 get_pipeline_recipe(). Consumed at pages/10_Report_Export.py:1226 and :1243 (manuscript) and pages/06:2576 (UI).",
   "act": "Do not port get_pipeline_recipe as an introspector. Render the recipe from the PreprocessSpec — the spec knows every option by construction, so omissions become impossible rather than merely unlikely. Add a round-trip test: for each option …",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, every omission still present. This is not one bug, it is an introspector trying to be a spec: it re-derives what the pipeline is from the objects it finds, so any option added to build_preprocessing_pipeline is silently absent from the recipe until someone remembers to add a branch. Yeo-Johnson is invisible; MinMax scaling is invisible; target and ordinal encoding are invisible; the entire passthrough-numeric branch is invisible; and percentile capping degrades to the generic 'Outlier treatment (percentile)' with no thresholds because the attribute it reads was never set. The recipe reaches the manuscript, so these are silent omissions from a Methods section. Do not port it - render the recipe from the PreprocessSpec, where omission is impossible by construction, and round-trip test every option.",
+  "verified_ev": "ml/pipeline.py:334-424 get_pipeline_recipe - the transformer loop matches only 'numeric' and 'categorical' (so 'numeric_passthrough', built at :295, is invisible); the numeric step loop handles 'log' but not 'power_transform' (:217) or 'power_nan_guard' (:222); the scaler branch (:389-393) covers StandardScaler and RobustScaler but not MinMaxScaler (:238, :293); the encoder branch (:406-408) covers OneHotEncoder but not TargetEncoder (:256) or OrdinalEncoder (:261); the percentile branch at :373 requires lower_percentile, which OutlierCapping never sets (it stores a params dict, preprocess_operators.py:80)"
  },
  {
   "id": "STATE-009",
@@ -1507,7 +1516,9 @@
   "detail": "After any data change, preprocessing_pipelines_by_model is emptied but preprocess_built_model_keys still lists the old models. pages/06:826 computes `_has_preprocessing = len(_prep_built) > 0 or pipeline is not None` -> True, so the 'you are about to train with unprocessed data' warning at 06:830 is SUPPRESSED exactly when it is needed, and 06:812 re-checks the same model checkboxes. Separately, preprocessing_summary still feeds the manuscript's missing-data/scaling/encoding paragraph (pages/10:632) describing pipelines that no longer exist. And a stale engineered_feature_transforms keeps the double-transform guard excluding columns from log/power/PCA by name after the engineered columns are…",
   "ev": "utils/session_state.py:283-416 (the function; grep it for these three keys — absent). Writers: pages/05:1011, pages/05:1037, pages/03:1227. Readers: pages/06:810 and :825 (`_prep_built` -> `_has_preprocessing`), utils/coaching_ui.py:52, uti…",
   "act": "Add all three to reset_downstream_results now (engineered_feature_transforms belongs in the `if clear_feature_engineering:` block next to engineering_log). Longer term this is the same fix as the DAG: derived state should not be reachable e…",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "One of the three keys is fixed; two are not. preprocess_built_model_keys IS now cleared at utils/session_state.py:372, which closes the worst arm of this row - the 'you are about to train with unprocessed data' warning is no longer suppressed exactly when it is needed. WHAT REMAINS: (1) preprocessing_summary survives every reset and still feeds the manuscript's missing-data / scaling / encoding paragraph via pages/10:651 and ml/publication.py:690, so the Methods section keeps describing pipelines that no longer exist; (2) engineered_feature_transforms survives, so the double-transform guard keeps excluding columns from log/power/PCA by name after the engineered columns are gone. engineered_feature_transforms belongs in the clear_feature_engineering block next to engineering_log - note pages/03:186 already pops it on Reset, so the page knows it is derived and the cascade does not.",
+  "verified_ev": "utils/session_state.py:372 now pops preprocess_built_model_keys; preprocessing_summary (written pages/05_Preprocess.py:1071, read pages/10_Report_Export.py:651 and ml/publication.py:690) and engineered_feature_transforms (written pages/03_Feature_Engineering.py:1259) are still absent from reset_downstream_results"
  },
  {
   "id": "STATE-010",
@@ -1517,7 +1528,9 @@
   "detail": "A variable measured in mg/dL versus mmol/L has ~18x different coefficient scale, so an L1 penalty at a fixed alpha shrinks one and keeps the other purely on units. stability_selection's per-bootstrap `except Exception: continue` (feature_selection.py:252) additionally swallows every failed fit and reports those features at selection probability 0.0 — indistinguishable from 'reliably not selected'. The result flows into consensus_features, into selected_features, into every downstream pipeline, and into the manuscript's variable-selection paragraph. Note also that consensus_threshold is `max(1, len(results) // 2)` (04:280), so running one or two methods makes 'consensus' mean 'any single meth…",
   "ev": "pages/04_Feature_Selection.py:139-141 does median imputation only — no scaler. ml/feature_selection.py:241 `Lasso(alpha=0.01, max_iter=10000, ...)` in stability_selection, and :43 LassoCV in lasso_path_selection.",
   "act": "Insert StandardScaler before the selectors (fit on the training rows the lockbox already isolated), or switch to a standardized-coefficient formulation. Replace the bare `except: continue` with a counted failure that surfaces in FeatureSele…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Feature selection still runs L1 penalties at absolute alphas on UNSCALED features - the page imputes and hands the raw matrix straight to the selectors - so a variable in mg/dL versus mmol/L is shrunk differently by a factor of ~18 purely on units, and which predictors enter the published model depends on measurement units. Worth crediting what IS right here: the page correctly scopes selection to training rows via train_row_mask (:128-131) and discloses the temporary imputation, so the leakage discipline is sound and the scaling is not. Two compounding defects unchanged: stability_selection's per-bootstrap swallow reports failed fits as selection probability 0.0, indistinguishable from 'reliably not selected' (MINE-011); and consensus_threshold = max(1, len//2) means running one or two methods makes 'consensus' mean 'any single method said yes'.",
+  "verified_ev": "pages/04_Feature_Selection.py:137-141 (SimpleImputer(strategy='median') only - no scaler anywhere before the selectors), :280 (consensus_threshold = max(1, len(results) // 2)); ml/feature_selection.py:241 (Lasso(alpha=0.01) in stability_selection) and :252-253 (except Exception: continue)"
  },
  {
   "id": "STATE-011",
@@ -1527,7 +1540,9 @@
   "detail": "Enabling the KMeans option discards every original predictor and trains the model on nothing but 5 distance-to-centroid columns. Shapes stay valid, the pipeline fits, metrics compute, SHAP renders on the cluster columns. The recipe line at ml/pipeline.py:407 says 'KMeans features added: 5 clusters, distances to centroids' — 'added'. Nothing indicates the predictors are gone. Two secondary hazards in the same class: if both add_distances and add_onehot_label are False, transform returns X unchanged, which may be a SPARSE matrix from OneHotEncoder(sparse_output=True) and then hits PCA, which raises TypeError('PCA does not support sparse input'); and __init__ sets self.kmeans_ = None / self.clu…",
   "ev": "ml/feature_steps.py:100-104: comment 'For now, we are replacing X with cluster features (not appending). To append, would need: np.hstack([X, result])' followed by `return result`. UI claim at pages/05_Preprocess.py:784: 'Adds derived colum…",
   "act": "Decide the semantics explicitly and make code and copy agree — most likely np.hstack([X, result]) plus an updated recipe line. Move the None initializations out of __init__ (trailing-underscore attributes must only exist after fit). Add a s…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Enabling the KMeans option still DISCARDS every original predictor and trains on nothing but the cluster features, while the recipe line and the UI both say 'added'. Shapes stay valid, the pipeline fits, metrics compute, and SHAP renders on the cluster columns, so nothing anywhere indicates the predictors are gone - the code and the copy assert opposite things and the copy is the one the researcher reads. The two secondary hazards in the same class are also intact: with both add_distances and add_onehot_label False, transform returns X unchanged and may hand a sparse matrix to PCA (TypeError: PCA does not support sparse input); and the trailing-underscore attributes are initialized in __init__, the same sklearn fitted-marker violation as MINE-006.",
+  "verified_ev": "ml/feature_steps.py:95-104 - the comment 'For now, we are replacing X with cluster features (not appending). To append, would need: np.hstack([X, result])' followed by 'return result'; the recipe line at ml/pipeline.py:413-419 still says 'KMeans features added'; the UI copy at pages/05_Preprocess.py still says 'Adds derived columns'"
  },
  {
   "id": "STATE-012",
@@ -1537,7 +1552,9 @@
   "detail": "It ignores the lockbox entirely, imputes on the full dataset before the split, and returns pre-scaled arrays that bypass the per-model pipeline architecture completely. If the migration moves data_processor.py into the engine wholesale (it also contains get_numeric_columns, which pages/05:110 genuinely depends on), this function arrives with a name that reads as the canonical entry point. Anyone wiring the new backend who calls prepare_data gets a working, plausible, silently-leaking baseline.",
   "ev": "data_processor.py:576-650. Imputes with `X.fillna(X.median())` at :615 and again at :629 BEFORE splitting at :633, then fits a StandardScaler on train. Only caller in the repo: scripts/smoke_check.py:598.",
   "act": "Delete it in the same commit that moves get_numeric_columns. If it must survive for smoke_check, rename it `_legacy_unsafe_prepare_data` and have it emit a warning. Also note get_numeric_columns' own quiet hazard: its 'at least one non-null…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. prepare_data is still a complete, leakage-shaped alternative split path with a name that reads as the canonical entry point, still imputes on the full dataset before splitting, still ignores the lockbox entirely, and still has exactly one caller - a smoke-check script. The migration hazard is precisely its name: data_processor.py also contains get_numeric_columns, which pages/05 genuinely depends on, so the module will be moved, and anyone wiring the new backend who reaches for prepare_data gets a working, plausible, silently-leaking baseline. Delete it in the same commit that moves get_numeric_columns, or rename it _legacy_unsafe_prepare_data and make it warn. Note turbotab/engine.py deliberately did not adopt it - the skeleton went through ml/ directly - so nothing in the core depends on this decision.",
+  "verified_ev": "data_processor.py:576-650 (prepare_data: fillna(X.median()) before the split, then a StandardScaler fit on train, no lockbox anywhere); only caller in the repo is scripts/smoke_check.py:598,605,704"
  },
  {
   "id": "STATE-013",
@@ -1547,7 +1564,9 @@
   "detail": "The pooling is deliberate and commented ('Re-seeding a model on a FIXED split measures only model-internal randomness'), and the reasoning is sound — but the resulting spread is computed against test sets that include rows the lockbox had quarantined, and the manuscript presents it alongside lockbox metrics with no distinction. Combined with the clone landmine, a failure here produces an all-NaN table rather than an error (08:211).",
   "ev": "pages/08_Sensitivity_Analysis.py:130-141 builds X_pool/y_pool from all three partitions, then :150 `_seed_tts(X_pool, y_pool, test_size=_test_frac, random_state=seed)` per seed.",
   "act": "Tag these results in Record with `lockbox_applied=False` and have the manuscript renderer state the distinction. Every metric in the Project should carry the provenance of the split it was computed on — that flag is what lets the Router ref…",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The pooling is still deliberate and still correctly reasoned - re-seeding on a fixed split measures only model-internal randomness - but the resulting spread is computed against test sets that include rows the lockbox quarantined, and the manuscript presents those numbers beside lockbox-derived metrics with no distinction drawn. Note the concat uses ignore_index=True, so the pooled frame is renumbered and the lockbox labels could not be honored even if something wanted to. Nothing is wrong with the METHOD; what is wrong is that the record does not carry which split a number came from. Tag these with lockbox_applied=False in the Record and have the renderer state it - every metric in the Project should carry the provenance of the split it was computed on, and that flag is what lets the Router refuse to mix them.",
+  "verified_ev": "pages/08_Sensitivity_Analysis.py:133-141 (X_pool / y_pool built by concatenating all three partitions with ignore_index=True), :150-154 (_seed_tts(X_pool, y_pool, test_size=_test_frac, random_state=seed) per seed)"
  },
  {
   "id": "STATE-014",
@@ -1557,7 +1576,9 @@
   "detail": "Any future edit that adds or reorders a branch in one block and not the other produces splits whose stored train_indices/test_indices describe a different partition than X_train/X_test — used by Explainability to map rows back to the original dataframe. The mismatch is a wrong-rows-in-the-SHAP-plot bug, not a crash. Additionally the whole block mixes positional and label identity: `original_indices = np.where(mask)[0]` is POSITIONAL while `orig_labels = df.index[mask]` is LABEL-based, and both are live in the same scope; train_indices is stored as positions while the lockbox is labels.",
   "ev": "pages/06_Train_and_Compare.py:349-720. The split arrays are written via set_splits() at :610 or :646; the index lists are written by a SECOND independent branch at :682-693 keyed on the same three conditions.",
   "act": "Extract `build_splits(df, data_config, split_config, lockbox, cohort_detection) -> SplitResult` FIRST, before any frontend work, with SplitResult as one immutable value object written atomically (arrays + index lists + strategy + seed + loc…",
-  "status": "UNVERIFIED"
+  "status": "PARTIAL",
+  "note": "Two of the three claims are closed; the third is not. The 370-line block is out of the button handler and into ml/splits.py as make_split, with SplitSpec in and an immutable Split out; the equivalence suite pins every branch against the page's old behavior, plus branch priority, non-mutation, reproducibility and headless import. And the dual-branch sync hazard is gone - pages/06:551-553 is now ONE expression, df.index.get_indexer(_split.train/val/test_labels), with a comment recording that the per-strategy branches existed only to carry their own index bookkeeping. WHAT REMAINS is the identity half this row also names: the split now reports LABELS but pages/06 still derives and stores POSITIONS from them, and pages/07 still consumes those positions against a freshly fetched frame. See CONTRACT-001 / MINE-014 - this row does not close until the positional keys are dropped.",
+  "verified_ev": "ml/splits.py:59-393 (SplitSpec, Split, choose_strategy, make_split - the four branches, extracted); pages/06_Train_and_Compare.py:392,414 (from ml.splits import ...; _split = make_split(...)); :540-558 (ONE get_indexer expression replacing the second branch block); tests/integration/test_split_extraction_equivalence.py (12 tests incl. all four branches, branch priority, non-mutation, reproducibility, headless import) and tests/integration/test_characterization_split.py"
  },
  {
   "id": "STATE-015",
@@ -1567,7 +1588,9 @@
   "detail": ".get() on a missing key returns None, so the recommendation is simply never appended. No error, no log. The most-needed diagnostic on collinear data is never suggested — and because the panel is the closest existing prototype of the Router, porting it verbatim ports the dead branch.",
   "ev": "pages/02_EDA.py line 1565: `if signals.collinearity_summary.get('high_pairs'):` — ml/eda_recommender.py lines 213 and 221 write `signals.collinearity_summary['high_corr_pairs']` (and page 02 itself reads the correct key at line 262).",
   "act": "Fix to 'high_corr_pairs' BEFORE extraction and add a test that every key read from DatasetSignals exists on the dataclass. Better: make the Router consume typed signal objects, not dict .get().",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD, and the same file gets it right elsewhere: pages/02:297 reads high_corr_pairs correctly for the collinearity card, while :1615 reads high_pairs for the 'Recommended for Your Data' panel. .get() on a missing key returns None, so the VIF/multicollinearity recommendation is simply never appended - no error, no log - and the most-needed diagnostic on collinear data is never suggested. The migration weight of this is that the panel at :1615 is the closest existing prototype of the Router, so porting it verbatim ports the dead branch into the component whose whole justification is asking better questions. Fix the key before extraction and add a test that every key read from DatasetSignals exists on the dataclass; better, make the Router consume typed signals rather than dict .get().",
+  "verified_ev": "pages/02_EDA.py:1615 - if signals.collinearity_summary.get('high_pairs'): - versus ml/eda_recommender.py:216,224 which write 'high_corr_pairs', and pages/02_EDA.py:297 which reads the CORRECT key 60 lines up"
  },
  {
   "id": "STATE-016",
@@ -1577,7 +1600,9 @@
   "detail": "getattr with a default swallows the wrong names. The Methods section generated by NarrativeEngine therefore states no trimming occurred while rows were in fact removed and the prediction population redefined. The on-screen st.info at 06:437-442 and the methodology log at 06:443-459 use the CORRECT fields, so the screen and the manuscript disagree and nobody notices.",
   "ev": "pages/06_Train_and_Compare.py lines 714-716: `target_trim_enabled=bool(getattr(split_config, 'trim_target', False))`, `target_trim_lower=float(getattr(split_config, 'trim_lower', 0.0))`, `target_trim_upper=float(getattr(split_config, 'trim_…",
   "act": "Fix the three attribute names now. During the rebuild, ban getattr-with-default for reading a typed config object — pass the SplitConfig itself.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of STATE-007 from the same pass, confirmed unchanged at HEAD. Recording it separately is right, because the two rows carry different halves of the consequence: STATE-007 names the missing disclosure, this one names the DISAGREEMENT - the screen and the methodology log say trimming happened, the provenance says it did not, and whichever channel the Methods generator reads decides whether a published paper discloses that rows were removed from the outcome distribution before splitting. Nobody notices because both channels look authoritative and neither is compared to the other. Fix the three names now; ban getattr-with-default against a typed config in the rebuild.",
+  "verified_ev": "pages/06_Train_and_Compare.py:586-588 (the three getattr calls) versus :312-316 (where the real attributes are set); the correct fields are used by the on-screen caption at :309 and by the methodology log"
  },
  {
   "id": "STATE-017",
@@ -1587,7 +1612,9 @@
   "detail": "Empty-string default → always the else branch. A regression manuscript claims models were selected by validation Accuracy.",
   "ev": "pages/06_Train_and_Compare.py line 1648: `_task_type = st.session_state.get('task_type', '')` — no code anywhere writes a session key named 'task_type' (task type lives in data_config.task_type and task_type_detection.final). Line 1649 then…",
   "act": "Read data_config.task_type / task_type_detection.final. In TurboTab, task type must be a single Project attribute with exactly one accessor.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. The key is still read and still never written, so _task_type is always '' and the else branch always fires: the value handed to record_training as selection_criteria is 'validation Accuracy' for every project, and a regression manuscript claims its models were selected by validation Accuracy. Note the same function already has the right answer in scope - task_type_final is resolved at :169-175 and used correctly forty lines earlier - so this is a read that reaches for session state when a local was available. Read data_config.task_type or task_type_final; in the rebuild, task type must be one Project attribute with exactly one accessor.",
+  "verified_ev": "pages/06_Train_and_Compare.py:1553 - _task_type = st.session_state.get('task_type', '') then :1554 _selection_metric = 'RMSE' if _task_type == 'regression' else 'Accuracy'; repo-wide, nothing ever writes a session key named 'task_type' (task type lives in data_config.task_type and task_type_detection.final)"
  },
  {
   "id": "STATE-018",
@@ -1597,7 +1624,9 @@
   "detail": "`sensitivity_summary['feature_dropout_conducted']` is never set, so the LaTeX sensitivity section omits it. The seed-stability half of the same summary works, which makes the omission look like a deliberate scope choice rather than a typo.",
   "ev": "pages/08_Sensitivity_Analysis.py line 499 writes `st.session_state['sensitivity_dropout_results']` (and line 500 'sensitivity_dropout_baseline'); pages/10_Report_Export.py line 877 reads `st.session_state.get('sensitivity_feature_dropout')`…",
   "act": "Fix the key; then make the Record own named result slots so a writer/reader mismatch is a type error, not a missing dict entry.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Duplicate of RECORD-006 from the state pass, confirmed unchanged at HEAD. The detail this row adds and RECORD-006 does not: the seed-stability half of the SAME summary dict works, so the omission reads as a deliberate scope choice rather than a typo - a user who ran feature dropout sees a sensitivity section that discusses seeds and simply does not mention dropout, which is exactly what a scoped-down report would look like. Fix the key; then make the Record own named result slots so a writer/reader mismatch is a type error rather than a missing dict entry.",
+  "verified_ev": "pages/08_Sensitivity_Analysis.py:499-500 writes sensitivity_dropout_results / sensitivity_dropout_baseline; pages/10_Report_Export.py:896 reads sensitivity_feature_dropout, a key nothing in the repository writes"
  },
  {
   "id": "STATE-019",
@@ -1607,7 +1636,9 @@
   "detail": "Each read is a .get() with a falsy default, so the section is skipped with no message. The readiness audit reports 'bland_altman: inferred / recomputable' — an honest-sounding claim about a code path that does not exist.",
   "ev": "`bland_altman_results` — read at pages/10 lines 1526-1543 (whole Bland-Altman report section) and 1760-1761 (offered as an explainability method), but written NOWHERE in the repo; pages/07 lines 1077-1098 computes Bland-Altman and discards …",
   "act": "Decide per feature: persist it (pages 07's BA and subgroup results are computed and thrown away) or delete the reader. Do not port a consumer whose producer is missing — the rebuild will look feature-complete and ship empty sections.",
-  "status": "UNVERIFIED"
+  "status": "OPEN",
+  "note": "Unchanged at HEAD. Three report sections are still permanently dead, each behind a .get() with a falsy default, so the section is skipped with no message. The Bland-Altman case is the clearest: pages/07 computes the analysis and throws it away, pages/10 has a whole report section and an explainability-method offer waiting for a key nobody writes, and the readiness audit reports 'bland_altman: inferred / recomputable' - an honest-sounding claim about a code path that does not exist. That last part is the governing rule broken by the audit itself. Decide per feature: persist what pages/07 already computes, or delete the reader. The rule for the rebuild is the general one - do not port a consumer whose producer is missing, or the new app looks feature-complete and ships empty sections.",
+  "verified_ev": "bland_altman_results read at pages/10_Report_Export.py:1545-1553 and :1792 and ml/publication.py:1174, written NOWHERE in the repository; pages/07_Explainability.py computes Bland-Altman and discards it"
  },
  {
   "id": "STATE-020",

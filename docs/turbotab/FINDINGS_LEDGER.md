@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**29 of 402 closed.**
+**30 of 402 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `UNVERIFIED` | 265 |
-| `OPEN` | 96 |
-| `PARTIAL` | 12 |
-| `FIXED` | 29 |
+| `UNVERIFIED` | 250 |
+| `OPEN` | 108 |
+| `PARTIAL` | 14 |
+| `FIXED` | 30 |
 
 ---
 
-## OPEN — 96
+## OPEN — 108
 
 
 ### Coach to Router — 19
@@ -102,6 +102,26 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
+### Application state / lockbox — 15
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `STATE-002` | landmine | PlausibilityGate cannot be sklearn-cloned. It mutates its constructor parameters in __init__, violating the sklearn clone identity contract — and reconcile_pipeline_columns clones UNCONDITIONALLY on… | `ml/preprocess_operators.py:50-55 `self.lower_bounds = np.array([np.nan if v is None else float(v) for v in…` | Unchanged at HEAD. sibling-of: TEST-003 - the same defect from the state pass, and this row carries the consequence chain the other does not. reconcile_pipeline_columns clones… |
+| `STATE-003` | landmine | unit_harmonization_factors and plausibility_bounds are POSITIONAL lists aligned to the full numeric_features, but pages/05 passes a FILTERED numeric_features to build_preprocessing_pipeline.… | `Built against the full list: ml/pipeline.py:45 `for col in numeric_features`…` | Unchanged at HEAD. sibling-of: MINE-001 - the positional-alignment class from the state pass, and this row names the asymmetry that makes it dangerous. UnitHarmonizer fails LOUDLY… |
+| `STATE-004` | landmine | The pipelines stored in preprocessing_pipelines_by_model are FITTED ON THE FULL DATASET at build time — including the lockbox test rows — and they are what gets exported as the reproducibility… | `Fit on all rows: pages/05_Preprocess.py:945 `temp_pipeline.fit(X_sample)` and :999 `pipeline.fit(X_sample)`…` | Unchanged at HEAD, both failures. (1) The exported joblib is not the pipeline the model was trained with: pages/05 fits on all rows and stores that in… |
+| `STATE-005` | landmine | get_preprocessing_pipeline(model_key) silently falls back to an arbitrary other model's pipeline, and returns a SHARED MUTABLE OBJECT that the caller then fits in place. | `utils/session_state.py:448-454 (the fallback) and :468 `default_pipeline = pipelines_by_model.get('default')…` | Unchanged at HEAD. sibling-of: T0-STRUCT-001. Both halves are intact: (A) a model selected in Train but never configured in Preprocess still silently trains under another model's… |
+| `STATE-007` | landmine | Split provenance reads three attributes that SplitConfig does not have, so target trimming is never recorded in the Methods section. | `pages/06_Train_and_Compare.py:704-706: `target_trim_enabled=bool(getattr(split_config, 'trim_target'…` | Unchanged at HEAD and directly reproducible. The page sets split_config.target_trim_enabled / target_trim_lower / target_trim_upper at :312-316 and reads those same names for its… |
+| `STATE-008` | landmine | The pipeline recipe rendered into the manuscript omits or misreports real preprocessing steps, including reporting the WRONG outlier threshold. | `ml/pipeline.py:326-424 get_pipeline_recipe(). Consumed at pages/10_Report_Export.py:1226 and :1243…` | Unchanged at HEAD, every omission still present. This is not one bug, it is an introspector trying to be a spec: it re-derives what the pipeline is from the objects it finds, so… |
+| `STATE-010` | landmine | Feature selection runs LASSO with absolute alphas on UNSCALED features, so which predictors enter the published model depends on each variable's measurement unit. | `pages/04_Feature_Selection.py:139-141 does median imputation only — no scaler. ml/feature_selection.py:241…` | Unchanged at HEAD. Feature selection still runs L1 penalties at absolute alphas on UNSCALED features - the page imputes and hands the raw matrix straight to the selectors - so a… |
+| `STATE-011` | landmine | KMeansFeatures REPLACES the feature matrix with cluster features rather than appending them — the opposite of what the UI tells the researcher. | `ml/feature_steps.py:100-104: comment 'For now, we are replacing X with cluster features (not appending). To…` | Unchanged at HEAD. Enabling the KMeans option still DISCARDS every original predictor and trains on nothing but the cluster features, while the recipe line and the UI both say… |
+| `STATE-012` | landmine | data_processor.prepare_data is a complete, leakage-shaped alternative split path that no page uses — and it looks exactly like the API someone would reach for during the rebuild. | `data_processor.py:576-650. Imputes with `X.fillna(X.median())` at :615 and again at :629 BEFORE splitting at…` | Unchanged at HEAD. prepare_data is still a complete, leakage-shaped alternative split path with a name that reads as the canonical entry point, still imputes on the full dataset… |
+| `STATE-013` | landmine | Seed sensitivity pools train+val+test and re-splits, dissolving the lockbox for numbers that appear beside lockbox-derived metrics. | `pages/08_Sensitivity_Analysis.py:130-141 builds X_pool/y_pool from all three partitions, then :150…` | Unchanged at HEAD. The pooling is still deliberate and still correctly reasoned - re-seeding on a fixed split measures only model-internal randomness - but the resulting spread is… |
+| `STATE-015` | landmine | Dead recommendation: the VIF/multicollinearity entry in EDA's 'Recommended for Your Data' router panel can never fire — it reads a key that is never written. | `pages/02_EDA.py line 1565: `if signals.collinearity_summary.get('high_pairs'):` — ml/eda_recommender.py lines…` | Unchanged at HEAD, and the same file gets it right elsewhere: pages/02:297 reads high_corr_pairs correctly for the collinearity card, while :1615 reads high_pairs for the… |
+| `STATE-016` | landmine | Provenance always records target trimming as DISABLED, with thresholds 0.0/1.0, no matter what the user chose. | `pages/06_Train_and_Compare.py lines 714-716: `target_trim_enabled=bool(getattr(split_config, 'trim_target'…` | Duplicate of STATE-007 from the same pass, confirmed unchanged at HEAD. Recording it separately is right, because the two rows carry different halves of the consequence: STATE-007… |
+| `STATE-017` | landmine | The manuscript's stated model-selection criterion is always 'validation Accuracy', even for regression. | `pages/06_Train_and_Compare.py line 1648: `_task_type = st.session_state.get('task_type', '')` — no code…` | Unchanged at HEAD. The key is still read and still never written, so _task_type is always '' and the else branch always fires: the value handed to record_training as… |
+| `STATE-018` | landmine | Feature-dropout results never reach the manuscript: writer and reader use different session keys. | `pages/08_Sensitivity_Analysis.py line 499 writes `st.session_state['sensitivity_dropout_results']` (and line…` | Duplicate of RECORD-006 from the state pass, confirmed unchanged at HEAD. The detail this row adds and RECORD-006 does not: the seed-stability half of the SAME summary dict works… |
+| `STATE-019` | landmine | Three report sections are permanently dead because nothing ever writes their session keys. | ``bland_altman_results` — read at pages/10 lines 1526-1543 (whole Bland-Altman report section) and 1760-1761…` | Unchanged at HEAD. Three report sections are still permanently dead, each behind a .get() with a falsy default, so the section is skipped with no message. The Bland-Altman case is… |
+
 ### Silent-failure landmines — 13
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -168,17 +188,9 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-006` | critical | _log_to_ledger swallows every exception | `utils/session_state.py:655-656` | Unchanged at HEAD: _log_to_ledger still ends 'except Exception: pass # Never break methodology logging if ledger has issues'. Any Insight schema drift stops methodology decisions… |
 | `CONTRACT-007` | critical | reset_downstream_results reaches into the ledger and rolls back resolutions by page name | `utils/session_state.py:396-410; utils/insight_ledger.py:803-836` | Unchanged at HEAD. reset_downstream_results still mutates the Record by hard-coded page-name string sets - {'05_Preprocess','06_Train_and_Compare','07_Explainability','08_Sensitivi… |
 
-### Application state / lockbox — 3
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `STATE-002` | landmine | PlausibilityGate cannot be sklearn-cloned. It mutates its constructor parameters in __init__, violating the sklearn clone identity contract — and reconcile_pipeline_columns clones UNCONDITIONALLY on… | `ml/preprocess_operators.py:50-55 `self.lower_bounds = np.array([np.nan if v is None else float(v) for v in…` | Unchanged at HEAD. sibling-of: TEST-003 - the same defect from the state pass, and this row carries the consequence chain the other does not. reconcile_pipeline_columns clones… |
-| `STATE-003` | landmine | unit_harmonization_factors and plausibility_bounds are POSITIONAL lists aligned to the full numeric_features, but pages/05 passes a FILTERED numeric_features to build_preprocessing_pipeline.… | `Built against the full list: ml/pipeline.py:45 `for col in numeric_features`…` | Unchanged at HEAD. sibling-of: MINE-001 - the positional-alignment class from the state pass, and this row names the asymmetry that makes it dangerous. UnitHarmonizer fails LOUDLY… |
-| `STATE-004` | landmine | The pipelines stored in preprocessing_pipelines_by_model are FITTED ON THE FULL DATASET at build time — including the lockbox test rows — and they are what gets exported as the reproducibility… | `Fit on all rows: pages/05_Preprocess.py:945 `temp_pipeline.fit(X_sample)` and :999 `pipeline.fit(X_sample)`…` | Unchanged at HEAD, both failures. (1) The exported joblib is not the pipeline the model was trained with: pages/05 fits on all rows and stores that in… |
-
 ---
 
-## PARTIAL — 12
+## PARTIAL — 14
 
 
 ### Verified against main — 3
@@ -212,6 +224,13 @@ Nothing is closed without a regression test named after it.
 | `TEST-006` | critical | 21 of 65 keys that reset_downstream_results actually clears are asserted by no test in any suite | `utils/session_state.py:301-415 (65 keys) vs tests/test_review_fixes.py:141-152…` | All 21 named keys are now asserted; the drift guard the action asked for is one-sided. Every key this row listed as unasserted is now covered - 19 directly by FULL_RESET_KEYS in… |
 | `TEST-009` | critical | ml.triage.detect_task_type is the Router's foundation and has zero coverage | `ml/triage.py:10, :102; consumed via pages/01 task_type_detection and DataConfig.task_type` | Half the row is closed. detect_task_type is no longer uncovered - turbotab/test_skeleton.py pins the text/object, string-dtype, category and boolean branches, asserts the… |
 
+### Application state / lockbox — 2
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `STATE-009` | landmine | reset_downstream_results() does not clear preprocess_built_model_keys, preprocessing_summary, or engineered_feature_transforms, so three consumers keep describing deleted work. | `utils/session_state.py:283-416 (the function; grep it for these three keys — absent). Writers: pages/05:1011…` | One of the three keys is fixed; two are not. preprocess_built_model_keys IS now cleared at utils/session_state.py:372, which closes the worst arm of this row - the 'you are about… |
+| `STATE-014` | landmine | The 370-line split builder — the single most leakage-sensitive function in the app — lives inside a Streamlit button handler with zero unit tests, and writes its outputs through two separate… | `pages/06_Train_and_Compare.py:349-720. The split arrays are written via set_splits() at :610 or :646; the…` | Two of the three claims are closed; the third is not. The 370-line block is out of the button handler and into ml/splits.py as make_split, with SplitSpec in and an immutable Split… |
+
 ### Coach to Router — 1
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -220,28 +239,13 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## UNVERIFIED — 265
+## UNVERIFIED — 250
 
 
-### Application state / lockbox — 92
+### Application state / lockbox — 77
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `STATE-005` | landmine | get_preprocessing_pipeline(model_key) silently falls back to an arbitrary other model's pipeline, and returns a SHARED MUTABLE OBJECT that the caller then fits in place. | `utils/session_state.py:448-454 (the fallback) and :468 `default_pipeline = pipelines_by_model.get('default')…` | This is the question the brief asked, and the answer is: keep per-model, DELETE THE GLOBAL. In AnalysisProject, pipeline resolution must be total and explicit — when the interview… |
-| `STATE-006` | landmine | pages/03_Feature_Engineering.py hand-rolls its own cascade invalidation instead of calling reset_downstream_results(), and the copy has drifted. | `pages/03_Feature_Engineering.py:1229-1252 (the block after `st.session_state['engineered_feature_transforms']…` | Replace the block with `reset_downstream_results(clear_feature_engineering=False)` before porting anything. Then, in the rebuild, make invalidation IMPOSSIBLE to hand-roll… |
-| `STATE-007` | landmine | Split provenance reads three attributes that SplitConfig does not have, so target trimming is never recorded in the Methods section. | `pages/06_Train_and_Compare.py:704-706: `target_trim_enabled=bool(getattr(split_config, 'trim_target'…` | Rename to the real attributes. Then eliminate the class of bug: provenance recorders should take the SplitConfig object itself (or a typed dict built from it), not string-named… |
-| `STATE-008` | landmine | The pipeline recipe rendered into the manuscript omits or misreports real preprocessing steps, including reporting the WRONG outlier threshold. | `ml/pipeline.py:326-424 get_pipeline_recipe(). Consumed at pages/10_Report_Export.py:1226 and :1243…` | Do not port get_pipeline_recipe as an introspector. Render the recipe from the PreprocessSpec — the spec knows every option by construction, so omissions become impossible rather… |
-| `STATE-009` | landmine | reset_downstream_results() does not clear preprocess_built_model_keys, preprocessing_summary, or engineered_feature_transforms, so three consumers keep describing deleted work. | `utils/session_state.py:283-416 (the function; grep it for these three keys — absent). Writers: pages/05:1011…` | Add all three to reset_downstream_results now (engineered_feature_transforms belongs in the `if clear_feature_engineering:` block next to engineering_log). Longer term this is the… |
-| `STATE-010` | landmine | Feature selection runs LASSO with absolute alphas on UNSCALED features, so which predictors enter the published model depends on each variable's measurement unit. | `pages/04_Feature_Selection.py:139-141 does median imputation only — no scaler. ml/feature_selection.py:241…` | Insert StandardScaler before the selectors (fit on the training rows the lockbox already isolated), or switch to a standardized-coefficient formulation. Replace the bare `except… |
-| `STATE-011` | landmine | KMeansFeatures REPLACES the feature matrix with cluster features rather than appending them — the opposite of what the UI tells the researcher. | `ml/feature_steps.py:100-104: comment 'For now, we are replacing X with cluster features (not appending). To…` | Decide the semantics explicitly and make code and copy agree — most likely np.hstack([X, result]) plus an updated recipe line. Move the None initializations out of __init__… |
-| `STATE-012` | landmine | data_processor.prepare_data is a complete, leakage-shaped alternative split path that no page uses — and it looks exactly like the API someone would reach for during the rebuild. | `data_processor.py:576-650. Imputes with `X.fillna(X.median())` at :615 and again at :629 BEFORE splitting at…` | Delete it in the same commit that moves get_numeric_columns. If it must survive for smoke_check, rename it `_legacy_unsafe_prepare_data` and have it emit a warning. Also note… |
-| `STATE-013` | landmine | Seed sensitivity pools train+val+test and re-splits, dissolving the lockbox for numbers that appear beside lockbox-derived metrics. | `pages/08_Sensitivity_Analysis.py:130-141 builds X_pool/y_pool from all three partitions, then :150…` | Tag these results in Record with `lockbox_applied=False` and have the manuscript renderer state the distinction. Every metric in the Project should carry the provenance of the… |
-| `STATE-014` | landmine | The 370-line split builder — the single most leakage-sensitive function in the app — lives inside a Streamlit button handler with zero unit tests, and writes its outputs through two separate… | `pages/06_Train_and_Compare.py:349-720. The split arrays are written via set_splits() at :610 or :646; the…` | Extract `build_splits(df, data_config, split_config, lockbox, cohort_detection) -> SplitResult` FIRST, before any frontend work, with SplitResult as one immutable value object… |
-| `STATE-015` | landmine | Dead recommendation: the VIF/multicollinearity entry in EDA's 'Recommended for Your Data' router panel can never fire — it reads a key that is never written. | `pages/02_EDA.py line 1565: `if signals.collinearity_summary.get('high_pairs'):` — ml/eda_recommender.py lines…` | Fix to 'high_corr_pairs' BEFORE extraction and add a test that every key read from DatasetSignals exists on the dataclass. Better: make the Router consume typed signal objects… |
-| `STATE-016` | landmine | Provenance always records target trimming as DISABLED, with thresholds 0.0/1.0, no matter what the user chose. | `pages/06_Train_and_Compare.py lines 714-716: `target_trim_enabled=bool(getattr(split_config, 'trim_target'…` | Fix the three attribute names now. During the rebuild, ban getattr-with-default for reading a typed config object — pass the SplitConfig itself. |
-| `STATE-017` | landmine | The manuscript's stated model-selection criterion is always 'validation Accuracy', even for regression. | `pages/06_Train_and_Compare.py line 1648: `_task_type = st.session_state.get('task_type', '')` — no code…` | Read data_config.task_type / task_type_detection.final. In TurboTab, task type must be a single Project attribute with exactly one accessor. |
-| `STATE-018` | landmine | Feature-dropout results never reach the manuscript: writer and reader use different session keys. | `pages/08_Sensitivity_Analysis.py line 499 writes `st.session_state['sensitivity_dropout_results']` (and line…` | Fix the key; then make the Record own named result slots so a writer/reader mismatch is a type error, not a missing dict entry. |
-| `STATE-019` | landmine | Three report sections are permanently dead because nothing ever writes their session keys. | ``bland_altman_results` — read at pages/10 lines 1526-1543 (whole Bland-Altman report section) and 1760-1761…` | Decide per feature: persist it (pages 07's BA and subgroup results are computed and thrown away) or delete the reader. Do not port a consumer whose producer is missing — the… |
 | `STATE-020` | landmine | The Baseline Comparison table never appears in the exported markdown report. | `pages/10_Report_Export.py line 1337: `_baselines_for_report = (export_ctx.get('manuscript_context') or…` | Pass the bundle explicitly. Structurally: export_ctx and manuscript_context are two overlapping snapshots of the same state — collapse them into one Record view during the rebuild. |
 | `STATE-021` | landmine | The methods-section fallback can never build a missing-data summary from the audit, because it reads an audit key page 01 does not produce. | `pages/10_Report_Export.py lines 732, 754: `data_audit['missing_counts']`. pages/01_Upload_and_Audit.py builds…` | Delete the two dead branches; keep the recompute. Then make the audit a typed artifact so 'which keys does the audit have' is answerable without grep. |
 | `STATE-022` | landmine | Statistical-test provenance loses the variable and the statistic for every test. | `pages/10_Report_Export.py lines 892-896 read `details.get('test_name')`, `details.get('variable', 'unknown…` | Normalize the statistical-test record at write time (one StatTest record type used by all six branches), not at read time. |
@@ -530,7 +534,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 29
+## FIXED — 30
 
 
 ### Verified against main — 14
@@ -577,6 +581,13 @@ Nothing is closed without a regression test named after it.
 | `MODELS-001` | landmine | SklearnCompatibleNNRegressor.fit() and SklearnCompatibleNNClassifier.fit() do not train. They set is_fitted_=True, record n_features_in_ (and classes_), and return self. Any sklearn utility that… | `models/nn_whuber.py:115-128 (regressor) and 174-188 (classifier); reachable through…` | **test:** `tests/test_characterization_wrappers.py::test_clone_and_refit_now_raises_instead_of_answering_from_the_old_model` — Closed the right way round. fit() no longer marks… |
 | `MODELS-005` | landmine | The 'Cancel Training' button is decorative — st.session_state.cancel_training is written and NEVER read anywhere in the codebase. | `pages/06_Train_and_Compare.py:1252-1253 (init), 1263-1264 (set to True). grep for 'cancel_training' across…` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Closed by removal plus an honest replacement, which is the right shape. The decorative… |
 
+### Application state / lockbox — 2
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `STATE-001` | landmine | apply_plausibility_filter calls reset_index(drop=True), and its output becomes the app's active dataframe — which silently voids the test lockbox for every downstream step. | `ml/pipeline.py:124 `return df.loc[mask].reset_index(drop=True)` -> pages/05_Preprocess.py:863…` | **test:** `tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given` — Closed, and closed at the source rather than at the consumer.… |
+| `STATE-006` | landmine | pages/03_Feature_Engineering.py hand-rolls its own cascade invalidation instead of calling reset_downstream_results(), and the copy has drifted. | `pages/03_Feature_Engineering.py:1229-1252 (the block after `st.session_state['engineered_feature_transforms']…` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_page_03_no_longer_hand_rolls_its_own_cascade` — Duplicate of CONTRACT-002 from the state pass, and closed the… |
+
 ### Silent-failure landmines — 1
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -600,9 +611,3 @@ Nothing is closed without a regression test named after it.
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `RECORD-009` | landmine | ml/narrative_engine.py, ml/manuscript_validator.py and ml/latex_report.py all require streamlit AT IMPORT TIME, transitively, because utils/insight_ledger.py has `import streamlit as st` at module… | `ml/narrative_engine.py:25 `from utils.insight_ledger import InsightLedger, MODEL_DISPLAY_NAMES`…` | **test:** `tests/test_engine_is_headless.py::test_no_core_module_needs_streamlit_to_import` — Closed, and the fix is exactly the one this row proposed. The module-level 'import… |
-
-### Application state / lockbox — 1
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `STATE-001` | landmine | apply_plausibility_filter calls reset_index(drop=True), and its output becomes the app's active dataframe — which silently voids the test lockbox for every downstream step. | `ml/pipeline.py:124 `return df.loc[mask].reset_index(drop=True)` -> pages/05_Preprocess.py:863…` | **test:** `tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given` — Closed, and closed at the source rather than at the consumer.… |
