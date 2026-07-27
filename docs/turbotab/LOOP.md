@@ -207,7 +207,7 @@ Some of the sequence in `TRANSITION_PLAN.md` §06 needs a human in the room:
   Design work, not loop work.
 
 Loops are for verification, for well-specified fixes with clear gates, and for writing tests
-against behaviour that already exists. They are not for decisions you would want to argue about.
+against behavior that already exists. They are not for decisions you would want to argue about.
 
 But note the reframe in [`ROADMAP.md`](ROADMAP.md): those three items are not permanently
 off-limits. They are blocked on **one decision each**. Make the decision and the execution behind

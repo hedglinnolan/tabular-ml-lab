@@ -1169,7 +1169,7 @@
   "area": "RECORD",
   "sev": "landmine",
   "item": "ml/publication.py _format_audit_timestamp assumes tz-naive timestamps are UTC, but every timestamp in the Record and Ledger is datetime.now().isoformat() — local time.",
-  "detail": "Every line of the Decision Audit Trail in the LaTeX Supplementary is labelled 'YYYY-MM-DD HH:MM UTC' but is actually local wall-clock time, off by the machine's offset. A reviewer reconciling the audit trail against anything else finds a systematic skew.",
+  "detail": "Every line of the Decision Audit Trail in the LaTeX Supplementary is labeled 'YYYY-MM-DD HH:MM UTC' but is actually local wall-clock time, off by the machine's offset. A reviewer reconciling the audit trail against anything else finds a systematic skew.",
   "ev": "ml/publication.py:1747-1759 (`dt.replace(tzinfo=timezone.utc)`) versus utils/workflow_provenance.py (every record_* uses datetime.now()) and utils/insight_ledger.py:597 (created_at default)",
   "act": "Record timezone-aware UTC timestamps at the source (datetime.now(timezone.utc)) and render with an explicit conversion. Add a test asserting recorded timestamps carry tzinfo.",
   "status": "UNVERIFIED"
@@ -1479,7 +1479,7 @@
   "area": "STATE",
   "sev": "landmine",
   "item": "The export ZIP — joblib dumps of every model and every preprocessing pipeline, plus server-side PNG rendering of every figure — is rebuilt on EVERY page render, before the user clicks anything.",
-  "detail": "Not silent in behaviour (it is slow), but silent in ATTRIBUTION — a typed character in the 'Paper title' box triggers the whole pipeline, and figure-export failures are counted into _plot_export_failures and surfaced only as an aggregate warning at 2448-2454. save_matplotlib_fig (2188) does not count its failures at all, so missing SHAP images are invisible.",
+  "detail": "Not silent in behavior (it is slow), but silent in ATTRIBUTION — a typed character in the 'Paper title' box triggers the whole pipeline, and figure-export failures are counted into _plot_export_failures and surfaced only as an aggregate warning at 2448-2454. save_matplotlib_fig (2188) does not count its failures at all, so missing SHAP images are invisible.",
   "ev": "pages/10_Report_Export.py lines 2234-2445, unconditional module-level code. Also unconditional per render: _build_latex_export_bundle (1802), generate_latex (1819-1839, cache-keyed), generate_report (1846), validate_manuscript_bundle (1958)…",
   "act": "This is the clearest Jobs candidate in the codebase: export = one cancellable job with progress and a per-artifact success/failure manifest. Make save_matplotlib_fig count failures like its plotly twin before porting.",
   "status": "UNVERIFIED"
@@ -1520,7 +1520,7 @@
   "sev": "landmine",
   "item": "Multiclass SHAP explains one class at compute time and a different class at render time.",
   "detail": "For >2 classes the stored class_label can say 'Class 0' while the array is the last class, or the stored 2D array gets re-sliced. Plots and labels are individually plausible.",
-  "ev": "pages/07_Explainability.py lines 476-495 (compute): `if isinstance(sv_raw, list)` → len==2 takes index 1 labelled 'Class 1 (Positive)', otherwise index 0 labelled 'Class 0'; `if sv_plot.ndim == 3` → `sv_plot[:, :, -1]` (LAST class). Lines 7…",
+  "ev": "pages/07_Explainability.py lines 476-495 (compute): `if isinstance(sv_raw, list)` → len==2 takes index 1 labeled 'Class 1 (Positive)', otherwise index 0 labeled 'Class 0'; `if sv_plot.ndim == 3` → `sv_plot[:, :, -1]` (LAST class). Lines 7…",
   "act": "Normalize once, at compute time, into an explicit {class_index, class_label, values} record and never re-normalize at render.",
   "status": "UNVERIFIED"
  },
@@ -1839,7 +1839,7 @@
   "area": "CONTRACT",
   "sev": "high",
   "item": "Active cohort run and completed runs are not persisted at all",
-  "detail": "`cohort_run` and `cohort_runs_done` appear in none of _DATAFRAME_KEYS/_DATACLASS_KEYS/_PLAIN_KEYS/_NEVER_PERSIST. A save taken mid-cohort-run restores with the lockbox intact but no cohort filter, so get_data() silently returns the WHOLE study under a session that was labelled 'women'. CohortRun is a dataclass with only JSON-safe fields, so this is an omission, not a technical limit.",
+  "detail": "`cohort_run` and `cohort_runs_done` appear in none of _DATAFRAME_KEYS/_DATACLASS_KEYS/_PLAIN_KEYS/_NEVER_PERSIST. A save taken mid-cohort-run restores with the lockbox intact but no cohort filter, so get_data() silently returns the WHOLE study under a session that was labeled 'women'. CohortRun is a dataclass with only JSON-safe fields, so this is an omission, not a technical limit.",
   "ev": "utils/cohorts.py:334-344 (CohortRun), :389-407 (_ACTIVE_KEY/_DONE_KEY); utils/session_manager.py:73-162 (key taxonomy)",
   "act": "project — cohort membership is core Project state; add it to the serialized schema with the same label-integrity check as the lockbox",
   "status": "UNVERIFIED"
@@ -1959,7 +1959,7 @@
   "area": "CONTRACT",
   "sev": "high",
   "item": "Boundary Train: y_train_original / y_val_original / y_test_original",
-  "detail": "np.ndarray copies of the pre-transform targets, written ONLY when a target transform is active and popped otherwise. All metric computation reads `st.session_state.get('y_train_original', y_train)` — the .get default silently substitutes the TRANSFORMED target if the key is missing, which happens whenever the pop/write pair desynchronizes. Metrics would then be reported on the log scale while labelled original-scale.",
+  "detail": "np.ndarray copies of the pre-transform targets, written ONLY when a target transform is active and popped otherwise. All metric computation reads `st.session_state.get('y_train_original', y_train)` — the .get default silently substitutes the TRANSFORMED target if the key is missing, which happens whenever the pop/write pair desynchronizes. Metrics would then be reported on the log scale while labeled original-scale.",
   "ev": "pages/06_Train_and_Compare.py:645-647, :679-682 (pop branch), :1559, :1587",
   "act": "project — Splits carries y in both scales as explicit fields; never use .get() with a silently-wrong default for a scale-bearing value",
   "status": "UNVERIFIED"
@@ -3058,8 +3058,8 @@
   "id": "STATE-077",
   "area": "STATE",
   "sev": "invariant",
-  "item": "Model coefficients are labelled with POST-transform feature names, or omitted entirely.",
-  "detail": "A caller passes raw column names of the same length as the coefficient vector — then PCA components get labelled with clinical variable names and no check fires.",
+  "item": "Model coefficients are labeled with POST-transform feature names, or omitted entirely.",
+  "detail": "A caller passes raw column names of the same length as the coefficient vector — then PCA components get labeled with clinical variable names and no check fires.",
   "ev": "pages/10 extract_model_coefficients returns None when len(feature_names) != len(coef) (lines 220-221); the caller passes feature_names_by_model[model_key] and prints an explicit '_Coefficient table omitted…mislabeled coefficients are worse …",
   "act": "preserve",
   "status": "UNVERIFIED"
@@ -3759,7 +3759,7 @@
   "area": "CONTRACT",
   "sev": "low",
   "item": "Boundary FeatureSel→Preprocess: X is passed as .values, losing the index",
-  "detail": "`X = df.loc[mask, numeric_features].values; y = df.loc[mask, target_col].values`, then median-imputed with a throwaway SimpleImputer. The mask correctly ANDs `df[target_col].notna() & train_row_mask(df.index)` — page 04 is the ONE page that honours the lockbox properly. But the numpy conversion means the selection results carry no row provenance.",
+  "detail": "`X = df.loc[mask, numeric_features].values; y = df.loc[mask, target_col].values`, then median-imputed with a throwaway SimpleImputer. The mask correctly ANDs `df[target_col].notna() & train_row_mask(df.index)` — page 04 is the ONE page that honors the lockbox properly. But the numpy conversion means the selection results carry no row provenance.",
   "ev": "pages/04_Feature_Selection.py:126-140",
   "act": "engine — selectors should take (DataFrame, mask) and return names; Project owns the mask",
   "status": "UNVERIFIED"
@@ -3893,7 +3893,7 @@
   "ev": "ml/triage.py:41; requirements.txt:2; plus 10 further sites listed in detail",
   "act": "Pin `pandas<3` in requirements.txt now (one line, prevents wrong science on fresh installs), then replace every string-dtype identity check with pandas type predicates (pd.api.types.is_string_dtype / is_bool_dtype / is_integer_dtype / is_float_dtype). Regression test: a text target detects classification/high under both pandas 2 and 3.",
   "status": "FIXED",
-  "note": "All eleven dtype-identity sites replaced with pd.api.types predicates. Verified against real pandas 3.0.5 in a separate venv: detect_task_type on the demo CSV now returns classification/high where it returned regression/low, and compute_dataset_profile no longer raises TypeError on the string column. The suite's own canary does not need pandas 3 installed — it casts the target to pd.StringDtype, which both majors have and is the shape pandas 3 gives every text column, so the class is caught on either. Two further tests cover what the predicate must not narrow: category and boolean targets still read as classification, and a nullable Int64 identifier is now recognised as id-like where the int64/int32 name check missed it. The cap stays in both requirements files as belt and braces.",
+  "note": "All eleven dtype-identity sites replaced with pd.api.types predicates. Verified against real pandas 3.0.5 in a separate venv: detect_task_type on the demo CSV now returns classification/high where it returned regression/low, and compute_dataset_profile no longer raises TypeError on the string column. The suite's own canary does not need pandas 3 installed — it casts the target to pd.StringDtype, which both majors have and is the shape pandas 3 gives every text column, so the class is caught on either. Two further tests cover what the predicate must not narrow: category and boolean targets still read as classification, and a nullable Int64 identifier is now recognized as id-like where the int64/int32 name check missed it. The cap stays in both requirements files as belt and braces.",
   "verified_against": "origin/main @ 24c3446",
   "verified_ev": "ml/triage.py · ml/dataset_profile.py:189 · ml/eda_recommender.py · models/registry_wrappers.py",
   "test": "turbotab/test_skeleton.py::test_the_same_answer_under_a_pandas_3_string_dtype"
@@ -4026,10 +4026,22 @@
   "item": "reset_downstream_results clears keys three different ways — pop, = None, and = {} — so 'cleared' has three observable meanings",
   "detail": "Found by the L5 gate probe, which under-reported survivors by a dozen keys until it learned all three clearing idioms. Consumers testing `key in st.session_state` versus `get(key) is None` versus truthiness see different truths about the same cascade.",
   "ev": "utils/session_state.py reset_downstream_results; L5 gate probe (agent report at 4366b23)",
-  "act": "Normalize to one idiom (pop) inside the production function when pages/03 is reconciled onto it; the DAG's live list of forgotten keys is the checklist for that same change.",
+  "act": "ACCEPTED PUSHBACK (L7): do NOT normalize now — ~25 call sites read cleared keys by bare attribute access (pages/06 x10, pages/02 x5), so popping converts a stale-value bug into an AttributeError. The rule in force is documented on the function with cascade.all_result_keys() as the checklist. Normalize per-page as each page converges onto the core (L11), never as a standalone sweep.",
   "status": "PARTIAL",
   "verified_against": "TurboTab @ 4366b23",
-  "note": "The pages/03 half is done: its nineteen-line hand-rolled cascade now calls reset_downstream_results, so the fifteen keys it missed (cv_results, dataset_profile, eda_results, eda_insights, the split indices, cv_strategy, cv_groups_train, target_transformer, feature_names_by_model, bootstrap/baseline/calibration results and the report artifacts) are cleared, along with the ledger rollback and provenance clearing it skipped entirely. Two tests pin it: page 03 touches only the two keys it produces, and the reconciled call clears the previously-missed list. The idiom normalization is NOT done, and the reason is measured rather than assumed: several result keys are read by bare attribute access — model_results 10 times in pages/06, eda_results 5 times in pages/02, trained_models 4, fitted_estimators 2 — so popping them turns a stale-value bug into an AttributeError on the Train and EDA pages. Normalizing to one idiom is a rewrite of ~25 call sites to .get() first, with cascade.all_result_keys() as the checklist. The rule in force meanwhile is documented on the function: emptied in place if anything reads it bare, popped otherwise.",
+  "note": "The pages/03 half is done: its nineteen-line hand-rolled cascade now calls reset_downstream_results, so the fifteen keys it missed (cv_results, dataset_profile, eda_results, eda_insights, the split indices, cv_strategy, cv_groups_train, target_transformer, feature_names_by_model, bootstrap/baseline/calibration results and the report artifacts) are cleared, along with the ledger rollback and provenance clearing it skipped entirely. Two tests pin it: page 03 touches only the two keys it produces, and the reconciled call clears the previously-missed list. The idiom normalization is NOT done, and the reason is measured rather than assumed: several result keys are read by bare attribute access — model_results 10 times in pages/06, eda_results 5 times in pages/02, trained_models 4, fitted_estimators 2 — so popping them turns a stale-value bug into an AttributeError on the Train and EDA pages. Normalizing to one idiom is a rewrite of ~25 call sites to .get() first, with cascade.all_result_keys() as the checklist. The rule in force meanwhile is documented on the function: emptied in place if anything reads it bare, popped otherwise. L7: pages/03 reconciled onto the production cascade; idiom normalization deferred to per-page convergence.",
   "verified_ev": "utils/session_state.py reset_downstream_results · pages/03_Feature_Engineering.py:1262"
+ },
+ {
+  "id": "T0-LIVE-005",
+  "area": "TIER0",
+  "sev": "high",
+  "item": "pages/02's eight pre-existing caches still key on the shape-only fingerprint — equal-sized cohort runs of one study collide",
+  "detail": "The L7 fix for T0-LIVE-001 added a content fingerprint (_macro_fp) whose own docstring states the principle: 'two cohort runs of the same study have identical shape and columns and different rows.' But only the four macro-shape caches use it. The eight older caches — profile, signals, skewed features, outlier heatmap, correlation matrix, top pairs, target sort, interactions — still key on _data_fingerprint = (len(df), len(df.columns), tuple(sorted(df.columns))). Two cohort runs with equal row counts (median split, 1:1 matched case-control, a balanced sex split) share that key, so cohort A's correlations and outliers are served to cohort B. Same class as T0-LIVE-001, narrower trigger, and it lands on cohort runs — the newest feature.",
+  "ev": "pages/02_EDA.py:125 (_data_fingerprint, shape-only) vs :127-140 (_macro_fp, content); consumers at :179,192,426,842,941,989,1008,1129",
+  "act": "One-line fix: make _data_fingerprint use _macro_fp's content digest. Regression test: two equal-shaped frames with different values produce different cached correlations.",
+  "status": "OPEN",
+  "verified_against": "TurboTab @ 2e1792f",
+  "note": "The agent's cohort-collision reasoning was correct and is the evidence; the retrofit of the older caches was simply outside L7's macro_shape scope."
  }
 ]

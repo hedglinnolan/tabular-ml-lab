@@ -35,20 +35,20 @@ Anything short of all five is a milestone, not a finish.
 ## The map
 
 ```
-  L1  verify ledger ──────────┐
-  L2  live bugs               ├─ can run in any order, no decisions needed
-  L3  walking skeleton ───────┘
+  L1  verify ledger ──────────┐            [not started — 370 UNVERIFIED]
+  L2  live bugs               ├─ ✓ DONE (folded into L7; T0-LIVE-001..004 FIXED)
+  L3  walking skeleton ───────┘  ✓ DONE
                      │
-              ◆ DECISION A — row identity
+              ◆ DECISION A — ANSWERED: identity barrier (reframed)
                      │
-  L4  characterization tests
-  L5  AnalysisProject + invalidation DAG
-  L6  extract split block + step state machine
-  L7  detaint the engine, add the job queue
+  L4  characterization tests   ✓ DONE
+  L5  AnalysisProject + DAG    ✓ DONE (incl. serialization guard, archive port)
+  L6  split block + readiness  ✓ DONE
+  L7  detaint + job queue      ✓ DONE (45/45 headless; RNG serialization; honest cancel)
                      │
-              ◆ DECISION B — Router gating policy
-                     │
-  L8  Router, EDA only  ← the differentiator; prove it here
+              ◆ DECISION B — ANSWERED: skip only when a high-confidence finding
+                     │           makes the question moot; visible + reversible
+  L8  Router, EDA only  ← NEXT — the differentiator; prove it here
               │
        ◆ ROUTING VALUE CHECK — is it better, or just prettier?
               │
@@ -130,7 +130,7 @@ its semantics are undefined.
 where a `high`-confidence finding makes a question moot, with the skip visible and reversible in
 the transcript; (c) full gating with a new severity model.
 
-**Recommendation: (b).** It honours the rule, it is testable, and the transcript records the skip
+**Recommendation: (b).** It honors the rule, it is testable, and the transcript records the skip
 so the manuscript can still describe what happened.
 
 **Unblocks:** L8, and the shape of L9.
@@ -209,7 +209,7 @@ core reaches a Workbench VM or a Docker deployment without a third implementatio
 
 ### L4 · Characterization tests — autonomous
 
-Pin current behaviour before anything moves. Golden-output tests on: the split block (all four
+Pin current behavior before anything moves. Golden-output tests on: the split block (all four
 branches), `reset_downstream_results()` called for real, the lockbox seal/redraw signature, every
 model wrapper against *real* wrapper objects rather than a bare `Ridge`, and the manuscript
 composed from a fixed project.

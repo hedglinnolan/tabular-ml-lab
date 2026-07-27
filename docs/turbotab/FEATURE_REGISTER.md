@@ -34,7 +34,7 @@
 | `ingest-transpose` | Transpose on import | Step 1 | **classic-only** | Belongs with the Excel path above. |
 | `target-feature-picklist` | Feature selection (select all / clear) | Step 4 | **classic-only** | Not yet asked in Guided. |
 | `target-goal-selection` | Goal selection (Prediction vs Hypothesis Testing) | Step 4 | **classic-only** | Guided assumes prediction; the hypothesis-testing branch is a different interview. |
-| `target-lockbox-settings` | Test-holdout / lockbox settings | Step 4 expander | **classic-only** | Updated after L5: the project now OWNS a lockbox — sealing raises the identity barrier and the apply path refuses pre-barrier repairs — but the fraction/seed settings and the act of sealing are not yet asked in the Guided interview. Half-watched, no longer unmodelled. |
+| `target-lockbox-settings` | Test-holdout / lockbox settings | Step 4 expander | **classic-only** | Updated after L5: the project now OWNS a lockbox — sealing raises the identity barrier and the apply path refuses pre-barrier repairs — but the fraction/seed settings and the act of sealing are not yet asked in the Guided interview. Half-watched, no longer unmodeled. |
 
 ## Cross-step infrastructure — 7
 

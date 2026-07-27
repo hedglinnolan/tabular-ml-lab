@@ -87,7 +87,7 @@ else you want to look at?"**
 
 ### Preview before apply
 
-An early prototype offered "Fix now" on each finding. That was wrong, and the reason generalises:
+An early prototype offered "Fix now" on each finding. That was wrong, and the reason generalizes:
 **in a pipelined app you cannot earn trust by asking for blind consent.**
 
 Every finding's primary action is now *"Show me what changes"*, which opens a before/after panel —

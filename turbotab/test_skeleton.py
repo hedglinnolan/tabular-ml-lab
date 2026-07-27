@@ -308,12 +308,12 @@ def test_categorical_and_boolean_targets_are_still_classification(df: pd.DataFra
 def test_a_nullable_integer_id_is_still_id_like(df: pd.DataFrame):
     """`dataset_profile:189` asked for `int64`/`int32` by name, so a nullable
     `Int64` column — which pandas produces for integers with missing values —
-    was not recognised as an identifier."""
+    was not recognized as an identifier."""
     frame = df.copy()
     frame["record_no"] = pd.array(range(len(frame)), dtype="Int64")
     prof = engine.profile(frame, TARGET, "classification")
     assert "record_no" in prof.id_like_features, (
-        "a nullable-integer identifier was not recognised — the dtype-identity "
+        "a nullable-integer identifier was not recognized — the dtype-identity "
         "class again, at dataset_profile.py:189")
 
 

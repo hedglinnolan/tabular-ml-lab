@@ -139,7 +139,7 @@ test failure.
   survive a rewrite.
 - **Cohort runs and the replay engine** — the newest subsystem (`utils/cohorts.py`,
   `utils/replay.py`), entangled with the lockbox through two import cycles. A `Project` that
-  models "the working table" without modelling "the active cohort filter" deletes it silently.
+  models "the working table" without modeling "the active cohort filter" deletes it silently.
   Already flagged in `TRANSITION_PLAN.md` §05; repeated here because it is a *feature*, not just
   a state-model detail.
 

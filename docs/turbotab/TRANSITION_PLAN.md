@@ -114,7 +114,7 @@ priority order:
 4. plain / stratified `train_test_split`
 
 That is ~370 lines of unextracted, untested engine logic implementing the app's most
-safety-critical behaviour, inside a Streamlit script. First to extract, first to characterization-test.
+safety-critical behavior, inside a Streamlit script. First to extract, first to characterization-test.
 
 ### 4 · The step state machine is filed under CSS
 
@@ -146,7 +146,7 @@ And the governing rule binds it: *high confidence is the only tier the UI pre-se
 
 | Problem | Detail | Consequence |
 |---|---|---|
-| Invalidation DAG untested | No test calls the production `reset_downstream_results()`. Three separate re-implementations test themselves. | The single most important behaviour to preserve has zero real coverage. |
+| Invalidation DAG untested | No test calls the production `reset_downstream_results()`. Three separate re-implementations test themselves. | The single most important behavior to preserve has zero real coverage. |
 | Tests use a shape the app never makes | `tests/integration/conftest.py:82,98` injects a bare sklearn `Ridge` into `trained_models`; the app stores wrapper objects. `CODE_REVIEW.md` already records this. | Downstream suites pass against a fiction. This is how a `clone()` breakage stayed invisible. |
 | A test that will pass vacuously | `tests/test_insight_id_integrity.py:23` is an AST scanner keyed on `SCAN_DIRS = ["pages","utils","ml"]` and the literal name `Insight`. | After the rename-heavy rebuild it finds zero ids and **passes** — green, guarding nothing, against exactly the defect class a refactor produces. |
 | `models/` has no coverage at all | Every file in `models/` is untested, alongside `ml.splits`, `ml.triage`, `ml.preprocess_operators`, `ml.feature_steps`, `ml.stats_tests`, `visualizations`. | The layer that must move *intact* is the least protected. |
@@ -194,7 +194,7 @@ cold, they will cause already-fixed code to be re-fixed.
 are all cohort work. `get_data()` now applies an active cohort filter (`session_state.py:216`),
 with exactly two `full_study=True` escapes, enforced only by a default parameter. Cohorts are also
 entangled with the lockbox through two of the three import cycles. **A `Project` that models "the
-working table" without modelling "the active cohort filter" silently deletes the newest feature.**
+working table" without modeling "the active cohort filter" silently deletes the newest feature.**
 
 **Clear drops.** `utils/dataset_db.py` (797 loc, **zero importers**, superseded by
 `session_projects.py`; keeping it reintroduces a disk path that contradicts the no-persistence

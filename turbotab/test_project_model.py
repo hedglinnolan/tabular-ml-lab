@@ -64,7 +64,7 @@ def test_pipeline_specs_are_specs_not_fitted_objects(project):
 
 
 def test_the_cohort_filter_is_first_class(project, df):
-    """A project that models "the working table" without modelling the active
+    """A project that models "the working table" without modeling the active
     cohort filter silently deletes the newest feature (`ARCHITECTURE.md` §02)."""
     assert len(project.working_table) == len(df)
 

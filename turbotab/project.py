@@ -143,7 +143,7 @@ class AnalysisProject:
     # positions, after it they are named.
     lockbox: Optional[Dict[str, Any]] = None
     # The active cohort filter, first-class. ARCHITECTURE.md §02: a project that
-    # models "the working table" without modelling this silently deletes the
+    # models "the working table" without modeling this silently deletes the
     # newest feature, and every number below it is quietly about a subset.
     cohort: Optional[Dict[str, Any]] = None
     # Per-model preprocessing SPECS — serializable, diffable, hashable — never

@@ -325,7 +325,7 @@ def build_members(project) -> Dict[str, bytes]:
 
     # --- the active cohort filter (schema 2.1) ---------------------------
     # ARCHITECTURE.md §02: a project that models "the working table" without
-    # modelling "the active cohort filter" silently deletes the newest feature.
+    # modeling "the active cohort filter" silently deletes the newest feature.
     if project.cohort and project.cohort.get("labels"):
         run = project.cohort
         members["cohort.json"] = json.dumps({

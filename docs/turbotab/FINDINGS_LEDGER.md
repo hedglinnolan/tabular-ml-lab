@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**10 of 397 closed.**
+**10 of 398 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `UNVERIFIED` | 370 |
-| `OPEN` | 14 |
+| `OPEN` | 15 |
 | `PARTIAL` | 3 |
 | `FIXED` | 10 |
 
 ---
 
-## OPEN — 14
+## OPEN — 15
 
 
-### Verified against main — 14
+### Verified against main — 15
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -47,6 +47,7 @@ Nothing is closed without a regression test named after it.
 | `T0-STRUCT-005` | high | Coach is a pure annotator; cannot gate, only order. No blocker severity, no own confidence tier, 100% of triggers in pages/ | `ml/model_coach.py; pages/05_Preprocess.py:291-294; pages/02_EDA.py:212,246` | feasibility verdict |
 | `T0-WIP-001` | high | docs/FINDINGS_LEDGER.md 'Still open' tail from two lost audit runs, on the multi-file/JSON import path | `docs/FINDINGS_LEDGER.md:47` | verified on main |
 | `T0-CLASSIC-001` | high | Classic applies structural repairs from a single button with no diff and no undo | `pages/01_Upload_and_Audit.py apply flow vs turbotab preview engine` | Convergence is bidirectional — the register needs a guided-only state to express this. |
+| `T0-LIVE-005` | high | pages/02's eight pre-existing caches still key on the shape-only fingerprint — equal-sized cohort runs of one study collide | `pages/02_EDA.py:125 (_data_fingerprint, shape-only) vs :127-140 (_macro_fp, content); consumers at :179,192,42` | The agent's cohort-collision reasoning was correct and is the evidence; the retrofit of the older caches was simply outside L7's macro_shape scope. |
 | `T0-DROP-001` | medium | utils/dataset_db.py — 797 loc, zero importers, superseded by session_projects.py | `grep: 0 importers on main` | verified on main |
 | `T0-DROP-002` | medium | setup.py python_requires '>=3.8,<3.10' against a 3.12 repo — uninstallable | `setup.py` | verified on main |
 | `T0-ENG-001` | medium | The diagnose -> profile -> detect path needs only pandas and numpy — no sklearn, scipy or torch | `turbotab/engine.py import surface; verified by the L3 test suite` | Confirmed by building the vertical: turbotab/ installs pandas, numpy, fastapi, uvicorn, python-multipart and nothing else, and the three engine entry points (import_doctor.diagnose |
@@ -152,7 +153,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-074` | invariant | reset_downstream_results is the SINGLE source of truth for invalidation; every new result key must be registered there. | `utils/session_state.reset_downstream_results docstring and body (pipelines, splits, targets, models, 11 analys` | preserve |
 | `STATE-075` | invariant | All reported metrics are on the ORIGINAL target scale, even when models train on a transformed target. | `pages/06 lines 1485-1497 (test) and 1506-1517 (train) back-transform predictions and evaluate against y_*_orig` | preserve |
 | `STATE-076` | invariant | Preprocessing is fit on training rows only, and cross-validation re-fits it inside each fold. | `pages/06 line 1312 (model_pipeline.fit(X_train)) and lines 1551-1555 (ml.eval.make_cv_pipeline wraps preproces` | preserve |
-| `STATE-077` | invariant | Model coefficients are labelled with POST-transform feature names, or omitted entirely. | `pages/10 extract_model_coefficients returns None when len(feature_names) != len(coef) (lines 220-221); the cal` | preserve |
+| `STATE-077` | invariant | Model coefficients are labeled with POST-transform feature names, or omitted entirely. | `pages/10 extract_model_coefficients returns None when len(feature_names) != len(coef) (lines 220-221); the cal` | preserve |
 | `STATE-078` | invariant | Applying a feature selection preserves the selection and its record while destroying everything built on the previous feature set. | `pages/04 lines 447-448 and 494-495: reset_downstream_results(clear_feature_engineering=False, clear_feature_se` | preserve |
 | `STATE-079` | invariant | Insight IDs are a cross-page API; resolution depends on exact string equality or prefix. | `pages/02 emits 13 fixed ids and maps 5 of them in _ACTION_TO_INSIGHT_MAP (line 1418); pages/03 resolves 'eda_s` | preserve |
 | `STATE-080` | invariant | No manuscript leaves the app while pre-export validation fails, unless the user explicitly overrides. | `pages/10 lines 1958-1987: validate_manuscript_bundle → exports_blocked; every st.download_button passes disabl` | preserve |

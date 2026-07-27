@@ -173,7 +173,7 @@
   "capability": "Test-holdout / lockbox settings",
   "classic": "Step 4 expander",
   "state": "classic-only",
-  "reason": "Updated after L5: the project now OWNS a lockbox — sealing raises the identity barrier and the apply path refuses pre-barrier repairs — but the fraction/seed settings and the act of sealing are not yet asked in the Guided interview. Half-watched, no longer unmodelled."
+  "reason": "Updated after L5: the project now OWNS a lockbox — sealing raises the identity barrier and the apply path refuses pre-barrier repairs — but the fraction/seed settings and the act of sealing are not yet asked in the Guided interview. Half-watched, no longer unmodeled."
  },
  {
   "id": "core-readiness-model",

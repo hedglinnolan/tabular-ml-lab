@@ -98,7 +98,7 @@ except ImportError:
 importlib.import_module("ml.model_coach")   # clean at HEAD
 ```
 
-**The lesson, which generalises to the whole ledger:** static analysis over-reports coupling, and
+**The lesson, which generalizes to the whole ledger:** static analysis over-reports coupling, and
 a test that cannot fail proves nothing. Prefer the runtime check, and always assert the guard is
 active before trusting what it says.
 

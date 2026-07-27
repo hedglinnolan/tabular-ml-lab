@@ -7,7 +7,7 @@ and knows where to re-check.
 
 ## What was measured deterministically
 
-Scripted over the working tree — no model judgement involved. Reproduce with the snippets below.
+Scripted over the working tree — no model judgment involved. Reproduce with the snippets below.
 
 | Fact | Value | Method |
 |---|---|---|
