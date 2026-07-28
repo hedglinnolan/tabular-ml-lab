@@ -1,0 +1,521 @@
+"""Assemble every user-facing string in the Guided door into a reviewable deck.
+
+    python docs/turbotab/tools/copydeck.py regen    # rewrite COPY_DECK.md
+    python docs/turbotab/tools/copydeck.py check    # non-zero if it has drifted
+
+It exists so copy can be reviewed **asynchronously, without running the app** —
+the product owner should not have to drive a FastAPI server to read a sentence.
+
+## Why this is half generated and half hand-assembled
+
+Generation was attempted first and is only partly possible. Measured across the
+Guided door:
+
+| source | walkable by a tool | inline at a call site |
+|---|---|---|
+| `grain.py` | 16 | 0 |
+| `features.py` | 20 | 9 |
+| `selection.py` | 6 | 7 |
+| `router.py` | 8 | 9 |
+| `api.py` | 8 | 48 |
+| `project.py` | 1 | 32 |
+| `web/index.html` | 0 | 51 (markup + JS literals) |
+
+The catalogues — `features.CATALOGUE`, `selection.METHODS`, `router.plan()`'s
+questions, `grain`'s answers, exits and disclosures — are data, so they are
+**generated**: this file imports them and prints what is actually there, and
+they cannot drift because there is nothing to drift from.
+
+The rest are f-strings raised at ~105 call sites and string literals inside
+markup. Extracting those reliably would mean either an AST walk that cannot
+resolve the interpolations, or a runtime harness that drives every error path —
+both of which produce a *worse* artifact than transcribing them, because a
+half-resolved f-string is not reviewable copy.
+
+**That difficulty is a finding, not a workaround** (`GUIDED-013`). Copy that
+lives at its raise site cannot be reviewed, translated, or kept consistent, and
+the deck is the symptom rather than the cure.
+
+## What stops the hand-written half drifting
+
+A hand-maintained deck drifts. So each hand entry carries the file it came from
+and a `probe` — a distinctive fragment of the real string — and `check` asserts
+that fragment is still in that file. Change the copy without updating the deck
+and `check` goes red.
+
+That is weaker than generation: it catches a string that *changed* and not one
+that was *added*. It is stated as weaker rather than sold as equivalent, and
+`GUIDED-013` is the row for closing the gap properly.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+from typing import Any, Dict, List
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__)))))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
+OUT = os.path.join(ROOT, "docs", "turbotab", "COPY_DECK.md")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The hand-assembled half. Each entry names where the string lives and a probe
+# `check` can look for. Adding one is a decision; forgetting to is a red test.
+# ─────────────────────────────────────────────────────────────────────────────
+
+HAND: List[Dict[str, Any]] = [
+    # ── Data & Target · upload ───────────────────────────────────────────────
+    dict(step="Data & Target", state="upload · unreadable file",
+         trigger="`engine.read_table` cannot parse the upload",
+         copy="'{filename}' parsed to {n} rows and {c} columns. There is nothing to diagnose.",
+         source="turbotab/engine.py", probe="There is nothing to diagnose"),
+
+    # ── Data & Target · the seal ─────────────────────────────────────────────
+    dict(step="Data & Target", state="seal · attempted before the grain question",
+         trigger="`POST /decision {kind: seal}` while `project.grain is None`",
+         copy="The grain question comes before the seal: whether one person can "
+              "appear in more than one row decides how the held-out rows are chosen.",
+         source="turbotab/api.py", probe="The grain question comes before the seal"),
+    dict(step="Data & Target", state="seal · attempted with no target",
+         trigger="`POST /decision {kind: seal}` while `project.target is None`",
+         copy="The held-out set is drawn against the outcome, so the target comes first.",
+         source="turbotab/api.py", probe="the target comes first"),
+    dict(step="Data & Target", state="seal · project-level refusal",
+         trigger="`AnalysisProject.seal_lockbox` with no recorded grain",
+         copy="The test set cannot be sealed before the grain question is answered: "
+              "whether one person can appear in more than one row decides how the "
+              "held-out rows are chosen. Constitution §01 fixes that order, and §02 "
+              "is why.",
+         source="turbotab/project.py", probe="cannot be sealed before the grain question"),
+    dict(step="Data & Target", state="seal · a second seal attempted",
+         trigger="`seal_lockbox` when `barrier_raised` is already true",
+         copy="This project already has a sealed test set. Redrawing it would "
+              "re-partition the study: rows sealed since upload would become "
+              "trainable and earlier results would no longer be comparable.",
+         source="turbotab/project.py", probe="already has a sealed test set"),
+    dict(step="Data & Target", state="grain · restated after the seal",
+         trigger="`set_grain` when `barrier_raised` is true",
+         copy="The test set is already sealed, and it was drawn against the grain "
+              "answer recorded at the time. Changing that answer now would describe "
+              "a split that was not drawn this way.",
+         source="turbotab/project.py", probe="describe a split that was not drawn this way"),
+    dict(step="Data & Target", state="seal · too few rows with an outcome",
+         trigger="fewer than 10 rows have a non-null target",
+         copy="Only {n} rows have a value for '{target}', which is too few to hold "
+              "any out and still have a study left.",
+         source="turbotab/engine.py", probe="few to hold any out and still have a study left"),
+
+    # ── Data & Target · target ───────────────────────────────────────────────
+    dict(step="Data & Target", state="target · the event level is not defaulted",
+         trigger="applying `set_positive_class` with no chosen level",
+         copy="Setting the event needs the level being predicted. There is no "
+              "default: whether the event is (say) death or survival is the research "
+              "question, not something the file can say.",
+         source="turbotab/api.py", probe="the research question, not something"),
+    dict(step="Data & Target", state="repair · the finding has no automatic fix",
+         trigger="`POST /decision {kind: apply}` on a finding whose preview is not applicable",
+         copy="That finding has no automatic repair — it needs a human decision.",
+         source="turbotab/api.py", probe="it needs a human decision"),
+
+    # ── Features ─────────────────────────────────────────────────────────────
+    dict(step="Features", state="transform · a stateful one was applied",
+         trigger="`features.apply` on any entry whose scope is `stateful`",
+         copy="'{label}' learns from the column's distribution, so applying it to "
+              "the working table now would fit it on the held-out rows too. It is "
+              "recorded as a decision and fitted inside each training fold instead. "
+              "{because}",
+         source="turbotab/features.py", probe="recorded as a decision and fitted inside each training"),
+    dict(step="Features", state="transform · a row-local one was declared",
+         trigger="`features.declare` on an entry whose scope is `row_local`",
+         copy="'{label}' is row-local, so it executes immediately rather than being "
+              "declared. Use apply().",
+         source="turbotab/features.py", probe="row-local, so it executes immediately rather than"),
+    dict(step="Features", state="transform · the new column name is taken",
+         trigger="`features.apply` when the generated name already exists",
+         copy="'{name}' already exists in this table. Remove it first, or the new "
+              "column would silently replace it.",
+         source="turbotab/features.py", probe="would silently replace it"),
+    dict(step="Features", state="binning · no cut-points supplied",
+         trigger="`bin_fixed` applied without `edges`",
+         copy="Binning by supplied cut-points needs at least two edges. Without them "
+              "the edges would have to come from the data, which is a different "
+              "transform and defers.",
+         source="turbotab/features.py", probe="which is a different transform and defers"),
+    dict(step="Features", state="encoding · no order supplied",
+         trigger="`ordinal_declared` applied without `order`",
+         copy="Encoding in a stated order needs the order. Deriving it from the data "
+              "is a different transform and defers.",
+         source="turbotab/features.py", probe="Deriving it from the data"),
+    dict(step="Features", state="remove · a source column was named",
+         trigger="`remove_feature` on a column this step did not create",
+         copy="'{column}' was not created here, so removing it is not this step's to "
+              "do. Only engineered columns can be removed.",
+         source="turbotab/project.py", probe="was not created here, so removing it is not this"),
+    dict(step="Features", state="deferred preview · why there are no values",
+         trigger="`features.preview` on any stateful entry",
+         copy="Not computed here. This transform learns from the column's "
+              "distribution, so it is fitted inside each training fold at modeling "
+              "time — there is no single set of values to show before then.",
+         source="turbotab/features.py", probe="no single set of values to show before then"),
+
+    # ── Features · selection ─────────────────────────────────────────────────
+    dict(step="Features", state="selection · the outcome offered as a candidate",
+         trigger="`selection.declare` with the target among the candidates",
+         copy="'{target}' is the outcome and cannot also be a candidate feature: "
+              "selecting the target predicts it perfectly.",
+         source="turbotab/selection.py", probe="selecting the target predicts it perfectly"),
+    dict(step="Features", state="selection · a scope outside the two permitted",
+         trigger="`selection.declare` with any scope but `train_rows` / `train_folds`",
+         copy="scope must be 'train_rows' or 'train_folds'; got '{scope}'. There is "
+              "no third option, and in particular there is no option that fits on "
+              "the whole table.",
+         source="turbotab/selection.py", probe="There is no third option, and in particular there is no option"),
+    dict(step="Features", state="selection · a spec arriving with a chosen set",
+         trigger="`set_selection` with `spec['selected']` populated",
+         copy="This selection spec carries an already-chosen feature set. Selection "
+              "is performed inside the training folds at modeling time; a set chosen "
+              "now would have been chosen using the held-out rows.",
+         source="turbotab/project.py", probe="already-chosen feature set"),
+    dict(step="Features", state="selection evidence · no training mask supplied",
+         trigger="`selection.evidence` called without `train_mask`",
+         copy="No training mask was supplied, so this ranking saw every row. Treat "
+              "it as exploratory.",
+         source="turbotab/selection.py", probe="so this ranking saw every row"),
+    dict(step="Features", state="selection evidence · the normal case",
+         trigger="`selection.evidence` with a training mask",
+         copy="Ranked on training rows only, and not applied. What is actually "
+              "selected is refitted inside each training fold, so this ordering is "
+              "indicative rather than the answer.",
+         source="turbotab/selection.py", probe="indicative rather than the answer"),
+    dict(step="Features", state="selection · ranking before a target is chosen",
+         trigger="`GET /selection/evidence` with no target",
+         copy="Ranking features needs the outcome first.",
+         source="turbotab/api.py", probe="Ranking features needs the outcome first"),
+
+    # ── Features · receipts and transcript lines ─────────────────────────────
+    dict(step="Features", state="receipt · a column was removed",
+         trigger="`remove_feature` succeeds",
+         copy="The engineered column `{column}` was removed.",
+         source="turbotab/project.py", probe="was removed."),
+    dict(step="Features", state="settled · the step was worked",
+         trigger="`settle_features(skipped=False)`",
+         copy="Feature work settled: {n} column(s) added now, {d} transform(s) "
+              "recorded for fitting inside the training folds[, and a selection spec "
+              "recorded].",
+         source="turbotab/project.py", probe="recorded for fitting inside the training"),
+    dict(step="Features", state="settled · the step was skipped",
+         trigger="`settle_features(skipped=True)`",
+         copy="Feature work was skipped; the original columns go forward unchanged.",
+         source="turbotab/project.py", probe="the original columns go forward unchanged"),
+    dict(step="Features", state="selection · every column, recorded",
+         trigger="`set_selection(None)`",
+         copy="No feature selection: every candidate column is offered to the models.",
+         source="turbotab/project.py", probe="every candidate column is offered to the models"),
+
+    # ── cross-step ───────────────────────────────────────────────────────────
+    dict(step="Cross-step", state="grain · the answer is recorded",
+         trigger="`set_grain` succeeds (transcript line, distinct from the disclosure)",
+         copy="Asked whether one person can appear in more than one row; the answer "
+              "recorded was: {said}.",
+         source="turbotab/project.py", probe="the answer recorded was"),
+    dict(step="Cross-step", state="seal · the transcript line",
+         trigger="`seal_lockbox` succeeds",
+         copy="A test set of {n} rows was sealed before exploration and held by row "
+              "label, on the basis '{basis}' ({source}).",
+         source="turbotab/project.py", probe="rows was sealed before exploration"),
+    dict(step="Cross-step", state="identity · a sealed label went missing",
+         trigger="`assert_identity_intact` after a repair renumbered rows",
+         copy="{n} sealed row label(s) are no longer in the table (e.g. {labels}). "
+              "Something renumbered the rows after the test set was sealed, so the "
+              "quarantine no longer refers to the rows it was drawn from.",
+         source="turbotab/project.py", probe="no longer refers to the rows it was drawn from"),
+    dict(step="Cross-step", state="upload · repeated row labels",
+         trigger="`from_dataframe` on a frame whose index has duplicates",
+         copy="'{name}' has repeated row labels ({n} of {total}). Row identity in "
+              "this project is the index label, so repeated labels leave no way to "
+              "say which row a decision refers to.",
+         source="turbotab/project.py", probe="no way to say which row a decision refers to"),
+]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _esc(text: str) -> str:
+    return str(text).replace("|", "\\|").replace("\n", " ").strip()
+
+
+def _generated_sections() -> List[str]:
+    from ml import router
+    from turbotab import features as F, grain as G, selection as S
+
+    out: List[str] = []
+
+    # ── the grain question ───────────────────────────────────────────────────
+    qs = {q.key: q for q in router.plan([], target="<outcome>", step="data")}
+    q = qs.get("state_grain")
+    out.append("### Data & Target · the grain question\n")
+    out.append("*Trigger: the step is reached and a target has been chosen. "
+               "Never skipped — no confidence makes it moot (constitution §02).*\n")
+    if q:
+        out.append(f"**Question.** {q.title}\n")
+        out.append(f"**Why we ask.** {q.why}\n")
+        out.append(f"**Who consumes the answer.** {q.consumer}\n")
+        out.append("**Options.**\n")
+        for o in q.options:
+            out.append(f"- {o}")
+        out.append("")
+    out.append("The second option opens a follow-up: "
+               "*which column identifies the person?* — populated from "
+               "`grain.suggestion`, which offers the name heuristic's candidates "
+               "first and shape-only candidates after.\n")
+
+    out.append("### Data & Target · what the user reads after answering\n")
+    out.append("| Answer | Trigger | Copy |")
+    out.append("|---|---|---|")
+    for ans, label in ((G.ONE_ROW_PER_PERSON, "No, one row per person"),
+                       (G.PEOPLE_REPEAT, "Yes, people repeat"),
+                       (G.NOT_SURE, "I'm not sure")):
+        out.append(f"| {label} | `set_grain` records `{ans}` | "
+                   f"{_esc(G.answer_disclosure(ans, '<column>'))} |")
+    out.append("")
+
+    # ── the contradiction interruption ───────────────────────────────────────
+    out.append("### Data & Target · the contradiction interruption\n")
+    out.append("*A CONSEQUENCE (`DESIGN_LANGUAGE.md` §09): always pushed, and it "
+               "resolves or is attested — never a dead end.*\n")
+    out.append("| Trigger | Copy |")
+    out.append("|---|---|")
+    out.append("| The user answers **one row per person** and a column repeats "
+               "regularly | ``{col}`` has {n} distinct values across {rows} rows, "
+               "about {each} each. That is the shape of repeated measures, and you "
+               "answered one row per person. One of those two readings is wrong, and "
+               "which one changes how the held-out rows are chosen. |")
+    out.append("| The user answers **people repeat**, naming a column that is "
+               "unique per row | You said people repeat, but `{col}` has a different "
+               "value on every one of its {n} rows. Grouping by it would hold out one "
+               "row per group, which is the row-level split you were trying to avoid. |")
+    out.append("| The user names a column that is not in the table | ``{col}`` is not "
+               "a column in this table, so the held-out rows cannot be grouped by it. |")
+    out.append("")
+    out.append("**The two exits.** Both travel with the refusal, so an interface "
+               "cannot render the interruption without its way out.\n")
+    out.append("| Exit | Label | Detail |")
+    out.append("|---|---|---|")
+    for e in G._EXITS_STATED_UNIQUE:
+        out.append(f"| `{e['kind']}` | {_esc(e['label'])} | {_esc(e['detail'])} |")
+    out.append("")
+    out.append("*The absent-column case carries only the `resolve` exit, and that is "
+               "correct rather than a dead end: a column that does not exist cannot be "
+               "attested to.*\n")
+
+    # ── the seal ─────────────────────────────────────────────────────────────
+    out.append("### Data & Target · what the user reads once the seal is drawn\n")
+    out.append("*Keyed on the recorded basis, so the states constitution §03 insists "
+               "on stay different sentences — an undetermined seal and a verified "
+               "cross-sectional one cannot render alike, because they are not the "
+               "same string.*\n")
+    out.append("| Basis | Exploratory? | Copy |")
+    out.append("|---|---|---|")
+    for basis in ("cross_sectional", "grouped", "undetermined",
+                  "repetition_found_grouping_abandoned"):
+        lb = {"seal_basis": basis, "n_test": 27, "fraction": 0.15,
+              "n_test_groups": 9, "group_noun": "subjects"}
+        flag = "**yes**" if G.is_exploratory_basis(basis) else "no"
+        out.append(f"| `{basis}` | {flag} | {_esc(G.seal_disclosure(lb))} |")
+    out.append("")
+    out.append("**After an attested contradiction**, the seal sentence gains: "
+               "*Note: this split rests on your answer, which disagreed with the "
+               "shape of the data. That disagreement is on the record and belongs in "
+               "the methods section.* — and the seal is marked exploratory.\n")
+
+    # ── the Features step ────────────────────────────────────────────────────
+    fq = {q.key: q for q in router.plan([], target="<outcome>", step="features")}
+    out.append("### Features · the two questions\n")
+    for key in ("choose_features", "choose_selection"):
+        q = fq.get(key)
+        if not q:
+            continue
+        out.append(f"**`{key}`** — {q.title}\n")
+        out.append(f"*Trigger: the Features step is reached with a target chosen.*\n")
+        out.append(f"**Why we ask.** {q.why}\n")
+        out.append(f"**Who consumes the answer.** {q.consumer}\n")
+        out.append(f"**Options.** {' · '.join(q.options)}\n")
+
+    out.append("### Features · the transform catalogue\n")
+    out.append("*Every entry states its own clause-§06 classification and why. "
+               "Row-local entries execute immediately and post a receipt; deferred "
+               "entries are recorded and fitted inside each training fold.*\n")
+    for scope, keys in (("Row-local — executes immediately", F.row_local_keys()),
+                        ("Deferred — fitted inside the training folds",
+                         F.deferred_keys())):
+        out.append(f"#### {scope}\n")
+        out.append("| Label | Explainability | Why this scope | Receipt / methods sentence |")
+        out.append("|---|---|---|---|")
+        for k in keys:
+            t = F.get(k)
+            out.append(f"| {_esc(t.label)} | {t.explainability_cost} | "
+                       f"{_esc(t.because)} | {_esc(t.sentence)} |")
+        out.append("")
+
+    out.append("### Features · selection methods\n")
+    out.append("| Method | Explainability | Methods sentence (the timing IS the copy) |")
+    out.append("|---|---|---|")
+    for k, m in S.METHODS.items():
+        out.append(f"| {_esc(m.label)} | {m.explainability_cost} | "
+                   f"{_esc(m.sentence)} |")
+    out.append("")
+    out.append("*Choosing `scope='train_rows'` (Classic's behavior) rewrites "
+               "\"within each training fold\" as \"once over the training rows "
+               "(held-out rows excluded)\", so a project can state which happened "
+               "rather than imply the stronger claim.*\n")
+    return out
+
+
+def _hand_sections() -> List[str]:
+    out: List[str] = []
+    by_step: Dict[str, List[Dict[str, Any]]] = {}
+    for e in HAND:
+        by_step.setdefault(e["step"], []).append(e)
+    for step, entries in by_step.items():
+        out.append(f"### {step} · refusals, receipts and transcript lines\n")
+        out.append("| State | Trigger | Copy | Source |")
+        out.append("|---|---|---|---|")
+        for e in entries:
+            out.append(f"| {_esc(e['state'])} | {_esc(e['trigger'])} | "
+                       f"{_esc(e['copy'])} | `{e['source']}` |")
+        out.append("")
+    return out
+
+
+def _empty_states() -> List[str]:
+    return [
+        "### Empty and terminal states\n",
+        "*Assembled by hand — these live in `web/index.html` as markup, which is "
+        "the least reviewable place copy can live (`GUIDED-013`).*\n",
+        "| State | Trigger | Copy |",
+        "|---|---|---|",
+        "| No project yet | first load | Drop a CSV to begin. |",
+        "| A clean file | `diagnose` returns no findings | This file reads as a "
+        "clean table. |",
+        "| No features engineered | the Features step, before any transform | "
+        "Nothing added yet. The original columns go forward unless you build "
+        "something. |",
+        "| Selection not set | the Features step, before a selection answer | "
+        "Every column will be offered to the models. |",
+        "| Findings stale | any answer changed underneath computed findings | "
+        "These were computed under an earlier answer. |",
+        "| Downstream stale | a feature was added or removed | Results computed "
+        "before this change no longer describe the current feature set: {why}. |",
+        "",
+    ]
+
+
+def build() -> str:
+    lines: List[str] = [
+        "# Copy deck — the Guided door",
+        "",
+        "**Generated in part.** `python docs/turbotab/tools/copydeck.py regen`.",
+        "Do not hand-edit the generated sections; edit the source and regenerate.",
+        "",
+        "Every user-facing string in the Guided door, by step and by state, with "
+        "the condition that triggers it. It exists so copy can be reviewed "
+        "**without running the app** — a reviewer should not have to drive a "
+        "server to read a sentence.",
+        "",
+        "## How much of this is generated",
+        "",
+        "The catalogues are **generated**: `features.CATALOGUE`, "
+        "`selection.METHODS`, `router.plan()`'s questions, and `grain`'s answers, "
+        "exits and disclosures are all data, so this tool prints what is actually "
+        "there and they cannot drift.",
+        "",
+        "The refusals, receipts and transcript lines are **hand-assembled**, "
+        "because they are f-strings raised at roughly 105 call sites across "
+        "`api.py`, `project.py`, `features.py` and `selection.py`, plus 51 string "
+        "literals inside `web/index.html`. Extracting those would need either an "
+        "AST walk that cannot resolve the interpolations or a runtime harness "
+        "driving every error path — both of which produce a *worse* artifact than "
+        "transcribing them, because a half-resolved f-string is not reviewable "
+        "copy.",
+        "",
+        "**That difficulty is a finding, not a workaround.** `GUIDED-013` records "
+        "it: copy that lives at its raise site cannot be reviewed, translated or "
+        "kept consistent, and this deck is the symptom rather than the cure.",
+        "",
+        "Against drift, each hand entry carries a probe — a distinctive fragment "
+        "of the real string — and `copydeck.py check` asserts that fragment is "
+        "still in the file it came from. **This is weaker than generation**: it "
+        "catches a string that changed, not one that was added. Said plainly "
+        "rather than sold as equivalent.",
+        "",
+        "---",
+        "",
+    ]
+    lines += _generated_sections()
+    lines.append("---\n")
+    lines += _hand_sections()
+    lines += _empty_states()
+    return "\n".join(lines) + "\n"
+
+
+def _squash(text: str) -> str:
+    """Collapse whitespace and quote characters.
+
+    Source strings wrap across implicit concatenation — `"not this "` on one
+    line and `"step's to do."` on the next — so a probe that reads naturally
+    is never a contiguous substring of the file. Squashing both sides makes the
+    match survive rewrapping, which is the commonest edit and the one that
+    should NOT count as drift.
+
+    Lossy on purpose: it cannot tell `a b` from `ab`. For detecting that a
+    sentence changed, that is enough.
+    """
+    return "".join(c for c in text if not c.isspace() and c not in "\"'")
+
+
+def check() -> int:
+    """Every hand entry's probe must still be in the file it names."""
+    bad: List[str] = []
+    for e in HAND:
+        path = os.path.join(ROOT, e["source"])
+        if not os.path.exists(path):
+            bad.append(f"{e['source']} does not exist (for: {e['state']})")
+            continue
+        text = _squash(open(path, encoding="utf-8").read())
+        if _squash(e["probe"]) not in text:
+            bad.append(f"{e['source']}: probe {e['probe']!r} is gone "
+                       f"(for: {e['state']}) — the copy changed and the deck did not")
+    if os.path.exists(OUT):
+        if open(OUT, encoding="utf-8").read() != build():
+            bad.append("COPY_DECK.md is stale — run `copydeck.py regen`")
+    else:
+        bad.append("COPY_DECK.md does not exist — run `copydeck.py regen`")
+    for b in bad:
+        print(f"FAIL {b}", file=sys.stderr)
+    if bad:
+        print(f"\n{len(bad)} violation(s)", file=sys.stderr)
+        return 1
+    print(f"ok — {len(HAND)} hand entries probed, deck current")
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("command", choices=["regen", "check"])
+    args = ap.parse_args()
+    if args.command == "regen":
+        text = build()
+        with open(OUT, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        print(f"wrote {os.path.relpath(OUT, ROOT)} — {len(text):,} bytes, "
+              f"{len(HAND)} hand entries")
+        return 0
+    return check()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

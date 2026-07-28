@@ -41,6 +41,7 @@ printf 'pre-commit gates:\n'
 run "ledger schema"      python docs/turbotab/tools/ledger.py check
 run "register schema"    python docs/turbotab/tools/register.py check
 run "American spelling"  python -m pytest tests/test_american_spelling.py -q --no-header
+run "copy deck"          python docs/turbotab/tools/copydeck.py check
 
 if [ "$FAILED" -ne 0 ]; then
     cat <<'EOF'
@@ -49,6 +50,10 @@ COMMIT REFUSED — a gate is red.
 
   ledger/register `check` regenerate nothing; if the markdown is stale run
       python docs/turbotab/tools/ledger.py regen
+  the copy deck is half generated: if a user-facing string changed, run
+      python docs/turbotab/tools/copydeck.py regen
+  and if the change was to a HAND-assembled string, update its entry in
+  docs/turbotab/tools/copydeck.py first — the probe is what noticed.
   the spelling test governs GENERATED markdown, so a British spelling quoted
   from docs/audit/ must be paraphrased in findings.json rather than pasted
   (docs/audit/ is the exempt path precisely so a quoted record stays quotable).

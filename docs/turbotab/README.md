@@ -32,6 +32,7 @@ Baseline for all analysis: `origin/main` @ `24c3446` (PR #145 merged).
 | [`FEATURE_PARITY.md`](FEATURE_PARITY.md) | **Do the intelligent features carry over?** Capability vs orchestration vs exposure, and the register that stops a feature going missing quietly. |
 | [`ROADMAP.md`](ROADMAP.md) | **All twelve loops, the three decision gates, and what "done" means.** Read this to see the whole road, not just the next step. Contains both constitutions: routing (what the app asks) and lockbox (what it may know, and when). |
 | [`ASSEMBLY_SPEC.md`](ASSEMBLY_SPEC.md) | **Multi-file assembly.** The research, the interaction, and the seven acceptance criteria the audit produced. The grain question it specifies is the same one the lockbox seal needs. |
+| [`COPY_DECK.md`](COPY_DECK.md) | **Every user-facing string in the Guided door, by step and by state, with the condition that triggers it.** So copy can be reviewed without running the app. Half generated from source, half hand-assembled and probe-checked — `tools/copydeck.py regen` after changing a string. |
 | [`METHODOLOGY.md`](METHODOLOGY.md) | Provenance: what was measured, what was verified by hand, what must still be re-checked. |
 
 ## Prototypes
