@@ -7146,5 +7146,19 @@
   "verified_against": "TurboTab @ L15 value-check drift",
   "test": "",
   "verified_ev": "tests/integration/test_routing_value_check.py::test_routing_value_check; the bisect at L15 (e7910ef green, 4152020 red); .githooks/pre-commit, which does not run it"
+ },
+ {
+  "id": "STATE-104",
+  "area": "STATE",
+  "sev": "high",
+  "item": "The archive's whitelist has silently dropped project state twice - the seal's basis at L13 and the entire features record at L14 - and both were caught only because a test happened to be written for that feature",
+  "detail": "L16 ruling. turbotab/archive.py build_members is an explicit whitelist and should be: a serializer that walks whatever it finds writes whatever it finds, and 'never persist participant data' would then depend on nobody adding the wrong field. But a whitelist has exactly one failure mode and this one has hit it twice. L13: the seal gained seal_basis and basis_source per constitution 03, lockbox.json did not, so a restored seal came back unable to say what it rested on - the group_col None ambiguity 03 exists to remove. L14: the project gained engineered, deferred_transforms, selection_spec and features_settled, config.json did not, so a restored project had the engineered COLUMNS from the parquet and no record of how they got there, and the deferred specs were gone outright with nothing else holding them.",
+  "ev": "tests/test_the_archive_carries_every_field.py; the two prior regressions are pinned by name inside it as well as by the general check",
+  "act": "Closed.",
+  "status": "FIXED",
+  "note": "FIXED at L16, structurally rather than a third time by hand. TWO LEVELS, because the whitelist has two. Level 1: every dataclass field on AnalysisProject is classified PERSISTED or REGENERATED-with-a-reason, a field in neither fails, and every persisted field is populated with a NON-DEFAULT value before the round trip - asserted, not assumed, because a fixture that left a field at its default would pass on an archive that never wrote it. Level 2: every KEY of the nested dicts that carry their own whitelists, the lockbox and the cohort. Level 1 cannot see inside those - lockbox is ONE field and it survives level 1 while losing half its keys, which is L13 exactly. PARAMETRIZED per field so a failure names what was lost: 'the archive lost selection_spec' rather than 'the archive lost something'. ONE THING THE TEST HAD TO LEARN: the lockbox member MATERIALIZES DEFAULTS - a seal with no strata comes back with strata [] - so the restored dict is a superset and strict equality would fail on an archive that lost nothing. The field-level claim for those two is arrival; the key-level claim is preservation. REVERT PROBE, six reverts each red for its own named reason: dropping engineered from config.json, dropping seal_basis from lockbox.json, dropping deferred_transforms, dropping the READER half for selection_spec (written but not read back is the same loss), dropping one cohort key, and adding a new unclassified field to the project - the last is the case the file exists for and it fails with 'a field whose persistence nobody decided'.",
+  "verified_against": "TurboTab @ L16 archive whitelist",
+  "test": "tests/test_the_archive_carries_every_field.py::test_the_field_survives_the_archive",
+  "verified_ev": "tests/test_the_archive_carries_every_field.py; the two prior regressions are pinned by name inside it as well as by the general check"
  }
 ]

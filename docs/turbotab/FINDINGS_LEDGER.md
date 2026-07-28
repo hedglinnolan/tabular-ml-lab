@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**170 of 562 closed.**
+**171 of 563 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 353 |
 | `PARTIAL` | 39 |
-| `FIXED` | 167 |
+| `FIXED` | 168 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
@@ -534,7 +534,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 167
+## FIXED — 168
 
 
 ### Multi-file / JSON import — 68
@@ -610,7 +610,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-136` | medium | coerce_numeric's methods-section description omits how many values it blanked (up to 20% of a column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 36'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 36 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-147` | medium | Duplicated key column name crashes normalize_key and therefore diagnose_join / execute_join / repair_keys (AttributeError), and silently blanks find_key_candidates | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 47'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 47 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 
-### Application state / lockbox — 28
+### Application state / lockbox — 29
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -626,6 +626,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-042` | landmine | session_manager's lockbox serialization is LOSSY (7 of 10 fields) while preserving the signature that suppresses a redraw. | `utils/session_manager.py:298-306 encodes only labels/fraction/seed/n_total/n_test/signature/stratified…` | **test:** `tests/test_state_survives_the_round_trip.py::test_a_restored_lockbox_still_knows_it_was_drawn_by_subject` — Closed. The serialization is no longer lossy in the way this… |
 | `STATE-055` | landmine | cohort_runs_done is not persisted, and completed_runs() filters on isinstance(r, CohortRun). | `utils/cohorts.py:462-465 and :488; utils/session_manager.py — cohort_runs_done appears in no bucket, so it is…` | **test:** `tests/test_session_carries_the_run.py::test_the_banked_comparison_comes_back` — Closed. cohort_runs_done is persisted and restored as reconstructed CohortRun OBJECTS… |
 | `STATE-056` | landmine | InsightLedger.from_list uses .add() (skip duplicates) rather than .upsert(), and Insight.to_dict omits manuscript_text. | `utils/insight_ledger.py:1346-1355 (from_list → ledger.add(...) inside `except (TypeError, KeyError)…` | **test:** `tests/test_the_manuscript_voice_survives_the_save_file.py::test_the_ledger_round_trips_through_json` — Both halves fixed. (a) from_list now calls upsert rather than… |
+| `STATE-104` | high | The archive's whitelist has silently dropped project state twice - the seal's basis at L13 and the entire features record at L14 - and both were caught only because a test happened to be written for… | `tests/test_the_archive_carries_every_field.py; the two prior regressions are pinned by name inside it as well…` | **test:** `tests/test_the_archive_carries_every_field.py::test_the_field_survives_the_archive` — FIXED at L16, structurally rather than a third time by hand. TWO LEVELS, because… |
 | `STATE-057` | invariant | Every selected model has its OWN preprocessing pipeline. Two models must be able to receive genuinely different transformed matrices from the same raw data. | `tests/workflow/test_per_model_pipelines.py::TestPerModelPipelineConfigs::test_ridge_and_rf_get_different_train…` | **test:** `tests/workflow/test_per_model_pipelines.py::TestPipelineTrainingIntegration::test_ridge_and_rf_get_different_training_data` — The differentiator is intact on both sides… |
 | `STATE-059` | invariant | Cross-validation re-fits preprocessing inside every fold; CV never scores a pre-transformed matrix. | `ml/eval.py:182 make_cv_pipeline(preprocessing, estimator) with its `clone(preprocessing)`; called at…` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_the_cv_composite_is_scored_on_raw_training_data` — The invariant is now tested on both of the failure modes this row… |
 | `STATE-060` | invariant | The CV fold scheme matches the split's leakage semantics: group split -> GroupKFold/StratifiedGroupKFold, time split -> TimeSeriesSplit, else KFold/StratifiedKFold. | `pages/06:496,507,528 set st.session_state['cv_strategy'] and ['cv_groups_train'] at split time…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_grouped_split_matches_the_page` — Both halves closed. The fold scheme is no longer a parallel field that… |
