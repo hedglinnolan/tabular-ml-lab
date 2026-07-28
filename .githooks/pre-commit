@@ -17,6 +17,10 @@
 #
 # Bypass is `git commit --no-verify`, and it should appear in a commit message
 # with a reason when it is used.
+#
+# The slow half lives in `.githooks/pre-push` — the routing value check, which
+# takes ~2.6s warm and is too much per commit and nothing per push. See
+# `GUIDED-019`: a check that nothing triggers is a check that does not exist.
 set -uo pipefail
 
 cd "$(git rev-parse --show-toplevel)" || exit 1

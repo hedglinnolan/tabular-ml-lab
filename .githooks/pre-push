@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# The slow gate. What pre-commit cannot afford, run once per push.
+#
+# `GUIDED-019`: the routing value check's drift detector fired correctly and
+# nothing ran it for two loops. A metric regression introduced at 4152020 (L13,
+# the grain question) shipped through L13 and L14 and was found at L15 only
+# because somebody happened to run the whole suite end to end. The check worked;
+# its LATENCY was the defect.
+#
+# A LOOP.md obligation was considered and rejected: depending on memory is what
+# failed at 8127101 (the spelling gate, chained by a newline) and again here.
+# The rule this project runs on is that silence must be a test failure, and an
+# instruction is not a gate.
+#
+# MEASURED FIRST, because the whole design turns on the number:
+#
+#     cold (first run, bytecode + sklearn imports)   ~26 s
+#     warm (every run after)                          ~2.6 s
+#
+# Both are far under the ~90 s where a dependency-declaration file would have
+# been worth its own maintenance burden, so this is unconditional. Simple beats
+# clever: a gate that runs only when a declared dependency changed is a gate
+# that stops running the day somebody adds a dependency and does not declare it,
+# which is the same class of failure one level up.
+#
+# Enable in a fresh clone (git does not version .git/hooks):
+#
+#     git config core.hooksPath .githooks
+#
+# Bypass is `git push --no-verify`, and it should be said out loud when used.
+set -uo pipefail
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+# A branch deletion pushes nothing to check. `git push origin :branch` sends a
+# local ref of all-zeroes, and running a two-second test suite to approve a
+# deletion is noise.
+DELETING_ONLY=1
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+    if [ "$local_sha" != "0000000000000000000000000000000000000000" ]; then
+        DELETING_ONLY=0
+    fi
+done
+if [ "$DELETING_ONLY" -eq 1 ]; then
+    exit 0
+fi
+
+printf 'pre-push gate (the slow one):\n'
+if out=$(python -m pytest tests/integration/test_routing_value_check.py \
+                          tests/integration/test_routing_baseline.py \
+                          -q --no-header 2>&1); then
+    printf '  ✓ routing value check + frozen baseline\n'
+    exit 0
+fi
+
+printf '\n  ✗ routing value check\n'
+printf '%s\n' "$out" | tail -40 | sed 's/^/      /'
+cat <<'EOF'
+
+PUSH REFUSED — the routing measurement moved.
+
+  This is not a test to make green. `VALUE_CHECK_ADJUDICATION.md` is the
+  authority and the failure message names it:
+
+    1. Record the new result BESIDE the old one:
+         python scripts/rerecord_routing_value_check.py \
+             --out docs/turbotab/data/routing-value-check-<loop>.json \
+             --measured-at <commit>
+    2. Write the ruling in docs/turbotab/VALUE_CHECK_ADJUDICATION.md — what
+       moved, both readings, and which one you are banking.
+    3. Only then replace the recorded result, with the reason inside the file:
+         ... --out docs/turbotab/data/routing-value-check.json --replace \
+             --reason "adjudicated in VALUE_CHECK_ADJUDICATION.md ..."
+
+  Re-recording without step 2 is the drift this check exists to stop.
+
+  To push anyway: git push --no-verify — and say why.
+EOF
+exit 1

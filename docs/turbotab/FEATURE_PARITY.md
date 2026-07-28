@@ -159,6 +159,35 @@ Three defenses, in order of strength:
   for guarantees phrased against its absence. `router.py` landing at L8 should have triggered
   exactly that sweep and did not.
 
+**Corollary — a check that nothing triggers is a check that does not exist** (from `GUIDED-019`).
+Writing the check is half the work. The other half is naming the moment it runs, and that half is
+skipped constantly because the check *passes* when you run it by hand, so it feels finished.
+
+`tests/integration/test_routing_value_check.py` compares every run against the recorded result and
+fails on divergence. It works. It fired correctly the whole time. And a metric regression
+introduced at `4152020` rode through two loops, because nothing ran it: the pre-commit hook guards
+four fast gates and this is not one of them, and the only other trigger was somebody choosing to
+run the whole suite.
+
+The sibling relationship to the expiring guarantee is exact, and the axis is different again.
+Principle-locality fails across **space** — stated here, violated there. Expiring guarantees fail
+across **time** — true then, false now. This one fails across **occasion**: correct always, and
+consulted never.
+
+Three defenses, in order of strength:
+
+- **Give every check a trigger, and make the trigger structural.** Pre-commit for anything that
+  fits in a couple of seconds; **pre-push** for the rest. A LOOP.md obligation is not a trigger —
+  depending on memory is what failed at `8127101`, and `GUIDED-019` is the same failure a second
+  time from a different direction.
+- **Measure before designing the trigger.** The value check was assumed slow and is not: ~2.6 s
+  warm, ~26 s cold. That measurement is the whole design. Under about ninety seconds, run it
+  unconditionally — a gate that fires only when a *declared dependency set* changed is a gate that
+  stops firing the day somebody adds a dependency and does not declare it, which is this same rule
+  recurring one level up. Cleverness here buys latency and costs correctness.
+- **A check whose trigger you cannot name is not done.** "Run it in CI" is a name; "run it when
+  you touch the router" is not, unless something enforces the *when*.
+
 **Corollary — the frozen-measurement rule** (from the same close, after the first "never edited,
 ever" proved too blunt to state what it protected): *the measurements are frozen; the envelope may
 gain labels, never lose or alter one.*

@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**172 of 563 closed.**
+**173 of 563 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 352 |
+| `OPEN` | 351 |
 | `PARTIAL` | 39 |
-| `FIXED` | 169 |
+| `FIXED` | 170 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 352
+## OPEN — 351
 
 
 ### Application state / lockbox — 65
@@ -431,7 +431,7 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Guided-door drive feedback — 6
+### Guided-door drive feedback — 5
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -440,7 +440,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
-| `GUIDED-019` | medium | The routing value check's drift detector fired correctly and nothing ran it for two loops, so a metric regression I introduced at L13 shipped through L13 and L14 unnoticed | `tests/integration/test_routing_value_check.py::test_routing_value_check; the bisect at L15 (e7910ef green…` | SELF-INFLICTED AND SAID PLAINLY. I wrote 4152020, I ran the four fast gates on it, and I did not run the suite that measures what that commit changed. The user was told at L13… |
 
 ---
 
@@ -533,7 +532,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 169
+## FIXED — 170
 
 
 ### Multi-file / JSON import — 68
@@ -668,7 +667,7 @@ Nothing is closed without a regression test named after it.
 | `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |
 
-### Guided-door drive feedback — 13
+### Guided-door drive feedback — 14
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -685,6 +684,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |
 | `GUIDED-008` | medium | 'Remind me later' does not tell the user where or when the item resurfaces, though the deferral contract already requires a target_step | `turbotab/api.py (defer requires target_step); screenshots` | **test:** `turbotab/test_guided_drive.py::test_every_finding_carries_the_step_its_deferral_goes_to` — Fixed. The Router owns the destination, because it owns which step can act on… |
 | `GUIDED-018` | medium | required_decisions has no key for a constitutionally mandatory question, so the grain question scores as one irrelevant question on all three value-check datasets - including the one where it matters… | `docs/turbotab/VALUE_CHECK_ADJUDICATION.md section 'The grain question scores as noise'…` | **test:** `tests/test_the_constitutional_category_is_reported_not_subtracted.py::test_labeling_a_question_with_a_clause_does_not_move_the_literal_count` — RULED BY THE PRODUCT… |
+| `GUIDED-019` | medium | The routing value check's drift detector fired correctly and nothing ran it for two loops, so a metric regression I introduced at L13 shipped through L13 and L14 unnoticed | `tests/integration/test_routing_value_check.py::test_routing_value_check; the bisect at L15 (e7910ef green…` | **test:** `tests/integration/test_routing_value_check.py::test_routing_value_check` — FIXED at L16, as a PRE-PUSH HOOK, per the ruling. A LOOP.md obligation was explicitly ruled… |
 
 ### Completeness sweep — 9
 
