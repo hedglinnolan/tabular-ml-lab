@@ -894,6 +894,39 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                 filtered_df = apply_plausibility_filter(
                     df, numeric_features, plausibility_bounds, uf_list
                 )
+                # Constitution 04: a robustness trim applies to the TRAINING
+                # partition only, and "also trim the test set to match" is
+                # permanently off the menu. This filter used to run over the
+                # whole frame and write the result to filtered_data, which
+                # get_data() serves to every page -- so it silently removed
+                # sealed rows. Measured: a 60-row seal came back as 53 while
+                # the chip still said 60 (STATE-101).
+                #
+                # Sealed rows are put back whole. They obey ELIGIBILITY, which
+                # is pre-seal and changes N in the flow diagram; they do not
+                # obey a post-seal trim, which is a fitting decision about the
+                # training data. A user who genuinely wants the narrower
+                # population is routed back to the pre-seal question, which
+                # requires a re-seal and is its own logged decision.
+                from utils.test_lockbox import get_lockbox as _get_lb, is_exploratory as _is_exp
+                _lb_now = _get_lb()
+                if _lb_now and not _is_exp():
+                    _sealed = [l for l in _lb_now["labels"] if l in df.index]
+                    _restored = [l for l in _sealed if l not in filtered_df.index]
+                    if _restored:
+                        filtered_df = pd.concat(
+                            [filtered_df, df.loc[_restored]]).loc[
+                                [i for i in df.index
+                                 if i in set(filtered_df.index) | set(_restored)]]
+                        st.info(
+                            f"Plausibility filtering removed rows from the training "
+                            f"data only. {len(_restored):,} held-out row(s) were out "
+                            f"of range and have been kept: the sealed test set is "
+                            f"never trimmed to match a training-side decision. If "
+                            f"those values are genuinely impossible rather than "
+                            f"extreme, that is an eligibility criterion and belongs "
+                            f"before the split, on Upload & Audit."
+                        )
                 st.session_state["filtered_data"] = filtered_df
                 X_sample = filtered_df[all_features]
             else:

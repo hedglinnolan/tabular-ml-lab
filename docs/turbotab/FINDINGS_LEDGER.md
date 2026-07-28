@@ -20,27 +20,25 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**167 of 551 closed.**
+**169 of 551 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 346 |
-| `PARTIAL` | 38 |
-| `FIXED` | 164 |
+| `OPEN` | 343 |
+| `PARTIAL` | 39 |
+| `FIXED` | 166 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 346
+## OPEN — 343
 
 
-### Application state / lockbox — 66
+### Application state / lockbox — 64
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `STATE-101` | critical | Clause 01 contradiction: the impossibility pass runs AFTER the seal in Classic, and its row-dropping form silently shrinks the sealed test set | `pages/01_Upload_and_Audit.py:1094-1106 (the seal, drawn at target selection); pages/02_EDA.py:1758 (the…` | REPRODUCED AT HEAD, measured. 400 rows with 60 carrying an impossible glucose of -999. ensure_lockbox seals 60 rows at 15%. apply_plausibility_filter with NHANES-style bounds… |
-| `STATE-102` | critical | The lockbox status chip reports the sealed row count on the ordinary path no matter how many sealed rows still exist, because the held-out-is-not-scoreable check is scoped to cohort runs only | `utils/test_lockbox.py:548-566 (_scoreable_here and the comment naming the principle), :603 (its only call…` | REPRODUCED AT HEAD as part of the STATE-101 reproduction: after the plausibility filter removed 7 sealed rows, the sealed count is 60 and the rows actually available for… |
 | `STATE-003` | landmine | unit_harmonization_factors and plausibility_bounds are POSITIONAL lists aligned to the full numeric_features, but pages/05 passes a FILTERED numeric_features to build_preprocessing_pipeline.… | `Built against the full list: ml/pipeline.py:45 `for col in numeric_features`…` | Unchanged at HEAD. sibling-of: MINE-001 - the positional-alignment class from the state pass, and this row names the asymmetry that makes it dangerous. UnitHarmonizer fails LOUDLY… |
 | `STATE-004` | landmine | The pipelines stored in preprocessing_pipelines_by_model are FITTED ON THE FULL DATASET at build time — including the lockbox test rows — and they are what gets exported as the reproducibility… | `Fit on all rows: pages/05_Preprocess.py:945 `temp_pipeline.fit(X_sample)` and :999 `pipeline.fit(X_sample)`…` | Unchanged at HEAD, both failures. (1) The exported joblib is not the pipeline the model was trained with: pages/05 fits on all rows and stores that in… |
 | `STATE-005` | landmine | get_preprocessing_pipeline(model_key) silently falls back to an arbitrary other model's pipeline, and returns a SHARED MUTABLE OBJECT that the caller then fits in place. | `utils/session_state.py:448-454 (the fallback) and :468 `default_pipeline = pipelines_by_model.get('default')…` | Unchanged at HEAD. sibling-of: T0-STRUCT-001. Both halves are intact: (A) a model selected in Train but never configured in Preprocess still silently trains under another model's… |
@@ -430,23 +428,18 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Guided-door drive feedback — 1
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `GUIDED-011` | high | Guided has no seal step, so clause 01's pre-seal ordering has nothing to attach to - recorded against the clause now so the build inherits the requirement instead of rediscovering it | `docs/turbotab/data/register.json 'target-lockbox-settings' (state classic-only); the sequence in ROADMAP.md…` | Filed against the clause rather than as a new discovery - the underlying gap is already in the register and this row does not double-count it. What is new is the clause-01… |
-
 ---
 
-## PARTIAL — 38
+## PARTIAL — 39
 
 
-### Application state / lockbox — 8
+### Application state / lockbox — 9
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `IMPORT-020` | critical | The same subject lands in both training and the sealed test set whenever detect_repeated_subjects' ratio gate misses - silently, with a clean lockbox chip | `REPRODUCED AT HEAD (1e2701d), three of the audit's four shapes: (a) 100 subjects with 30 second visits…` | **test:** `turbotab/test_grain_is_asked.py::test_a_stated_repeat_seals_grouped_and_leaks_nobody` — The same subject lands in both training and the sealed test set whenever… |
 | `IMPORT-022` | critical | An identifier the name-token list does not recognize is sealed as verified cross-sectional over a real leak | `REPRODUCED AT HEAD: DataFrame({'SUBJ': np.repeat(range(60),3), ...}) -> detect_repeated_subjects None…` | **test:** `turbotab/test_grain_is_asked.py::test_the_contradiction_detector_fires_on_an_id_name_the_heuristic_misses` — An identifier the name-token list does not recognize is… |
+| `STATE-101` | critical | Clause 01 contradiction: the impossibility pass runs AFTER the seal in Classic, and its row-dropping form silently shrinks the sealed test set | `pages/01_Upload_and_Audit.py:1094-1106 (the seal, drawn at target selection); pages/02_EDA.py:1758 (the…` | **test:** `tests/test_the_trim_does_not_touch_the_sealed_rows.py::test_every_sealed_row_survives_a_post_seal_trim` — PARTIAL at L13, and the split is deliberate. WHAT LANDED: the… |
 | `STATE-009` | landmine | reset_downstream_results() does not clear preprocess_built_model_keys, preprocessing_summary, or engineered_feature_transforms, so three consumers keep describing deleted work. | `utils/session_state.py:283-416 (the function; grep it for these three keys — absent). Writers: pages/05:1011…` | One of the three keys is fixed; two are not. preprocess_built_model_keys IS now cleared at utils/session_state.py:372, which closes the worst arm of this row - the 'you are about… |
 | `STATE-014` | landmine | The 370-line split builder — the single most leakage-sensitive function in the app — lives inside a Streamlit button handler with zero unit tests, and writes its outputs through two separate… | `pages/06_Train_and_Compare.py:349-720. The split arrays are written via set_splits() at :610 or :646; the…` | Two of the three claims are closed; the third is not. The 370-line block is out of the button handler and into ml/splits.py as make_split, with SplitSpec in and an immutable Split… |
 | `STATE-066` | invariant | Every result computed from the current data is cleared when the data, target, features, or feature set changes. 'Any page that introduces a new result key must add it here.' | `utils/session_state.py:283 reset_downstream_results() (its own docstring states the rule)…` | The competing implementation is gone; the key list is still incomplete. pages/03 no longer bypasses the function - all three of its paths route through it and an AST guard fails… |
@@ -526,7 +519,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 164
+## FIXED — 166
 
 
 ### Multi-file / JSON import — 68
@@ -602,11 +595,12 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-136` | medium | coerce_numeric's methods-section description omits how many values it blanked (up to 20% of a column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 36'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 36 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-147` | medium | Duplicated key column name crashes normalize_key and therefore diagnose_join / execute_join / repair_keys (AttributeError), and silently blanks find_key_candidates | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 47'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 47 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 
-### Application state / lockbox — 27
+### Application state / lockbox — 28
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `IMPORT-021` | critical | With fewer than 8 subjects the lockbox finds the subject column, then abandons subject-level splitting | `REPRODUCED AT HEAD (1e2701d): 7 subjects x 5 visits -> detect_repeated_subjects ('SEQN', 7, 35), lockbox…` | **test:** `tests/test_the_seal_states_its_basis.py::test_an_abandoned_seal_says_so_and_is_not_cross_sectional` — Now fully closed, including the half this row deliberately left… |
+| `STATE-102` | critical | The lockbox status chip reports the sealed row count on the ordinary path no matter how many sealed rows still exist, because the held-out-is-not-scoreable check is scoped to cohort runs only | `utils/test_lockbox.py:548-566 (_scoreable_here and the comment naming the principle), :603 (its only call…` | **test:** `tests/test_scoreable_locality.py::test_the_scoreable_check_is_computed_above_the_branch_not_inside_one` — FIXED at L13. _scoreable_here is computed ABOVE the cohort… |
 | `STATE-001` | landmine | apply_plausibility_filter calls reset_index(drop=True), and its output becomes the app's active dataframe — which silently voids the test lockbox for every downstream step. | `ml/pipeline.py:124 `return df.loc[mask].reset_index(drop=True)` -> pages/05_Preprocess.py:863…` | **test:** `tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given` — Closed, and closed at the source rather than at the consumer.… |
 | `STATE-002` | landmine | PlausibilityGate cannot be sklearn-cloned. It mutates its constructor parameters in __init__, violating the sklearn clone identity contract — and reconcile_pipeline_columns clones UNCONDITIONALLY on… | `ml/preprocess_operators.py:50-55 `self.lower_bounds = np.array([np.nan if v is None else float(v) for v in…` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_a_pipeline_with_plausibility_bounds_can_be_cloned` — Fixed as the row prescribed: PlausibilityGate.__init__ is bare… |
 | `STATE-006` | landmine | pages/03_Feature_Engineering.py hand-rolls its own cascade invalidation instead of calling reset_downstream_results(), and the copy has drifted. | `pages/03_Feature_Engineering.py:1229-1252 (the block after `st.session_state['engineered_feature_transforms']…` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_page_03_no_longer_hand_rolls_its_own_cascade` — Duplicate of CONTRACT-002 from the state pass, and closed the… |
@@ -659,7 +653,7 @@ Nothing is closed without a regression test named after it.
 | `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |
 
-### Guided-door drive feedback — 10
+### Guided-door drive feedback — 11
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -669,6 +663,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-006` | high | Several pull chips do nothing when clicked (dose-response trends, collinearity heatmap, stratified trends per the drive) | `turbotab/web/index.html pull palette; screenshot other_analyses_not_running` | **test:** `turbotab/test_guided_drive.py::test_every_pull_chip_says_whether_it_runs` — SEVERITY CORRECTED, from measurement rather than from the row. The row says 'Several pull… |
 | `T0-BUILD-001` | high | The Guided preview's change count and its cell highlighting used two different definitions of 'changed', so the header and the table contradicted each other | `turbotab/engine.py preview_fix: the count from _differs vs the flags from b_txt != a_txt; reproduced on…` | **test:** `turbotab/test_guided_drive.py::test_the_change_count_and_the_highlighted_cells_agree` — Found while building the binary reading for GUIDED-001, described by no row.… |
 | `GUIDED-009` | high | The outcome was asked a feature's question - 'is this binary?' - instead of the only one that matters for a target: which level is the event | `ml/binary_text.py positive_class_finding / apply_positive_class; turbotab/engine.py diagnose(target=...) and…` | **test:** `tests/test_the_target_is_asked_a_different_question.py::test_the_event_is_never_pre_selected` — Raised by the adjudicator from the L9b report, where it was recorded as… |
+| `GUIDED-011` | high | Guided has no seal step, so clause 01's pre-seal ordering has nothing to attach to - recorded against the clause now so the build inherits the requirement instead of rediscovering it | `docs/turbotab/data/register.json 'target-lockbox-settings' (state classic-only); the sequence in ROADMAP.md…` | **test:** `turbotab/test_grain_is_asked.py::test_the_seal_cannot_be_drawn_before_the_grain_is_answered` — FIXED at L13. The row said Guided had no seal step, so clause 01's… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |
