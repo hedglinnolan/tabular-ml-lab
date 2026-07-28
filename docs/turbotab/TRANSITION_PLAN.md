@@ -220,6 +220,30 @@ Gate 1 is bookkeeping; gate 2 is the engine being sound; gate 3 is the interacti
 on it. The earlier condition — *"no un-dispositioned rows"* — measured what got filed rather than
 whether the audit was complete, and is superseded.
 
+#### Where the three gates stand · measured at L12
+
+| Gate | Status | What is left |
+|---|---|---|
+| **1 · every recorded finding dispositioned** | **MET** | 48/48 originals reconciled as `IMPORT-101`…`148`; **45/45** `HUNT_FINDINGS.md` entries now carry a disposition. No `UNVERIFIED` remains on either set. |
+| **2 · ten lenses run, no `IMPORT` critical/landmine `OPEN`** | **NOT MET** — first half met, second half **further away** | All ten lenses have run (table above), none dry. But **25 rows block it**: 17 critical `OPEN`, 1 critical `PARTIAL`, 7 landmine `OPEN`. |
+| **3 · seven guided-assembly requirements have named tests** | **NOT MET** | Unchanged this loop. `IMPORT-201` is a live counterexample to `IMPORT-007` ("the map matches the executed frame"), and `IMPORT-257` shows `IMPORT-005`/`015` have no control to attach to. |
+
+**Gate 2 moved the wrong way, and that is the honest result of running the lenses.** It was scored at
+"six lenses unrun, plus `IMPORT-020`/`022`" — two known blockers. Running the six added far more than
+it closed. That is what an audit is for: the gate is now measuring the engine rather than measuring
+how much of the engine had been looked at.
+
+**Three findings converge on one repair, and it is the cheapest thing on this list.** `IMPORT-209`
+(JSON loader), `IMPORT-234` (join), and `IMPORT-260` (stack) are the *same* defect — an identifier
+column widened to `float64` collapses participants above 2^53 — reached by three independent routes.
+One guard at one chokepoint closes all three.
+
+**A second convergence, and it is the expensive one.** `IMPORT-020`, `IMPORT-022`, `IMPORT-219` and
+`IMPORT-257` are all the grain question. `257` is the structural root: *there is no control anywhere
+for declaring the subject column*, so `detect_cohort_structure` is imported by `pages/01` and never
+called, and the heuristics are load-bearing only because the question is never asked. Constitution
+§02 is the fix, and it closes all four.
+
 #### Gate 2's lens table
 
 The ten lenses of run `wf_70254f26-494`, and where each one stands. Kept here, beside the gate it
