@@ -196,6 +196,10 @@ def _record(q, dataset: str, required) -> QuestionRecord:
         key=q.key, label=q.title, door="guided", step=q.step,
         triggering_finding=q.triggering_finding,
         mode=q.mode,
+        # The fourth origin, carried from the Router rather than inferred here.
+        # A harness that decided for itself which questions are constitutional
+        # would be marking its own homework.
+        clause=q.clause,
         skipped=(q.status != "asked"),
         skip_reason=q.skip_reason or (
             f"deferred to {q.defer_target}" if q.status == "deferred" else None),
@@ -299,6 +303,15 @@ def test_routing_value_check():
             _check(failures, name, "coverage", gm["coverage"], ">=", t["coverage"])
         _check(failures, name, "questions asked",
                gm["questions_asked"], "<=", t["max_questions"])
+        # ON THE LITERAL COUNT, DELIBERATELY. The prereg defines an irrelevant
+        # question as one absent from the decision inventory and citing no
+        # finding; both conjuncts hold for a constitutional question, so the
+        # recorded numbers are correct and the ceiling binds on them. The
+        # `constitutional` and `irrelevant_net` readings are published beside
+        # this line and nothing is checked against them — a threshold moved onto
+        # a metric invented after the result is a threshold fitted to it.
+        # See VALUE_CHECK_ADJUDICATION.md, "The grain question scores as noise",
+        # and its L16 ruling.
         _check(failures, name, "irrelevant questions",
                gm["irrelevant_questions"], "<=", t["max_irrelevant"])
 

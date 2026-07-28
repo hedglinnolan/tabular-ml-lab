@@ -108,6 +108,9 @@ class QuestionRecord:
     # nothing and it never blocks. The thresholds bind on pushed questions only,
     # or the palette reads as a regression the moment it lands.
     mode: str = "push"
+    # The constitution clause that requires this question, when one does. See
+    # `Measurement.constitutional` for what it is counted as and what it is not.
+    clause: Optional[str] = None
 
     @property
     def is_question(self) -> bool:
@@ -195,6 +198,51 @@ class Measurement:
         return max(0, self.questions_asked - self.required_decisions)
 
     @property
+    def constitutional(self) -> int:
+        """Questions a constitution clause requires, with no other origin.
+
+        **The L16 ruling on `GUIDED-018`, and it is a new category rather than a
+        new key.** The pre-registration defines an irrelevant question as one
+        *absent from the decision inventory and citing no finding*. Both
+        conjuncts hold for the grain question, so the recorded numbers are
+        correct and they stand: `irrelevant_questions` does not move, and the
+        thresholds keep binding on it.
+
+        What was wrong is not the arithmetic but an assumption underneath it —
+        that every legitimate question originates from a finding. Clause §02
+        introduced a fourth origin: **asked because the app cannot know.** That
+        question cites no finding and has no inventory key *by design*, because
+        asking it only when a detector fires is the defect the clause exists to
+        prevent.
+
+        So the category is named and reported beside the literal count, never
+        instead of it. Adding a `grain::` key to `required_decisions` was the
+        other option and was refused: it smuggles a new category into an old
+        bucket, and eligibility (§04) and missingness routing (§07) would each
+        need their own, so the denominator would move every loop.
+
+        **Three conjuncts, all necessary.** A question counts here only if it
+        names a clause AND cites no finding AND settles no inventory key. A
+        clause-bearing question that also covers a required decision is already
+        counted where it belongs; letting it count twice would turn this into a
+        laundering mechanism for questions the harness was right about.
+        """
+        return sum(1 for q in self.questions
+                   if q.is_question and not q.skipped
+                   and q.clause and not q.triggering_finding and not q.covers)
+
+    @property
+    def irrelevant_net(self) -> int:
+        """`irrelevant − constitutional`. Reported alongside, never instead.
+
+        The second reading, published so the first one cannot quietly become the
+        only one anybody quotes. Nothing binds on this number: the prereg's
+        ceilings are applied to `irrelevant_questions`, and a threshold moved
+        onto a metric invented after the result is a threshold fitted to it.
+        """
+        return max(0, self.irrelevant_questions - self.constitutional)
+
+    @property
     def uncovered(self) -> List[str]:
         """Required decisions this door never puts to the user."""
         raised = {q.covers for q in self.questions if q.covers}
@@ -243,6 +291,12 @@ class Measurement:
                 "required_decisions": self.required_decisions,
                 "questions_asked": self.questions_asked,
                 "irrelevant_questions": self.irrelevant_questions,
+                # Both readings travel together. The first is what the prereg
+                # defines and what the thresholds bind on; the second is the
+                # constitutional category named at L16. Publishing only one of
+                # them is how a reading becomes the reading.
+                "constitutional": self.constitutional,
+                "irrelevant_net": self.irrelevant_net,
                 "findings_driven": _round(self.findings_driven),
                 "deferral_closes": _round(self.deferral_closes),
                 "coverage": _round(self.coverage),

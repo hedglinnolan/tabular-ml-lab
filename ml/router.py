@@ -108,6 +108,22 @@ class Question:
     # right to ask." Held on the Question rather than written into the page, so
     # `audit()` can refuse a plan that asks one without it.
     consumer: Optional[str] = None
+    # The constitution clause that REQUIRES this question, when one does.
+    #
+    # A fourth origin, and naming it is the L16 ruling on `GUIDED-018`. The
+    # measurement harness assumed every legitimate question originates from a
+    # finding: `irrelevant_questions = asked − required_decisions`, and
+    # `required_decisions` is built from what the engine found. Clause §02's
+    # grain question originates somewhere else — it is asked because the app
+    # CANNOT KNOW, and asking it only when a detector fires is precisely
+    # `IMPORT-020` and `IMPORT-022`. So it cites no finding, has no inventory
+    # key by design, and scored as noise.
+    #
+    # The fix is to name the category, not to add a key per clause: eligibility
+    # (§04) is the second one, missingness routing (§07) is likely the third,
+    # and a denominator that gains an entry per constitutional question is a
+    # denominator that moves every loop.
+    clause: Optional[str] = None
 
     # asked | skipped | deferred — every one of which is visible in the
     # transcript. There is no fourth state, because a question that is neither
@@ -140,6 +156,7 @@ class Question:
             "defer_target": self.defer_target, "deferred_from": self.deferred_from,
             "options": list(self.options),
             "consumer": self.consumer,
+            "clause": self.clause,
         }
 
 
@@ -314,7 +331,7 @@ def plan(
     #    are the app having inferred this and rendered the guess as a clean lock.
     if step == "data" and target and "state_grain" not in answered:
         out.append(Question(
-            key="state_grain", kind="grain", step="data",
+            key="state_grain", kind="grain", step="data", clause="lockbox-02",
             title="Can one person appear in more than one row?",
             why=("This decides how your held-out rows are chosen. If the same "
                  "person lands on both sides, your held-out numbers will look "

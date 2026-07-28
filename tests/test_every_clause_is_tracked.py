@@ -219,6 +219,42 @@ def test_no_manifest_entry_points_at_a_clause_that_no_longer_exists():
         f"{stale}. Renumbered, or removed?")
 
 
+def test_every_clause_a_router_question_claims_is_a_real_clause():
+    """`Question.clause` exempts a question from `irrelevant_net`, so it needs a
+    check or it is a laundering mechanism.
+
+    A question that names `lockbox-99` — or `lockbox-2`, or a clause that was
+    renumbered — would be counted as constitutional and subtracted, and nothing
+    else in the codebase reads the field. The claim has to resolve against the
+    documents, which is the same identity rule the manifest runs on.
+    """
+    from ml import router
+
+    found = _headings()
+    live = ({f"lockbox-{n}" for n in found["lockbox"]}
+            | {f"assembly-{n}" for n in found["assembly"]}
+            | {"routing-01-fact", "routing-02-choice", "routing-03-consequence"})
+
+    claimed = set()
+    for step in router.STEPS:
+        for q in router.plan([], target="outcome", step=step,
+                             detection={"detected": "classification",
+                                        "confidence": "high", "reasons": []}):
+            if q.clause:
+                claimed.add((q.key, q.clause))
+
+    assert claimed, (
+        "no Router question names a clause, so this check is vacuous. The grain "
+        "question carries `lockbox-02`; if that was removed, the constitutional "
+        "category has nothing to count and `irrelevant_net` silently equals "
+        "`irrelevant_questions`.")
+    unknown = sorted(f"{k} claims {c}" for k, c in claimed if c not in live)
+    assert not unknown, (
+        f"these Router questions name clauses that are not in the documents: "
+        f"{unknown}. A clause label that resolves to nothing still exempts the "
+        "question from `irrelevant_net`.")
+
+
 @pytest.mark.parametrize("key", sorted(CLAUSES))
 def test_the_clause_names_a_test_or_an_open_finding(key):
     entry = CLAUSES[key]

@@ -165,6 +165,5 @@
    "longitudinal: deferral_closes = None (nothing deferrable on this dataset; fails only under the literal reading of the prereg)"
   ],
   "passes_under_literal_reading": false
- },
- "replaced_because": "L16 ruling on GUIDED-018: the constitutional category is REPORTED, never subtracted. irrelevant_questions is unchanged at 1 on every dataset and the prereg ceilings still bind on it; VALUE_CHECK_PREREG.md is unedited. Two new readings are published beside it - constitutional (1 each, the grain question) and irrelevant_net (0 each) - because the harness assumed every legitimate question originates from a finding and clause 02 introduced a fourth origin, asked because the app cannot know. A grain:: key was refused: it smuggles a new category into an old bucket, and clause 04's eligibility question is the second of these in this same loop. Adjudicated in VALUE_CHECK_ADJUDICATION.md, 'The grain question scores as noise - ruled'; prior result preserved beside it as routing-value-check-l16.json."
+ }
 }

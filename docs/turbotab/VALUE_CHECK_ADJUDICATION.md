@@ -365,3 +365,66 @@ it is for.
 - **The two-loop latency.** The drift check works; nothing ran it. That is not fixed by this
   entry, and the value-check suite is too slow for the pre-commit hook that now guards the other
   four gates. Filed as `GUIDED-019`.
+
+---
+
+# The grain question scores as noise — ruled
+
+**The product owner ruled on `GUIDED-018` at L16. The recorded numbers are correct and they
+stand permanently.**
+
+> The prereg defines *irrelevant* as "absent from the decision inventory and cites no finding" —
+> both conjuncts hold for grain, so your recorded numbers are correct and they stand permanently.
+> Do not add a `grain::` key; that smuggles a new category into an old bucket. Instead name the
+> category: report `constitutional` and `irrelevant_net = irrelevant − constitutional` alongside,
+> never instead. The threshold keeps binding on literal `irrelevant`.
+
+## The cause, which is the part worth writing down
+
+The harness assumed **every legitimate question originates from a finding.** That assumption is
+invisible because it is not written anywhere; it is embedded in an arithmetic identity —
+`irrelevant = asked − required_decisions` — and `required_decisions` is built from what the engine
+found. Under that assumption the identity is exactly right, and the metric has been correct for
+every question the app asked until L13.
+
+Clause §02 introduced a **fourth origin: asked because the app cannot know.** The grain answer is
+not derivable from the table — that is the clause's entire premise, and asking it only when a
+detector fires is precisely `IMPORT-020` and `IMPORT-022`. So the question cites no finding and
+has no inventory key **by design**, and the identity charges the door for obeying the constitution.
+
+**Clause §04's eligibility question is the second one**, landing in this same loop. Missingness
+routing (§07) will likely be the third. That is why the fix is a category and not a key: a
+denominator that gains an entry per constitutional clause moves every loop, and this document's
+standing rule is that a moved denominator is an adjudicated act rather than a convenience.
+
+## What changed, and what deliberately did not
+
+| | |
+|---|---|
+| `irrelevant_questions` | **unchanged**, 1 on every dataset. The literal count is what the prereg defines. |
+| thresholds | **unchanged**, and still applied to the literal count — 4 on messy-clinic, 3 on the guards. |
+| `VALUE_CHECK_PREREG.md` | **unedited**. The pre-registration is not amended by a later finding about it. |
+| `constitutional` | **new**, reported. 1 on every dataset — the grain question. |
+| `irrelevant_net` | **new**, reported. 0 on every dataset. Nothing binds on it. |
+
+`Question.clause` on the Router carries the label, and the harness reads it rather than deciding
+for itself which questions are constitutional — a harness that classified its own subject would be
+marking its own homework.
+
+**Three conjuncts, all necessary**, or the field is a laundering mechanism: a question counts as
+constitutional only if it names a clause **and** cites no finding **and** settles no inventory key.
+A clause-bearing question that also covers a required decision is already counted where it belongs.
+
+And the label has to resolve: `test_every_clause_a_router_question_claims_is_a_real_clause` reads
+the constitution documents and fails on a question naming `lockbox-99` or a renumbered clause.
+Without it, any question could name anything and vanish from the net reading.
+
+## What this does not settle
+
+- **Whether `irrelevant_net` is the more honest headline.** It is published, not promoted. If a
+  later loop wants to quote it, that is a new adjudication and the prereg's ceilings do not
+  follow it across.
+- **Whether the Classic column has constitutional questions too.** It is measured from a frozen
+  baseline and cannot gain the label, so its `constitutional` is structurally 0 rather than
+  measured 0. A comparison of the two doors' net readings would therefore flatter Guided, and
+  nothing in this project should quote it without that sentence attached.
