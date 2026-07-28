@@ -6208,5 +6208,61 @@
   "verified_against": "TurboTab @ L12 lens 5",
   "test": "",
   "verified_ev": "utils/combine_ui.py:255 (running assigned once), utils/combine_ui.py:259-317 (the loop that never reassigns it), utils/combine_ui.py:309 (describe_join given running)"
+ },
+ {
+  "id": "IMPORT-205",
+  "area": "IMPORT",
+  "sev": "critical",
+  "item": "The JSON wrapper-key list pre-empts the 'several possible row sets' refusal, so a payload holding both a metadata list and a data list loads the metadata and silently discards the rows",
+  "detail": "L12 lens 6 (JSON structure), fresh adversarial pass. data_processor.py:284-287 walks _JSON_WRAPPER_KEYS = ('data','records','results','rows','items','entries','values') in fixed order and returns the first key whose value is a non-empty list. That loop runs BEFORE the ambiguity refusal at :302-307, which raises 'This JSON has several possible row sets ... Pick which key holds your rows'. Because the wrapper loop returns first, that refusal is unreachable whenever any one of the seven wrapper names is present - which is most API exports. The choice between candidate row sets is then made by the position of a name in a hard-coded tuple, not by anything about the file.",
+  "ev": "data_processor.py:124 (_JSON_WRAPPER_KEYS), data_processor.py:284-287 (the wrapper loop), data_processor.py:290-292 (the single-list-key path it also pre-empts), data_processor.py:302-307 (the refusal that can no longer fire)",
+  "act": "Collect every candidate row set first, then decide: one candidate loads, several raise the existing ambiguity error naming them with their row counts. The wrapper list should break ties among equals, not win outright. Note the refusal text already exists and is good - it is only unreachable.",
+  "status": "OPEN",
+  "note": "REPRODUCED AT HEAD. {'data': [2 metadata records], 'records': [500 participant records]} loads as 2 rows x 1 column ('note'). The 500 participant rows are dropped with no warning, no note, and no error. This is the assert-something-false branch: the app hands back a well-formed table and calls it the user's data. SEAL-CLASS: no directly, but it determines WHICH TABLE the whole session is about, so everything downstream including the seal is drawn over the wrong rows.",
+  "verified_against": "TurboTab @ L12 lens 6",
+  "test": "",
+  "verified_ev": "data_processor.py:124 (_JSON_WRAPPER_KEYS), data_processor.py:284-287 (the wrapper loop), data_processor.py:290-292 (the single-list-key path it also pre-empts), data_processor.py:302-307 (the refusal that can no longer fire)"
+ },
+ {
+  "id": "IMPORT-206",
+  "area": "IMPORT",
+  "sev": "critical",
+  "item": "A JSON object keyed by subject ID loads TRANSPOSED - participants become columns - and pandas' own orient='index' export round-trips wrong",
+  "detail": "L12 lens 6 (JSON structure), fresh adversarial pass. data_processor.py:295-296 returns pd.DataFrame(obj) whenever every value of a top-level object is itself a dict. pd.DataFrame over a dict-of-dicts uses orient='columns' semantics, so the OUTER keys become columns. For the two shapes that actually reach this branch - a payload keyed by participant ID, and pandas' own to_json(orient='index') - the outer keys are ROW identities, so the table arrives with its axes swapped. The branch cannot tell orient='columns' from orient='index' because both are dicts of dicts, and it assumes one without saying so.",
+  "ev": "data_processor.py:294-296 (the dict-of-dicts branch); contrast the explicit orient='split' handling at :269-277 and orient='table' at :279-281, both of which are recognized by their marker keys",
+  "act": "orient='index' and orient='columns' are genuinely ambiguous as JSON, so this is a question, not an inference - the same shape of answer as constitution 02 gives for grain. Where a marker exists use it; where it does not, ask which way round the table is, showing both readings with their row and column counts. Never pick silently. A cheap contradiction check helps the default: if the inner dicts all share a small key set and the outer keys are many, the outer keys are almost certainly rows.",
+  "status": "OPEN",
+  "note": "REPRODUCED AT HEAD. 500 subjects keyed P000..P499, each holding age/bmi/glucose, load as 3 rows x 500 columns with index ['age','bmi','glucose']. Every downstream 'n =' is 3. A pandas round-trip reproduces it exactly: a (3,2) frame indexed P1..P3 exported with to_json(orient='index') reloads as (2,3) with columns P1,P2,P3. NOT CAUGHT DOWNSTREAM: the Import Doctor's only remark on the 3x500 frame is wide_repeated_measures at info severity and low confidence, so nothing in the app disputes the shape. SEAL-CLASS: yes by consequence - a transposed frame has no row identity that corresponds to a participant, so grain, detect_repeated_subjects and the seal are all computed over variables-as-rows.",
+  "verified_against": "TurboTab @ L12 lens 6",
+  "test": "",
+  "verified_ev": "data_processor.py:294-296 (the dict-of-dicts branch); contrast the explicit orient='split' handling at :269-277 and orient='table' at :279-281, both of which are recognized by their marker keys"
+ },
+ {
+  "id": "IMPORT-207",
+  "area": "IMPORT",
+  "sev": "landmine",
+  "item": "A JSON file can install a NON-UNIQUE index, and the label-based lockbox then cannot address rows individually: a 15% seal held out 42% of the data",
+  "detail": "L12 lens 6 (JSON structure), fresh adversarial pass. data_processor.py:273-274 applies a caller-supplied index from an orient='split' payload whenever its length matches the frame, with no uniqueness check, and load_tabular_data never calls reset_index. TRANSITION_PLAN 02 records that the lockbox stores index LABELS rather than positions (utils/test_lockbox.py:16-17), and train_row_mask at utils/test_lockbox.py:545 decides membership per label with `lbl not in test_set`. A duplicated label therefore cannot be split: sealing it seals every row that carries it.",
+  "ev": "data_processor.py:270-277 (orient='split' index applied unchecked); utils/test_lockbox.py:16-17 (labels, not positions), :333 (eligible = df.index[y.notna()]), :545 (train_row_mask tests membership by label)",
+  "act": "Row identity is S3 in the sequence and is exactly this question. Whichever convention wins, the loader must not accept an index it cannot guarantee: either reject a non-unique index at load with an explanation, or reset it and keep the original as an ordinary column. Filing rather than fixing because choosing labels-or-positions is the design decision LOOP.md 'What not to hand an unsupervised loop' reserves for a human.",
+  "status": "OPEN",
+  "note": "REPRODUCED AT HEAD, end to end through the real loader. A 40-subject x 3-visit orient='split' payload indexed S000..S039 loads as 120 rows with index.is_unique False and 40 distinct labels. ensure_lockbox then seals 18 labels of which 17 are distinct - one label sealed twice - and train_row_mask reports 69 train / 51 test against a nominal 15% (~18 rows). 33 rows were pulled into the sealed set purely by sharing a label with a sealed row: 42% held out where 15% was promised. Stated fairly: the seal did NOT render a clean lock - seal_basis came back repetition_found_grouping_abandoned, so clause 03's three-state disclosure is working here and the user is told grouping was abandoned. The defect is that the held-out FRACTION is silently wrong and rows move into the test set by label collision. SEAL-CLASS: YES - this is row identity itself, the S3 decision, arriving through a file format. Compare the HUNT entry grouped-lockbox-fraction-mislabel, which is the same misreported fraction reached by a different route.",
+  "verified_against": "TurboTab @ L12 lens 6",
+  "test": "",
+  "verified_ev": "data_processor.py:270-277 (orient='split' index applied unchecked); utils/test_lockbox.py:16-17 (labels, not positions), :333 (eligible = df.index[y.notna()]), :545 (train_row_mask tests membership by label)"
+ },
+ {
+  "id": "IMPORT-208",
+  "area": "IMPORT",
+  "sev": "high",
+  "item": "A scalar inside a JSON record array is silently converted into an all-blank extra row, inflating n by one per stray element",
+  "detail": "L12 lens 6 (JSON structure), fresh adversarial pass. data_processor.py:251-254 handles a mixed-content array by wrapping every non-dict element as {'value': x} and normalizing. The comment says 'normalize what we can rather than fail outright', which is a defensible instinct, but the result is an extra ROW whose real columns are all NaN and whose only content sits in a fabricated 'value' column. Nothing warns, and a trailing 'TOTAL' or a stray string in an otherwise clean export is exactly how this occurs in practice.",
+  "ev": "data_processor.py:249-254 (the mixed-content branch and the {'value': x} wrapping)",
+  "act": "Count the non-dict elements and disclose: load the records and say how many elements were not records and were dropped, or refuse with the count. The existing behavior is the one thing the governing rule forbids - the app is silent about having invented a row. Dropping them with a note is the 'refuse' branch and is fine; inventing rows is not.",
+  "status": "OPEN",
+  "note": "REPRODUCED AT HEAD. [{'SEQN':1,'age':40}, {'SEQN':2,'age':55}, 'TOTAL', {'SEQN':3,'age':61}] loads as 4 rows x 3 columns: three participants plus a row with SEQN NaN, age NaN and value 'TOTAL'. n reads 4 for a 3-participant file. Filed high rather than critical because the extra row is visibly blank in the preview and the Import Doctor's own footer and empty-row checks may catch the common trailing case; it is silent rather than confidently wrong. SEAL-CLASS: no.",
+  "verified_against": "TurboTab @ L12 lens 6",
+  "test": "",
+  "verified_ev": "data_processor.py:249-254 (the mixed-content branch and the {'value': x} wrapping)"
  }
 ]

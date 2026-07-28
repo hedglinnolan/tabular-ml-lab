@@ -234,7 +234,7 @@ compresses the JSON lens into one word, which is why the unrun count is six rath
 | 3 | Join modes | ✓ ran (original) | in `HUNT_FINDINGS.md` |
 | 4 | Stacking | ✓ ran (original) | in `HUNT_FINDINGS.md` |
 | 5 | Combine UI (the Step 2 screen) | ✓ ran — L12 | `IMPORT-201`…`204` (2 critical, 2 high) |
-| 6 | JSON structure | **not run** | — |
+| 6 | JSON structure | ✓ ran — L12 | `IMPORT-205`…`208` (2 critical, 1 landmine, 1 high) |
 | 7 | JSON encoding | **not run** | — |
 | 8 | JSON → downstream | **not run** | — |
 | 9 | Import Doctor | **not run** | — |
