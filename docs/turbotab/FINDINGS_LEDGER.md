@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**174 of 566 closed.**
+**175 of 566 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 353 |
+| `OPEN` | 352 |
 | `PARTIAL` | 39 |
-| `FIXED` | 171 |
+| `FIXED` | 172 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 353
+## OPEN — 352
 
 
-### Application state / lockbox — 66
+### Application state / lockbox — 65
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -83,7 +83,6 @@ Nothing is closed without a regression test named after it.
 | `STATE-052` | landmine | Every provenance and ledger write in pages/ is wrapped in a bare `except Exception: pass`. | `utils/session_state._log_to_ledger:655-656; pages/01:1105-1106 and :1194; pages/03:1268-1269…` | Unchanged at HEAD; the count is now 20 across nine pages. Any schema drift in the Record layer during the migration - a renamed section, a changed record_* signature, a page id… |
 | `STATE-053` | landmine | All three import cycles are currently invisible because every edge is a function-local import, and the obvious refactor (methods on AnalysisProject) turns them into module-level cycles. | `Cycle 1: utils/insight_ledger.py:1077 ↔ ml/publication.py:98,155,1739,1829. Cycle 2: utils/cohorts.py:474 ↔…` | Unchanged at HEAD: the cycles are all still there and all still invisible, because every edge is a deferred import inside a function. Nothing fails today, which is the hazard - a… |
 | `STATE-054` | landmine | engineering_log is not persisted while df_engineered, feature_engineering_applied and engineered_feature_names are. | `utils/session_manager.py:91-117 _PLAIN_KEYS includes engineered_feature_names, engineered_feature_transforms…` | Unchanged at HEAD. Save and restore a session with engineered features and the frame, the flag, the column names and the double-transform map all come back - so the app looks… |
-| `STATE-103` | high | Lockbox constitution clause 05 - the extrapolation obligation - is implemented nowhere and tested nowhere: a train-only trim arms a requirement that never fires | `grep for 'extrapolat' across tests/, turbotab/, ml/ and utils/ returns ZERO hits at L14. Contrast…` | NOT BUILT, filed rather than stubbed. The check that found it explicitly forbids satisfying a clause with an empty test, because that would be the silence rewritten as a green… |
 | `STATE-058` | invariant | Preprocessing is FIT ON TRAINING ROWS ONLY and merely applied to val/test. | `pages/06_Train_and_Compare.py:1312-1315 (`model_pipeline.fit(X_train)` then `.transform(X_val)` /…` | The invariant holds on the training path and is violated on two others, so it stays OPEN. Training is correct: the pipeline is fitted on X_train and merely applied to val and… |
 | `STATE-061` | invariant | Target-aware steps upstream of Train & Compare (feature selection, stateful FE fits, target-association views) see TRAINING ROWS ONLY. | `utils/test_lockbox.py:237 train_row_mask(index); applied at pages/04:128 (`mask = df[target_col].notna() &…` | One of the two failure modes is closed and the other is live. The index-renumbering route is gone - apply_plausibility_filter keeps its labels now, so train_row_mask can no longer… |
 | `STATE-064` | invariant | Features already transformed in Feature Engineering are not transformed again in Preprocessing. | `pages/05:954-972 partitions numeric_features into numeric_features_safe (gets log/power/PCA) and…` | Unchanged at HEAD, both weaknesses. The double-transform guard is real and correctly separates already-transformed columns into a passthrough branch - but it depends on… |
@@ -534,7 +533,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 171
+## FIXED — 172
 
 
 ### Multi-file / JSON import — 68
@@ -610,7 +609,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-136` | medium | coerce_numeric's methods-section description omits how many values it blanked (up to 20% of a column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 36'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 36 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-147` | medium | Duplicated key column name crashes normalize_key and therefore diagnose_join / execute_join / repair_keys (AttributeError), and silently blanks find_key_candidates | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 47'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 47 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 
-### Application state / lockbox — 29
+### Application state / lockbox — 30
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -626,6 +625,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-042` | landmine | session_manager's lockbox serialization is LOSSY (7 of 10 fields) while preserving the signature that suppresses a redraw. | `utils/session_manager.py:298-306 encodes only labels/fraction/seed/n_total/n_test/signature/stratified…` | **test:** `tests/test_state_survives_the_round_trip.py::test_a_restored_lockbox_still_knows_it_was_drawn_by_subject` — Closed. The serialization is no longer lossy in the way this… |
 | `STATE-055` | landmine | cohort_runs_done is not persisted, and completed_runs() filters on isinstance(r, CohortRun). | `utils/cohorts.py:462-465 and :488; utils/session_manager.py — cohort_runs_done appears in no bucket, so it is…` | **test:** `tests/test_session_carries_the_run.py::test_the_banked_comparison_comes_back` — Closed. cohort_runs_done is persisted and restored as reconstructed CohortRun OBJECTS… |
 | `STATE-056` | landmine | InsightLedger.from_list uses .add() (skip duplicates) rather than .upsert(), and Insight.to_dict omits manuscript_text. | `utils/insight_ledger.py:1346-1355 (from_list → ledger.add(...) inside `except (TypeError, KeyError)…` | **test:** `tests/test_the_manuscript_voice_survives_the_save_file.py::test_the_ledger_round_trips_through_json` — Both halves fixed. (a) from_list now calls upsert rather than… |
+| `STATE-103` | high | Lockbox constitution clause 05 - the extrapolation obligation - is implemented nowhere and tested nowhere: a train-only trim arms a requirement that never fires | `grep for 'extrapolat' across tests/, turbotab/, ml/ and utils/ returns ZERO hits at L14. Contrast…` | **test:** `turbotab/test_the_trim_arms_the_obligation.py::test_a_train_only_trim_arms_the_extrapolation_obligation` — SPLIT AT L16 on the product owner's instruction, and the… |
 | `STATE-104` | high | The archive's whitelist has silently dropped project state twice - the seal's basis at L13 and the entire features record at L14 - and both were caught only because a test happened to be written for… | `tests/test_the_archive_carries_every_field.py; the two prior regressions are pinned by name inside it as well…` | **test:** `tests/test_the_archive_carries_every_field.py::test_the_field_survives_the_archive` — FIXED at L16, structurally rather than a third time by hand. TWO LEVELS, because… |
 | `STATE-057` | invariant | Every selected model has its OWN preprocessing pipeline. Two models must be able to receive genuinely different transformed matrices from the same raw data. | `tests/workflow/test_per_model_pipelines.py::TestPerModelPipelineConfigs::test_ridge_and_rf_get_different_train…` | **test:** `tests/workflow/test_per_model_pipelines.py::TestPipelineTrainingIntegration::test_ridge_and_rf_get_different_training_data` — The differentiator is intact on both sides… |
 | `STATE-059` | invariant | Cross-validation re-fits preprocessing inside every fold; CV never scores a pre-transformed matrix. | `ml/eval.py:182 make_cv_pipeline(preprocessing, estimator) with its `clone(preprocessing)`; called at…` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_the_cv_composite_is_scored_on_raw_training_data` — The invariant is now tested on both of the failure modes this row… |

@@ -734,5 +734,13 @@
   "classic": "NOT PRESENT. The plausibility filter drops rows and reports a count on screen; it writes no criterion, no reason, and nothing a flow diagram can consume.",
   "state": "guided-only",
   "reason": "BUILT in Guided at L16. TRIPOD+AI names continuous-variable restrictions as an eligibility item reported in participant flow, so the numbers are the deliverable rather than a side effect. A restriction with no stated reason is REFUSED: participant flow reports how many AND why, and a criterion that cannot be written down as a methods sentence should not be applied. The excluded rows' LABELS are deliberately not stored - participant flow needs the count, and keeping the labels would be a second copy of the row identities of people who are no longer in the study."
+ },
+ {
+  "id": "trim-arms-obligation",
+  "step": "explore",
+  "capability": "A post-seal robustness trim narrows the training partition only and ARMS the extrapolation obligation the report must discharge",
+  "classic": "PARTIAL and in the wrong direction. pages/05_Preprocess.py's apply_plausibility_filter narrows rows, and since L13 it restores the sealed rows it would otherwise have removed - so it obeys clause 04. It arms nothing: no record survives the step, so pages/07 exports a single aggregate metric with nothing to object.",
+  "state": "guided-only",
+  "reason": "BUILT in Guided at L16 as the ARMING half of clause 05 only. GUIDED-ONLY and owed back to Classic, which has the trim and not the memory. The obligation carries the count of HELD-OUT rows outside the trimmed range, computed at trim time because it is unrecoverable afterwards - the training rows outside the range are gone by then. The FIRING half - export refuses without a stratified in-range / out-of-range breakdown - is deliberately NOT built and is tracked as STATE-105: there is no Report step, and a blocker with nothing to block cannot be tested, which would make it the half-built clause the split exists to prevent."
  }
 ]

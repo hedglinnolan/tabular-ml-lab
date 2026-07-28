@@ -314,6 +314,10 @@ def build_members(project) -> Dict[str, bytes]:
         # AFTER its seal exists, which `set_eligibility` refuses — so the
         # project would be stuck with no way to say the step had happened.
         "eligibility": _json_safe(project.eligibility) if project.eligibility else None,
+        # §05 spans two steps, so the obligation has to survive the gap
+        # between them — including a save and a restore, which is the
+        # longest form that gap takes.
+        "obligations": _json_safe(project.obligations),
     }
     members["config.json"] = json.dumps(config, indent=2, default=str).encode("utf-8")
     saved.append("config")
@@ -464,6 +468,7 @@ def from_bytes(raw: bytes):
     project.pipeline_specs = dict(config.get("pipeline_specs") or {})
     project.grain = config.get("grain") or None
     project.eligibility = config.get("eligibility") or None
+    project.obligations = list(config.get("obligations") or [])
     project.engineered = list(config.get("engineered") or [])
     project.deferred_transforms = list(config.get("deferred_transforms") or [])
     project.selection_spec = config.get("selection_spec") or None

@@ -192,6 +192,15 @@ The second option opens a follow-up: *which column identifies the person?* — p
 | target · the event level is not defaulted | applying `set_positive_class` with no chosen level | Setting the event needs the level being predicted. There is no default: whether the event is (say) death or survival is the research question, not something the file can say. | `turbotab/api.py` |
 | repair · the finding has no automatic fix | `POST /decision {kind: apply}` on a finding whose preview is not applicable | That finding has no automatic repair — it needs a human decision. | `turbotab/api.py` |
 
+### Explore · refusals, receipts and transcript lines
+
+| State | Trigger | Copy | Source |
+|---|---|---|---|
+| trim · attempted before the seal | `trim_training_rows` while `barrier_raised` is false | A robustness trim is post-seal by definition: it narrows the training partition, and there is no training partition until the test set is sealed. Before the seal, narrowing the study is an eligibility criterion — a different object (§04), asked as a different question, and it changes N. | `turbotab/project.py` |
+| trim · with no stated reason | `trim_training_rows` with an empty `reason` | A trim's reason is what the report has to print beside the breakdown. Without it the disclosure would say that some rows were outside a range nobody can explain. | `turbotab/obligations.py` |
+| trim · with no bounds | `trim_training_rows` with neither a minimum nor a maximum | A trim with no bounds narrows nothing, so there is no extrapolation to disclose. | `turbotab/obligations.py` |
+| trim · the receipt, which is also an obligation | a train-only trim succeeds; the sentence goes in the transcript AND becomes what the report must discharge | The model was fitted on training rows with {range} ({reason}). {k} of {n} held-out rows fall outside that range, so performance must be reported separately for in-range and out-of-range rows rather than as one number. | `turbotab/obligations.py` |
+
 ### Features · refusals, receipts and transcript lines
 
 | State | Trigger | Copy | Source |

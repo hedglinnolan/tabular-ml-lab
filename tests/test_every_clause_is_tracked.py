@@ -260,7 +260,10 @@ CLAUSES: Dict[str, Dict] = {
                 requires="The trim is a legitimate choice and earns no blocker, "
                          "but it silently ARMS a requirement — so something has "
                          "to record that it was armed.",
-                findings=["STATE-103"],
+                tests=[("turbotab/test_the_trim_arms_the_obligation.py",
+                        "test_a_train_only_trim_arms_the_extrapolation_obligation"),
+                       ("turbotab/test_the_trim_arms_the_obligation.py",
+                        "test_the_obligation_carries_the_numbers_the_report_cannot_recover")],
             ),
             "the-blocker-fires-at-export": dict(
                 requires="At export, the absence of a stratified in-range / "

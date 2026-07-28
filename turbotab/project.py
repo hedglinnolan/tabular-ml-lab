@@ -166,6 +166,13 @@ class AnalysisProject:
     # would mean the held-out rows were chosen from people the study is not
     # about. "Everyone" is a recorded answer, never an absence.
     eligibility: Optional[Dict[str, Any]] = None
+    # What a decision here obliges a LATER step to say (constitution §05). A
+    # train-only trim is a legitimate choice and earns no blocker, so it arms a
+    # requirement instead and the blocker fires at export. This is the memory
+    # between the two steps — and it is a list on the project rather than a flag,
+    # because the report has to be able to say WHICH trim and WHAT range, and
+    # those facts are not recoverable once the rows are gone.
+    obligations: List[Dict[str, Any]] = field(default_factory=list)
     # Engineered columns and their receipts, in creation order. Row-local
     # transforms only: a stateful one never reaches the working table
     # (constitution §06), so it lives in `deferred_transforms` instead.
@@ -604,6 +611,66 @@ class AnalysisProject:
             kind="set_eligibility", subject=record.get("column") or "",
             text=record["sentence"], payload=dict(self.eligibility))
 
+    def trim_training_rows(self, column: str,
+                           minimum: Optional[float] = None,
+                           maximum: Optional[float] = None,
+                           reason: str = "") -> Decision:
+        """Narrow the TRAINING partition, and arm what the report must disclose.
+
+        Constitution §04: a robustness trim applies to the training partition
+        only, post-seal, and never touches the sealed rows. §05: it is a
+        legitimate choice, so it earns no blocker — it silently ARMS a
+        requirement instead, and the blocker fires at export.
+
+        This is the arming half. The firing half is `STATE-105` and needs a
+        Report step, which does not exist; building a blocker with nothing to
+        block would be untestable, and a half-built clause that looks whole is
+        the failure §05's row was filed about.
+        """
+        from turbotab import obligations as _ob
+
+        if not self.barrier_raised:
+            raise ProjectError(
+                "A robustness trim is post-seal by definition: it narrows the "
+                "training partition, and there is no training partition until "
+                "the test set is sealed. Before the seal, narrowing the study "
+                "is an eligibility criterion — a different object (§04), asked "
+                "as a different question, and it changes N.")
+        sealed = set(self.lockbox["labels"])
+        train_labels = [l for l in self.df.index if _label(l) not in sealed]
+
+        try:
+            obligation = _ob.arm_extrapolation(
+                self.df, column, train_labels,
+                minimum=minimum, maximum=maximum, reason=reason)
+        except _ob.ObligationError as exc:
+            raise ProjectError(str(exc)) from exc
+
+        # THE TRIM ITSELF: training rows only. The sealed rows are put back
+        # whole, which is §04's *"never touched"* as an operation rather than a
+        # promise — `STATE-101` measured what happens when a filter runs over
+        # the whole frame instead.
+        s = self.df[column]
+        drop = pd.Series(False, index=self.df.index)
+        if minimum is not None:
+            drop |= s < minimum
+        if maximum is not None:
+            drop |= s > maximum
+        drop = drop.fillna(False)
+        drop &= pd.Series([_label(l) not in sealed for l in self.df.index],
+                          index=self.df.index)
+
+        self._history.append((f"trim::{column}", self.df))
+        self.df = self.df.loc[~drop]
+        self.assert_identity_intact()
+        self.obligations.append(obligation)
+        self.findings_stale = True
+        self._mark_stale(
+            f"{int(drop.sum())} training row(s) were trimmed on `{column}`")
+        return self.record(
+            kind="trim_training_rows", subject=str(column),
+            text=obligation["sentence"], payload=dict(obligation))
+
     def seal_lockbox(self, labels: Sequence[Any], **disclosure: Any) -> Decision:
         """Raise the barrier: freeze the holdout and record having done so.
 
@@ -877,6 +944,7 @@ class AnalysisProject:
             "stale_downstream": self.stale_downstream,
             "grain": self.grain,
             "eligibility": self.eligibility,
+            "obligations": self.obligations,
             "lockbox": self.lockbox,
             "barrier_raised": self.barrier_raised,
             "cohort": self.cohort,

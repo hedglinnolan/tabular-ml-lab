@@ -63,7 +63,7 @@ from turbotab.project import AnalysisProject                         # noqa: E40
 PERSISTED = {
     "id", "name", "created_at", "target", "task_type", "task_confidence",
     "task_overridden", "workflow_mode", "pipeline_specs", "grain",
-    "eligibility", "engineered",
+    "eligibility", "obligations", "engineered",
     "deferred_transforms", "selection_spec", "features_settled",
     "stale_downstream", "lockbox", "cohort", "decisions",
 }
@@ -161,6 +161,12 @@ def _fully_populated() -> AnalysisProject:
                       reason="The study is about adults over 25.")
     drawn = engine.draw_holdout(p.df, "outcome", "classification", p.grain)
     p.seal_lockbox(drawn["labels"], **drawn["disclosure"])
+
+    # A post-seal robustness trim, which arms a §05 obligation. The obligation
+    # has to survive the archive because it spans two steps and a save is the
+    # longest form of that gap.
+    p.trim_training_rows("age", minimum=25, maximum=70,
+                         reason="The cohort of clinical interest is 25 to 70.")
 
     # The cohort filter, which has its own whitelist.
     keep = [l for l in p.df.index if p.df.loc[l, "age"] < 60]

@@ -156,6 +156,39 @@ HAND: List[Dict[str, Any]] = [
          source="turbotab/eligibility.py",
          probe="nothing downstream can run on an empty study"),
 
+    # ── Explore · the robustness trim (clause §05, arming half) ─────────────
+    dict(step="Explore", state="trim · attempted before the seal",
+         trigger="`trim_training_rows` while `barrier_raised` is false",
+         copy="A robustness trim is post-seal by definition: it narrows the "
+              "training partition, and there is no training partition until the "
+              "test set is sealed. Before the seal, narrowing the study is an "
+              "eligibility criterion — a different object (§04), asked as a "
+              "different question, and it changes N.",
+         source="turbotab/project.py",
+         probe="A robustness trim is post-seal by definition"),
+    dict(step="Explore", state="trim · with no stated reason",
+         trigger="`trim_training_rows` with an empty `reason`",
+         copy="A trim's reason is what the report has to print beside the "
+              "breakdown. Without it the disclosure would say that some rows "
+              "were outside a range nobody can explain.",
+         source="turbotab/obligations.py",
+         probe="a range nobody can explain"),
+    dict(step="Explore", state="trim · with no bounds",
+         trigger="`trim_training_rows` with neither a minimum nor a maximum",
+         copy="A trim with no bounds narrows nothing, so there is no "
+              "extrapolation to disclose.",
+         source="turbotab/obligations.py",
+         probe="narrows nothing, so there is no"),
+    dict(step="Explore", state="trim · the receipt, which is also an obligation",
+         trigger="a train-only trim succeeds; the sentence goes in the "
+                 "transcript AND becomes what the report must discharge",
+         copy="The model was fitted on training rows with {range} ({reason}). "
+              "{k} of {n} held-out rows fall outside that range, so performance "
+              "must be reported separately for in-range and out-of-range rows "
+              "rather than as one number.",
+         source="turbotab/obligations.py",
+         probe="separately for in-range and out-of-range rows"),
+
     dict(step="Data & Target", state="grain · restated after the seal",
          trigger="`set_grain` when `barrier_raised` is true",
          copy="The test set is already sealed, and it was drawn against the grain "
