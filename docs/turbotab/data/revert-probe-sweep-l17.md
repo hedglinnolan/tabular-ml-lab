@@ -61,3 +61,23 @@ Those were uniformly well guarded — that file was written as a characterizatio
 behaves like one. The sample is therefore **weighted toward the best-tested corner of the ledger**,
 and a sweep of `high`-severity rows, or of rows whose tests were written alongside a build rather
 than as characterization, could plausibly come out worse.
+
+## Is the self-referential round trip a class or a one-off?
+
+Cheap to answer, so it was answered rather than assumed. An AST scan over every `test_*.py` for
+an `assert a == b` whose **both** sides are assigned from the same serializer method found two
+candidates:
+
+| test | verdict |
+|---|---|
+| `test_the_manuscript_voice_survives_the_save_file.py::test_the_ledger_round_trips_through_json` | **real** — this is `STATE-056` |
+| `tests/test_router.py::test_the_plan_is_a_pure_function_of_the_record` | **false positive** |
+
+The router one compares two *different inputs* through the same serializer and asserts they agree,
+which is a **determinism** claim, not a completeness one. A lossy `to_dict` would not undermine
+it — both sides would lose the same field and the claim ("reordering the findings does not change
+the plan") would still be true and still worth holding.
+
+So the pattern is **rare rather than systemic**: one instance in the repository. Recorded because
+the negative result is the useful one — it says the ledger does not need a sweep for this
+specific shape, and the rule in `FEATURE_PARITY.md` is prevention rather than cleanup.
