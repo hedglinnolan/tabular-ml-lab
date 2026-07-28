@@ -234,9 +234,62 @@ def deferred_keys() -> List[str]:
     return [k for k, t in CATALOGUE.items() if t.defers]
 
 
+# ── deliberately not offered, with the routing answer instead ────────────────
+# A gap that becomes routing is worth more than a transform. `feat-polynomial`
+# is `classic-only` in the register on two arguments, and a user who reaches for
+# it deserves both of them plus somewhere to go — not "unknown key", which reads
+# as an omission and teaches nothing.
+#
+# Keyed on what a caller might ASK for, which makes this a routing table and not
+# a detector: it fires on these spellings and no others. That is acceptable here
+# and would not be for a contradiction check, because the keys arrive from an
+# interface offering the catalogue rather than from free text.
+_NOT_OFFERED: Dict[str, str] = {
+    "polynomial": (
+        "Generating a whole polynomial basis is not offered here, and the "
+        "reason is a routing answer rather than a missing feature.\n\n"
+        "Two arguments, and they are different. First: degree 2 over ten "
+        "numeric columns produces 55 new terms — 10 squares and 45 pairwise "
+        "products — that nobody chose one at a time, each carrying "
+        "explainability cost. Mass generation is the opposite of this "
+        "interview's premise. Second: on a 140-row study those 55 terms are "
+        "p/n ≈ 0.39, which is the overfitting regime; the expansion is most "
+        "attractive on exactly the small studies where it does the most harm.\n\n"
+        "If your question really is about interactions, the route is a model "
+        "that captures them rather than columns that manufacture them. Trees "
+        "and gradient boosting get interactions for free, so this is a model "
+        "choice at the modeling step, not a feature choice here.\n\n"
+        "If you want ONE interaction because you already reason about it "
+        "clinically, that is what `product`, `ratio` and `difference` are — "
+        "named, chosen, and each posting its own receipt."),
+}
+# Spellings that route to the same answer. Not a detector; see above.
+_NOT_OFFERED_ALIASES: Dict[str, str] = {
+    "poly": "polynomial",
+    "polynomial_features": "polynomial",
+    "polynomialfeatures": "polynomial",
+    "interactions": "polynomial",
+    "all_interactions": "polynomial",
+}
+
+
+def not_offered(key: str) -> Optional[str]:
+    """The routing answer for a capability this door declines to build.
+
+    `None` when the key is simply unknown. Separate from the catalogue lookup
+    so an interface can ask "is there guidance for this?" without provoking an
+    exception it then has to catch.
+    """
+    canonical = _NOT_OFFERED_ALIASES.get(str(key).lower(), str(key).lower())
+    return _NOT_OFFERED.get(canonical)
+
+
 def get(key: str) -> Transform:
     t = CATALOGUE.get(key)
     if t is None:
+        routed = not_offered(key)
+        if routed:
+            raise FeatureRefusal(routed)
         raise FeatureRefusal(
             f"'{key}' is not in the transform catalogue. Known: "
             f"{', '.join(sorted(CATALOGUE))}.")

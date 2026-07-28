@@ -512,3 +512,45 @@ def test_selecting_every_column_is_a_recorded_answer_not_an_absence(client):
     assert "set_selection" in kinds, (
         "choosing every column left no trace, so it is indistinguishable from "
         "never having been asked")
+
+
+# ── the gap that became routing ──────────────────────────────────────────────
+
+def test_asking_for_the_polynomial_basis_gets_the_routing_answer_not_unknown_key():
+    """`feat-polynomial` is `classic-only`, and the register row carries two
+    arguments for that. A user who reaches for it must meet both plus somewhere
+    to go — "not in the catalogue" reads as an omission and teaches nothing.
+
+    The specific thing pinned: the refusal names a MODEL as the route. Trees get
+    interactions free, so mass generation is a model choice at the modeling step
+    rather than a feature choice here, and that is the sentence worth more than
+    the transform would have been.
+    """
+    for spelling in ("polynomial", "poly", "PolynomialFeatures", "interactions"):
+        with pytest.raises(F.FeatureRefusal) as exc:
+            F.get(spelling)
+        said = str(exc.value)
+        # Ordered most-diagnostic first, deliberately. A probe reads the FIRST
+        # assertion to fire, so "routing did not happen at all" has to come
+        # before the four that inspect the message it would have produced —
+        # otherwise every routing failure reports as a missing substring and the
+        # probe verifies the wrong reason.
+        assert "not in the transform catalogue" not in said, (
+            f"{spelling} fell through to the unknown-key message")
+        # The breakdown, not the bare count: "55" appears in both arguments, so
+        # asserting on it alone survived deleting the first one.
+        assert "10 squares and 45 pairwise" in said, (
+            f"{spelling}: the expansion is not quantified")
+        assert "0.39" in said, f"{spelling}: the p/n argument is missing"
+        # Both of these were weaker on the first draft and the probe caught it:
+        # `"model" in said` survived deleting the route sentence, because "45
+        # pairwise products" and an earlier "a model" both remain; so each now
+        # asserts the CLAIM rather than a word that happens to be nearby.
+        assert "not a feature choice" in said, f"{spelling}: no route is offered"
+        assert "`product`" in said, (
+            f"{spelling}: the one-interaction route is missing")
+
+    # And the routing is not a catch-all: a genuine typo still says so, or the
+    # message would become noise attached to every mistake.
+    with pytest.raises(F.FeatureRefusal, match="not in the transform catalogue"):
+        F.get("lorgarithm")

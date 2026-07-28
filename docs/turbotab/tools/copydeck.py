@@ -134,6 +134,28 @@ HAND: List[Dict[str, Any]] = [
          copy="'{label}' is row-local, so it executes immediately rather than being "
               "declared. Use apply().",
          source="turbotab/features.py", probe="row-local, so it executes immediately rather than"),
+    dict(step="Features", state="transform · a capability this door declines to build",
+         trigger="`features.get` on `polynomial` or one of its four aliases "
+                 "(`poly`, `polynomial_features`, `polynomialfeatures`, "
+                 "`interactions`, `all_interactions`)",
+         copy="Generating a whole polynomial basis is not offered here, and the "
+              "reason is a routing answer rather than a missing feature.\n\n"
+              "Two arguments, and they are different. First: degree 2 over ten "
+              "numeric columns produces 55 new terms — 10 squares and 45 pairwise "
+              "products — that nobody chose one at a time, each carrying "
+              "explainability cost. Mass generation is the opposite of this "
+              "interview's premise. Second: on a 140-row study those 55 terms are "
+              "p/n ≈ 0.39, which is the overfitting regime; the expansion is most "
+              "attractive on exactly the small studies where it does the most "
+              "harm.\n\nIf your question really is about interactions, the route is "
+              "a model that captures them rather than columns that manufacture "
+              "them. Trees and gradient boosting get interactions for free, so "
+              "this is a model choice at the modeling step, not a feature choice "
+              "here.\n\nIf you want ONE interaction because you already reason "
+              "about it clinically, that is what `product`, `ratio` and "
+              "`difference` are — named, chosen, and each posting its own receipt.",
+         source="turbotab/features.py",
+         probe="a model choice at the modeling step, not a feature choice here"),
     dict(step="Features", state="transform · the new column name is taken",
          trigger="`features.apply` when the generated name already exists",
          copy="'{name}' already exists in this table. Remove it first, or the new "
