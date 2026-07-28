@@ -201,17 +201,23 @@ Expect it to be ugly and incomplete. That is the point of a skeleton — it walk
 Append this to any unsupervised prompt.
 
 > **Hard rules.** Stay on branch `TurboTab`. Never push to `main`, never force-push, never open a
-> pull request. Never modify `ml/import_doctor.py`, `ml/join_doctor.py`, `utils/combine*.py` or
-> `pages/01_Upload_and_Audit.py` — they are frozen pending the open tail in
-> `docs/FINDINGS_LEDGER.md`. Never edit `FINDINGS_LEDGER.md` by hand; it is generated. Never mark
+> pull request. `ml/import_doctor.py`, `ml/join_doctor.py`, `utils/combine*.py` and
+> `pages/01_Upload_and_Audit.py` are **frozen — see `TRANSITION_PLAN.md` §05 for the one statement
+> of what that permits and the gates that lift it.** Never edit `FINDINGS_LEDGER.md` by hand; it is generated. Never mark
 > a finding `FIXED` without a regression test that would catch its return. Run
 > `python docs/turbotab/tools/ledger.py check` before every commit and stop if it fails. Commit
 > after every batch so nothing is lost. If you are blocked or something looks structurally wrong,
 > stop and write what you found to `docs/turbotab/BLOCKED.md` rather than guessing.
 
-The freeze exists because `docs/FINDINGS_LEDGER.md` has an unresolved tail on the multi-file
-import path from two audit runs whose results were lost. Touching that code without those findings
-means rebuilding on defects nobody has re-triaged.
+The freeze exists because the multi-file import path had an untriaged defect tail. **Its results
+were never lost** — they are in `docs/audit/`, committed, and were there the whole time this file
+said otherwise. That error cost a loop of rediscovery, and it is the reason for the
+ephemeral-pointer rule in `FEATURE_PARITY.md`.
+
+The rule, its permissions and the three gates that lift it are stated **once**, in
+`TRANSITION_PLAN.md` §05. Do not restate them here: this file said "never modify" while §05 said
+"engine-move-only — no signature changes", which are different rules, and a reader following the
+stricter one could not do the work §05 permits.
 
 ---
 

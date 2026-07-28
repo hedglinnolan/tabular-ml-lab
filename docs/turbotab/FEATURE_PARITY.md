@@ -178,6 +178,43 @@ stamp is a convenience, and the load-bearing assertion is the git-read values ch
 pre-registration names and compares every metric the prereg quotes. The envelope may be edited
 precisely because nothing depends on trusting it.
 
+**Corollary — the ephemeral-pointer rule** (from the L11 reconciliation): *a record that points at
+ephemeral storage will eventually lie, and it lies toward "the work is gone."*
+
+`docs/FINDINGS_LEDGER.md` pointed at `scratchpad/audit/orig48/` and a journal under `subagents/`
+for the 48 confirmed import findings. Both paths were deleted. The durable copy existed the whole
+time — `docs/audit/ORIGINAL_48_FINDINGS.md`, committed, and named in `TRANSITION_PLAN.md` §05 two
+lines above the freeze rule — but the ledger's own pointer was the one anybody read, so the
+findings were declared unrecoverable and a loop was spent reconstructing thirteen of them from
+test names.
+
+Note the direction of the lie. A stale pointer to durable storage says *"look here"* and fails
+loudly when you do. A pointer to ephemeral storage fails **silently and pessimistically**: the path
+is empty, the natural reading is that the work was lost, and the response is to redo it. That is
+the expensive failure, and it is the one that looks like diligence.
+
+- **Point at the repository, or do not point.** A path outside version control is a note about
+  where something *was*, and it must be written as one.
+- **When a record names a location, the location is part of the record** and is checked when the
+  record is. A pointer nobody verifies is a claim nobody verifies.
+- **"It is gone" is a finding, not a background fact.** It gets the same scepticism as any other
+  claim, and the same demand for evidence — `git log --diff-filter=D`, a grep of the docs tree,
+  and the neighbouring documents that might name it.
+
+Fourth member of the family, with principle-locality, expiring guarantees, and fallback-path
+survival. All four are silence rather than failure.
+
+**Corollary — name every test after the defect it guards.** Thirteen findings whose text was
+believed lost were reconstructed from test *names* alone: `TestBlowUpIsRefused`,
+`TestSamePeopleDecidesGrouping`, `TestTheJoinDoesNotRetypeYourIdentifier`. Each name is a sentence
+about what must remain true, so each was a recoverable statement of the finding.
+
+That was an accident. It is now policy: **a regression test is named after the defect it guards, in
+a sentence, not after the function it calls.** `test_join_keys_2` guards nothing anybody can read;
+`test_leading_zero_ids_are_not_corrupted` is the finding. The test suite is the most durable record
+in the project — it is executable, so it cannot silently stop being true — and naming it this way
+makes it a readable one as well.
+
 ### Two specific things to watch
 
 - **The pedagogy layer** — `utils/theory_anchors.py` (532 loc) and `utils/theory_demos.py`

@@ -46,11 +46,20 @@ published.
 
 ## Still open — now tracked in the live ledger
 
-**This section used to point at two workflow IDs that never wrote results.** It
-pointed at them for long enough that the paths went away underneath it:
-`scratchpad/audit/orig48/` is empty, `subagents/` does not exist, and the
-journal named below is gone. A pointer to a dead artifact is worse than no
-pointer, because it reads as a plan.
+**Correction, L11.** This section said the two audit runs were "in flight". They
+were not: both landed, and their output has been committed in `docs/audit/` the
+whole time — `ORIGINAL_48_FINDINGS.md` (all 48 verbatim, with severity, verifier
+reasoning and repros), `HUNT_FINDINGS.md` (run `wf_70254f26-494`), and
+`ADJUDICATION.md` (run `wf_5446c57b-3f6`). `TRANSITION_PLAN.md` §05 points at
+them two lines above the freeze rule.
+
+What was gone was only the *scratchpad* copy this file pointed at
+(`scratchpad/audit/orig48/`, now empty) — ephemeral storage standing in for a
+durable artifact that already existed. A ledger asserting something false about
+itself is the governing rule's own failure in the document that states the rule,
+and it cost a loop of rediscovering findings that were already written down. The
+process rule that came out of it is in `FEATURE_PARITY.md`: *a record that points
+at ephemeral storage will eventually lie, and it lies toward "the work is gone."*
 
 The tail now lives in `docs/turbotab/data/findings.json` as the `IMPORT-*` rows,
 worked through `docs/turbotab/tools/ledger.py` like everything else:
@@ -60,49 +69,52 @@ python docs/turbotab/tools/ledger.py stats
 python docs/turbotab/tools/ledger.py check     # schema guard, before every commit
 ```
 
-Recovered at L10, in two passes:
+Recovered and reconciled across L10 and L11, in three passes:
 
-- **Thirteen from the tests that remember them** (`IMPORT-001` … `IMPORT-013`,
-  `FIXED`). `tests/test_stress_regressions.py` has 21 classes and this file
-  names 8; the other 13 guard defects whose text was lost. Each row is
-  reconstructed from its regression class — what broke, what the fix asserts,
-  what would regress — and says in its note that it is a reconstruction from
-  executable evidence rather than a transcription.
-- **Six re-derived by a fresh adversarial pass** (`IMPORT-014` … `IMPORT-019`,
-  `OPEN`), each with a runnable reproduction in its evidence field. These may or
-  may not be among the ~24 whose statements are gone; there is no way to tell,
-  and the rows say so.
+- **All 48 originals** are filed as `IMPORT-101` … `IMPORT-148`, keyed to the
+  original numbering, each carrying the verifier's title and severity verbatim
+  and a disposition against HEAD.
+- **Thirteen recovered from the tests that guard them** (`IMPORT-001` …
+  `IMPORT-013`) before `docs/audit/` was rediscovered. That work was not wasted:
+  it is independent corroboration, and the test names turned out to be
+  reconstructible statements of the findings — which is now a policy, not an
+  accident (`FEATURE_PARITY.md`).
+- **Nine re-derived by fresh adversarial probes** (`IMPORT-014` …
+  `IMPORT-022`), each with a runnable reproduction. `IMPORT-014` turned out to
+  duplicate a hunt finding, which is corroboration rather than waste;
+  `IMPORT-020` and `IMPORT-022` are lockbox findings and drove constitution §03.
 
-**Roughly two dozen of the original 48 have neither surviving text nor a
-guard.** That gap is real and is not closed by the above. It is the reason the
-freeze condition below is written the way it is.
-
----
+`docs/audit/HUNT_FINDINGS.md` is explicitly **unverified** — its adversarial
+stage never ran — and `docs/audit/ADJUDICATION.md` measured against `413671a`,
+before this branch's fixes. Per `docs/audit/RESUME.md`, treat that file as leads
+and never as status: findings 5, 7, 11, 13 and 27 read cold will send you to
+re-fix already-fixed code.
 
 ## The freeze, and what lifts it
 
-`TRANSITION_PLAN.md` §05 freezes `ml/import_doctor.py`, `ml/join_doctor.py`,
-`utils/combine*.py` and `pages/01` as **engine-move-only** pending this tail.
-The old condition — "until that ledger closes" — could not be evaluated, because
-the ledger it referred to had no open items written down.
+**Defined once, in `TRANSITION_PLAN.md` §05.** Not restated here — the earlier
+version of this section carried its own wording, `LOOP.md` carried a third, and
+the three did not agree about what the freeze permitted.
 
-**The new condition: the freeze lifts when no `IMPORT-*` row is
-un-dispositioned.** Every row is `OPEN`, `PARTIAL`, `FIXED` with a named test,
-`NOT-A-DEFECT` with a reason, or `WONTFIX` with a reason — which is checkable by
-`ledger.py check` rather than by memory.
+In short: the freeze is **lifted for repair** — that is what this audit was for —
+and new construction waits on three gates, all evaluable: every recorded finding
+dispositioned against HEAD; all ten lenses run with no `critical` or `landmine`
+`IMPORT-*` row left `OPEN`; and the seven guided-assembly requirements carrying
+named tests. §05 has the list.
 
-That is a lower bar than "no open defects", deliberately: the product owner has
-ruled that Guided ships multi-file assembly, and a build cannot start on an
-engine whose defect state is *unknown*. Known and open is a backlog. Unknown is
-a hazard, and a live preview asserts continuously rather than once.
+An earlier condition — *"no un-dispositioned rows"* — is superseded: it measured
+what got filed rather than whether the audit was complete.
 
 ---
 
-## Where the original 48 lived
+## Where the original 48 live
 
-Recovered from the stress-test run's journal to
-`scratchpad/audit/orig48/finding_NN.md`, with the raw journal at
-`subagents/workflows/wf_e5abb4fe-e32/journal.jsonl`. **Both paths are gone.**
-102 raw findings across 8 families; 48 survived verification (11 critical, 30
-major, 7 minor) — the counts are all that is left of them, and they are recorded
-here so the size of the loss stays legible.
+**`docs/audit/ORIGINAL_48_FINDINGS.md`** — all 48, verbatim, with the title, the
+severity as confirmed, the verifier's reasoning and the repro as recorded. In
+the repository, committed.
+
+This section previously named `scratchpad/audit/orig48/` and a journal under
+`subagents/`, both since deleted, and concluded that the findings were gone. The
+durable copy already existed; only the pointer was ephemeral. 102 raw findings
+across 8 families; 48 survived verification (11 critical, 30 major, 7 minor),
+and every one of them is now an `IMPORT-1NN` row.

@@ -187,8 +187,38 @@ remains untriaged, specifically on the multi-file and JSON import path.
 and one trap: *"still_broken" verdicts on findings 5, 7, 11, 13, 27 refer to pre-fix code* — read
 cold, they will cause already-fixed code to be re-fixed.
 
-> **Rule:** freeze `ml/import_doctor.py`, `ml/join_doctor.py`, `utils/combine*.py` and `pages/01`
-> as *engine-move-only* — no signature changes — until that ledger closes.
+### The freeze — one statement, and the gates that lift it
+
+**This is the only place the freeze is defined.** `LOOP.md`'s guardrails point here rather than
+restating it: they said *"never modify"* while this section said *"engine-move-only"*, which are
+different rules, and a reader following the stricter one could not do the work this one permits.
+That is the principle-locality corollary applied to our own process documents.
+
+**Frozen paths:** `ml/import_doctor.py`, `ml/join_doctor.py`, `utils/combine*.py`,
+`pages/01_Upload_and_Audit.py`.
+
+**Status: the freeze is lifted for REPAIR.** That is what the L10–L11 audit was for. Fixes to
+dispositioned `IMPORT-*` findings may land, with a named regression test each, as any other fix
+would. New construction on these paths — multi-file assembly, the live morph preview — waits on
+three gates.
+
+**The three gates, all evaluable:**
+
+1. **Every recorded finding is dispositioned against HEAD.** All 48 originals
+   (`docs/audit/ORIGINAL_48_FINDINGS.md` → `IMPORT-101`…`IMPORT-148`) and every
+   `docs/audit/HUNT_FINDINGS.md` entry carry `OPEN`, `PARTIAL`, `FIXED` with a named test,
+   `NOT-A-DEFECT` with a reason, or `WONTFIX` with a reason. No `UNVERIFIED`.
+2. **All ten audit lenses have run, and the correctness bar is met.** Four ran; six did not
+   (`docs/audit/RESUME.md`). Each unrun lens is executed as a fresh adversarial pass and its
+   findings filed. Then: **no `IMPORT-*` row of severity `critical` or `landmine` is `OPEN`.**
+3. **The seven guided-assembly requirements have named tests.** `IMPORT-001` (row-multiplication
+   blocker), `IMPORT-005` and `IMPORT-015` (grain, including the cannot-tell path), `IMPORT-007`
+   (the map matches the executed frame), `IMPORT-006` (merge-created blanks distinguishable from
+   inherited ones), `IMPORT-011` and `IMPORT-017` (consequences the shape cannot show).
+
+Gate 1 is bookkeeping; gate 2 is the engine being sound; gate 3 is the interaction being buildable
+on it. The earlier condition — *"no un-dispositioned rows"* — measured what got filed rather than
+whether the audit was complete, and is superseded.
 
 **Cohort runs are the newest subsystem and they redefine `get_data()`.** The last several commits
 are all cohort work. `get_data()` now applies an active cohort filter (`session_state.py:216`),
