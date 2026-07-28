@@ -742,5 +742,149 @@
   "classic": "PARTIAL and in the wrong direction. pages/05_Preprocess.py's apply_plausibility_filter narrows rows, and since L13 it restores the sealed rows it would otherwise have removed - so it obeys clause 04. It arms nothing: no record survives the step, so pages/07 exports a single aggregate metric with nothing to object.",
   "state": "guided-only",
   "reason": "BUILT in Guided at L16 as the ARMING half of clause 05 only. GUIDED-ONLY and owed back to Classic, which has the trim and not the memory. The obligation carries the count of HELD-OUT rows outside the trimmed range, computed at trim time because it is unrecoverable afterwards - the training rows outside the range are gone by then. The FIRING half - export refuses without a stratified in-range / out-of-range breakdown - is deliberately NOT built and is tracked as STATE-105: there is no Report step, and a blocker with nothing to block cannot be tested, which would make it the half-built clause the split exists to prevent."
+ },
+ {
+  "id": "prep-numeric-imputation",
+  "step": "preprocess",
+  "capability": "Numeric imputation: median / mean / iterative (MICE) / constant, with per-strategy guidance",
+  "classic": "pages/05 per-model tab 1 - selectbox with help text per option, MICE recommended above 5% missing (Rubin 1987)",
+  "state": "classic-only",
+  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+ },
+ {
+  "id": "prep-missing-indicators",
+  "step": "preprocess",
+  "capability": "Missing-data indicator columns, so a model can learn whether missingness is itself informative",
+  "classic": "pages/05 per-model tab 1 - checkbox 'Add missing-data indicator columns', help names the MNAR pattern",
+  "state": "classic-only",
+  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+ },
+ {
+  "id": "prep-categorical-imputation",
+  "step": "preprocess",
+  "capability": "Categorical imputation: most_frequent / constant",
+  "classic": "pages/05 per-model tab 1 - selectbox; 'constant' fills a placeholder category",
+  "state": "classic-only",
+  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+ },
+ {
+  "id": "prep-informative-missingness-question",
+  "step": "preprocess",
+  "capability": "Ask whether missingness is INFORMATIVE before choosing how to fill it",
+  "classic": "NOT PRESENT. pages/05 offers imputation strategies and a missing-indicator checkbox, and never asks whether a blank could mean something. The mechanism question is not asked in either door.",
+  "state": "classic-only",
+  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+ },
+ {
+  "id": "prep-outcome-out-of-imputation",
+  "step": "preprocess",
+  "capability": "The outcome is never placed in the imputation model",
+  "classic": "NOT ASKED AND NOT ASSERTED on pages/05. MICE is offered as 'models each feature conditioned on others' with no statement about which columns are in scope.",
+  "state": "classic-only",
+  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+ },
+ {
+  "id": "prep-stability-assumption",
+  "step": "preprocess",
+  "capability": "Record the stability assumption - that missingness means the same thing at deployment - as a methods assumption",
+  "classic": "NOT PRESENT. No page records it; nothing in the manuscript surface carries it.",
+  "state": "classic-only",
+  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+ },
+ {
+  "id": "prep-numeric-scaling",
+  "step": "preprocess",
+  "capability": "Numeric scaling: standard / robust / minmax / none, with the model-family reason for each",
+  "classic": "pages/05 per-model tab 2 - selectbox; caption states trees are scale-invariant",
+  "state": "classic-only",
+  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+ },
+ {
+  "id": "prep-power-transform",
+  "step": "preprocess",
+  "capability": "Power transform: none / log1p / Yeo-Johnson",
+  "classic": "pages/05 per-model tab 2 - selectbox, with backward compatibility for an older log_transform boolean",
+  "state": "classic-only",
+  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+ },
+ {
+  "id": "prep-categorical-encoding",
+  "step": "preprocess",
+  "capability": "Categorical encoding: onehot / target / ordinal, with the leakage caveat on target encoding",
+  "classic": "pages/05 per-model tab 3 - selectbox; target encoding's help says the pipeline uses cross-fitting to mitigate leakage",
+  "state": "classic-only",
+  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+ },
+ {
+  "id": "prep-outlier-handling",
+  "step": "preprocess",
+  "capability": "Outlier handling: none / percentile winsorizing / MAD, with thresholds",
+  "classic": "pages/05 per-model tab 4 - selectbox plus number inputs for lower/upper percentile and MAD k",
+  "state": "classic-only",
+  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+ },
+ {
+  "id": "prep-plausibility-gating",
+  "step": "preprocess",
+  "capability": "Domain-specific range filtering, clip-to-NaN or remove rows",
+  "classic": "pages/05 per-model tab 4 - checkbox plus a clip/filter radio; bounds from ml/physiology_reference.py",
+  "state": "classic-only",
+  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+ },
+ {
+  "id": "prep-unit-harmonization",
+  "step": "preprocess",
+  "capability": "Unit harmonization - detect and convert mixed units before modeling",
+  "classic": "pages/05 per-model tab 4 - checkbox; ml/clinical_units.py does the conversion",
+  "state": "classic-only",
+  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+ },
+ {
+  "id": "prep-pca",
+  "step": "preprocess",
+  "capability": "PCA dimensionality reduction with an explicit interpretability warning",
+  "classic": "pages/05 per-model tab 5 - checkbox plus n_components, with a warning that SHAP will refer to PC1/PC2 and EDA-conditional justifications",
+  "state": "classic-only",
+  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+ },
+ {
+  "id": "prep-per-model-config",
+  "step": "preprocess",
+  "capability": "Per-model pipelines: each selected model gets its own preprocessing configuration",
+  "classic": "pages/05 - one st.tabs entry per selected model, all settings keyed per model",
+  "state": "classic-only",
+  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+ },
+ {
+  "id": "prep-smart-defaults",
+  "step": "preprocess",
+  "capability": "Smart Defaults mode: auto-configure from the data profile and EDA findings",
+  "classic": "pages/05 - a radio between Smart Defaults and Advanced; auto-detects robust scaling when EDA found outliers",
+  "state": "classic-only",
+  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+ },
+ {
+  "id": "prep-high-cardinality-guardrail",
+  "step": "preprocess",
+  "capability": "Warn when a high-cardinality categorical would explode into one-hot columns, and record it in the ledger",
+  "classic": "pages/05:114-135 - unconditional warning above 50 levels, with an insight upserted to the ledger",
+  "state": "classic-only",
+  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+ },
+ {
+  "id": "prep-double-transform-guardrail",
+  "step": "preprocess",
+  "capability": "Warn when a feature already transformed at Feature Engineering would be transformed again",
+  "classic": "pages/05:161-180 - reads engineered_feature_transforms and auto-excludes those features from redundant transforms",
+  "state": "classic-only",
+  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+ },
+ {
+  "id": "prep-pipeline-preview",
+  "step": "preprocess",
+  "capability": "Before/after preview of each model's pipeline output",
+  "classic": "pages/05:1336-1370 - an expander per model with Before and After subheaders",
+  "state": "classic-only",
+  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
  }
 ]
