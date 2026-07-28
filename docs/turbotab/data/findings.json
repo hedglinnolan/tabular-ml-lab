@@ -6264,5 +6264,61 @@
   "verified_against": "TurboTab @ L12 lens 6",
   "test": "",
   "verified_ev": "data_processor.py:249-254 (the mixed-content branch and the {'value': x} wrapping)"
+ },
+ {
+  "id": "IMPORT-209",
+  "area": "IMPORT",
+  "sev": "critical",
+  "item": "A single blank ID in a JSON file collapses every participant ID above 2^53 into one value at LOAD time - the exact false merge join_doctor defends against, created before join_doctor can see it",
+  "detail": "L12 lens 7 (JSON encoding), fresh adversarial pass. json.loads parses integers with arbitrary precision, so large IDs survive parsing intact and pd.json_normalize gives an int64 column. But a single null in that field makes the column float64, and float64 cannot represent consecutive integers above 2^53. Two distinct participants therefore become one ID before any join, any grain question or any seal. ml/join_doctor.py:_canon_scalar carries a docstring saying exactly this - 'passing IDs through float64 silently collides values above 2^53 ... which is a false merge - the worst outcome this module can produce' - and canonicalizes with arbitrary-precision arithmetic to prevent it. That defence is bypassed here because the collapse happens in the loader, upstream of everything join_doctor inspects.",
+  "ev": "data_processor.py:_json_obj_to_frame:246 (pd.json_normalize over the record list); contrast ml/join_doctor.py:_canon_scalar, whose docstring names this as the worst outcome it can produce",
+  "act": "Detect the shape at load: an integer-valued field carrying nulls, whose non-null magnitudes exceed 2**53, must not be materialized as float64. Read it as a nullable Int64 or as text and say so. The check is cheap and the failure is unrecoverable downstream, which is the argument for spending a gate here. Compare the HUNT entry float64-id-collapse-mislabelled-repeated-visits, which is the same collapse reached through the join path - the two share a root cause and neither closes the other.",
+  "status": "OPEN",
+  "note": "REPRODUCED AT HEAD through the real loader. [{SEQN: 9007199254740993, glucose: 95}, {SEQN: 9007199254740992, glucose: 102}, {SEQN: null, glucose: 110}] loads with SEQN dtype float64, and the two IDs compare EQUAL - nunique on the non-null values is 1 where there are 2 real participants. CONTROL, which is what makes the trigger precise: the identical file with the null row removed loads as int64 with 2 distinct values [9007199254740993, 9007199254740992]. One blank ID is the entire difference. SEAL-CLASS: YES. Two participants sharing an ID is corrupted row identity at its root - the grain question, detect_repeated_subjects, group_col and the seal all read a table in which two people are one person, and the seal will happily place 'them' on one side of the split while the data holds two.",
+  "verified_against": "TurboTab @ L12 lens 7",
+  "test": "",
+  "verified_ev": "data_processor.py:_json_obj_to_frame:246 (pd.json_normalize over the record list); contrast ml/join_doctor.py:_canon_scalar, whose docstring names this as the worst outcome it can produce"
+ },
+ {
+  "id": "IMPORT-210",
+  "area": "IMPORT",
+  "sev": "high",
+  "item": "latin-1 sits ahead of cp1252 in the JSON encoding fallback and never raises, so cp1252 is unreachable and Windows exports load with control characters where their punctuation was",
+  "detail": "L12 lens 7 (JSON encoding), fresh adversarial pass. data_processor.py:144 and :158 both try ['utf-8','utf-8-sig','utf-16','latin-1','cp1252'] in order and return the first that does not raise. latin-1 is a total 1:1 byte-to-codepoint mapping - it decodes all 256 byte values and cannot fail - so it is a catch-all, and the cp1252 entry positioned after it can never be reached. The two codecs differ exactly on the 0x80-0x9F range, which is where cp1252 puts smart quotes, en and em dashes, ellipsis and the euro sign; latin-1 maps that range to C1 control characters. Excel and Windows tooling emit cp1252 routinely.",
+  "ev": "data_processor.py:144 (_json_read_text path branch), data_processor.py:158 (buffer branch) - the same list in both, with cp1252 after latin-1",
+  "act": "Two changes, both small. Order cp1252 before latin-1, since cp1252 is a strict superset of the useful part of latin-1 for text that came from Windows. And keep latin-1 as the last resort it is, but disclose when it was used - a decode that cannot fail is not evidence the encoding was right, so silently succeeding is the wrong report. Better still, sniff for a BOM and for the 0x80-0x9F range before choosing.",
+  "status": "OPEN",
+  "note": "REPRODUCED AT HEAD. A record whose note field reads \"fasting's baseline - 90-95 mg/dL\" with cp1252 smart punctuation (0x92 apostrophe, 0x97 em dash, 0x96 en dash) is written as cp1252 and loads back as 'fasting\\x92s baseline \\x97 90\\x9695 mg/dL' - C1 control characters in place of the punctuation, with no warning. The correctly decoded string differs. Verified separately that latin-1 decodes bytes(range(256)) without raising, which is what makes cp1252 dead code. SEAL-CLASS: no. Filed high rather than critical because the damage is confined to text content and does not change row identity or counts - but a corrupted categorical level is a distinct level, so category variants and any name-based matching see values no human typed.",
+  "verified_against": "TurboTab @ L12 lens 7",
+  "test": "",
+  "verified_ev": "data_processor.py:144 (_json_read_text path branch), data_processor.py:158 (buffer branch) - the same list in both, with cp1252 after latin-1"
+ },
+ {
+  "id": "IMPORT-211",
+  "area": "IMPORT",
+  "sev": "high",
+  "item": "Duplicate keys in a JSON record collapse silently with the last value winning, so a repeated field discards the earlier value with no count and no warning",
+  "detail": "L12 lens 7 (JSON encoding), fresh adversarial pass. The JSON specification permits an object to carry the same key more than once and does not say which wins; Python's json.loads resolves it by keeping the LAST occurrence. Nothing in the load path uses object_pairs_hook to detect the collision, so a record carrying a field twice - which happens when exports are concatenated or a schema changes mid-file - silently loses one of the values, and the frame that results is well-formed.",
+  "ev": "data_processor.py:176 (_json_lines_to_records) and the json.loads calls in the load path - none passes object_pairs_hook",
+  "act": "Pass an object_pairs_hook that counts repeated keys and surfaces them, then either refuse or load with an explicit note naming the fields and the number of records affected. This is a disclosure fix rather than a semantics fix - there is no correct choice between the two values, which is precisely why the app must not make one silently.",
+  "status": "OPEN",
+  "note": "REPRODUCED AT HEAD. The record {\"SEQN\": 1, \"glucose\": 95, \"SEQN\": 2} loads as SEQN 2, glucose 95 - the first SEQN is gone. Through the real loader a two-record file yields SEQN [2, 3] where the file's first record names both 1 and 2. SEAL-CLASS: borderline, and worth watching rather than claiming. When the duplicated key is the identifier, as in the reproduction, the row's identity is chosen arbitrarily by document order, which puts it in the same family as IMPORT-209; when it is an ordinary measurement it is data loss and nothing more. Filed high on the ordinary reading and cross-referenced to 209 for the identifier reading.",
+  "verified_against": "TurboTab @ L12 lens 7",
+  "test": "",
+  "verified_ev": "data_processor.py:176 (_json_lines_to_records) and the json.loads calls in the load path - none passes object_pairs_hook"
+ },
+ {
+  "id": "IMPORT-212",
+  "area": "IMPORT",
+  "sev": "medium",
+  "item": "The JSON loader accepts the non-standard NaN, Infinity and -Infinity literals, so an infinity enters the working table as an ordinary value",
+  "detail": "L12 lens 7 (JSON encoding), fresh adversarial pass. Python's json.loads accepts NaN, Infinity and -Infinity by default even though RFC 8259 has no such literals, and the load path does not pass parse_constant to reject or flag them. A file carrying Infinity therefore produces a float column holding inf, which propagates through any aggregate computed over it.",
+  "ev": "data_processor.py:176 and the other json.loads call sites - none passes parse_constant",
+  "act": "Pass parse_constant to convert NaN to a missing value explicitly and to refuse the infinities with a message naming the field, or to record them as an Import Doctor finding at critical severity the way impossible values are handled. Note the constitution's impossibility pass is the natural home for this: an infinite measurement is the clearest possible impossible value.",
+  "status": "OPEN",
+  "note": "REPRODUCED AT HEAD. [{bmi: 22.1}, {bmi: Infinity}, {bmi: 27.3}] loads as [22.1, inf, 27.3] with mean inf and max inf. Filed medium rather than high because an infinite mean is conspicuously broken rather than plausibly wrong - it is closer to the app being visibly silly than to it asserting something false, and a researcher will notice. The NaN literal is the quieter half: it becomes an ordinary missing value with no record that the file said NaN rather than null. SEAL-CLASS: no.",
+  "verified_against": "TurboTab @ L12 lens 7",
+  "test": "",
+  "verified_ev": "data_processor.py:176 and the other json.loads call sites - none passes parse_constant"
  }
 ]
