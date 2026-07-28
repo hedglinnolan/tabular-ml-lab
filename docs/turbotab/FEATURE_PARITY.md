@@ -282,6 +282,47 @@ numeric re-coercion, so reverting either half alone reintroduces it; `IMPORT-252
 `if self.index_like:` appears **twice**, once in `score` and once in `confidence`, so a single-shot
 replacement patches the wrong one and the revert looks harmless while the test stays green.
 
+**Extension — a probe must verify the REASON for failure, not merely that it failed.** A revert
+that turns a test red for some other reason has verified nothing, and it reads exactly like a
+probe that worked.
+
+This is the revert probe applied to itself. The probe answers *"is this test load-bearing?"* by
+watching it go red; but a red test is a red test, and an import error, a fixture blowup, a
+collection failure or a **different assertion in the same test** all produce one. Each of those
+says the suite noticed *something*, which is not the claim. The claim is that this test guards
+*this* defect.
+
+So every revert declares the failure it expects, and the probe asserts that too:
+
+```python
+# (file, old, new, expect) — `expect` must appear in the failure output
+("turbotab/features.py", '"p/n ≈ 0.39, which is the …"', '"which is fine; the …"',
+ "the p/n argument is missing")
+```
+
+The precedent is `match=`. `pytest.raises(FeatureRefusal)` passes on *any* `FeatureRefusal`,
+including one raised three lines earlier for an unrelated reason;
+`pytest.raises(FeatureRefusal, match="not in the transform catalogue")` is the assertion somebody
+actually meant. The probe needs the same discipline for the same reason, one level up.
+
+Three consequences, all observed the first time it was used (L16, the polynomial routing message):
+
+- **It catches assertions that pass on incidental substrings.** `"model" in message` survived
+  deleting the entire route sentence, because *"45 pairwise products"* and an earlier *"a model"*
+  both remained. `"55" in message` survived deleting the first of two arguments, because the second
+  argument restated the count. Both looked like real assertions and neither was; the probe found
+  them in one run, and the fix is to assert the **claim** — `"not a feature choice"` — rather than
+  a word that happens to be nearby.
+- **Assertion order becomes load-bearing.** A probe reads the *first* assertion to fire, so the
+  most diagnostic one has to be first. With `"55" in message` ahead of `"did the routing fire at
+  all?"`, every routing failure reported as a missing substring and the probe cheerfully verified
+  the wrong reason.
+- **An anchor that spans an implicit line continuation matches nothing**, and a revert that
+  changes nothing leaves the test green — which reads as *not load-bearing* rather than as *the
+  probe was broken*. The probe must fail loudly on an anchor that does not appear exactly once,
+  and report that separately from a green test. Same failure the copy deck hit at L15, arriving
+  from the other direction.
+
 **Corollary — environment-dependent non-reproduction is not a fix.** If a finding does not reproduce
 under a dependency version the repo does not pin to, it stays `OPEN` saying so.
 
