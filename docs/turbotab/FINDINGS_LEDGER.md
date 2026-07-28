@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**165 of 537 closed.**
+**166 of 544 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 335 |
+| `OPEN` | 341 |
 | `PARTIAL` | 37 |
-| `FIXED` | 162 |
+| `FIXED` | 163 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 335
+## OPEN — 341
 
 
 ### Application state / lockbox — 67
@@ -167,7 +167,7 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-067` | low | RFWrapper defines predict_proba and supports_proba twice | `models/rf.py:75-97` | Unchanged at HEAD. Behaviorally harmless because the bodies are identical, and that is exactly why it is worth recording: it is direct evidence the file was edited by paste and… |
 | `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` | Accurate at HEAD: structurally portable as-is, and the row's own last clause is the condition - add tests BEFORE the port, not after. Two live defects in this file argue the point… |
 
-### Multi-file / JSON import — 39
+### Multi-file / JSON import — 45
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -186,6 +186,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-239` | critical | HUNT stack-conflicts-only-checked-on-shared-columns: the dtype-conflict check iterates only the INTERSECTION of column sets, so a column that drifts in and out across cycles is mixed into one object… | `utils/combine.py plan_stack, the loop over plan.shared_columns; the union is already computed a few lines…` | REPRODUCES AT HEAD, exactly as recorded. Three cycles where LBXIN is float in 1999-2000, text in 2001-2002, and absent from 2003-2004: plan.shared_columns is ['SEQN'] alone… |
 | `IMPORT-241` | critical | HUNT stack-no-duplicate-subject-or-row-detection: overlapping subjects and exact duplicate rows are stacked with zero warning, inflating n and putting the same person on both sides of the seal | `utils/combine.py plan_stack (diagnosis from names and dtypes only; total_rows as a sum); the reusable…` | REPRODUCES AT HEAD, exactly as recorded. Two cycles of 50 subjects sharing 25 of them stack to 100 rows with plan.blocking, plan.warnings and plan.notes ALL EMPTY; the result… |
 | `IMPORT-242` | critical | HUNT stack-hint-steers-cycles-to-link: the relationship hint reads schema drift as evidence of different measurements, so eight NHANES cycles are confidently steered to the join screen | `utils/combine.py relationship_hint (the shared/union ratio and its thresholds); utils/combine_ui.py:457…` | REPRODUCES AT HEAD. Eight cycles sharing SEQN, RIDAGEYR, RIAGENDR and RIDRETH1 with lab panels drifting in and out give shared 4 of union 17 = 0.24, and relationship_hint returns… |
+| `IMPORT-257` | critical | HUNT no-way-to-declare-subject-column: there is no control anywhere for declaring the subject column, so the declared-entity paths in the lockbox and in Train & Compare are dead code | `pages/01_Upload_and_Audit.py:38 (detect_cohort_structure imported), :1105 (_entity_col read from a detection…` | REPRODUCES AT HEAD. Confirmed by grep: detect_cohort_structure appears once in pages/01, on the import line at :38, and is never called; entity_id_final appears once, at :1105… |
 | `IMPORT-132` | landmine | check_header_in_later_row false-positives on clean narrow frames with a blank header cell: emits the single critical/high-confidence 'promote_header' finding, which drops the first data row and hides… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 32'` | STAYS OPEN, and the L11 note is corrected: it recorded 'a clean narrow frame with a blank header cell produces no findings at all'. It reproduces verbatim at HEAD, both halves.… |
 | `IMPORT-135` | landmine | coerce_numeric silently merges incompatible units (mg/dL + mmol/L, kg + lb) into one column at 'high' confidence, with a detail message that never discloses the mixing | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 35'` | Original finding 35 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in… |
 | `IMPORT-142` | landmine | diagnose_join suppresses genuine column collisions whenever a key name also exists in the other frame (cross-name joins), so no suffix warning fires and execute_join's methods description names a… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 42'` | STAYS OPEN, and the L11 note is corrected: it recorded that a genuine collision on 'site' IS reported while a key-named column is present on both sides. That measured the control… |
@@ -206,6 +207,11 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-235` | high | HUNT slug-truncation-suffix-collision and slug-truncation-duplicate-column-names: two files agreeing on their first 20 filename characters produce identical merge suffixes - now a raw crash rather… | `ml/join_doctor.py:1073-1074 (_slug, the [:20] truncation) and the suffixes tuple built from it in…` | REPRODUCES AT HEAD IN CHANGED FORM, and the change matters for severity. The slug collision itself is unchanged: both names slug to '2017_2018_dietary_re', identical. But… |
 | `IMPORT-247` | high | HUNT blank-id-kept-claim-merges-both-sides: on a left join the app sums the ID-less rows from both files into one sentence saying they are kept, then drops the ones that came from the right | `ml/join_doctor.py diagnose_join - the combined blank-ID message and the single kept/dropped verdict derived…` | REPRODUCES AT HEAD, exactly as recorded. A left join with 2 blank-ID rows in demo and 3 in labs emits one warning: '2 in demo and 3 in labs row(s) have no ID at all (blank or… |
 | `IMPORT-248` | high | HUNT missing-token-list-eats-real-ids: a study centre or cohort legitimately named 'NA', '-', '?' or 'none' is deleted as a missing-value token and then reported as a row with no ID at all | `ml/join_doctor.py _KEY_MISSING_TOKENS and _canon_scalar; measured at HEAD` | REPRODUCES AT HEAD. Four study centres named NA, NB, NC and ND appear identically in both files. _canon_scalar('NA') returns None while NB, NC and ND survive; diagnose_join… |
+| `IMPORT-253` | high | HUNT stack-tz-datetime-conflict-invisible: tz-aware and tz-naive date columns stack with no warning into an object column that every date operation refuses | `utils/combine.py _dtype_family - is_datetime64_any_dtype returns the same family for both; measured at HEAD` | REPRODUCES AT HEAD, exactly as recorded. datetime64[ns] and datetime64[ns, UTC] both give _dtype_family 'date'; plan_stack returns blocking, warnings and notes all EMPTY; the… |
+| `IMPORT-254` | high | HUNT stack-case-variant-column-names-split: cycles whose headers differ only by capitalization or a trailing space stack into two half-empty columns, and nothing says they are the same variable | `utils/combine.py plan_stack - the shared/union sets built from raw labels; measured at HEAD` | REPRODUCES AT HEAD. Cycle 1 ['SEQN','age','glucose'] stacked with cycle 2 ['SEQN','Age','Glucose '] gives shared_columns ['SEQN'] and a result carrying all of age, Age, glucose… |
+| `IMPORT-256` | high | HUNT join-key-offered-as-predictor: after a merge the subject-ID join key is auto-selected as a model feature, because the reserved-column list holds only the app's own provenance column | `utils/combine.py reserved_columns() returns ['__source_file'] and nothing else, measured at HEAD…` | REPRODUCES AT HEAD. reserved_columns() returns exactly ['__source_file']. There is nowhere for a join key or a group column to be recorded, so pages/01's filter cannot exclude… |
+| `IMPORT-258` | high | HUNT promised-manual-key-picker-does-not-exist: the screen says 'You can pick the columns yourself below' and then renders no picker | `utils/combine_ui.py:263-275 - the warning, then `usable = cands[:5]`, then the error when that is still empty` | REPRODUCES AT HEAD by reading the branch, and the entry's own premise has partly moved: it lists 'every repeated-measures file' and 'every wide file whose key is past column 60'… |
+| `IMPORT-259` | high | HUNT same-filename-dead-end: two uploaded files with the same name collapse to one and Step 2 stops with a false explanation | `pages/01_Upload_and_Audit.py:576 (`dataframes[d['name']] = _tmp`) and :578-585 (the length-mismatch guard and…` | REPRODUCES AT HEAD by reading the code path; the collapse is a plain dict-key overwrite and the guard's message is unconditional on the real cause. Not driven end to end through… |
 | `IMPORT-019` | medium | A list-valued JSON field is silently converted to its Python repr and becomes a text column | `REPRO: data_processor.load_tabular_data on json.dumps([{'SEQN':1,'visits':[1,2,3]},{'SEQN':2,'visits':[4,5]}])…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
 | `IMPORT-212` | medium | The JSON loader accepts the non-standard NaN, Infinity and -Infinity literals, so an infinity enters the working table as an ordinary value | `data_processor.py:176 and the other json.loads call sites - none passes parse_constant` | REPRODUCED AT HEAD. [{bmi: 22.1}, {bmi: Infinity}, {bmi: 27.3}] loads as [22.1, inf, 27.3] with mean inf and max inf. Filed medium rather than high because an infinite mean is… |
 | `IMPORT-217` | medium | The duplicate-label branch of diagnose() swallows failing checks without the checks_failed disclosure the main branch deliberately emits, so a clean-looking review can hide checks that never ran | `ml/import_doctor.py:872-876 (the silent branch), ml/import_doctor.py:885-905 (the disclosing branch and the…` | REPRODUCED BY READING, not by a crashing frame: I did not construct an input that makes those two frame-level checks raise on a duplicate-labeled frame, so this is filed on the… |
@@ -514,10 +520,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 162
+## FIXED — 163
 
 
-### Multi-file / JSON import — 66
+### Multi-file / JSON import — 67
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -580,6 +586,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-245` | high | HUNT max-columns-60-hides-key: a 71-column lab file whose SEQN sat at position 70 produced zero candidates, and moving the same column to the front fixed it | `ml/join_doctor.py:466-499 (_columns_worth_testing, which replaced the positional slice with a rank by shared…` | **test:** `tests/test_join_doctor.py::test_a_key_in_the_last_column_of_a_wide_file_is_still_found` — VERIFIED AT HEAD. A 71-column lab file with SEQN at index 70 returns… |
 | `IMPORT-246` | high | HUNT max-distinct-positional-truncation: two files holding the same 300,000 IDs in different row orders were described as sharing 67% of them, and the candidate screen contradicted diagnose_join | `ml/join_doctor.py:398-422 (_key_tokens, now a value-determined hash keep) and :553-559 (the two-sided rescale…` | **test:** `tests/test_key_sampling_is_symmetric.py::test_reordering_a_file_does_not_change_the_reported_overlap` — VERIFIED AT HEAD. Same 1,500 IDs on both sides with the right… |
 | `IMPORT-250` | high | HUNT blank-id-reattachment-invalid-index: an outer join with blank IDs crashed with 'Reindexing only valid with uniquely valued Index objects' when the second file carried a column named like the… | `ml/join_doctor.py execute_join - `if left_key != right_key and left_key in r.columns: overlap.add(left_key)`…` | **test:** `tests/test_join_doctor.py::test_blank_ids_survive_a_right_side_column_named_like_the_left_key` — VERIFIED AT HEAD. demographics(SEQN with one blank) outer-joined to… |
+| `IMPORT-255` | high | HUNT grouped-lockbox-fraction-mislabel: 'Held-out test fraction 15%' was applied to subjects and reported as a fraction of rows - the real held-out share was 37% | `utils/test_lockbox.py:475-482 - _actual_fraction is computed as len(test_labels)/len(eligible) and stored as…` | **test:** `tests/test_grouping_picks_the_person.py::test_a_grouped_seal_reports_the_row_share_it_actually_held_out` — VERIFIED AT HEAD, and the code documents the finding: the… |
 | `IMPORT-107` | medium | diagnose_join green-lights date-vs-text key pairs that execute_join(repair=False) cannot merge | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 07'` | **test:** `tests/test_stress_regressions.py::TestBlockingMessagesNameTheCause` — Original finding 07 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-109` | medium | Duplicate key column name makes every ml/join_doctor.py entry point raise AttributeError and makes find_key_candidates silently drop the true key — but the module has no UI callers and no loader can… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 09'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 09 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 | `IMPORT-113` | medium | Duplicate column labels crash three checks; diagnose() silently swallows the crashes and drops unrelated findings frame-wide | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 13'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 13 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
