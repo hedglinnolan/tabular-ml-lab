@@ -587,6 +587,22 @@ def render_lockbox_status(context: str = "") -> None:
         return
     extra = f" {context}" if context else ""
 
+    # Held out is not the same as scoreable, and that is true on EVERY path
+    # through this function — so it is computed here, once, above the branch,
+    # rather than inside one of them.
+    #
+    # It used to be computed only inside the cohort-run branch below. The
+    # ordinary path printed `lb['n_test']` unconditionally, so a row-dropping
+    # step after the seal (the page-05 plausibility filter, `STATE-101`) left
+    # the chip reporting 60 held-out rows where evaluation had 53. The
+    # principle was stated correctly in `_scoreable_here`'s own docstring and
+    # applied in one place out of two — `STATE-102`, and the fifth instance of
+    # a rule stated in one place and used in another. `test_scoreable_locality`
+    # asserts this call sits above the branch, so the next reader cannot
+    # reintroduce the gap by adding a third path.
+    _n_sealed_total = len(lb.get("labels") or [])
+    _n_scoreable_total = _scoreable_here(lb.get("labels") or [])
+
     # A cohort run works on a subset, and the study-wide n is then simply not
     # this run's test set: "n=135" beside a 490-row run is a number the
     # researcher would write down and be wrong about.
@@ -665,6 +681,21 @@ def render_lockbox_status(context: str = "") -> None:
             f"held-out performance will read better than it is. Treat these "
             f"numbers as exploratory until you confirm the shape."
         )
+
+    # The same sentence the cohort branch has always had, on the path that
+    # never had it. `n_test` is what was SEALED; what performance will be
+    # measured on is what still has a value for the current outcome, and those
+    # differ after any row-dropping step.
+    if _n_scoreable_total is not None and _n_scoreable_total < _n_sealed_total:
+        st.warning(
+            f"⚖️ **{_n_scoreable_total:,} of {_n_sealed_total:,}** held-out rows "
+            f"still have a value for `{lb.get('target_col') or 'the outcome'}`. "
+            f"The rest were removed or blanked after the split was sealed, so "
+            f"performance will be measured on {_n_scoreable_total:,} rows — not "
+            f"{_n_sealed_total:,}. Check what dropped them before reporting a "
+            f"held-out number.{extra}"
+        )
+        return
 
     if lb.get("group_col"):
         _noun = lb.get("group_noun") or "subjects"

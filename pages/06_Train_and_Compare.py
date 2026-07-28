@@ -242,14 +242,30 @@ if _test_governed_by_lockbox:
     # it here put two different numbers on one screen.
     from utils.cohorts import active_cohort as _slider_cohort
     _run = _slider_cohort()
-    _n_test_here = (len(set(_slider_lb["labels"]) & set(_run["labels"]))
-                    if _run is not None else _slider_lb["n_test"])
+    _here_labels = (list(set(_slider_lb["labels"]) & set(_run["labels"]))
+                    if _run is not None else list(_slider_lb["labels"]))
+    _n_test_here = len(_here_labels)
+    # Held out is not the same as scoreable, and this caption sits at the far
+    # end of the pipeline — every row-dropping step upstream has already run by
+    # the time it renders. Printing the SEALED count here was the second
+    # instance of STATE-102, found by tests/test_scoreable_locality.py rather
+    # than by reading: the same helper the chip uses, at the same distance from
+    # the seal, is what makes the two numbers agree.
+    from utils.test_lockbox import _scoreable_here as _score
+    _n_scoreable_here = _score(_here_labels)
     _whose = f" for {_run['column']} = {_run['label']}" if _run is not None else ""
     st.caption(
         f"🔒 Test set is locked at {test_size:.0%} (n={_n_test_here:,}{_whose}) by the upload "
         f"lockbox — held out since before feature engineering. Train % and Val % divide the "
         f"remaining {1 - test_size:.0%}. Change the holdout on Upload & Audit."
     )
+    if _n_scoreable_here is not None and _n_scoreable_here < _n_test_here:
+        st.warning(
+            f"⚖️ Of those {_n_test_here:,} held-out rows, **{_n_scoreable_here:,}** still "
+            f"have a value for the outcome. Performance will be measured on "
+            f"{_n_scoreable_here:,} rows — not {_n_test_here:,}. Something after the "
+            f"seal removed or blanked the rest; check what before reporting."
+        )
     if abs(train_size + val_size - (1.0 - test_size)) > 0.01:
         st.error(f"With the lockbox holding out {test_size:.0%} for test, "
                  f"Train % + Val % must sum to {1.0 - test_size:.0%}.")
