@@ -170,8 +170,16 @@ def test_a_many_to_many_product_is_undetermined_rather_than_silent():
 
 # ── what is still false, pinned so it cannot be forgotten ────────────────
 
-def test_an_unrecognized_id_name_is_still_recorded_as_cross_sectional():
+def test_KNOWN_GAP_an_unrecognized_id_name_is_still_recorded_as_cross_sectional():
     """KNOWN GAP, asserted so it stays visible: `IMPORT-022`.
+
+    The `KNOWN_GAP_` prefix is load-bearing and belongs in the NAME, not only
+    here. CI prints the name and nothing else, so a green line reading
+    `test_an_unrecognized_id_name_is_still_recorded_as_cross_sectional PASSED`
+    is indistinguishable from a regression guard — it scans as the suite
+    endorsing the behavior it is in fact recording as broken. Same silence this
+    project keeps finding, one layer up. See `FEATURE_PARITY.md`, "name every
+    test after the defect it guards".
 
     `SUBJ` repeats 60 values × 3 rows — a textbook repeated-measures shape —
     and the name-token gate rejects it before the repetition is ever measured,

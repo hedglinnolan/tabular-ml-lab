@@ -215,6 +215,39 @@ a sentence, not after the function it calls.** `test_join_keys_2` guards nothing
 in the project — it is executable, so it cannot silently stop being true — and naming it this way
 makes it a readable one as well.
 
+**Extension — a test that pins wrong behavior says so in its name.** A *pinning* test asserts what
+the app currently does wrong, so that the gap stays visible and so that fixing it produces a red
+test rather than silence. It is the exact opposite of a regression guard, and in CI output the two
+are **indistinguishable**: both print one green line naming a behavior. A reader scanning
+
+```
+test_an_unrecognized_id_name_is_still_recorded_as_cross_sectional PASSED
+```
+
+reads the suite as *endorsing* that sentence, when it is in fact recording it as broken. That is
+this project's governing failure — green output that asserts something false — reproduced in its
+own instrumentation.
+
+So: **prefix a pinning test `KNOWN_GAP_`, in the function name, and name the finding it pins in the
+first line of the docstring.**
+
+```
+test_KNOWN_GAP_an_unrecognized_id_name_is_still_recorded_as_cross_sectional PASSED
+```
+
+Three consequences worth stating, because they are what the prefix buys:
+
+- **The docstring is not enough.** CI prints names, not docstrings. A marker only a code reader
+  sees does not reach the person reading a build log, who is the person at risk of misreading it.
+- **`PASSED` on a `KNOWN_GAP_` line means the defect is still there.** That inversion has to be
+  legible without opening the file, and the prefix is what makes it so.
+- **The day it goes red is the day the row closes.** A `KNOWN_GAP_` test failing is not a
+  regression and must not be "fixed" by editing the assertion. It is the signal to update the
+  finding and the test together, which is what `IMPORT-022`'s docstring says in as many words.
+
+`grep -r "def test_KNOWN_GAP_" tests/` is then the list of everything the suite knows is wrong —
+a second, executable index of the ledger's open criticals.
+
 ### Two specific things to watch
 
 - **The pedagogy layer** — `utils/theory_anchors.py` (532 loc) and `utils/theory_demos.py`
