@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**173 of 563 closed.**
+**173 of 566 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 351 |
+| `OPEN` | 354 |
 | `PARTIAL` | 39 |
 | `FIXED` | 170 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 351
+## OPEN — 354
 
 
-### Application state / lockbox — 65
+### Application state / lockbox — 66
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -104,6 +104,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-089` | invariant | A rebuild that REPLACES an existing lockbox invalidates downstream results, and the redraw is disclosed rather than silent. | `utils/test_lockbox.ensure_lockbox:226-231 — `if existing is not None and existing.get('labels') !=…` | Unchanged at HEAD, and both of the row's objections stand. The comparison is on LABEL LISTS rather than sets, so a redraw producing the same rows in a different order fires a… |
 | `STATE-090` | invariant | Repeated measures split by SUBJECT, not by row — the same person must never appear in both training and the sealed test set. | `utils/test_lockbox.detect_repeated_subjects + ensure_lockbox:130-133 (auto-detect only when the caller named…` | The invariant is right and its stated trigger is LIVE, so it stays OPEN. The row asks 'what if detect_repeated_subjects runs against the ENGINEERED frame' and answers its own… |
 | `STATE-094` | invariant | An invalidated resolution is rolled back (the finding survives, the claim does not), and an auto-generated insight whose producer will re-detect is deleted outright — absent is better than false. | `utils/session_state.py:389-410 + InsightLedger.rollback_resolutions / prune_auto_generated. Tests…` | The behavior is correct and tested - a rolled-back resolution leaves the FINDING standing and drops only the CLAIM, and auto-generated insights whose producer re-detects are… |
+| `STATE-105` | medium | Lockbox constitution clause 05's FIRING half - the extrapolation blocker at export - has nowhere to live: the Report step does not exist | `ROADMAP.md lockbox constitution 05; turbotab/test_the_trim_arms_the_obligation.py covers the arming half…` | SPLIT DELIBERATELY, and the product owner named the reason: a clause whose obligation fires at a different step from the action arming it is the one most likely to go unbuilt, and… |
 
 ### Stage-boundary contracts — 55
 
@@ -431,12 +432,14 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Guided-door drive feedback — 5
+### Guided-door drive feedback — 7
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `GUIDED-012` | high | Lockbox constitution clause 06 - declaration and execution are separate - has no implementation in either door: nothing applies the row-local vs stateful litmus test | `No module classifies transforms by the litmus test at L14. Classic's pages/03 applies feature engineering to…` | Filed at the start of L14 rather than after building it, deliberately: the check found the clause untracked, and the honest record of an unbuilt clause is an open finding, not a… |
 | `GUIDED-014` | high | DESIGN QUESTION for the product owner: does the exploratory labeling on an undetermined seal read as honest, or as the app giving up? | `docs/turbotab/COPY_DECK.md, 'Data & Target - what the user reads after answering' and 'what the user reads…` | NOT SELF-ASSESSED, deliberately. I wrote this copy at L15; asking the author whether their own prose reads well is the finder-judge problem in a different costume, and this… |
+| `GUIDED-020` | high | Lockbox constitution clause 04's eligibility question is asked in NEITHER door, and the first coverage matcher marked the clause covered because a test for the OTHER half of it existed | `tests/test_every_clause_is_tracked.py, the `lockbox-04` obligations; ROADMAP.md lockbox constitution 04` | THE HOMONYM COLLISION, which is the part worth keeping. Searching the ledger for `eligib` returns NINE rows and every one of them is a different sense of the word - row… |
+| `GUIDED-021` | high | Lockbox constitution clause 07 - missingness routes by dtype AND mechanism - is implemented nowhere, and the first coverage matcher passed it on a wildcard that matched a file of unrelated helper… | `tests/test_every_clause_is_tracked.py, the `lockbox-07` obligations; tests/test_missingness_encoding.py…` | THE WILDCARD IS THE FINDING. ('tests/test_missingness_encoding.py', 'test_') matched every test in the file, so the link asserted nothing beyond the file's existence - and three… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |

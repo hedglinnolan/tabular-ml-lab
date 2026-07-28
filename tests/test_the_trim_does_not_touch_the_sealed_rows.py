@@ -74,6 +74,21 @@ def test_the_unrestored_trim_really_does_remove_sealed_rows():
 
 
 def test_every_sealed_row_survives_a_post_seal_trim():
+    """A robustness trim touches the training partition only; the test set obeys
+    an eligibility criterion and is otherwise never touched.
+
+    `STATE-101` measured the violation: the page-05 plausibility filter ran over
+    the whole frame into `filtered_data`, which `get_data()` serves everywhere,
+    so 7 of 60 sealed rows disappeared and evaluation ran on 53 while the chip
+    still said 60.
+
+    This discharges ONE of clause 04's three obligations — the post-seal half.
+    The two pre-seal ones are the eligibility question, and until L16 nothing
+    linked them, which is why the clause read as covered while half of it was
+    not built. See `test_every_clause_is_tracked.py`.
+
+    Clause: `lockbox-04`
+    """
     df = frame_with_impossible_values()
     sealed = list(df.index[:60])
     filtered = apply_plausibility_filter(df, FEATURES, BOUNDS)

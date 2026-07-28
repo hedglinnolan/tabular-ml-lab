@@ -197,7 +197,10 @@ def test_a_deferred_transforms_preview_is_labeled_and_shows_no_values():
     """Clause §06 permits a read-only preview 'not persisted to the modeling
     table' — and a preview of a distribution-dependent transform fitted on the
     whole column would be showing the researcher a picture of their held-out
-    data, which is the leak arriving through the preview instead."""
+    data, which is the leak arriving through the preview instead.
+
+    Clause: `lockbox-06`
+    """
     pv = F.preview(study(), "bin_quantile", ["age"], {"n_bins": 3})
     assert pv["preview_not_applied"] is True
     assert pv["rows"] == []

@@ -40,6 +40,7 @@ def data_plan(**kw):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def test_every_pushed_fact_names_who_consumes_the_answer():
+    """Clause: `assembly-04`"""
     for q in data_plan(answered=[]):
         if q.kind in router.FACT_KINDS and q.mode == "push":
             assert q.consumer, f"{q.key} asks without naming its consumer"
@@ -66,7 +67,10 @@ def test_the_task_type_question_names_what_changes():
 
 
 def test_the_audit_refuses_a_fact_with_no_consumer():
-    """The rule, enforced where a new question would have to pass it."""
+    """The rule, enforced where a new question would have to pass it.
+
+    Clause: `assembly-04`
+    """
     q = router.Question(key="invented_fact", title="Is this a thing?",
                         why="", step="data", kind="task_type", mode="push")
     with pytest.raises(router.RouterError) as exc:
@@ -151,7 +155,10 @@ def test_the_signal_word_appears_nowhere_else():
 
 
 def test_the_grammar_survives_color_removal():
-    """Silhouette plus signal word must carry the tier with color gone."""
+    """Silhouette plus signal word must carry the tier with color gone.
+
+    Clause: `assembly-04`
+    """
     assert "blocker-word" in BODY and "blocker-glyph" in BODY
     band = BODY[BODY.index(".blocker{"):BODY.index(".blocker-head{")]
     assert "border-top:4px" in band, (

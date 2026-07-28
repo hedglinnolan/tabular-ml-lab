@@ -63,7 +63,10 @@ def _project(df: pd.DataFrame) -> AnalysisProject:
 
 def test_the_seal_cannot_be_drawn_before_the_grain_is_answered():
     """Clause §01 fixes the pre-seal order and §02 is why. Refusing here makes
-    that order executable, so a caller cannot seal first and ask afterwards."""
+    that order executable, so a caller cannot seal first and ask afterwards.
+
+    Clause: `lockbox-01`
+    """
     p = _project(cross_sectional())
     with pytest.raises(ProjectError, match="grain question"):
         p.seal_lockbox(list(p.df.index[:10]))
@@ -89,6 +92,8 @@ def test_the_contradiction_detector_fires_on_an_id_name_the_heuristic_misses():
     asserted here, so this test fails loudly if someone "fixes" it by extending
     the token list, which constitution §02 forbids in as many words. The
     interruption must fire anyway, on shape alone.
+
+    Clause: `lockbox-02`
     """
     df = longitudinal(key="SUBJ")
     assert detect_repeated_subjects(df) is None, (
@@ -111,7 +116,10 @@ def test_the_interruption_does_not_depend_on_what_the_column_is_called(key):
 
 def test_stating_one_row_per_person_on_a_repeating_file_is_refused_not_warned():
     """Escalate on evidence of error. One of the two readings is wrong, and the
-    caller has to say which — so it raises rather than logging."""
+    caller has to say which — so it raises rather than logging.
+
+    Clause: `lockbox-02`
+    """
     p = _project(longitudinal())
     with pytest.raises(GrainContradiction) as exc:
         p.set_grain(G.ONE_ROW_PER_PERSON)
@@ -225,7 +233,10 @@ def test_the_seal_reports_the_row_share_it_actually_held_out():
 def test_the_basis_source_is_reachable_for_assembly():
     """`inherited_from_assembly` has no producer yet — assembly is behind an
     unmet freeze gate — so it is pinned as reachable rather than dead, which is
-    what stops it being deleted as unused before it can be used."""
+    what stops it being deleted as unused before it can be used.
+
+    Clause: `assembly-05`
+    """
     p = _project(cross_sectional())
     p.set_grain(G.ONE_ROW_PER_PERSON, inherited=True)
     assert p.grain["basis_source"] == "inherited_from_assembly"
@@ -374,6 +385,8 @@ def test_an_undetermined_seal_says_so_in_words_the_user_reads(client):
     So the assertion is on the sentence, and it is taken over HTTP, because
     "what the user reads" is a claim about what leaves the server rather than
     about what a helper can return when asked.
+
+    Clause: `lockbox-03`
     """
     def drive(df, answer):
         pid = _upload(client, df)

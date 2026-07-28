@@ -83,6 +83,9 @@ def test_an_undetermined_seal_is_never_recorded_as_cross_sectional():
     identifier band. The column is not usable for grouping and the repetition
     is unmistakable, so the honest answer is "could not tell" — not "no
     repetition".
+
+
+    Clause: `lockbox-03`
     """
     lb, leak = seal(cohort(np.repeat(range(10), 60)))
     assert lb["seal_basis"] == SEAL_UNDETERMINED

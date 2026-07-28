@@ -66,7 +66,10 @@ def test_answering_a_question_removes_it_and_nothing_else(messy):
 
 def test_a_repair_is_never_skipped_however_confident_the_engine_is(messy):
     """A repair is a question of choice. Skipping it applies a change the user
-    never saw, which is the blind consent the preview exists to end."""
+    never saw, which is the blind consent the preview exists to end.
+
+    Clause: `routing-02-choice`
+    """
     _, findings, detection = messy
     high = [f for f in findings if f.get("confidence") == "high"
             and f.get("fix_kind") not in (None, "none")]
@@ -80,7 +83,10 @@ def test_a_repair_is_never_skipped_however_confident_the_engine_is(messy):
 
 
 def test_a_high_confidence_detection_may_be_stated_rather_than_asked(messy):
-    """The one legitimate skip: a question of fact the engine is certain of."""
+    """The one legitimate skip: a question of fact the engine is certain of.
+
+    Clause: `routing-01-fact`
+    """
     _, findings, detection = messy
     assert detection["confidence"] == "high"
 
@@ -92,6 +98,7 @@ def test_a_high_confidence_detection_may_be_stated_rather_than_asked(messy):
 
 
 def test_a_low_confidence_detection_is_always_asked(messy):
+    """Clause: `routing-01-fact`"""
     _, findings, _ = messy
     for conf in ("medium", "low", None):
         detection = {"detected": "regression", "confidence": conf, "reasons": ["x"]}
@@ -101,7 +108,10 @@ def test_a_low_confidence_detection_is_always_asked(messy):
 
 
 def test_audit_rejects_a_skip_that_breaks_decision_b():
-    """The rule is asserted, not trusted."""
+    """The rule is asserted, not trusted.
+
+    Clause: `routing-01-fact`
+    """
     bad = Question(key="repair::x", title="t", why="w", step="data", kind="repair",
                    confidence="high", status="skipped", skip_reason="because")
     with pytest.raises(RouterError, match="Decision B"):
@@ -273,7 +283,10 @@ def leaky():
 
 
 def test_a_leaking_column_is_pushed_not_offered(leaky):
-    """The gap `T0-ROUTE-001` names. A blocker that only offers is not gating."""
+    """The gap `T0-ROUTE-001` names. A blocker that only offers is not gating.
+
+    Clause: `routing-03-consequence`
+    """
     _, findings, detection, signals, recs = leaky
     plan = router.plan(findings, target="sepsis", detection=detection,
                        step="explore", answered=["choose_target"],
@@ -296,6 +309,9 @@ def test_a_blocker_is_never_skipped_even_at_high_confidence(leaky):
     """Consequence is the one kind certainty does not make moot.
 
     Being sure a column leaks is a reason to ask, not a reason to stay quiet.
+
+
+    Clause: `routing-03-consequence`
     """
     _, findings, detection, signals, _ = leaky
     plan = router.plan(findings, target="sepsis", detection=detection,
@@ -326,6 +342,9 @@ def test_leaving_the_step_with_a_blocker_open_requires_an_acknowledgment(leaky):
 
     The tool does not hard-refuse — the flagged column may be legitimate — but
     exiting past it writes a sentence the manuscript can carry as a limitation.
+
+
+    Clause: `routing-03-consequence`
     """
     _, findings, detection, signals, _ = leaky
     plan = router.plan(findings, target="sepsis", detection=detection,
