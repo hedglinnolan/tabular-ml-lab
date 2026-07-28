@@ -244,7 +244,40 @@ core reaches a Workbench VM or a Docker deployment without a third implementatio
 
 ---
 
-## The loops
+## How L9 is sequenced, and why it is not negotiable
+
+The Guided steps are built **in the order a user meets them** — Data & Target, Explore, Features,
+Preprocess, Train, Explain, Report — and each one must be **drivable end to end from upload on the
+day it lands.** Not demoable in pieces: drivable.
+
+There was a proposal to build a thin Train and Report first, to get a demonstrable spine sooner.
+It was rejected, on two grounds:
+
+1. **Sequential order is the data-dependency order.** A Train step built before Preprocess must
+   invent its own preprocessing assumptions, and Preprocess-when-built then has to retrofit into
+   decisions Train already hardcoded. Building out of order buys a demo and pays for it in rework.
+2. **Driving the app is the design method, and it only works on a whole journey.** In the product
+   owner's words: *design is an iterative process of taking the journey yourself through the app.*
+   `GUIDED-001` through `GUIDED-008` — the binary-text detector, evidence inside finding cards, the
+   impossibility band, expandable panels — came from one drive of a real dataset through the two
+   built steps. None of them came from reading code. A step that cannot be driven produces no
+   feedback, and a journey with a hole in the middle cannot be driven at all.
+
+**The acceptance criterion for every L9 loop is therefore the same:** the product owner can open
+the app, upload their own file, and reach the end of the newly built step without leaving the
+Guided door. A step that needs a script, a fixture, or an explanation to exercise is not done.
+
+### Correctness is scoped to the step, not to the ledger
+
+Correctness work is not optional here — the app makes claims that end up in manuscripts, and a
+wrong number that gets published is worse than a crash that gets reported. But the backlog must
+not set the build's pace. Two rules keep both true:
+
+- **Findings in the path of the step being built are worked. Findings outside it are parked.**
+  Parked is not forgotten: the row exists, dispositioned, and comes back when its step arrives.
+- **A step is not done while an `OPEN` critical or high sits in the code path it executes.** That
+  is a per-step gate, and it is what makes the definition-of-done's zero-`OPEN` condition
+  reachable by construction rather than by one enormous burn-down at the end.
 
 ### L4 · Characterization tests — autonomous
 
