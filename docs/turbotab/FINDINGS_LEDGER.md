@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**166 of 544 closed.**
+**167 of 551 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 341 |
+| `OPEN` | 347 |
 | `PARTIAL` | 37 |
-| `FIXED` | 163 |
+| `FIXED` | 164 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 341
+## OPEN — 347
 
 
 ### Application state / lockbox — 67
@@ -167,7 +167,7 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-067` | low | RFWrapper defines predict_proba and supports_proba twice | `models/rf.py:75-97` | Unchanged at HEAD. Behaviorally harmless because the bodies are identical, and that is exactly why it is worth recording: it is direct evidence the file was edited by paste and… |
 | `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` | Accurate at HEAD: structurally portable as-is, and the row's own last clause is the condition - add tests BEFORE the port, not after. Two live defects in this file argue the point… |
 
-### Multi-file / JSON import — 45
+### Multi-file / JSON import — 51
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -193,6 +193,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-207` | landmine | A JSON file can install a NON-UNIQUE index, and the label-based lockbox then cannot address rows individually: a 15% seal held out 42% of the data | `data_processor.py:270-277 (orient='split' index applied unchecked); utils/test_lockbox.py:16-17 (labels, not…` | REPRODUCED AT HEAD, end to end through the real loader. A 40-subject x 3-visit orient='split' payload indexed S000..S039 loads as 120 rows with index.is_unique False and 40… |
 | `IMPORT-219` | landmine | The wide-file key ranking assumes measurements are floats, so on an integer-count matrix an ID column with an unrecognized name ties with every gene column and is cut by position - the same defect… | `ml/join_doctor.py:487-499 (the rank tuple and the stable sort), ml/join_doctor.py:460-463 (_ID_NAME_HINT)…` | REPRODUCED AT HEAD. A 5,001-column matrix - 5,000 integer gene-count columns plus a text SUBJ column last - joined to a phenotype file keyed SUBJECT_CODE: SUBJ is NOT among the 60… |
 | `IMPORT-249` | landmine | HUNT column-named-like-other-sides-key-hides-collision: dispositioned - this is the same defect as IMPORT-142 and is tracked there | `ml/join_doctor.py:771-773 (the collision list filtering out {left_key, right_key}); tracked at IMPORT-142` | REPRODUCES AT HEAD, and confirms IMPORT-142 independently from a second reporter. demographics(SEQN, bmi) joined to labs(patient_id, SEQN, glucose) on SEQN to patient_id gives… |
+| `IMPORT-260` | landmine | HUNT stack-int-float-id-precision: an integer subject-ID column stacked with a float one is silently widened to float, and above 2^53 that merges two participants into one | `utils/combine.py _dtype_family (int64 and float64 both return 'number'); utils/combine.py execute_stack's…` | REPRODUCES AT HEAD, AND IS WORSE THAN FILED - this is why the severity is raised from the recorded 'minor' to landmine. Ordinary case: int64 SEQN [1,2,3] stacked with float64… |
 | `IMPORT-016` | high | A yes/no key stored as boolean against the same key stored as 0/1 matches nothing, and the message blames the user's column choice | `REPRO: left=DataFrame({'id':[True,False,True],'a':[1,2,3]}), right=DataFrame({'id':[1,0,1],'b':[7,8,9]})…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
 | `IMPORT-017` | high | The stack change map omits a consequence the planner has already computed: that a column was coerced to text | `REPRO: frames = {'c17': DataFrame({'SEQN':range(5),'site':['A']*5}), 'c19'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
 | `IMPORT-018` | high | A user column named __source_file is renamed out of the way without disclosure | `REPRO: frames = {'a': DataFrame({'SEQN':[1,2],'__source_file':['mine','mine']}), 'b'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
@@ -216,6 +217,11 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-212` | medium | The JSON loader accepts the non-standard NaN, Infinity and -Infinity literals, so an infinity enters the working table as an ordinary value | `data_processor.py:176 and the other json.loads call sites - none passes parse_constant` | REPRODUCED AT HEAD. [{bmi: 22.1}, {bmi: Infinity}, {bmi: 27.3}] loads as [22.1, inf, 27.3] with mean inf and max inf. Filed medium rather than high because an infinite mean is… |
 | `IMPORT-217` | medium | The duplicate-label branch of diagnose() swallows failing checks without the checks_failed disclosure the main branch deliberately emits, so a clean-looking review can hide checks that never ran | `ml/import_doctor.py:872-876 (the silent branch), ml/import_doctor.py:885-905 (the disclosing branch and the…` | REPRODUCED BY READING, not by a crashing frame: I did not construct an input that makes those two frame-level checks raise on a duplicate-labeled frame, so this is filed on the… |
 | `IMPORT-251` | medium | HUNT suffix-collides-with-existing-column: a column already named <col>_<filename> turns the promised suffixing into a raw pandas MergeError, and re-combining a file this tool already produced is… | `ml/join_doctor.py execute_join - the suffixes tuple passed to merge with no check against existing column…` | REPRODUCES AT HEAD. demographics carrying SEQN, bmi and bmi_demographics joined to labs carrying SEQN and bmi raises MergeError: "Passing 'suffixes' which cause duplicate columns… |
+| `IMPORT-261` | medium | HUNT stack-bool-int-warning-is-false: a yes/no column stored as True/False in one cycle and 1/0 in the next is warned about as becoming unusable text, when the stacked result is a clean int64 column | `utils/combine.py _dtype_family (bool and numeric are distinct families) and the conflict warning text…` | REPRODUCES AT HEAD, exactly as recorded. Families are 'true/false' and 'number'; plan_stack warns "1 column(s) hold different kinds of value in different files ('smoker' is number… |
+| `IMPORT-262` | medium | HUNT stack-ordered-categorical-loses-ordering: stacking ordered categoricals whose category order differs silently drops the ordering, and ordinal comparisons stop working | `utils/combine.py _dtype_family (categorical falls through to 'text'); measured at HEAD` | REPRODUCES AT HEAD. A food_security factor ordered low < marginal < high in one parquet cycle and high < marginal < low in the other: both give _dtype_family 'text', plan.warnings… |
+| `IMPORT-263` | low | HUNT case-whitespace-column-collision-unreported: column names differing only by case or trailing whitespace are never flagged, so the merged table carries two columns that look identical | `ml/join_doctor.py:771-773 - the collision set is a raw intersection of column labels with no normalization…` | REPRODUCES AT HEAD, exactly as recorded. Joining a file with columns BMI and 'age ' (trailing space) to one with bmi and age gives column_collisions [] and warnings [], and the… |
+| `IMPORT-264` | low | HUNT stack-blank-file-blocks-with-wrong-advice: one zero-column file blocks the entire stack and the message tells the researcher to consider joining instead | `utils/combine.py plan_stack - the no-shared-columns blocker and its message; measured at HEAD` | REPRODUCES AT HEAD. Two well-formed cycles sharing SEQN and age, plus one zero-column frame, give blocking: 'These files have no column names in common, so stacking them would… |
+| `IMPORT-265` | low | HUNT stack-duplicate-column-label-crash: does not reproduce on this pandas, and there is no guard - recorded as environment-dependent rather than fixed | `utils/combine.py execute_stack - the copy, rename and pd.concat path, which contains no duplicate-label…` | DOES NOT REPRODUCE AT HEAD, AND IS NOT CLOSED - the distinction is the point. Two frames with columns [1, '1'] give plan_stack no blocking and no warnings (so the recorded… |
 
 ### Silent-failure landmines — 37
 
@@ -520,10 +526,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 163
+## FIXED — 164
 
 
-### Multi-file / JSON import — 67
+### Multi-file / JSON import — 68
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -547,6 +553,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-232` | critical | HUNT outer-right-join-drops-right-key-column and outer-join-destroys-right-only-ids: 'keep everyone from every file' delivered the promised rows with a blank participant ID on every right-only row | `ml/join_doctor.py execute_join - the _ORIGINAL_KEY threading and the restore block that coalesces…` | **test:** `tests/test_join_doctor.py::test_a_right_only_participant_keeps_an_identifier` — VERIFIED AT HEAD. demographics(SEQN 1,2,3) outer-joined to labs(patient_id 3,4,5)… |
 | `IMPORT-238` | critical | HUNT stack-source-column-clobbered: re-stacking a table this app exported rewrote every provenance label and delivered one column fewer than promised | `utils/combine.py execute_stack (the SOURCE_COLUMN assignment) and StackPlan.summary(); verified by…` | **test:** `tests/test_combine.py::test_a_users_own_source_file_column_is_not_overwritten` — VERIFIED AT HEAD. Two exports each carrying their own __source_file with values… |
 | `IMPORT-252` | critical | HUNT index-like-key-accepted-silently: two files whose only shared column was a row counter with the same name were joined at 'high' confidence with no warning, fusing unrelated cohorts | `ml/join_doctor.py:293-299 - the index_like branch is now checked FIRST and unconditionally, returning…` | **test:** `tests/test_audit_join_and_subjects.py::TestContiguousIdsAreStillKeys::test_two_anonymous_row_counters_are_still_refused` — VERIFIED AT HEAD. A clinic-visit sheet (row… |
+| `IMPORT-266` | critical | HUNT long-format-key-rejected-junk-key-offered: a repeated-measures file made the real subject key un-proposable and the app offered a nonsense pairing as the default, delivering a fabricated table | `ml/join_doctor.py:391-397 (the removed per-column floor) and :602-608 (the per-pair distinctness rule that…` | **test:** `tests/test_join_doctor.py::test_a_long_format_file_keeps_its_subject_key` — VERIFIED AT HEAD on the entry's own fixture: demographics (100 subjects, SEQN) plus a 24h… |
 | `IMPORT-006` | landmine | The preview could not tell 'we never measured this person' from 'this person was not in that file', though it claimed to | `tests/test_stress_regressions.py::TestBlankCellsAreToldApart; ml/import_doctor.py, ml/join_doctor.py…` | **test:** `tests/test_stress_regressions.py::TestBlankCellsAreToldApart` — Recovered at L10 from the regression test that guards it. The finding's original text was lost with the… |
 | `IMPORT-007` | landmine | The before/after change map was not checked against the frame the engine actually produces | `tests/test_stress_regressions.py::TestChangeMapMatchesReality; ml/import_doctor.py, ml/join_doctor.py…` | **test:** `tests/test_stress_regressions.py::TestChangeMapMatchesReality` — Recovered at L10 from the regression test that guards it. The finding's original text was lost with the… |
 | `IMPORT-008` | landmine | Join type-compatibility was judged on the container rather than the values, blocking working joins and misdiagnosing broken ones | `tests/test_stress_regressions.py::TestDtypeMismatchIsJudgedOnTheUnderlyingType; ml/import_doctor.py…` | **test:** `tests/test_stress_regressions.py::TestDtypeMismatchIsJudgedOnTheUnderlyingType` — Recovered at L10 from the regression test that guards it. The finding's original text… |
