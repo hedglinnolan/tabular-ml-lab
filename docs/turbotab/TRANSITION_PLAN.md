@@ -237,7 +237,7 @@ compresses the JSON lens into one word, which is why the unrun count is six rath
 | 6 | JSON structure | ✓ ran — L12 | `IMPORT-205`…`208` (2 critical, 1 landmine, 1 high) |
 | 7 | JSON encoding | ✓ ran — L12 | `IMPORT-209`…`212` (1 critical, 2 high, 1 medium) |
 | 8 | JSON → downstream | ✓ ran — L12 | `IMPORT-213`…`215` (1 critical, 1 high, 1 NOT-A-DEFECT); corrected `IMPORT-205` |
-| 9 | Import Doctor | **not run** | — |
+| 9 | Import Doctor | ✓ ran — L12 | `IMPORT-216`…`218` (1 critical, 1 medium, 1 NOT-A-DEFECT) |
 | 10 | State / scale | **not run** | — |
 
 **A lens that comes up dry is a result, not a gap.** It is the only evidence of saturation this

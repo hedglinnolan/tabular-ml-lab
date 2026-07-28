@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**155 of 506 closed.**
+**156 of 509 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 316 |
+| `OPEN` | 318 |
 | `PARTIAL` | 35 |
 | `FIXED` | 154 |
-| `NOT-A-DEFECT` | 1 |
+| `NOT-A-DEFECT` | 2 |
 
 ---
 
-## OPEN — 316
+## OPEN — 318
 
 
 ### Application state / lockbox — 65
@@ -334,7 +334,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-031` | medium | The plain-dict fake state in tests/workflow/ is the ready-made bridge to the Project object — the only asset that transfers directly | `tests/conftest.py:60-85, :88-122, :125-145; tests/workflow/conftest.py:41-45` | Unchanged at HEAD and this is the most useful row in the batch, because it is an ASSET rather than a defect. The test helpers already run against a plain dict, so a Project that… |
 | `TEST-033` | low | _NOT_STAGE_RESULTS in tests/integration/test_cascade_dag_equivalence.py:31 is defined and never referenced - a dead exclusion set that reads as if it were enforcing something | `tests/integration/test_cascade_dag_equivalence.py:31` | Filed post-Loop-1; not part of the 370 Tier-1 rows. |
 
-### Multi-file / JSON import — 23
+### Multi-file / JSON import — 25
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -345,6 +345,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-206` | critical | A JSON object keyed by subject ID loads TRANSPOSED - participants become columns - and pandas' own orient='index' export round-trips wrong | `data_processor.py:294-296 (the dict-of-dicts branch); contrast the explicit orient='split' handling at…` | REPRODUCED AT HEAD. 500 subjects keyed P000..P499, each holding age/bmi/glucose, load as 3 rows x 500 columns with index ['age','bmi','glucose']. Every downstream 'n =' is 3. A… |
 | `IMPORT-209` | critical | A single blank ID in a JSON file collapses every participant ID above 2^53 into one value at LOAD time - the exact false merge join_doctor defends against, created before join_doctor can see it | `data_processor.py:_json_obj_to_frame:246 (pd.json_normalize over the record list); contrast…` | REPRODUCED AT HEAD through the real loader. [{SEQN: 9007199254740993, glucose: 95}, {SEQN: 9007199254740992, glucose: 102}, {SEQN: null, glucose: 110}] loads with SEQN dtype… |
 | `IMPORT-213` | critical | The external-validation upload applies NONE of the import safeguards - no JSON layout disclosure, no Import Doctor pass, no repairs - and it is the dataset whose numbers the page itself calls the… | `pages/07_Explainability.py:1118-1127 (the uploader and the bare load), :1131-1133 (missing_cols, the only…` | REPRODUCED AT HEAD. A payload {'results': [200 records], 'data': [20 records]} with identical columns in both: inspect_json reports candidates ['data','results'] and the note… |
+| `IMPORT-216` | critical | check_header_in_later_row computes a graded confidence score, compares it to a threshold and then throws it away, reporting every detection as high - the one tier the UI pre-selects, and the tier… | `ml/import_doctor.py:315-331 (the score and its threshold), :344 (confidence hardcoded 'high'), :99-101…` | REPRODUCED AT HEAD, both ends of the range measured. The IMPORT-132 narrow-frame false positive scores 0.500 and reports high / critical / auto_suggestable True. A genuine… |
 | `IMPORT-132` | landmine | check_header_in_later_row false-positives on clean narrow frames with a blank header cell: emits the single critical/high-confidence 'promote_header' finding, which drops the first data row and hides… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 32'` | STAYS OPEN, and the L11 note is corrected: it recorded 'a clean narrow frame with a blank header cell produces no findings at all'. It reproduces verbatim at HEAD, both halves.… |
 | `IMPORT-135` | landmine | coerce_numeric silently merges incompatible units (mg/dL + mmol/L, kg + lb) into one column at 'high' confidence, with a detail message that never discloses the mixing | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 35'` | Original finding 35 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in… |
 | `IMPORT-142` | landmine | diagnose_join suppresses genuine column collisions whenever a key name also exists in the other frame (cross-name joins), so no suffix warning fires and execute_join's methods description names a… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 42'` | STAYS OPEN, and the L11 note is corrected: it recorded that a genuine collision on 'site' IS reported while a key-named column is present on both sides. That measured the control… |
@@ -361,6 +362,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-214` | high | Nested JSON cells are rewritten to text on load and the promised disclosure does not exist: the converted-column list is discarded at the call site and no Import Doctor check ever mentions it | `data_processor.py:192-224 (_stringify_nonscalar_cells and its docstring), data_processor.py:476 (the…` | REPRODUCED AT HEAD. [{SEQN:1, age:40, meds:['statin','metformin']}, {SEQN:2, age:55, meds:['aspirin']}, {SEQN:3, age:61, meds:[]}] loads with meds holding the strings '["statin"… |
 | `IMPORT-019` | medium | A list-valued JSON field is silently converted to its Python repr and becomes a text column | `REPRO: data_processor.load_tabular_data on json.dumps([{'SEQN':1,'visits':[1,2,3]},{'SEQN':2,'visits':[4,5]}])…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
 | `IMPORT-212` | medium | The JSON loader accepts the non-standard NaN, Infinity and -Infinity literals, so an infinity enters the working table as an ordinary value | `data_processor.py:176 and the other json.loads call sites - none passes parse_constant` | REPRODUCED AT HEAD. [{bmi: 22.1}, {bmi: Infinity}, {bmi: 27.3}] loads as [22.1, inf, 27.3] with mean inf and max inf. Filed medium rather than high because an infinite mean is… |
+| `IMPORT-217` | medium | The duplicate-label branch of diagnose() swallows failing checks without the checks_failed disclosure the main branch deliberately emits, so a clean-looking review can hide checks that never ran | `ml/import_doctor.py:872-876 (the silent branch), ml/import_doctor.py:885-905 (the disclosing branch and the…` | REPRODUCED BY READING, not by a crashing frame: I did not construct an input that makes those two frame-level checks raise on a duplicate-labelled frame, so this is filed on the… |
 
 ### Models / training / eval — 18
 
@@ -702,11 +704,12 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## NOT-A-DEFECT — 1
+## NOT-A-DEFECT — 2
 
 
-### Multi-file / JSON import — 1
+### Multi-file / JSON import — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `IMPORT-215` | low | json_normalize minting a duplicate column label when a record carries both a dotted key and the nested object it would flatten to | `data_processor.py:246 (pd.json_normalize with max_level=2); tested at HEAD` | NOT-A-DEFECT: does not occur. [{SEQN:1, 'lab.glucose':95, 'lab':{'glucose':999}}, ...] loads as columns ['SEQN','lab.glucose'] with columns.duplicated().any() False - pandas… |
+| `IMPORT-218` | low | Stale fix parameters: a fix computed against the pre-repair frame being applied to the post-repair frame, so positional params point at the wrong rows | `utils/import_ui.py:153-155 (current = repaired_frame(...); findings = diagnose(current))…` | NOT-A-DEFECT: not reachable at HEAD. render_import_doctor recomputes findings from `current` - the already-repaired frame - on every render, and apply_fix is called with that same… |
