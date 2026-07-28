@@ -190,6 +190,34 @@ Two consequences follow, and they are design requirements rather than nice-to-ha
 The corollary binds the other way too: a capability Guided cannot yet do is a `classic-only`
 register row with a dated reason, never a permanent scoping-down of what the second door is for.
 
+### The shelf is never shortened — judgment is rendered as order, not as absence
+
+The shape of the data changes how models are **ranked**. It never changes which models are
+**available.** In the product owner's words:
+
+> **The shape of the data changes the model shelf, but never to the extent that a user has no
+> option to select a bad model. We do our best to fit based on their selection, but the app
+> surfaces the concerns outright.**
+
+Silently withholding a model is the app making a decision in the user's name, which §06 of the
+design language forbids. Offering it at the bottom of the list with the reason stated is the app
+doing its job. Ordering and prominence carry the judgment — which is precisely what Classic's
+Train page failed to do: `model_coach` was already bucketing into Recommended / Worth Trying /
+Not Recommended, and the layout rendered taxonomy instead.
+
+**The three rungs, because "never remove the option" is not absolute.** The app already refuses
+some things outright, so the line has to be stated rather than assumed:
+
+| Rung | When | Example |
+|---|---|---|
+| **Refuse** | No legitimate use exists at all. Proceeding makes the app assert something false that no caveat repairs. | The outcome inside the imputation model. A post-seal eligibility restriction. |
+| **Block and record** | A legitimate use exists but is rare, and the user may know something the engine cannot. | Keeping a leakage-suspect column. Imputing informatively-missing data. Contradicting the grain evidence. Typed acknowledgment, and the manuscript carries it as a limitation. |
+| **Rank and state the concern** | A matter of judgment with a real cost. | SMOTE (documented calibration harm, but legitimate when only discrimination matters). PLS-DA on small *n*. A tree ensemble at p ≫ n. |
+
+The test for the top rung is not severity — it is whether a competent researcher could have a
+reason. There is no analysis in which the outcome belongs in the imputation model; there are many
+in which a suspicious column is measured before the outcome and the researcher knows it.
+
 ### Users should be able to switch doors mid-analysis
 
 This falls out of the architecture almost for free, and it is the strongest argument for the
