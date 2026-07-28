@@ -236,7 +236,7 @@ compresses the JSON lens into one word, which is why the unrun count is six rath
 | 5 | Combine UI (the Step 2 screen) | ✓ ran — L12 | `IMPORT-201`…`204` (2 critical, 2 high) |
 | 6 | JSON structure | ✓ ran — L12 | `IMPORT-205`…`208` (2 critical, 1 landmine, 1 high) |
 | 7 | JSON encoding | ✓ ran — L12 | `IMPORT-209`…`212` (1 critical, 2 high, 1 medium) |
-| 8 | JSON → downstream | **not run** | — |
+| 8 | JSON → downstream | ✓ ran — L12 | `IMPORT-213`…`215` (1 critical, 1 high, 1 NOT-A-DEFECT); corrected `IMPORT-205` |
 | 9 | Import Doctor | **not run** | — |
 | 10 | State / scale | **not run** | — |
 

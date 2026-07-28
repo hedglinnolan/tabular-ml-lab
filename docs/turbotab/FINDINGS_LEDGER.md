@@ -20,18 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**154 of 503 closed.**
+**155 of 506 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 314 |
+| `OPEN` | 316 |
 | `PARTIAL` | 35 |
 | `FIXED` | 154 |
+| `NOT-A-DEFECT` | 1 |
 
 ---
 
-## OPEN — 314
+## OPEN — 316
 
 
 ### Application state / lockbox — 65
@@ -333,7 +334,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-031` | medium | The plain-dict fake state in tests/workflow/ is the ready-made bridge to the Project object — the only asset that transfers directly | `tests/conftest.py:60-85, :88-122, :125-145; tests/workflow/conftest.py:41-45` | Unchanged at HEAD and this is the most useful row in the batch, because it is an ASSET rather than a defect. The test helpers already run against a plain dict, so a Project that… |
 | `TEST-033` | low | _NOT_STAGE_RESULTS in tests/integration/test_cascade_dag_equivalence.py:31 is defined and never referenced - a dead exclusion set that reads as if it were enforcing something | `tests/integration/test_cascade_dag_equivalence.py:31` | Filed post-Loop-1; not part of the 370 Tier-1 rows. |
 
-### Multi-file / JSON import — 21
+### Multi-file / JSON import — 23
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -341,9 +342,9 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-015` | critical | When the identifier signal is inconclusive, the combine plan falls back to column-name overlap — the exact heuristic a critical finding already disqualified | `REPRO: utils.combine._same_people returns None for (DataFrame({'SEQN':[1],'age':[40]})…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
 | `IMPORT-201` | critical | The change map names a column the merged frame does not contain: describe_join is given the running label while execute_join is given the base file name, so every suffixed column is described under… | `utils/combine_ui.py:309-314 (describe_join/execute_join name arguments); utils/combine_ui.py:425…` | REPRODUCED AT HEAD. left=DataFrame(SEQN,site,age), right=DataFrame(SEQN,site,glucose), running='demographics', base_name='labs_cycle_2'. execute_join gives columns… |
 | `IMPORT-203` | critical | After the 'no shared ID was found' fallback, combine_ui pre-selects a LOW-confidence key pairing as the default answer, which is the one thing the governing pre-selection rule forbids | `utils/combine_ui.py:262-269 (the fallback), utils/combine_ui.py:277-282 (the selectbox that pre-selects its…` | REPRODUCED AT HEAD. Two unrelated 50-row files sharing only a row counter named 'row', plus disjoint ID columns P0..P49 and S0..S49: find_key_candidates returns exactly one… |
-| `IMPORT-205` | critical | The JSON wrapper-key list pre-empts the 'several possible row sets' refusal, so a payload holding both a metadata list and a data list loads the metadata and silently discards the rows | `data_processor.py:124 (_JSON_WRAPPER_KEYS), data_processor.py:284-287 (the wrapper loop)…` | REPRODUCED AT HEAD. {'data': [2 metadata records], 'records': [500 participant records]} loads as 2 rows x 1 column ('note'). The 500 participant rows are dropped with no warning… |
 | `IMPORT-206` | critical | A JSON object keyed by subject ID loads TRANSPOSED - participants become columns - and pandas' own orient='index' export round-trips wrong | `data_processor.py:294-296 (the dict-of-dicts branch); contrast the explicit orient='split' handling at…` | REPRODUCED AT HEAD. 500 subjects keyed P000..P499, each holding age/bmi/glucose, load as 3 rows x 500 columns with index ['age','bmi','glucose']. Every downstream 'n =' is 3. A… |
 | `IMPORT-209` | critical | A single blank ID in a JSON file collapses every participant ID above 2^53 into one value at LOAD time - the exact false merge join_doctor defends against, created before join_doctor can see it | `data_processor.py:_json_obj_to_frame:246 (pd.json_normalize over the record list); contrast…` | REPRODUCED AT HEAD through the real loader. [{SEQN: 9007199254740993, glucose: 95}, {SEQN: 9007199254740992, glucose: 102}, {SEQN: null, glucose: 110}] loads with SEQN dtype… |
+| `IMPORT-213` | critical | The external-validation upload applies NONE of the import safeguards - no JSON layout disclosure, no Import Doctor pass, no repairs - and it is the dataset whose numbers the page itself calls the… | `pages/07_Explainability.py:1118-1127 (the uploader and the bare load), :1131-1133 (missing_cols, the only…` | REPRODUCED AT HEAD. A payload {'results': [200 records], 'data': [20 records]} with identical columns in both: inspect_json reports candidates ['data','results'] and the note… |
 | `IMPORT-132` | landmine | check_header_in_later_row false-positives on clean narrow frames with a blank header cell: emits the single critical/high-confidence 'promote_header' finding, which drops the first data row and hides… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 32'` | STAYS OPEN, and the L11 note is corrected: it recorded 'a clean narrow frame with a blank header cell produces no findings at all'. It reproduces verbatim at HEAD, both halves.… |
 | `IMPORT-135` | landmine | coerce_numeric silently merges incompatible units (mg/dL + mmol/L, kg + lb) into one column at 'high' confidence, with a detail message that never discloses the mixing | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 35'` | Original finding 35 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in… |
 | `IMPORT-142` | landmine | diagnose_join suppresses genuine column collisions whenever a key name also exists in the other frame (cross-name joins), so no suffix warning fires and execute_join's methods description names a… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 42'` | STAYS OPEN, and the L11 note is corrected: it recorded that a genuine collision on 'site' IS reported while a key-named column is present on both sides. That measured the control… |
@@ -353,9 +354,11 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-018` | high | A user column named __source_file is renamed out of the way without disclosure | `REPRO: frames = {'a': DataFrame({'SEQN':[1,2],'__source_file':['mine','mine']}), 'b'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
 | `IMPORT-202` | high | A grouped combine renames the provenance column out of the summary's sight, so 'Rows per file' silently disappears from exactly the most complex combine | `utils/combine_ui.py:416-418 (the rename); utils/combine_ui.py:518-521 (the exact-name membership test in…` | REPRODUCED AT HEAD. execute_stack over two cycles gives columns ['SEQN','age','__source_file']; after the _render_grouped rename the frame carries '__source_file_demographics'… |
 | `IMPORT-204` | high | In a three-or-more file chain the change map attributes every column the second file contributed to the FIRST file, because the running label is assigned before the loop and never updated | `utils/combine_ui.py:255 (running assigned once), utils/combine_ui.py:259-317 (the loop that never reassigns…` | REPRODUCED AT HEAD. demographics(SEQN,age) + labs(SEQN,glucose) + diet(SEQN,kcal), chained. First map: age source_file 'demographics', glucose source_file 'labs' - correct. Second… |
+| `IMPORT-205` | high | The JSON wrapper-key list pre-empts the 'several possible row sets' refusal, so a payload holding both a metadata list and a data list loads the metadata and silently discards the rows | `data_processor.py:124 (_JSON_WRAPPER_KEYS), data_processor.py:284-287 (the wrapper loop)…` | CORRECTED AT L12, ONE LENS LATER, BY THE AUTHOR OF THE ROW. As filed this said the payload loads the metadata and 'silently discards the rows'. That is FALSE for the upload path… |
 | `IMPORT-208` | high | A scalar inside a JSON record array is silently converted into an all-blank extra row, inflating n by one per stray element | `data_processor.py:249-254 (the mixed-content branch and the {'value': x} wrapping)` | REPRODUCED AT HEAD. [{'SEQN':1,'age':40}, {'SEQN':2,'age':55}, 'TOTAL', {'SEQN':3,'age':61}] loads as 4 rows x 3 columns: three participants plus a row with SEQN NaN, age NaN and… |
 | `IMPORT-210` | high | latin-1 sits ahead of cp1252 in the JSON encoding fallback and never raises, so cp1252 is unreachable and Windows exports load with control characters where their punctuation was | `data_processor.py:144 (_json_read_text path branch), data_processor.py:158 (buffer branch) - the same list in…` | REPRODUCED AT HEAD. A record whose note field reads "fasting's baseline - 90-95 mg/dL" with cp1252 smart punctuation (0x92 apostrophe, 0x97 em dash, 0x96 en dash) is written as… |
 | `IMPORT-211` | high | Duplicate keys in a JSON record collapse silently with the last value winning, so a repeated field discards the earlier value with no count and no warning | `data_processor.py:176 (_json_lines_to_records) and the json.loads calls in the load path - none passes…` | REPRODUCED AT HEAD. The record {"SEQN": 1, "glucose": 95, "SEQN": 2} loads as SEQN 2, glucose 95 - the first SEQN is gone. Through the real loader a two-record file yields SEQN… |
+| `IMPORT-214` | high | Nested JSON cells are rewritten to text on load and the promised disclosure does not exist: the converted-column list is discarded at the call site and no Import Doctor check ever mentions it | `data_processor.py:192-224 (_stringify_nonscalar_cells and its docstring), data_processor.py:476 (the…` | REPRODUCED AT HEAD. [{SEQN:1, age:40, meds:['statin','metformin']}, {SEQN:2, age:55, meds:['aspirin']}, {SEQN:3, age:61, meds:[]}] loads with meds holding the strings '["statin"… |
 | `IMPORT-019` | medium | A list-valued JSON field is silently converted to its Python repr and becomes a text column | `REPRO: data_processor.load_tabular_data on json.dumps([{'SEQN':1,'visits':[1,2,3]},{'SEQN':2,'visits':[4,5]}])…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
 | `IMPORT-212` | medium | The JSON loader accepts the non-standard NaN, Infinity and -Infinity literals, so an infinity enters the working table as an ordinary value | `data_processor.py:176 and the other json.loads call sites - none passes parse_constant` | REPRODUCED AT HEAD. [{bmi: 22.1}, {bmi: Infinity}, {bmi: 27.3}] loads as [22.1, inf, 27.3] with mean inf and max inf. Filed medium rather than high because an infinite mean is… |
 
@@ -696,3 +699,14 @@ Nothing is closed without a regression test named after it.
 |---|---|---|---|---|
 | `T0-BUILD-004` | critical | clinical_units.infer_unit matches by substring and decides the conversion factor actually applied to the data | `ml/clinical_units.py:139-142 (`if var_name in col_lower`); ml/pipeline.py:60 build_unit_harmonization_config…` | **test:** `tests/test_no_column_inherits_a_unit_conversion.py::test_a_resembling_name_earns_no_conversion` — Fixed with ruling 4's discipline, applied where it bites hardest.… |
 | `T0-BUILD-003` | high | physiology_reference.match_variable_key matches by substring, so any column whose name contains a reference key is measured against that variable's intervals | `ml/physiology_reference.py match_variable_key (`if key in col_lower`); ml/card_evidence.py…` | **test:** `tests/test_doubt_the_reading_not_the_data.py::test_an_unknown_suffix_yields_silence_rather_than_inherited_bounds` — Fixed on the adjudicator's ruling: exact key or… |
+
+---
+
+## NOT-A-DEFECT — 1
+
+
+### Multi-file / JSON import — 1
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `IMPORT-215` | low | json_normalize minting a duplicate column label when a record carries both a dotted key and the nested object it would flatten to | `data_processor.py:246 (pd.json_normalize with max_level=2); tested at HEAD` | NOT-A-DEFECT: does not occur. [{SEQN:1, 'lab.glucose':95, 'lab':{'glucose':999}}, ...] loads as columns ['SEQN','lab.glucose'] with columns.duplicated().any() False - pandas… |
