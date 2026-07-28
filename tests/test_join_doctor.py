@@ -191,6 +191,52 @@ def test_low_cardinality_column_is_never_a_key():
     assert not [c for c in find_key_candidates(a, b) if c.left_col == "sex"]
 
 
+@pytest.mark.parametrize("per_subject", [2, 3, 4, 10])
+def test_a_long_format_file_keeps_its_subject_key(per_subject):
+    """The commonest longitudinal shape must stay joinable.
+
+    A per-column uniqueness floor rejects any file averaging more than two rows
+    per subject, which is most of repeated-measures research: at three visits
+    uniqueness is 0.33. The rule that matters -- at least ONE side identifies
+    subjects -- needs both files, so it belongs per-pair in find_key_candidates
+    and not per-column in _key_tokens.
+    """
+    n = 100
+    demo = pd.DataFrame({"SEQN": np.arange(1, n + 1),
+                         "age": RNG.randint(20, 80, n)})
+    long = pd.DataFrame({"SEQN": np.repeat(np.arange(1, n + 1), per_subject),
+                         "bp": RNG.normal(120, 10, n * per_subject)})
+    seqn = [c for c in find_key_candidates(demo, long)
+            if c.left_col == "SEQN" == c.right_col]
+    assert seqn, (
+        f"the true key was discarded at {per_subject} rows per subject "
+        f"(uniqueness {1 / per_subject:.2f}) -- every repeated-measures design "
+        f"becomes unjoinable")
+    assert seqn[0].confidence != "low", "combine_ui drops 'low' from the dropdown"
+    best = suggest_best(demo, long)
+    assert best is not None and (best.left_col, best.right_col) == ("SEQN", "SEQN")
+
+
+@pytest.mark.parametrize("how", ["right", "outer"])
+def test_a_right_only_participant_keeps_an_identifier(how):
+    """pandas keeps both key columns on left_on/right_on, and rows that exist
+    only on the right carry their ID in the RIGHT one. Dropping that column
+    unconditionally deletes the only surviving copy, so 'keep everyone from
+    every file' returns rows whose participant is anonymous."""
+    demo = pd.DataFrame({"SEQN": [1, 2, 3], "age": [40, 55, 61]})
+    labs = pd.DataFrame({"patient_id": [3, 4, 5], "glucose": [95, 102, 110]})
+    out, _ = execute_join(demo, labs, "SEQN", "patient_id", how, "demo", "labs")
+    id_cols = [c for c in out.columns if c in ("SEQN", "patient_id")
+               or str(c).startswith(("SEQN", "patient_id"))]
+    assert id_cols, f"no identifier column survived a {how} join: {list(out.columns)}"
+    right_only = out[out["glucose"].notna() & out["age"].isna()]
+    assert len(right_only) == 2, f"expected 2 right-only rows, got {len(right_only)}"
+    has_id = right_only[id_cols].notna().any(axis=1)
+    assert has_id.all(), (
+        f"{(~has_id).sum()} right-only participant(s) came back with no ID at all:\n"
+        f"{right_only.to_string()}")
+
+
 # ── plumbing that keeps the merge honest ─────────────────────────────────
 
 def test_colliding_columns_are_preserved_with_suffixes():
