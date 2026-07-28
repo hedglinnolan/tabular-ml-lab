@@ -297,6 +297,34 @@ the defect returned. A library version is the same kind of guard: incidental, ex
 schedule somebody else controls. **Record the version the measurement was taken on**, or the next
 reader cannot tell a fix from a coincidence.
 
+**Corollary — a specification clause with neither an implementation nor a tracked row is the same
+silence the register exists to prevent.**
+
+The register tracks what the doors **do**; the ledger tracks what they **should**. Keeping those
+separate is what stops the register becoming a wishlist — when L13 tried to file "the impossibility
+pass runs before the seal" as a register row, `register.py check` refused it, because every valid
+state (`both` · `classic-only` · `core` · `guided-only`) answers *which door has this* and neither
+door did. That refusal was right.
+
+But it exposes the gap between the two artifacts. A clause of a constitution can be written, agreed,
+and then land in neither: no implementation, and no finding either. Nothing fails, nobody is lying,
+and the clause is simply not happening — which is exactly the shape of failure this whole family
+describes.
+
+**So every clause maps to a passing test or an open finding, and that mapping is itself checked.**
+`tests/test_every_clause_is_tracked.py` reads the clause headings out of `ROADMAP.md`'s two
+constitutions and `ASSEMBLY_SPEC.md`, and fails on any clause that names neither. The check is
+deliberately dumb about *quality* — it cannot tell a good test from a weak one — and precise about
+*existence*, which is the property that was missing.
+
+Two things it must not become:
+
+- **Not a coverage percentage.** A clause with one honest open finding is tracked; a clause with
+  four vague tests may not be. Counting them would reward the wrong thing.
+- **Not a reason to write a stub test.** A clause nobody has built gets an *open finding*, which is
+  the truthful record. Satisfying the check with an empty test would be the silence rewritten as a
+  green line — the `KNOWN_GAP_` problem one level up.
+
 **Corollary — a helper that enforces an invariant needs a test asserting its call sites.**
 Principle-locality says state a rule once. Its unstated half is that stating it once is only safe
 when *using* it everywhere is checkable.

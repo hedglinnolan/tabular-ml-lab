@@ -188,8 +188,23 @@ def test_KNOWN_GAP_an_unrecognized_id_name_is_still_recorded_as_cross_sectional(
 
     Constitution §02 says name lists cannot close this and must not be tuned as
     though they could: the fix is to *ask*. This test asserts the current, wrong
-    behavior deliberately — it will fail when the grain question ships, which is
-    the point. Change it then; do not change it before.
+    behavior deliberately.
+
+    **It goes red when CLASSIC asks the grain question — not when the question
+    ships.** The distinction is the whole reason this docstring was corrected at
+    L14. The question shipped in the Guided door at L13 (`turbotab/grain.py`,
+    `AnalysisProject.set_grain`), and this test stayed green, correctly: it
+    drives `ensure_lockbox`, which is Classic's path and still infers. A reader
+    who trusted the old wording — *"it will fail when the grain question
+    ships"* — would have concluded from the green line either that the question
+    had not shipped or that this test was broken. Both wrong, and a test whose
+    entire job is to be honest about a gap cannot afford to be misread about
+    when it fires.
+
+    So: change it when `pages/01_Upload_and_Audit.py` calls the grain question
+    instead of `detect_repeated_subjects`. Until then, green here means Classic
+    still guesses. See `IMPORT-022`, and the register row
+    `target-grain-question` for the dated forward path.
     """
     df = cohort(np.repeat(range(60), 3), key="SUBJ")
     assert detect_repeated_subjects(df) is None

@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**169 of 553 closed.**
+**169 of 555 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 345 |
+| `OPEN` | 347 |
 | `PARTIAL` | 39 |
 | `FIXED` | 166 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 345
+## OPEN — 347
 
 
-### Application state / lockbox — 64
+### Application state / lockbox — 65
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -83,6 +83,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-052` | landmine | Every provenance and ledger write in pages/ is wrapped in a bare `except Exception: pass`. | `utils/session_state._log_to_ledger:655-656; pages/01:1105-1106 and :1194; pages/03:1268-1269…` | Unchanged at HEAD; the count is now 20 across nine pages. Any schema drift in the Record layer during the migration - a renamed section, a changed record_* signature, a page id… |
 | `STATE-053` | landmine | All three import cycles are currently invisible because every edge is a function-local import, and the obvious refactor (methods on AnalysisProject) turns them into module-level cycles. | `Cycle 1: utils/insight_ledger.py:1077 ↔ ml/publication.py:98,155,1739,1829. Cycle 2: utils/cohorts.py:474 ↔…` | Unchanged at HEAD: the cycles are all still there and all still invisible, because every edge is a deferred import inside a function. Nothing fails today, which is the hazard - a… |
 | `STATE-054` | landmine | engineering_log is not persisted while df_engineered, feature_engineering_applied and engineered_feature_names are. | `utils/session_manager.py:91-117 _PLAIN_KEYS includes engineered_feature_names, engineered_feature_transforms…` | Unchanged at HEAD. Save and restore a session with engineered features and the frame, the flag, the column names and the double-transform map all come back - so the app looks… |
+| `STATE-103` | high | Lockbox constitution clause 05 - the extrapolation obligation - is implemented nowhere and tested nowhere: a train-only trim arms a requirement that never fires | `grep for 'extrapolat' across tests/, turbotab/, ml/ and utils/ returns ZERO hits at L14. Contrast…` | NOT BUILT, filed rather than stubbed. The check that found it explicitly forbids satisfying a clause with an empty test, because that would be the silence rewritten as a green… |
 | `STATE-058` | invariant | Preprocessing is FIT ON TRAINING ROWS ONLY and merely applied to val/test. | `pages/06_Train_and_Compare.py:1312-1315 (`model_pipeline.fit(X_train)` then `.transform(X_val)` /…` | The invariant holds on the training path and is violated on two others, so it stays OPEN. Training is correct: the pipeline is fitted on X_train and merely applied to val and… |
 | `STATE-061` | invariant | Target-aware steps upstream of Train & Compare (feature selection, stateful FE fits, target-association views) see TRAINING ROWS ONLY. | `utils/test_lockbox.py:237 train_row_mask(index); applied at pages/04:128 (`mask = df[target_col].notna() &…` | One of the two failure modes is closed and the other is live. The index-renumbering route is gone - apply_plausibility_filter keeps its labels now, so train_row_mask can no longer… |
 | `STATE-064` | invariant | Features already transformed in Feature Engineering are not transformed again in Preprocessing. | `pages/05:954-972 partitions numeric_features into numeric_features_safe (gets log/power/PCA) and…` | Unchanged at HEAD, both weaknesses. The double-transform guard is real and correctly separates already-transformed columns into a passthrough branch - but it depends on… |
@@ -429,6 +430,12 @@ Nothing is closed without a regression test named after it.
 | `T0-PAGES-001` | medium | Duplicate-row detection has no engine home — it is inline in pages/01 | `pages/01_Upload_and_Audit.py (inline)` | Extract to the engine when pages/01 unfreezes; register the capability meanwhile. |
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
+
+### Guided-door drive feedback — 1
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `GUIDED-012` | high | Lockbox constitution clause 06 - declaration and execution are separate - has no implementation in either door: nothing applies the row-local vs stateful litmus test | `No module classifies transforms by the litmus test at L14. Classic's pages/03 applies feature engineering to…` | Filed at the start of L14 rather than after building it, deliberately: the check found the clause untracked, and the honest record of an unbuilt clause is an open finding, not a… |
 
 ---
 
