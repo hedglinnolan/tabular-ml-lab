@@ -566,5 +566,13 @@
   "classic": "(none) - Classic encodes a two-level target by whatever sklearn's LabelEncoder does with it",
   "state": "guided-only",
   "reason": "GUIDED-009, on the product owner's ruling that the target's question is different in kind from a feature's. Classic does not ask. ml/splits.py:300 label-encodes a categorical target with LabelEncoder().fit_transform(y.astype(str)), which orders classes ALPHABETICALLY, so the event is whichever level sorts last - verified, not assumed. On messy-clinic that is 'responder' over 'non-responder', which happens to match convention; on the longitudinal fixture it is 'stable' over 'improved', so the model is trained to detect NOT improving, which is almost certainly backwards; and for alive/dead it makes death the event by alphabet. The choice is real, consequential and made by string ordering, with no place in the Classic interface where it is stated or changeable. Guided asks it as its own question, offers convention as a suggestion with the reasoning shown, and refuses to apply without a named level. Dated debt owed back to Classic per PRODUCT_VISION 'Guided is never the less capable door': it lands with the L11 convergence of pages/01, and until then Classic's encoding is alphabetical and undisclosed."
+ },
+ {
+  "id": "target-grain-question",
+  "step": "data-target",
+  "capability": "The grain question — \"Can one person appear in more than one row?\" — asked before the seal, with the heuristic demoted to a suggestion and a name-blind contradiction detector",
+  "classic": "pages/01_Upload_and_Audit.py infers it: ensure_lockbox calls detect_repeated_subjects and seals on whatever the name-token gate returns. No control exists to declare the subject column (IMPORT-257).",
+  "state": "guided-only",
+  "reason": "Built at L13 in turbotab/grain.py + project.set_grain + engine.draw_holdout, per constitution 02 and ASSEMBLY_SPEC 05. GUIDED-ONLY, NOT A SCOPING-DOWN, and dated: the forward path is Classic calling the same turbotab/grain.py functions from pages/01 at the L14 convergence of pages/01_Upload_and_Audit.py. grain.py is deliberately UI-free and imports only pandas plus utils/test_lockbox constants, so the convergence is a call-site change rather than a port — that is what makes the date credible rather than aspirational. Until it lands, IMPORT-020 and IMPORT-022 stay OPEN against Classic with the convergence phrase, and tests/test_the_seal_states_its_basis.py::test_KNOWN_GAP_an_unrecognized_id_name_is_still_recorded_as_cross_sectional stays GREEN because it pins Classic's ensure_lockbox, which still guesses. That test going red is the signal the convergence landed."
  }
 ]

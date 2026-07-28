@@ -595,3 +595,97 @@ def rank_findings(
     for i, d in enumerate(items):
         d["rank"] = i
     return items
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The seal — drawn against the recorded grain answer, never against a guess
+# ─────────────────────────────────────────────────────────────────────────────
+
+def draw_holdout(df: pd.DataFrame, target: str, task_type: str,
+                 grain: Dict[str, Any], fraction: float = 0.15,
+                 seed: int = 42) -> Dict[str, Any]:
+    """Choose the rows to seal, using the grain answer the user gave.
+
+    Returns the labels plus the disclosure the seal has to carry. Three of the
+    four bases draw differently and all four are reported:
+
+    * `grouped` — whole people held out, so nobody is on both sides.
+    * `repetition_found_grouping_abandoned` — repetition was stated and believed
+      but there are too few people to hold any out by person, so the split is by
+      row and SAYS SO. Not the same claim as "no repetition".
+    * `cross_sectional` — the user stated one row per person and nothing
+      contradicted it.
+    * `undetermined` — the user does not know. Sealed anyway, by row, and
+      labeled exploratory: an advisory, not a hard block (constitution §03).
+
+    The achieved ROW fraction is reported, not the requested one. A grouped
+    split's `test_size` is a proportion of GROUPS, and with unequal group sizes
+    those differ badly — the audit measured 15% requested against 37% of rows
+    actually held out (`IMPORT-255`, `grouped-lockbox-fraction-mislabel`).
+    """
+    # numpy only, deliberately. `turbotab/requirements.txt` states that the
+    # whole diagnose -> profile -> detect path needs pandas and numpy and
+    # nothing else, and the seal is now on that path. A seeded permutation is
+    # all a holdout draw is; reaching for scikit-learn here would put 60 MB
+    # behind the one step the Guided door cannot skip.
+    rng = np.random.default_rng(seed)
+
+    if target not in df.columns:
+        raise EngineRefusal(f"No column named '{target}' in this table.")
+    y = df[target]
+    eligible = list(df.index[y.notna()])
+    if len(eligible) < 10:
+        raise EngineRefusal(
+            f"Only {len(eligible)} rows have a value for '{target}', which is too "
+            f"few to hold any out and still have a study left.")
+
+    basis = grain.get("basis")
+    group_col = grain.get("group_col")
+    labels: List[Any] = []
+    n_test_groups = None
+
+    if basis == "grouped" and group_col and group_col in df.columns:
+        # Whole people, so nobody is on both sides. Drawn over GROUPS, which is
+        # why the achieved row fraction below is reported rather than assumed.
+        groups = df.loc[eligible, group_col]
+        uniq = list(pd.unique(groups.dropna()))
+        rng.shuffle(uniq)
+        n_hold = max(1, int(round(len(uniq) * fraction)))
+        held = set(uniq[:n_hold])
+        labels = [lbl for lbl in eligible if groups.loc[lbl] in held]
+        n_test_groups = len(held)
+    else:
+        strata = None
+        if task_type == "classification":
+            counts = y.loc[eligible].value_counts()
+            if len(counts) >= 2 and counts.min() >= 2 and (counts * fraction).min() >= 1:
+                strata = y.loc[eligible]
+        if strata is not None:
+            # Proportional within each class, so a rare outcome is present on
+            # both sides rather than absent from one by luck.
+            for _, idx in strata.groupby(strata, observed=True).groups.items():
+                members = list(idx)
+                rng.shuffle(members)
+                take = max(1, int(round(len(members) * fraction)))
+                labels.extend(members[:take])
+        else:
+            members = list(eligible)
+            rng.shuffle(members)
+            labels = members[:max(1, int(round(len(members) * fraction)))]
+
+    # Report the achieved ROW fraction, never the requested one. A grouped
+    # split's fraction is a proportion of GROUPS, and with unequal group sizes
+    # those differ badly -- the audit measured 15% requested against 37% of rows
+    # actually held out (`IMPORT-255`, `grouped-lockbox-fraction-mislabel`).
+    achieved = len(labels) / len(eligible) if len(eligible) else fraction
+    return {
+        "labels": labels,
+        "disclosure": {
+            "fraction": float(achieved),
+            "fraction_requested": float(fraction),
+            "seed": int(seed),
+            "n_total": int(len(eligible)),
+            "n_test_groups": n_test_groups,
+            "exploratory": basis == "undetermined",
+        },
+    }

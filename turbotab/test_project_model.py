@@ -30,6 +30,12 @@ from turbotab import archive, cascade, engine, readiness
 from turbotab.archive import ArchiveError
 from turbotab.project import PRE_BARRIER_ONLY_FIXES, AnalysisProject, ProjectError
 
+# Sealing now requires the grain answer first (constitution §01/§02, and
+# `AnalysisProject.seal_lockbox` refuses without it). These fixtures are one
+# row per person; the tests below are about the identity barrier and the
+# round trip, not about grain, so they state it and move on.
+_GRAIN_UNIQUE = "one_row_per_person"
+
 DEMO_CSV = Path(__file__).resolve().parent / "sample_data" / "clinic_visits.csv"
 
 
@@ -116,6 +122,7 @@ def test_pre_barrier_repairs_are_allowed_before_the_lockbox(project):
 
 def test_pre_barrier_repairs_are_unreachable_once_the_lockbox_exists(project, df):
     """The phase rule. Before: allowed. After: refused, with a reason."""
+    project.set_grain(_GRAIN_UNIQUE)
     project.seal_lockbox(list(df.index[:20]), fraction=0.15, seed=42)
     assert project.barrier_raised is True
 
@@ -129,6 +136,7 @@ def test_row_removing_repairs_stay_allowed_on_either_side(project, df):
     only remove rows — survivors keep their labels. The preview already reports
     by content whether a given drop renumbered anything, so these are not
     blanket-refused."""
+    project.set_grain(_GRAIN_UNIQUE)
     project.seal_lockbox(list(df.index[:20]), fraction=0.15, seed=42)
     for kind in ("drop_rows", "drop_empty_rows", "recode_missing",
                  "coerce_numeric", "normalize_categories", "drop_columns"):
@@ -139,6 +147,7 @@ def test_no_post_barrier_operation_changes_a_surviving_rows_index(project, df):
     """First barrier test. Apply an allowed repair after sealing and confirm
     every sealed label still names the same row."""
     sealed = list(df.index[:20])
+    project.set_grain(_GRAIN_UNIQUE)
     project.seal_lockbox(sealed, fraction=0.15, seed=42)
     before = {l: project.df.at[l, "patient_id"] for l in sealed}
 
@@ -165,6 +174,7 @@ def test_a_renumbered_frame_is_detected_after_the_barrier(df):
     shifted.index = range(500, 500 + len(shifted))
     p = AnalysisProject.from_dataframe(shifted, "shifted.csv")
     p.set_target("outcome", "classification", "high", [])
+    p.set_grain(_GRAIN_UNIQUE)
     p.seal_lockbox(list(shifted.index[-20:]), fraction=0.15, seed=42)
     p.assert_identity_intact()
 
@@ -174,6 +184,7 @@ def test_a_renumbered_frame_is_detected_after_the_barrier(df):
 
 
 def test_the_lockbox_is_sealed_once(project, df):
+    project.set_grain(_GRAIN_UNIQUE)
     project.seal_lockbox(list(df.index[:20]), fraction=0.15, seed=42)
     with pytest.raises(ProjectError, match="already has a sealed test set"):
         project.seal_lockbox(list(df.index[20:40]), fraction=0.15, seed=42)
@@ -181,6 +192,7 @@ def test_the_lockbox_is_sealed_once(project, df):
 
 def test_sealing_a_label_that_is_not_there_is_refused(project):
     with pytest.raises(ProjectError, match="not in this table"):
+        project.set_grain(_GRAIN_UNIQUE)
         project.seal_lockbox([999999])
 
 
@@ -196,6 +208,8 @@ def test_the_archive_uses_session_managers_schema(project, df):
     assert archive.SAVE_SCHEMA_VERSION == session_manager.SAVE_SCHEMA_VERSION
     assert archive.ACCEPTED_SCHEMA_VERSIONS == session_manager._ACCEPTED_SCHEMA_VERSIONS
 
+    project.set_grain(_GRAIN_UNIQUE)
+
     project.seal_lockbox(list(df.index[:20]), fraction=0.15, seed=42)
     project.set_cohort("site", "SITE-A", list(df.index[:100]))
     members = archive.build_members(project)
@@ -208,6 +222,7 @@ def test_the_archive_uses_session_managers_schema(project, df):
 
 def test_a_project_round_trips_with_no_loss(project, df):
     """The gate. Everything that is a decision or an input survives."""
+    project.set_grain(_GRAIN_UNIQUE)
     project.seal_lockbox(sorted(df.index[:20].tolist()), fraction=0.15, seed=42,
                          group_col="patient_id", group_kind="subject")
     project.set_cohort("site", "SITE-A", list(df.index[:100]), label="Site A")
@@ -246,6 +261,7 @@ def test_row_labels_survive_the_round_trip_when_they_are_not_a_range(df):
     p = AnalysisProject.from_dataframe(shifted, "shifted.csv")
     p.set_target("outcome", "classification", "high", [])
     sealed = list(shifted.index[:15])
+    p.set_grain(_GRAIN_UNIQUE)
     p.seal_lockbox(sealed, fraction=0.1, seed=1)
 
     restored = archive.from_bytes(archive.to_bytes(p))
@@ -310,6 +326,7 @@ def test_no_participant_data_appears_in_a_serialized_project(project, df):
     The table travels as parquet — that is the user saving their own data. The
     *decision record* must not become a second, unmanaged copy of it.
     """
+    project.set_grain(_GRAIN_UNIQUE)
     project.seal_lockbox(list(df.index[:20]), fraction=0.15, seed=42)
     project.set_cohort("site", "SITE-A", list(df.index[:100]), label="Site A")
     project.record("defer", "sex variants — deferred", subject="category_variants__sex")
@@ -364,6 +381,7 @@ def test_a_project_opened_in_the_other_door_is_unchanged(project, df):
     So this asserts the thing that actually matters: the *state* both doors read
     is identical, and reading it through either view does not change it.
     """
+    project.set_grain(_GRAIN_UNIQUE)
     project.seal_lockbox(list(df.index[:20]), fraction=0.15, seed=42)
     project.set_cohort("site", "SITE-A", list(df.index[:100]), label="Site A")
     project.pipeline_specs = {"rf": {"impute": "median"}}
@@ -398,6 +416,7 @@ def test_the_two_doors_read_one_lockbox(project, df):
     meaningless.
     """
     sealed = sorted(df.index[:25].tolist())
+    project.set_grain(_GRAIN_UNIQUE)
     project.seal_lockbox(sealed, fraction=0.18, seed=7, signature="sig-1")
 
     as_session_state = project.lockbox

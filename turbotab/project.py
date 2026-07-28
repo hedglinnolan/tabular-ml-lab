@@ -96,6 +96,21 @@ class ProjectError(Exception):
     """The project was asked for something it cannot honestly provide."""
 
 
+class GrainContradiction(ProjectError):
+    """The stated grain and the data's shape disagree — one of them is wrong.
+
+    A subclass rather than a flag, so a caller that wants to surface the
+    interruption can catch it specifically while a caller that does not still
+    fails loudly. `detail` carries the evidence: the columns, their distinct
+    counts and how many rows each value holds, so the interruption can show
+    what it saw rather than assert that it saw something.
+    """
+
+    def __init__(self, message: str, detail: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.detail = detail or {}
+
+
 @dataclass
 class Decision:
     """One recorded answer. Append-only: never edited, never deleted.
@@ -138,6 +153,12 @@ class AnalysisProject:
     findings_stale: bool = False
     # True when the user contradicted the detection rather than confirming it.
     task_overridden: bool = False
+    # The answer to "can one person appear in more than one row?", recorded
+    # ONCE and read by both consumers (constitution §02, ASSEMBLY_SPEC §05).
+    # `None` means not yet asked, and the seal cannot be drawn on `None` — that
+    # is the ordering clause §01 fixes, expressed as a precondition rather than
+    # as a comment somebody has to remember.
+    grain: Optional[Dict[str, Any]] = None
     # The sealed holdout, in `session_manager`'s schema. Its presence is what
     # raises the identity barrier: before it exists rows are anonymous
     # positions, after it they are named.
@@ -334,13 +355,76 @@ class AnalysisProject:
                 "nothing to detect it. Structural repairs of this kind belong before "
                 "the test set is sealed.")
 
+    def set_grain(self, answer: str, group_col: Optional[str] = None,
+                  inherited: bool = False,
+                  acknowledged_contradiction: bool = False) -> Decision:
+        """Record the answer to the grain question. Asked, never inferred.
+
+        The heuristics do not reach this method. They produce a suggestion the
+        user may accept and a contradiction the user must look at; what lands
+        here is what the user said. `IMPORT-020` and `IMPORT-022` are both the
+        engine having guessed instead.
+        """
+        from turbotab import grain as _grain
+
+        if answer not in _grain.ANSWERS:
+            raise ProjectError(
+                f"{answer!r} is not one of {list(_grain.ANSWERS)}.")
+        if self.barrier_raised:
+            raise ProjectError(
+                "The test set is already sealed, and it was drawn against the "
+                "grain answer recorded at the time. Changing that answer now "
+                "would describe a split that was not drawn this way.")
+        if answer == _grain.PEOPLE_REPEAT and group_col:
+            if group_col not in list(self.df.columns):
+                raise ProjectError(f"No column named '{group_col}' in this table.")
+
+        clash = _grain.contradiction(self.df, answer, group_col)
+        if clash and not acknowledged_contradiction:
+            # Escalate on evidence of error, never on the magnitude of a
+            # consequence. Raised rather than warned because one of the two
+            # readings is wrong and the caller has to say which.
+            raise GrainContradiction(clash["message"], detail=clash)
+
+        n_groups = None
+        if group_col and group_col in self.df.columns:
+            n_groups = int(self.df[group_col].nunique(dropna=True))
+        self.grain = {
+            "answer": answer,
+            "group_col": group_col if answer == _grain.PEOPLE_REPEAT else None,
+            "n_groups": n_groups if answer == _grain.PEOPLE_REPEAT else None,
+            "basis": _grain.seal_basis(answer, group_col, n_groups),
+            "basis_source": _grain.basis_source(inherited),
+            "contradiction_acknowledged": bool(clash and acknowledged_contradiction),
+            "contradiction": clash if clash else None,
+        }
+        said = {_grain.ONE_ROW_PER_PERSON: "one row per person",
+                _grain.PEOPLE_REPEAT: f"people repeat, identified by '{group_col}'",
+                _grain.NOT_SURE: "unknown — the shape could not be stated"}[answer]
+        return self.record(
+            kind="set_grain", subject=group_col or "",
+            text=(f"Asked whether one person can appear in more than one row; "
+                  f"the answer recorded was: {said}."),
+            payload=dict(self.grain))
+
     def seal_lockbox(self, labels: Sequence[Any], **disclosure: Any) -> Decision:
         """Raise the barrier: freeze the holdout and record having done so.
 
         Sealed once. A second seal is refused rather than silently redrawn,
         because a redraw re-partitions the study — rows sealed since upload
         become trainable, and two runs stop being comparable.
+
+        **The grain answer is a precondition, not a decoration.** Constitution
+        §01 fixes the pre-seal order and §02 says the seal cannot be drawn
+        correctly without the grain; refusing here is that ordering made
+        executable, so a caller cannot seal first and ask afterwards.
         """
+        if self.grain is None:
+            raise ProjectError(
+                "The test set cannot be sealed before the grain question is "
+                "answered: whether one person can appear in more than one row "
+                "decides how the held-out rows are chosen. Constitution §01 "
+                "fixes that order, and §02 is why.")
         if self.barrier_raised:
             raise ProjectError(
                 "This project already has a sealed test set. Redrawing it would "
@@ -355,13 +439,24 @@ class AnalysisProject:
             "n_total": int(len(self.df)),
             "n_test": int(len(labels)),
             "target_col": self.target or "",
+            # The seal states its own basis, and where that basis came from
+            # (constitution §03). Both are copied from the recorded grain answer
+            # rather than re-derived, so the seal and the transcript cannot
+            # disagree about what the user said.
+            "seal_basis": self.grain["basis"],
+            "basis_source": self.grain["basis_source"],
+            "group_col": self.grain.get("group_col"),
+            "n_groups": self.grain.get("n_groups"),
             **disclosure,
         }
         return self.record(
             kind="seal_lockbox", subject=self.target or "",
             text=(f"A test set of {len(labels)} rows was sealed before exploration "
-                  "and held by row label."),
-            payload={"n_test": int(len(labels))})
+                  f"and held by row label, on the basis '{self.grain['basis']}' "
+                  f"({self.grain['basis_source']})."),
+            payload={"n_test": int(len(labels)),
+                     "seal_basis": self.grain["basis"],
+                     "basis_source": self.grain["basis_source"]})
 
     def assert_identity_intact(self) -> None:
         """Every sealed label must still name a row. The post-barrier check."""
@@ -568,6 +663,7 @@ class AnalysisProject:
             "findings": self.findings,
             "findings_stale": self.findings_stale,
             "applied_fixes": self.applied_fixes,
+            "grain": self.grain,
             "lockbox": self.lockbox,
             "barrier_raised": self.barrier_raised,
             "cohort": self.cohort,

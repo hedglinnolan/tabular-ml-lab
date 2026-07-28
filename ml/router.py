@@ -153,7 +153,7 @@ BLOCKER_SEVERITIES = frozenset({"blocker"})
 # CHOICE is a repair, decided; CONSEQUENCE is a blocker, resolved or attested.
 # Named here so the audit rules can speak in the design language's vocabulary
 # rather than re-listing kinds at each site.
-FACT_KINDS = frozenset({"target", "task_type"})
+FACT_KINDS = frozenset({"target", "task_type", "grain"})
 CHOICE_KINDS = frozenset({"repair"})
 CONSEQUENCE_KINDS = frozenset({"blocker"})
 
@@ -305,6 +305,30 @@ def plan(
                 f"confidence: {' '.join(detection.get('reasons') or [])} Stated in "
                 "the transcript rather than asked — change it there if it is wrong.")
         out.append(q)
+
+    # ── the grain, before the seal, because the seal cannot be drawn without
+    #    it. Constitution §02: ASKED, never inferred. It is a FACT, so `audit()`
+    #    demands it name its consumer — but it is NOT skippable at any
+    #    confidence, because `_skip_is_permitted` admits only `task_type`. That
+    #    is deliberate and is the whole clause: `IMPORT-020` and `IMPORT-022`
+    #    are the app having inferred this and rendered the guess as a clean lock.
+    if step == "data" and target and "state_grain" not in answered:
+        out.append(Question(
+            key="state_grain", kind="grain", step="data",
+            title="Can one person appear in more than one row?",
+            why=("This decides how your held-out rows are chosen. If the same "
+                 "person lands on both sides, your held-out numbers will look "
+                 "better than the model is."),
+            consumer=(
+                "The lockbox reads this to decide whether the held-out set is "
+                "drawn by person or by row, and records it as the seal's stated "
+                "basis. Multi-file assembly reads the same answer rather than "
+                "asking again. Answering wrongly does not raise an error — it "
+                "produces held-out numbers that are optimistic by an amount "
+                "nothing on screen can show you."),
+            options=["No, one row per person",
+                     "Yes, people repeat",
+                     "I'm not sure"]))
 
     # ── one question per repairable finding, ranked by the engine ──────────
     for f in _rank(findings):

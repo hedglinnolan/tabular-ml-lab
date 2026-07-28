@@ -28,8 +28,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from turbotab import draft, engine
-from turbotab.project import AnalysisProject, ProjectError, ProjectStore
+from turbotab import draft, engine, grain as grain_mod
+from turbotab.project import (
+    AnalysisProject, GrainContradiction, ProjectError, ProjectStore,
+)
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
 
@@ -51,8 +53,8 @@ class DecisionIn(BaseModel):
     """One answer from the interview.
 
     `kind` is the shared vocabulary between the record and the frontend:
-    ``set_target`` · ``defer`` · ``dismiss`` · ``undismiss`` · ``flag``
-    · ``unflag`` · ``note``.
+    ``set_target`` · ``set_grain`` · ``seal`` · ``defer`` · ``dismiss``
+    · ``undismiss`` · ``flag`` · ``unflag`` · ``note``.
     """
     kind: str
     subject: str = ""
@@ -202,6 +204,47 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         except ProjectError as exc:
             raise HTTPException(400, str(exc)) from exc
         _recompute(project)
+        return _payload(project)
+
+    if decision.kind == "set_grain":
+        answer = decision.payload.get("answer") or decision.subject
+        group_col = decision.payload.get("group_col") or None
+        try:
+            project.set_grain(
+                str(answer), group_col,
+                inherited=bool(decision.payload.get("inherited")),
+                acknowledged_contradiction=bool(
+                    decision.payload.get("acknowledge_contradiction")))
+        except GrainContradiction as exc:
+            # 409, not 400: the request is well-formed and the state disagrees
+            # with it. The evidence travels with the refusal so the interruption
+            # can show what it saw rather than assert that it saw something.
+            raise HTTPException(409, {"message": str(exc),
+                                      "contradiction": exc.detail}) from exc
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return _payload(project)
+
+    if decision.kind == "seal":
+        if project.target is None:
+            raise HTTPException(400, "The held-out set is drawn against the "
+                                     "outcome, so the target comes first.")
+        if project.grain is None:
+            raise HTTPException(
+                400, "The grain question comes before the seal: whether one "
+                     "person can appear in more than one row decides how the "
+                     "held-out rows are chosen.")
+        try:
+            drawn = engine.draw_holdout(
+                project.df, project.target, project.task_type or "regression",
+                project.grain,
+                fraction=float(decision.payload.get("fraction", 0.15)),
+                seed=int(decision.payload.get("seed", 42)))
+            project.seal_lockbox(drawn["labels"], **drawn["disclosure"])
+        except engine.EngineRefusal as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
         return _payload(project)
 
     if decision.kind == "apply":
@@ -505,6 +548,35 @@ async def get_draft(project_id: str) -> Dict[str, Any]:
     return draft.draft(_project(project_id).to_dict())
 
 
+@app.get("/project/{project_id}/grain")
+async def get_grain(project_id: str) -> Dict[str, Any]:
+    """The grain question's material: the suggestion, and what was answered.
+
+    A `GET`, because it is a question. The suggestion is offered under "yes,
+    people repeat" and is never the answer — constitution §02 demotes the
+    heuristics to exactly this role. `evidence` is the shape-only reading, so a
+    reviewer can see WHY a column was suggested rather than trusting that it
+    was.
+    """
+    project = _project(project_id)
+    return {
+        "question": "Can one person appear in more than one row?",
+        "why": ("This decides how your held-out rows are chosen. If the same "
+                "person lands on both sides, your held-out numbers will look "
+                "better than the model is."),
+        "options": [
+            {"answer": grain_mod.ONE_ROW_PER_PERSON,
+             "label": "No, one row per person"},
+            {"answer": grain_mod.PEOPLE_REPEAT,
+             "label": "Yes, people repeat",
+             "follow_up": "which column identifies the person?"},
+            {"answer": grain_mod.NOT_SURE, "label": "I'm not sure"},
+        ],
+        "suggestion": grain_mod.suggestion(project.df),
+        "answered": project.grain,
+    }
+
+
 @app.get("/capabilities")
 async def get_capabilities() -> Dict[str, Any]:
     """Which pull affordances are wired, and what the unwired ones say.
@@ -539,6 +611,8 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
     for d in project.decisions:
         if d.kind == "set_target":
             answered.append("choose_target")
+        elif d.kind == "set_grain":
+            answered.append("state_grain")
         elif d.kind == "set_task_type":
             answered.append("confirm_task_type")
         elif d.kind in ("apply", "dismiss"):

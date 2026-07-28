@@ -295,6 +295,11 @@ def build_members(project) -> Dict[str, bytes]:
         # handed back the same object and page 06 fitted it in place.
         "pipeline_specs": {k: _json_safe(v)
                            for k, v in project.pipeline_specs.items()},
+        # The grain answer travels with the project, not just with the seal.
+        # A restored project that has been sealed must not be able to answer
+        # the question again, and one that has NOT been sealed must not be
+        # asked twice — both need the answer itself, not only its consequence.
+        "grain": _json_safe(project.grain) if project.grain else None,
     }
     members["config.json"] = json.dumps(config, indent=2, default=str).encode("utf-8")
     saved.append("config")
@@ -320,6 +325,17 @@ def build_members(project) -> Dict[str, bytes]:
             "group_noun": str(lb["group_noun"]) if lb.get("group_noun") else None,
             "n_test_groups": (int(lb["n_test_groups"])
                               if lb.get("n_test_groups") is not None else None),
+            # Constitution §03: the seal states its own basis. This member is
+            # an explicit whitelist, so a basis added to the lockbox and not
+            # added here is dropped on save — the seal would come back from
+            # the archive unable to say what it rests on, which is precisely
+            # the `group_col: None` ambiguity §03 exists to remove.
+            "seal_basis": str(lb["seal_basis"]) if lb.get("seal_basis") else None,
+            "basis_source": (str(lb["basis_source"])
+                             if lb.get("basis_source") else None),
+            "n_groups": (int(lb["n_groups"])
+                         if lb.get("n_groups") is not None else None),
+            "exploratory": bool(lb.get("exploratory", False)),
         }, indent=2).encode("utf-8")
         saved.append("test_lockbox")
 
@@ -432,6 +448,7 @@ def from_bytes(raw: bytes):
     project.task_overridden = bool(config.get("task_overridden", False))
     project.workflow_mode = config.get("workflow_mode", "quick")
     project.pipeline_specs = dict(config.get("pipeline_specs") or {})
+    project.grain = config.get("grain") or None
 
     if "lockbox.json" in names:
         project.lockbox = json.loads(zf.read("lockbox.json"))

@@ -25,21 +25,20 @@ Nothing is closed without a regression test named after it.
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 347 |
-| `PARTIAL` | 37 |
+| `OPEN` | 346 |
+| `PARTIAL` | 38 |
 | `FIXED` | 164 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 347
+## OPEN — 346
 
 
-### Application state / lockbox — 67
+### Application state / lockbox — 66
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `IMPORT-022` | critical | An identifier the name-token list does not recognize is sealed as verified cross-sectional over a real leak | `REPRODUCED AT HEAD: DataFrame({'SUBJ': np.repeat(range(60),3), ...}) -> detect_repeated_subjects None…` | Filed at L11 as the residual of IMPORT-020 after clause 03. Deliberately pinned by a test that asserts the CURRENT WRONG BEHAVIOR… |
 | `STATE-101` | critical | Clause 01 contradiction: the impossibility pass runs AFTER the seal in Classic, and its row-dropping form silently shrinks the sealed test set | `pages/01_Upload_and_Audit.py:1094-1106 (the seal, drawn at target selection); pages/02_EDA.py:1758 (the…` | REPRODUCED AT HEAD, measured. 400 rows with 60 carrying an impossible glucose of -999. ensure_lockbox seals 60 rows at 15%. apply_plausibility_filter with NHANES-style bounds… |
 | `STATE-102` | critical | The lockbox status chip reports the sealed row count on the ordinary path no matter how many sealed rows still exist, because the held-out-is-not-scoreable check is scoped to cohort runs only | `utils/test_lockbox.py:548-566 (_scoreable_here and the comment naming the principle), :603 (its only call…` | REPRODUCED AT HEAD as part of the STATE-101 reproduction: after the plausibility filter removed 7 sealed rows, the sealed count is 60 and the rows actually available for… |
 | `STATE-003` | landmine | unit_harmonization_factors and plausibility_bounds are POSITIONAL lists aligned to the full numeric_features, but pages/05 passes a FILTERED numeric_features to build_preprocessing_pipeline.… | `Built against the full list: ml/pipeline.py:45 `for col in numeric_features`…` | Unchanged at HEAD. sibling-of: MINE-001 - the positional-alignment class from the state pass, and this row names the asymmetry that makes it dangerous. UnitHarmonizer fails LOUDLY… |
@@ -439,8 +438,21 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 37
+## PARTIAL — 38
 
+
+### Application state / lockbox — 8
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `IMPORT-020` | critical | The same subject lands in both training and the sealed test set whenever detect_repeated_subjects' ratio gate misses - silently, with a clean lockbox chip | `REPRODUCED AT HEAD (1e2701d), three of the audit's four shapes: (a) 100 subjects with 30 second visits…` | **test:** `turbotab/test_grain_is_asked.py::test_a_stated_repeat_seals_grouped_and_leaks_nobody` — The same subject lands in both training and the sealed test set whenever… |
+| `IMPORT-022` | critical | An identifier the name-token list does not recognize is sealed as verified cross-sectional over a real leak | `REPRODUCED AT HEAD: DataFrame({'SUBJ': np.repeat(range(60),3), ...}) -> detect_repeated_subjects None…` | **test:** `turbotab/test_grain_is_asked.py::test_the_contradiction_detector_fires_on_an_id_name_the_heuristic_misses` — An identifier the name-token list does not recognize is… |
+| `STATE-009` | landmine | reset_downstream_results() does not clear preprocess_built_model_keys, preprocessing_summary, or engineered_feature_transforms, so three consumers keep describing deleted work. | `utils/session_state.py:283-416 (the function; grep it for these three keys — absent). Writers: pages/05:1011…` | One of the three keys is fixed; two are not. preprocess_built_model_keys IS now cleared at utils/session_state.py:372, which closes the worst arm of this row - the 'you are about… |
+| `STATE-014` | landmine | The 370-line split builder — the single most leakage-sensitive function in the app — lives inside a Streamlit button handler with zero unit tests, and writes its outputs through two separate… | `pages/06_Train_and_Compare.py:349-720. The split arrays are written via set_splits() at :610 or :646; the…` | Two of the three claims are closed; the third is not. The 370-line block is out of the button handler and into ml/splits.py as make_split, with SplitSpec in and an immutable Split… |
+| `STATE-066` | invariant | Every result computed from the current data is cleared when the data, target, features, or feature set changes. 'Any page that introduces a new result key must add it here.' | `utils/session_state.py:283 reset_downstream_results() (its own docstring states the rule)…` | The competing implementation is gone; the key list is still incomplete. pages/03 no longer bypasses the function - all three of its paths route through it and an AST guard fails… |
+| `STATE-074` | invariant | reset_downstream_results is the SINGLE source of truth for invalidation; every new result key must be registered there. | `utils/session_state.reset_downstream_results docstring and body (pipelines, splits, targets, models, 11…` | The 'second copy' half is closed and the 'every new key is registered' half is not. The 22-key competing cascade in pages/03 is gone - it omitted the ledger rollback, the… |
+| `STATE-087` | invariant | reset_downstream_results is the SINGLE source of truth for downstream invalidation; any page that introduces a new result key must add it there. | `utils/session_state.py:288-291 docstring; tests/test_review_fixes.py::TestDownstreamReset::test_reset_clears_e…` | Duplicate of STATE-066 / STATE-074 from the invariant pass. The first of the row's two breakages is closed - pages/03's competing 21-key cascade is gone and an AST guard fails if… |
+| `STATE-095` | invariant | set_data distinguishes three cases: schema change (full reset), same-schema content change (results cleared, config kept), identical content (no-op) — because page 01 re-sets the same working table… | `utils/session_state.set_data:266-280 with the _raw_data_fingerprint comparison. Tests…` | The three cases are implemented and well tested - including the subtle one, that re-setting the SAME frame on every page-01 visit must not end a cohort run - and four tests cover… |
 
 ### Stage-boundary contracts — 8
 
@@ -466,18 +478,6 @@ Nothing is closed without a regression test named after it.
 | `TEST-022` | high | perform_cross_validation's leakage semantics are documented in prose but only partially tested — and CV strategy is a cleared-but-unasserted key | `ml/eval.py:97-171; silent downgrade at :143-149; cv_strategy/cv_groups_train absent from all three test…` | The staleness half is closed; the fold-membership half is not. cv_strategy and cv_groups_train are no longer unasserted-on-clear - they are registered in the cascade and pinned by… |
 | `TEST-026` | medium | scripts/integration_test_apptest.py and scripts/integration_test.py are unreachable from CI and duplicate tests/integration/ | `.github/workflows/ci.yml (only `pytest tests/` and `pytest tests/integration`); Makefile:22-40…` | Half the row's premise is wrong at HEAD and the correction changes the disposition. scripts/integration_test.py is NOT unreachable from CI - ci.yml:90-94 runs it as the E2E smoke… |
 | `TEST-032` | medium | tests/test_page_imports.py and tests/test_insight_id_integrity.py are AST-based over pages/ — they die with pages/ but encode rules worth keeping | `tests/test_page_imports.py:123; tests/test_insight_id_integrity.py:52` | Half the row is closed. test_insight_id_integrity can no longer pass vacuously over an empty or renamed directory - that is SWEEP-014, and it was fixed in exactly the way this row… |
-
-### Application state / lockbox — 7
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `IMPORT-020` | critical | The same subject lands in both training and the sealed test set whenever detect_repeated_subjects' ratio gate misses - silently, with a clean lockbox chip | `REPRODUCED AT HEAD (1e2701d), three of the audit's four shapes: (a) 100 subjects with 30 second visits…` | **test:** `tests/test_the_seal_states_its_basis.py::test_partial_follow_up_is_detected` — PARTIAL after clause 03. Two of the three reproducing shapes are closed and the third is… |
-| `STATE-009` | landmine | reset_downstream_results() does not clear preprocess_built_model_keys, preprocessing_summary, or engineered_feature_transforms, so three consumers keep describing deleted work. | `utils/session_state.py:283-416 (the function; grep it for these three keys — absent). Writers: pages/05:1011…` | One of the three keys is fixed; two are not. preprocess_built_model_keys IS now cleared at utils/session_state.py:372, which closes the worst arm of this row - the 'you are about… |
-| `STATE-014` | landmine | The 370-line split builder — the single most leakage-sensitive function in the app — lives inside a Streamlit button handler with zero unit tests, and writes its outputs through two separate… | `pages/06_Train_and_Compare.py:349-720. The split arrays are written via set_splits() at :610 or :646; the…` | Two of the three claims are closed; the third is not. The 370-line block is out of the button handler and into ml/splits.py as make_split, with SplitSpec in and an immutable Split… |
-| `STATE-066` | invariant | Every result computed from the current data is cleared when the data, target, features, or feature set changes. 'Any page that introduces a new result key must add it here.' | `utils/session_state.py:283 reset_downstream_results() (its own docstring states the rule)…` | The competing implementation is gone; the key list is still incomplete. pages/03 no longer bypasses the function - all three of its paths route through it and an AST guard fails… |
-| `STATE-074` | invariant | reset_downstream_results is the SINGLE source of truth for invalidation; every new result key must be registered there. | `utils/session_state.reset_downstream_results docstring and body (pipelines, splits, targets, models, 11…` | The 'second copy' half is closed and the 'every new key is registered' half is not. The 22-key competing cascade in pages/03 is gone - it omitted the ledger rollback, the… |
-| `STATE-087` | invariant | reset_downstream_results is the SINGLE source of truth for downstream invalidation; any page that introduces a new result key must add it there. | `utils/session_state.py:288-291 docstring; tests/test_review_fixes.py::TestDownstreamReset::test_reset_clears_e…` | Duplicate of STATE-066 / STATE-074 from the invariant pass. The first of the row's two breakages is closed - pages/03's competing 21-key cascade is gone and an AST guard fails if… |
-| `STATE-095` | invariant | set_data distinguishes three cases: schema change (full reset), same-schema content change (results cleared, config kept), identical content (no-op) — because page 01 re-sets the same working table… | `utils/session_state.set_data:266-280 with the _raw_data_fingerprint comparison. Tests…` | The three cases are implemented and well tested - including the subtle one, that re-setting the SAME frame on every page-01 visit must not end a cohort run - and four tests cover… |
 
 ### Verified against main — 3
 
