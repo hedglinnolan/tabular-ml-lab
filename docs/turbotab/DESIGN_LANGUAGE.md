@@ -248,6 +248,42 @@ Serif/sans/mono and the three moods are reinforcing channels, not the sole discr
 Every type distinction must survive with typography removed (silhouette + grammar) and with
 color removed (silhouette + signal word).
 
+### The recorded-absence rule — "nothing to do here" is an answer, and it gets written down
+
+**Wherever a question has a *nothing to do here* option, that option is a recorded answer with
+its own sentence — never the absence of a record.** *The absence of a restriction is a claim, and
+a claim needs a record.*
+
+Three places it already holds, and the shape is identical each time:
+
+| Question | The "nothing" answer | What it would otherwise be indistinguishable from |
+|---|---|---|
+| Eligibility (§04) | *No, the study is about everyone here* | the eligibility question never being asked |
+| Feature selection (§06) | *Every column goes to the models* | the selection step never being reached |
+| The seal's basis (§03) | `cross_sectional` — verified, not merely ungrouped | `undetermined`, which is a different claim entirely |
+
+The seal is the sharpest case and the reason this is a rule rather than a habit. `group_col: None`
+was the state a verified cross-sectional seal *and* a failed detection both produced, so a
+consumer could not tell "we checked, and rows do not repeat" from "we could not tell". That is
+not a missing feature; it is **two different claims rendering as one**, and the fix was to make
+the confident answer say itself out loud rather than be inferred from an empty field.
+
+The general form, and why it is a design rule rather than a data-model preference:
+
+- **A reader of the methods section has to be able to tell.** *"No exclusion criteria were
+  applied"* is a sentence a paper can carry. *"The eligibility question does not appear in the
+  record"* is not, and nothing downstream can turn the second into the first.
+- **Absence is not falsifiable.** A recorded `everyone` can be contradicted by evidence and can
+  be revisited by the user; an empty field can only be guessed at. Constitution §03's whole
+  argument — *leaking and disclosing is the refuse branch, leaking behind a lock icon is the
+  assert-something-false branch* — is this rule applied to one clause.
+- **It costs one decision entry.** The record already exists; the only work is refusing to treat
+  a default as an answer.
+
+So: when a step gains a question, ask what its *nothing* answer is, and give it a sentence. And
+when reviewing a step, the check is *"can I tell a step that concluded nothing from a step nobody
+reached?"* — if not, the record is missing a claim rather than missing a value.
+
 ---
 
 ## 10 · Education in the flow — model left, learn right
