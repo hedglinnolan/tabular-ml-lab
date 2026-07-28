@@ -20,18 +20,18 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**150 of 491 closed.**
+**154 of 491 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 306 |
+| `OPEN` | 302 |
 | `PARTIAL` | 35 |
-| `FIXED` | 150 |
+| `FIXED` | 154 |
 
 ---
 
-## OPEN — 306
+## OPEN — 302
 
 
 ### Application state / lockbox — 65
@@ -356,24 +356,6 @@ Nothing is closed without a regression test named after it.
 | `MODELS-023` | invariant | The NN's best-epoch weights are snapshotted by CLONE, not by reference, so later optimizer steps cannot mutate the saved state. | `models/nn_whuber.py:430 and 529 — `best_model_state = {k: v.detach().clone() for k, v in…` | The invariant holds at both snapshot sites and nothing guards it, so it stays OPEN. state_dict() returns references to live tensors, so a bare copy would let subsequent optimizer… |
 | `MODELS-024` | invariant | Cross-validation is skipped for the neural network because its sklearn shim cannot retrain. | `pages/06:1529 `if use_cv and model_name != 'nn'` with the else-branch at 1565 explaining it to the user…` | Unchanged at HEAD: four separate guards, all keyed on one literal model key. The skip itself is correct and is explained to the user, which is good - the shim cannot retrain, so… |
 
-### Multi-file / JSON import — 13
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `IMPORT-014` | critical | Stacking two files that share participants silently duplicates subjects, and nothing warns | `REPRO: frames = {'c17': DataFrame({'SEQN':[1,2,3],'age':[40,50,60]}), 'c19'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
-| `IMPORT-015` | critical | When the identifier signal is inconclusive, the combine plan falls back to column-name overlap — the exact heuristic a critical finding already disqualified | `REPRO: utils.combine._same_people returns None for (DataFrame({'SEQN':[1],'age':[40]})…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
-| `IMPORT-110` | landmine | drop_rows fix deletes rows by label, destroying unrelated rows on non-unique-index frames while reporting the intended (wrong) count | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 10'` | Original finding 10 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in… |
-| `IMPORT-129` | landmine | check_numeric_stored_as_text coerces a mixed-unit column onto one numeric scale at 'high' confidence, never naming the units it stripped | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 29'` | Original finding 29 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in… |
-| `IMPORT-131` | landmine | melt_repeated overwrites an existing 'measurement' column and emits duplicate column names (and crashes outright on an existing 'value' column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 31'` | Original finding 31 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in… |
-| `IMPORT-132` | landmine | check_header_in_later_row false-positives on clean narrow frames with a blank header cell: emits the single critical/high-confidence 'promote_header' finding, which drops the first data row and hides… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 32'` | Original finding 32 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in… |
-| `IMPORT-135` | landmine | coerce_numeric silently merges incompatible units (mg/dL + mmol/L, kg + lb) into one column at 'high' confidence, with a detail message that never discloses the mixing | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 35'` | Original finding 35 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in… |
-| `IMPORT-142` | landmine | diagnose_join suppresses genuine column collisions whenever a key name also exists in the other frame (cross-name joins), so no suffix warning fires and execute_join's methods description names a… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 42'` | Original finding 42 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in… |
-| `IMPORT-016` | high | A yes/no key stored as boolean against the same key stored as 0/1 matches nothing, and the message blames the user's column choice | `REPRO: left=DataFrame({'id':[True,False,True],'a':[1,2,3]}), right=DataFrame({'id':[1,0,1],'b':[7,8,9]})…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
-| `IMPORT-017` | high | The stack change map omits a consequence the planner has already computed: that a column was coerced to text | `REPRO: frames = {'c17': DataFrame({'SEQN':range(5),'site':['A']*5}), 'c19'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
-| `IMPORT-018` | high | A user column named __source_file is renamed out of the way without disclosure | `REPRO: frames = {'a': DataFrame({'SEQN':[1,2],'__source_file':['mine','mine']}), 'b'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
-| `IMPORT-019` | medium | A list-valued JSON field is silently converted to its Python repr and becomes a text column | `REPRO: data_processor.load_tabular_data on json.dumps([{'SEQN':1,'visits':[1,2,3]},{'SEQN':2,'visits':[4,5]}])…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
-| `IMPORT-133` | medium | apply_fix('melt_repeated') raises an unhandled ValueError when the frame already has a column named 'value' (and silently produces duplicate columns when it has one named 'measurement') | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 33'` | Original finding 33 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in… |
-
 ### Verified against main — 11
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -389,6 +371,20 @@ Nothing is closed without a regression test named after it.
 | `T0-PAGES-001` | medium | Duplicate-row detection has no engine home — it is inline in pages/01 | `pages/01_Upload_and_Audit.py (inline)` | Extract to the engine when pages/01 unfreezes; register the capability meanwhile. |
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
+
+### Multi-file / JSON import — 9
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `IMPORT-014` | critical | Stacking two files that share participants silently duplicates subjects, and nothing warns | `REPRO: frames = {'c17': DataFrame({'SEQN':[1,2,3],'age':[40,50,60]}), 'c19'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
+| `IMPORT-015` | critical | When the identifier signal is inconclusive, the combine plan falls back to column-name overlap — the exact heuristic a critical finding already disqualified | `REPRO: utils.combine._same_people returns None for (DataFrame({'SEQN':[1],'age':[40]})…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
+| `IMPORT-132` | landmine | check_header_in_later_row false-positives on clean narrow frames with a blank header cell: emits the single critical/high-confidence 'promote_header' finding, which drops the first data row and hides… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 32'` | STAYS OPEN, and the L11 note is corrected: it recorded 'a clean narrow frame with a blank header cell produces no findings at all'. It reproduces verbatim at HEAD, both halves.… |
+| `IMPORT-135` | landmine | coerce_numeric silently merges incompatible units (mg/dL + mmol/L, kg + lb) into one column at 'high' confidence, with a detail message that never discloses the mixing | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 35'` | Original finding 35 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in… |
+| `IMPORT-142` | landmine | diagnose_join suppresses genuine column collisions whenever a key name also exists in the other frame (cross-name joins), so no suffix warning fires and execute_join's methods description names a… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 42'` | STAYS OPEN, and the L11 note is corrected: it recorded that a genuine collision on 'site' IS reported while a key-named column is present on both sides. That measured the control… |
+| `IMPORT-016` | high | A yes/no key stored as boolean against the same key stored as 0/1 matches nothing, and the message blames the user's column choice | `REPRO: left=DataFrame({'id':[True,False,True],'a':[1,2,3]}), right=DataFrame({'id':[1,0,1],'b':[7,8,9]})…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
+| `IMPORT-017` | high | The stack change map omits a consequence the planner has already computed: that a column was coerced to text | `REPRO: frames = {'c17': DataFrame({'SEQN':range(5),'site':['A']*5}), 'c19'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
+| `IMPORT-018` | high | A user column named __source_file is renamed out of the way without disclosure | `REPRO: frames = {'a': DataFrame({'SEQN':[1,2],'__source_file':['mine','mine']}), 'b'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
+| `IMPORT-019` | medium | A list-valued JSON field is silently converted to its Python repr and becomes a text column | `REPRO: data_processor.load_tabular_data on json.dumps([{'SEQN':1,'visits':[1,2,3]},{'SEQN':2,'visits':[4,5]}])…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
 
 ---
 
@@ -472,10 +468,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 150
+## FIXED — 154
 
 
-### Multi-file / JSON import — 54
+### Multi-file / JSON import — 58
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -505,6 +501,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-104` | landmine | join_doctor labels category/date/period/duration keys as "text", blocking working categorical-vs-numeric joins and emitting a self-contradictory message | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 04'` | **test:** `tests/test_stress_regressions.py::TestDtypeMismatchIsJudgedOnTheUnderlyingType` — Original finding 04 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md… |
 | `IMPORT-105` | landmine | join_doctor: datetime keys are compared by their stringified form, so a tz-aware/naive (or cross-timezone) pair is reported as "nothing to join on. Check you picked the right columns" | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 05'` | **test:** `tests/test_stress_regressions.py::TestBlockingMessagesNameTheCause` — Original finding 05 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-108` | landmine | find_key_candidates draws an independent 5,000-row sample per file, so value overlap is measured between unrelated row subsets — the true key is dropped entirely above ~50k rows and mis-quoted… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 08'` | **test:** `tests/test_key_sampling_is_symmetric.py::test_the_same_ids_listed_in_a_different_row_order_still_match` — Closed at L12 against measured revert-failure, not topical… |
+| `IMPORT-110` | landmine | drop_rows fix deletes rows by label, destroying unrelated rows on non-unique-index frames while reporting the intended (wrong) count | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 10'` | **test:** `tests/test_import_doctor.py::test_drop_rows_uses_positions_not_labels` — Closed at L12. The L11 note said no drop_rows fix is offered for a duplicated-index frame, so… |
 | `IMPORT-111` | landmine | MultiIndex (two-row header) columns: diagnose_join green-lights a join that execute_join always crashes on | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 11'` | **test:** `tests/test_stress_regressions.py::TestMultiIndexColumns` — Original finding 11 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the… |
 | `IMPORT-114` | landmine | Unconditional case-folding in normalize_key silently merges distinct case-sensitive IDs, and diagnose_join misattributes the resulting fan-out to "several rows per ID" | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 14'` | **test:** `tests/test_stress_regressions.py::TestTheJoinDoesNotRetypeYourIdentifier::test_case_and_space_repair_still_matches` — Original finding 14 of the 48, recovered from… |
 | `IMPORT-117` | landmine | diagnose_join under-predicts row count whenever key values are missing/blank (not just when a key column is entirely missing) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 17'` | **test:** `tests/test_stress_regressions.py::TestTheJoinDoesNotRetypeYourIdentifier::test_blank_ids_still_never_match_each_other` — Original finding 17 of the 48, recovered from… |
@@ -516,6 +513,8 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-126` | landmine | NUMERIC_SENTINELS omits the positive NHANES/SPSS 7/8/9, 77/88/99 and 7777/8888 missing-code families, so narrow-range coded columns pass silently | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 26'` | **test:** `tests/test_stress_regressions.py::TestSentinelFalsePositives::test_real_sentinels_still_fire` — Original finding 26 of the 48, recovered from… |
 | `IMPORT-127` | landmine | check_numeric_stored_as_text silently skips text columns whose values are all plain numbers (the `raw_numeric >= 0.99` guard), so promote_header output gets a false all-clear | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 27'` | **test:** `tests/test_stress_regressions.py::TestNumericStoredAsText` — Original finding 27 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the… |
 | `IMPORT-128` | landmine | Key detection collapses above ~10,000 rows: `_prep` samples both sides independently, so the true key's measured overlap decays as 5000/N | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 28'` | **test:** `tests/test_key_sampling_is_symmetric.py::test_the_same_ids_listed_in_a_different_row_order_still_match` — Closed at L12 against measured revert-failure, not topical… |
+| `IMPORT-129` | landmine | check_numeric_stored_as_text coerces a mixed-unit column onto one numeric scale at 'high' confidence, never naming the units it stripped | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 29'` | **test:** `tests/test_import_doctor.py::test_mixed_units_are_refused_not_coerced` — Closed at L12. The L11 note said a mixed mg/dL + mmol/L column produces no coerce_numeric… |
+| `IMPORT-131` | landmine | melt_repeated overwrites an existing 'measurement' column and emits duplicate column names (and crashes outright on an existing 'value' column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 31'` | **test:** `tests/test_import_doctor.py::test_melt_does_not_collide_with_existing_columns` — Closed at L12. The L11 note said no melt_repeated fix is offered for a frame that… |
 | `IMPORT-134` | landmine | 'none'/'unknown' recoded to missing at HIGH (auto-suggestable) confidence, destroying legitimate categorical levels | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 34'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 34 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-138` | landmine | diagnose_join drops missing/blank key rows from its row prediction, so predicted < actual for left/right/outer joins and plain_summary contradicts itself | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 38'` | **test:** `tests/test_stress_regressions.py::TestTheJoinDoesNotRetypeYourIdentifier::test_blank_ids_still_never_match_each_other` — Original finding 38 of the 48, recovered from… |
 | `IMPORT-139` | landmine | Row-counter columns are rated "high" confidence and proposed as the best join key whenever both files use the same counter name; index_like is never surfaced to the user | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 39'` | **test:** `tests/test_stress_regressions.py::TestRowCounterIsNotAKey` — Original finding 39 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the… |
@@ -531,6 +530,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-109` | medium | Duplicate key column name makes every ml/join_doctor.py entry point raise AttributeError and makes find_key_candidates silently drop the true key — but the module has no UI callers and no loader can… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 09'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 09 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 | `IMPORT-113` | medium | Duplicate column labels crash three checks; diagnose() silently swallows the crashes and drops unrelated findings frame-wide | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 13'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 13 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 | `IMPORT-123` | medium | diagnose_join returns can_proceed=True for a predicted 25,000,000-row many-to-many blow-up, and execute_join has no size cap | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 23'` | **test:** `tests/test_stress_regressions.py::TestBlowUpIsRefused` — Original finding 23 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
+| `IMPORT-133` | medium | apply_fix('melt_repeated') raises an unhandled ValueError when the frame already has a column named 'value' (and silently produces duplicate columns when it has one named 'measurement') | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 33'` | **test:** `tests/test_import_doctor.py::test_melt_does_not_crash_on_a_column_named_value` — Closed at L12 against a test written for it this loop. The L11 note deferred to finding… |
 | `IMPORT-136` | medium | coerce_numeric's methods-section description omits how many values it blanked (up to 20% of a column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 36'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 36 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-147` | medium | Duplicated key column name crashes normalize_key and therefore diagnose_join / execute_join / repair_keys (AttributeError), and silently blanks find_key_candidates | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 47'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 47 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 

@@ -356,5 +356,17 @@ def test_melt_does_not_collide_with_existing_columns():
     assert len(set(out.columns)) == len(out.columns)
 
 
+def test_melt_does_not_crash_on_a_column_named_value():
+    """The other half of the same collision: pandas raises rather than
+    duplicating when the clash is on `value_name`, so a frame carrying an
+    ordinary column called 'value' took down the whole fix."""
+    df = pd.DataFrame({"id": [1, 2, 3], "value": [9, 8, 7],
+                       "bp_1": [120, 118, 130], "bp_2": [122, 117, 133],
+                       "bp_3": [119, 116, 131]})
+    out, _ = apply_fix(df, _first(diagnose(df), "wide_repeated_measures"))
+    assert len(set(out.columns)) == len(out.columns)
+    assert out["value"].tolist()[:3] == [9, 8, 7], "the user's own column was clobbered"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))

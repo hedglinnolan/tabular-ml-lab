@@ -5615,11 +5615,11 @@
   "detail": "Original severity as confirmed: major. Full text, verifier reasoning and the repro as recorded are in docs/audit/ORIGINAL_48_FINDINGS.md under 'Finding 10'.",
   "ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 10'",
   "act": "See the original entry; dispositioned against HEAD at L11.",
-  "status": "OPEN",
-  "note": "Original finding 10 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in TRANSITION_PLAN.md 05, while docs/FINDINGS_LEDGER.md described the runs that produced it as still in flight. Title and severity are the verifier's, verbatim. Could not be reproduced as recorded: no drop_rows fix is offered for a frame with a duplicated index, so the recorded repro does not reach the code it names. That is an absence of the trigger rather than evidence the label-based deletion is safe - apply_fix('drop_rows') still deletes by label. Needs a repro that reaches it. NO NAMED GUARD, so it stays OPEN under the ledger's own rule rather than being closed on a verdict: a finding that no longer reproduces and has no test is a finding that can come back silently. The test belongs to the repair loop.",
+  "status": "FIXED",
+  "note": "Closed at L12. The L11 note said no drop_rows fix is offered for a duplicated-index frame, so the trigger was absent. Re-measured: the trigger DOES fire - diagnose() offers footer_rows on the recorded frame - and the fix is correct. The named guard is the positional deletion at ml/import_doctor.py:950-954: apply_fix reads params['positions'] and does df.iloc[keep].reset_index(drop=True) rather than dropping by label. Recorded repro re-run verbatim at HEAD: index [0,1,2,3,4,5,6,7,0] gives 9 -> 8 rows keeping [1..8] (recorded then: 9 -> 7, one unrelated row destroyed); the longitudinal variant indexed ['S1','S1','S2','S2','S3','S3','S1'] gives 7 -> 6 (recorded then: 7 -> 4, both S1 visits silently deleted). Revert probe: restoring df.drop(index=df.index[positions]) turns test_drop_rows_uses_positions_not_labels red.",
   "verified_against": "TurboTab @ f7eb662",
-  "test": "",
-  "verified_ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 10'"
+  "test": "tests/test_import_doctor.py::test_drop_rows_uses_positions_not_labels",
+  "verified_ev": "ml/import_doctor.py:950-954"
  },
  {
   "id": "IMPORT-111",
@@ -5881,11 +5881,11 @@
   "detail": "Original severity as confirmed: major. Full text, verifier reasoning and the repro as recorded are in docs/audit/ORIGINAL_48_FINDINGS.md under 'Finding 29'.",
   "ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 29'",
   "act": "See the original entry; dispositioned against HEAD at L11.",
-  "status": "OPEN",
-  "note": "Original finding 29 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in TRANSITION_PLAN.md 05, while docs/FINDINGS_LEDGER.md described the runs that produced it as still in flight. Title and severity are the verifier's, verbatim. Could not be reproduced as recorded: a column mixing 'mg/dL' and 'mmol/L' text produces no coerce_numeric finding at all at HEAD, so the high-confidence merge the finding describes does not occur. Whether that is the fix or a different gate swallowing the column is not established. NO NAMED GUARD, so it stays OPEN under the ledger's own rule rather than being closed on a verdict: a finding that no longer reproduces and has no test is a finding that can come back silently. The test belongs to the repair loop.",
+  "status": "FIXED",
+  "note": "Closed at L12. The L11 note said a mixed mg/dL + mmol/L column produces no coerce_numeric finding and that whether this was the fix or a different gate swallowing the column was not established. It is the fix, and the gate is named: check_numeric_stored_as_text at ml/import_doctor.py:689-709 computes _units_present(s) and, when more than one unit is present, emits mixed_units__<col> at low confidence with fix_kind='none' and auto_suggestable False, then continues - so the coerce_numeric branch below is never reached. Measured at HEAD on the recorded repro: the only finding is mixed_units__chol (critical / low / not auto-suggestable, detail 'Found mg/dl, mmol/l in the same column.'). Control: the identical column with a single unit still yields numeric_as_text__chol at high confidence, so the check is suppressed by unit mixing and not broken. Revert probe: disabling the len(units) > 1 branch turns test_mixed_units_are_refused_not_coerced red on its own 'not any numeric_as_text' assertion.",
   "verified_against": "TurboTab @ f7eb662",
-  "test": "",
-  "verified_ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 29'"
+  "test": "tests/test_import_doctor.py::test_mixed_units_are_refused_not_coerced",
+  "verified_ev": "ml/import_doctor.py:689-709"
  },
  {
   "id": "IMPORT-130",
@@ -5909,11 +5909,11 @@
   "detail": "Original severity as confirmed: major. Full text, verifier reasoning and the repro as recorded are in docs/audit/ORIGINAL_48_FINDINGS.md under 'Finding 31'.",
   "ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 31'",
   "act": "See the original entry; dispositioned against HEAD at L11.",
-  "status": "OPEN",
-  "note": "Original finding 31 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in TRANSITION_PLAN.md 05, while docs/FINDINGS_LEDGER.md described the runs that produced it as still in flight. Title and severity are the verifier's, verbatim. Could not be reproduced as recorded: no melt_repeated fix is offered for a frame that already has a 'measurement' column, so apply_fix is never reached. Needs a repro that gets a melt offered on such a frame. NO NAMED GUARD, so it stays OPEN under the ledger's own rule rather than being closed on a verdict: a finding that no longer reproduces and has no test is a finding that can come back silently. The test belongs to the repair loop.",
+  "status": "FIXED",
+  "note": "Closed at L12. The L11 note said no melt_repeated fix is offered for a frame that already has a 'measurement' column, so apply_fix was never reached. Re-measured: the trigger DOES fire - wide_repeated_measures is offered on the recorded frame - and apply_fix no longer overwrites. The named guard is the collision loop at ml/import_doctor.py:996-1000: var_name and val_name are suffixed with '_' while they clash with any id column. Recorded repro at HEAD: a frame carrying 'measurement' melts to ['id','measurement','measurement_','value'] - the user's column intact, every label unique (recorded then: ['id','measurement','measurement','value'], a duplicate label). Revert probe: removing the two while loops turns test_melt_does_not_collide_with_existing_columns red.",
   "verified_against": "TurboTab @ f7eb662",
-  "test": "",
-  "verified_ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 31'"
+  "test": "tests/test_import_doctor.py::test_melt_does_not_collide_with_existing_columns",
+  "verified_ev": "ml/import_doctor.py:992-1005"
  },
  {
   "id": "IMPORT-132",
@@ -5924,10 +5924,10 @@
   "ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 32'",
   "act": "See the original entry; dispositioned against HEAD at L11.",
   "status": "OPEN",
-  "note": "Original finding 32 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in TRANSITION_PLAN.md 05, while docs/FINDINGS_LEDGER.md described the runs that produced it as still in flight. Title and severity are the verifier's, verbatim. Could not be reproduced as recorded: a clean narrow frame with a blank header cell produces no findings at all, so the false-positive header critical does not fire. Recorded as not-reproducing rather than fixed. NO NAMED GUARD, so it stays OPEN under the ledger's own rule rather than being closed on a verdict: a finding that no longer reproduces and has no test is a finding that can come back silently. The test belongs to the repair loop.",
+  "note": "STAYS OPEN, and the L11 note is corrected: it recorded 'a clean narrow frame with a blank header cell produces no findings at all'. It reproduces verbatim at HEAD, both halves. diagnose() on the recorded CSV ',kcal\\nApple,95\\n...' returns exactly one finding - header_in_later_row, critical, high confidence, auto_suggestable True - and apply_fix promotes row 1, giving columns ['Apple','95'] and 4 rows from 5. The first data row is destroyed, as recorded. The masking half reproduces too: the 12-row sex/kcal frame yields only ['header_in_later_row'] with the blank header cell, and ['category_variants__sex','text_missing_ambiguous__sex'] once the column is renamed - two genuine findings hidden behind the false positive. Nothing prevents this trigger; it is live. The mechanism is a pair of INCLUSIVE thresholds that a two-column frame lands on exactly: one blank header cell of two columns gives unnamed_frac 0.50, and the gate is 'if unnamed_frac < 0.5: return []'; row 0 ['Apple','95'] scores uniq 1.0 * stringy 0.5 * 1.0 = 0.50 against 'if best_score < 0.5: return []'. Both comparisons are strict, so exactly 0.5 passes both. Severity landmine is right: this is the single critical/high/auto-suggestable finding, so it is the one the UI pre-selects.",
   "verified_against": "TurboTab @ f7eb662",
   "test": "",
-  "verified_ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 32'"
+  "verified_ev": "ml/import_doctor.py:306-345"
  },
  {
   "id": "IMPORT-133",
@@ -5937,11 +5937,11 @@
   "detail": "Original severity as confirmed: minor. Full text, verifier reasoning and the repro as recorded are in docs/audit/ORIGINAL_48_FINDINGS.md under 'Finding 33'.",
   "ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 33'",
   "act": "See the original entry; dispositioned against HEAD at L11.",
-  "status": "OPEN",
-  "note": "Original finding 33 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in TRANSITION_PLAN.md 05, while docs/FINDINGS_LEDGER.md described the runs that produced it as still in flight. Title and severity are the verifier's, verbatim. Same as finding 31: melt_repeated is not offered on the recorded shape, so the unhandled ValueError on an existing 'value' column is not reachable through diagnose. NO NAMED GUARD, so it stays OPEN under the ledger's own rule rather than being closed on a verdict: a finding that no longer reproduces and has no test is a finding that can come back silently. The test belongs to the repair loop.",
+  "status": "FIXED",
+  "note": "Closed at L12 against a test written for it this loop. The L11 note deferred to finding 31 - melt not offered on the recorded shape - which was wrong in the same way: wide_repeated_measures IS offered. Same guard as IMPORT-131 (the '_' suffix loop at ml/import_doctor.py:996-1000), but the 'value' half needed its own test because it fails differently: pandas raises ValueError('value_name (value) cannot match an element in the DataFrame columns') rather than duplicating a label, so IMPORT-131's uniqueness assertion cannot see it. Recorded repro at HEAD: a frame carrying 'value' melts to ['id','value','measurement','value_'] with the user's column intact (recorded then: unhandled ValueError). Revert probe: removing the while loops makes the new test raise ValueError where IMPORT-131's test merely fails - both red, for different reasons.",
   "verified_against": "TurboTab @ f7eb662",
-  "test": "",
-  "verified_ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 33'"
+  "test": "tests/test_import_doctor.py::test_melt_does_not_crash_on_a_column_named_value",
+  "verified_ev": "ml/import_doctor.py:992-1005"
  },
  {
   "id": "IMPORT-134",
@@ -6064,10 +6064,10 @@
   "ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 42'",
   "act": "See the original entry; dispositioned against HEAD at L11.",
   "status": "OPEN",
-  "note": "Original finding 42 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in TRANSITION_PLAN.md 05, while docs/FINDINGS_LEDGER.md described the runs that produced it as still in flight. Title and severity are the verifier's, verbatim. Could not be reproduced as recorded: a genuine collision on 'site' IS reported while a key-named column is present on both sides. The recorded repro may have depended on a shape I did not reconstruct exactly. NO NAMED GUARD, so it stays OPEN under the ledger's own rule rather than being closed on a verdict: a finding that no longer reproduces and has no test is a finding that can come back silently. The test belongs to the repair loop.",
+  "note": "STAYS OPEN, and the L11 note is corrected: it recorded that a genuine collision on 'site' IS reported while a key-named column is present on both sides. That measured the control case, not the finding. The finding is about collisions ON THE KEY NAMES THEMSELVES, and all three recorded cases reproduce verbatim at HEAD with column_collisions == [] and warnings == []: case 1, both key names in both files, merges to ['SEQN','patient_id_demo','age','patient_id_labs','SEQN_labs','glucose']; case 2, only the left key name exists on the right, merges to ['SEQN','age','SEQN_labs','glucose']; case 3, only the right key name exists on the left, merges to ['SEQN','patient_id_demo','age','patient_id_labs','glucose']. Every one carries silently suffixed columns with no warning, and execute_join's description still says \"on 'SEQN'\". The control does report 'site', which is why the L11 pass read this as fixed. Nothing prevents this trigger; it is live. The mechanism is exact, at ml/join_doctor.py:771-773: the collision list filters out any column whose name is in {left_key, right_key}. That exclusion is right for the matched pair - the join keys are not a collision - and wrong when a key NAME also occurs as an ordinary data column on the other side, which is precisely the recorded shape.",
   "verified_against": "TurboTab @ f7eb662",
   "test": "",
-  "verified_ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 42'"
+  "verified_ev": "ml/join_doctor.py:771-773"
  },
  {
   "id": "IMPORT-143",
