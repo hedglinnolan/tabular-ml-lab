@@ -6992,5 +6992,33 @@
   "verified_against": "TurboTab @ L12 HUNT batch 5",
   "test": "tests/test_join_doctor.py::test_a_long_format_file_keeps_its_subject_key",
   "verified_ev": "ml/join_doctor.py:391-397 (the removed per-column floor) and :602-608 (the per-pair distinctness rule that replaced it); measured at HEAD"
+ },
+ {
+  "id": "TEST-037",
+  "area": "TEST",
+  "sev": "high",
+  "item": "test_engine_is_headless has not run for two loops, so L7's central architectural claim - that the engine runs without Streamlit - is currently unverified rather than verified",
+  "detail": "L13, filed not chased. tests/test_engine_is_headless.py::test_core_modules_import_for_any_reason fails in this environment with ModuleNotFoundError: No module named 'torch', raised from models/nn_whuber.py. The test is doing its job - it distinguishes a Streamlit-coupling failure from any other import failure and reports the second separately - but the effect is that the assertion it exists to make is not being made. The headless claim is what the whole extraction rests on: ARCHITECTURE.md's census, the walking skeleton, and turbotab/requirements.txt's deliberate exclusion of the app's dependencies all assume it.",
+  "ev": "tests/test_engine_is_headless.py:143 (the non-Streamlit failure branch); models/nn_whuber.py:5 (the unguarded import that trips it); requirements.txt (torch, ~1.1 GB installed)",
+  "act": "Two ways, and the second is better. Install torch in CI so the test runs - which makes CI pay 1.1 GB for one assertion. Or guard the import (TEST-038) so the module is importable without torch, at which point the headless test runs everywhere and the packaging finding closes with it. The second fixes the cause; the first pays rent on it forever. Note that this is the same shape as TEST-034 (the shap three): a test that cannot run reports nothing, and a suite where four tests report nothing has a baseline of four, not three.",
+  "status": "OPEN",
+  "note": "MEASURED IN THIS CONTAINER at L13, and stated as an environment fact rather than a code defect. The suite runs 1,584 passed / 4 failed: the shap three (TEST-034) plus this one. Both are missing optional dependencies I was instructed not to install, and both are the same class - a green suite that is quietly one assertion short per skipped test. The distinction worth keeping: TEST-034's three cover a FEATURE (SHAP), so their absence leaves a feature untested. This one covers an ARCHITECTURAL INVARIANT that the entire TurboTab thesis depends on, so its absence leaves the thesis unchecked. That is why it is filed high rather than medium. Not chased, per the loop's instruction. SEAL-CLASS: no.",
+  "verified_against": "TurboTab @ L13 coverage gaps",
+  "test": "",
+  "verified_ev": "tests/test_engine_is_headless.py:143 (the non-Streamlit failure branch); models/nn_whuber.py:5 (the unguarded import that trips it); requirements.txt (torch, ~1.1 GB installed)"
+ },
+ {
+  "id": "TEST-038",
+  "area": "TEST",
+  "sev": "high",
+  "item": "models/nn_whuber.py imports torch unguarded at module scope while utils/seed.py guards the identical import, so a 1.1 GB dependency is mandatory for a user who never trains a neural net",
+  "detail": "L13, filed not chased. utils/seed.py:7-10 wraps `import torch` in try/except ImportError with the comment 'optional: only needed for the neural-network model' and sets torch = None. models/nn_whuber.py:5 imports the same module at the top of the file with no guard. One of the two is right about whether torch is optional, and they cannot both be. The consequence is packaging: requirements.txt lists torch with the justification that 'every model in this app must work on first launch', which is a defensible product decision - but an UNGUARDED import turns it from 'installed by default' into 'required to import the model layer at all', which is a different and much stronger claim.",
+  "ev": "models/nn_whuber.py:5 (unguarded `import torch`); utils/seed.py:7-10 (the same import, guarded, with a comment saying it is optional); requirements.txt (the ~1.1 GB justification)",
+  "act": "Guard it the way utils/seed.py already does, and raise a clear error from the wrapper's constructor rather than at import - the model then advertises itself as unavailable instead of taking the module down. That is the same shape as ml/model_registry.py's handling of other optional backends. Closing this closes TEST-037 with it, because the headless test stops tripping over the import.",
+  "status": "OPEN",
+  "note": "A PRINCIPLE-LOCALITY INSTANCE, which is why it is filed here rather than left as a packaging note. The rule - torch is optional, guard it - is stated once, correctly, in utils/seed.py, with a comment explaining itself. It is not applied in the other file that imports the same module. Nothing fails when the second file forgets, and what surfaces instead is a 1.1 GB install requirement and one unverifiable architectural test (TEST-037). Fifth family, same shape as _scoreable_here at STATE-102: stated in one place, used in another, silent in between. The difference is that this one has an executable fix available immediately - the guard already exists, in the same repository, eight lines long. Not chased, per the loop's instruction; do not install torch to make it go away. SEAL-CLASS: no.",
+  "verified_against": "TurboTab @ L13 coverage gaps",
+  "test": "",
+  "verified_ev": "models/nn_whuber.py:5 (unguarded `import torch`); utils/seed.py:7-10 (the same import, guarded, with a comment saying it is optional); requirements.txt (the ~1.1 GB justification)"
  }
 ]
