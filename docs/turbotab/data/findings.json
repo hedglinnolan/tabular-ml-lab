@@ -6446,5 +6446,47 @@
   "verified_against": "TurboTab @ L12 lens 10",
   "test": "",
   "verified_ev": "utils/import_ui.py:_frame_signature and its fallback chain; utils/import_ui.py:147-151 (the reset on signature change)"
+ },
+ {
+  "id": "STATE-101",
+  "area": "STATE",
+  "sev": "critical",
+  "item": "Clause 01 contradiction: the impossibility pass runs AFTER the seal in Classic, and its row-dropping form silently shrinks the sealed test set",
+  "detail": "L12 clause-01 sequence check, file-don't-fix. The constitution fixes the pre-seal order as load, structural repairs and the impossibility pass, grain, eligibility, SEAL, EDA - and gives the reason: a split computed over corrupted values is a worse split, and impossible entries are normally an exclusion that changes N and belongs in the flow diagram before anything is sealed. Classic runs it in the opposite order. The seal is drawn at pages/01_Upload_and_Audit.py:1106 the moment the target is chosen, with the comment 'Quarantine the test set NOW, before any target-aware analysis can see it'. The impossibility pass is the physiologic plausibility check, and it lives at pages/02_EDA.py:1758 - one page later, post-seal. Its row-dropping form is later still: pages/05_Preprocess.py:894 calls apply_plausibility_filter over the WHOLE frame and writes the result to session_state['filtered_data'], which utils/session_state.py:196-212 then serves to every page as the working table.",
+  "ev": "pages/01_Upload_and_Audit.py:1094-1106 (the seal, drawn at target selection); pages/02_EDA.py:1758 (the plausibility check, one page later); pages/05_Preprocess.py:890-897 (apply_plausibility_filter over the whole frame into filtered_data); utils/session_state.py:196-212 (get_data serves filtered_data as the working table); ml/pipeline.py:109-132",
+  "act": "Move the impossibility pass to page 01, before ensure_lockbox is called - it is row-local and label-free, so by clause 06 it is a structural repair that may execute immediately, and clause 01 puts it pre-seal for the split-quality and flow-diagram reasons rather than for leakage reasons. Until it moves, the post-seal filter must not be able to remove sealed rows silently: either refuse and route the user back to a re-seal, which clause 04 says is its own hard logged decision, or disclose the shrink at the point it happens.",
+  "status": "OPEN",
+  "note": "REPRODUCED AT HEAD, measured. 400 rows with 60 carrying an impossible glucose of -999. ensure_lockbox seals 60 rows at 15%. apply_plausibility_filter with NHANES-style bounds takes the frame 400 -> 340, and 7 of the 60 sealed test rows are among those dropped. train_row_mask over the filtered frame then reports 287 train / 53 test, so evaluation runs on 53 rows. Note what the constitution predicted: the split was drawn over the corrupted values, which is exactly the 'worse split' clause 01 names, and the exclusion changed N without ever appearing in a participant flow. CLAUSE 04 IS ALSO ENGAGED: it says a robustness trim applies to the training partition only and that the test set is 'never touched', with 'also trim the test set to match' permanently off the menu. This filter trims both partitions because it filters df wholesale. SEAL-CLASS: YES. Same family as IMPORT-020 - the seal's claim about which rows were held out stops being true - reached through the sequence rather than through detection. Compare CONTRACT-062, which names the row-dropping-invalidates-sealed-labels problem from the cleaning-action side.",
+  "verified_against": "TurboTab @ L12 clause-01 check",
+  "test": "",
+  "verified_ev": "pages/01_Upload_and_Audit.py:1094-1106 (the seal, drawn at target selection); pages/02_EDA.py:1758 (the plausibility check, one page later); pages/05_Preprocess.py:890-897 (apply_plausibility_filter over the whole frame into filtered_data); utils/session_state.py:196-212 (get_data serves filtered_data as the working table); ml/pipeline.py:109-132"
+ },
+ {
+  "id": "STATE-102",
+  "area": "STATE",
+  "sev": "critical",
+  "item": "The lockbox status chip reports the sealed row count on the ordinary path no matter how many sealed rows still exist, because the held-out-is-not-scoreable check is scoped to cohort runs only",
+  "detail": "L12 clause-01 sequence check, file-don't-fix. utils/test_lockbox.py:548-566 defines _scoreable_here, which counts how many sealed labels are present in the current frame AND have a value for the configured outcome. Its own comment states the principle exactly: 'Held out is not the same as scoreable ... reporting the sealed count is a number a researcher would write down and be wrong about.' That function is called at exactly one site, line 603, inside the `if run is not None` branch of render_lockbox_status - the cohort-run path. The ordinary, non-cohort path falls through to :686-690 and prints n=lb['n_test'] unconditionally. So the app has both the concept and the code, and applies them only to the rarer case.",
+  "ev": "utils/test_lockbox.py:548-566 (_scoreable_here and the comment naming the principle), :603 (its only call site, inside the cohort branch), :598-614 (the warning the cohort path gets), :686-690 (the non-cohort path, which prints the sealed n unconditionally)",
+  "act": "Lift the scoreable check above the cohort branch so both paths get it, and make the chip report the number performance will actually be measured on. The wording already exists in the cohort warning and needs almost no change. This is a small fix with a large blast radius, because the chip is the app's whole visible claim about the seal.",
+  "status": "OPEN",
+  "note": "REPRODUCED AT HEAD as part of the STATE-101 reproduction: after the plausibility filter removed 7 sealed rows, the sealed count is 60 and the rows actually available for evaluation are 53, and the non-cohort chip prints n=60. Verified by reading that _scoreable_here has exactly one call site - grep returns its definition at :548 and one use at :603. Stated fairly: this is not an oversight of principle. The cohort branch shows the project already understands the distinction and wrote a careful warning for it; the defect is scope, not understanding. SEAL-CLASS: YES - the number the chip states IS the seal's public claim, and clause 03's whole argument is that a seal must state its own basis truthfully rather than render a clean lock over something weaker.",
+  "verified_against": "TurboTab @ L12 clause-01 check",
+  "test": "",
+  "verified_ev": "utils/test_lockbox.py:548-566 (_scoreable_here and the comment naming the principle), :603 (its only call site, inside the cohort branch), :598-614 (the warning the cohort path gets), :686-690 (the non-cohort path, which prints the sealed n unconditionally)"
+ },
+ {
+  "id": "GUIDED-011",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "Guided has no seal step, so clause 01's pre-seal ordering has nothing to attach to - recorded against the clause now so the build inherits the requirement instead of rediscovering it",
+  "detail": "L12 clause-01 sequence check, file-don't-fix. The register already carries the fact at data/register.json 'target-lockbox-settings': the project owns a lockbox and sealing raises the identity barrier, but 'the fraction/seed settings and the act of sealing are not yet asked in the Guided interview'. This row states the consequence for clause 01 specifically. The constitution's sequence is load, structural repairs and the impossibility pass, grain, eligibility, SEAL, EDA. Guided currently has no SEAL, so it has no boundary that the impossibility pass, the grain question and the eligibility question can be ordered against - which means the ordering cannot be got wrong yet, and equally cannot be got right.",
+  "ev": "docs/turbotab/data/register.json 'target-lockbox-settings' (state classic-only); the sequence in ROADMAP.md 'The lockbox constitution' clause 01; contrast pages/01_Upload_and_Audit.py:1106 where Classic seals",
+  "act": "When the Guided seal step is built, build the sequence with it rather than after it: the impossibility pass and the grain question are pre-seal by clause 01 and clause 02, and the grain answer is asked ONCE and inherited by both the seal and multi-file assembly per clause 02 and ASSEMBLY_SPEC.md. Classic is the warning: STATE-101 exists because Classic grew its seal and its impossibility pass on different pages at different times, and reordering them now means moving a step that other pages already depend on. Guided pays nothing to get it right first.",
+  "status": "OPEN",
+  "note": "Filed against the clause rather than as a new discovery - the underlying gap is already in the register and this row does not double-count it. What is new is the clause-01 reading: this is the one place where Guided being behind Classic is an ADVANTAGE, because the ordering can be built correctly from the start instead of migrated. SEAL-CLASS: yes by definition, it is the seal. Severity high rather than critical because nothing is currently asserting anything false in Guided - there is no seal to make a false claim. It becomes critical the moment a seal ships without the ordering.",
+  "verified_against": "TurboTab @ L12 clause-01 check",
+  "test": "",
+  "verified_ev": "docs/turbotab/data/register.json 'target-lockbox-settings' (state classic-only); the sequence in ROADMAP.md 'The lockbox constitution' clause 01; contrast pages/01_Upload_and_Audit.py:1106 where Classic seals"
  }
 ]

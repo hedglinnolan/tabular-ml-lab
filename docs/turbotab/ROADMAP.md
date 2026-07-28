@@ -217,6 +217,32 @@ Nothing may be resequenced. Two of those steps are pre-seal for reasons that are
   changes N, which belongs in the flow diagram before anything is sealed.
 - **Grain**, because the seal cannot be drawn correctly without it. See §02.
 
+**Checked against the code, L12 — Classic contradicts this clause today.** `STATE-101`,
+`STATE-102`, `GUIDED-011`. Filed, not fixed; the check was file-don't-fix.
+
+| Clause-01 step | Where it actually runs in Classic |
+|---|---|
+| load | `pages/01` |
+| structural repairs | `pages/01`, via `utils/import_ui.render_import_doctor` — **in order** |
+| the impossibility pass | `pages/02_EDA.py:1758`, and its row-dropping form at `pages/05:894` — **after the seal** |
+| grain | inferred, never asked (§02; `IMPORT-022`) |
+| eligibility | not a distinct step |
+| **SEAL** | `pages/01_Upload_and_Audit.py:1106`, at target selection |
+| EDA | `pages/02` |
+
+The seal is drawn *first* of the three, not last. Measured consequence: 400 rows with 60 carrying
+an impossible value seal 60 test rows at 15%; the page-05 plausibility filter then drops 7 of them
+and evaluation runs on 53 while the status chip still reports `n=60`. Two clauses are engaged, not
+one — §04 says a robustness trim touches the training partition only and that trimming the test set
+to match is *permanently off the menu*, and this filter trims both because it filters the frame
+wholesale into `filtered_data`, which `get_data()` serves to every page.
+
+Guided has no seal step at all (`register.json` → `target-lockbox-settings`), so the ordering
+cannot yet be got wrong there — or right. That is the one place being behind Classic is an
+advantage: build the sequence *with* the seal rather than after it. Classic is the warning, because
+its seal and its impossibility pass grew on different pages at different times and reordering them
+now means moving a step other pages already depend on.
+
 ### 02 · Grain is asked, never inferred
 
 > **"Can one person appear in more than one row?"**

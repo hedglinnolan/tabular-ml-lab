@@ -20,26 +20,28 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**157 of 512 closed.**
+**157 of 515 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 320 |
+| `OPEN` | 323 |
 | `PARTIAL` | 35 |
 | `FIXED` | 154 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 320
+## OPEN — 323
 
 
-### Application state / lockbox — 65
+### Application state / lockbox — 67
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `IMPORT-022` | critical | An identifier the name-token list does not recognize is sealed as verified cross-sectional over a real leak | `REPRODUCED AT HEAD: DataFrame({'SUBJ': np.repeat(range(60),3), ...}) -> detect_repeated_subjects None…` | Filed at L11 as the residual of IMPORT-020 after clause 03. Deliberately pinned by a test that asserts the CURRENT WRONG BEHAVIOR… |
+| `STATE-101` | critical | Clause 01 contradiction: the impossibility pass runs AFTER the seal in Classic, and its row-dropping form silently shrinks the sealed test set | `pages/01_Upload_and_Audit.py:1094-1106 (the seal, drawn at target selection); pages/02_EDA.py:1758 (the…` | REPRODUCED AT HEAD, measured. 400 rows with 60 carrying an impossible glucose of -999. ensure_lockbox seals 60 rows at 15%. apply_plausibility_filter with NHANES-style bounds… |
+| `STATE-102` | critical | The lockbox status chip reports the sealed row count on the ordinary path no matter how many sealed rows still exist, because the held-out-is-not-scoreable check is scoped to cohort runs only | `utils/test_lockbox.py:548-566 (_scoreable_here and the comment naming the principle), :603 (its only call…` | REPRODUCED AT HEAD as part of the STATE-101 reproduction: after the plausibility filter removed 7 sealed rows, the sealed count is 60 and the rows actually available for… |
 | `STATE-003` | landmine | unit_harmonization_factors and plausibility_bounds are POSITIONAL lists aligned to the full numeric_features, but pages/05 passes a FILTERED numeric_features to build_preprocessing_pipeline.… | `Built against the full list: ml/pipeline.py:45 `for col in numeric_features`…` | Unchanged at HEAD. sibling-of: MINE-001 - the positional-alignment class from the state pass, and this row names the asymmetry that makes it dangerous. UnitHarmonizer fails LOUDLY… |
 | `STATE-004` | landmine | The pipelines stored in preprocessing_pipelines_by_model are FITTED ON THE FULL DATASET at build time — including the lockbox test rows — and they are what gets exported as the reproducibility… | `Fit on all rows: pages/05_Preprocess.py:945 `temp_pipeline.fit(X_sample)` and :999 `pipeline.fit(X_sample)`…` | Unchanged at HEAD, both failures. (1) The exported joblib is not the pipeline the model was trained with: pages/05 fits on all rows and stores that in… |
 | `STATE-005` | landmine | get_preprocessing_pipeline(model_key) silently falls back to an arbitrary other model's pipeline, and returns a SHARED MUTABLE OBJECT that the caller then fits in place. | `utils/session_state.py:448-454 (the fallback) and :468 `default_pipeline = pipelines_by_model.get('default')…` | Unchanged at HEAD. sibling-of: T0-STRUCT-001. Both halves are intact: (A) a model selected in Train but never configured in Preprocess still silently trains under another model's… |
@@ -404,6 +406,12 @@ Nothing is closed without a regression test named after it.
 | `T0-PAGES-001` | medium | Duplicate-row detection has no engine home — it is inline in pages/01 | `pages/01_Upload_and_Audit.py (inline)` | Extract to the engine when pages/01 unfreezes; register the capability meanwhile. |
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
+
+### Guided-door drive feedback — 1
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `GUIDED-011` | high | Guided has no seal step, so clause 01's pre-seal ordering has nothing to attach to - recorded against the clause now so the build inherits the requirement instead of rediscovering it | `docs/turbotab/data/register.json 'target-lockbox-settings' (state classic-only); the sequence in ROADMAP.md…` | Filed against the clause rather than as a new discovery - the underlying gap is already in the register and this row does not double-count it. What is new is the clause-01… |
 
 ---
 
