@@ -170,7 +170,7 @@ BLOCKER_SEVERITIES = frozenset({"blocker"})
 # CHOICE is a repair, decided; CONSEQUENCE is a blocker, resolved or attested.
 # Named here so the audit rules can speak in the design language's vocabulary
 # rather than re-listing kinds at each site.
-FACT_KINDS = frozenset({"target", "task_type", "grain"})
+FACT_KINDS = frozenset({"target", "task_type", "grain", "eligibility"})
 CHOICE_KINDS = frozenset({"repair"})
 CONSEQUENCE_KINDS = frozenset({"blocker"})
 
@@ -346,6 +346,24 @@ def plan(
             options=["No, one row per person",
                      "Yes, people repeat",
                      "I'm not sure"]))
+
+    # ── eligibility, between the grain and the seal. Constitution §01 fixes
+    #    that position and §04 says what the question may show: the target's
+    #    distribution is WITHHELD, because a criterion chosen from the histogram
+    #    is data-driven cohort selection rather than an eligibility criterion.
+    #    Asked after the grain because the two are independent and the sequence
+    #    is the constitution's, not a preference.
+    if (step == "data" and target and "state_grain" in answered
+            and "state_eligibility" not in answered):
+        from turbotab import eligibility as _elig
+        spec = _elig.question()
+        out.append(Question(
+            key=spec["key"], kind="eligibility", step="data",
+            clause=spec["clause"],
+            title=spec["title"],
+            why=spec["why"] + " " + spec["withheld"],
+            consumer=spec["consumer"],
+            options=list(spec["options"])))
 
     # ── the Features step, constitution §06 ─────────────────────────────────
     # Two questions, because the clause draws two different objects. Building

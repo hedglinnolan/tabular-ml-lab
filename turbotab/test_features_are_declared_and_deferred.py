@@ -29,7 +29,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from turbotab import engine, features as F, grain as G, selection as S   # noqa: E402
+from turbotab import (engine, eligibility as E, features as F,           # noqa: E402
+                      grain as G, selection as S)
 from turbotab.project import AnalysisProject, ProjectError               # noqa: E402
 
 
@@ -49,6 +50,7 @@ def _sealed_project(df: pd.DataFrame | None = None) -> AnalysisProject:
     p = AnalysisProject.from_dataframe(df if df is not None else study(), "t")
     p.set_target("outcome", "classification", "high", [])
     p.set_grain(G.ONE_ROW_PER_PERSON)
+    p.set_eligibility(E.EVERYONE)          # clause 01: grain -> eligibility -> SEAL
     d = engine.draw_holdout(p.df, "outcome", "classification", p.grain)
     p.seal_lockbox(d["labels"], **d["disclosure"])
     return p
@@ -414,7 +416,14 @@ def _drive_to_sealed(client) -> str:
     client.post(f"/project/{pid}/decision",
                 json={"kind": "set_grain",
                       "payload": {"answer": G.ONE_ROW_PER_PERSON}})
-    client.post(f"/project/{pid}/decision", json={"kind": "seal"})
+    # Clause 01's sequence, over HTTP: grain -> eligibility -> SEAL. "Everyone"
+    # is a recorded answer, not a skip.
+    r = client.post(f"/project/{pid}/decision",
+                    json={"kind": "set_eligibility",
+                          "payload": {"answer": E.EVERYONE}})
+    assert r.status_code == 200, r.text
+    r = client.post(f"/project/{pid}/decision", json={"kind": "seal"})
+    assert r.status_code == 200, r.text
     return pid
 
 

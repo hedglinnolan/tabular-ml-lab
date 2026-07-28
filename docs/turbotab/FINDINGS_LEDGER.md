@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**173 of 566 closed.**
+**174 of 566 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 354 |
+| `OPEN` | 353 |
 | `PARTIAL` | 39 |
-| `FIXED` | 170 |
+| `FIXED` | 171 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 354
+## OPEN — 353
 
 
 ### Application state / lockbox — 66
@@ -432,13 +432,12 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Guided-door drive feedback — 7
+### Guided-door drive feedback — 6
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `GUIDED-012` | high | Lockbox constitution clause 06 - declaration and execution are separate - has no implementation in either door: nothing applies the row-local vs stateful litmus test | `No module classifies transforms by the litmus test at L14. Classic's pages/03 applies feature engineering to…` | Filed at the start of L14 rather than after building it, deliberately: the check found the clause untracked, and the honest record of an unbuilt clause is an open finding, not a… |
 | `GUIDED-014` | high | DESIGN QUESTION for the product owner: does the exploratory labeling on an undetermined seal read as honest, or as the app giving up? | `docs/turbotab/COPY_DECK.md, 'Data & Target - what the user reads after answering' and 'what the user reads…` | NOT SELF-ASSESSED, deliberately. I wrote this copy at L15; asking the author whether their own prose reads well is the finder-judge problem in a different costume, and this… |
-| `GUIDED-020` | high | Lockbox constitution clause 04's eligibility question is asked in NEITHER door, and the first coverage matcher marked the clause covered because a test for the OTHER half of it existed | `tests/test_every_clause_is_tracked.py, the `lockbox-04` obligations; ROADMAP.md lockbox constitution 04` | THE HOMONYM COLLISION, which is the part worth keeping. Searching the ledger for `eligib` returns NINE rows and every one of them is a different sense of the word - row… |
 | `GUIDED-021` | high | Lockbox constitution clause 07 - missingness routes by dtype AND mechanism - is implemented nowhere, and the first coverage matcher passed it on a wildcard that matched a file of unrelated helper… | `tests/test_every_clause_is_tracked.py, the `lockbox-07` obligations; tests/test_missingness_encoding.py…` | THE WILDCARD IS THE FINDING. ('tests/test_missingness_encoding.py', 'test_') matched every test in the file, so the link asserted nothing beyond the file's existence - and three… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
@@ -535,7 +534,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 170
+## FIXED — 171
 
 
 ### Multi-file / JSON import — 68
@@ -670,7 +669,7 @@ Nothing is closed without a regression test named after it.
 | `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |
 
-### Guided-door drive feedback — 14
+### Guided-door drive feedback — 15
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -682,6 +681,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-009` | high | The outcome was asked a feature's question - 'is this binary?' - instead of the only one that matters for a target: which level is the event | `ml/binary_text.py positive_class_finding / apply_positive_class; turbotab/engine.py diagnose(target=...) and…` | **test:** `tests/test_the_target_is_asked_a_different_question.py::test_the_event_is_never_pre_selected` — Raised by the adjudicator from the L9b report, where it was recorded as… |
 | `GUIDED-011` | high | Guided has no seal step, so clause 01's pre-seal ordering has nothing to attach to - recorded against the clause now so the build inherits the requirement instead of rediscovering it | `docs/turbotab/data/register.json 'target-lockbox-settings' (state classic-only); the sequence in ROADMAP.md…` | **test:** `turbotab/test_grain_is_asked.py::test_the_seal_cannot_be_drawn_before_the_grain_is_answered` — FIXED at L13. The row said Guided had no seal step, so clause 01's… |
 | `GUIDED-015` | high | An undetermined seal produced no user-facing sentence at all: the basis and the exploratory flag were recorded and nothing said anything, so the Guided door rendered an undetermined seal exactly like… | `turbotab/grain.py answer_disclosure / seal_disclosure / is_exploratory_basis; turbotab/api.py _disclosures…` | **test:** `turbotab/test_grain_is_asked.py::test_an_undetermined_seal_says_so_in_words_the_user_reads` — FIXED at L15. Four seal bases now map to four different sentences, keyed… |
+| `GUIDED-020` | high | Lockbox constitution clause 04's eligibility question is asked in NEITHER door, and the first coverage matcher marked the clause covered because a test for the OTHER half of it existed | `tests/test_every_clause_is_tracked.py, the `lockbox-04` obligations; ROADMAP.md lockbox constitution 04` | **test:** `turbotab/test_eligibility_is_asked.py::test_the_question_withholds_the_distribution_and_says_why` — FIXED at L16. The question is built into the Guided door between the… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |

@@ -159,7 +159,10 @@ CLAUSES: Dict[str, Dict] = {
                 requires="Eligibility sits between grain and SEAL in the fixed "
                          "sequence, so a criterion that changes N is applied "
                          "before any row is held out.",
-                findings=["GUIDED-020"],
+                tests=[("turbotab/test_eligibility_is_asked.py",
+                        "test_the_seal_cannot_be_drawn_before_eligibility_is_settled"),
+                       ("turbotab/test_eligibility_is_asked.py",
+                        "test_eligibility_cannot_be_answered_before_the_grain")],
             ),
             "the-impossibility-pass-comes-before-the-seal": dict(
                 requires="Structural repairs and the impossibility pass run "
@@ -226,13 +229,19 @@ CLAUSES: Dict[str, Dict] = {
                          "target's distribution WITHHELD, because a criterion "
                          "chosen from the histogram is data-driven cohort "
                          "selection, which is its own publishable bias.",
-                findings=["GUIDED-020"],
+                tests=[("turbotab/test_eligibility_is_asked.py",
+                        "test_the_question_withholds_the_distribution_and_says_why"),
+                       ("turbotab/test_eligibility_is_asked.py",
+                        "test_a_categorical_column_offers_its_values_but_not_their_counts")],
             ),
             "an-exclusion-is-pre-seal-and-changes-n": dict(
                 requires="An eligibility criterion applies to the whole dataset "
                          "pre-seal and changes N, reported in participant flow "
                          "with its reason.",
-                findings=["GUIDED-020"],
+                tests=[("turbotab/test_eligibility_is_asked.py",
+                        "test_an_exclusion_records_its_participant_flow_numbers"),
+                       ("turbotab/test_eligibility_is_asked.py",
+                        "test_an_exclusion_after_the_seal_is_refused_and_says_where_to_go")],
             ),
             "a-robustness-trim-never-touches-the-sealed-rows": dict(
                 requires="A robustness trim applies to the training partition "

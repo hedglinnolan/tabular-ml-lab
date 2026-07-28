@@ -309,6 +309,11 @@ def build_members(project) -> Dict[str, bytes]:
         # the question again, and one that has NOT been sealed must not be
         # asked twice — both need the answer itself, not only its consequence.
         "grain": _json_safe(project.grain) if project.grain else None,
+        # The eligibility answer travels too, and for a sharper reason than
+        # most: a restored project that lost it would ask the question again
+        # AFTER its seal exists, which `set_eligibility` refuses — so the
+        # project would be stuck with no way to say the step had happened.
+        "eligibility": _json_safe(project.eligibility) if project.eligibility else None,
     }
     members["config.json"] = json.dumps(config, indent=2, default=str).encode("utf-8")
     saved.append("config")
@@ -458,6 +463,7 @@ def from_bytes(raw: bytes):
     project.workflow_mode = config.get("workflow_mode", "quick")
     project.pipeline_specs = dict(config.get("pipeline_specs") or {})
     project.grain = config.get("grain") or None
+    project.eligibility = config.get("eligibility") or None
     project.engineered = list(config.get("engineered") or [])
     project.deferred_transforms = list(config.get("deferred_transforms") or [])
     project.selection_spec = config.get("selection_spec") or None

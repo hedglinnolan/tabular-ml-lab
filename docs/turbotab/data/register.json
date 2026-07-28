@@ -718,5 +718,21 @@
   "classic": "pages/03 — every tab's 'What & when to use' expander carries an explainability impact rating and a when-to-SKIP",
   "state": "both",
   "reason": "BUILT as a field on every catalogue entry, so it travels with the transform to the interface instead of living in a guidance expander nobody opens. Classic's own content, made structural: the interaction `product` carries 'high', a ratio carries 'low'."
+ },
+ {
+  "id": "elig-question",
+  "step": "data",
+  "capability": "The eligibility question — is your study restricted to part of this data? — asked pre-seal in scientific terms, with the target's distribution withheld",
+  "classic": "NOT PRESENT. pages/01 and pages/02 have no eligibility step; the nearest thing is the pages/05 plausibility filter, which is a robustness trim and is post-seal, which is exactly the pair constitution 04 says are different objects.",
+  "state": "guided-only",
+  "reason": "BUILT in Guided at L16 as `turbotab/eligibility.py` plus `state_eligibility` on the Router. GUIDED-ONLY, and it is a debt owed back to Classic rather than a Guided luxury: clause 04 binds both doors, and Classic currently has no way for a user to state an exclusion criterion at all, so a restriction they apply by hand in Excel before uploading is invisible to participant flow. The register's fourth state exists for exactly this. The withheld distribution is the part Classic would have to import as well - `permitted_evidence` returns observed min/max, missing count and impossible-value flags and nothing else, because an eligibility criterion comes from the research question and not from the histogram."
+ },
+ {
+  "id": "elig-participant-flow",
+  "step": "data",
+  "capability": "An exclusion records its participant-flow numbers - N before, N excluded, N after, and the reason - as a methods sentence",
+  "classic": "NOT PRESENT. The plausibility filter drops rows and reports a count on screen; it writes no criterion, no reason, and nothing a flow diagram can consume.",
+  "state": "guided-only",
+  "reason": "BUILT in Guided at L16. TRIPOD+AI names continuous-variable restrictions as an eligibility item reported in participant flow, so the numbers are the deliverable rather than a side effect. A restriction with no stated reason is REFUSED: participant flow reports how many AND why, and a criterion that cannot be written down as a methods sentence should not be applied. The excluded rows' LABELS are deliberately not stored - participant flow needs the count, and keeping the labels would be a second copy of the row identities of people who are no longer in the study."
  }
 ]

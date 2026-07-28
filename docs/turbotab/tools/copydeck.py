@@ -97,6 +97,65 @@ HAND: List[Dict[str, Any]] = [
               "re-partition the study: rows sealed since upload would become "
               "trainable and earlier results would no longer be comparable.",
          source="turbotab/project.py", probe="already has a sealed test set"),
+    dict(step="Data & Target", state="seal · attempted before eligibility",
+         trigger="`POST /decision {kind: seal}` while `project.eligibility is None`",
+         copy="The eligibility question comes before the seal: whether your study "
+              "is restricted to part of this data decides which rows the held-out "
+              "set is drawn from. Answering 'the study is about everyone here' "
+              "settles it.",
+         source="turbotab/api.py",
+         probe="whether your study is restricted to part of this data"),
+    dict(step="Data & Target", state="eligibility · project-level refusal at the seal",
+         trigger="`AnalysisProject.seal_lockbox` with no recorded eligibility answer",
+         copy="The test set cannot be sealed before the eligibility question is "
+              "answered: whether your study is restricted to part of this data "
+              "decides which rows the held-out set is drawn from. Constitution §01 "
+              "puts eligibility between the grain and the seal, and §04 is why — an "
+              "exclusion applied afterwards would mean the held-out rows came from "
+              "people the study is not about. Answering 'the study is about everyone "
+              "here' is a recorded answer and settles this.",
+         source="turbotab/project.py",
+         probe="puts eligibility between the grain and the seal"),
+    dict(step="Data & Target", state="eligibility · asked before the grain",
+         trigger="`set_eligibility` while `project.grain is None`",
+         copy="The grain question comes before eligibility: constitution §01 fixes "
+              "the order as grain, then eligibility, then the seal.",
+         source="turbotab/project.py",
+         probe="fixes the order as grain, then eligibility, then the seal"),
+    dict(step="Data & Target", state="eligibility · restricted after the seal",
+         trigger="`set_eligibility` when `barrier_raised` is true — §04's "
+                 "*permanently off the menu*, routed rather than refused flat",
+         copy="The test set is already sealed, so an eligibility criterion cannot "
+              "be applied now: the held-out rows were drawn from a population that "
+              "included the rows you are excluding. Constitution §04 routes this "
+              "back to the pre-seal question, which needs a re-seal — and a re-seal "
+              "re-partitions the study.",
+         source="turbotab/project.py",
+         probe="routes this back to the pre-seal question"),
+    dict(step="Data & Target", state="eligibility · a restriction with no reason",
+         trigger="`set_eligibility(restricted, ...)` with an empty `reason`",
+         copy="An exclusion criterion needs its reason. Participant flow reports "
+              "how many rows were excluded AND why; a criterion with no reason "
+              "cannot become a methods sentence, and one that cannot be written "
+              "down should not be applied.",
+         source="turbotab/eligibility.py",
+         probe="cannot become a methods sentence"),
+    dict(step="Data & Target", state="eligibility · a restriction with no range",
+         trigger="`set_eligibility(restricted, ...)` with no minimum, maximum or "
+                 "values to keep",
+         copy="A restriction needs a range or a set of values to keep. Without one, "
+              "the honest answer is that the study is about everyone here, which is "
+              "its own recorded answer.",
+         source="turbotab/eligibility.py",
+         probe="which is its own recorded answer"),
+    dict(step="Data & Target", state="eligibility · the criterion empties the study",
+         trigger="the criterion keeps zero rows",
+         copy="That criterion removes every row ({n} of {n}). Either the range is "
+              "wrong or the column is not what it looks like — nothing downstream "
+              "can run on an empty study.",
+         source="turbotab/eligibility.py",
+         probe="nothing downstream can run on an empty study"),
+
     dict(step="Data & Target", state="grain · restated after the seal",
          trigger="`set_grain` when `barrier_raised` is true",
          copy="The test set is already sealed, and it was drawn against the grain "
@@ -272,7 +331,8 @@ def _esc(text: str) -> str:
 
 def _generated_sections() -> List[str]:
     from ml import router
-    from turbotab import features as F, grain as G, selection as S
+    from turbotab import (eligibility as EL, features as F, grain as G,
+                          selection as S)
 
     out: List[str] = []
 
@@ -335,6 +395,42 @@ def _generated_sections() -> List[str]:
                "attested to.*\n")
 
     # ── the seal ─────────────────────────────────────────────────────────────
+    # ── eligibility, clause §04 ──────────────────────────────────────────────
+    out.append("### Data & Target · the eligibility question\n")
+    out.append("*Trigger: the grain question has been answered and the seal has "
+               "not been drawn. Clause §01 fixes that position; the seal is "
+               "refused until this is settled, and \"everyone\" is a recorded "
+               "answer rather than a skip.*\n")
+    out.append(f"**Question.** {EL.QUESTION}\n")
+    out.append(f"**Why we ask.** {EL.WHY}\n")
+    out.append(f"**What we are NOT showing you, and why.** {EL.WITHHELD_DISCLOSURE}\n")
+    out.append(f"**Who consumes the answer.** {EL.CONSUMER}\n")
+    out.append("**Options.**\n")
+    for o in EL.OPTIONS:
+        out.append(f"- {o}")
+    out.append("")
+    out.append("**The evidence beside it, and its caption.** Bounded by §04: this "
+               "answers *is this data corrupted?* and cannot answer *where should "
+               "I cut?* — observed min/max, missing count, impossible-value flags "
+               "and, for a categorical column, the distinct values. No median, no "
+               "quantiles, no per-value counts.\n")
+    out.append(f"> {EL.EVIDENCE_CAPTION}\n")
+
+    out.append("### Data & Target · what the user reads after answering eligibility\n")
+    out.append("| Answer | Trigger | Copy |")
+    out.append("|---|---|---|")
+    out.append("| No, the study is about everyone here | `set_eligibility` records "
+               "`everyone` | " + _esc(
+                   "No eligibility restriction: all {N} rows are in the study "
+                   "population, and the held-out set is drawn from all of them.") + " |")
+    out.append("| Yes, restricted | `set_eligibility` records `restricted` with a "
+               "column, a range and a reason | " + _esc(
+                   "{k} of {N} rows were excluded before the held-out set was "
+                   "drawn: {criterion}. {reason} Those rows are gone before "
+                   "anything is held out, so the held-out set describes the "
+                   "population you studied rather than a wider one.") + " |")
+    out.append("")
+
     out.append("### Data & Target · what the user reads once the seal is drawn\n")
     out.append("*Keyed on the recorded basis, so the states constitution §03 insists "
                "on stay different sentences — an undetermined seal and a verified "

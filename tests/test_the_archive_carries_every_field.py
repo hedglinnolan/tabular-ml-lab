@@ -49,7 +49,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from turbotab import archive, engine, grain as G                     # noqa: E402
+from turbotab import archive, eligibility as E, engine, grain as G   # noqa: E402
 from turbotab.project import AnalysisProject                         # noqa: E402
 
 
@@ -62,7 +62,8 @@ from turbotab.project import AnalysisProject                         # noqa: E40
 # read back, because a few land under a different name or shape.
 PERSISTED = {
     "id", "name", "created_at", "target", "task_type", "task_confidence",
-    "task_overridden", "workflow_mode", "pipeline_specs", "grain", "engineered",
+    "task_overridden", "workflow_mode", "pipeline_specs", "grain",
+    "eligibility", "engineered",
     "deferred_transforms", "selection_spec", "features_settled",
     "stale_downstream", "lockbox", "cohort", "decisions",
 }
@@ -156,6 +157,8 @@ def _fully_populated() -> AnalysisProject:
     # Grain and the seal, with a grouped basis so `group_col`, `n_groups`,
     # `n_test_groups` and `group_noun` are all non-null — the L13 omission.
     p.set_grain(G.PEOPLE_REPEAT, "SUBJ")
+    p.set_eligibility(E.RESTRICTED, column="age", minimum=25,
+                      reason="The study is about adults over 25.")
     drawn = engine.draw_holdout(p.df, "outcome", "classification", p.grain)
     p.seal_lockbox(drawn["labels"], **drawn["disclosure"])
 

@@ -23,7 +23,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from turbotab import engine, grain as G                          # noqa: E402
+from turbotab import eligibility as E, engine, grain as G       # noqa: E402
 from turbotab.project import (                                    # noqa: E402
     AnalysisProject, GrainContradiction, ProjectError,
 )
@@ -77,6 +77,7 @@ def test_the_grain_cannot_be_restated_after_the_seal_is_drawn():
     afterwards would describe a split that was not drawn that way."""
     p = _project(cross_sectional())
     p.set_grain(G.ONE_ROW_PER_PERSON)
+    p.set_eligibility(E.EVERYONE)
     d = engine.draw_holdout(p.df, "outcome", "classification", p.grain)
     p.seal_lockbox(d["labels"], **d["disclosure"])
     with pytest.raises(ProjectError, match="already sealed"):
@@ -171,6 +172,7 @@ def test_a_stratum_is_not_mistaken_for_a_roster():
 def test_a_stated_repeat_seals_grouped_and_leaks_nobody():
     p = _project(longitudinal())
     p.set_grain(G.PEOPLE_REPEAT, "SUBJ")
+    p.set_eligibility(E.EVERYONE)
     d = engine.draw_holdout(p.df, "outcome", "classification", p.grain)
     p.seal_lockbox(d["labels"], **d["disclosure"])
 
@@ -190,6 +192,7 @@ def test_not_sure_seals_anyway_and_says_undetermined():
     block. A user who does not know their data's shape gets honest numbers."""
     p = _project(longitudinal())
     p.set_grain(G.NOT_SURE)
+    p.set_eligibility(E.EVERYONE)
     d = engine.draw_holdout(p.df, "outcome", "classification", p.grain)
     p.seal_lockbox(d["labels"], **d["disclosure"])
 
@@ -220,6 +223,7 @@ def test_the_seal_reports_the_row_share_it_actually_held_out():
     df = pd.DataFrame(rows, columns=["SUBJ", "age", "day", "outcome"])
     p = _project(df)
     p.set_grain(G.PEOPLE_REPEAT, "SUBJ")
+    p.set_eligibility(E.EVERYONE)
     d = engine.draw_holdout(p.df, "outcome", "classification", p.grain)
     p.seal_lockbox(d["labels"], **d["disclosure"])
 
@@ -305,6 +309,18 @@ def test_a_driver_reaches_a_sealed_project_without_leaving_the_guided_door(clien
     iv = client.get(f"/project/{pid}/interview?step=data").json()
     assert "state_grain" not in [q["key"] for q in iv["questions"]]
 
+    # and eligibility is now what the interview asks — clause §01's sequence
+    # made visible, not just enforced: the question appears only once the grain
+    # is settled, and the seal is refused until it is answered.
+    eligibility_q = next(q for q in iv["questions"] if q["key"] == "state_eligibility")
+    assert eligibility_q["status"] == "asked"
+    too_soon = client.post(f"/project/{pid}/decision", json={"kind": "seal"})
+    assert too_soon.status_code == 400
+    assert "eligibility question comes before the seal" in too_soon.json()["detail"]
+
+    client.post(f"/project/{pid}/decision",
+                json={"kind": "set_eligibility", "payload": {"answer": E.EVERYONE}})
+
     # and the seal is drawable, states its basis, and leaks nobody
     sealed = client.post(f"/project/{pid}/decision", json={"kind": "seal"})
     assert sealed.status_code == 200, sealed.text
@@ -334,6 +350,8 @@ def test_a_driver_who_does_not_know_still_finishes_the_step(client):
     r = client.post(f"/project/{pid}/decision",
                     json={"kind": "set_grain", "payload": {"answer": G.NOT_SURE}})
     assert r.status_code == 200, r.text
+    client.post(f"/project/{pid}/decision",
+                json={"kind": "set_eligibility", "payload": {"answer": E.EVERYONE}})
     sealed = client.post(f"/project/{pid}/decision", json={"kind": "seal"}).json()
     assert sealed["lockbox"]["seal_basis"] == SEAL_UNDETERMINED
     assert sealed["lockbox"]["exploratory"] is True
@@ -348,6 +366,7 @@ def test_the_grain_and_the_basis_survive_the_save_file():
     from turbotab import archive
     p = _project(longitudinal())
     p.set_grain(G.PEOPLE_REPEAT, "SUBJ")
+    p.set_eligibility(E.EVERYONE)
     d = engine.draw_holdout(p.df, "outcome", "classification", p.grain)
     p.seal_lockbox(d["labels"], **d["disclosure"])
 
@@ -363,6 +382,7 @@ def test_an_undetermined_seal_still_says_undetermined_after_a_round_trip():
     from turbotab import archive
     p = _project(longitudinal())
     p.set_grain(G.NOT_SURE)
+    p.set_eligibility(E.EVERYONE)
     d = engine.draw_holdout(p.df, "outcome", "classification", p.grain)
     p.seal_lockbox(d["labels"], **d["disclosure"])
 
@@ -396,6 +416,8 @@ def test_an_undetermined_seal_says_so_in_words_the_user_reads(client):
                         json={"kind": "set_grain", "payload": {"answer": answer}})
         assert r.status_code == 200, r.text
         answered = r.json()["disclosures"]
+        client.post(f"/project/{pid}/decision",
+                    json={"kind": "set_eligibility", "payload": {"answer": E.EVERYONE}})
         s = client.post(f"/project/{pid}/decision", json={"kind": "seal"})
         assert s.status_code == 200, s.text
         return answered, s.json()["disclosures"]

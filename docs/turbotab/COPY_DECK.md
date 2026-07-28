@@ -62,6 +62,34 @@ The second option opens a follow-up: *which column identifies the person?* — p
 
 *The absent-column case carries only the `resolve` exit, and that is correct rather than a dead end: a column that does not exist cannot be attested to.*
 
+### Data & Target · the eligibility question
+
+*Trigger: the grain question has been answered and the seal has not been drawn. Clause §01 fixes that position; the seal is refused until this is settled, and "everyone" is a recorded answer rather than a skip.*
+
+**Question.** Is your study restricted to part of this data?
+
+**Why we ask.** If your research question only applies to certain participants — an age range, a range of outcome values, one site — say so now. It becomes an exclusion criterion in your methods, and those rows are removed before any held-out set is drawn.
+
+**What we are NOT showing you, and why.** We are not showing you the outcome's distribution here. An exclusion that comes from your research question is reportable; one that comes from looking at the data is a different thing, and it belongs later.
+
+**Who consumes the answer.** The exclusion runs before the lockbox draws anything, so the held-out set is drawn from the population you actually studied rather than from a wider one. The count it removes is recorded as a participant-flow line with its reason, which is what a CONSORT or TRIPOD flow diagram needs. Answering after the seal is drawn is not possible — it would mean the held-out rows were chosen from people the study is not about.
+
+**Options.**
+
+- No, the study is about everyone here
+- Yes → which column, and what range?
+
+**The evidence beside it, and its caption.** Bounded by §04: this answers *is this data corrupted?* and cannot answer *where should I cut?* — observed min/max, missing count, impossible-value flags and, for a categorical column, the distinct values. No median, no quantiles, no per-value counts.
+
+> Observed range and impossible values only — enough to tell you whether this column is corrupted, not enough to pick a cut-point from.
+
+### Data & Target · what the user reads after answering eligibility
+
+| Answer | Trigger | Copy |
+|---|---|---|
+| No, the study is about everyone here | `set_eligibility` records `everyone` | No eligibility restriction: all {N} rows are in the study population, and the held-out set is drawn from all of them. |
+| Yes, restricted | `set_eligibility` records `restricted` with a column, a range and a reason | {k} of {N} rows were excluded before the held-out set was drawn: {criterion}. {reason} Those rows are gone before anything is held out, so the held-out set describes the population you studied rather than a wider one. |
+
 ### Data & Target · what the user reads once the seal is drawn
 
 *Keyed on the recorded basis, so the states constitution §03 insists on stay different sentences — an undetermined seal and a verified cross-sectional one cannot render alike, because they are not the same string.*
@@ -152,6 +180,13 @@ The second option opens a follow-up: *which column identifies the person?* — p
 | seal · attempted with no target | `POST /decision {kind: seal}` while `project.target is None` | The held-out set is drawn against the outcome, so the target comes first. | `turbotab/api.py` |
 | seal · project-level refusal | `AnalysisProject.seal_lockbox` with no recorded grain | The test set cannot be sealed before the grain question is answered: whether one person can appear in more than one row decides how the held-out rows are chosen. Constitution §01 fixes that order, and §02 is why. | `turbotab/project.py` |
 | seal · a second seal attempted | `seal_lockbox` when `barrier_raised` is already true | This project already has a sealed test set. Redrawing it would re-partition the study: rows sealed since upload would become trainable and earlier results would no longer be comparable. | `turbotab/project.py` |
+| seal · attempted before eligibility | `POST /decision {kind: seal}` while `project.eligibility is None` | The eligibility question comes before the seal: whether your study is restricted to part of this data decides which rows the held-out set is drawn from. Answering 'the study is about everyone here' settles it. | `turbotab/api.py` |
+| eligibility · project-level refusal at the seal | `AnalysisProject.seal_lockbox` with no recorded eligibility answer | The test set cannot be sealed before the eligibility question is answered: whether your study is restricted to part of this data decides which rows the held-out set is drawn from. Constitution §01 puts eligibility between the grain and the seal, and §04 is why — an exclusion applied afterwards would mean the held-out rows came from people the study is not about. Answering 'the study is about everyone here' is a recorded answer and settles this. | `turbotab/project.py` |
+| eligibility · asked before the grain | `set_eligibility` while `project.grain is None` | The grain question comes before eligibility: constitution §01 fixes the order as grain, then eligibility, then the seal. | `turbotab/project.py` |
+| eligibility · restricted after the seal | `set_eligibility` when `barrier_raised` is true — §04's *permanently off the menu*, routed rather than refused flat | The test set is already sealed, so an eligibility criterion cannot be applied now: the held-out rows were drawn from a population that included the rows you are excluding. Constitution §04 routes this back to the pre-seal question, which needs a re-seal — and a re-seal re-partitions the study. | `turbotab/project.py` |
+| eligibility · a restriction with no reason | `set_eligibility(restricted, ...)` with an empty `reason` | An exclusion criterion needs its reason. Participant flow reports how many rows were excluded AND why; a criterion with no reason cannot become a methods sentence, and one that cannot be written down should not be applied. | `turbotab/eligibility.py` |
+| eligibility · a restriction with no range | `set_eligibility(restricted, ...)` with no minimum, maximum or values to keep | A restriction needs a range or a set of values to keep. Without one, the honest answer is that the study is about everyone here, which is its own recorded answer. | `turbotab/eligibility.py` |
+| eligibility · the criterion empties the study | the criterion keeps zero rows | That criterion removes every row ({n} of {n}). Either the range is wrong or the column is not what it looks like — nothing downstream can run on an empty study. | `turbotab/eligibility.py` |
 | grain · restated after the seal | `set_grain` when `barrier_raised` is true | The test set is already sealed, and it was drawn against the grain answer recorded at the time. Changing that answer now would describe a split that was not drawn this way. | `turbotab/project.py` |
 | seal · too few rows with an outcome | fewer than 10 rows have a non-null target | Only {n} rows have a value for '{target}', which is too few to hold any out and still have a study left. | `turbotab/engine.py` |
 | target · the event level is not defaulted | applying `set_positive_class` with no chosen level | Setting the event needs the level being predicted. There is no default: whether the event is (say) death or survival is the research question, not something the file can say. | `turbotab/api.py` |

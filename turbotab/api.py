@@ -96,7 +96,8 @@ def _disclosures(project: AnalysisProject) -> Dict[str, Any]:
     from what the record says, and the disclosure is the record's claim about
     itself.
     """
-    out: Dict[str, Any] = {"grain": None, "seal": None, "exploratory": False}
+    out: Dict[str, Any] = {"grain": None, "eligibility": None, "seal": None,
+                           "exploratory": False}
     if project.grain:
         out["grain"] = grain_mod.answer_disclosure(
             project.grain["answer"], project.grain.get("group_col"))
@@ -105,6 +106,9 @@ def _disclosures(project: AnalysisProject) -> Dict[str, Any]:
                 "You confirmed this answer against the shape of the data. The "
                 "disagreement is recorded and carries into the methods section "
                 "as a stated limitation.")
+    if project.eligibility:
+        from turbotab import eligibility as _elig
+        out["eligibility"] = _elig.disclosure(project.eligibility)
     if project.lockbox:
         out["seal"] = grain_mod.seal_disclosure(project.lockbox)
         out["exploratory"] = grain_mod.is_exploratory_basis(
@@ -266,6 +270,31 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
             raise HTTPException(400, str(exc)) from exc
         return _payload(project)
 
+    if decision.kind == "set_eligibility":
+        try:
+            project.set_eligibility(
+                str(decision.payload.get("answer") or decision.subject),
+                column=decision.payload.get("column"),
+                minimum=decision.payload.get("minimum"),
+                maximum=decision.payload.get("maximum"),
+                keep_values=decision.payload.get("keep_values"),
+                reason=str(decision.payload.get("reason") or ""))
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        _recompute(project)
+        return _payload(project)
+
+    if decision.kind == "eligibility_evidence":
+        # A GET-shaped read served through the decision endpoint so it stays
+        # beside the question it belongs to. Bounded by clause §04: this answers
+        # "is this data corrupted?" and cannot answer "where should I cut?".
+        from turbotab import eligibility as _elig
+        try:
+            return _elig.permitted_evidence(
+                project.df, str(decision.payload.get("column") or decision.subject))
+        except _elig.EligibilityRefusal as exc:
+            raise HTTPException(400, str(exc)) from exc
+
     if decision.kind == "seal":
         if project.target is None:
             raise HTTPException(400, "The held-out set is drawn against the "
@@ -275,6 +304,12 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
                 400, "The grain question comes before the seal: whether one "
                      "person can appear in more than one row decides how the "
                      "held-out rows are chosen.")
+        if project.eligibility is None:
+            raise HTTPException(
+                400, "The eligibility question comes before the seal: whether "
+                     "your study is restricted to part of this data decides "
+                     "which rows the held-out set is drawn from. Answering "
+                     "'the study is about everyone here' settles it.")
         try:
             drawn = engine.draw_holdout(
                 project.df, project.target, project.task_type or "regression",
@@ -784,6 +819,8 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
             answered.append("choose_target")
         elif d.kind == "set_grain":
             answered.append("state_grain")
+        elif d.kind == "set_eligibility":
+            answered.append("state_eligibility")
         elif d.kind == "settle_features":
             answered.append("choose_features")
         elif d.kind == "set_task_type":

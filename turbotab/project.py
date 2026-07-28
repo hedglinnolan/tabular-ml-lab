@@ -159,6 +159,13 @@ class AnalysisProject:
     # is the ordering clause §01 fixes, expressed as a precondition rather than
     # as a comment somebody has to remember.
     grain: Optional[Dict[str, Any]] = None
+    # The answer to "is your study restricted to part of this data?", recorded
+    # with its participant-flow numbers (constitution §04). `None` means not yet
+    # asked, and the seal cannot be drawn on `None` — clause §01 puts
+    # eligibility between grain and SEAL, and an exclusion applied afterwards
+    # would mean the held-out rows were chosen from people the study is not
+    # about. "Everyone" is a recorded answer, never an absence.
+    eligibility: Optional[Dict[str, Any]] = None
     # Engineered columns and their receipts, in creation order. Row-local
     # transforms only: a stateful one never reaches the working table
     # (constitution §06), so it lives in `deferred_transforms` instead.
@@ -537,6 +544,66 @@ class AnalysisProject:
                   f"the answer recorded was: {said}."),
             payload=dict(self.grain))
 
+    def set_eligibility(self, answer: str, column: Optional[str] = None,
+                        minimum: Optional[float] = None,
+                        maximum: Optional[float] = None,
+                        keep_values: Optional[Sequence[Any]] = None,
+                        reason: str = "") -> Decision:
+        """Record the eligibility answer and APPLY it. Pre-seal, always.
+
+        Constitution §04: an eligibility criterion applies to the whole dataset
+        pre-seal and changes N. So this is not a view or a mask — the rows leave
+        the table, before anything is held out, and the counts they leave behind
+        are participant flow.
+
+        Refused after the seal, and the refusal is the clause: an exclusion
+        applied afterwards would mean the held-out rows were chosen from people
+        the study is not about, and the test set would then be obeying a
+        criterion it was not drawn under. §04 routes that user back here, which
+        requires a re-seal and is its own hard decision.
+        """
+        from turbotab import eligibility as _elig
+
+        if answer not in _elig.ANSWERS:
+            raise ProjectError(f"{answer!r} is not one of {list(_elig.ANSWERS)}.")
+        if self.grain is None:
+            raise ProjectError(
+                "The grain question comes before eligibility: constitution §01 "
+                "fixes the order as grain, then eligibility, then the seal.")
+        if self.barrier_raised:
+            raise ProjectError(
+                "The test set is already sealed, so an eligibility criterion "
+                "cannot be applied now: the held-out rows were drawn from a "
+                "population that included the rows you are excluding. "
+                "Constitution §04 routes this back to the pre-seal question, "
+                "which needs a re-seal — and a re-seal re-partitions the study.")
+
+        try:
+            if answer == _elig.EVERYONE:
+                record = _elig.everyone(self.df)
+            else:
+                record = _elig.build_criterion(
+                    self.df, column or "", minimum=minimum, maximum=maximum,
+                    keep_values=keep_values, reason=reason)
+        except _elig.EligibilityRefusal as exc:
+            raise ProjectError(str(exc)) from exc
+
+        if record["n_excluded"]:
+            self._history.append(("eligibility", self.df))
+            self.df = self.df.loc[record["labels"]]
+            self.findings_stale = True
+            self._mark_stale(
+                f"{record['n_excluded']} row(s) were excluded by an eligibility "
+                f"criterion on `{record['column']}`")
+
+        # The labels are participant flow, not a stored mask: keeping them would
+        # be a second copy of the row identities of people who are no longer in
+        # the study. The counts are what participant flow reports.
+        self.eligibility = {k: v for k, v in record.items() if k != "labels"}
+        return self.record(
+            kind="set_eligibility", subject=record.get("column") or "",
+            text=record["sentence"], payload=dict(self.eligibility))
+
     def seal_lockbox(self, labels: Sequence[Any], **disclosure: Any) -> Decision:
         """Raise the barrier: freeze the holdout and record having done so.
 
@@ -555,6 +622,16 @@ class AnalysisProject:
                 "answered: whether one person can appear in more than one row "
                 "decides how the held-out rows are chosen. Constitution §01 "
                 "fixes that order, and §02 is why.")
+        if self.eligibility is None:
+            raise ProjectError(
+                "The test set cannot be sealed before the eligibility question "
+                "is answered: whether your study is restricted to part of this "
+                "data decides which rows the held-out set is drawn from. "
+                "Constitution §01 puts eligibility between the grain and the "
+                "seal, and §04 is why — an exclusion applied afterwards would "
+                "mean the held-out rows came from people the study is not "
+                "about. Answering 'the study is about everyone here' is a "
+                "recorded answer and settles this.")
         if self.barrier_raised:
             raise ProjectError(
                 "This project already has a sealed test set. Redrawing it would "
@@ -799,6 +876,7 @@ class AnalysisProject:
             "features_settled": self.features_settled,
             "stale_downstream": self.stale_downstream,
             "grain": self.grain,
+            "eligibility": self.eligibility,
             "lockbox": self.lockbox,
             "barrier_raised": self.barrier_raised,
             "cohort": self.cohort,
