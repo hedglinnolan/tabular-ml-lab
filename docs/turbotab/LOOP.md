@@ -203,11 +203,28 @@ Append this to any unsupervised prompt.
 > **Hard rules.** Stay on branch `TurboTab`. Never push to `main`, never force-push, never open a
 > pull request. `ml/import_doctor.py`, `ml/join_doctor.py`, `utils/combine*.py` and
 > `pages/01_Upload_and_Audit.py` are **frozen — see `TRANSITION_PLAN.md` §05 for the one statement
-> of what that permits and the gates that lift it.** Never edit `FINDINGS_LEDGER.md` by hand; it is generated. Never mark
-> a finding `FIXED` without a regression test that would catch its return. Run
-> `python docs/turbotab/tools/ledger.py check` before every commit and stop if it fails. Commit
-> after every batch so nothing is lost. If you are blocked or something looks structurally wrong,
-> stop and write what you found to `docs/turbotab/BLOCKED.md` rather than guessing.
+> of what that permits and the gates that lift it.** Never edit `FINDINGS_LEDGER.md` by hand; it is
+> generated. Never mark a finding `FIXED` without a regression test **verified to fail when the fix
+> is reverted** — see `FEATURE_PARITY.md`, "the revert probe". **First command in a fresh clone:**
+> `git config core.hooksPath .githooks`. Commit after every batch so nothing is lost. If you are
+> blocked or something looks structurally wrong, stop and write what you found to
+> `docs/turbotab/BLOCKED.md` rather than guessing.
+
+**The three gates are a hook, not an instruction.** `.githooks/pre-commit` runs `ledger.py check`,
+`register.py check` and `tests/test_american_spelling.py`, and refuses the commit on any failure.
+
+This replaced the line that used to sit in the guardrails above — *"run `ledger.py check` before
+every commit and stop if it fails"* — which enforced nothing. Commit `8127101` went out with the
+spelling test red because the agent ran all three gates, saw the third fail, and committed anyway:
+the gate was chained to the commit with a newline instead of `&&`, so a non-zero exit did not stop
+the sequence. The instruction was followed and the gate still did not hold. **An instruction a tired
+agent can skip by punctuation is not a gate**, which is this project's own rule — *make silence a
+test failure* — applied to its own process.
+
+`core.hooksPath` is local config and git does not version `.git/hooks`, so the hook file is
+committed under `.githooks/` and each clone points at it once. That one command is the only part
+still carried by discipline, so it is the first line of the guardrails rather than a footnote.
+Bypass with `git commit --no-verify`, and say why in the message.
 
 The freeze exists because the multi-file import path had an untriaged defect tail. **Its results
 were never lost** — they are in `docs/audit/`, committed, and were there the whole time this file

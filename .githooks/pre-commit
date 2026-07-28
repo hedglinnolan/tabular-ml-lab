@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# The three gates, enforced structurally rather than remembered.
+#
+# LOOP.md said "run these before every commit and stop if it fails". That
+# enforces nothing: commit 8127101 went out with the spelling test RED because
+# the gate was chained to the commit with a newline instead of `&&`, so a
+# non-zero exit did not stop the sequence. An instruction a tired agent can
+# skip by punctuation is not a gate.
+#
+# This project's own rule is: make silence a test failure. This is that rule
+# applied to its own process.
+#
+# Enable in a fresh clone (git does not version .git/hooks, so this file lives
+# in .githooks/ and is pointed at):
+#
+#     git config core.hooksPath .githooks
+#
+# Bypass is `git commit --no-verify`, and it should appear in a commit message
+# with a reason when it is used.
+set -uo pipefail
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+# Nothing here touches application behavior, so a commit that changes neither
+# the ledger data nor any tracked markdown still pays ~2s. That is cheap enough
+# to be unconditional, and conditional gates are how gates get skipped.
+FAILED=0
+run() {
+    local label="$1"; shift
+    local out
+    if ! out=$("$@" 2>&1); then
+        printf '\n  ✗ %s\n' "$label"
+        printf '%s\n' "$out" | tail -25 | sed 's/^/      /'
+        FAILED=1
+    else
+        printf '  ✓ %s\n' "$label"
+    fi
+}
+
+printf 'pre-commit gates:\n'
+run "ledger schema"      python docs/turbotab/tools/ledger.py check
+run "register schema"    python docs/turbotab/tools/register.py check
+run "American spelling"  python -m pytest tests/test_american_spelling.py -q --no-header
+
+if [ "$FAILED" -ne 0 ]; then
+    cat <<'EOF'
+
+COMMIT REFUSED — a gate is red.
+
+  ledger/register `check` regenerate nothing; if the markdown is stale run
+      python docs/turbotab/tools/ledger.py regen
+  the spelling test governs GENERATED markdown, so a British spelling quoted
+  from docs/audit/ must be paraphrased in findings.json rather than pasted
+  (docs/audit/ is the exempt path precisely so a quoted record stays quotable).
+
+  To commit anyway: git commit --no-verify — and say why in the message.
+EOF
+    exit 1
+fi
+exit 0

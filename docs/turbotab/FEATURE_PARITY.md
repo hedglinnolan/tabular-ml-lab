@@ -248,6 +248,73 @@ Three consequences worth stating, because they are what the prefix buys:
 `grep -r "def test_KNOWN_GAP_" tests/` is then the list of everything the suite knows is wrong —
 a second, executable index of the ledger's open criticals.
 
+**Corollary — the revert probe. A finding closes only against a test verified to fail when the fix
+is reverted.** Topical proximity is not coverage.
+
+`tools/ledger.py check` enforces that a `FIXED` row *names* a test. It cannot check that the test is
+load-bearing, and that gap is where a false close lives. `IMPORT-108`/`118`/`124`/`128`/`148` were
+held `OPEN` for "no named guard" while `tests/test_key_sampling_is_symmetric.py` sat in the tree
+covering the same function — three readers took the file's existence as coverage. It was not: the
+file tests three defects found *in* the fix, and reverting the defect the five findings actually
+name left all seven of its tests green.
+
+Two fixture coincidences hid it, and both are ordinary:
+
+- **The fixtures agreed on row order**, so a positional truncation kept the same region of the key
+  space on both sides, and `.sample(random_state=42)` on two equal-length columns drew the identical
+  subset. Neither is a property of the code.
+- **The repair was not where the reader assumed.** The rescale lives in `find_key_candidates`, not
+  in `_key_tokens`, so it survived the revert and divided the answer back toward the truth.
+
+So the procedure, and it is cheap — under a minute per finding:
+
+1. `exec()` the module from source with the fix textually reverted, into a throwaway module name.
+   (Register it in `sys.modules` first, or `@dataclass` cannot resolve its own module.)
+2. Run the named test against both. It counts as a guard only if it is **green at `HEAD` and red
+   under the revert**.
+3. If nothing goes red, the finding is `OPEN` and the test that would catch it is the work.
+
+**Write the revert down in the row.** Three findings this loop had a guard somewhere other than the
+obvious line, and a reader tracing the row to the obvious line would have found code that looks
+unfixed: `IMPORT-232`'s right-only IDs survive via the `_ORIGINAL_KEY` coalesce, *not* the
+`drop(columns=[right_key])` the finding names; `IMPORT-244` needs **both** the restore and the
+numeric re-coercion, so reverting either half alone reintroduces it; `IMPORT-252`'s
+`if self.index_like:` appears **twice**, once in `score` and once in `confidence`, so a single-shot
+replacement patches the wrong one and the revert looks harmless while the test stays green.
+
+**Corollary — environment-dependent non-reproduction is not a fix.** If a finding does not reproduce
+under a dependency version the repo does not pin to, it stays `OPEN` saying so.
+
+`IMPORT-265` is the case: `[1, '1']` column labels no longer crash `execute_stack`, and there is
+nothing to close it with — `execute_stack` contains no duplicate-label handling at all, so there is
+no change to revert, and the audit that recorded the crash ran on pandas 3.0.3 while
+`requirements.txt` caps this repo below 3 for `T0-LIVE-004`. The cap is a ceiling this project
+intends to lift.
+
+This is `MINE-001`'s argument moved one layer out. There, a defect was unreachable because
+`reconcile` raised first, and the row was correctly kept open — the accidental guard later moved and
+the defect returned. A library version is the same kind of guard: incidental, external, and on a
+schedule somebody else controls. **Record the version the measurement was taken on**, or the next
+reader cannot tell a fix from a coincidence.
+
+**Corollary — a helper that enforces an invariant needs a test asserting its call sites.**
+Principle-locality says state a rule once. Its unstated half is that stating it once is only safe
+when *using* it everywhere is checkable.
+
+`_scoreable_here` in `utils/test_lockbox.py` is the fifth instance. It exists because held-out is
+not the same as scoreable, its own comment says so in exactly the right words — *"reporting the
+sealed count is a number a researcher would write down and be wrong about"* — and it is called at
+**one** site, inside the cohort-run branch. The ordinary path prints the sealed count unconditionally
+(`STATE-102`). The principle is stated correctly and applied in one place out of two, and nothing
+fails when the second place forgets.
+
+The family, all five of them silence rather than failure: principle-locality, expiring guarantees,
+fallback-path survival, the ephemeral pointer, and now this. The fix shape is the same every time —
+**make the locality executable.** A test that enumerates the sites which must call the helper, and
+fails when a new one does not, converts "remember to call it" into a red line. Where enumeration is
+impractical, invert the dependency so the invariant cannot be bypassed: the call site asks the
+helper for the number rather than formatting one itself.
+
 ### Two specific things to watch
 
 - **The pedagogy layer** — `utils/theory_anchors.py` (532 loc) and `utils/theory_demos.py`
