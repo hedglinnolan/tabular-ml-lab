@@ -1,14 +1,25 @@
 """
 Clinical unit inference and conversion utilities.
 """
+import re
+
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Literal
 
 
-# Clinical variable patterns and unit hypotheses
+# Clinical variable patterns and unit hypotheses.
+#
+# `aliases` is how a column earns this variable's unit hypotheses. Matching
+# is EXACT against the key or one of these, after case and separators are
+# stripped — never by substring, which let `weight_change` match `weight`
+# and be silently rescaled inside the fitted pipeline (T0-BUILD-004). The
+# list is the same vocabulary `ml/physiology_reference.py` publishes, and a
+# test asserts the two registries agree, because two name tables for eleven
+# variables will otherwise drift.
 CLINICAL_VARIABLES = {
     'weight': {
+        'aliases': ['body_weight', 'wt', 'weight_kg', 'bmxwt'],
         'canonical_unit': 'kg',
         'hypotheses': [
             ('kg', 1.0, (30, 200)),  # (unit_name, conversion_factor, plausible_range_in_canonical)
@@ -16,6 +27,7 @@ CLINICAL_VARIABLES = {
         ]
     },
     'height': {
+        'aliases': ['standing_height', 'ht', 'height_cm', 'bmxht'],
         'canonical_unit': 'cm',
         'hypotheses': [
             ('cm', 1.0, (100, 220)),
@@ -24,6 +36,7 @@ CLINICAL_VARIABLES = {
         ]
     },
     'waist': {
+        'aliases': ['waist_circumference', 'waist_cm', 'bmxwaist'],
         'canonical_unit': 'cm',
         'hypotheses': [
             ('cm', 1.0, (50, 150)),
@@ -31,6 +44,7 @@ CLINICAL_VARIABLES = {
         ]
     },
     'glucose': {
+        'aliases': ['blood_glucose', 'serum_glucose', 'plasma_glucose', 'fasting_glucose', 'glucose_mgdl', 'glu', 'lbxglu'],
         'canonical_unit': 'mg/dL',
         'hypotheses': [
             ('mg/dL', 1.0, (70, 125)),  # Normal: 70-99, Prediabetes: 100-125 (fasting plasma glucose)
@@ -51,6 +65,7 @@ CLINICAL_VARIABLES = {
         'fasting_note': True
     },
     'cholesterol': {
+        'aliases': ['total_cholesterol', 'chol', 'tc', 'lbxtc'],
         'canonical_unit': 'mmol/L',
         'hypotheses': [
             ('mmol/L', 1.0, (2.0, 10.0)),
@@ -58,6 +73,7 @@ CLINICAL_VARIABLES = {
         ]
     },
     'triglyceride': {
+        'aliases': ['triglycerides', 'trig', 'tg', 'lbxtr'],
         'canonical_unit': 'mg/dL',
         'hypotheses': [
             ('mg/dL', 1.0, (50, 499)),  # Normal: <150, Borderline: 150-199, High: 200-499, Very high: >=500
@@ -80,30 +96,35 @@ CLINICAL_VARIABLES = {
         'fasting_note': True
     },
     'bp_sys': {
+        'aliases': ['systolic', 'systolic_bp', 'sbp', 'bp_systolic', 'bpxsy1'],
         'canonical_unit': 'mmHg',
         'hypotheses': [
             ('mmHg', 1.0, (80, 200))
         ]
     },
     'bp_di': {
+        'aliases': ['diastolic', 'diastolic_bp', 'dbp', 'bp_diastolic', 'bpxdi1'],
         'canonical_unit': 'mmHg',
         'hypotheses': [
             ('mmHg', 1.0, (40, 120))
         ]
     },
     'bmi': {
+        'aliases': ['body_mass_index', 'bmxbmi'],
         'canonical_unit': 'kg/m²',
         'hypotheses': [
             ('kg/m²', 1.0, (15, 50))
         ]
     },
     'hba1c': {
+        'aliases': ['a1c', 'hemoglobin_a1c', 'glycated_hemoglobin', 'hgba1c', 'lbxgh'],
         'canonical_unit': '%',
         'hypotheses': [
             ('%', 1.0, (4.0, 15.0))
         ]
     },
     'kcal': {
+        'aliases': ['energy', 'calories', 'kilocalories', 'energy_kcal', 'dr1tkcal'],
         'canonical_unit': 'kcal',
         'hypotheses': [
             ('kcal', 1.0, (500, 5000)),
@@ -111,6 +132,42 @@ CLINICAL_VARIABLES = {
         ]
     }
 }
+
+
+def _normalize_name(name: str) -> str:
+    """A column or alias reduced to comparable form: lowercase, no separators."""
+    return re.sub(r"[^0-9a-z]+", "", str(name).lower())
+
+
+def match_clinical_variable(col_name: str) -> Optional[str]:
+    """The clinical variable this column *is*, or None.
+
+    **Exact key or declared alias. Nothing else.**
+
+    This used to match by substring — `if var_name in col_lower` — and unlike
+    the same defect in `ml/physiology_reference.py`, which merely flagged
+    values falsely, this one *converts them*. `ml/pipeline.py:60` feeds the
+    returned `conversion_factor` to `UnitHarmonizer`, which multiplies the
+    column by it inside the fitted pipeline. So `weight_change` matched
+    `weight`, came back as kg at **high** confidence, and a column already in
+    kilograms was silently rescaled — a wrong number with no error, in the data
+    that gets modeled.
+
+    An unrecognized name gets **no unit and no conversion**. Silence is a gap;
+    an inherited conversion is a corrupted column.
+
+    Aliases are declared per variable in `CLINICAL_VARIABLES` and are the same
+    vocabulary `ml/physiology_reference.py` publishes, because two registries
+    naming the same eleven variables must not drift apart (`T0-BUILD-004`).
+    """
+    target = _normalize_name(col_name)
+    if not target:
+        return None
+    for var_name, var_config in CLINICAL_VARIABLES.items():
+        names = [var_name] + list(var_config.get("aliases") or [])
+        if any(_normalize_name(n) == target for n in names):
+            return var_name
+    return None
 
 
 def infer_unit(
@@ -132,15 +189,8 @@ def infer_unit(
             - explanation: str
             - conversion_factor: float or None
     """
-    col_lower = col_name.lower()
-    
-    # Find matching clinical variable
-    matched_var = None
-    for var_name, var_config in CLINICAL_VARIABLES.items():
-        if var_name in col_lower:
-            matched_var = var_name
-            break
-    
+    matched_var = match_clinical_variable(col_name)
+
     if not matched_var:
         return {
             'inferred_unit': None,

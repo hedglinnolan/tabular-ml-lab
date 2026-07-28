@@ -20,18 +20,18 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**107 of 440 closed.**
+**108 of 440 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 299 |
+| `OPEN` | 298 |
 | `PARTIAL` | 34 |
-| `FIXED` | 107 |
+| `FIXED` | 108 |
 
 ---
 
-## OPEN — 299
+## OPEN — 298
 
 
 ### Application state / lockbox — 64
@@ -382,12 +382,6 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-018` | high | A user column named __source_file is renamed out of the way without disclosure | `REPRO: frames = {'a': DataFrame({'SEQN':[1,2],'__source_file':['mine','mine']}), 'b'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
 | `IMPORT-019` | medium | A list-valued JSON field is silently converted to its Python repr and becomes a text column | `REPRO: data_processor.load_tabular_data on json.dumps([{'SEQN':1,'visits':[1,2,3]},{'SEQN':2,'visits':[4,5]}])…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
 
-### Features / preprocessing — 1
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `T0-BUILD-004` | critical | clinical_units.infer_unit matches by substring and decides the conversion factor actually applied to the data | `ml/clinical_units.py:139-142 (`if var_name in col_lower`); ml/pipeline.py:60 build_unit_harmonization_config…` | Found at L9c while implementing the T0-BUILD-003 ruling, described by no row. sibling-of: T0-BUILD-003 and the theory_anchors substring fallback - three registries resolving a key… |
-
 ---
 
 ## PARTIAL — 34
@@ -469,7 +463,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 107
+## FIXED — 108
 
 
 ### Application state / lockbox — 26
@@ -633,8 +627,9 @@ Nothing is closed without a regression test named after it.
 | `MODELS-017` | invariant | ModelCapabilities.requires_scaled_numeric determines each model's preprocessing pipeline; a model that needs scaling must not be trained on an unscaled pipeline. | `pages/05_Preprocess.py:487, 801, 847, 1059 read spec.capabilities.requires_scaled_numeric to build per-model…` | **test:** `tests/workflow/test_per_model_pipelines.py::test_scaled_vs_unscaled_outputs_differ` — The invariant holds on both sides of the migration and has a test that would catch… |
 | `MODELS-022` | invariant | Degenerate bootstrap resamples are DROPPED, never substituted with the point estimate, and a run with too few valid replicates returns a NaN CI rather than a narrow one. | `ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot =…` | **test:** `tests/test_review_fixes.py::TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples` — The invariant is implemented with the reasoning in the… |
 
-### Features / preprocessing — 1
+### Features / preprocessing — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
+| `T0-BUILD-004` | critical | clinical_units.infer_unit matches by substring and decides the conversion factor actually applied to the data | `ml/clinical_units.py:139-142 (`if var_name in col_lower`); ml/pipeline.py:60 build_unit_harmonization_config…` | **test:** `tests/test_no_column_inherits_a_unit_conversion.py::test_a_resembling_name_earns_no_conversion` — Fixed with ruling 4's discipline, applied where it bites hardest.… |
 | `T0-BUILD-003` | high | physiology_reference.match_variable_key matches by substring, so any column whose name contains a reference key is measured against that variable's intervals | `ml/physiology_reference.py match_variable_key (`if key in col_lower`); ml/card_evidence.py…` | **test:** `tests/test_doubt_the_reading_not_the_data.py::test_an_unknown_suffix_yields_silence_rather_than_inherited_bounds` — Fixed on the adjudicator's ruling: exact key or… |
