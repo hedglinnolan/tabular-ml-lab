@@ -352,8 +352,57 @@ Three consequences, all observed the first time it was used (L16, the polynomial
   and report that separately from a green test. Same failure the copy deck hit at L15, arriving
   from the other direction.
 
+**Extension — assert on STRUCTURE, not on prose substrings.** *A substring of a message is a
+wildcard wearing an assertion's clothes.*
+
+`"model" in message` looks like an assertion and is a search. It passed on a message with the
+route sentence deleted, because *"45 pairwise products"* and an earlier *"a model"* both remained.
+`"55" in message` survived deleting the whole first argument, because the second argument restated
+the count. Neither was a bad idea badly executed — both were the natural thing to write, and both
+verified nothing.
+
+The rule, in decreasing order of preference:
+
+1. **Assert on the object, not on its rendering.** `record["n_excluded"] == 7`, `q.status ==
+   "asked"`, `set(payload) & BANNED == set()`. A number, a key, a status, a type.
+2. **When the prose IS the deliverable** — a disclosure, a refusal, a receipt — assert on the
+   distinctive *claim*, not on a word inside it: `"not a feature choice" in message` rather than
+   `"model" in message`, and quote enough of it that no other sentence in the file could satisfy
+   it.
+3. **Assert on the ABSENCE of a whole category** when the guarantee is a subtraction. The
+   eligibility evidence is checked as *"no key in this payload is in `{median, quantiles,
+   histogram, counts, …}`"* rather than as a sentence about withholding, because a median added
+   later is one line and every sentence would still read correctly.
+
+**And the self-referential round trip**, which is the same error in serialization clothing: a test
+asserting `to_list(from_list(to_list(x))) == to_list(x)` compares the serializer against
+**itself**, so a field the serializer never writes is absent from both sides and the equality
+holds. `STATE-056` is the case — deleting `manuscript_text` from `to_dict` left the round trip
+green. A round trip has to name at least one field explicitly, or compare against something the
+serializer did not produce.
+
 **Corollary — environment-dependent non-reproduction is not a fix.** If a finding does not reproduce
 under a dependency version the repo does not pin to, it stays `OPEN` saying so.
+
+**Corollary — a test that cannot run guards nothing, and a skip is invisible.** A `FIXED` row whose
+test opens with `pytest.importorskip(...)` for a dependency the repo deliberately does not install
+has a guarantee nobody in this environment can check. `MODELS-001` is the case: its guard is
+`SKIPPED`, which in `-q` output is one character and in a summary line is a number nobody reads.
+
+Fourth angle on the same family — principle-locality fails across **space**, expiring guarantees
+across **time**, an untriggered check across **occasion**, and this one across **ENVIRONMENT**.
+The repair is usually available and cheap: the dangerous behavior in `MODELS-001` is
+`sklearn.base.clone` dropping a mark that is not a constructor parameter, which is testable
+against a stub estimator with the same `get_params`/`set_params` shape — no network, no torch.
+
+**And a warning about the sweep method itself, from running it.** Reconstructing the revert is the
+hard part, not running it. Five of twenty-two reverts were wrong on the first attempt — a guard
+that had moved, an entry point renamed instead of the behavior reverted, a no-op edit, an anchor
+matching three places — and **every one of them produced a plausible-looking "NOT GUARDED"**. A
+sweep that trusts its first revert reports false failures at roughly the rate it reports true ones.
+So: a `NOT GUARDED` verdict is a hypothesis until the revert is confirmed to reintroduce the
+defect the row actually names, and `docs/turbotab/tools/revertprobe.py`'s distinction between
+*red for the wrong reason* and *green* exists for exactly this.
 
 `IMPORT-265` is the case: `[1, '1']` column labels no longer crash `execute_stack`, and there is
 nothing to close it with — `execute_stack` contains no duplicate-label handling at all, so there is
