@@ -190,6 +190,143 @@ implementations.* The failure is never two UIs; it is **two implementations of t
 which drift until a number differs and nobody can say which is right. The rules in
 "Two front doors" below are what prevent that, and they are non-negotiable.
 
+---
+
+## The lockbox constitution · **ANSWERED**
+
+The routing constitution governs which questions get asked. This one governs **what the app is
+allowed to know, and when.** It exists because the seal is the load-bearing claim of the whole
+product: every held-out number, every manuscript metric, rests on the assertion that the test rows
+were never seen. `IMPORT-020` proved that assertion could be false while a lock icon rendered
+cleanly, which is the governing rule's own failure at the deepest point in the app.
+
+Grounded in TRIPOD+AI (eligibility reporting), Harrell RMS (extrapolation), sklearn's pipeline
+doctrine and Kapoor & Narayanan's leakage taxonomy (fold-local fitting), Sisk/Sperrin/van Smeden
+and Groenwold (missingness under prediction vs inference), and Steyerberg (outcome excluded from
+imputation).
+
+### 01 · The pre-seal sequence is fixed
+
+> **load → structural repairs and the impossibility pass → grain → eligibility → SEAL → EDA**
+
+Nothing may be resequenced. Two of those steps are pre-seal for reasons that are easy to miss:
+
+- **The impossibility pass**, not for leakage reasons — setting a physiologically impossible value
+  to missing is row-local and leaks nothing — but because a stratified or grouped split computed
+  over corrupted values is a worse split, and impossible entries are normally an exclusion that
+  changes N, which belongs in the flow diagram before anything is sealed.
+- **Grain**, because the seal cannot be drawn correctly without it. See §02.
+
+### 02 · Grain is asked, never inferred
+
+> **"Can one person appear in more than one row?"**
+
+This is the same question multi-file assembly asks (`IMPORT-005`, `IMPORT-015`) and the same one
+the lockbox needs. It is asked **once**, pre-seal, and both consumers read the one recorded answer:
+a project that arrives through assembly has already answered it and the seal inherits it.
+
+The heuristics (`detect_repeated_subjects`, `rank_grouping_candidates`) are **demoted from source
+of truth to two lesser roles**: a *suggestion* offered to the human, and a *contradiction detector*
+when the human's answer disagrees with the data's shape. A user who says "one row per person"
+while a column repeats three times per value is evidence that somebody is wrong — that earns an
+interruption, by the same rule that governs join drops: escalate on evidence of error, never on
+the magnitude of a consequence.
+
+Name lists and ratio bounds cannot close this and must not be tuned as though they could. The
+engine was guessing at something the user simply knows.
+
+### 03 · The seal states its own basis — three states, never two
+
+> **Grouped by column X · repetition found but grouping abandoned · undetermined**
+
+`undetermined` is first-class: persisted in the lockbox record (never as `group_col: None`, which
+a consumer cannot tell from a verified cross-sectional seal), asserted by a test, and **never
+rendered as a clean lock.** The failure `IMPORT-020` names is not that detection is hard — it is
+that failure to detect was indistinguishable from success.
+
+The asymmetry that settled it: `IMPORT-021` leaks too, and closes anyway, because it *says so*.
+Leaking and disclosing is the governing rule's **refuse** branch. Leaking behind a lock icon is
+its **assert something false** branch. An undetermined seal is an advisory with exploratory
+labeling, not a hard block — a user who genuinely does not know their own data's shape should get
+honest numbers, not a locked door.
+
+### 04 · Eligibility and robustness trims are different objects
+
+Two operations that look identical in a spreadsheet and are not:
+
+| | Eligibility criterion | Robustness trim |
+|---|---|---|
+| What it says | who the model is *for* | how the fit is *stabilized* |
+| Applied to | the whole dataset, **pre-seal** | the training partition only, **post-seal** |
+| Changes N | yes — reported in the flow diagram with its reason | no |
+| Test set | obeys it | never touched |
+
+TRIPOD+AI names continuous-variable restrictions ("e.g. age range") as an eligibility item
+reported in participant flow. The eligibility question is asked in **scientific terms** — *does
+your research question restrict the outcome range?* — with the target's distribution **withheld**,
+because an eligibility criterion comes from the research question and not from the histogram. If a
+user needs to see the shape to decide where to cut, that is data-driven cohort selection, which is
+its own publishable bias. The app may show what is needed to answer *"is this data corrupted?"*
+(observed min/max, impossible-value flags) and not what is needed to answer *"where should I cut?"*
+
+**"Also trim the test set to match" is permanently off the menu.** A user who truly wants the
+narrower population is routed back to the pre-seal eligibility question, which requires a re-seal
+and is therefore its own hard, logged decision.
+
+### 05 · The extrapolation obligation fires at the report, not at the trim
+
+A train-only trim is a **legitimate choice**, so it does not earn a blocker — friction is spent
+where an operation is almost certainly an error, and this one is not. What is illegitimate is
+reporting a single aggregate metric afterward as though nothing happened.
+
+So the trim is a CHOICE that silently **arms a requirement**, and the blocker fires at export if
+the stratified in-range / out-of-range breakdown is absent. Same protection, spent at the point
+where the error actually occurs, and no tax on a researcher doing something defensible.
+
+### 06 · Declaration and execution are separate, and execution is bound to a data scope
+
+The litmus test, automatable:
+
+> **Does this transform's output for row *i* depend on any other row?**
+
+- **No — structural repair.** Row-local, deterministic, label-free: parse `True`/`False` to
+  boolean, coerce a type, fix units, rename, split a delimited field. Zero leakage pathway, so it
+  **executes immediately** on the working table and posts a receipt.
+- **Yes — statistical transform.** Imputation, scaling, winsorizing, trimming, target encoding,
+  feature selection all learn from a distribution. They are **recorded as decisions now and
+  executed inside per-model pipelines fit on training folds only.** Materializing one on the
+  working table pre-split is the canonical preprocessing leak.
+
+**The router defaults to deferral when unsure.** The user still gets the immediate point-and-fix;
+the decision sentence carries the timing as methods prose — *"Missing `age` will be imputed with
+the training-fold median"* — which is simultaneously the receipt, the schedule, and the manuscript
+line. Never hidden, never a lecture. Forcing a stateful transform to materialize early is a
+blocker; a **read-only preview not persisted to the modeling table** is the only permitted
+override, and it is labeled *preview, not applied*.
+
+### 07 · Missingness routes by dtype **and** mechanism
+
+Prediction is not inference, and the distinction is load-bearing: the missing-indicator method
+discouraged for causal estimation is defensible and often helpful for prediction under informative
+missingness.
+
+- **Binary / categorical** — ask first whether the missingness is informative (*"could a blank here
+  mean something?"*); in EHR data it usually is. Default to an explicit `Missing` category or a
+  missing indicator, which preserve the signal. Imputing an informatively-missing field is a
+  blocker with typed acknowledgment, and the **stability assumption** — that missingness means the
+  same thing at deployment — is recorded as a methods assumption, because it may not hold across
+  sites.
+- **Numeric** — offer single vs multiple imputation and the strategy; fit **inside the fold**; and
+  **never place the outcome in the imputation model**, which is a blocker in any configuration.
+
+### 08 · What this does not settle
+
+No source gives a missingness rate at which an indicator beats imputation; the app asks rather than
+infers. Mechanism stability at deployment is unverifiable at build time and is recorded, not
+checked. Whether a train-only trim is worth its extrapolation cost is a per-dataset judgment. And
+whether a non-persisted preview biases the analyst's later model choice is an unstudied
+cognitive-leakage question — previews stay conservative and labeled.
+
 **Consequences for this roadmap:**
 
 - L11 changes from *cutover and delete* to *converge Streamlit onto the core*.
