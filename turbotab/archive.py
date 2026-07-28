@@ -295,6 +295,15 @@ def build_members(project) -> Dict[str, bytes]:
         # handed back the same object and page 06 fitted it in place.
         "pipeline_specs": {k: _json_safe(v)
                            for k, v in project.pipeline_specs.items()},
+        # The Features step's decisions. Engineered columns are IN the parquet
+        # already; what would be lost without these is the RECORD of how they
+        # got there, and the deferred specs — which have no other home, because
+        # nothing has executed them yet.
+        "engineered": _json_safe(project.engineered),
+        "deferred_transforms": _json_safe(project.deferred_transforms),
+        "selection_spec": _json_safe(project.selection_spec) if project.selection_spec else None,
+        "features_settled": bool(project.features_settled),
+        "stale_downstream": _json_safe(project.stale_downstream),
         # The grain answer travels with the project, not just with the seal.
         # A restored project that has been sealed must not be able to answer
         # the question again, and one that has NOT been sealed must not be
@@ -449,6 +458,11 @@ def from_bytes(raw: bytes):
     project.workflow_mode = config.get("workflow_mode", "quick")
     project.pipeline_specs = dict(config.get("pipeline_specs") or {})
     project.grain = config.get("grain") or None
+    project.engineered = list(config.get("engineered") or [])
+    project.deferred_transforms = list(config.get("deferred_transforms") or [])
+    project.selection_spec = config.get("selection_spec") or None
+    project.features_settled = bool(config.get("features_settled", False))
+    project.stale_downstream = list(config.get("stale_downstream") or [])
 
     if "lockbox.json" in names:
         project.lockbox = json.loads(zf.read("lockbox.json"))

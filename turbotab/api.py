@@ -23,12 +23,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import pandas as pd
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from turbotab import draft, engine, grain as grain_mod
+from turbotab import draft, engine, features as feat_mod, grain as grain_mod, selection as sel_mod
 from turbotab.project import (
     AnalysisProject, GrainContradiction, ProjectError, ProjectStore,
 )
@@ -245,6 +246,59 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
             raise HTTPException(400, str(exc)) from exc
         except ProjectError as exc:
             raise HTTPException(400, str(exc)) from exc
+        return _payload(project)
+
+    if decision.kind == "add_feature":
+        try:
+            project.add_feature(decision.payload.get("transform") or decision.subject,
+                                decision.payload.get("columns") or [],
+                                decision.payload.get("params") or {})
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        _recompute(project)
+        return _payload(project)
+
+    if decision.kind == "remove_feature":
+        try:
+            project.remove_feature(decision.payload.get("column") or decision.subject)
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        _recompute(project)
+        return _payload(project)
+
+    if decision.kind == "defer_feature":
+        try:
+            project.defer_feature(decision.payload.get("transform") or decision.subject,
+                                  decision.payload.get("columns") or [],
+                                  decision.payload.get("params") or {})
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return _payload(project)
+
+    if decision.kind == "set_selection":
+        payload = decision.payload or {}
+        if not payload.get("method"):
+            try:
+                project.set_selection(None)          # "use every column"
+            except ProjectError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            return _payload(project)
+        try:
+            spec = sel_mod.declare(
+                payload["method"], project.target or "",
+                payload.get("candidates") or [],
+                n_features=payload.get("n_features"),
+                consensus_min_methods=payload.get("consensus_min_methods"),
+                scope=payload.get("scope", sel_mod.TRAIN_FOLDS))
+            project.set_selection(spec)
+        except sel_mod.SelectionRefusal as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return _payload(project)
+
+    if decision.kind == "settle_features":
+        project.settle_features(skipped=bool(decision.payload.get("skipped")))
         return _payload(project)
 
     if decision.kind == "apply":
@@ -577,6 +631,83 @@ async def get_grain(project_id: str) -> Dict[str, Any]:
     }
 
 
+@app.get("/project/{project_id}/features")
+async def get_features(project_id: str) -> Dict[str, Any]:
+    """The transform catalogue, split by clause §06, and what has been decided.
+
+    `row_local` executes immediately and posts a receipt. `deferred` is
+    recorded now and fitted inside each training fold. Each entry carries
+    `because` — the litmus answer in words — so the interface can show the
+    reasoning rather than assert the classification.
+    """
+    project = _project(project_id)
+    numeric = [str(c) for c in project.df.columns
+               if pd.api.types.is_numeric_dtype(project.df[c])
+               and str(c) != (project.target or "")]
+    return {
+        "row_local": [feat_mod.get(k).to_dict() for k in feat_mod.row_local_keys()],
+        "deferred": [feat_mod.get(k).to_dict() for k in feat_mod.deferred_keys()],
+        "numeric_columns": numeric,
+        "all_columns": [str(c) for c in project.df.columns],
+        "engineered": project.engineered,
+        "deferred_transforms": project.deferred_transforms,
+        "selection": project.selection_spec,
+        "settled": project.features_settled,
+        "selection_methods": [
+            {"key": k, "label": m.label,
+             "explainability_cost": m.explainability_cost}
+            for k, m in sel_mod.METHODS.items()],
+    }
+
+
+@app.get("/project/{project_id}/feature/preview")
+async def preview_feature(project_id: str, transform: str, columns: str,
+                          params: str = "") -> Dict[str, Any]:
+    """Before/after for one transform, computed on a copy and thrown away.
+
+    A `GET`, because it is a question. A CHOICE gets a preview
+    (`DESIGN_LANGUAGE.md` §09) and the preview is the REAL computation rather
+    than a description of one — a description is a claim about what would
+    happen, which is the class of thing this project keeps finding to be wrong.
+    """
+    import json as _json
+    project = _project(project_id)
+    cols = [c for c in columns.split(",") if c]
+    try:
+        parsed = _json.loads(params) if params else {}
+    except ValueError as exc:
+        raise HTTPException(400, f"params is not valid JSON: {exc}") from exc
+    try:
+        return feat_mod.preview(project.df, transform, cols, parsed)
+    except feat_mod.FeatureRefusal as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.get("/project/{project_id}/selection/evidence")
+async def selection_evidence(project_id: str) -> Dict[str, Any]:
+    """What a selection CHOICE is shown beside — ranked on training rows only.
+
+    Ranks, does not choose. Nothing is stored and the response is marked
+    `preview_not_applied`, the same distinction clause §06 draws for a deferred
+    transform's preview.
+    """
+    project = _project(project_id)
+    if not project.target:
+        raise HTTPException(400, "Ranking features needs the outcome first.")
+    candidates = [str(c) for c in project.df.columns
+                  if str(c) != project.target
+                  and pd.api.types.is_numeric_dtype(project.df[c])]
+    mask = None
+    if project.lockbox and project.lockbox.get("labels"):
+        sealed = set(project.lockbox["labels"])
+        mask = pd.Series([i not in sealed for i in project.df.index],
+                         index=project.df.index)
+    try:
+        return sel_mod.evidence(project.df, project.target, candidates, mask)
+    except sel_mod.SelectionRefusal as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @app.get("/capabilities")
 async def get_capabilities() -> Dict[str, Any]:
     """Which pull affordances are wired, and what the unwired ones say.
@@ -613,6 +744,8 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
             answered.append("choose_target")
         elif d.kind == "set_grain":
             answered.append("state_grain")
+        elif d.kind == "settle_features":
+            answered.append("choose_features")
         elif d.kind == "set_task_type":
             answered.append("confirm_task_type")
         elif d.kind in ("apply", "dismiss"):

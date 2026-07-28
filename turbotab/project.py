@@ -159,6 +159,28 @@ class AnalysisProject:
     # is the ordering clause §01 fixes, expressed as a precondition rather than
     # as a comment somebody has to remember.
     grain: Optional[Dict[str, Any]] = None
+    # Engineered columns and their receipts, in creation order. Row-local
+    # transforms only: a stateful one never reaches the working table
+    # (constitution §06), so it lives in `deferred_transforms` instead.
+    engineered: List[Dict[str, Any]] = field(default_factory=list)
+    # Stateful transforms and the selection spec, RECORDED and not executed.
+    # These are what a per-model pipeline consumes; nothing here has touched a
+    # value. Keeping them beside `engineered` rather than inside it is the
+    # clause's own distinction made structural.
+    deferred_transforms: List[Dict[str, Any]] = field(default_factory=list)
+    selection_spec: Optional[Dict[str, Any]] = None
+    # True once the user has answered the Features step, including by skipping
+    # it. A skip must be RECORDED: a silent skip is indistinguishable from a
+    # step nobody reached.
+    features_settled: bool = False
+    # What became stale, and WHY, most recent last. Distinct from
+    # `findings_stale`, which recompute clears because findings genuinely are
+    # recomputed. Models, metrics and any fitted pipeline are NOT recomputed by
+    # a re-diagnosis, so a boolean that clears would say the cascade had been
+    # dealt with when nothing had. DESIGN_LANGUAGE §10 wants the cascade
+    # VISIBLE, so this names its cause rather than raising a flag: "age_x_bmi
+    # was added" is actionable, "something changed" is not.
+    stale_downstream: List[Dict[str, Any]] = field(default_factory=list)
     # The sealed holdout, in `session_manager`'s schema. Its presence is what
     # raises the identity barrier: before it exists rows are anonymous
     # positions, after it they are named.
@@ -354,6 +376,114 @@ class AnalysisProject:
                 "Running it now would leave those labels naming different rows, with "
                 "nothing to detect it. Structural repairs of this kind belong before "
                 "the test set is sealed.")
+
+    # ── the Features step (constitution §06) ────────────────────────────────
+
+    def add_feature(self, key: str, columns: Sequence[str],
+                    params: Optional[Dict[str, Any]] = None) -> Decision:
+        """Execute a ROW-LOCAL transform and post its receipt.
+
+        Refuses a stateful one — `features.apply` raises, and that refusal is
+        the clause made executable rather than a convention.
+        """
+        from turbotab import features as _feat
+        try:
+            result = _feat.apply(self.df, key, list(columns), params)
+        except _feat.FeatureRefusal as exc:
+            raise ProjectError(str(exc)) from exc
+
+        receipt = result["receipt"]
+        self._history.append((f"feature::{receipt['column']}", self.df))
+        self.df = result["frame"]
+        self.engineered.append(receipt)
+        # A new column changes the modeling problem, so everything computed
+        # under the old one is stale. Marked, never dropped.
+        self.findings_stale = True
+        self._mark_stale(f"the column `{receipt['column']}` was added")
+        return self.record(
+            kind="add_feature", subject=receipt["column"],
+            text=receipt["sentence"], payload=dict(receipt))
+
+    def remove_feature(self, column: str) -> Decision:
+        """Drop an engineered column. Reversibility, per feat-remove-one."""
+        known = [e for e in self.engineered if e["column"] == column]
+        if not known:
+            raise ProjectError(
+                f"'{column}' was not created here, so removing it is not this "
+                f"step's to do. Only engineered columns can be removed.")
+        self._history.append((f"feature::-{column}", self.df))
+        self.df = self.df.drop(columns=[column])
+        self.engineered = [e for e in self.engineered if e["column"] != column]
+        self.findings_stale = True
+        self._mark_stale(f"the column `{column}` was removed")
+        return self.record(
+            kind="remove_feature", subject=column,
+            text=f"The engineered column `{column}` was removed.",
+            payload={"column": column})
+
+    def defer_feature(self, key: str, columns: Sequence[str],
+                      params: Optional[Dict[str, Any]] = None) -> Decision:
+        """Record a STATEFUL transform as a decision. Executes nothing."""
+        from turbotab import features as _feat
+        try:
+            spec = _feat.declare(key, list(columns), params)
+        except _feat.FeatureRefusal as exc:
+            raise ProjectError(str(exc)) from exc
+        self.deferred_transforms.append(spec)
+        return self.record(
+            kind="defer_feature", subject=",".join(str(c) for c in columns),
+            text=spec["sentence"], payload=dict(spec))
+
+    def set_selection(self, spec: Optional[Dict[str, Any]]) -> Decision:
+        """Record what will be selected, inside the training folds.
+
+        `spec` comes from `selection.declare`, which never selects. A spec
+        carrying a `selected` list would be a selection that already ran.
+        """
+        if spec is not None and spec.get("selected") is not None:
+            raise ProjectError(
+                "This selection spec carries an already-chosen feature set. "
+                "Selection is performed inside the training folds at modeling "
+                "time; a set chosen now would have been chosen using the "
+                "held-out rows.")
+        self.selection_spec = spec
+        self.findings_stale = True
+        self._mark_stale(
+            f"feature selection was set to {spec['label']}" if spec
+            else "feature selection was cleared: every column goes to the models")
+        return self.record(
+            kind="set_selection", subject=(spec or {}).get("method", ""),
+            text=(spec["sentence"] if spec else
+                  "No feature selection: every candidate column is offered to "
+                  "the models."),
+            payload=dict(spec) if spec else {})
+
+    def settle_features(self, skipped: bool = False) -> Decision:
+        """End the step, including by skipping it — recorded either way."""
+        self.features_settled = True
+        n = len(self.engineered)
+        d = len(self.deferred_transforms)
+        return self.record(
+            kind="settle_features", subject="",
+            text=("Feature work was skipped; the original columns go forward "
+                  "unchanged." if skipped else
+                  f"Feature work settled: {n} column(s) added now, {d} "
+                  f"transform(s) recorded for fitting inside the training "
+                  f"folds"
+                  + (", and a selection spec recorded."
+                     if self.selection_spec else ".")),
+            payload={"skipped": bool(skipped), "n_engineered": n,
+                     "n_deferred": d,
+                     "has_selection": self.selection_spec is not None})
+
+    def _mark_stale(self, why: str) -> None:
+        """Record that downstream results no longer describe this feature set.
+
+        Appends rather than sets, and never clears here: nothing in this module
+        recomputes a model, so clearing would be this project asserting that
+        the cascade had been dealt with. The step that trains is what clears it.
+        """
+        self.stale_downstream.append({"why": why, "at": _now()})
 
     def set_grain(self, answer: str, group_col: Optional[str] = None,
                   inherited: bool = False,
@@ -663,6 +793,11 @@ class AnalysisProject:
             "findings": self.findings,
             "findings_stale": self.findings_stale,
             "applied_fixes": self.applied_fixes,
+            "engineered": self.engineered,
+            "deferred_transforms": self.deferred_transforms,
+            "selection_spec": self.selection_spec,
+            "features_settled": self.features_settled,
+            "stale_downstream": self.stale_downstream,
             "grain": self.grain,
             "lockbox": self.lockbox,
             "barrier_raised": self.barrier_raised,

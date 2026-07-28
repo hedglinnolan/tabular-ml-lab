@@ -57,7 +57,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 # Steps of the exploration phase, in order. The Router asks at the earliest step
 # that can act on a question, which is what makes deferral meaningful: a
 # deferred item has somewhere later to go.
-STEPS: Sequence[str] = ("data", "explore")
+STEPS: Sequence[str] = ("data", "explore", "features")
 
 # Every step a deferral can name, built or not, with the words the interface
 # uses for it. A deferral affordance says "Decide at Preprocess" rather than
@@ -329,6 +329,50 @@ def plan(
             options=["No, one row per person",
                      "Yes, people repeat",
                      "I'm not sure"]))
+
+    # ── the Features step, constitution §06 ─────────────────────────────────
+    # Two questions, because the clause draws two different objects. Building
+    # a derived column is a CHOICE the user makes and sees applied; choosing a
+    # selection rule is a CHOICE whose EXECUTION is deferred. Collapsing them
+    # into one "configure features" question would hide exactly the distinction
+    # the clause exists to draw.
+    if step == "features" and target and "choose_features" not in answered:
+        out.append(Question(
+            key="choose_features", kind="grain", step="features",
+            title="Are there quantities your question is really about?",
+            why=("A ratio or an interaction you already reason about clinically "
+                 "is usually a better feature than the columns it came from. "
+                 "Anything built here from one row at a time is applied now "
+                 "and shown to you; anything that learns from the column's "
+                 "distribution is recorded and fitted inside the training "
+                 "folds instead."),
+            consumer=(
+                "Row-local columns are added to the working table immediately "
+                "and every later step sees them, so `ml.dataset_profile` "
+                "profiles them and the models receive them as ordinary "
+                "columns. Distribution-dependent ones are stored as a spec "
+                "that the per-model preprocessing pipeline fits inside each "
+                "training fold — nothing is computed over the held-out rows. "
+                "Adding or removing a column marks every downstream result "
+                "stale."),
+            options=["build a feature", "skip this step"]))
+
+    if step == "features" and target and "choose_selection" not in answered:
+        out.append(Question(
+            key="choose_selection", kind="grain", step="features",
+            title="Should the models be given every column, or a chosen subset?",
+            why=("Narrowing to the strongest features can help a small study. "
+                 "The catch is that choosing them using all your data lets the "
+                 "held-out rows influence which columns exist — so the choice "
+                 "is recorded now and made again inside each training fold."),
+            consumer=(
+                "The answer becomes a selection spec on the project, which the "
+                "per-model pipeline reads and refits per training fold. It "
+                "also becomes a sentence in the methods section naming the "
+                "method and the timing. Nothing is selected at the moment you "
+                "answer — a set chosen now would have been chosen with the "
+                "held-out rows in view."),
+            options=["every column", "a chosen subset"]))
 
     # ── one question per repairable finding, ranked by the engine ──────────
     for f in _rank(findings):
