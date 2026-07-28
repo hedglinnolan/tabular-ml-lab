@@ -63,7 +63,8 @@ from turbotab.project import AnalysisProject                         # noqa: E40
 PERSISTED = {
     "id", "name", "created_at", "target", "task_type", "task_confidence",
     "task_overridden", "workflow_mode", "pipeline_specs", "grain",
-    "eligibility", "obligations", "engineered",
+    "eligibility", "obligations", "missingness", "preprocess_settled",
+    "engineered",
     "deferred_transforms", "selection_spec", "features_settled",
     "stale_downstream", "lockbox", "cohort", "decisions",
 }
@@ -167,6 +168,15 @@ def _fully_populated() -> AnalysisProject:
     # longest form of that gap.
     p.trim_training_rows("age", minimum=25, maximum=70,
                          reason="The cohort of clinical interest is 25 to 70.")
+
+    # Preprocess: this step is almost entirely DECLARATIONS, so the archive is
+    # the only place they live — nothing has executed them.
+    p.df = p.df.copy()
+    p.df.loc[p.df.index[:5], "glucose"] = None
+    from turbotab import missingness as MISS
+    p.route_missingness("glucose", MISS.NOT_INFORMATIVE, MISS.IMPUTE_MICE,
+                        uses_columns=["age"])
+    p.settle_preprocess()
 
     # The cohort filter, which has its own whitelist.
     keep = [l for l in p.df.index if p.df.loc[l, "age"] < 60]

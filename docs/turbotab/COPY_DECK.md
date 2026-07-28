@@ -125,6 +125,56 @@ The second option opens a follow-up: *which column identifies the person?* — p
 
 **Options.** every column · a chosen subset
 
+### Preprocess · the mechanism question, asked per column
+
+*Trigger: the Preprocess step is reached and a column has missing values. Asked BEFORE the strategy, because the answer decides which strategies are legitimate. Never skipped — the app cannot know.*
+
+**Question.** Could a blank in `{column}` mean something?
+
+**Why we ask.** In records collected during care, a missing value is often a decision rather than an accident — a test not ordered because the patient looked well is different from a test that was ordered and lost. If a blank carries information, filling it in throws that information away.
+
+**Who consumes the answer.** The answer decides how this column is handled and what the methods section has to say. 'Yes' routes to an explicit Missing category or an indicator, which keep the signal, and makes plain imputation a blocked choice that needs a typed acknowledgment. It also records the stability assumption — that a blank will still mean the same thing wherever the model is deployed — as a stated limitation, because it may not hold across sites.
+
+**Options.**
+
+- Yes — a blank here means something
+- No — these are accidents of collection
+- I'm not sure
+
+### Preprocess · the strategies, and why each is where it is
+
+| Branch | Strategy | Label | Executes | Because |
+|---|---|---|---|---|
+| numeric | `indicator` | Add a was-it-missing column and leave the value blank | now (row-local) | Row-local: the new column is 1 where this row's value is blank and 0 where it is not. Nothing about any other row is consulted. |
+| numeric | `impute_median` | Fill with the median | in training folds | Stateful: the median is a fact about the whole column. Fitted inside each training fold, never over the sealed rows. |
+| numeric | `impute_mean` | Fill with the mean | in training folds | Stateful: the mean is a fact about the whole column, and a more fragile one than the median — one extreme value moves it. |
+| numeric | `impute_mice` | Fill by modeling it from the other columns (MICE) | in training folds | Stateful, and the most so: MICE fits a model per column against the others, so it learns the joint distribution of the training rows. |
+| numeric | `leave` | Leave it alone for now | now (row-local) | Nothing is computed and nothing is deferred. Recorded so that 'decided to leave it' and 'never looked at it' are different states. |
+| categorical | `explicit_category` | Keep blanks as an explicit `Missing` category | now (row-local) | Row-local: a blank becomes a literal `Missing` token using nothing but that row's own cell, so it can execute now. |
+| categorical | `indicator` | Add a was-it-missing column and leave the value blank | now (row-local) | Row-local: the new column is 1 where this row's value is blank and 0 where it is not. Nothing about any other row is consulted. |
+| categorical | `impute_mode` | Fill with the most common value | in training folds | Stateful: the most common value is a fact about the whole column, so computing it over the full table would compute it over the held-out rows too. |
+| categorical | `leave` | Leave it alone for now | now (row-local) | Nothing is computed and nothing is deferred. Recorded so that 'decided to leave it' and 'never looked at it' are different states. |
+
+### Preprocess · the informative-missingness blocker
+
+*A CONSEQUENCE. Fires when the user has stated the missingness is informative AND chosen a strategy that fills the blanks. `I'm not sure` deliberately does NOT fire it.*
+
+> You said a blank in `{column}` means something, and {strategy} would replace every one of those {n_missing:,} blanks with {filler}. The fact that the value was missing would no longer be in the data at all, and no model can recover it afterward.  If that is what you want, say so and it is recorded as a stated limitation. If it is not, an explicit `Missing` category keeps the blank as its own answer and costs nothing.
+
+**The two exits.** Acknowledgment is TYPED, not a click.
+
+| Exit | Label | Detail |
+|---|---|---|
+| `explicit_category` | Keep the blanks as their own category | A blank becomes a literal `Missing` value, so the model can use it the way it uses any other level. |
+| `attest` | Fill them anyway — I know what these blanks are | Recorded as a stated limitation: the missingness signal is removed deliberately, and the methods section says so. |
+
+### Preprocess · the two refusals that have no exit
+
+| Trigger | Copy |
+|---|---|
+| The outcome is named inside a MICE imputation scope | The outcome `{target}` cannot be one of the columns the imputation model reads. An imputer fitted with the outcome in scope writes the outcome's own information into the feature columns, so every number scored afterwards is scored against features that already encode the answer. There is no configuration in which this is acceptable, so it is not offered as a choice. |
+| A mechanism is stated informative | *(recorded, not refused)* This analysis assumes that a blank in `{column}` will mean the same thing wherever the model is used as it means here. That assumption is not checkable from this dataset — missingness patterns are a property of how a site collects data, and a model that reads a blank as a signal will read a differently-collected blank as the same signal. |
+
 ### Features · the transform catalogue
 
 *Every entry states its own clause-§06 classification and why. Row-local entries execute immediately and post a receipt; deferred entries are recorded and fitted inside each training fold.*
@@ -192,10 +242,24 @@ The second option opens a follow-up: *which column identifies the person?* — p
 | target · the event level is not defaulted | applying `set_positive_class` with no chosen level | Setting the event needs the level being predicted. There is no default: whether the event is (say) death or survival is the research question, not something the file can say. | `turbotab/api.py` |
 | repair · the finding has no automatic fix | `POST /decision {kind: apply}` on a finding whose preview is not applicable | That finding has no automatic repair — it needs a human decision. | `turbotab/api.py` |
 
+### Preprocess · refusals, receipts and transcript lines
+
+| State | Trigger | Copy | Source |
+|---|---|---|---|
+| missingness · a column with no blanks | `route_missingness` on a column that is complete | `{column}` has no missing values, so there is no missingness to route. Asking about a column that is complete would be the interview inventing work. | `turbotab/project.py` |
+| missingness · an unknown mechanism | `declare` with a mechanism outside the three answers | '{mechanism}' is not one of ['informative', 'not_informative', 'not_sure']. The mechanism is asked, never inferred — `not_sure` is a real answer. | `turbotab/missingness.py` |
+| missingness · the indicator column name is taken | `route_missingness` with `indicator` when `{column}_was_missing` exists | '{name}' already exists in this table. Remove it first, or the indicator would silently replace it. | `turbotab/project.py` |
+| settled · the step was worked | `settle_preprocess()` after at least one column was routed | Missingness settled: {k} column(s) changed now, {n} recorded to be fitted inside the training folds, {m} deliberately left alone. | `turbotab/missingness.py` |
+| settled · the step was skipped | `settle_preprocess(skipped=True)` | Preprocessing was skipped; no missingness routing was recorded and every column goes forward as it is. | `turbotab/project.py` |
+| settled · why nothing visibly changed | the step is settled and at least one strategy deferred — the honest report of a step whose output is decisions rather than a changed table | Your table looks the same because it is the same. Filling a blank with a median means computing that median, and computing it over every row would compute it over the held-out rows too — so the decision is recorded now and the arithmetic happens inside each training fold, where it can only see training data. What you just did is the part that cannot be automated; what is left is bookkeeping the pipeline does on its own. | `turbotab/missingness.py` |
+| settled · nothing was deferred | the step is settled and every strategy was row-local or leave | Nothing was deferred, so nothing is waiting: every answer here either changed the table or deliberately left it alone. | `turbotab/missingness.py` |
+| settled · columns still unanswered | the step is settled while a column with blanks was never routed | {n} column(s) with missing values have not been answered yet. | `turbotab/missingness.py` |
+
 ### Explore · refusals, receipts and transcript lines
 
 | State | Trigger | Copy | Source |
 |---|---|---|---|
+| trim · the label saying what it is NOT | every successful `trim_training_rows`; §04's two objects look identical in a spreadsheet, so the trim says which one it is | This narrows the TRAINING rows only. It does not change who your study is about: the held-out rows are untouched, N is unchanged, and nothing here belongs in participant flow. If you meant to restrict the population the model is for, that is the eligibility question, it is asked before the seal, and it does change N. | `turbotab/obligations.py` |
 | trim · attempted before the seal | `trim_training_rows` while `barrier_raised` is false | A robustness trim is post-seal by definition: it narrows the training partition, and there is no training partition until the test set is sealed. Before the seal, narrowing the study is an eligibility criterion — a different object (§04), asked as a different question, and it changes N. | `turbotab/project.py` |
 | trim · with no stated reason | `trim_training_rows` with an empty `reason` | A trim's reason is what the report has to print beside the breakdown. Without it the disclosure would say that some rows were outside a range nobody can explain. | `turbotab/obligations.py` |
 | trim · with no bounds | `trim_training_rows` with neither a minimum nor a maximum | A trim with no bounds narrows nothing, so there is no extrapolation to disclose. | `turbotab/obligations.py` |

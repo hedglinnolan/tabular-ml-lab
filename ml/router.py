@@ -57,7 +57,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 # Steps of the exploration phase, in order. The Router asks at the earliest step
 # that can act on a question, which is what makes deferral meaningful: a
 # deferred item has somewhere later to go.
-STEPS: Sequence[str] = ("data", "explore", "features")
+STEPS: Sequence[str] = ("data", "explore", "features", "preprocess")
 
 # Every step a deferral can name, built or not, with the words the interface
 # uses for it. A deferral affordance says "Decide at Preprocess" rather than
@@ -170,7 +170,8 @@ BLOCKER_SEVERITIES = frozenset({"blocker"})
 # CHOICE is a repair, decided; CONSEQUENCE is a blocker, resolved or attested.
 # Named here so the audit rules can speak in the design language's vocabulary
 # rather than re-listing kinds at each site.
-FACT_KINDS = frozenset({"target", "task_type", "grain", "eligibility"})
+FACT_KINDS = frozenset({"target", "task_type", "grain", "eligibility",
+                        "missingness"})
 CHOICE_KINDS = frozenset({"repair"})
 CONSEQUENCE_KINDS = frozenset({"blocker"})
 
@@ -266,6 +267,7 @@ def plan(
     answered: Sequence[str] = (),
     recommendations: Sequence[Any] = (),
     signals: Any = None,
+    missing_columns: Sequence[str] = (),
 ) -> List[Question]:
     """Every question this step asks, in order, derived from the record.
 
@@ -408,6 +410,29 @@ def plan(
                 "answer — a set chosen now would have been chosen with the "
                 "held-out rows in view."),
             options=["every column", "a chosen subset"]))
+
+    # ── Preprocess, constitution §07 ────────────────────────────────────────
+    # One question per column with blanks, and the MECHANISM comes first: "could
+    # a blank here mean something?" is asked before "how should it be filled?",
+    # because the answer decides which strategies are even legitimate. Asking
+    # them the other way round is how a column that carried information gets a
+    # median written over it by a well-meaning default.
+    #
+    # A FACT that is never skippable, for the same reason as the grain: the app
+    # cannot know, and `_skip_is_permitted` admits only `task_type`.
+    if step == "preprocess" and target:
+        from turbotab import missingness as _miss
+        for col in (missing_columns or []):
+            key = f"missingness::{col}"
+            if key in answered:
+                continue
+            out.append(Question(
+                key=key, kind="missingness", step="preprocess",
+                clause="lockbox-07",
+                title=_miss.MECHANISM_QUESTION.format(column=col),
+                why=_miss.MECHANISM_WHY,
+                consumer=_miss.MECHANISM_CONSUMER,
+                options=list(_miss.MECHANISM_OPTIONS)))
 
     # ── one question per repairable finding, ranked by the engine ──────────
     for f in _rank(findings):

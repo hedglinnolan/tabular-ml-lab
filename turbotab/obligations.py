@@ -102,6 +102,16 @@ def arm_extrapolation(df: pd.DataFrame, column: str,
 
     return {
         "kind": EXTRAPOLATION,
+        # §04, said out loud at the point of the CHOICE rather than left to be
+        # inferred. A trim and an eligibility criterion look identical in a
+        # spreadsheet; the difference is who the model is FOR versus how the fit
+        # is stabilized, and only one of them changes N.
+        "not_a_population_restriction": (
+            "This narrows the TRAINING rows only. It does not change who your "
+            "study is about: the held-out rows are untouched, N is unchanged, "
+            "and nothing here belongs in participant flow. If you meant to "
+            "restrict the population the model is for, that is the eligibility "
+            "question, it is asked before the seal, and it does change N."),
         "discharged_at": DISCHARGED_AT,
         "column": str(column),
         "minimum": None if minimum is None else float(minimum),

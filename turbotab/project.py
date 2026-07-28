@@ -166,6 +166,16 @@ class AnalysisProject:
     # would mean the held-out rows were chosen from people the study is not
     # about. "Everyone" is a recorded answer, never an absence.
     eligibility: Optional[Dict[str, Any]] = None
+    # One entry per column whose missingness has been routed (constitution §07).
+    # Recorded, not executed, except for the two row-local strategies — almost
+    # every preprocessing transform is stateful by clause §06's litmus, so this
+    # step's output is a set of decisions that fire inside training folds.
+    missingness: List[Dict[str, Any]] = field(default_factory=list)
+    # True once the Preprocess step has been ended, including by leaving every
+    # column alone. A skip must be RECORDED (DESIGN_LANGUAGE §09's
+    # recorded-absence rule): a silent skip is indistinguishable from a step
+    # nobody reached.
+    preprocess_settled: bool = False
     # What a decision here obliges a LATER step to say (constitution §05). A
     # train-only trim is a legitimate choice and earns no blocker, so it arms a
     # requirement instead and the blocker fires at export. This is the memory
@@ -611,6 +621,101 @@ class AnalysisProject:
             kind="set_eligibility", subject=record.get("column") or "",
             text=record["sentence"], payload=dict(self.eligibility))
 
+    # ── the Preprocess step (constitution §07) ──────────────────────────────
+
+    def missingness_survey(self) -> List[Dict[str, Any]]:
+        """Which columns have blanks, and which branch each is on."""
+        from turbotab import missingness as _miss
+        answered = {d["column"] for d in self.missingness}
+        out = []
+        for row in _miss.survey(self.df, self.target):
+            row["answered"] = row["column"] in answered
+            out.append(row)
+        return out
+
+    def route_missingness(self, column: str, mechanism: str, strategy: str,
+                          uses_columns: Optional[Sequence[str]] = None,
+                          acknowledged: bool = False) -> Decision:
+        """Record how one column's missingness is handled. Rarely executes.
+
+        Two of the strategies are row-local and run now; the rest are stateful
+        by clause §06's litmus and are recorded for fitting inside training
+        folds. Answering twice replaces the earlier answer on the project and
+        appends a new decision — the record is what happened, the project is
+        what is currently true.
+        """
+        from turbotab import missingness as _miss
+
+        s = self.df[column] if column in self.df.columns else None
+        if s is None:
+            raise ProjectError(f"No column named '{column}' in this table.")
+        branch = ("numeric" if pd.api.types.is_numeric_dtype(s)
+                  else "categorical")
+        n_missing = int(s.isna().sum())
+        if not n_missing:
+            raise ProjectError(
+                f"`{column}` has no missing values, so there is no missingness "
+                f"to route. Asking about a column that is complete would be the "
+                f"interview inventing work.")
+
+        try:
+            record = _miss.declare(
+                column, branch, mechanism, strategy, target=self.target,
+                uses_columns=uses_columns, acknowledged=acknowledged,
+                n_missing=n_missing)
+        except _miss.MissingnessRefusal as exc:
+            raise ProjectError(str(exc)) from exc
+        record["n_missing"] = n_missing
+
+        if strategy == _miss.EXPLICIT_CATEGORY:
+            # Row-local, so it executes now and posts its receipt — a blank
+            # becomes a literal token using nothing but that row's own cell.
+            self._history.append((f"missing::{column}", self.df))
+            out = self.df.copy()
+            col = out[column]
+            if isinstance(col.dtype, pd.CategoricalDtype):
+                col = col.cat.add_categories(["Missing"])
+            out[column] = col.fillna("Missing")
+            self.df = out
+        elif strategy == _miss.INDICATOR:
+            name = f"{column}_was_missing"
+            if name in self.df.columns:
+                raise ProjectError(
+                    f"'{name}' already exists in this table. Remove it first, "
+                    f"or the indicator would silently replace it.")
+            self._history.append((f"missing::{column}", self.df))
+            out = self.df.copy()
+            out[name] = self.df[column].isna().astype(int)
+            self.df = out
+            record["new_column"] = name
+
+        self.missingness = [d for d in self.missingness
+                            if d["column"] != str(column)] + [record]
+        self.findings_stale = True
+        self._mark_stale(f"missingness in `{column}` was routed")
+        return self.record(
+            kind="route_missingness", subject=str(column),
+            text=record["sentence"], payload=dict(record))
+
+    def settle_preprocess(self, skipped: bool = False) -> Decision:
+        """End the step, including by leaving everything alone.
+
+        The receipt is the interesting part and it lives in
+        `missingness.plan_receipt`: this step's honest report is usually "0
+        columns changed now", and a sentence that is embarrassed by that zero
+        would be the step apologizing for obeying clause §06.
+        """
+        from turbotab import missingness as _miss
+        self.preprocess_settled = True
+        receipt = _miss.plan_receipt(
+            self.missingness, len(_miss.survey(self.df, self.target)))
+        return self.record(
+            kind="settle_preprocess", subject="",
+            text=("Preprocessing was skipped; no missingness routing was "
+                  "recorded and every column goes forward as it is."
+                  if skipped else receipt["headline"]),
+            payload={"skipped": bool(skipped), **receipt})
+
     def trim_training_rows(self, column: str,
                            minimum: Optional[float] = None,
                            maximum: Optional[float] = None,
@@ -944,6 +1049,8 @@ class AnalysisProject:
             "stale_downstream": self.stale_downstream,
             "grain": self.grain,
             "eligibility": self.eligibility,
+            "missingness": self.missingness,
+            "preprocess_settled": self.preprocess_settled,
             "obligations": self.obligations,
             "lockbox": self.lockbox,
             "barrier_raised": self.barrier_raised,

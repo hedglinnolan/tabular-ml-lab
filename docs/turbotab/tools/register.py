@@ -51,7 +51,8 @@ NEED_REASON = {"classic-only", "guided-only"}
 
 # Guided steps that have been built. Building a new step means adding it here,
 # which is what makes "no rows for this step" a checkable failure.
-BUILT_STEPS = ["data-target", "cross-step", "explore", "features"]
+BUILT_STEPS = ["data-target", "cross-step", "explore", "features",
+               "preprocess"]
 
 STEP_NAME = {
     "data-target": "Data & Target (Classic: pages/01, Step 4)",

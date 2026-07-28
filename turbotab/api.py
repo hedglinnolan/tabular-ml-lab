@@ -97,7 +97,7 @@ def _disclosures(project: AnalysisProject) -> Dict[str, Any]:
     itself.
     """
     out: Dict[str, Any] = {"grain": None, "eligibility": None, "seal": None,
-                           "exploratory": False}
+                           "preprocess": None, "exploratory": False}
     if project.grain:
         out["grain"] = grain_mod.answer_disclosure(
             project.grain["answer"], project.grain.get("group_col"))
@@ -109,6 +109,10 @@ def _disclosures(project: AnalysisProject) -> Dict[str, Any]:
     if project.eligibility:
         from turbotab import eligibility as _elig
         out["eligibility"] = _elig.disclosure(project.eligibility)
+    if project.missingness or project.preprocess_settled:
+        from turbotab import missingness as _miss
+        out["preprocess"] = _miss.plan_receipt(
+            project.missingness, len(_miss.survey(project.df, project.target)))
     if project.lockbox:
         out["seal"] = grain_mod.seal_disclosure(project.lockbox)
         out["exploratory"] = grain_mod.is_exploratory_basis(
@@ -294,6 +298,50 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
                 project.df, str(decision.payload.get("column") or decision.subject))
         except _elig.EligibilityRefusal as exc:
             raise HTTPException(400, str(exc)) from exc
+
+    if decision.kind == "route_missingness":
+        from turbotab import missingness as _miss
+        col = decision.payload.get("column") or decision.subject
+        mech = str(decision.payload.get("mechanism") or "")
+        strat = str(decision.payload.get("strategy") or "")
+        # The CONSEQUENCE is surfaced BEFORE the refusal is raised, so the
+        # interface gets the interruption with both exits attached rather than
+        # a 400 it has to interpret. §09: resolves or is attested.
+        try:
+            n_missing = int(project.df[col].isna().sum()) if col in project.df.columns else 0
+        except Exception:
+            n_missing = 0
+        if (_miss.blocks(mech, strat)
+                and not decision.payload.get("acknowledge_signal_loss")):
+            raise HTTPException(409, _miss.blocker(col, mech, strat, n_missing))
+        try:
+            project.route_missingness(
+                col, mech, strat,
+                uses_columns=decision.payload.get("uses_columns"),
+                acknowledged=bool(decision.payload.get("acknowledge_signal_loss")))
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        _recompute(project)
+        return _payload(project)
+
+    if decision.kind == "settle_preprocess":
+        try:
+            project.settle_preprocess(bool(decision.payload.get("skipped")))
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return _payload(project)
+
+    if decision.kind == "trim_training_rows":
+        try:
+            project.trim_training_rows(
+                decision.payload.get("column") or decision.subject,
+                minimum=decision.payload.get("minimum"),
+                maximum=decision.payload.get("maximum"),
+                reason=str(decision.payload.get("reason") or ""))
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        _recompute(project)
+        return _payload(project)
 
     if decision.kind == "seal":
         if project.target is None:
@@ -706,6 +754,34 @@ async def get_grain(project_id: str) -> Dict[str, Any]:
     }
 
 
+@app.get("/project/{project_id}/preprocess")
+async def get_preprocess(project_id: str) -> Dict[str, Any]:
+    """The Preprocess step's state: which columns have blanks, what was decided.
+
+    Each strategy carries `because` — clause §06's litmus answer in words — and
+    `defers`, so an interface can tell the user WHY a choice changes nothing on
+    screen instead of leaving them to conclude the app did nothing.
+    """
+    from turbotab import missingness as _miss
+    project = _project(project_id)
+    survey = project.missingness_survey()
+    return {
+        "columns": survey,
+        "strategies": {
+            "numeric": [_miss.strategy(k) for k in _miss.NUMERIC_STRATEGIES],
+            "categorical": [_miss.strategy(k) for k in _miss.CATEGORICAL_STRATEGIES],
+        },
+        "mechanism_question": {
+            "why": _miss.MECHANISM_WHY,
+            "consumer": _miss.MECHANISM_CONSUMER,
+            "options": list(_miss.MECHANISM_OPTIONS),
+        },
+        "declared": project.missingness,
+        "settled": project.preprocess_settled,
+        "receipt": _miss.plan_receipt(project.missingness, len(survey)),
+    }
+
+
 @app.get("/project/{project_id}/features")
 async def get_features(project_id: str) -> Dict[str, Any]:
     """The transform catalogue, split by clause §06, and what has been decided.
@@ -813,6 +889,7 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
 
     from ml import router
 
+    missing_columns = [r["column"] for r in project.missingness_survey()]
     answered, deferred = [], {}
     for d in project.decisions:
         if d.kind == "set_target":
@@ -821,6 +898,8 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
             answered.append("state_grain")
         elif d.kind == "set_eligibility":
             answered.append("state_eligibility")
+        elif d.kind == "route_missingness":
+            answered.append(f"missingness::{d.subject}")
         elif d.kind == "settle_features":
             answered.append("choose_features")
         elif d.kind == "set_task_type":
@@ -873,7 +952,8 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
         questions = router.plan(structural, target=project.target,
                                 detection=detection, step=step,
                                 deferred=deferred, answered=answered,
-                                recommendations=recommendations, signals=signals)
+                                recommendations=recommendations, signals=signals,
+                                missing_columns=missing_columns)
         router.audit(questions)
     except router.RouterError as exc:
         # A plan that breaks a governing rule is not rendered at all.

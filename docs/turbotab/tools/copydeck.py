@@ -157,6 +157,73 @@ HAND: List[Dict[str, Any]] = [
          probe="nothing downstream can run on an empty study"),
 
     # ── Explore · the robustness trim (clause §05, arming half) ─────────────
+    # ── Preprocess · refusals at the project boundary ────────────────────────
+    dict(step="Preprocess", state="missingness · a column with no blanks",
+         trigger="`route_missingness` on a column that is complete",
+         copy="`{column}` has no missing values, so there is no missingness to "
+              "route. Asking about a column that is complete would be the "
+              "interview inventing work.",
+         source="turbotab/project.py",
+         probe="interview inventing work"),
+    dict(step="Preprocess", state="missingness · an unknown mechanism",
+         trigger="`declare` with a mechanism outside the three answers",
+         copy="'{mechanism}' is not one of ['informative', 'not_informative', "
+              "'not_sure']. The mechanism is asked, never inferred — `not_sure` "
+              "is a real answer.",
+         source="turbotab/missingness.py",
+         probe="asked, never inferred"),
+    dict(step="Preprocess", state="missingness · the indicator column name is taken",
+         trigger="`route_missingness` with `indicator` when `{column}_was_missing` exists",
+         copy="'{name}' already exists in this table. Remove it first, or the "
+              "indicator would silently replace it.",
+         source="turbotab/project.py",
+         probe="or the indicator would silently replace it"),
+    dict(step="Preprocess", state="settled · the step was worked",
+         trigger="`settle_preprocess()` after at least one column was routed",
+         copy="Missingness settled: {k} column(s) changed now, {n} recorded to "
+              "be fitted inside the training folds, {m} deliberately left alone.",
+         source="turbotab/missingness.py", probe="Missingness settled: "),
+    dict(step="Preprocess", state="settled · the step was skipped",
+         trigger="`settle_preprocess(skipped=True)`",
+         copy="Preprocessing was skipped; no missingness routing was recorded "
+              "and every column goes forward as it is.",
+         source="turbotab/project.py",
+         probe="every column goes forward as it is"),
+    dict(step="Preprocess", state="settled · why nothing visibly changed",
+         trigger="the step is settled and at least one strategy deferred — the "
+                 "honest report of a step whose output is decisions rather than "
+                 "a changed table",
+         copy="Your table looks the same because it is the same. Filling a blank "
+              "with a median means computing that median, and computing it over "
+              "every row would compute it over the held-out rows too — so the "
+              "decision is recorded now and the arithmetic happens inside each "
+              "training fold, where it can only see training data. What you just "
+              "did is the part that cannot be automated; what is left is "
+              "bookkeeping the pipeline does on its own.",
+         source="turbotab/missingness.py",
+         probe="the part that cannot be automated"),
+    dict(step="Preprocess", state="settled · nothing was deferred",
+         trigger="the step is settled and every strategy was row-local or leave",
+         copy="Nothing was deferred, so nothing is waiting: every answer here "
+              "either changed the table or deliberately left it alone.",
+         source="turbotab/missingness.py",
+         probe="either changed the table or deliberately left it alone"),
+    dict(step="Preprocess", state="settled · columns still unanswered",
+         trigger="the step is settled while a column with blanks was never routed",
+         copy="{n} column(s) with missing values have not been answered yet.",
+         source="turbotab/missingness.py",
+         probe="with missing values have not been"),
+    dict(step="Explore", state="trim · the label saying what it is NOT",
+         trigger="every successful `trim_training_rows`; §04's two objects look "
+                 "identical in a spreadsheet, so the trim says which one it is",
+         copy="This narrows the TRAINING rows only. It does not change who your "
+              "study is about: the held-out rows are untouched, N is unchanged, "
+              "and nothing here belongs in participant flow. If you meant to "
+              "restrict the population the model is for, that is the eligibility "
+              "question, it is asked before the seal, and it does change N.",
+         source="turbotab/obligations.py",
+         probe="It does not change who your study is about"),
+
     dict(step="Explore", state="trim · attempted before the seal",
          trigger="`trim_training_rows` while `barrier_raised` is false",
          copy="A robustness trim is post-seal by definition: it narrows the "
@@ -365,7 +432,7 @@ def _esc(text: str) -> str:
 def _generated_sections() -> List[str]:
     from ml import router
     from turbotab import (eligibility as EL, features as F, grain as G,
-                          selection as S)
+                          missingness as MI, selection as S)
 
     out: List[str] = []
 
@@ -495,6 +562,54 @@ def _generated_sections() -> List[str]:
         out.append(f"**Why we ask.** {q.why}\n")
         out.append(f"**Who consumes the answer.** {q.consumer}\n")
         out.append(f"**Options.** {' · '.join(q.options)}\n")
+
+    # ── Preprocess, clause §07 ───────────────────────────────────────────────
+    out.append("### Preprocess · the mechanism question, asked per column\n")
+    out.append("*Trigger: the Preprocess step is reached and a column has "
+               "missing values. Asked BEFORE the strategy, because the answer "
+               "decides which strategies are legitimate. Never skipped — the "
+               "app cannot know.*\n")
+    out.append(f"**Question.** {MI.MECHANISM_QUESTION}\n")
+    out.append(f"**Why we ask.** {MI.MECHANISM_WHY}\n")
+    out.append(f"**Who consumes the answer.** {MI.MECHANISM_CONSUMER}\n")
+    out.append("**Options.**\n")
+    for o in MI.MECHANISM_OPTIONS:
+        out.append(f"- {o}")
+    out.append("")
+
+    out.append("### Preprocess · the strategies, and why each is where it is\n")
+    out.append("| Branch | Strategy | Label | Executes | Because |")
+    out.append("|---|---|---|---|---|")
+    for branch, keys in (("numeric", MI.NUMERIC_STRATEGIES),
+                         ("categorical", MI.CATEGORICAL_STRATEGIES)):
+        for k in keys:
+            sp = MI.strategy(k)
+            when = "in training folds" if sp["defers"] else "now (row-local)"
+            out.append(f"| {branch} | `{k}` | {_esc(sp['label'])} | {when} | "
+                       f"{_esc(sp['because'])} |")
+    out.append("")
+
+    out.append("### Preprocess · the informative-missingness blocker\n")
+    out.append("*A CONSEQUENCE. Fires when the user has stated the missingness "
+               "is informative AND chosen a strategy that fills the blanks. "
+               "`I'm not sure` deliberately does NOT fire it.*\n")
+    out.append("> " + _esc(MI.INFORMATIVE_IMPUTATION_BLOCKER).replace(
+        "\n\n", " ") + "\n")
+    out.append("**The two exits.** Acknowledgment is TYPED, not a click.\n")
+    out.append("| Exit | Label | Detail |")
+    out.append("|---|---|---|")
+    for e in MI.BLOCKER_EXITS:
+        out.append(f"| `{e['id']}` | {_esc(e['label'])} | {_esc(e['detail'])} |")
+    out.append("")
+
+    out.append("### Preprocess · the two refusals that have no exit\n")
+    out.append("| Trigger | Copy |")
+    out.append("|---|---|")
+    out.append("| The outcome is named inside a MICE imputation scope | "
+               + _esc(MI.OUTCOME_IN_IMPUTATION_REFUSAL) + " |")
+    out.append("| A mechanism is stated informative | *(recorded, not refused)* "
+               + _esc(MI.STABILITY_ASSUMPTION) + " |")
+    out.append("")
 
     out.append("### Features · the transform catalogue\n")
     out.append("*Every entry states its own clause-§06 classification and why. "

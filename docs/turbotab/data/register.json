@@ -748,48 +748,48 @@
   "step": "preprocess",
   "capability": "Numeric imputation: median / mean / iterative (MICE) / constant, with per-strategy guidance",
   "classic": "pages/05 per-model tab 1 - selectbox with help text per option, MICE recommended above 5% missing (Rubin 1987)",
-  "state": "classic-only",
-  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+  "state": "both",
+  "reason": "BUILT as `impute_median` / `impute_mean` / `impute_mice`, all DEFERRED per clause 06 - a median, a mean and a MICE model are each statements about the column's distribution, so they are recorded now and fitted inside training folds. What Guided adds is that each carries a `because` in words, and that the strategy is offered only AFTER the mechanism question, because the answer to 'could a blank here mean something?' decides which of them are legitimate at all."
  },
  {
   "id": "prep-missing-indicators",
   "step": "preprocess",
   "capability": "Missing-data indicator columns, so a model can learn whether missingness is itself informative",
   "classic": "pages/05 per-model tab 1 - checkbox 'Add missing-data indicator columns', help names the MNAR pattern",
-  "state": "classic-only",
-  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+  "state": "both",
+  "reason": "BUILT as `indicator`, and it is ROW-LOCAL by the clause-06 litmus: the new column is 1 where this row's own value is blank. So it executes immediately and posts a receipt, unlike everything else in this step. The underlying value is deliberately left blank - filling it too would be the imputation the user just declined."
  },
  {
   "id": "prep-categorical-imputation",
   "step": "preprocess",
   "capability": "Categorical imputation: most_frequent / constant",
   "classic": "pages/05 per-model tab 1 - selectbox; 'constant' fills a placeholder category",
-  "state": "classic-only",
-  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+  "state": "both",
+  "reason": "BUILT as `impute_mode` (deferred) and `explicit_category` (row-local). Guided's default for an informatively-missing column is the explicit category rather than the mode, which inverts Classic's ordering, and clause 07 is the reason: an explicit Missing level preserves the signal while the mode destroys it."
  },
  {
   "id": "prep-informative-missingness-question",
   "step": "preprocess",
   "capability": "Ask whether missingness is INFORMATIVE before choosing how to fill it",
   "classic": "NOT PRESENT. pages/05 offers imputation strategies and a missing-indicator checkbox, and never asks whether a blank could mean something. The mechanism question is not asked in either door.",
-  "state": "classic-only",
-  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+  "state": "guided-only",
+  "reason": "BUILT, and it did not exist in either door before L17. `Could a blank in X mean something?` is asked PER COLUMN and BEFORE the strategy, which is the ordering clause 07 requires - asked the other way round, a column that carried information gets a median written over it by a well-meaning default. A FACT that is never skippable, for the same reason as the grain: the app cannot know. `I'm not sure` is first-class and deliberately does NOT block. OWED BACK TO CLASSIC: pages/05 offers imputation strategies and never asks the mechanism."
  },
  {
   "id": "prep-outcome-out-of-imputation",
   "step": "preprocess",
   "capability": "The outcome is never placed in the imputation model",
   "classic": "NOT ASKED AND NOT ASSERTED on pages/05. MICE is offered as 'models each feature conditioned on others' with no statement about which columns are in scope.",
-  "state": "classic-only",
-  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+  "state": "guided-only",
+  "reason": "BUILT as a REFUSAL rather than a setting. Passing the target inside a MICE scope raises, and no acknowledgment gets round it - unlike the informative-missingness blocker, which a user may legitimately override. Clause 07 says it is a blocker in ANY configuration, so it is not offered as a choice. OWED BACK TO CLASSIC: pages/05 describes MICE as 'models each feature conditioned on others' and says nothing about which columns are in scope."
  },
  {
   "id": "prep-stability-assumption",
   "step": "preprocess",
   "capability": "Record the stability assumption - that missingness means the same thing at deployment - as a methods assumption",
   "classic": "NOT PRESENT. No page records it; nothing in the manuscript surface carries it.",
-  "state": "classic-only",
-  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+  "state": "guided-only",
+  "reason": "BUILT. Stating a mechanism as informative records the stability assumption on the declaration - that a blank will mean the same thing wherever the model is deployed, which is not checkable from this dataset because missingness patterns are a property of how a site collects data. Recorded as an ASSUMPTION rather than a warning, and the distinction is the point: a warning is dismissed, an assumption is carried by a manuscript. OWED BACK TO CLASSIC."
  },
  {
   "id": "prep-numeric-scaling",
@@ -797,7 +797,7 @@
   "capability": "Numeric scaling: standard / robust / minmax / none, with the model-family reason for each",
   "classic": "pages/05 per-model tab 2 - selectbox; caption states trees are scale-invariant",
   "state": "classic-only",
-  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+  "reason": "NOT BUILT at L17, deliberately: this loop's scope was clause 07, and scaling raises no clause-07 question. It is stateful by the litmus and will be a declaration when it lands, not a transform. Recorded so the gap is a claim rather than an omission."
  },
  {
   "id": "prep-power-transform",
@@ -805,7 +805,7 @@
   "capability": "Power transform: none / log1p / Yeo-Johnson",
   "classic": "pages/05 per-model tab 2 - selectbox, with backward compatibility for an older log_transform boolean",
   "state": "classic-only",
-  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+  "reason": "NOT BUILT at L17. Note the SPLIT this will need, which the Features step already draws: log1p is ROW-LOCAL and already exists in the Features catalogue as `log1p`, while Yeo-Johnson fits lambda from the column and defers. Building it here as one control would collapse a distinction clause 06 requires."
  },
  {
   "id": "prep-categorical-encoding",
@@ -813,7 +813,7 @@
   "capability": "Categorical encoding: onehot / target / ordinal, with the leakage caveat on target encoding",
   "classic": "pages/05 per-model tab 3 - selectbox; target encoding's help says the pipeline uses cross-fitting to mitigate leakage",
   "state": "classic-only",
-  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+  "reason": "NOT BUILT at L17. All three of Classic's options defer, and target encoding is the sharpest: Classic's own help text says the pipeline uses cross-fitting to mitigate leakage, which is a clause-06 claim that needs its own verification rather than inheritance."
  },
  {
   "id": "prep-outlier-handling",
@@ -821,7 +821,7 @@
   "capability": "Outlier handling: none / percentile winsorizing / MAD, with thresholds",
   "classic": "pages/05 per-model tab 4 - selectbox plus number inputs for lower/upper percentile and MAD k",
   "state": "classic-only",
-  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+  "reason": "NOT BUILT at L17. Percentile winsorizing and MAD both learn their thresholds from the column, so both defer. Related to but distinct from the robustness trim, which IS built - the trim removes training rows, these clip values."
  },
  {
   "id": "prep-plausibility-gating",
@@ -829,7 +829,7 @@
   "capability": "Domain-specific range filtering, clip-to-NaN or remove rows",
   "classic": "pages/05 per-model tab 4 - checkbox plus a clip/filter radio; bounds from ml/physiology_reference.py",
   "state": "classic-only",
-  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+  "reason": "NOT BUILT in Guided. Classic's version is the clause-01 impossibility pass in its post-seal form, and STATE-101 is the open row for the sequencing problem - the pass belongs BEFORE the seal and runs after it in both doors. Building it in Guided without moving it would inherit the defect."
  },
  {
   "id": "prep-unit-harmonization",
@@ -837,15 +837,15 @@
   "capability": "Unit harmonization - detect and convert mixed units before modeling",
   "classic": "pages/05 per-model tab 4 - checkbox; ml/clinical_units.py does the conversion",
   "state": "classic-only",
-  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+  "reason": "NOT BUILT at L17. Row-local by the litmus - a conversion factor applied to one row's own cell - so it belongs in the Features catalogue rather than here when it lands. Recorded so that placement is a decision rather than an accident."
  },
  {
   "id": "prep-pca",
   "step": "preprocess",
   "capability": "PCA dimensionality reduction with an explicit interpretability warning",
   "classic": "pages/05 per-model tab 5 - checkbox plus n_components, with a warning that SHAP will refer to PC1/PC2 and EDA-conditional justifications",
-  "state": "classic-only",
-  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+  "state": "both",
+  "reason": "BUILT at L14 as `pca` in the Features catalogue, DEFERRED. Classic offers it here at Preprocess with an interpretability warning; Guided offers it at Features with the same warning as `explainability_cost: high`. Same capability, different step, and the difference is deliberate: PCA is a feature decision the user makes, not a preprocessing default."
  },
  {
   "id": "prep-per-model-config",
@@ -853,7 +853,7 @@
   "capability": "Per-model pipelines: each selected model gets its own preprocessing configuration",
   "classic": "pages/05 - one st.tabs entry per selected model, all settings keyed per model",
   "state": "classic-only",
-  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+  "reason": "NOT BUILT at L17, and the register is where the reason belongs: Guided has no model-selection step yet, so there are no per-model tabs to hang configuration on. The project already carries `pipeline_specs` keyed by model, so the data model is ready and the interface is not."
  },
  {
   "id": "prep-smart-defaults",
@@ -861,7 +861,7 @@
   "capability": "Smart Defaults mode: auto-configure from the data profile and EDA findings",
   "classic": "pages/05 - a radio between Smart Defaults and Advanced; auto-detects robust scaling when EDA found outliers",
   "state": "classic-only",
-  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+  "reason": "NOT BUILT, and this one is a deliberate REFUSAL rather than a scheduling gap. Auto-configuring preprocessing from the data profile is pre-selection at a confidence tier the governing rule reserves for the user (PRODUCT_VISION 07.1), and clause 07's mechanism question cannot be auto-answered even in principle - it is knowledge the app does not have. A Smart Defaults mode that guessed the mechanism would be exactly the defect clause 07 exists to prevent."
  },
  {
   "id": "prep-high-cardinality-guardrail",
@@ -869,7 +869,7 @@
   "capability": "Warn when a high-cardinality categorical would explode into one-hot columns, and record it in the ledger",
   "classic": "pages/05:114-135 - unconditional warning above 50 levels, with an insight upserted to the ledger",
   "state": "classic-only",
-  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+  "reason": "NOT BUILT at L17. It belongs with encoding, which is not built. Worth keeping as a row because it is a genuinely good Classic behavior - it warns unconditionally in both modes and records an insight in the ledger."
  },
  {
   "id": "prep-double-transform-guardrail",
@@ -877,7 +877,7 @@
   "capability": "Warn when a feature already transformed at Feature Engineering would be transformed again",
   "classic": "pages/05:161-180 - reads engineered_feature_transforms and auto-excludes those features from redundant transforms",
   "state": "classic-only",
-  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+  "reason": "NOT BUILT at L17, and Guided has a structural head start: the project records `engineered` receipts and `deferred_transforms` as first-class lists, so 'was this column already transformed?' is a lookup rather than the session-state scan Classic performs. Recorded so that advantage is claimed rather than forgotten."
  },
  {
   "id": "prep-pipeline-preview",
@@ -885,6 +885,6 @@
   "capability": "Before/after preview of each model's pipeline output",
   "classic": "pages/05:1336-1370 - an expander per model with Before and After subheaders",
   "state": "classic-only",
-  "reason": "SURVEYED at L17 before building, per FEATURE_PARITY.md. Disposition follows in the same loop."
+  "reason": "NOT BUILT at L17. The preview a deferred transform is allowed is narrower than Classic's before/after: clause 06 permits a read-only preview NOT persisted to the modeling table and computed on TRAINING ROWS ONLY, which the Features step already implements as `_deferred_preview`. Extending it here is the same mechanism, not a new one."
  }
 ]

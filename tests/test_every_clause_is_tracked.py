@@ -304,13 +304,19 @@ CLAUSES: Dict[str, Dict] = {
                          "imputing an informatively-missing field is a blocker "
                          "with typed acknowledgment, and the stability "
                          "assumption is recorded as a methods assumption.",
-                findings=["GUIDED-021"],
+                tests=[("turbotab/test_missingness_routes_by_mechanism.py",
+                        "test_imputing_an_informatively_missing_column_is_blocked_with_both_exits"),
+                       ("turbotab/test_missingness_routes_by_mechanism.py",
+                        "test_stating_informative_records_the_stability_assumption")],
             ),
             "the-outcome-never-enters-the-imputation-model": dict(
                 requires="Numeric imputation is fitted inside the fold and never "
                          "places the outcome in the imputation model, which is a "
                          "blocker in any configuration.",
-                findings=["GUIDED-021"],
+                tests=[("turbotab/test_missingness_routes_by_mechanism.py",
+                        "test_the_outcome_cannot_enter_the_imputation_model"),
+                       ("turbotab/test_missingness_routes_by_mechanism.py",
+                        "test_the_survey_routes_by_dtype_and_leaves_the_mechanism_unanswered")],
             ),
         },
     ),

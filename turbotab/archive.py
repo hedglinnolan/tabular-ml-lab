@@ -318,6 +318,12 @@ def build_members(project) -> Dict[str, bytes]:
         # between them — including a save and a restore, which is the
         # longest form that gap takes.
         "obligations": _json_safe(project.obligations),
+        # The Preprocess step is almost entirely DECLARATIONS, so the
+        # archive is the only place they live: nothing has executed them,
+        # and a restored project that lost them would have no record that
+        # the step happened at all.
+        "missingness": _json_safe(project.missingness),
+        "preprocess_settled": bool(project.preprocess_settled),
     }
     members["config.json"] = json.dumps(config, indent=2, default=str).encode("utf-8")
     saved.append("config")
@@ -469,6 +475,8 @@ def from_bytes(raw: bytes):
     project.grain = config.get("grain") or None
     project.eligibility = config.get("eligibility") or None
     project.obligations = list(config.get("obligations") or [])
+    project.missingness = list(config.get("missingness") or [])
+    project.preprocess_settled = bool(config.get("preprocess_settled", False))
     project.engineered = list(config.get("engineered") or [])
     project.deferred_transforms = list(config.get("deferred_transforms") or [])
     project.selection_spec = config.get("selection_spec") or None
