@@ -359,3 +359,52 @@ def test_an_undetermined_seal_still_says_undetermined_after_a_round_trip():
     assert back.lockbox["seal_basis"] == SEAL_UNDETERMINED
     assert back.lockbox["exploratory"] is True, (
         "a restored undetermined seal renders as a clean lock")
+
+
+# ── the disclosure: what the user actually reads ──────────────────────────────
+
+def test_an_undetermined_seal_says_so_in_words_the_user_reads(client):
+    """`GUIDED-015`. The basis and the `exploratory` flag were both recorded
+    correctly and nothing said anything, so the Guided door rendered an
+    undetermined seal exactly like a confident one — constitution §03's own
+    failure mode ("never rendered as a clean lock") reproduced inside the door
+    built to honor it.
+
+    A flag is a thing a renderer has to remember to check; a sentence is not.
+    So the assertion is on the sentence, and it is taken over HTTP, because
+    "what the user reads" is a claim about what leaves the server rather than
+    about what a helper can return when asked.
+    """
+    def drive(df, answer):
+        pid = _upload(client, df)
+        client.post(f"/project/{pid}/decision",
+                    json={"kind": "set_target", "payload": {"column": "outcome"}})
+        r = client.post(f"/project/{pid}/decision",
+                        json={"kind": "set_grain", "payload": {"answer": answer}})
+        assert r.status_code == 200, r.text
+        answered = r.json()["disclosures"]
+        s = client.post(f"/project/{pid}/decision", json={"kind": "seal"})
+        assert s.status_code == 200, s.text
+        return answered, s.json()["disclosures"]
+
+    unsure_answer, unsure = drive(longitudinal(), G.NOT_SURE)
+    stated_answer, stated = drive(cross_sectional(), G.ONE_ROW_PER_PERSON)
+
+    # 1. It says something at all. This is the state that shipped: a seal drawn
+    #    on an unknown shape, reaching the interface without a word about it.
+    assert unsure["seal"].strip(), "an undetermined seal reaches the user silent"
+    assert unsure_answer["grain"].strip(), '"I am not sure" is acknowledged with nothing'
+
+    # 2. And it does not say what a verified clean split says. One shared
+    #    sentence for every basis would satisfy the check above and still be
+    #    the defect, because rendering the two alike IS the defect.
+    assert unsure["seal"] != stated["seal"], (
+        "an undetermined seal and a cross-sectional one render identically")
+    assert unsure_answer["grain"] != stated_answer["grain"]
+
+    # 3. The caution is in the prose, not only in a flag beside it — and it is
+    #    absent where it would be false.
+    assert "exploratory" in unsure["seal"].lower()
+    assert "exploratory" not in stated["seal"].lower(), (
+        "a verified clean split is cautioned as if it were not")
+    assert unsure["exploratory"] is True and stated["exploratory"] is False

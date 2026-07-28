@@ -88,9 +88,45 @@ def _recompute(project: AnalysisProject) -> None:
     )
 
 
+def _disclosures(project: AnalysisProject) -> Dict[str, Any]:
+    """The sentences the user reads about the grain answer and the seal.
+
+    Served rather than composed in the page, for the same reason
+    `/capabilities` is: an interface that writes its own disclosure can drift
+    from what the record says, and the disclosure is the record's claim about
+    itself.
+    """
+    out: Dict[str, Any] = {"grain": None, "seal": None, "exploratory": False}
+    if project.grain:
+        out["grain"] = grain_mod.answer_disclosure(
+            project.grain["answer"], project.grain.get("group_col"))
+        if project.grain.get("contradiction_acknowledged"):
+            out["attested"] = (
+                "You confirmed this answer against the shape of the data. The "
+                "disagreement is recorded and carries into the methods section "
+                "as a stated limitation.")
+    if project.lockbox:
+        out["seal"] = grain_mod.seal_disclosure(project.lockbox)
+        out["exploratory"] = grain_mod.is_exploratory_basis(
+            project.lockbox.get("seal_basis"))
+        if (project.grain or {}).get("contradiction_acknowledged"):
+            # §09: the attestation flows into the record so the manuscript can
+            # carry it as a limitation. The seal is where that matters, because
+            # the seal's disclosure is what a reader takes the held-out number
+            # to mean. Without this the sentence reads as a clean split, which
+            # is not false but is not the whole of what the app knows.
+            out["seal"] += (
+                " Note: this split rests on your answer, which disagreed with "
+                "the shape of the data. That disagreement is on the record and "
+                "belongs in the methods section.")
+            out["exploratory"] = True
+    return out
+
+
 def _payload(project: AnalysisProject) -> Dict[str, Any]:
     body = project.to_dict()
     body["sample"] = project.head(8)
+    body["disclosures"] = _disclosures(project)
     return body
 
 
@@ -220,8 +256,12 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
             # 409, not 400: the request is well-formed and the state disagrees
             # with it. The evidence travels with the refusal so the interruption
             # can show what it saw rather than assert that it saw something.
+            # The exits travel WITH the refusal, so an interface cannot render
+            # the interruption without also rendering its way out. §09: a
+            # CONSEQUENCE resolves or is attested, never a dead end.
             raise HTTPException(409, {"message": str(exc),
-                                      "contradiction": exc.detail}) from exc
+                                      "contradiction": exc.detail,
+                                      "exits": exc.detail.get("exits", [])}) from exc
         except ProjectError as exc:
             raise HTTPException(400, str(exc)) from exc
         return _payload(project)

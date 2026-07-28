@@ -166,6 +166,49 @@ def suggestion(df: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
+# ── the two terminal exits ───────────────────────────────────────────────────
+# `DESIGN_LANGUAGE.md` §09: a CONSEQUENCE **resolves or is attested, never a
+# dead end.** The attestation exit already existed mechanically — `set_grain`
+# takes `acknowledged_contradiction` and the API reads it — but it carried NO
+# LABEL, so a frontend author reading the 409 would have known only to offer
+# "change your answer". An exit nobody can find is not an exit, and a user
+# whose data is genuinely unusual would have been stuck at a question they had
+# answered correctly.
+#
+# Both are carried on the refusal itself so the interface cannot render one
+# without the other.
+_RESOLVE = {
+    "id": "revise",
+    "kind": "resolve",
+    "label": "Change my answer",
+    "detail": "Go back to the question and answer it differently.",
+}
+
+
+def _attest(what: str) -> Dict[str, str]:
+    return {
+        "id": "attest",
+        "kind": "attest",
+        "label": "My answer is right — the data really is like this",
+        "detail": what,
+    }
+
+
+_EXITS_STATED_UNIQUE = [
+    _RESOLVE,
+    _attest("Continue with one row per person. The repetition is recorded as "
+            "a noted disagreement, and it travels into the methods section as "
+            "a stated limitation rather than disappearing."),
+]
+
+_EXITS_STATED_REPEATS = [
+    _RESOLVE,
+    _attest("Continue with this column as the identifier. The disagreement is "
+            "recorded and carried into the methods section as a stated "
+            "limitation."),
+]
+
+
 def contradiction(df: pd.DataFrame, answer: str,
                   group_col: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Evidence that the stated answer and the data disagree, or None.
@@ -189,11 +232,18 @@ def contradiction(df: pd.DataFrame, answer: str,
             "kind": "stated_unique_but_data_repeats",
             "columns": [e["column"] for e in evidence[:3]],
             "evidence": evidence[:3],
+            # Leads with the OBSERVATION, not with the user's claim. The first
+            # draft opened "You said one row per person, but…", which attributes
+            # a position to the user and then contradicts it — a courtroom
+            # cadence for a message whose whole point is that either reading
+            # could be the wrong one. Same facts, same refusal to assign blame.
             "message": (
-                f"You said one row per person, but '{top['column']}' has "
-                f"{top['n_distinct']:,} distinct values across {top['n_rows']:,} rows "
-                f"— about {top['rows_per']:g} rows each. One of those two readings "
-                f"is wrong, and which one changes how the held-out rows are chosen."),
+                f"`{top['column']}` has {top['n_distinct']:,} distinct values "
+                f"across {top['n_rows']:,} rows, about {top['rows_per']:g} each. "
+                f"That is the shape of repeated measures, and you answered one "
+                f"row per person. One of those two readings is wrong, and which "
+                f"one changes how the held-out rows are chosen."),
+            "exits": _EXITS_STATED_UNIQUE,
         }
 
     if answer == PEOPLE_REPEAT and group_col:
@@ -202,8 +252,12 @@ def contradiction(df: pd.DataFrame, answer: str,
                 "kind": "named_column_absent",
                 "columns": [group_col],
                 "evidence": [],
-                "message": (f"'{group_col}' is not a column in this table, so the "
+                "message": (f"`{group_col}` is not a column in this table, so the "
                             f"held-out rows cannot be grouped by it."),
+                # Only one exit here, and that is correct rather than a dead
+                # end: a column that does not exist cannot be attested to. The
+                # single exit is still a resolution, so §09 holds.
+                "exits": [_RESOLVE],
             }
         s = df[group_col]
         if isinstance(s, pd.DataFrame):
@@ -221,8 +275,95 @@ def contradiction(df: pd.DataFrame, answer: str,
                     f"value on every one of its {non_null:,} rows. Grouping by it "
                     f"would hold out one row per group, which is the row-level "
                     f"split you were trying to avoid."),
+                "exits": _EXITS_STATED_REPEATS,
             }
     return None
+
+
+# ── what the user reads after answering, and after the seal ──────────────────
+# These did not exist. `seal_basis` returned `undetermined` and `draw_holdout`
+# set `exploratory: True`, and NOTHING said anything — so a user who chose
+# "I'm not sure" got a seal that rendered, as far as the interface was
+# concerned, exactly like a confident one. That is constitution §03's own
+# failure ("never rendered as a clean lock") reproduced in the door built to
+# honor it.
+#
+# Written as prose the user reads, not as a flag a renderer might act on,
+# because a flag is a thing somebody has to remember to check and a sentence is
+# not.
+
+_ANSWERED: Dict[str, str] = {
+    ONE_ROW_PER_PERSON:
+        "Recorded: one row per person. The held-out rows will be drawn at "
+        "random, which is the right choice when every row is a different "
+        "participant.",
+    PEOPLE_REPEAT:
+        "Recorded: people repeat, identified by `{group_col}`. Whole people "
+        "will be held out rather than individual rows, so nobody appears on "
+        "both sides of the split.",
+    NOT_SURE:
+        "Recorded: unknown. That is a legitimate answer and the analysis "
+        "continues — but because the shape is unknown, the held-out rows are "
+        "drawn by row, and if your rows do repeat people the same person will "
+        "sit on both sides. Held-out performance would then read better than "
+        "the model is. Your numbers will be labeled exploratory until this is "
+        "settled, and you can settle it at any point before training.",
+}
+
+_SEALED: Dict[str, str] = {
+    SEAL_CROSS_SECTIONAL:
+        "{n_test:,} rows ({fraction:.0%}) are held out and will not be looked "
+        "at again until the models are scored.",
+    SEAL_GROUPED:
+        "{n_test:,} rows ({fraction:.0%}) from {n_test_groups:,} "
+        "{group_noun} are held out, chosen by {group_one} rather than by row, "
+        "so no {group_one} appears in both halves.",
+    SEAL_UNDETERMINED:
+        "{n_test:,} rows ({fraction:.0%}) are held out, drawn BY ROW because "
+        "the data's shape is unknown. This is not a verified clean split: if "
+        "rows repeat people, the same person is on both sides and held-out "
+        "performance will read better than the model is. Treat these numbers "
+        "as exploratory, and answer the grain question when you can.",
+    "repetition_found_grouping_abandoned":
+        "{n_test:,} rows ({fraction:.0%}) are held out, drawn BY ROW. Rows do "
+        "repeat per {group_one}, but there are too few {group_noun} to hold "
+        "any out whole — so the same {group_one} can appear on both sides and "
+        "held-out performance will read better than the model is. Treat these "
+        "numbers as exploratory.",
+}
+
+
+def answer_disclosure(answer: str, group_col: Optional[str] = None) -> str:
+    """What the user reads immediately after answering the grain question."""
+    return _ANSWERED.get(answer, "").format(group_col=group_col or "")
+
+
+def seal_disclosure(lockbox: Dict[str, Any]) -> str:
+    """What the user reads once the seal is drawn.
+
+    Keyed on the RECORDED BASIS rather than on a flag, so the three states
+    constitution §03 insists on stay three different sentences. An undetermined
+    seal and a verified cross-sectional one must never render alike; here they
+    cannot, because they are not the same string.
+    """
+    basis = lockbox.get("seal_basis") or SEAL_UNDETERMINED
+    noun = lockbox.get("group_noun") or "subjects"
+    one = noun[:-1] if noun.endswith("s") else noun
+    try:
+        return _SEALED.get(basis, _SEALED[SEAL_UNDETERMINED]).format(
+            n_test=lockbox.get("n_test", 0),
+            fraction=float(lockbox.get("fraction", 0.0)),
+            n_test_groups=lockbox.get("n_test_groups") or 0,
+            group_noun=noun, group_one=one)
+    except (KeyError, ValueError):            # pragma: no cover - formatting guard
+        return _SEALED[SEAL_UNDETERMINED].format(
+            n_test=lockbox.get("n_test", 0),
+            fraction=float(lockbox.get("fraction", 0.0)))
+
+
+def is_exploratory_basis(basis: Optional[str]) -> bool:
+    """Which bases carry exploratory labeling. Two of the four, not one."""
+    return basis in (SEAL_UNDETERMINED, "repetition_found_grouping_abandoned")
 
 
 def seal_basis(answer: str, group_col: Optional[str] = None,
