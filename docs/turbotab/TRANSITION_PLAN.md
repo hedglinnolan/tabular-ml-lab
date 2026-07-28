@@ -233,7 +233,7 @@ compresses the JSON lens into one word, which is why the unrun count is six rath
 | 2 | Cardinality / fan-out | ✓ ran (original) | in `HUNT_FINDINGS.md` |
 | 3 | Join modes | ✓ ran (original) | in `HUNT_FINDINGS.md` |
 | 4 | Stacking | ✓ ran (original) | in `HUNT_FINDINGS.md` |
-| 5 | Combine UI (the Step 2 screen) | **not run** | — |
+| 5 | Combine UI (the Step 2 screen) | ✓ ran — L12 | `IMPORT-201`…`204` (2 critical, 2 high) |
 | 6 | JSON structure | **not run** | — |
 | 7 | JSON encoding | **not run** | — |
 | 8 | JSON → downstream | **not run** | — |

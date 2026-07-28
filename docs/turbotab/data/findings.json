@@ -6152,5 +6152,61 @@
   "verified_against": "TurboTab @ f7eb662",
   "test": "tests/test_key_sampling_is_symmetric.py::test_the_same_ids_listed_in_a_different_row_order_still_match",
   "verified_ev": "ml/join_doctor.py:367-434 _key_tokens value-determined keep; ml/join_doctor.py:553-559 the two-sided rescale"
+ },
+ {
+  "id": "IMPORT-201",
+  "area": "IMPORT",
+  "sev": "critical",
+  "item": "The change map names a column the merged frame does not contain: describe_join is given the running label while execute_join is given the base file name, so every suffixed column is described under the wrong file",
+  "detail": "L12 lens 5 (combine UI / the Step 2 screen), fresh adversarial pass. utils/combine_ui.py:309-314 builds the change map and the frame with DIFFERENT left-hand names: describe_join(..., running, other) against execute_join(..., base_name, other), where running = running_label or base_name. _render_grouped calls _render_link(stacked, running_label=list(stacked)[0]) at :425 while base_name comes from the 'Start from which file?' selectbox at :234 over the same keys, so the two differ as soon as the user starts from any group but the first. Collision suffixes are derived from those names by _slug, so the map and the frame disagree on the name of every colliding column.",
+  "ev": "utils/combine_ui.py:309-314 (describe_join/execute_join name arguments); utils/combine_ui.py:425 (running_label=list(stacked)[0]); utils/combine_ui.py:234 (base_name selectbox)",
+  "act": "The map and the frame must be produced from one set of names. Gate 3 names IMPORT-007 - 'the map matches the executed frame' - as a requirement needing a named test; this is a live counterexample, so the test that closes IMPORT-007 should assert name-for-name equality between ChangeMap.columns and the merged frame's columns rather than merely that a map was produced.",
+  "status": "OPEN",
+  "note": "REPRODUCED AT HEAD. left=DataFrame(SEQN,site,age), right=DataFrame(SEQN,site,glucose), running='demographics', base_name='labs_cycle_2'. execute_join gives columns ['SEQN','site_labs_cycle_2','age','site_extra','glucose']; describe_join's map lists ['SEQN','site_demographics','age','site_extra','glucose']. Membership checked directly against the frame: SEQN True, site_demographics FALSE, age True, site_extra True, glucose True. SEAL-CLASS: no - row identity and the seal are untouched; this is provenance and disclosure. Filed critical rather than landmine because the change map is the app's row and column accounting, the artifact the entire Step 2 screen exists to show, and it is naming a column that does not exist. Governing rule: the assert-something-false branch, not silence.",
+  "verified_against": "TurboTab @ L12 lens 5",
+  "test": "",
+  "verified_ev": "utils/combine_ui.py:309-314 (describe_join/execute_join name arguments); utils/combine_ui.py:425 (running_label=list(stacked)[0]); utils/combine_ui.py:234 (base_name selectbox)"
+ },
+ {
+  "id": "IMPORT-202",
+  "area": "IMPORT",
+  "sev": "high",
+  "item": "A grouped combine renames the provenance column out of the summary's sight, so 'Rows per file' silently disappears from exactly the most complex combine",
+  "detail": "L12 lens 5 (combine UI), fresh adversarial pass. utils/combine_ui.py:416-418 renames SOURCE_COLUMN to SOURCE_COLUMN + '_' + _slug(label) after stacking within each group. That rename is deliberate and correct - the comment states the reason, that two stacked groups both carrying __source_file collide when linked. But render_combined_summary at utils/combine_ui.py:518 still tests membership of the exact bare name, so after a stack_then_link the branch is False and the 'Rows per file:' breakdown never renders. The single-operation stack path keeps the bare name and still shows it.",
+  "ev": "utils/combine_ui.py:416-418 (the rename); utils/combine_ui.py:518-521 (the exact-name membership test in render_combined_summary)",
+  "act": "render_combined_summary should accept the bare name or any column whose name starts with it, reporting per group when there are several. The rename is right and should stay; only the reader is wrong.",
+  "status": "OPEN",
+  "note": "REPRODUCED AT HEAD. execute_stack over two cycles gives columns ['SEQN','age','__source_file']; after the _render_grouped rename the frame carries '__source_file_demographics'; the summary's membership test is then False, while the same test on the un-renamed stack output is True. This is silence rather than a false claim - the app stops disclosing provenance instead of misreporting it - which is why it is high and not critical. SEAL-CLASS: no. Worth reading beside IMPORT-201: both are consequences of the app holding two different names for the same file across one screen.",
+  "verified_against": "TurboTab @ L12 lens 5",
+  "test": "",
+  "verified_ev": "utils/combine_ui.py:416-418 (the rename); utils/combine_ui.py:518-521 (the exact-name membership test in render_combined_summary)"
+ },
+ {
+  "id": "IMPORT-203",
+  "area": "IMPORT",
+  "sev": "critical",
+  "item": "After the 'no shared ID was found' fallback, combine_ui pre-selects a LOW-confidence key pairing as the default answer, which is the one thing the governing pre-selection rule forbids",
+  "detail": "L12 lens 5 (combine UI), fresh adversarial pass. utils/combine_ui.py:262-282 filters candidates to those above 'low'; when that filter empties, the screen warns 'No shared ID was found ... You can pick the columns yourself below' and then falls back to the first five candidates, every one of them 'low'. Those become the options of a plain st.selectbox, which pre-selects its first option. The project's rule is that 'high' is the only tier the UI may pre-select, because pre-selection is the app asserting. SWEEP-004 gave that rule an enforcer in router.audit(); this screen does not route through it.",
+  "ev": "utils/combine_ui.py:262-269 (the fallback), utils/combine_ui.py:277-282 (the selectbox that pre-selects its first option); the rule and its enforcer at SWEEP-004",
+  "act": "Offer the fallback list with no default selected - an explicit 'choose a pairing' placeholder as the first option - so a low-confidence pairing is always a user action and never the app's answer. This is the same code that carries the unfulfilled 'pick the columns yourself' promise (HUNT: promised-manual-key-picker-does-not-exist); the two share a fix but are separate defects and neither closes the other.",
+  "status": "OPEN",
+  "note": "REPRODUCED AT HEAD. Two unrelated 50-row files sharing only a row counter named 'row', plus disjoint ID columns P0..P49 and S0..S49: find_key_candidates returns exactly one candidate, row-to-row at 'low'; the non-low filter empties; the fallback puts that pairing in the box as the pre-selected default. The user is told no shared ID was found and shown a pre-filled answer in the same breath. SEAL-CLASS: YES, by inheritance. A pre-selected junk key fuses two unrelated cohorts into one working table, and everything downstream that reasons about who a row IS - grain, detect_repeated_subjects, the lockbox seal basis - then runs on a table whose row identity is already fictional. Same blast-radius argument as IMPORT-020 and IMPORT-022, reached one step earlier in the pipeline.",
+  "verified_against": "TurboTab @ L12 lens 5",
+  "test": "",
+  "verified_ev": "utils/combine_ui.py:262-269 (the fallback), utils/combine_ui.py:277-282 (the selectbox that pre-selects its first option); the rule and its enforcer at SWEEP-004"
+ },
+ {
+  "id": "IMPORT-204",
+  "area": "IMPORT",
+  "sev": "high",
+  "item": "In a three-or-more file chain the change map attributes every column the second file contributed to the FIRST file, because the running label is assigned before the loop and never updated",
+  "detail": "L12 lens 5 (combine UI), fresh adversarial pass. utils/combine_ui.py:255 assigns the running label outside the per-file loop and nothing reassigns it inside. On each iteration describe_join is handed that label as the left-hand file name, but the accumulating result frame is by then the product of every previous step. From the second attachment onward the map therefore labels all previously-merged columns with the base file's name, whichever file they actually came from.",
+  "ev": "utils/combine_ui.py:255 (running assigned once), utils/combine_ui.py:259-317 (the loop that never reassigns it), utils/combine_ui.py:309 (describe_join given running)",
+  "act": "Carry provenance forward instead of one label: accumulate a per-column source map across steps and hand that to the change map, or label the running frame honestly as a composite. describe_join's two-frame API cannot express this on its own, so the model belongs caller-side with the assembly work rather than in join_doctor.",
+  "status": "OPEN",
+  "note": "REPRODUCED AT HEAD. demographics(SEQN,age) + labs(SEQN,glucose) + diet(SEQN,kcal), chained. First map: age source_file 'demographics', glucose source_file 'labs' - correct. Second map: age 'demographics', glucose 'demographics', kcal 'diet'. glucose came from labs. This is the assert-something-false branch applied to provenance, and provenance is the change map's entire job. SEAL-CLASS: no. Related to IMPORT-201 but distinct: 201 is two different names for one file, 204 is one name standing for several files.",
+  "verified_against": "TurboTab @ L12 lens 5",
+  "test": "",
+  "verified_ev": "utils/combine_ui.py:255 (running assigned once), utils/combine_ui.py:259-317 (the loop that never reassigns it), utils/combine_ui.py:309 (describe_join given running)"
  }
 ]

@@ -20,18 +20,18 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**154 of 491 closed.**
+**154 of 495 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 302 |
+| `OPEN` | 306 |
 | `PARTIAL` | 35 |
 | `FIXED` | 154 |
 
 ---
 
-## OPEN — 302
+## OPEN — 306
 
 
 ### Application state / lockbox — 65
@@ -356,6 +356,24 @@ Nothing is closed without a regression test named after it.
 | `MODELS-023` | invariant | The NN's best-epoch weights are snapshotted by CLONE, not by reference, so later optimizer steps cannot mutate the saved state. | `models/nn_whuber.py:430 and 529 — `best_model_state = {k: v.detach().clone() for k, v in…` | The invariant holds at both snapshot sites and nothing guards it, so it stays OPEN. state_dict() returns references to live tensors, so a bare copy would let subsequent optimizer… |
 | `MODELS-024` | invariant | Cross-validation is skipped for the neural network because its sklearn shim cannot retrain. | `pages/06:1529 `if use_cv and model_name != 'nn'` with the else-branch at 1565 explaining it to the user…` | Unchanged at HEAD: four separate guards, all keyed on one literal model key. The skip itself is correct and is explained to the user, which is good - the shim cannot retrain, so… |
 
+### Multi-file / JSON import — 13
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `IMPORT-014` | critical | Stacking two files that share participants silently duplicates subjects, and nothing warns | `REPRO: frames = {'c17': DataFrame({'SEQN':[1,2,3],'age':[40,50,60]}), 'c19'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
+| `IMPORT-015` | critical | When the identifier signal is inconclusive, the combine plan falls back to column-name overlap — the exact heuristic a critical finding already disqualified | `REPRO: utils.combine._same_people returns None for (DataFrame({'SEQN':[1],'age':[40]})…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
+| `IMPORT-201` | critical | The change map names a column the merged frame does not contain: describe_join is given the running label while execute_join is given the base file name, so every suffixed column is described under… | `utils/combine_ui.py:309-314 (describe_join/execute_join name arguments); utils/combine_ui.py:425…` | REPRODUCED AT HEAD. left=DataFrame(SEQN,site,age), right=DataFrame(SEQN,site,glucose), running='demographics', base_name='labs_cycle_2'. execute_join gives columns… |
+| `IMPORT-203` | critical | After the 'no shared ID was found' fallback, combine_ui pre-selects a LOW-confidence key pairing as the default answer, which is the one thing the governing pre-selection rule forbids | `utils/combine_ui.py:262-269 (the fallback), utils/combine_ui.py:277-282 (the selectbox that pre-selects its…` | REPRODUCED AT HEAD. Two unrelated 50-row files sharing only a row counter named 'row', plus disjoint ID columns P0..P49 and S0..S49: find_key_candidates returns exactly one… |
+| `IMPORT-132` | landmine | check_header_in_later_row false-positives on clean narrow frames with a blank header cell: emits the single critical/high-confidence 'promote_header' finding, which drops the first data row and hides… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 32'` | STAYS OPEN, and the L11 note is corrected: it recorded 'a clean narrow frame with a blank header cell produces no findings at all'. It reproduces verbatim at HEAD, both halves.… |
+| `IMPORT-135` | landmine | coerce_numeric silently merges incompatible units (mg/dL + mmol/L, kg + lb) into one column at 'high' confidence, with a detail message that never discloses the mixing | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 35'` | Original finding 35 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in… |
+| `IMPORT-142` | landmine | diagnose_join suppresses genuine column collisions whenever a key name also exists in the other frame (cross-name joins), so no suffix warning fires and execute_join's methods description names a… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 42'` | STAYS OPEN, and the L11 note is corrected: it recorded that a genuine collision on 'site' IS reported while a key-named column is present on both sides. That measured the control… |
+| `IMPORT-016` | high | A yes/no key stored as boolean against the same key stored as 0/1 matches nothing, and the message blames the user's column choice | `REPRO: left=DataFrame({'id':[True,False,True],'a':[1,2,3]}), right=DataFrame({'id':[1,0,1],'b':[7,8,9]})…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
+| `IMPORT-017` | high | The stack change map omits a consequence the planner has already computed: that a column was coerced to text | `REPRO: frames = {'c17': DataFrame({'SEQN':range(5),'site':['A']*5}), 'c19'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
+| `IMPORT-018` | high | A user column named __source_file is renamed out of the way without disclosure | `REPRO: frames = {'a': DataFrame({'SEQN':[1,2],'__source_file':['mine','mine']}), 'b'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
+| `IMPORT-202` | high | A grouped combine renames the provenance column out of the summary's sight, so 'Rows per file' silently disappears from exactly the most complex combine | `utils/combine_ui.py:416-418 (the rename); utils/combine_ui.py:518-521 (the exact-name membership test in…` | REPRODUCED AT HEAD. execute_stack over two cycles gives columns ['SEQN','age','__source_file']; after the _render_grouped rename the frame carries '__source_file_demographics'… |
+| `IMPORT-204` | high | In a three-or-more file chain the change map attributes every column the second file contributed to the FIRST file, because the running label is assigned before the loop and never updated | `utils/combine_ui.py:255 (running assigned once), utils/combine_ui.py:259-317 (the loop that never reassigns…` | REPRODUCED AT HEAD. demographics(SEQN,age) + labs(SEQN,glucose) + diet(SEQN,kcal), chained. First map: age source_file 'demographics', glucose source_file 'labs' - correct. Second… |
+| `IMPORT-019` | medium | A list-valued JSON field is silently converted to its Python repr and becomes a text column | `REPRO: data_processor.load_tabular_data on json.dumps([{'SEQN':1,'visits':[1,2,3]},{'SEQN':2,'visits':[4,5]}])…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
+
 ### Verified against main — 11
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -371,20 +389,6 @@ Nothing is closed without a regression test named after it.
 | `T0-PAGES-001` | medium | Duplicate-row detection has no engine home — it is inline in pages/01 | `pages/01_Upload_and_Audit.py (inline)` | Extract to the engine when pages/01 unfreezes; register the capability meanwhile. |
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
-
-### Multi-file / JSON import — 9
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `IMPORT-014` | critical | Stacking two files that share participants silently duplicates subjects, and nothing warns | `REPRO: frames = {'c17': DataFrame({'SEQN':[1,2,3],'age':[40,50,60]}), 'c19'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
-| `IMPORT-015` | critical | When the identifier signal is inconclusive, the combine plan falls back to column-name overlap — the exact heuristic a critical finding already disqualified | `REPRO: utils.combine._same_people returns None for (DataFrame({'SEQN':[1],'age':[40]})…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
-| `IMPORT-132` | landmine | check_header_in_later_row false-positives on clean narrow frames with a blank header cell: emits the single critical/high-confidence 'promote_header' finding, which drops the first data row and hides… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 32'` | STAYS OPEN, and the L11 note is corrected: it recorded 'a clean narrow frame with a blank header cell produces no findings at all'. It reproduces verbatim at HEAD, both halves.… |
-| `IMPORT-135` | landmine | coerce_numeric silently merges incompatible units (mg/dL + mmol/L, kg + lb) into one column at 'high' confidence, with a detail message that never discloses the mixing | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 35'` | Original finding 35 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in… |
-| `IMPORT-142` | landmine | diagnose_join suppresses genuine column collisions whenever a key name also exists in the other frame (cross-name joins), so no suffix warning fires and execute_join's methods description names a… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 42'` | STAYS OPEN, and the L11 note is corrected: it recorded that a genuine collision on 'site' IS reported while a key-named column is present on both sides. That measured the control… |
-| `IMPORT-016` | high | A yes/no key stored as boolean against the same key stored as 0/1 matches nothing, and the message blames the user's column choice | `REPRO: left=DataFrame({'id':[True,False,True],'a':[1,2,3]}), right=DataFrame({'id':[1,0,1],'b':[7,8,9]})…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
-| `IMPORT-017` | high | The stack change map omits a consequence the planner has already computed: that a column was coerced to text | `REPRO: frames = {'c17': DataFrame({'SEQN':range(5),'site':['A']*5}), 'c19'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
-| `IMPORT-018` | high | A user column named __source_file is renamed out of the way without disclosure | `REPRO: frames = {'a': DataFrame({'SEQN':[1,2],'__source_file':['mine','mine']}), 'b'…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
-| `IMPORT-019` | medium | A list-valued JSON field is silently converted to its Python repr and becomes a text column | `REPRO: data_processor.load_tabular_data on json.dumps([{'SEQN':1,'visits':[1,2,3]},{'SEQN':2,'visits':[4,5]}])…` | Re-derived at L10 by adversarial probe, not recovered from the lost audit text — so it may or may not be one of the ~24 findings whose statements are gone. Reproduced against HEAD… |
 
 ---
 
