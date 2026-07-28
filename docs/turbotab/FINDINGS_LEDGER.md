@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**170 of 560 closed.**
+**170 of 562 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 351 |
+| `OPEN` | 353 |
 | `PARTIAL` | 39 |
 | `FIXED` | 167 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 351
+## OPEN — 353
 
 
 ### Application state / lockbox — 65
@@ -431,7 +431,7 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Guided-door drive feedback — 5
+### Guided-door drive feedback — 7
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -440,6 +440,8 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
+| `GUIDED-018` | medium | required_decisions has no key for a constitutionally mandatory question, so the grain question scores as one irrelevant question on all three value-check datasets - including the one where it matters… | `docs/turbotab/VALUE_CHECK_ADJUDICATION.md section 'The grain question scores as noise'…` | THE FLATTERING READING WAS NOT BANKED. Adding a grain:: key would take irrelevant back to 0 on all three datasets and lift messy-clinic's coverage from 9/10 to 10/11. That is the… |
+| `GUIDED-019` | medium | The routing value check's drift detector fired correctly and nothing ran it for two loops, so a metric regression I introduced at L13 shipped through L13 and L14 unnoticed | `tests/integration/test_routing_value_check.py::test_routing_value_check; the bisect at L15 (e7910ef green…` | SELF-INFLICTED AND SAID PLAINLY. I wrote 4152020, I ran the four fast gates on it, and I did not run the suite that measures what that commit changed. The user was told at L13… |
 
 ---
 

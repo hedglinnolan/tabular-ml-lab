@@ -286,3 +286,82 @@ gap is partly an artifact and is labeled as one.
   prints what moved.
 - **When ground truth moves, report both denominators.** Not the more favorable one, and not the
   older one out of caution — both, in the same table, with the thresholds applied to each.
+
+---
+
+# The grain question scores as noise
+
+**Measured at `0c16c81`. The movement entered at `4152020` — L13 task 1, "clause 02: the grain
+question ships in the Guided door" — and rode through L13 and L14 before the full suite was next
+run end to end. I wrote that commit, and I did not notice. That is the first fact in this entry
+because it is the one that generalizes: a check that is only consulted when someone remembers to
+run everything is a check with a latency, and this one's latency was two loops.**
+
+## What happened
+
+Guided now asks one more question on every dataset, and the metric counts all three as irrelevant.
+
+| dataset | asked | irrelevant | findings-driven | coverage |
+|---|---:|---:|---:|---:|
+| messy-clinic | 10 → **11** | 0 → **1** | 0.90 → **0.8182** | 1.0 (unchanged) |
+| wide-assay | 1 → **2** | 0 → **1** | 0.00 (unchanged) | 1.0 (unchanged) |
+| longitudinal | 2 → **3** | 0 → **1** | 0.50 → **0.3333** | 1.0 (unchanged) |
+
+The question is `state_grain`. Coverage did not move on any dataset, `required_decisions` did not
+move on any dataset, and Classic's column did not move at all. One question in, one question
+counted as noise, three times over.
+
+The arithmetic is not in dispute. `irrelevant_questions = max(0, questions_asked −
+required_decisions)`, and `required_decisions` is built from the engine's findings — `choose_target`
+and the `repair::*` family. There is no grain key in that inventory, so a question that covers
+nothing in it is, by construction, surplus.
+
+## Both readings
+
+**The metric is right.** Guided asks a question the dataset did not raise. That is exactly what
+`irrelevant_questions` was defined to count, and the definition was pre-registered before any
+Router code existed. A door that asks an unprompted question on a clean file has asked an
+unprompted question, whatever its reason.
+
+**The inventory is stale.** `required_decisions` derives from findings, and clause 02 is the one
+requirement in this project that is deliberately *not* finding-driven: the grain question is asked
+because the answer cannot be inferred, and asking it only when a detector fires is precisely the
+failure `IMPORT-020` and `IMPORT-022` are. Under this reading the inventory has no key for a
+decision the constitution makes mandatory, so the door is charged for obeying it.
+
+The sharpest form of the second reading is `longitudinal`. That dataset **is** repeated measures —
+it is the one file in the fixture set where the grain answer changes how the holdout is drawn — and
+on it the grain question is the single most consequential thing the door can ask. It scores as the
+one irrelevant question on that row.
+
+## The ruling
+
+**The worse numbers are recorded. The denominator does not move.**
+
+Adding a `grain::` key to `required_decisions` would take `irrelevant` back to 0 on all three
+datasets and lift messy-clinic's coverage from 9/10 to 10/11. It is also the reading that flatters
+the door I built, argued by the agent that built it, in a document whose standing rule is that a
+moved denominator is an adjudicated act and not a convenience. The second reading may well be
+correct. It is not mine to bank.
+
+So: `routing-value-check-l15.json` is written beside the old result with the unflattering numbers
+in it, this entry states what moved and why, and `routing-value-check.json` is replaced carrying
+its reason inside the file. Whether the inventory should learn about clause 02 is filed as
+`GUIDED-018`, open, for the product owner.
+
+**The verdict did not move.** `passes: true`, `passes_under_literal_reading: false` — both
+identical to the recorded result. Every threshold still holds with room: messy-clinic's irrelevant
+count is 1 against a pre-registered ceiling of 4, the two guard datasets are 1 against 3, and
+messy-clinic's findings-driven floor is 0.5 against an achieved 0.8182. Nothing here is close to a
+`BLOCKED.md`. The drift check fired on a metric moving, not on a threshold breaking, which is what
+it is for.
+
+## What this does not settle
+
+- **Whether the constitution and the metric can both be satisfied.** If the answer is that clause
+  02's question belongs in the inventory, then every future constitutional question — eligibility,
+  missingness routing, the assembly grain — arrives with the same problem, and the fix should be
+  general rather than a key per clause.
+- **The two-loop latency.** The drift check works; nothing ran it. That is not fixed by this
+  entry, and the value-check suite is too slow for the pre-commit hook that now guards the other
+  four gates. Filed as `GUIDED-019`.

@@ -7118,5 +7118,33 @@
   "verified_against": "TurboTab @ L15 copy deck",
   "test": "",
   "verified_ev": "docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE `because` fields"
+ },
+ {
+  "id": "GUIDED-018",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "required_decisions has no key for a constitutionally mandatory question, so the grain question scores as one irrelevant question on all three value-check datasets - including the one where it matters most",
+  "detail": "L15, found by tests/integration/test_routing_value_check.py's drift check. irrelevant_questions = max(0, questions_asked - required_decisions), and required_decisions is derived from the engine's FINDINGS: choose_target plus the repair:: family. Clause 02's question is deliberately not finding-driven - the grain answer cannot be inferred, and asking it only when a detector fires is exactly IMPORT-020 and IMPORT-022 - so state_grain covers nothing in the inventory and reads as surplus. Sharpest on longitudinal, which IS repeated measures: the one dataset where the grain answer changes how the holdout is drawn is the dataset where the grain question scores as the single irrelevant question.",
+  "ev": "docs/turbotab/VALUE_CHECK_ADJUDICATION.md section 'The grain question scores as noise'; docs/turbotab/data/routing-value-check-l15.json beside the replaced result; turbotab/measure.py required_decisions and irrelevant_questions",
+  "act": "PRODUCT OWNER RULING, not an agent fix. If clause 02's question belongs in the inventory, the fix should be GENERAL rather than a key per clause - eligibility, missingness routing and the assembly grain all arrive with the same shape, and a key added per constitution clause is a denominator that moves every loop. If it does not belong, the door carries one irrelevant question per dataset permanently and the prereg ceilings (4 on messy-clinic, 3 on the guards) absorb it with room.",
+  "status": "OPEN",
+  "note": "THE FLATTERING READING WAS NOT BANKED. Adding a grain:: key would take irrelevant back to 0 on all three datasets and lift messy-clinic's coverage from 9/10 to 10/11. That is the reading which flatters the door I built, argued by the agent that built it, in a document whose standing rule is that a moved denominator is an adjudicated act. So the WORSE numbers were recorded and the question was filed instead. The verdict did not move: passes true, passes_under_literal_reading false, both identical to the prior record, and every threshold still holds with margin. Coverage, required_decisions and Classic's whole column are unchanged - one question in, one question counted as noise, three times over.",
+  "verified_against": "TurboTab @ L15 value-check drift",
+  "test": "",
+  "verified_ev": "docs/turbotab/VALUE_CHECK_ADJUDICATION.md section 'The grain question scores as noise'; docs/turbotab/data/routing-value-check-l15.json beside the replaced result; turbotab/measure.py required_decisions and irrelevant_questions"
+ },
+ {
+  "id": "GUIDED-019",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "The routing value check's drift detector fired correctly and nothing ran it for two loops, so a metric regression I introduced at L13 shipped through L13 and L14 unnoticed",
+  "detail": "L15. The drift entered at 4152020 (L13 task 1, the grain question) and was found at L15 only because the full suite was run end to end. Bisected to confirm: green at e7910ef, red at 4152020, red at every commit after. The check works; its LATENCY is the defect. The pre-commit hook added at L13 guards four gates and this is not one of them, because the value check runs three datasets through both doors and is far too slow to sit in front of every commit.",
+  "ev": "tests/integration/test_routing_value_check.py::test_routing_value_check; the bisect at L15 (e7910ef green, 4152020 red); .githooks/pre-commit, which does not run it",
+  "act": "Not a pre-commit gate - it is too slow and a slow gate is a bypassed gate. The candidates are a pre-PUSH hook, or a per-loop obligation stated in LOOP.md beside the four fast gates, or a marker so `pytest -m slowgate` names the set that must pass before a loop is reported complete. Whichever is chosen, it needs to be structural: L13 proved that an instruction to remember is not a gate, and this row is that same lesson arriving a second time from a different direction.",
+  "status": "OPEN",
+  "note": "SELF-INFLICTED AND SAID PLAINLY. I wrote 4152020, I ran the four fast gates on it, and I did not run the suite that measures what that commit changed. The user was told at L13 that baseline failures are four; from 4152020 onward they were five, and the next agent would have inherited that discrepancy as a mystery. What the check did right is worth stating too: it refused to be re-recorded silently, it named the adjudication document in its own failure message, and the re-record script demanded a written reason that is now inside the JSON. The design assumed the drift would be found late and made late discovery survivable.",
+  "verified_against": "TurboTab @ L15 value-check drift",
+  "test": "",
+  "verified_ev": "tests/integration/test_routing_value_check.py::test_routing_value_check; the bisect at L15 (e7910ef green, 4152020 red); .githooks/pre-commit, which does not run it"
  }
 ]

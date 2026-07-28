@@ -159,6 +159,5 @@
    "longitudinal: deferral_closes = None (nothing deferrable on this dataset; fails only under the literal reading of the prereg)"
   ],
   "passes_under_literal_reading": false
- },
- "replaced_because": "Guided gained state_grain at 4152020 (L13 task 1, clause 02); required_decisions has no grain key, so a constitutionally mandatory question scores as one irrelevant question on all three datasets. Coverage, required_decisions and the verdict are unchanged. Recorded WITHOUT moving the denominator - the flattering reading is filed as GUIDED-018 rather than banked. Adjudicated in VALUE_CHECK_ADJUDICATION.md, section 'The grain question scores as noise'; prior result preserved beside it as routing-value-check-l15.json."
+ }
 }
