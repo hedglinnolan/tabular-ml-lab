@@ -5587,11 +5587,11 @@
   "detail": "Original severity as confirmed: major. Full text, verifier reasoning and the repro as recorded are in docs/audit/ORIGINAL_48_FINDINGS.md under 'Finding 08'.",
   "ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 08'",
   "act": "See the original entry; dispositioned against HEAD at L11.",
-  "status": "OPEN",
-  "note": "Original finding 08 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in TRANSITION_PLAN.md 05, while docs/FINDINGS_LEDGER.md described the runs that produced it as still in flight. Title and severity are the verifier's, verbatim. Does not reproduce. Independent per-side sampling is gone: at 3,000, 12,000 and 40,000 rows find_key_candidates reports coverage_left = coverage_right = 1.000 with n_matched equal to the full row count and sampled=False. Verified at HEAD. NO NAMED GUARD, so it stays OPEN under the ledger's own rule rather than being closed on a verdict: a finding that no longer reproduces and has no test is a finding that can come back silently. The test belongs to the repair loop.",
+  "status": "FIXED",
+  "note": "Closed at L12 against measured revert-failure, not topical proximity. tests/test_key_sampling_is_symmetric.py already existed but did NOT cover this defect: a revert probe restoring independent per-side sampling in _key_tokens - in both its recorded forms, positional head-truncation and an N-row .sample(random_state=42) per side - left all seven of its tests green. The fixtures build both sides in the same value order, so a head-truncation retains the same region on each side, and the rescale in find_key_candidates (untouched by that revert) divides the answer back to near the truth. Four tests were added that do fail on revert, all requiring BOTH sides above the cap AND different row orders: test_the_same_ids_listed_in_a_different_row_order_still_match, test_reordering_a_file_does_not_change_the_reported_overlap, test_a_key_sitting_at_the_end_of_a_large_file_is_still_found, test_the_estimate_never_claims_more_shared_ids_than_exist. The original Finding 08 repro was re-run verbatim at HEAD: CASE A 300-subject cohort x 200k export now finds SEQN~SEQN at high confidence (was no candidates), CASE B 800 of 800 string IDs found (was 0), CASE C reports 5,000 / 19,000 / 90,000 / 400,715 against truths 5,000 / 19,000 / 90,000 / 400,000 (was 4,178 / 2,601 / 624 / no candidates), CASE D fan-out candidate found (was none).",
   "verified_against": "TurboTab @ f7eb662",
-  "test": "",
-  "verified_ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 08'"
+  "test": "tests/test_key_sampling_is_symmetric.py::test_the_same_ids_listed_in_a_different_row_order_still_match",
+  "verified_ev": "ml/join_doctor.py:367-434 _key_tokens value-determined keep; ml/join_doctor.py:553-559 the two-sided rescale"
  },
  {
   "id": "IMPORT-109",
@@ -5727,11 +5727,11 @@
   "detail": "Original severity as confirmed: major. Full text, verifier reasoning and the repro as recorded are in docs/audit/ORIGINAL_48_FINDINGS.md under 'Finding 18'.",
   "ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 18'",
   "act": "See the original entry; dispositioned against HEAD at L11.",
-  "status": "OPEN",
-  "note": "Original finding 18 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in TRANSITION_PLAN.md 05, while docs/FINDINGS_LEDGER.md described the runs that produced it as still in flight. Title and severity are the verifier's, verbatim. Does not reproduce. Independent per-side sampling is gone: at 3,000, 12,000 and 40,000 rows find_key_candidates reports coverage_left = coverage_right = 1.000 with n_matched equal to the full row count and sampled=False. Verified at HEAD. NO NAMED GUARD, so it stays OPEN under the ledger's own rule rather than being closed on a verdict: a finding that no longer reproduces and has no test is a finding that can come back silently. The test belongs to the repair loop.",
+  "status": "FIXED",
+  "note": "Closed at L12 against measured revert-failure, not topical proximity. tests/test_key_sampling_is_symmetric.py already existed but did NOT cover this defect: a revert probe restoring independent per-side sampling in _key_tokens - in both its recorded forms, positional head-truncation and an N-row .sample(random_state=42) per side - left all seven of its tests green. The fixtures build both sides in the same value order, so a head-truncation retains the same region on each side, and the rescale in find_key_candidates (untouched by that revert) divides the answer back to near the truth. Four tests were added that do fail on revert, all requiring BOTH sides above the cap AND different row orders: test_the_same_ids_listed_in_a_different_row_order_still_match, test_reordering_a_file_does_not_change_the_reported_overlap, test_a_key_sitting_at_the_end_of_a_large_file_is_still_found, test_the_estimate_never_claims_more_shared_ids_than_exist. The original Finding 08 repro was re-run verbatim at HEAD: CASE A 300-subject cohort x 200k export now finds SEQN~SEQN at high confidence (was no candidates), CASE B 800 of 800 string IDs found (was 0), CASE C reports 5,000 / 19,000 / 90,000 / 400,715 against truths 5,000 / 19,000 / 90,000 / 400,000 (was 4,178 / 2,601 / 624 / no candidates), CASE D fan-out candidate found (was none).",
   "verified_against": "TurboTab @ f7eb662",
-  "test": "",
-  "verified_ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 18'"
+  "test": "tests/test_key_sampling_is_symmetric.py::test_the_same_ids_listed_in_a_different_row_order_still_match",
+  "verified_ev": "ml/join_doctor.py:367-434 _key_tokens value-determined keep; ml/join_doctor.py:553-559 the two-sided rescale"
  },
  {
   "id": "IMPORT-119",
@@ -5811,11 +5811,11 @@
   "detail": "Original severity as confirmed: major. Full text, verifier reasoning and the repro as recorded are in docs/audit/ORIGINAL_48_FINDINGS.md under 'Finding 24'.",
   "ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 24'",
   "act": "See the original entry; dispositioned against HEAD at L11.",
-  "status": "OPEN",
-  "note": "Original finding 24 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in TRANSITION_PLAN.md 05, while docs/FINDINGS_LEDGER.md described the runs that produced it as still in flight. Title and severity are the verifier's, verbatim. Does not reproduce. Independent per-side sampling is gone: at 3,000, 12,000 and 40,000 rows find_key_candidates reports coverage_left = coverage_right = 1.000 with n_matched equal to the full row count and sampled=False. Verified at HEAD. NO NAMED GUARD, so it stays OPEN under the ledger's own rule rather than being closed on a verdict: a finding that no longer reproduces and has no test is a finding that can come back silently. The test belongs to the repair loop.",
+  "status": "FIXED",
+  "note": "Closed at L12 against measured revert-failure, not topical proximity. tests/test_key_sampling_is_symmetric.py already existed but did NOT cover this defect: a revert probe restoring independent per-side sampling in _key_tokens - in both its recorded forms, positional head-truncation and an N-row .sample(random_state=42) per side - left all seven of its tests green. The fixtures build both sides in the same value order, so a head-truncation retains the same region on each side, and the rescale in find_key_candidates (untouched by that revert) divides the answer back to near the truth. Four tests were added that do fail on revert, all requiring BOTH sides above the cap AND different row orders: test_the_same_ids_listed_in_a_different_row_order_still_match, test_reordering_a_file_does_not_change_the_reported_overlap, test_a_key_sitting_at_the_end_of_a_large_file_is_still_found, test_the_estimate_never_claims_more_shared_ids_than_exist. The original Finding 08 repro was re-run verbatim at HEAD: CASE A 300-subject cohort x 200k export now finds SEQN~SEQN at high confidence (was no candidates), CASE B 800 of 800 string IDs found (was 0), CASE C reports 5,000 / 19,000 / 90,000 / 400,715 against truths 5,000 / 19,000 / 90,000 / 400,000 (was 4,178 / 2,601 / 624 / no candidates), CASE D fan-out candidate found (was none).",
   "verified_against": "TurboTab @ f7eb662",
-  "test": "",
-  "verified_ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 24'"
+  "test": "tests/test_key_sampling_is_symmetric.py::test_the_same_ids_listed_in_a_different_row_order_still_match",
+  "verified_ev": "ml/join_doctor.py:367-434 _key_tokens value-determined keep; ml/join_doctor.py:553-559 the two-sided rescale"
  },
  {
   "id": "IMPORT-125",
@@ -5867,11 +5867,11 @@
   "detail": "Original severity as confirmed: major. Full text, verifier reasoning and the repro as recorded are in docs/audit/ORIGINAL_48_FINDINGS.md under 'Finding 28'.",
   "ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 28'",
   "act": "See the original entry; dispositioned against HEAD at L11.",
-  "status": "OPEN",
-  "note": "Original finding 28 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in TRANSITION_PLAN.md 05, while docs/FINDINGS_LEDGER.md described the runs that produced it as still in flight. Title and severity are the verifier's, verbatim. Does not reproduce. Independent per-side sampling is gone: at 3,000, 12,000 and 40,000 rows find_key_candidates reports coverage_left = coverage_right = 1.000 with n_matched equal to the full row count and sampled=False. Verified at HEAD. NO NAMED GUARD, so it stays OPEN under the ledger's own rule rather than being closed on a verdict: a finding that no longer reproduces and has no test is a finding that can come back silently. The test belongs to the repair loop.",
+  "status": "FIXED",
+  "note": "Closed at L12 against measured revert-failure, not topical proximity. tests/test_key_sampling_is_symmetric.py already existed but did NOT cover this defect: a revert probe restoring independent per-side sampling in _key_tokens - in both its recorded forms, positional head-truncation and an N-row .sample(random_state=42) per side - left all seven of its tests green. The fixtures build both sides in the same value order, so a head-truncation retains the same region on each side, and the rescale in find_key_candidates (untouched by that revert) divides the answer back to near the truth. Four tests were added that do fail on revert, all requiring BOTH sides above the cap AND different row orders: test_the_same_ids_listed_in_a_different_row_order_still_match, test_reordering_a_file_does_not_change_the_reported_overlap, test_a_key_sitting_at_the_end_of_a_large_file_is_still_found, test_the_estimate_never_claims_more_shared_ids_than_exist. The original Finding 08 repro was re-run verbatim at HEAD: CASE A 300-subject cohort x 200k export now finds SEQN~SEQN at high confidence (was no candidates), CASE B 800 of 800 string IDs found (was 0), CASE C reports 5,000 / 19,000 / 90,000 / 400,715 against truths 5,000 / 19,000 / 90,000 / 400,000 (was 4,178 / 2,601 / 624 / no candidates), CASE D fan-out candidate found (was none).",
   "verified_against": "TurboTab @ f7eb662",
-  "test": "",
-  "verified_ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 28'"
+  "test": "tests/test_key_sampling_is_symmetric.py::test_the_same_ids_listed_in_a_different_row_order_still_match",
+  "verified_ev": "ml/join_doctor.py:367-434 _key_tokens value-determined keep; ml/join_doctor.py:553-559 the two-sided rescale"
  },
  {
   "id": "IMPORT-129",
@@ -6147,10 +6147,10 @@
   "detail": "Original severity as confirmed: major. Full text, verifier reasoning and the repro as recorded are in docs/audit/ORIGINAL_48_FINDINGS.md under 'Finding 48'.",
   "ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 48'",
   "act": "See the original entry; dispositioned against HEAD at L11.",
-  "status": "OPEN",
-  "note": "The title is the verifier's, with one word respelled to American English because tests/test_american_spelling.py governs generated markdown. The verbatim wording is preserved in docs/audit/ORIGINAL_48_FINDINGS.md, which is the exempt path precisely so a quoted record stays quotable. Original finding 48 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in TRANSITION_PLAN.md 05, while docs/FINDINGS_LEDGER.md described the runs that produced it as still in flight. Title and severity are the verifier's, verbatim. Does not reproduce. Independent per-side sampling is gone: at 3,000, 12,000 and 40,000 rows find_key_candidates reports coverage_left = coverage_right = 1.000 with n_matched equal to the full row count and sampled=False. Verified at HEAD. NO NAMED GUARD, so it stays OPEN under the ledger's own rule rather than being closed on a verdict: a finding that no longer reproduces and has no test is a finding that can come back silently. The test belongs to the repair loop.",
+  "status": "FIXED",
+  "note": "Closed at L12 against measured revert-failure, not topical proximity. tests/test_key_sampling_is_symmetric.py already existed but did NOT cover this defect: a revert probe restoring independent per-side sampling in _key_tokens - in both its recorded forms, positional head-truncation and an N-row .sample(random_state=42) per side - left all seven of its tests green. The fixtures build both sides in the same value order, so a head-truncation retains the same region on each side, and the rescale in find_key_candidates (untouched by that revert) divides the answer back to near the truth. Four tests were added that do fail on revert, all requiring BOTH sides above the cap AND different row orders: test_the_same_ids_listed_in_a_different_row_order_still_match, test_reordering_a_file_does_not_change_the_reported_overlap, test_a_key_sitting_at_the_end_of_a_large_file_is_still_found, test_the_estimate_never_claims_more_shared_ids_than_exist. The original Finding 08 repro was re-run verbatim at HEAD: CASE A 300-subject cohort x 200k export now finds SEQN~SEQN at high confidence (was no candidates), CASE B 800 of 800 string IDs found (was 0), CASE C reports 5,000 / 19,000 / 90,000 / 400,715 against truths 5,000 / 19,000 / 90,000 / 400,000 (was 4,178 / 2,601 / 624 / no candidates), CASE D fan-out candidate found (was none).",
   "verified_against": "TurboTab @ f7eb662",
-  "test": "",
-  "verified_ev": "docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 48'"
+  "test": "tests/test_key_sampling_is_symmetric.py::test_the_same_ids_listed_in_a_different_row_order_still_match",
+  "verified_ev": "ml/join_doctor.py:367-434 _key_tokens value-determined keep; ml/join_doctor.py:553-559 the two-sided rescale"
  }
 ]
