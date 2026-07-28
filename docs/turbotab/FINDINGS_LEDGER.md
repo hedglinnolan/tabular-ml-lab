@@ -20,24 +20,25 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**108 of 440 closed.**
+**109 of 442 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 298 |
+| `OPEN` | 299 |
 | `PARTIAL` | 34 |
-| `FIXED` | 108 |
+| `FIXED` | 109 |
 
 ---
 
-## OPEN — 298
+## OPEN — 299
 
 
-### Application state / lockbox — 64
+### Application state / lockbox — 65
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
+| `IMPORT-020` | critical | The same subject lands in both training and the sealed test set whenever detect_repeated_subjects' ratio gate misses - silently, with a clean lockbox chip | `REPRODUCED AT HEAD (1e2701d), three of the audit's four shapes: (a) 100 subjects with 30 second visits…` | PARTIALLY FIXED SINCE THE AUDIT, AND THE REMAINING HALF IS THE DANGEROUS ONE. Gate 2 has been narrowed: 'mrn' is now in _SUBJECT_ID_TOKENS and the MRN shape the audit reported as… |
 | `STATE-003` | landmine | unit_harmonization_factors and plausibility_bounds are POSITIONAL lists aligned to the full numeric_features, but pages/05 passes a FILTERED numeric_features to build_preprocessing_pipeline.… | `Built against the full list: ml/pipeline.py:45 `for col in numeric_features`…` | Unchanged at HEAD. sibling-of: MINE-001 - the positional-alignment class from the state pass, and this row names the asymmetry that makes it dangerous. UnitHarmonizer fails LOUDLY… |
 | `STATE-004` | landmine | The pipelines stored in preprocessing_pipelines_by_model are FITTED ON THE FULL DATASET at build time — including the lockbox test rows — and they are what gets exported as the reproducibility… | `Fit on all rows: pages/05_Preprocess.py:945 `temp_pipeline.fit(X_sample)` and :999 `pipeline.fit(X_sample)`…` | Unchanged at HEAD, both failures. (1) The exported joblib is not the pipeline the model was trained with: pages/05 fits on all rows and stores that in… |
 | `STATE-005` | landmine | get_preprocessing_pipeline(model_key) silently falls back to an arbitrary other model's pipeline, and returns a SHARED MUTABLE OBJECT that the caller then fits in place. | `utils/session_state.py:448-454 (the fallback) and :468 `default_pipeline = pipelines_by_model.get('default')…` | Unchanged at HEAD. sibling-of: T0-STRUCT-001. Both halves are intact: (A) a model selected in Train but never configured in Preprocess still silently trains under another model's… |
@@ -463,13 +464,14 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 108
+## FIXED — 109
 
 
-### Application state / lockbox — 26
+### Application state / lockbox — 27
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
+| `IMPORT-021` | critical | With fewer than 8 subjects the lockbox finds the subject column, then abandons subject-level splitting | `REPRODUCED AT HEAD (1e2701d): 7 subjects x 5 visits -> detect_repeated_subjects ('SEQN', 7, 35), lockbox…` | **test:** `tests/test_grouping_picks_the_person.py::test_too_few_groups_to_split_by_is_said_out_loud` — THE LEAK REMAINS AND IS NO LONGER SILENT, which is what the finding asked… |
 | `STATE-001` | landmine | apply_plausibility_filter calls reset_index(drop=True), and its output becomes the app's active dataframe — which silently voids the test lockbox for every downstream step. | `ml/pipeline.py:124 `return df.loc[mask].reset_index(drop=True)` -> pages/05_Preprocess.py:863…` | **test:** `tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given` — Closed, and closed at the source rather than at the consumer.… |
 | `STATE-002` | landmine | PlausibilityGate cannot be sklearn-cloned. It mutates its constructor parameters in __init__, violating the sklearn clone identity contract — and reconcile_pipeline_columns clones UNCONDITIONALLY on… | `ml/preprocess_operators.py:50-55 `self.lower_bounds = np.array([np.nan if v is None else float(v) for v in…` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_a_pipeline_with_plausibility_bounds_can_be_cloned` — Fixed as the row prescribed: PlausibilityGate.__init__ is bare… |
 | `STATE-006` | landmine | pages/03_Feature_Engineering.py hand-rolls its own cascade invalidation instead of calling reset_downstream_results(), and the copy has drifted. | `pages/03_Feature_Engineering.py:1229-1252 (the block after `st.session_state['engineered_feature_transforms']…` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_page_03_no_longer_hand_rolls_its_own_cascade` — Duplicate of CONTRACT-002 from the state pass, and closed the… |
