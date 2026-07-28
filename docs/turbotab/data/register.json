@@ -581,55 +581,55 @@
   "capability": "Polynomial features and interactions (degree 2-3, interaction-only option)",
   "classic": "pages/03 tab 1 — sklearn PolynomialFeatures over the selected numeric columns",
   "state": "classic-only",
-  "reason": "ROW-LOCAL by clause 06's litmus: a product or power of row i's own values depends on no other row. Executes immediately, posts a receipt."
+  "reason": "NOT BUILT, and this is a deliberate scope decision rather than an omission. The individual pieces exist and are row-local - `square`, `cube`, `product` - so a researcher can build any specific term they want, with a receipt each. What Guided does not do is GENERATE the full degree-2 or degree-3 basis, which on ten features is fifty-five columns nobody chose individually and each carrying explainability cost. Clause 06 classifies it row-local, so there is no leakage argument for withholding it; the argument is that mass generation is the opposite of the interview's premise. Left classic-only so the difference is recorded rather than assumed."
  },
  {
   "id": "feat-column-transforms",
   "step": "features",
   "capability": "Per-column transforms: log(x), log(x+1), sqrt(x), x squared, x cubed, 1/x",
   "classic": "pages/03 tab 2 — multiselect of six transforms applied per selected feature",
-  "state": "classic-only",
-  "reason": "ROW-LOCAL. Each is a scalar function of one cell. Executes immediately. Note log and 1/x have DOMAIN constraints (non-positive, zero) that are row-local facts and must be reported per column before applying, not discovered afterwards."
+  "state": "both",
+  "reason": "BUILT in Guided as six row-local entries (log, log1p, sqrt, square, cube, inverse), each executing immediately with a receipt. Guided adds what Classic lacks: the DOMAIN is reported before applying, not discovered after. log of a non-positive value is undefined, and how many rows will become missing is a fact the user needs while choosing."
  },
  {
   "id": "feat-ratios",
   "step": "features",
   "capability": "Ratio features from a numerator and denominator column",
   "classic": "pages/03 tab 3 — pick numerator and denominator, queue several, create",
-  "state": "classic-only",
-  "reason": "ROW-LOCAL. Also the most clinically meaningful transform in the catalogue (BMI, eGFR, ratios of biomarkers), so it earns first-class treatment rather than sitting behind polynomial expansion."
+  "state": "both",
+  "reason": "BUILT as `ratio`, row-local. Promoted from a tab to a first-class catalogue entry because it is the most clinically meaningful transform here - BMI, eGFR, biomarker ratios - and Classic buried it behind polynomial expansion. Division by zero is reported as undefined rather than producing an infinity."
  },
  {
   "id": "feat-custom-interaction",
   "step": "features",
   "capability": "Custom pairwise interaction builder (A times B, A over B, A squared)",
   "classic": "pages/03 tab 1 — Feature A / Feature B / operation, added one at a time",
-  "state": "classic-only",
-  "reason": "ROW-LOCAL. Overlaps feat-polynomial and feat-ratios but is the targeted form: a researcher who wants ONE named interaction should not generate the full polynomial basis to get it."
+  "state": "both",
+  "reason": "BUILT as `product` and `difference`, row-local. The targeted form Classic offers in tab 1: a researcher who wants ONE named interaction should not generate a full polynomial basis to get it. Carries explainability_cost 'high', which is Classic's own guidance made structural rather than left in an expander."
  },
  {
   "id": "feat-missing-indicators",
   "step": "features",
   "capability": "Missingness indicator columns (is this cell blank)",
   "classic": "pages/03 tab 7 — multiselect of columns, creates a binary indicator each",
-  "state": "classic-only",
-  "reason": "ROW-LOCAL: 'is row i's cell empty' reads only row i. Distinct from IMPUTATION, which is stateful and belongs to clause 07 and the missingness step — not this one."
+  "state": "both",
+  "reason": "BUILT as `missing_indicator`, row-local: whether row i's cell is blank reads only row i. Deliberately separate from IMPUTATION, which is stateful and belongs to clause 07 and the missingness step - not this one."
  },
  {
   "id": "feat-binning",
   "step": "features",
   "capability": "Binning a numeric column into ordinal or one-hot bins",
   "classic": "pages/03 tab 4 — strategy quantile / uniform / kmeans, encoded ordinal or onehot",
-  "state": "classic-only",
-  "reason": "SPLITS BY STRATEGY, and this is the genuinely ambiguous entry in the catalogue. Fixed user-supplied cut-points are ROW-LOCAL. Quantile and kmeans edges are LEARNED FROM THE DISTRIBUTION, so they are stateful and must be fit inside the training folds — quantile edges computed over the full table have seen the sealed rows. Uniform is stateful too, more subtly: its min and max come from the data."
+  "state": "both",
+  "reason": "BUILT, and it SPLIT rather than resolved. `bin_fixed` (user-supplied cut-points) is row-local and executes now; `bin_quantile`, `bin_uniform` and `bin_kmeans` are stateful and defer. bin_uniform is the subtle one and defers for a reason worth keeping: equal-WIDTH bins look like fixed cut-points until you notice the range comes from the data, so one extreme value moves every other row's bin. bin_fixed REFUSES without edges rather than deriving them, because deriving them is the other transform."
  },
  {
   "id": "feat-pca-umap",
   "step": "features",
   "capability": "Dimensionality reduction: PCA and UMAP components as features",
   "classic": "pages/03 tab 6 — method picker, n_components, compute",
-  "state": "classic-only",
-  "reason": "STATEFUL without argument. Components are fit on the covariance of the whole table; a PCA fit pre-split encodes the sealed rows into every component. Recorded as a decision, executed in-fold."
+  "state": "guided-only",
+  "reason": "PCA is BUILT as a DEFERRED spec - recorded now, fitted inside each training fold - which is a stronger position than Classic's, where pages/03 computes components over the whole table and writes them to the working frame. Filed guided-only rather than both because the two doors do materially different things under the same name, and calling that parity would hide the difference. UMAP is NOT built: it is an optional dependency the app does not install, and its absence is a recorded decision rather than an oversight."
  },
  {
   "id": "feat-tda",
@@ -637,23 +637,23 @@
   "capability": "Topological data analysis features (persistence homology)",
   "classic": "pages/03 tab 5 — homology dims, normalization, subsampling; needs giotto-tda",
   "state": "classic-only",
-  "reason": "STATEFUL: persistence is computed over the whole point cloud. Also behind an OPTIONAL dependency the app does not install. Carried in the register so its absence from Guided is a recorded decision rather than an oversight."
+  "reason": "NOT BUILT. Stateful (persistence over the whole point cloud) AND behind giotto-tda, an optional dependency the app does not install and which caps Python at 3.12. Recorded so its absence from Guided is a decision with a reason attached rather than a gap somebody notices later."
  },
  {
   "id": "feat-categorical-encoding",
   "step": "features",
   "capability": "Ordinal encoding of categorical columns",
   "classic": "pages/03 tab 7 — multiselect, encode",
-  "state": "classic-only",
-  "reason": "DEPENDS ON WHERE THE ORDER COMES FROM. A user-declared order (mild < moderate < severe) is row-local. An order derived from frequency or from the data's sort is stateful. Clause 06 says the router defaults to DEFERRAL when unsure, so the derived form defers unless the user states the order."
+  "state": "both",
+  "reason": "BUILT, also split. `ordinal_declared` (the user states mild < moderate < severe) is row-local; `ordinal_frequency` is stateful and defers. Clause 06 says default to deferral when unsure, so the derived form defers and the declared form is the one that executes."
  },
  {
   "id": "feat-selection-methods",
   "step": "features",
   "capability": "Feature selection by LASSO, RFE-CV, univariate, and stability selection",
   "classic": "pages/04 — checkboxes per method, run, consensus across methods",
-  "state": "classic-only",
-  "reason": "STATEFUL, and the sharpest case in the project. 'Feature selection on the full dataset' is a named leak in the Kapoor taxonomy: the selected SET encodes test signal even though no test row is copied anywhere. Recorded as a decision, performed inside per-model pipelines fit on training folds only."
+  "state": "guided-only",
+  "reason": "BUILT as declarations. Five methods (mutual_info, lasso, rfe, univariate, stability), each producing a spec that a per-model pipeline fits inside each training fold; turbotab/selection.py never selects. Guided-only, and the reason is the point: Classic RUNS selection and stores a result, Guided RECORDS what will be selected. Those are different objects, so this is not parity."
  },
  {
   "id": "feat-selection-consensus",
@@ -661,15 +661,15 @@
   "capability": "Consensus across selection methods, with a minimum-methods threshold",
   "classic": "pages/04 — consensus_features(results, min_methods=N)",
   "state": "classic-only",
-  "reason": "STATEFUL, inherits from feat-selection-methods. Worth its own row because the consensus RULE is a user decision (how many methods must agree) while the selection itself is engine work, and the two get conflated."
+  "reason": "NOT BUILT in Guided, deliberately, and this is the honest disposition rather than a quiet omission. Consensus across methods is a user decision (how many must agree) layered on top of selection, and it only means something once several methods have RUN. Under fold-local selection each fold produces its own consensus, which is a different and unsettled object - averaging agreement across folds is not the same as agreeing across methods. Left classic-only until that is designed rather than approximated. The spec carries `consensus_min_methods` so the field exists when it is."
  },
  {
   "id": "feat-selection-train-scope",
   "step": "features",
   "capability": "Selection sees training rows only, and says so on screen",
   "classic": "pages/04:126-135 — mask = target.notna() & train_row_mask(index), with a caption naming n",
-  "state": "classic-only",
-  "reason": "THE GOOD EXAMPLE IN THIS CODEBASE, and Guided must not regress from it. Stated precisely: it prevents the TEST-SET leak, not the fold-level one — selection still runs once over all training rows, so validation-fold signal is inside the selected set. Guided going fold-local is an improvement over Classic, not parity with it."
+  "state": "both",
+  "reason": "BUILT, and Guided goes further while SAYING which is which. selection.evidence ranks on training rows only and records n_rows_seen; declare() takes an explicit scope with two values and no third - train_folds (Guided's) and train_rows (Classic's) - so a project can state which happened. Asking for scope='all_rows' raises 'no third option'. Stated precisely, because the improvement is easy to overclaim: Classic prevents the TEST-SET leak; Guided also prevents the fold-level one."
  },
  {
   "id": "feat-selection-methodology-log",
@@ -677,23 +677,23 @@
   "capability": "The selection run is logged to the methodology record with its methods and threshold",
   "classic": "pages/04:285-305 — log_methodology plus a record_feature_selection call",
   "state": "classic-only",
-  "reason": "Cross-cutting: whatever Guided does must reach the same record, or the manuscript's methods section loses the step."
+  "reason": "NOT BUILT. Guided records every decision in its own append-only transcript, which the archive persists - so the information exists and survives. What is missing is the bridge into utils/insight_ledger, which is what the manuscript's methods section reads. Filed classic-only rather than both because Guided cannot yet produce that section, and claiming parity would promise a methods paragraph nothing writes. resolved-in-core; closes at L11 convergence of the manuscript step."
  },
  {
   "id": "feat-skip",
   "step": "features",
   "capability": "Skip feature work entirely and proceed with the original columns",
   "classic": "pages/03:189 — an explicit Skip button, recommended for a first pass",
-  "state": "classic-only",
-  "reason": "Load-bearing rather than cosmetic. The step must be skippable without penalty, and the skip has to be RECORDED — a silent skip is indistinguishable from a step nobody reached."
+  "state": "both",
+  "reason": "BUILT as settle_features(skipped=True), which RECORDS the skip. Load-bearing rather than cosmetic: a silent skip is indistinguishable from a step nobody reached, and the transcript has to be able to tell those apart."
  },
  {
   "id": "feat-remove-one",
   "step": "features",
   "capability": "Remove a single engineered feature after creating it",
   "classic": "pages/03:1177 — a per-feature remove control in the summary",
-  "state": "classic-only",
-  "reason": "Reversibility. The past is editable, never silently destroyed (PRODUCT_VISION 07.4)."
+  "state": "both",
+  "reason": "BUILT as remove_feature, which refuses any column it did not create - removing a source column is not this step's to do. Cascades like an addition does."
  },
  {
   "id": "feat-reset",
@@ -701,22 +701,22 @@
   "capability": "Reset all engineered features and start over",
   "classic": "pages/03:179 — a Reset button clearing the engineered frame",
   "state": "classic-only",
-  "reason": "Coarse reversibility beside the fine-grained one. Both exist because researchers use them differently."
+  "reason": "NOT BUILT. remove_feature gives fine-grained reversal and covers the need; a bulk reset is a convenience whose absence is worth recording rather than a capability worth claiming. Cheap to add if a driver asks for it."
  },
  {
   "id": "feat-stale-cascade",
   "step": "features",
   "capability": "Adding or removing features invalidates downstream results, visibly",
   "classic": "pages/03:1245 — Save triggers reset_downstream_results; pages/04 likewise",
-  "state": "classic-only",
-  "reason": "DESIGN_LANGUAGE 10. The cascade must be VISIBLE: a silent invalidation is the same silence as a stale result. Cross-cutting but surveyed here because this step is its commonest trigger."
+  "state": "both",
+  "reason": "BUILT, and as a LIST NAMING ITS CAUSE rather than a boolean. findings_stale is cleared by recompute (correctly - findings really are recomputed), but models and metrics are not, so a boolean that cleared would assert the cascade had been dealt with when nothing had. stale_downstream records 'the column `age_x_bmi` was added', which is actionable where 'something changed' is not. DESIGN_LANGUAGE 10."
  },
  {
   "id": "feat-explainability-cost",
   "step": "features",
   "capability": "Each transform states its explainability cost before it is applied",
   "classic": "pages/03 — every tab's 'What & when to use' expander carries an explainability impact rating and a when-to-SKIP",
-  "state": "classic-only",
-  "reason": "Genuinely good Classic content that a rebuild would lose by default. 'Age times BMI is harder to explain than Age' is exactly the kind of guidance the interview should carry as a consequence of the choice rather than as a manual nobody opens."
+  "state": "both",
+  "reason": "BUILT as a field on every catalogue entry, so it travels with the transform to the interface instead of living in a guidance expander nobody opens. Classic's own content, made structural: the interaction `product` carries 'high', a ratio carries 'low'."
  }
 ]
