@@ -65,6 +65,28 @@ DEFAULT_TEST_FRACTION = 0.15
 _MIN_ROWS_FOR_LOCKBOX = 10
 # Splitting by subject needs enough subjects for the fraction to be meaningful.
 _MIN_GROUPS_FOR_GROUPED_LOCKBOX = 8
+# An identifier repeats a handful of times; a category repeats hundreds. Above
+# this, a column is not read as an identifier — but the rejection is REPORTED
+# rather than silent, because a many-to-many merge product lands here and it
+# repeats harder, not less (constitution §03, `IMPORT-020`).
+_MAX_ROWS_PER_GROUP = 50
+
+# The three bases a seal may rest on. Never two: `undetermined` is what the
+# lockbox records when it could not read the data's grain, and it is not the
+# same claim as "there is no repetition".
+SEAL_GROUPED = "grouped"
+SEAL_ABANDONED = "repetition_found_grouping_abandoned"
+SEAL_UNDETERMINED = "undetermined"
+SEAL_CROSS_SECTIONAL = "cross_sectional"
+
+# How the basis was arrived at. Today everything is `detected`; constitution §02
+# adds `user_stated` when the grain question ships and `inherited_from_assembly`
+# when a project arrives through multi-file assembly having already answered it.
+# The field exists now so those land without a schema change to a persisted,
+# round-tripped artifact.
+BASIS_DETECTED = "detected"
+BASIS_USER_STATED = "user_stated"
+BASIS_INHERITED = "inherited_from_assembly"
 
 
 def is_exploratory() -> bool:
@@ -202,6 +224,8 @@ def rank_grouping_candidates(df: pd.DataFrame,
     n = len(df)
     cols = candidate_cols if candidate_cols is not None else list(df.columns)
     found: List[Dict[str, Any]] = []
+    unclear: List[Dict[str, Any]] = []
+    _state().pop("_lockbox_repetition_unclear", None)
     for col in cols:
         if col not in df.columns:
             continue
@@ -214,15 +238,38 @@ def rank_grouping_candidates(df: pd.DataFrame,
             continue
         if k < 2 or k >= n:
             continue                     # unique per row => no repetition
-        # An identifier repeats a handful of times; a category repeats hundreds.
         rows_per = n / k
-        if rows_per < 1.5 or rows_per > 50:
-            continue
+        # THE LOWER BOUND IS GONE. It rejected 1.30 rows per value, and any
+        # k < n means repetition exists by definition — partial follow-up,
+        # where only some subjects have a second visit, is the commonest
+        # longitudinal shape there is and it lands at about 1.3 (`IMPORT-020`).
+        # Removing it does not close the hole; constitution §02 is explicit
+        # that name lists and ratio bounds cannot, because the engine is
+        # guessing at something the user simply knows. It is removed because it
+        # is wrong on its own terms, and a heuristic demoted to *suggestion and
+        # contradiction detector* is worse at both jobs when its bound is wrong.
+        #
+        # The upper bound has a real purpose — an identifier repeats a handful
+        # of times, a category repeats hundreds — but rejecting on it must not
+        # be silent, because the shape that trips it is a many-to-many merge
+        # product, which repeats HARDER rather than less. Those columns are
+        # reported as `unclear` so the seal can record `undetermined` (§03)
+        # instead of rendering a clean lock over them.
         kind = _id_kind(col)
         if kind is None:
             continue
+        if rows_per > _MAX_ROWS_PER_GROUP:
+            unclear.append({"column": str(col), "n_groups": k, "n_rows": n,
+                            "kind": kind, "rows_per": rows_per})
+            continue
         found.append({"column": str(col), "n_groups": k, "n_rows": n, "kind": kind})
     if not found:
+        # Nothing groupable, but something repeated far too often to be an
+        # identifier. The caller needs to know the difference between "no
+        # repetition" and "repetition we could not read".
+        if unclear:
+            _state()["_lockbox_repetition_unclear"] = sorted(
+                unclear, key=lambda c: -c["rows_per"])[:3]
         return []
 
     # A person beats a bare record id; both beat a cluster. Only if nothing
@@ -371,6 +418,14 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
     grouped = False
     test_labels = None
     _state().pop("_lockbox_grouping_abandoned", None)
+    # Constitution §03: the seal states its own basis, and there are three
+    # states rather than two. `undetermined` is what this is when the detector
+    # could not read the data's grain — a different claim from "there is no
+    # repetition", and the one `IMPORT-020` proved was indistinguishable from
+    # success. Assume the honest default and narrow it below.
+    seal_basis = SEAL_CROSS_SECTIONAL
+    if not group_col and _state().get("_lockbox_repetition_unclear"):
+        seal_basis = SEAL_UNDETERMINED
     if group_col:
         groups = df.loc[eligible, group_col]
         n_groups = int(groups.nunique(dropna=False))
@@ -381,6 +436,7 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
                 _, test_pos = next(gss.split(eligible, groups=groups))
                 test_labels = eligible[test_pos]
                 grouped = True
+                seal_basis = SEAL_GROUPED
             except Exception:
                 test_labels = None
         if test_labels is None:
@@ -394,6 +450,7 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
                 "noun": group_noun(group_kind, group_col),
                 "minimum": _MIN_GROUPS_FOR_GROUPED_LOCKBOX,
             }
+            seal_basis = SEAL_ABANDONED
             group_col = None
 
     # Stratification is decided AFTER the grouped attempt resolves. Deciding it
@@ -445,6 +502,22 @@ def ensure_lockbox(df: pd.DataFrame, target_col: str, task_type: str,
         # sample of whole sites — a different, harder test than they asked for.
         "group_kind": group_kind if grouped else None,
         "group_noun": group_noun(group_kind, group_col) if grouped else None,
+        # ── constitution §03 · the seal states its own basis ──────────────
+        # Three states, never two. `group_col: None` used to carry two
+        # different claims — "this study has one row per person" and "we could
+        # not tell" — and a consumer reading the record rather than the chip
+        # could not separate them. That is the half of `IMPORT-021` that stayed
+        # open and the whole of what `IMPORT-020` exploited.
+        "seal_basis": seal_basis,
+        # HOW we know, not just what we concluded. Everything today is
+        # `detected`; §02 adds `user_stated` when the grain question ships and
+        # `inherited_from_assembly` for a project that arrived through
+        # multi-file assembly having already answered it. Written now so those
+        # land without migrating a persisted, round-tripped artifact.
+        "basis_source": BASIS_DETECTED,
+        # What made the basis undetermined, so the disclosure can name it.
+        "undetermined_because": (list(_state().get("_lockbox_repetition_unclear") or [])
+                                 if seal_basis == SEAL_UNDETERMINED else None),
     }
 
     if existing is not None and existing.get("labels") != lockbox["labels"]:
@@ -573,6 +646,24 @@ def render_lockbox_status(context: str = "") -> None:
             f"{_abandoned['noun'].rstrip('s')} can appear on both sides and "
             f"held-out performance will read better than it is. Treat these "
             f"numbers as exploratory."
+        )
+
+    # Constitution §03: an undetermined seal is never rendered as a clean lock.
+    # Same treatment IMPORT-021 earned — advisory with exploratory labeling, not
+    # a hard block, because a user who genuinely does not know their data's
+    # shape should get honest numbers rather than a locked door.
+    if lb.get("seal_basis") == SEAL_UNDETERMINED:
+        _why = lb.get("undetermined_because") or []
+        _cols = ", ".join(f"`{c['column']}`" for c in _why[:2]) or "a column"
+        _rate = max((c.get("rows_per") or 0) for c in _why) if _why else 0
+        st.warning(
+            f"⚠️ Could not tell whether one person can appear in more than one "
+            f"row. {_cols} looks like an identifier but repeats about "
+            f"{_rate:.0f} times per value — too often to read as one, and too "
+            f"structured to ignore. The held-out set was drawn by row, so if "
+            f"these rows do repeat people, the same person is on both sides and "
+            f"held-out performance will read better than it is. Treat these "
+            f"numbers as exploratory until you confirm the shape."
         )
 
     if lb.get("group_col"):

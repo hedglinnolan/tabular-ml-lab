@@ -20,13 +20,13 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**109 of 442 closed.**
+**109 of 443 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 299 |
-| `PARTIAL` | 34 |
+| `PARTIAL` | 35 |
 | `FIXED` | 109 |
 
 ---
@@ -38,7 +38,7 @@ Nothing is closed without a regression test named after it.
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `IMPORT-020` | critical | The same subject lands in both training and the sealed test set whenever detect_repeated_subjects' ratio gate misses - silently, with a clean lockbox chip | `REPRODUCED AT HEAD (1e2701d), three of the audit's four shapes: (a) 100 subjects with 30 second visits…` | PARTIALLY FIXED SINCE THE AUDIT, AND THE REMAINING HALF IS THE DANGEROUS ONE. Gate 2 has been narrowed: 'mrn' is now in _SUBJECT_ID_TOKENS and the MRN shape the audit reported as… |
+| `IMPORT-022` | critical | An identifier the name-token list does not recognize is sealed as verified cross-sectional over a real leak | `REPRODUCED AT HEAD: DataFrame({'SUBJ': np.repeat(range(60),3), ...}) -> detect_repeated_subjects None…` | Filed at L11 as the residual of IMPORT-020 after clause 03. Deliberately pinned by a test that asserts the CURRENT WRONG BEHAVIOR, with a docstring saying so: it will fail the day… |
 | `STATE-003` | landmine | unit_harmonization_factors and plausibility_bounds are POSITIONAL lists aligned to the full numeric_features, but pages/05 passes a FILTERED numeric_features to build_preprocessing_pipeline.… | `Built against the full list: ml/pipeline.py:45 `for col in numeric_features`…` | Unchanged at HEAD. sibling-of: MINE-001 - the positional-alignment class from the state pass, and this row names the asymmetry that makes it dangerous. UnitHarmonizer fails LOUDLY… |
 | `STATE-004` | landmine | The pipelines stored in preprocessing_pipelines_by_model are FITTED ON THE FULL DATASET at build time — including the lockbox test rows — and they are what gets exported as the reproducibility… | `Fit on all rows: pages/05_Preprocess.py:945 `temp_pipeline.fit(X_sample)` and :999 `pipeline.fit(X_sample)`…` | Unchanged at HEAD, both failures. (1) The exported joblib is not the pipeline the model was trained with: pages/05 fits on all rows and stores that in… |
 | `STATE-005` | landmine | get_preprocessing_pipeline(model_key) silently falls back to an arbitrary other model's pipeline, and returns a SHARED MUTABLE OBJECT that the caller then fits in place. | `utils/session_state.py:448-454 (the fallback) and :468 `default_pipeline = pipelines_by_model.get('default')…` | Unchanged at HEAD. sibling-of: T0-STRUCT-001. Both halves are intact: (A) a model selected in Train but never configured in Preprocess still silently trains under another model's… |
@@ -385,7 +385,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 34
+## PARTIAL — 35
 
 
 ### Stage-boundary contracts — 8
@@ -413,10 +413,11 @@ Nothing is closed without a regression test named after it.
 | `TEST-026` | medium | scripts/integration_test_apptest.py and scripts/integration_test.py are unreachable from CI and duplicate tests/integration/ | `.github/workflows/ci.yml (only `pytest tests/` and `pytest tests/integration`); Makefile:22-40…` | Half the row's premise is wrong at HEAD and the correction changes the disposition. scripts/integration_test.py is NOT unreachable from CI - ci.yml:90-94 runs it as the E2E smoke… |
 | `TEST-032` | medium | tests/test_page_imports.py and tests/test_insight_id_integrity.py are AST-based over pages/ — they die with pages/ but encode rules worth keeping | `tests/test_page_imports.py:123; tests/test_insight_id_integrity.py:52` | Half the row is closed. test_insight_id_integrity can no longer pass vacuously over an empty or renamed directory - that is SWEEP-014, and it was fixed in exactly the way this row… |
 
-### Application state / lockbox — 6
+### Application state / lockbox — 7
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
+| `IMPORT-020` | critical | The same subject lands in both training and the sealed test set whenever detect_repeated_subjects' ratio gate misses - silently, with a clean lockbox chip | `REPRODUCED AT HEAD (1e2701d), three of the audit's four shapes: (a) 100 subjects with 30 second visits…` | **test:** `tests/test_the_seal_states_its_basis.py::test_partial_follow_up_is_detected` — PARTIAL after clause 03. Two of the three reproducing shapes are closed and the third is… |
 | `STATE-009` | landmine | reset_downstream_results() does not clear preprocess_built_model_keys, preprocessing_summary, or engineered_feature_transforms, so three consumers keep describing deleted work. | `utils/session_state.py:283-416 (the function; grep it for these three keys — absent). Writers: pages/05:1011…` | One of the three keys is fixed; two are not. preprocess_built_model_keys IS now cleared at utils/session_state.py:372, which closes the worst arm of this row - the 'you are about… |
 | `STATE-014` | landmine | The 370-line split builder — the single most leakage-sensitive function in the app — lives inside a Streamlit button handler with zero unit tests, and writes its outputs through two separate… | `pages/06_Train_and_Compare.py:349-720. The split arrays are written via set_splits() at :610 or :646; the…` | Two of the three claims are closed; the third is not. The 370-line block is out of the button handler and into ml/splits.py as make_split, with SplitSpec in and an immutable Split… |
 | `STATE-066` | invariant | Every result computed from the current data is cleared when the data, target, features, or feature set changes. 'Any page that introduces a new result key must add it here.' | `utils/session_state.py:283 reset_downstream_results() (its own docstring states the rule)…` | The competing implementation is gone; the key list is still incomplete. pages/03 no longer bypasses the function - all three of its paths route through it and an AST guard fails… |
@@ -471,7 +472,7 @@ Nothing is closed without a regression test named after it.
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `IMPORT-021` | critical | With fewer than 8 subjects the lockbox finds the subject column, then abandons subject-level splitting | `REPRODUCED AT HEAD (1e2701d): 7 subjects x 5 visits -> detect_repeated_subjects ('SEQN', 7, 35), lockbox…` | **test:** `tests/test_grouping_picks_the_person.py::test_too_few_groups_to_split_by_is_said_out_loud` — THE LEAK REMAINS AND IS NO LONGER SILENT, which is what the finding asked… |
+| `IMPORT-021` | critical | With fewer than 8 subjects the lockbox finds the subject column, then abandons subject-level splitting | `REPRODUCED AT HEAD (1e2701d): 7 subjects x 5 visits -> detect_repeated_subjects ('SEQN', 7, 35), lockbox…` | **test:** `tests/test_the_seal_states_its_basis.py::test_an_abandoned_seal_says_so_and_is_not_cross_sectional` — Now fully closed, including the half this row deliberately left… |
 | `STATE-001` | landmine | apply_plausibility_filter calls reset_index(drop=True), and its output becomes the app's active dataframe — which silently voids the test lockbox for every downstream step. | `ml/pipeline.py:124 `return df.loc[mask].reset_index(drop=True)` -> pages/05_Preprocess.py:863…` | **test:** `tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given` — Closed, and closed at the source rather than at the consumer.… |
 | `STATE-002` | landmine | PlausibilityGate cannot be sklearn-cloned. It mutates its constructor parameters in __init__, violating the sklearn clone identity contract — and reconcile_pipeline_columns clones UNCONDITIONALLY on… | `ml/preprocess_operators.py:50-55 `self.lower_bounds = np.array([np.nan if v is None else float(v) for v in…` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_a_pipeline_with_plausibility_bounds_can_be_cloned` — Fixed as the row prescribed: PlausibilityGate.__init__ is bare… |
 | `STATE-006` | landmine | pages/03_Feature_Engineering.py hand-rolls its own cascade invalidation instead of calling reset_downstream_results(), and the copy has drifted. | `pages/03_Feature_Engineering.py:1229-1252 (the block after `st.session_state['engineered_feature_transforms']…` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_page_03_no_longer_hand_rolls_its_own_cascade` — Duplicate of CONTRACT-002 from the state pass, and closed the… |
