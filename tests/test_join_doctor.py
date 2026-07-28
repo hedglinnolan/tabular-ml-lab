@@ -236,6 +236,21 @@ def test_a_chained_join_does_not_invent_its_own_dtype_mismatch():
     assert not d2.blocking, f"self-inflicted blocker: {d2.blocking}"
 
 
+def test_blank_ids_survive_a_right_side_column_named_like_the_left_key():
+    """The blank-ID re-attachment renames the right key to the left key's name.
+    If the right frame ALSO carries a column literally called the left key, and
+    that column was not pre-suffixed, the rename produces two identically named
+    columns and pandas raises 'Reindexing only valid with uniquely valued
+    Index objects' from inside execute_join."""
+    demo = pd.DataFrame({"SEQN": [1, 2, None], "age": [40, 55, 61]})
+    labs = pd.DataFrame({"patient_id": [1, 2, None], "SEQN": ["x", "y", "z"],
+                         "glucose": [95, 102, 110]})
+    out, _ = execute_join(demo, labs, "SEQN", "patient_id", "outer", "demo", "labs")
+    assert not pd.Index(out.columns).duplicated().any(), (
+        f"duplicate labels in the result: {list(out.columns)}")
+    assert len(out) >= 3
+
+
 def test_a_key_in_the_last_column_of_a_wide_file_is_still_found():
     """A 71-column lab export with SEQN appended last. Slicing the column list
     before doing any work meant the key was never inspected, and the join
