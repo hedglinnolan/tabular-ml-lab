@@ -220,6 +220,31 @@ Gate 1 is bookkeeping; gate 2 is the engine being sound; gate 3 is the interacti
 on it. The earlier condition — *"no un-dispositioned rows"* — measured what got filed rather than
 whether the audit was complete, and is superseded.
 
+#### Gate 2's lens table
+
+The ten lenses of run `wf_70254f26-494`, and where each one stands. Kept here, beside the gate it
+scores, so the gate describes its own progress and a resuming session needs no commit archaeology.
+`docs/audit/RESUME.md` names all ten; `docs/audit/HUNT_FINDINGS.md` names four as complete and
+compresses the JSON lens into one word, which is why the unrun count is six rather than four.
+
+| # | Lens | Status | Filed |
+|---|---|---|---|
+| 1 | Join key semantics | ✓ ran (original) | in `HUNT_FINDINGS.md` |
+| 2 | Cardinality / fan-out | ✓ ran (original) | in `HUNT_FINDINGS.md` |
+| 3 | Join modes | ✓ ran (original) | in `HUNT_FINDINGS.md` |
+| 4 | Stacking | ✓ ran (original) | in `HUNT_FINDINGS.md` |
+| 5 | Combine UI (the Step 2 screen) | **not run** | — |
+| 6 | JSON structure | **not run** | — |
+| 7 | JSON encoding | **not run** | — |
+| 8 | JSON → downstream | **not run** | — |
+| 9 | Import Doctor | **not run** | — |
+| 10 | State / scale | **not run** | — |
+
+**A lens that comes up dry is a result, not a gap.** It is the only evidence of saturation this
+gate can have, so it is recorded in this table as `✓ ran — dry` rather than left blank. A blank row
+and a dry row mean opposite things and must never look the same — the same rule the `KNOWN_GAP_`
+prefix enforces one layer down (`FEATURE_PARITY.md`).
+
 **Cohort runs are the newest subsystem and they redefine `get_data()`.** The last several commits
 are all cohort work. `get_data()` now applies an active cohort filter (`session_state.py:216`),
 with exactly two `full_study=True` escapes, enforced only by a default parameter. Cohorts are also
