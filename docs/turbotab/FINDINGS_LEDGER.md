@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**193 of 586 closed.**
+**193 of 596 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 352 |
+| `OPEN` | 362 |
 | `PARTIAL` | 41 |
 | `FIXED` | 190 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 352
+## OPEN — 362
 
 
 ### Application state / lockbox — 66
@@ -431,6 +431,21 @@ Nothing is closed without a regression test named after it.
 | `T0-PAGES-001` | medium | Duplicate-row detection has no engine home — it is inline in pages/01 | `pages/01_Upload_and_Audit.py (inline)` | Extract to the engine when pages/01 unfreezes; register the capability meanwhile. |
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
+
+### DRIVE — 10
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `DRIVE-001` | critical | The lens question is unreachable through the interface - it has a dedicated endpoint the page never calls, so the entire domain-pack arc is invisible | `turbotab/api.py:1289 versus :1545; turbotab/web/index.html has no lens reference` | From the product owner's second NHANES drive. Their words are the specification. |
+| `DRIVE-009` | critical | The domain-specific EDA plot vision is unbuilt, and it is the product's stated centerpiece | `The drive; DESIGN_LANGUAGE.md 07; DOMAIN_PACKS.md 08` | From the product owner's second NHANES drive. Their words are the specification. |
+| `DRIVE-002` | high | A repair affecting nine features requires nine separate show-me-then-apply cycles; the bulk affordance was built for questions and not for repairs | `The drive; contrast turbotab bulk missingness affordance` | From the product owner's second NHANES drive. Their words are the specification. |
+| `DRIVE-003` | high | Action buttons do not say what they will do, so the driver could not tell what several of them meant | `The drive; turbotab/web/index.html action rows` | From the product owner's second NHANES drive. Their words are the specification. |
+| `DRIVE-004` | high | Disclosures do not toggle and actions do not acknowledge - the app never narrates its own behavior | `The drive; DESIGN_LANGUAGE.md 05` | From the product owner's second NHANES drive. Their words are the specification. |
+| `DRIVE-005` | high | Situational-awareness findings get one card each, which turns ten improbable-value flags into accidental infinite scroll | `The drive; clinical_longitudinal and NHANES` | From the product owner's second NHANES drive. Their words are the specification. |
+| `DRIVE-006` | high | Auto-scroll skips past the noticed card, so the driver has to scroll back up every time | `The drive; DESIGN_LANGUAGE.md 05 scroll rule` | From the product owner's second NHANES drive. Their words are the specification. |
+| `DRIVE-007` | high | Impossible values cannot be taken out of the app, and there is no way to mark a feature as unclean | `The drive; the impossibility pass on NHANES bp_di` | From the product owner's second NHANES drive. Their words are the specification. |
+| `DRIVE-008` | high | The missingness pop-out shows what would change and does not let the driver do it | `The drive; the missingness what-the-app-can-do panel` | From the product owner's second NHANES drive. Their words are the specification. |
+| `DRIVE-010` | high | After the target is chosen the app does not ask which features to use, or whether to slice by subgroup | `The drive` | From the product owner's second NHANES drive. Their words are the specification. |
 
 ### Guided-door drive feedback — 5
 
