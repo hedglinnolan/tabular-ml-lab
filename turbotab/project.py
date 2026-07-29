@@ -83,6 +83,16 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _copy(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """A nullable record field, copied rather than handed over (`STATE-111`).
+
+    `None` stays `None`, because the difference between an absent record and an
+    empty one is a claim this project model spends a whole constitution clause
+    protecting.
+    """
+    return None if value is None else dict(value)
+
+
 def _label(value: Any) -> Any:
     """Coerce one index label to something JSON can carry.
 
@@ -1191,6 +1201,20 @@ class AnalysisProject:
 
         `row_labels` is included only on request: it is the row identity, and on
         a large table it is also the largest thing here.
+
+        **Every mutable container is copied on the way out** (`STATE-111`). The
+        first version passed `self.findings`, `self.stale_downstream` and eight
+        others through by reference, so a caller that appended to what it had
+        been handed as a *serialization* silently mutated the project — and, the
+        other way round, two `to_dict()` results taken before and after an action
+        were the same object, so a snapshot could not show a change. The dev
+        harness found the second reading first: `select_models` appears to add
+        zero stale entries because both sides of the comparison are one list.
+
+        `decisions` and `columns` were always rebuilt by comprehension, which is
+        what the intent plainly was. Copies are shallow — enough to close the
+        append-mutates-the-project class, which is the dangerous one — and the
+        record is read-only by contract below that.
         """
         out: Dict[str, Any] = {
             "id": self.id,
@@ -1206,31 +1230,31 @@ class AnalysisProject:
             "task_reasons": list(self.task_reasons),
             "columns": self.columns,
             "decisions": [d.to_dict() for d in self.decisions],
-            "findings": self.findings,
+            "findings": list(self.findings),
             "findings_stale": self.findings_stale,
             "applied_fixes": self.applied_fixes,
-            "engineered": self.engineered,
-            "deferred_transforms": self.deferred_transforms,
-            "selection_spec": self.selection_spec,
+            "engineered": list(self.engineered),
+            "deferred_transforms": list(self.deferred_transforms),
+            "selection_spec": _copy(self.selection_spec),
             "features_settled": self.features_settled,
-            "stale_downstream": self.stale_downstream,
-            "grain": self.grain,
-            "eligibility": self.eligibility,
-            "selected_models": self.selected_models,
+            "stale_downstream": list(self.stale_downstream),
+            "grain": _copy(self.grain),
+            "eligibility": _copy(self.eligibility),
+            "selected_models": list(self.selected_models),
             "preparation_mode": self.preparation_mode,
-            "model_recipes": self.model_recipes,
-            "missingness": self.missingness,
+            "model_recipes": {k: dict(v) for k, v in self.model_recipes.items()},
+            "missingness": list(self.missingness),
             "preprocess_settled": self.preprocess_settled,
-            "obligations": self.obligations,
-            "lockbox": self.lockbox,
+            "obligations": list(self.obligations),
+            "lockbox": _copy(self.lockbox),
             "barrier_raised": self.barrier_raised,
-            "cohort": self.cohort,
+            "cohort": _copy(self.cohort),
             "n_working_rows": int(len(self.working_table)),
-            "pipeline_specs": self.pipeline_specs,
+            "pipeline_specs": {k: dict(v) for k, v in self.pipeline_specs.items()},
             "workflow_mode": self.workflow_mode,
             "readiness": self.readiness().to_dict(),
             "fingerprint": self.fingerprint(),
-            "profile": self.profile,
+            "profile": _copy(self.profile),
         }
         if include_rows:
             out["row_labels"] = self.row_labels

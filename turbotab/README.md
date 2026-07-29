@@ -44,6 +44,46 @@ turbotab\.venv\Scripts\python.exe -m pytest turbotab\test_skeleton.py -v
 
 44 tests, about three seconds. They need no server running.
 
+### Driving it with the harness on
+
+**Temporary development instrumentation, not a product feature.** Off by default.
+
+```bash
+TURBOTAB_DEV_CHECKS=1 turbotab/.venv/bin/python -m uvicorn turbotab.api:app --port 8777
+```
+
+Then drive normally. Every state transition is checked against the record — that
+every number displayed traces to a value in it, that the seal's integrity holds
+when recomputed rather than trusted, that a deferred transform left the working
+table byte-identical, that exactly the right things went stale. **A violation
+records and continues**: one bug must not end a drive, because the driver is
+looking for the second and third bug too.
+
+Each drive writes `turbotab/sessions/<timestamp>/` (gitignored):
+
+| File | What it holds |
+|---|---|
+| `index.md` | **Read this first — it opens with violations, not narrative.** |
+| `violations.jsonl` | one per line, each naming the check and the action |
+| `swallowed.jsonl` | exceptions caught somewhere and never surfaced |
+| `actions.jsonl` | every request and response, in order |
+| `state/NNNN-{before,after,diff}.json` | the resolved project on both sides of each action |
+| `dom/` | one snapshot per render, styles inline, opens in a browser |
+| `console.jsonl` | browser errors and unhandled rejections |
+| `replay.py` | re-runs the drive against a fresh server |
+
+The state is written whole on both sides and diffed, so an unexpected change is
+a **diff rather than a guess** — the difference between *"something went stale"*
+and *"`selected_models` emptied when the recipe was set"*.
+
+`swallowed.jsonl` deserves its own line. The ledger has a dozen open rows whose
+text ends *"and nothing surfaces it"*, and a bug hunt through code whose failure
+mode is silence finds nothing until the silence is removed. Two layers: sites we
+own call `devchecks.swallowed()` with what the user therefore did not see, and
+everything else is caught by `sys.monitoring`'s `EXCEPTION_HANDLED` filtered to
+this repository's own files — **so nothing in the frozen engine modules is
+edited**, which the freeze in `TRANSITION_PLAN.md` §05 would not permit anyway.
+
 ---
 
 ## The gate

@@ -3,3 +3,10 @@
 # it, and it is the file to drop on the server to see the interface work — so it
 # is re-included here rather than by weakening the rule everywhere.
 !sample_data/*.csv
+
+# Drives written by turbotab/devchecks.py when TURBOTAB_DEV_CHECKS=1. Full
+# request and response payloads, resolved state on both sides of every action,
+# and a DOM snapshot per render — everything needed to reproduce a bug, and
+# nothing anybody else needs. Temporary development instrumentation; the
+# artifacts belong on the driver's disk and nowhere else.
+sessions/

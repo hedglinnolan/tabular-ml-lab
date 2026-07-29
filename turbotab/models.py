@@ -96,10 +96,19 @@ def shelf(profile: Any, task_type: str, probe: Any = None) -> List[ShelfEntry]:
     registry = get_registry()
     try:
         verdicts = model_coach.model_viability(profile, probe)
-    except Exception:
+    except Exception as exc:
         # A profile the coach cannot read must not empty the shelf. Silence
         # about ORDER is recoverable; an empty list is the app withholding
         # every model, which is the thing this module forbids.
+        #
+        # Recoverable is not the same as invisible: every model then appears
+        # unranked and unconcerned, and a shelf with no concerns on it looks
+        # like a shelf where the engine had nothing to say.
+        from turbotab import devchecks
+        devchecks.swallowed(
+            "models.shelf::model_viability", exc,
+            "every model is presented with no ranking and no concern, which "
+            "reads as 'the engine had nothing to say about these'")
         verdicts = {}
 
     supports = ("supports_classification" if task_type == "classification"

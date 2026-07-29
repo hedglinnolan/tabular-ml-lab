@@ -132,6 +132,16 @@ SCOREABLE_EXEMPT = {
     # would make the archive's meaning depend on when it was written.
     "utils/session_manager.py": "persists the sealed count as the record of the seal",
     "turbotab/archive.py": "same, for the Guided door's archive",
+    # Assertion, not display. The dev harness compares the seal DECISION's
+    # n_test against the LOCKBOX's n_test, which is a check that the record
+    # agrees with itself — the same category as a test, and the reason the loop
+    # above already skips `test_*`. It shows a researcher nothing; a violation
+    # goes to a gitignored session directory behind TURBOTAB_DEV_CHECKS=1.
+    #
+    # Worth recording that this guard CAUGHT the new file the day it landed,
+    # which is what a call-site enumeration is for: the invariant did not have
+    # to be remembered by whoever wrote `devchecks.py`.
+    "turbotab/devchecks.py": "compares the record against itself; displays nothing",
 }
 
 

@@ -2291,6 +2291,84 @@
              : ("A decision was recorded for " + column + ".");
   }
 
+  /* ═════════ THE DEV HARNESS — the half only the browser can supply ═════════
+     Off unless the server says TURBOTAB_DEV_CHECKS is set, and the page ASKS
+     rather than assumes, for the same reason /capabilities is served rather
+     than hard-coded: an interface that decides for itself what the server is
+     doing can be wrong about it.
+
+     Three things the server cannot see: what the page actually rendered, what
+     the browser threw, and what a promise rejected with. A drive that captures
+     every payload and none of these can tell you the request succeeded and not
+     that the screen was blank. */
+  (function devHarness(){
+    fetch("/dev/status").then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(st){
+        if (!st || !st.enabled) return;
+
+        function post(path, body){
+          try {
+            return fetch(path, { method:"POST",
+                                 headers:{ "Content-Type":"application/json" },
+                                 body: JSON.stringify(body) })
+                     .catch(function(){ /* the harness never breaks the drive */ });
+          } catch (_) { return null; }
+        }
+
+        /* Errors, in all three shapes they arrive in. console.error is wrapped
+           rather than replaced: a harness that eats the developer console has
+           taken away the thing it exists to preserve. */
+        window.addEventListener("error", function(e){
+          post("/dev/console", { level:"error",
+                                 message: String(e.message || e.type || "error"),
+                                 stack: (e.error && e.error.stack) || "",
+                                 url: String(e.filename || "") + ":" + (e.lineno || 0) });
+        });
+        window.addEventListener("unhandledrejection", function(e){
+          var reason = e.reason;
+          post("/dev/console", { level:"unhandledrejection",
+                                 message: String((reason && reason.message) || reason || ""),
+                                 stack: (reason && reason.stack) || "",
+                                 url: String(window.location.href) });
+        });
+        var origError = console.error;
+        console.error = function(){
+          try {
+            post("/dev/console", {
+              level:"console.error",
+              message: Array.prototype.map.call(arguments, String).join(" "),
+              url: String(window.location.href) });
+          } catch (_) {}
+          return origError.apply(console, arguments);
+        };
+
+        /* One snapshot per render. `index.html` carries its whole stylesheet in
+           <style> blocks, so outerHTML is already self-contained and the file
+           opens in a browser looking like what the driver saw. Debounced,
+           because renderAll runs several times per interaction and forty
+           identical snapshots hide the one that matters. */
+        var pending = null;
+        var origRenderAll = renderAll;
+        renderAll = function(){
+          origRenderAll();
+          if (pending) clearTimeout(pending);
+          pending = setTimeout(function(){
+            pending = null;
+            var step = "render";
+            if (P){
+              step = P.preprocess_settled ? "preprocess"
+                   : P.features_settled   ? "features"
+                   : P.barrier_raised     ? "explore"
+                   : P.target             ? "target" : "data";
+            }
+            post("/dev/dom", { step: step,
+                               html: document.documentElement.outerHTML });
+          }, 400);
+        };
+      })
+      .catch(function(){ /* no harness, no problem */ });
+  })();
+
   /* Deep link: /?project=<id> reopens a project this server still holds. */
   var pid = new URLSearchParams(window.location.search).get("project");
   if (pid){

@@ -7314,5 +7314,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "ml/import_doctor.py check_numeric_stored_as_text, the units branch after the raw_numeric >= 0.99 block; _units_present and _TRAILING_UNIT at module top"
+ },
+ {
+  "id": "STATE-111",
+  "area": "STATE",
+  "sev": "high",
+  "item": "AnalysisProject.to_dict() returns the project's own mutable containers, so a caller that appends to what it was handed as a serialization mutates the project",
+  "detail": "findings, engineered, deferred_transforms, stale_downstream, missingness, obligations, selected_models, model_recipes, pipeline_specs, and the nested dicts grain, eligibility, lockbox, cohort, selection_spec and profile are all passed through by reference. decisions and columns are rebuilt by comprehension, which is what the intent plainly was. The failure is silent in both directions: a consumer mutating the payload changes the project with nothing recording it, and a consumer holding a to_dict() result as a SNAPSHOT finds the snapshot changing underneath it - two readings of 'before' and 'after' that are the same object.",
+  "ev": "turbotab/project.py AnalysisProject.to_dict",
+  "act": "Copy the top-level mutable containers on the way out: list() for the lists, dict() for the dicts. Shallow is enough to close the append-mutates-the-project class, which is the dangerous one; nested values stay shared and the record stays read-only by contract.",
+  "status": "FIXED",
+  "note": "FIXED at L19, in the same loop it was found. to_dict now copies every mutable container on the way out - list() for the lists, dict() via _copy for the nullable record dicts, and a per-key dict() for model_recipes and pipeline_specs. Shallow, deliberately: that closes the append-mutates-the-project class, which is the dangerous one, and the record is read-only by contract below that. decisions and columns were always rebuilt by comprehension, which is what the intent plainly was. _copy keeps None as None rather than coercing to {}, because the difference between an absent record and an empty one is a claim this project model spends a whole constitution clause protecting. FOUND BY THE DEV HARNESS ON ITS FIRST DRIVE, by the check that is hardest to satisfy - select_models reported adding zero stale entries when it appends exactly one, because both snapshots were the same list. Probed, two reverts, each red for its declared reason: restoring the stale_downstream passthrough gives 'to_dict handed out the project's own stale_downstream'; restoring the findings passthrough gives the same sentence for findings.",
+  "verified_against": "",
+  "test": "turbotab/test_the_harness_reports_and_does_not_stop_the_drive.py::test_a_serialized_project_does_not_hand_out_the_projects_own_containers",
+  "verified_ev": "turbotab/project.py AnalysisProject.to_dict"
  }
 ]

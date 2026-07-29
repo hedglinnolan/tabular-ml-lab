@@ -20,6 +20,8 @@ Run:  turbotab/.venv/Scripts/python -m uvicorn turbotab.api:app --reload
 """
 from __future__ import annotations
 
+import json
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -29,7 +31,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from turbotab import draft, engine, features as feat_mod, grain as grain_mod, selection as sel_mod
+from turbotab import (
+    devchecks, draft, engine, features as feat_mod, grain as grain_mod,
+    selection as sel_mod,
+)
 from turbotab.project import (
     AnalysisProject, GrainContradiction, ProjectError, ProjectStore,
 )
@@ -48,6 +53,167 @@ STORE = ProjectStore()
 # Upload ceiling. The frame is held in memory and nothing is written to disk
 # (ARCHITECTURE.md §02), so an unbounded upload is an unbounded resident set.
 MAX_UPLOAD_BYTES = 64 * 1024 * 1024
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The dev harness — off unless TURBOTAB_DEV_CHECKS=1
+#
+# A RAW ASGI middleware rather than `BaseHTTPMiddleware`, and the reason is
+# specific: to capture a request body under `BaseHTTPMiddleware` you have to
+# `await request.body()`, which CONSUMES the receive channel — the upload
+# endpoint downstream then reads an empty multipart stream and every drive
+# begins with a broken upload. Instrumentation that breaks the thing it
+# instruments is worse than none. This wraps `receive` and `send` and OBSERVES
+# the bytes going past instead of standing in the way of them.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_PROJECT_PATH = re.compile(r"/project/([0-9a-f]{6,})")
+
+
+class DevCapture:
+    """Record the wire and the state around every action, then run the checks."""
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send):        # noqa: C901
+        if scope.get("type") != "http" or not devchecks.enabled():
+            return await self.app(scope, receive, send)
+        path = scope.get("path", "")
+        if not (path.startswith("/project") or path.startswith("/capabilities")):
+            return await self.app(scope, receive, send)
+        # Armed on the first request rather than at startup: `on_event` is
+        # deprecated, a `lifespan=` argument would have to be threaded through
+        # the app's construction for a dev flag, and this is idempotent and
+        # costs one boolean check per request.
+        devchecks.start_listening()
+
+        chunks: List[bytes] = []
+
+        async def observing_receive():
+            message = await receive()
+            if message.get("type") == "http.request":
+                body = message.get("body") or b""
+                if sum(len(c) for c in chunks) < 256 * 1024:
+                    chunks.append(body)
+            return message
+
+        captured: Dict[str, Any] = {"status": None, "body": bytearray()}
+
+        async def observing_send(message):
+            if message.get("type") == "http.response.start":
+                captured["status"] = message.get("status")
+            elif message.get("type") == "http.response.body":
+                if len(captured["body"]) < 512 * 1024:
+                    captured["body"].extend(message.get("body") or b"")
+            await send(message)
+
+        project_id = None
+        m = _PROJECT_PATH.search(path)
+        if m:
+            project_id = m.group(1)
+        before = _dev_state(project_id)
+
+        await self.app(scope, observing_receive, observing_send)
+        # Everything from here is instrumentation, and the response has already
+        # been sent. `safely` is what keeps a harness bug from ending the drive
+        # it exists to record — the first draft raised inside the upload
+        # endpoint and took the whole drive with it.
+        devchecks.safely(self._record, scope, path, project_id, before,
+                         chunks, captured)
+
+    def _record(self, scope, path, project_id, before, chunks, captured) -> None:
+        after = _dev_state(project_id)
+        raw = b"".join(chunks)
+        request_body: Any = None
+        upload_filename = None
+        content_type = ""
+        for key, value in scope.get("headers") or []:
+            if key.lower() == b"content-type":
+                content_type = value.decode("latin-1", "replace")
+        if "multipart/form-data" in content_type:
+            fm = re.search(rb'filename="([^"]+)"', raw[:4096])
+            upload_filename = fm.group(1).decode("utf-8", "replace") if fm else "upload"
+        elif raw:
+            try:
+                request_body = json.loads(raw.decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
+                request_body = {"_unparsed_bytes": len(raw)}
+
+        try:
+            response_body = json.loads(bytes(captured["body"]).decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            response_body = {"_bytes": len(captured["body"])}
+
+        action = {
+            "method": scope.get("method"),
+            "path": path,
+            "query": (scope.get("query_string") or b"").decode("latin-1"),
+            "project_id": project_id,
+            "kind": (request_body or {}).get("kind") if isinstance(request_body, dict) else None,
+            "status": captured["status"],
+            "upload_filename": upload_filename,
+            "request_body": request_body,
+            "response_body": _truncate(response_body),
+        }
+        devchecks.capture_action(action, before, after)
+
+        # The upload has no `before`, so the battery runs against `after` alone
+        # and the transition checks that need both simply find nothing to
+        # compare — which is correct rather than skipped.
+        project = None
+        if project_id:
+            try:
+                project = STORE.get(project_id)
+            except ProjectError:
+                project = None
+        # THE CHECKS RUN ON ACCEPTED ACTIONS ONLY, and this is a correction
+        # rather than a convenience. A 400 means the app REFUSED — and the
+        # refusal branch is the governing rule working. Running "every action
+        # records a decision" against a request the app declined reports the
+        # refusal as a defect, which would fill a drive with violations that are
+        # the app being right. The request is still captured; only the
+        # invariants that presuppose the action happened are skipped.
+        status = captured["status"] or 0
+        if after is not None and 200 <= status < 300:
+            devchecks.check_transition(project, before, after, action)
+        devchecks.write_index()
+
+
+def _dev_state(project_id: Optional[str]) -> Optional[Dict[str, Any]]:
+    """The resolved project, as the interface would receive it. Never raises.
+
+    Taken through a JSON round trip, which is what makes it a SNAPSHOT rather
+    than a view. `to_dict` now copies its containers (`STATE-111`), but a
+    snapshot the harness holds across an action has to be independent all the
+    way down or the diff compares a thing against itself — and the harness must
+    not depend on the project model getting that right, since noticing when it
+    does not is part of the job.
+    """
+    if not project_id:
+        return None
+    try:
+        return json.loads(json.dumps(_payload(STORE.get(project_id)), default=str))
+    except Exception:                                      # pragma: no cover
+        return None
+
+
+def _truncate(body: Any, limit: int = 400) -> Any:
+    """Findings and columns dominate a response and are already in `state/`."""
+    if not isinstance(body, dict):
+        return body
+    out = dict(body)
+    for key in ("findings", "columns", "decisions"):
+        value = out.get(key)
+        if isinstance(value, list) and len(value) > 8:
+            out[key] = value[:8] + [{"_truncated": len(value) - 8}]
+    text = json.dumps(out, default=str)
+    if len(text) > limit * 200:
+        return {"_truncated_response_bytes": len(text)}
+    return out
+
+
+app.add_middleware(DevCapture)
 
 
 class DecisionIn(BaseModel):
@@ -149,8 +315,13 @@ def _sentence(project: AnalysisProject, d: DecisionIn) -> str:
     title = d.subject
     try:
         title = project.finding(d.subject)["title"]
-    except ProjectError:
-        pass
+    except ProjectError as exc:
+        # The transcript then names a finding by its ID rather than its title —
+        # `binary_text__sex — deferred` instead of the sentence a reader can
+        # follow. Not wrong, and not what the record is for.
+        devchecks.swallowed(
+            "api._sentence::finding-title", exc,
+            f"the transcript will name {d.subject!r} by id rather than by title")
     return {
         "defer":     f"{title} — deferred to the step where it belongs.",
         "dismiss":   f"{title} — dismissed; kept in the record.",
@@ -1060,11 +1231,20 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
                 project.working_table, project.target, project.task_type,
                 "cross_sectional", None)
             recommendations = recommend_eda(signals)
-        except Exception:
+        except Exception as exc:
             # The palette is an offer, not a promise. Losing it must not take
             # the interview's questions with it. A blocker is different: if the
             # signals could not be computed there is no blocker to hide, and the
             # next branch reports none rather than claiming none exist.
+            #
+            # It is still the deepest well on the Guided path: a blocker that
+            # would have fired does not, and the step renders as though the data
+            # raised nothing. Legitimate to continue, never legitimate to be
+            # quiet about it.
+            devchecks.swallowed(
+                "api.get_interview::eda-signals", exc,
+                "the pull palette is empty and NO BLOCKER can fire this render; "
+                "the step renders as though the data raised nothing")
             recommendations, signals = [], None
 
     try:
@@ -1074,7 +1254,7 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
                                 recommendations=recommendations, signals=signals,
                                 missing_columns=missing_columns)
         router.audit(questions)
-    except router.RouterError as exc:
+    except router.RouterError as exc:                      # noqa: B902
         # A plan that breaks a governing rule is not rendered at all.
         raise HTTPException(500, f"The interview broke a governing rule: {exc}") from exc
 
@@ -1095,6 +1275,15 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
             d["not_built_reason"] = None if d["built"] else NOT_BUILT_REASON
         rendered.append(d)
 
+    # The audit is re-run against the SAME list the interface receives, so what
+    # was audited and what is shown cannot be two different things. Recorded, not
+    # raised: the plan already passed above, and a harness that turns a passing
+    # render into a 500 has broken the drive it is instrumenting.
+    devchecks.record_violations(
+        devchecks.router_audit_passed_before_this_render(questions, rendered),
+        {"kind": "render_interview", "path": f"/project/{project.id}/interview",
+         "step": step})
+
     return {
         "project_id": project.id,
         "step": step,
@@ -1109,6 +1298,61 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
         "next": next((q.to_dict() for q in questions
                       if q.mode == "push" and q.status == "asked"), None),
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The dev endpoints — the half of the capture only the browser can supply
+#
+# Registered before the static mount, like everything else. `/dev/status` exists
+# so the page does not have to guess: the harness is a server-side flag and the
+# page asks rather than assumes, which is the same reason `/capabilities` is
+# served rather than hard-coded.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class DomIn(BaseModel):
+    step: str = "render"
+    html: str = ""
+
+
+class ConsoleIn(BaseModel):
+    level: str = "error"
+    message: str = ""
+    stack: str = ""
+    url: str = ""
+
+
+@app.get("/dev/status")
+async def dev_status() -> Dict[str, Any]:
+    s = devchecks.session()
+    return {"enabled": devchecks.enabled(),
+            "session": str(s.root) if s else None,
+            "flag": devchecks.ENV_FLAG}
+
+
+@app.post("/dev/dom")
+async def dev_dom(snapshot: DomIn) -> Dict[str, Any]:
+    """One DOM snapshot per render, styles inline.
+
+    `index.html` carries its whole stylesheet in `<style>` blocks, so
+    `outerHTML` is already self-contained and opens in a browser with nothing
+    beside it. If that ever stops being true — an external stylesheet, a font
+    link — this endpoint is where the inlining would have to happen, and the
+    snapshot would silently lose its appearance until it did.
+    """
+    if not devchecks.enabled():
+        raise HTTPException(404, "The dev harness is off.")
+    name = devchecks.capture_dom(snapshot.step, snapshot.html)
+    devchecks.write_index()
+    return {"written": name}
+
+
+@app.post("/dev/console")
+async def dev_console(entry: ConsoleIn) -> Dict[str, Any]:
+    if not devchecks.enabled():
+        raise HTTPException(404, "The dev harness is off.")
+    devchecks.capture_console(entry.level, entry.message, entry.stack, entry.url)
+    devchecks.write_index()
+    return {"recorded": True}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

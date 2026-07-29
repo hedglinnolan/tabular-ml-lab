@@ -396,8 +396,16 @@ def preview_fix(df: pd.DataFrame, finding: ShapeFinding,
             changed_count = int(mask.to_numpy().sum())
             changed_cols = [c for c in common_cols if bool(mask[c].any())]
             changed_labels = list(after.index[mask.any(axis=1)])
-        except (KeyError, ValueError):
-            pass
+        except (KeyError, ValueError) as exc:
+            # A well. When this fires the preview reports NO changed cells and
+            # no changed columns, which reads as "this repair changes nothing" —
+            # the most misleading thing a before/after card can say. Nothing
+            # surfaces it; that is what the harness is for.
+            from turbotab import devchecks
+            devchecks.swallowed(
+                "engine.preview_fix::changed-cell-count", exc,
+                "the preview will report zero changed cells, which reads as "
+                "'this repair changes nothing'")
 
     # ── the rows to show ───────────────────────────────────────────────────
     # When identity holds, before and after are shown *aligned by label*, with
