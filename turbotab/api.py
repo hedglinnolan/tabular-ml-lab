@@ -566,6 +566,42 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         _recompute(project)
         return _payload(project)
 
+    if decision.kind == "eligibility_candidates":
+        # Candidate criteria a pack has offered, resolved against the frame.
+        # A GET-shaped read served here so it stays beside the question it
+        # belongs to, exactly as `eligibility_evidence` is.
+        #
+        # `GUIDED-033`: the metabolomics pack states at derived confidence that
+        # pooled QC rows are not participants, and nothing acted on it — so the
+        # app modeled them while the record said it should not. Offered here
+        # rather than applied, because an exclusion changes N.
+        from turbotab import packs as _packs
+        out: List[Dict[str, Any]] = []
+        for prior in _packs.priors(project.lens or [], "qc_rows_excluded",
+                                   project.df):
+            found = next((f for f in project.pack_findings()
+                          if f["id"] == prior.get("detector")), None)
+            if not found:
+                continue
+            params = found["params"]
+            column, keep = params["column"], params["qc_value"]
+            keep_values = [v for v in project.df[column].dropna().unique()
+                           if str(v) != str(keep)]
+            out.append({
+                "source": prior["pack"], "marker": prior["marker"],
+                "column": column, "keep_values": [str(v) for v in keep_values],
+                "n_excluded": int((project.df[column] == keep).sum()),
+                "reason": prior["reason"],
+                "criterion_reason": (
+                    f"{int((project.df[column] == keep).sum())} pooled "
+                    f"quality-control injections are not participants and were "
+                    f"excluded from modeling."),
+            })
+        return {"candidates": out,
+                "note": ("Offered, never applied. An exclusion changes N and is "
+                         "reported in participant flow, so it is a criterion "
+                         "you state.")}
+
     if decision.kind == "eligibility_evidence":
         # A GET-shaped read served through the decision endpoint so it stays
         # beside the question it belongs to. Bounded by clause §04: this answers

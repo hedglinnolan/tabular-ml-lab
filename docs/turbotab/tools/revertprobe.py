@@ -29,6 +29,7 @@ See FEATURE_PARITY.md, "a probe must verify the REASON for failure".
 """
 from __future__ import annotations
 
+import os
 import pathlib
 import subprocess
 import sys
@@ -37,9 +38,24 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 
 def _run(test: str):
+    # PYTHONDONTWRITEBYTECODE, and it is not hygiene.
+    #
+    # A probe writes a file, runs pytest, restores the file and runs pytest
+    # again — three writes inside one second. CPython's source-mtime cache has
+    # one-second granularity, so the restored run can import the REVERTED
+    # bytecode and report `RESTORED: FAIL`. That reads as *"the fix does not
+    # work"* when the fix is on disk and correct, which is the most misleading
+    # thing this harness can say: it turns a verified repair into an apparent
+    # regression at the exact moment somebody is deciding whether to close a
+    # row.
+    #
+    # Observed at L22 on `GUIDED-033`. Writing no bytecode at all costs a
+    # fraction of a second per run and removes the race.
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     p = subprocess.run(
-        [sys.executable, "-m", "pytest", test, "-q", "--no-header", "-x"],
-        cwd=ROOT, capture_output=True, text=True)
+        [sys.executable, "-m", "pytest", test, "-q", "--no-header", "-x",
+         "-p", "no:cacheprovider"],
+        cwd=ROOT, capture_output=True, text=True, env=env)
     return p.returncode, p.stdout + p.stderr
 
 

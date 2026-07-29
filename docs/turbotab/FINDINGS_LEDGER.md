@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**192 of 585 closed.**
+**193 of 586 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 353 |
-| `PARTIAL` | 40 |
-| `FIXED` | 189 |
+| `OPEN` | 352 |
+| `PARTIAL` | 41 |
+| `FIXED` | 190 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 353
+## OPEN — 352
 
 
 ### Application state / lockbox — 66
@@ -432,7 +432,7 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Guided-door drive feedback — 6
+### Guided-door drive feedback — 5
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -441,11 +441,10 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
-| `GUIDED-030` | medium | Four pack priors still have no consumer - GUIDED-024's defect surviving for a subset, now declared and counted rather than noticed | `turbotab/packs.py PACKS priors; test_every_prior_has_a_consumer_or_is_declared_unconsumed lists the four with…` | Found at L21 while auditing GUIDED-027 rather than by a detector, and filed rather than fixed because three of the four wait on steps that do not exist. The residue is now… |
 
 ---
 
-## PARTIAL — 40
+## PARTIAL — 41
 
 
 ### Application state / lockbox — 10
@@ -533,9 +532,15 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-243` | high | HUNT dtype-mismatch-blocked-but-executed: the screen still shows a red 'will not work' blocker and then combines successfully, though the withheld row count and the recurrence on later legs are both… | `ml/join_doctor.py diagnose_join (a dtype mismatch is still classified blocking, can_proceed False, while…` | PARTIAL, measured at HEAD. A genuine text-vs-numeric key pair still gives dtype_mismatch True, can_proceed False and a red blocking message - and combine_ui overrides the block… |
 | `IMPORT-240` | medium | HUNT stack-empty-file-turns-every-numeric-column-to-text: the dtype corruption is gone, but a header-only cycle now produces a FALSE type-conflict warning and is still never named as contributing… | `utils/combine.py plan_stack (total_rows as a plain sum, no zero-row check) and execute_stack's pd.concat…` | PARTIAL, measured at HEAD. Three cycles with glucose float64 in two of them and an empty header-only frame between: the stacked glucose column comes back float64 with 4 rows - the… |
 
+### Guided-door drive feedback — 1
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `GUIDED-030` | medium | Four pack priors still have no consumer - GUIDED-024's defect surviving for a subset, now declared and counted rather than noticed | `turbotab/packs.py PACKS priors; test_every_prior_has_a_consumer_or_is_declared_unconsumed lists the four with…` | Four priors had no consumer at L21 and three still do. THE ONE REAL DEFECT IS FIXED as GUIDED-033: qc_rows_excluded stated at derived confidence that pooled QC rows are not… |
+
 ---
 
-## FIXED — 189
+## FIXED — 190
 
 
 ### Multi-file / JSON import — 69
@@ -651,7 +656,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — Duplicate of COACH-024 from the state pass, and closed the same way: the… |
 | `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | **test:** `tests/test_cohort_runs.py::test_unrecognizable_rows_yield_nothing_not_everything` — The invariant is implemented, disclosed and tested, and the test's NAME is the… |
 
-### Guided-door drive feedback — 26
+### Guided-door drive feedback — 27
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -673,6 +678,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-027` | high | Priors are scoped to the dataset where several are properties of a column, which mis-fires on exactly the mixed tables the product targets | `turbotab/packs.py:196 _left_censored returns columns; priors() at :889 takes only a question name` | **test:** `turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_no_consumer_reads_a_column_scoped_prior_at_table_scope` — Fixed at L20 and AUDITED AT L21. Prior carries… |
 | `GUIDED-028` | high | The lens contradiction detector fires in one direction only: assay-shaped data described as something else, never the reverse | `turbotab/packs.py:954 contradiction(); :923 suggest()` | **test:** `turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_an_assay_lens_over_a_table_that_is_not_a_panel_is_contradicted` — CLOSED at L21. Three directions now, not… |
 | `GUIDED-031` | high | explainOnly renders suggested_actions as prose bullets and terminates - the one moment the user needs to act is the one place the card offers nothing to act on | `turbotab/web/index.html:1279 explainOnly; contrast :1317 previewFor` | **test:** `turbotab/test_a_finding_with_no_repair_still_offers_something.py::test_the_outlier_finding_offers_an_operation_and_three_earmarks` — FIXED at L22 in turbotab/actions.py… |
+| `GUIDED-033` | high | qc_rows_excluded stated at derived confidence that pooled QC rows are not participants, and the app modeled them anyway | `turbotab/packs.py PACKS[metabolomics] priors qc_rows_excluded; no consumer` | **test:** `turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_the_qc_rows_are_offered_as_an_eligibility_criterion` — FIXED at L22, and both halves were needed. CLAIM… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |

@@ -210,6 +210,19 @@ Append this to any unsupervised prompt.
 > blocked or something looks structurally wrong, stop and write what you found to
 > `docs/turbotab/BLOCKED.md` rather than guessing.
 
+**Run the documented setup path, or find out that nobody has.** `Makefile` names
+`./venv/bin/python` and nothing had created it in a long time — long enough that
+`tests/test_american_spelling.py`'s skip list had `.venv` and not `venv`, so the
+gate died with a `UnicodeDecodeError` on a compiled dependency the first time
+anybody followed the instructions. The gate was not wrong about the prose; it
+never reached the prose.
+
+A setup path is a claim like any other, and it decays the same way: silently,
+while the people who already have working environments keep working. So the
+documented commands are something to *run*, not only to keep accurate — and the
+cheapest form of that is building both environments from scratch at the start of
+a loop that touches either.
+
 **The three gates are a hook, not an instruction.** `.githooks/pre-commit` runs `ledger.py check`,
 `register.py check` and `tests/test_american_spelling.py`, and refuses the commit on any failure.
 

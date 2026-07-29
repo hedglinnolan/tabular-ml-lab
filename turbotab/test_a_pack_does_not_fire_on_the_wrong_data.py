@@ -1042,11 +1042,7 @@ def test_every_prior_has_a_consumer_or_is_declared_unconsumed():
             "pack turn the question off, which guard 1 forbids — so the prior "
             "is the RECORD of a considered refusal and the question is asked "
             "regardless."),
-        "qc_rows_excluded": (
-            "GUIDED-030. Needs a row-exclusion step; the pooled-QC finding is "
-            "surfaced and nothing acts on it. This is the sharpest of the four: "
-            "the pack states at derived confidence that these rows are not "
-            "participants, and the app still models them."),
+
     }
 
     inert = sorted(all_questions - consumed)
@@ -1060,3 +1056,97 @@ def test_every_prior_has_a_consumer_or_is_declared_unconsumed():
         f"these are declared unconsumed and now have a consumer: {stale}. "
         f"Remove them — a declaration that outlives its reason is the register "
         f"lying.")
+
+
+# ── GUIDED-033 · a derived claim that described behavior the app did not have ─
+
+def test_the_qc_prior_is_offered_because_excluding_rows_changes_n():
+    """The claim is derived; the ACTION is not, and the marker governs the
+    second.
+
+    `GUIDED-030` left this as the one real defect among four inert priors: the
+    metabolomics pack stated at `derived` confidence that pooled QC injections
+    are not participants and that modeling them is an error, and the app modeled
+    them anyway. A derived prior describing behavior the app does not have is
+    the governing rule broken by the layer built to enforce it.
+
+    Demoting it is half the repair and would have been a dodge on its own. The
+    other half is that it now goes somewhere.
+    """
+    prior = P.priors([P.METABOLOMICS], "qc_rows_excluded")[0]
+    assert prior["marker"] == "offered", (
+        "a derived marker here would license pre-selecting an exclusion, which "
+        "clause §04 forbids: an exclusion that changes N is a criterion the "
+        "user states, never a silent filter")
+    assert "changes N" in prior["reason"]
+    assert prior["offers"] == "eligibility_criterion"
+
+    # And the CLAIM is still derived, on the finding that carries it.
+    found = next(f for f in P.findings(load("metabolomics_untargeted"),
+                                       [P.METABOLOMICS])
+                 if f["id"] == "pack::metabolomics::pooled_qc")
+    assert found["marker"] == "derived"
+    assert found["severity"] == "critical"
+
+
+def test_the_qc_rows_are_offered_as_an_eligibility_criterion(client=None):
+    """The other half: the prior goes somewhere.
+
+    Offered through the eligibility question, which is the mechanism clause §04
+    already specifies for an exclusion that changes N and is reported in
+    participant flow.
+    """
+    from fastapi.testclient import TestClient
+    from turbotab import api
+
+    client = TestClient(api.app)
+    with open(DATA / "metabolomics_untargeted.csv", "rb") as fh:
+        pid = client.post("/project", files={
+            "file": ("metabolomics_untargeted.csv", fh, "text/csv")}).json()["id"]
+    for kind, payload in (("set_lens", {"lens": [P.METABOLOMICS]}),
+                          ("set_target", {"column": "responder"}),
+                          ("set_grain", {"answer": "one_row_per_person"})):
+        client.post(f"/project/{pid}/decision",
+                    json={"kind": kind, "payload": payload})
+
+    body = client.post(f"/project/{pid}/decision",
+                       json={"kind": "eligibility_candidates",
+                             "payload": {}}).json()
+    assert len(body["candidates"]) == 1
+    candidate = body["candidates"][0]
+    assert candidate["column"] == "sample_type"
+    assert candidate["keep_values"] == ["participant"]
+    assert candidate["n_excluded"] == 8
+    assert "never applied" in body["note"]
+
+    # Nothing has happened yet. Offered is not applied.
+    assert client.get(f"/project/{pid}").json()["n_rows"] == 80
+
+    applied = client.post(f"/project/{pid}/decision", json={
+        "kind": "set_eligibility",
+        "payload": {"answer": "restricted", "column": candidate["column"],
+                    "keep_values": candidate["keep_values"],
+                    "reason": candidate["criterion_reason"]}}).json()
+    assert applied["n_rows"] == 72
+    # And it lands in participant flow, which is what §04 requires of anything
+    # that changes N.
+    assert applied["eligibility"]["n_excluded"] == 8
+    assert "excluded before the held-out set was drawn" in \
+        applied["eligibility"]["sentence"]
+
+
+def test_no_qc_candidate_is_offered_where_no_qc_rows_exist():
+    """A candidate criterion over nothing would be the app inventing work."""
+    from fastapi.testclient import TestClient
+    from turbotab import api
+
+    client = TestClient(api.app)
+    with open(DATA / "clinic_visits.csv", "rb") as fh:
+        pid = client.post("/project", files={
+            "file": ("clinic_visits.csv", fh, "text/csv")}).json()["id"]
+    client.post(f"/project/{pid}/decision",
+                json={"kind": "set_lens", "payload": {"lens": [P.CLINICAL]}})
+    body = client.post(f"/project/{pid}/decision",
+                       json={"kind": "eligibility_candidates",
+                             "payload": {}}).json()
+    assert body["candidates"] == []

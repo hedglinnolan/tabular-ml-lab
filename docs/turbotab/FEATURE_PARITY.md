@@ -411,6 +411,40 @@ holds. `STATE-056` is the case — deleting `manuscript_text` from `to_dict` lef
 green. A round trip has to name at least one field explicitly, or compare against something the
 serializer did not produce.
 
+**Corollary — a check tested only against a constructed signal will over-fire on
+real data.** *A frame built to contain an effect contains nothing else.*
+
+The revert probe answers *"does this fire when it should?"*. It cannot answer
+*"does it stay quiet when it should?"*, because the frame a test constructs has
+one signal in it and no noise — so a threshold tuned until the planted effect is
+found is a threshold nobody has measured against the absence of one.
+
+`GUIDED-029`'s exceptions check is the case. It flagged the columns where the
+evidence disagreed with a bulk answer, was verified against a constructed frame
+with one informative column among nine, and passed. Run against
+`metabolomics_untargeted.csv` it flagged **31 of 306** columns — almost exactly
+the false-positive rate for a rate difference on 72 participants, on a fixture
+whose missingness is driven by abundance and has nothing to do with the outcome.
+Every one was noise, and an exceptions card listing 31 columns none of which is
+real teaches the user to dismiss the next one.
+
+Three defenses, in order of strength:
+
+- **Run the finished check against the fixture it was built for**, not only
+  against the frame its test constructs. The fixtures exist so a drive is a
+  comparison against a stated expectation; that applies to a check as much as to
+  a feature.
+- **Assert both directions.** A test that a signal fires, beside a test that
+  noise does not — at the real width. A threshold raised until nothing fires is
+  a check that does not exist, and one lowered until everything does is worse.
+- **Scale the threshold with the noise, not with the effect.** A comparison on
+  eight rows against sixty-four is not the comparison on four thousand against
+  four thousand, and 306 comparisons find a one-in-twenty event fifteen times.
+
+The sibling relationship to the revert probe is exact and the axis is different
+again: a probe checks that a guard **can** fail, and this checks that it **can
+stay silent**. Both are ways a green line means nothing.
+
 **Corollary — environment-dependent non-reproduction is not a fix.** If a finding does not reproduce
 under a dependency version the repo does not pin to, it stays `OPEN` saying so.
 

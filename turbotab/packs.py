@@ -960,12 +960,32 @@ PACKS: Dict[str, Pack] = {
             # this prior is about ROWS. Forcing it into a column list it does
             # not have would be the scope error `GUIDED-027` names, committed
             # in the act of repairing it.
-            Prior(question="qc_rows_excluded", marker="derived",
-                  scope=DATASET, values={"exclude": True},
+            #
+            # `offered`, NOT `derived`, and the demotion is the honest half of
+            # `GUIDED-030` (`GUIDED-033`). The CLAIM is derived and the finding
+            # carries it at `critical`: pooled QC injections are not
+            # participants and modeling them is an error with no legitimate
+            # reading. The ACTION is not. Excluding them changes N, and clause
+            # §04 is unambiguous — an exclusion that changes N is an eligibility
+            # criterion the user states, never a silent filter — so a `derived`
+            # marker here would license pre-selecting exactly the thing the
+            # clause forbids pre-selecting.
+            #
+            # Claim and action are two different things and the marker governs
+            # the second. Saying so is what stops a `derived` prior describing
+            # behavior the app does not have, which is the governing rule broken
+            # by the layer built to enforce it.
+            Prior(question="qc_rows_excluded", marker="offered",
+                  scope=DATASET,
+                  values={"exclude": True, "detector": "pack::metabolomics::pooled_qc",
+                          "offers": "eligibility_criterion"},
                   reason=("Pooled quality-control injections are not "
-                          "participants. Modeling them is an error with no "
-                          "legitimate reading, and they stay in the table for "
-                          "quality assessment.")),
+                          "participants, and modeling them is an error with no "
+                          "legitimate reading. Excluding them changes N, so it "
+                          "is an eligibility criterion you state and it is "
+                          "reported in participant flow — the app offers it and "
+                          "never applies it. They stay in the table for quality "
+                          "assessment.")),
         )),
     GENOMICS: Pack(
         key=GENOMICS, label=LENS_LABELS[GENOMICS],
