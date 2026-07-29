@@ -274,27 +274,33 @@ def test_the_survey_reverse_coded_items_would_reward_an_inference_that_is_wrong(
     assert df["sought_support"].corr(scale) < 0.85
 
 
-def test_KNOWN_GAP_a_column_of_education_levels_is_reported_as_mixing_units():
-    """`IMPORT-267` — pinned, not endorsed.
+def test_the_survey_fixture_no_longer_reports_a_critical_it_had():
+    """`IMPORT-267`, closed — and this is what the `KNOWN_GAP_` prefix is for.
 
-    `education` holds `High school`, `Some college`, `Bachelors`, `Graduate`.
-    There is no number in it. `check_numeric_stored_as_text` reaches its
-    mixed-units branch anyway, and `_KNOWN_UNITS` contains the bare letters `l`
-    and `s` with no requirement of a preceding digit — so the `l` of *school*
-    and the `s` of *Bachelors* are read as two measurement units and the app
-    asserts at CRITICAL severity that the column mixes them.
+    This was `test_KNOWN_GAP_a_column_of_education_levels_is_reported_as_mixing_units`,
+    pinning the defect so the gap stayed visible: `education` holds `High
+    school`, `Some college`, `Bachelors`, `Graduate`, there is no number in it,
+    and the app asserted at CRITICAL severity that it mixes measurement units,
+    because `_KNOWN_UNITS` contains the bare letters `l` and `s`.
 
-    That is the governing rule's own failure at the highest severity the app
-    has. `ml/import_doctor.py` is frozen, so this is filed and pinned.
+    `FEATURE_PARITY.md` says what happens next in as many words: *"the day it
+    goes red is the day the row closes. A `KNOWN_GAP_` test failing is not a
+    regression and must not be 'fixed' by editing the assertion. It is the
+    signal to update the finding and the test together."* The freeze is lifted
+    for repair of dispositioned `IMPORT-*` rows, so the fix landed in
+    `_units_present` — a unit needs a measurement in front of it — and the
+    pinning test is inverted rather than deleted.
 
-    **PASSED on this line means the defect is still there.** The day it goes red
-    is the day `IMPORT-267` closes, and the fix is to update the row and this
-    test together — never to edit the assertion.
+    The behavioral guards live in
+    `tests/test_a_unit_needs_a_measurement_in_front_of_it.py`, including the
+    ones asserting that a column which GENUINELY mixes `mg/dL` and `mmol/L`
+    still says so. This one keeps the fixture honest.
     """
-    f = structural("survey_instrument").get("mixed_units__education")
-    assert f is not None, "IMPORT-267 no longer reproduces — close the row"
-    assert f.severity == "critical"
-    assert set(f.params["units"]) == {"l", "s"}
+    found = structural("survey_instrument")
+    assert "mixed_units__education" not in found, (
+        "IMPORT-267 has reappeared: a column with no number in it is being "
+        "read as mixing measurement units")
+    assert [f.id for f in found.values() if f.severity == "critical"] == []
 
 
 # ── 5 · genomics ─────────────────────────────────────────────────────────────

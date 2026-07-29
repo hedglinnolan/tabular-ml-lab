@@ -556,3 +556,125 @@ def test_loading_a_pack_twice_registers_it_once():
     finally:
         R.restore(state)
         P.unload_for_test()
+
+
+# ── reframing as an extension point, and the gate that gates · GUIDED-028 ────
+
+def test_a_pack_can_contribute_a_reframing_without_editing_reframe():
+    """The extension point, proved the way this project proves extension points.
+
+    `reframe()` covered two hardcoded finding ids, so a pack could not
+    contribute a reframing at all. The fake pack here is the same shape as the
+    one in `test_the_recipe_table_is_a_table.py`, and for the same reason: a
+    mechanism is not extensible until something outside it extends it.
+    """
+    import dataclasses
+    df = load("clinic_visits")
+    raw = [f for f in _diagnose(df, "outcome") if f["id"] == "constant_columns"]
+    assert raw, "the control fixture no longer has a constant column"
+    assert raw[0]["fix_kind"] == "drop_columns"
+
+    fake = dataclasses.replace(
+        P.PACKS[P.CLINICAL],
+        reframings=(P.Reframing(
+            matches=lambda f, d: f.get("id") == "constant_columns",
+            title=lambda f, d: "A constant column is expected here",
+            note=lambda f, d: "The fake pack read this one differently."),))
+    original = P.PACKS[P.CLINICAL]
+    P.PACKS[P.CLINICAL] = fake
+    try:
+        out = P.reframe(_diagnose(df, "outcome"), [P.CLINICAL], df)
+    finally:
+        P.PACKS[P.CLINICAL] = original
+
+    seen = next(f for f in out if f["id"] == "constant_columns")
+    assert seen["title"] == "A constant column is expected here"
+    assert seen["reframed_by"] == [P.CLINICAL]
+    assert seen["fix_kind"] == "none", "the offer is withdrawn"
+    assert seen["severity"] == "info"
+
+    # And the pack is gone when the test is. A reframing that leaked between
+    # tests would make every later assertion about the control meaningless.
+    after = P.reframe(_diagnose(df, "outcome"), [P.CLINICAL], df)
+    assert next(f for f in after
+                if f["id"] == "constant_columns")["fix_kind"] == "drop_columns"
+
+
+def _diagnose(df, target):
+    from turbotab import engine
+    return engine.rank_findings(engine.diagnose(df, target=target), None)
+
+
+def test_the_compositional_gate_reaches_the_figure_it_says_it_gates():
+    """`params["gates"] = "collinearity_figure"` was a field a test asserted the
+    existence of and nothing read.
+
+    Correlation between parts of a whole is negatively biased BY CONSTRUCTION,
+    so a matrix drawn over them is not a figure with a caveat — it is a figure
+    that cannot be read. The gate annotates rather than withholds, for the same
+    reason reframing annotates rather than deletes: the other columns'
+    correlations are real.
+    """
+    from fastapi.testclient import TestClient
+    from turbotab import api
+
+    client = TestClient(api.app)
+    fixture = DATA / "dietary_recalls.csv"
+    with open(fixture, "rb") as fh:
+        pid = client.post("/project", files={
+            "file": ("dietary_recalls.csv", fh, "text/csv")}).json()["id"]
+
+    ungated = client.get(f"/project/{pid}/evidence/correlations").json()
+    assert not ungated.get("gated")
+
+    client.post(f"/project/{pid}/decision",
+                json={"kind": "set_lens", "payload": {"lens": ["dietary"]}})
+    gated = client.get(f"/project/{pid}/evidence/correlations").json()
+    assert gated.get("gated") is True
+    assert len(gated["gates"]) == 1
+    assert set(gated["gates"][0]["columns"]) == {
+        "protein_pct_kcal", "fat_pct_kcal",
+        "carbohydrate_pct_kcal", "alcohol_pct_kcal"}
+    assert gated["gates"][0]["draw"] == "log_ratio"
+    assert "parts of a whole" in gated["gates"][0]["reason"]
+
+    # The matrix itself is still served. A user who asked to see it gets it.
+    assert ungated.keys() <= gated.keys()
+
+
+def test_the_gate_is_on_the_chip_before_the_figure_is_opened():
+    """A caveat discovered after looking is a caveat applied to a reading the
+    user has already taken."""
+    from fastapi.testclient import TestClient
+    from turbotab import api
+
+    client = TestClient(api.app)
+    with open(DATA / "dietary_recalls.csv", "rb") as fh:
+        pid = client.post("/project", files={
+            "file": ("dietary_recalls.csv", fh, "text/csv")}).json()["id"]
+    for kind, payload in [("set_lens", {"lens": ["dietary"]}),
+                          ("set_target", {"column": "hba1c"})]:
+        client.post(f"/project/{pid}/decision",
+                    json={"kind": kind, "payload": payload})
+
+    iv = client.get(f"/project/{pid}/interview?step=explore").json()
+    chips = {q["key"]: q for q in iv["questions"] if q["mode"] == "pull"}
+    if "look::r8_collinearity" not in chips:
+        pytest.skip("the correlation affordance is not offered on this record")
+    chip = chips["look::r8_collinearity"]
+    assert chip.get("gated") is True
+    assert chip["gate"]["packs"] == ["dietary"]
+    assert chip["gate"]["draw"] == "log_ratio"
+
+
+def test_no_lens_gates_nothing():
+    """The app is fully functional with no lens, and a gate is a pack's claim."""
+    from fastapi.testclient import TestClient
+    from turbotab import api
+
+    client = TestClient(api.app)
+    with open(DATA / "dietary_recalls.csv", "rb") as fh:
+        pid = client.post("/project", files={
+            "file": ("dietary_recalls.csv", fh, "text/csv")}).json()["id"]
+    assert not client.get(
+        f"/project/{pid}/evidence/correlations").json().get("gated")

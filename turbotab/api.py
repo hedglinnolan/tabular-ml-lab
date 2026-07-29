@@ -180,6 +180,29 @@ class DevCapture:
         devchecks.write_index()
 
 
+# Which pull affordances a pack prior can gate, and the question whose prior
+# gates them. One entry, and the mapping is explicit rather than derived from a
+# naming convention: a gate that attached itself by string similarity would
+# attach to the wrong figure the first time somebody renamed one.
+PULL_GATES: Dict[str, str] = {
+    "look::r8_collinearity": "collinearity_figure",
+}
+
+
+def _pull_gate(project: AnalysisProject, key: str) -> Optional[Dict[str, Any]]:
+    """The gate on one pull affordance, or `None`."""
+    question = PULL_GATES.get(key)
+    if not question or not project.lens:
+        return None
+    from turbotab import packs as _packs
+    found = _packs.priors(project.lens, question, project.df)
+    if not found:
+        return None
+    return {"packs": [g["pack"] for g in found],
+            "columns": sorted({c for g in found for c in g.get("columns", [])}),
+            "reason": found[0]["reason"], "draw": found[0].get("gate")}
+
+
 def _dev_state(project_id: Optional[str]) -> Optional[Dict[str, Any]]:
     """The resolved project, as the interface would receive it. Never raises.
 
@@ -975,7 +998,29 @@ async def evidence_one_histogram(project_id: str, column: str) -> Dict[str, Any]
 
 @app.get("/project/{project_id}/evidence/correlations")
 async def evidence_correlations(project_id: str) -> Dict[str, Any]:
-    return engine.correlations(_project(project_id).working_table)
+    """The correlation matrix, GATED where the columns are parts of a whole.
+
+    `params["gates"] = "collinearity_figure"` on the compositional finding used
+    to be a field a test asserted the existence of and nothing read. It reads
+    here: correlation between parts of a whole is negatively biased BY
+    CONSTRUCTION — raising one necessarily lowers another — so a matrix drawn
+    over them is not a figure with a caveat, it is a figure that cannot be read.
+
+    The gate ANNOTATES rather than withholds, for the same reason reframing
+    annotates rather than deletes: the other columns' correlations are real and
+    a user who asked to see the matrix is entitled to it. What the gate adds is
+    which cells cannot be interpreted and why.
+    """
+    from turbotab import packs as _packs
+    project = _project(project_id)
+    out = engine.correlations(project.working_table)
+    gate = _packs.priors(project.lens or [], "collinearity_figure", project.df)
+    if gate:
+        out["gated"] = True
+        out["gates"] = [{"pack": g["pack"], "columns": g.get("columns", []),
+                         "reason": g["reason"], "draw": g.get("gate")}
+                        for g in gate]
+    return out
 
 
 @app.get("/project/{project_id}/evidence/missingness")
@@ -1499,6 +1544,13 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
             d["built"] = bool(cap and cap.get("built"))
             d["endpoint"] = (cap or {}).get("endpoint")
             d["not_built_reason"] = None if d["built"] else NOT_BUILT_REASON
+            # A gated figure says so ON THE CHIP, before it is opened. A caveat
+            # discovered after looking is a caveat applied to a reading the user
+            # has already taken.
+            gate = _pull_gate(project, d["key"])
+            if gate:
+                d["gated"] = True
+                d["gate"] = gate
         rendered.append(d)
 
     # The audit is re-run against the SAME list the interface receives, so what

@@ -174,24 +174,6 @@ def _in_count_block(finding: Dict[str, Any], df: pd.DataFrame) -> bool:
     return str((finding.get("params") or {}).get("column")) in set(block["columns"])
 
 
-def _column_holds_no_numbers(finding: Dict[str, Any], df: pd.DataFrame) -> bool:
-    """`IMPORT-267`'s condition, measured rather than assumed.
-
-    A column no reading of which is numeric cannot mix measurement units. This
-    is a MEASUREMENT and not a domain claim, which is what makes it safe to
-    declare on more than one pack: it fires only where the engine has already
-    asserted something the column's own content refutes.
-    """
-    column = (finding.get("params") or {}).get("column")
-    if column is None or column not in df.columns:
-        return False
-    values = df[column].dropna().astype(str)
-    if values.empty:
-        return False
-    return float(pd.to_numeric(values.str.replace(r"[^\d.eE+-]", "", regex=True),
-                               errors="coerce").notna().mean()) == 0.0
-
-
 def clinical_reference_columns(df: pd.DataFrame) -> List[str]:
     """Columns the engine's own reference matcher recognizes, that have blanks.
 
@@ -1065,20 +1047,14 @@ PACKS: Dict[str, Pack] = {
     CLINICAL: Pack(
         key=CLINICAL, label=LENS_LABELS[CLINICAL],
         detectors=(),
-        reframings=(
-            # `IMPORT-267`. A pack could not contribute this before, which is
-            # half of why the row stayed open.
-            Reframing(
-                matches=lambda f, df: (f.get("id", "").startswith("mixed_units__")
-                                       and _column_holds_no_numbers(f, df)),
-                title=lambda f, df: (
-                    f"`{(f.get('params') or {}).get('column')}` is a category, "
-                    f"not a measurement"),
-                note=lambda f, df: (
-                    "Nothing in this column parses as a number, so it cannot "
-                    "mix measurement units. The reading came from two values "
-                    "ending in different letters that also happen to name "
-                    "units.")),),
+        # NO REFRAMINGS, and the reason is worth recording. `IMPORT-267` — a
+        # column of education levels asserted at `critical` to mix measurement
+        # units — was the false alarm this pack was going to reframe. The freeze
+        # is lifted for repair of dispositioned `IMPORT-*` rows, so it was fixed
+        # at source instead: a unit now needs a measurement in front of it. A
+        # reframing is the right tool for a reading that is correct in general
+        # and wrong under a lens; this one was wrong everywhere, and reframing
+        # it would have left every door but Guided asserting it.
         priors=(
             # The whole clinical pack, and its thinness is the point:
             # physiologic bounds and unit harmonization already exist in the
@@ -1113,16 +1089,7 @@ PACKS: Dict[str, Pack] = {
                     "measured several times. Items are combined by scoring the "
                     "scale, which is a decision about the instrument, not by "
                     "reshaping the table.")),
-            Reframing(
-                matches=lambda f, df: (f.get("id", "").startswith("mixed_units__")
-                                       and _column_holds_no_numbers(f, df)),
-                title=lambda f, df: (
-                    f"`{(f.get('params') or {}).get('column')}` is a category, "
-                    f"not a measurement"),
-                note=lambda f, df: (
-                    "Nothing in this column parses as a number, so it cannot "
-                    "mix measurement units. A questionnaire is mostly columns "
-                    "like this one.")),),
+            ),
         priors=(
             # NOT migrated to the recipe table, and the reason is worth stating
             # rather than leaving as an omission: the pack's claim is that the

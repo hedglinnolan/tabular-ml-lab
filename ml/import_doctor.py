@@ -167,10 +167,29 @@ _AMBIGUOUS_COMMA = re.compile(r"^[+-]?\d{1,3},\d{3}$")
 
 
 def _units_present(s: pd.Series) -> set:
-    """Distinct recognized unit suffixes appearing in a text column."""
+    """Distinct recognized unit suffixes appearing in a text column.
+
+    **A unit needs a measurement in front of it** (`IMPORT-267`). `_KNOWN_UNITS`
+    holds the bare letters `g`, `m`, `l` and `s` and the two-letter `in`, `mo`,
+    `hr`, and `_TRAILING_UNIT` anchors them to the end of a value with no
+    requirement of a preceding number. So an ordinary education column of
+    `{'High school', 'Some college', 'Bachelors', 'Graduate'}` yielded
+    `{'l', 's'}` — the `l` of *school* and the `s` of *Bachelors* — and
+    `check_numeric_stored_as_text` reported at **critical** severity that a
+    column containing no measurement mixes measurement units.
+
+    The class is wide: `{'Nursing', 'Bachelors'}`, `{'Farm', 'Berlin'}`,
+    `{'Fasting', 'Random'}` all tripped it. Requiring a digit somewhere in the
+    value is the narrowest repair that closes it and costs nothing real —
+    `'107 kg'`, `'5.5 mg/dL'` and `'12mo'` all keep their units, and a value
+    with no digit in it was never a measurement.
+    """
     found = set()
     for v in s.dropna().astype(str).unique()[:500]:
-        m = _TRAILING_UNIT.search(v.strip())
+        value = v.strip()
+        if not any(ch.isdigit() for ch in value):
+            continue
+        m = _TRAILING_UNIT.search(value)
         if m:
             found.add(m.group(0).strip().lower())
     return found
