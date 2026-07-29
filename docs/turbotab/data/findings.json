@@ -7623,5 +7623,19 @@
   "verified_against": "",
   "test": "tests/test_the_theory_registry_pair_matches.py::test_a_theory_link_is_never_inferred_from_prose",
   "verified_ev": "utils/theory_anchors.py infer_theory_anchor step 3; utils/theory_demos.py DEMO_REGISTRY"
+ },
+ {
+  "id": "GUIDED-034",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "DESIGN_LANGUAGE section 10's layer 3 was aspirational - the three hardest questions had no teaching, and the app asks them anyway",
+  "detail": "Ruling 1: the app keeps asking hard questions and invests in making them answerable, because answering them is itself the educational moment. Ruling 2 is the mechanism and it is the load-bearing one - there is no LLM and none is coming, so layer 3 is the PREVIEW MECHANIC pointed at interview questions rather than a text panel. Teaching means showing consequences and consequences are computable.",
+  "ev": "DESIGN_LANGUAGE.md section 10; grain, unit of analysis and aggregation had no layer-3 content",
+  "act": "",
+  "status": "FIXED",
+  "note": "Built at L23 in turbotab/teaching.py. Four sub-questions per question, each answered by computing on the user's own table. WHAT EACH ANSWER DOES: the grain panel computes BOTH splits so the difference is a number - 90 of 600 rows at random against 45 of 300 participant_id values held whole, with leaks:true on the first because 600 rows over 300 people is two each. The unit panel computes 600 rows become 300 and names the non-numeric columns that would lose information. The aggregation panel computes all four outcomes on one real subject, so mean and last are two numbers to compare rather than two words, and a test asserts change equals last minus first because that is checkable arithmetic rather than four independent claims. A WORKED EXAMPLE ON THEIR OWN ROWS, with the subject, the row labels and the values all asserted against the frame so the example cannot drift from the table. ARE MY REPEATS COMPARABLE: spacing regularity and which columns actually differ within a subject - measured, and the dietary and clinical fixtures must come out opposite. WHICH SHOULD I PICK: the refusal, rendered at full weight because it is the fourth sub-question rather than a footnote, and it says WHY rather than merely that it will not. TWO CORRECTNESS FIXES FOUND BY DRIVING IT. The first worked example picked recall_number, the replicate index - the one column whose variation carries no information, so it taught about bookkeeping. The second picked progressed, THE TARGET, and showed the user their outcome being averaged, which is not what happens: change_from_baseline deliberately does not difference the target. The index, the ordering column and the target are excluded and what remains is ranked by within-subject spread against overall spread, which is what 'would the user notice this being combined' means. THE PROBE FORCED A TEST REWRITE: asserting the target exclusion on the fixtures came back GREEN, because their ranking prefers another column anyway and the test proved nothing about the guard. The test now builds a frame where the target WOULD win the ranking outright.",
+  "verified_against": "",
+  "test": "turbotab/test_a_hard_question_carries_its_teaching.py::test_every_hard_question_carries_its_teaching",
+  "verified_ev": "DESIGN_LANGUAGE.md section 10; grain, unit of analysis and aggregation had no layer-3 content"
  }
 ]

@@ -1246,6 +1246,29 @@ async def offer_preview(project_id: str, finding_id: str,
     return body
 
 
+@app.get("/project/{project_id}/teaching/{question}")
+async def get_teaching(project_id: str, question: str) -> Dict[str, Any]:
+    """Layer 3 for one question — computed on this table, never prose.
+
+    `DESIGN_LANGUAGE.md` §10's third layer, and the product owner's ruling on
+    what it is: the preview mechanic pointed at interview questions rather than
+    at repairs. Teaching means showing consequences, and consequences are
+    computable — so nothing here parses natural language in either direction and
+    nothing here explains a concept in general.
+
+    A `GET`, because it is a question about a question. Nothing is recorded by
+    opening it.
+    """
+    from turbotab import teaching as _teaching
+    project = _project(project_id)
+    found = _teaching.panel(question, project.df, project.grain, project.target)
+    if found is None:
+        raise HTTPException(
+            404, f"No teaching panel for '{question}'. The three hardest "
+                 f"questions carry one: {', '.join(_teaching.TAUGHT)}.")
+    return found
+
+
 @app.get("/project/{project_id}/repeats")
 async def get_repeats(project_id: str) -> Dict[str, Any]:
     """Questions 4 to 7's material: the reading, its evidence, and the menu.

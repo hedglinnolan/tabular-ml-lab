@@ -1853,6 +1853,18 @@
     if (q.consumer)
       h += '<details class="wa"><summary>Why we ask</summary><p>' +
            esc(q.consumer) + "</p></details>";
+    /* LAYER 3, and it is the preview mechanic rather than a text panel: what
+       each answer does to THIS table, a worked example on THEIR rows, whether
+       the repeats compare, and the app saying plainly that which to pick is not
+       its to answer. Opened on demand and TOGGLING, per DRIVE-004. */
+    if (TAUGHT.indexOf(q.key) !== -1)
+      h += '<div class="teach"><button class="again" type="button" ' +
+           'data-teach="' + esc(q.key) + '" aria-expanded="false" ' +
+           'data-tip="Shows what each answer does to your table, worked on your ' +
+           'own rows. Nothing is changed.">Show me what each answer does' +
+           "</button>" +
+           '<div class="teach-body is-hidden" data-teach-body="' + esc(q.key) +
+           '"></div></div>';
     h += '<div class="answers">';
     (q.options || []).forEach(function(opt, i){
       var label = (typeof opt === "string") ? opt : (opt.label || opt.key);
@@ -2726,7 +2738,81 @@
 
   var PENDING = {};   /* key -> selected values, for the multi-selects */
 
+  /* The three hardest questions, which carry layer 3. Mirrors
+     turbotab/teaching.py's TAUGHT, and a test asserts the two agree — a page
+     offering teaching the server does not have is a button that 404s. */
+  var TAUGHT = ["state_grain", "state_unit_of_analysis", "state_aggregation"];
+  window.__TURBOTAB_TAUGHT = TAUGHT;
+
+  /* ═════════ LAYER 3, RENDERED ═════════
+     Every number below arrived computed. Nothing here explains a concept in
+     general, and the refusal is rendered with the same weight as the rest
+     because it is the fourth sub-question rather than a footnote. */
+  function teachHTML(t){
+    var h = '<div class="pv-head"><span class="pv-title">' + esc(t.title) +
+            '</span><span class="pv-note">computed on your table · nothing changed' +
+            "</span></div>";
+    t.consequences.forEach(function(c){
+      h += '<div class="optrow"><div><strong style="font-size:13px;">' +
+           esc(c.headline) + "</strong>" +
+           (c.leaks ? ' <span class="pv-note" style="color:var(--stop);">' +
+                      "the same subject can land on both sides</span>" : "") +
+           '<div style="margin-top:4px;font-size:12.5px;color:var(--muted);">' +
+           esc(c.detail) + "</div></div></div>";
+    });
+    if (t.worked_example)
+      h += '<div class="pv-head" style="margin:12px 0 4px;"><span class="pv-title">' +
+           "On your own rows</span></div>" +
+           '<p class="sentence">' + esc(t.worked_example.sentence) + "</p>";
+    if (t.comparability)
+      h += '<div class="pv-head" style="margin:12px 0 4px;"><span class="pv-title">' +
+           "Are these comparable?</span></div>" +
+           '<p class="sentence">' + esc(t.comparability.detail) + "</p>" +
+           (t.comparability.n_varying
+             ? '<p class="pv-note">' + t.comparability.n_varying +
+               " column(s) differ within a subject" +
+               (t.comparability.varying_columns.length
+                 ? ": " + t.comparability.varying_columns.slice(0, 6)
+                     .map(function(c){ return '<span class="v">' + esc(c) + "</span>"; })
+                     .join(" ")
+                 : "") + "</p>"
+             : "");
+    /* The refusal, at full weight. A teaching panel that answered this would be
+       the app deciding on the user's behalf. */
+    h += '<div class="pv-head" style="margin:12px 0 4px;"><span class="pv-title">' +
+         "Which should you pick?</span></div>" +
+         '<p class="sentence">' + esc(t.cannot_answer) + "</p>";
+    return h;
+  }
+
   document.addEventListener("click", function(ev){
+    /* DRIVE-004: every disclosure TOGGLES. Click opens, the same click closes.
+       The driver clicked "Show me what this means" a second time and nothing
+       happened, which teaches that the control is broken rather than that it is
+       already open. */
+    var teach = ev.target.closest("[data-teach]");
+    if (teach){
+      var tkey = teach.getAttribute("data-teach");
+      var body = document.querySelector('[data-teach-body="' + CSS.escape(tkey) + '"]');
+      if (!body) return;
+      var open = teach.getAttribute("aria-expanded") === "true";
+      if (open){
+        body.classList.add("is-hidden");
+        teach.setAttribute("aria-expanded", "false");
+        teach.textContent = "Show me what each answer does";
+        return;
+      }
+      teach.setAttribute("aria-expanded", "true");
+      teach.textContent = "Hide that";
+      body.classList.remove("is-hidden");
+      body.innerHTML = '<span class="pv-note">working it out…</span>';
+      job("Working out what each answer does…",
+          api("/project/" + P.id + "/teaching/" + encodeURIComponent(tkey)))
+        .then(function(t){ body.innerHTML = teachHTML(t); })
+        .catch(function(e){ body.innerHTML = '<span class="pv-note">' +
+                                             esc(e.message) + "</span>"; });
+      return;
+    }
     var one = ev.target.closest("[data-answer-key]");
     if (one){
       var key = one.getAttribute("data-answer-key");
