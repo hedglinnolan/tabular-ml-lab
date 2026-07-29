@@ -7328,5 +7328,65 @@
   "verified_against": "",
   "test": "turbotab/test_the_harness_reports_and_does_not_stop_the_drive.py::test_a_serialized_project_does_not_hand_out_the_projects_own_containers",
   "verified_ev": "turbotab/project.py AnalysisProject.to_dict"
+ },
+ {
+  "id": "GUIDED-024",
+  "area": "GUIDED",
+  "sev": "critical",
+  "item": "Pack priors are declared, reasoned and shape-tested, and consumed by nothing - ten priors across five packs with no reader outside packs.py's own test",
+  "detail": "grep for priors( outside packs.py returns only its test. Every prior is inert: metabolomics log_transform/scaling/missingness_direction, genomics model_ranking/normalization, dietary repeat_treatment/energy_adjustment, clinical missingness_direction, survey ordinal_encoding/reverse_coding. This is the layer DOMAIN_PACKS.md relies on for its central claim - that domain knowledge converts questions into stated facts and makes the interview shorter. The discrimination matrix reflects it exactly: metabolomics, the flagship pack for the product's primary audience, shows no change in questions because its entire contribution is three detector findings and three unread priors.",
+  "ev": "turbotab/packs.py:889 priors(); turbotab/api.py consumes reframe/question/suggest/contradiction but never priors",
+  "act": "Wire the priors layer. api.py already consumes four of the five pack entry points; priors is the missing one.",
+  "status": "OPEN",
+  "note": "Filed by the adjudicator from a qualitative review of the lens routing matrix.",
+  "verified_against": "TurboTab @ HEAD - adjudicator review of the routing matrix, 2026-07-29"
+ },
+ {
+  "id": "GUIDED-025",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "No real pack calls the recipes extension point that the fake-pack test proved works",
+  "detail": "recipes.py exposes register_operation() and register_default() with specificity resolution, origin tracking and a refusal for silent shadowing. The fake pack in test_the_recipe_table_is_a_table.py uses both and passes. No pack in PACKS calls either. So the mechanism is proven and unused, while the packs declare their variant preferences (Pareto for metabolomics) in a parallel structure nothing reads. Two extension mechanisms that do not meet.",
+  "ev": "turbotab/recipes.py:153,169; turbotab/packs.py PACKS; grep shows no non-test caller",
+  "act": "Metabolomics' pareto scaling should be a register_default call at pack-load time, not a prior dict entry. Decide which mechanism is canonical and retire or bridge the other.",
+  "status": "OPEN",
+  "note": "Filed by the adjudicator from a qualitative review of the lens routing matrix.",
+  "verified_against": "TurboTab @ HEAD - adjudicator review of the routing matrix, 2026-07-29"
+ },
+ {
+  "id": "GUIDED-026",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "repeats.py reimplements the dietary pack's averaging rule and near-duplicates its prose, and the pack's copy is the unreachable one",
+  "detail": "packs.py:794 declares repeat_treatment {marker: derived, treatment: average, reason: '...noise attenuates diet-outcome associations...'}. repeats.py:342-347 carries its own nearly identical sentences and is what actually runs. Two implementations of one rule; editing the pack changes nothing, and editing repeats.py makes the pack's stated prior a false description of the app. Principle-locality, and the register exists to make exactly this countable.",
+  "ev": "turbotab/packs.py:794-800 versus turbotab/repeats.py:329-347",
+  "act": "One implementation. repeats.py reads the prior rather than restating it; a test asserts the rendered reason comes from the pack.",
+  "status": "OPEN",
+  "note": "Filed by the adjudicator from a qualitative review of the lens routing matrix.",
+  "verified_against": "TurboTab @ HEAD - adjudicator review of the routing matrix, 2026-07-29"
+ },
+ {
+  "id": "GUIDED-027",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "Priors are scoped to the dataset where several are properties of a column, which mis-fires on exactly the mixed tables the product targets",
+  "detail": "missingness_direction is not a fact about a table - it is a fact about each column. NHANES-shaped data holds dietary columns, lab columns and questionnaire columns side by side, and a dataset-level 'below detection limit' prior is wrong for most of them. The scoping information already exists: _left_censored returns the columns it identified. It simply is not used to scope the prior it justifies.",
+  "ev": "turbotab/packs.py:196 _left_censored returns columns; priors() at :889 takes only a question name",
+  "act": "Scope column-level priors to the columns their detector named. Dataset-level priors (model_ranking) stay as they are.",
+  "status": "OPEN",
+  "note": "Filed by the adjudicator from a qualitative review of the lens routing matrix.",
+  "verified_against": "TurboTab @ HEAD - adjudicator review of the routing matrix, 2026-07-29"
+ },
+ {
+  "id": "GUIDED-028",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "The lens contradiction detector fires in one direction only: assay-shaped data described as something else, never the reverse",
+  "detail": "contradiction() detects a wide numeric table stated as non-assay. A user who answers 'metabolomics' over a 40-column clinical table gets nothing, and that is the direction where a wrong lens silently applies log-transform and Pareto scaling to data that wants neither. suggest() is likewise asymmetric - it hints genomics, metabolomics, survey and dietary, and never clinical.",
+  "ev": "turbotab/packs.py:954 contradiction(); :923 suggest()",
+  "act": "Detect the reverse: a stated assay lens over a table with too few numeric columns to be a panel. Same escalation rule - evidence the reading is wrong, not the size of the consequence.",
+  "status": "OPEN",
+  "note": "Filed by the adjudicator from a qualitative review of the lens routing matrix.",
+  "verified_against": "TurboTab @ HEAD - adjudicator review of the routing matrix, 2026-07-29"
  }
 ]

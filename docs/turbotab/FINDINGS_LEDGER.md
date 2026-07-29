@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**182 of 575 closed.**
+**182 of 580 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 353 |
+| `OPEN` | 358 |
 | `PARTIAL` | 40 |
 | `FIXED` | 179 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 353
+## OPEN — 358
 
 
 ### Application state / lockbox — 66
@@ -433,15 +433,20 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Guided-door drive feedback — 5
+### Guided-door drive feedback — 10
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
+| `GUIDED-024` | critical | Pack priors are declared, reasoned and shape-tested, and consumed by nothing - ten priors across five packs with no reader outside packs.py's own test | `turbotab/packs.py:889 priors(); turbotab/api.py consumes reframe/question/suggest/contradiction but never…` | Filed by the adjudicator from a qualitative review of the lens routing matrix. |
 | `GUIDED-012` | high | Lockbox constitution clause 06 - declaration and execution are separate - has no implementation in either door: nothing applies the row-local vs stateful litmus test | `No module classifies transforms by the litmus test at L14. Classic's pages/03 applies feature engineering to…` | Filed at the start of L14 rather than after building it, deliberately: the check found the clause untracked, and the honest record of an unbuilt clause is an open finding, not a… |
 | `GUIDED-014` | high | DESIGN QUESTION for the product owner: does the exploratory labeling on an undetermined seal read as honest, or as the app giving up? | `docs/turbotab/COPY_DECK.md, 'Data & Target - what the user reads after answering' and 'what the user reads…` | NOT SELF-ASSESSED, deliberately. I wrote this copy at L15; asking the author whether their own prose reads well is the finder-judge problem in a different costume, and this… |
+| `GUIDED-025` | high | No real pack calls the recipes extension point that the fake-pack test proved works | `turbotab/recipes.py:153,169; turbotab/packs.py PACKS; grep shows no non-test caller` | Filed by the adjudicator from a qualitative review of the lens routing matrix. |
+| `GUIDED-026` | high | repeats.py reimplements the dietary pack's averaging rule and near-duplicates its prose, and the pack's copy is the unreachable one | `turbotab/packs.py:794-800 versus turbotab/repeats.py:329-347` | Filed by the adjudicator from a qualitative review of the lens routing matrix. |
+| `GUIDED-027` | high | Priors are scoped to the dataset where several are properties of a column, which mis-fires on exactly the mixed tables the product targets | `turbotab/packs.py:196 _left_censored returns columns; priors() at :889 takes only a question name` | Filed by the adjudicator from a qualitative review of the lens routing matrix. |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
+| `GUIDED-028` | medium | The lens contradiction detector fires in one direction only: assay-shaped data described as something else, never the reverse | `turbotab/packs.py:954 contradiction(); :923 suggest()` | Filed by the adjudicator from a qualitative review of the lens routing matrix. |
 
 ---
 
