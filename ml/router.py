@@ -309,6 +309,9 @@ def plan(
     lens_block: Optional[Dict[str, Any]] = None,
     repeats: Optional[Dict[str, Any]] = None,
     missingness_priors: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    missingness_groups: Optional[List[Dict[str, Any]]] = None,
+    missingness_exceptions: Optional[Dict[str, Dict[str, Any]]] = None,
+    missingness_settled: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Question]:
     """Every question this step asks, in order, derived from the record.
 
@@ -573,38 +576,10 @@ def plan(
 
     if step == "preprocess" and target:
         from turbotab import missingness as _miss
-        for col in (missing_columns or []):
-            key = f"missingness::{col}"
-            if key in answered:
-                continue
-            # The pack priors that apply TO THIS COLUMN. A list, because two
-            # packs can disagree — metabolomics reads a blank as a
-            # non-detection and clinical reads it as a test not ordered, and on
-            # a table that is both they are each right about different columns.
-            # The disagreement is surfaced, never settled here.
-            column_priors = list((missingness_priors or {}).get(col) or [])
-            derived = next((p for p in column_priors
-                            if p.get("marker") == "derived"), None)
-            q = Question(
-                key=key, kind="missingness", step="preprocess",
-                clause="lockbox-07",
-                title=_miss.MECHANISM_QUESTION.format(column=col),
-                why=_miss.MECHANISM_WHY,
-                consumer=_miss.MECHANISM_CONSUMER,
-                confidence="high" if derived else None,
-                options=list(_miss.MECHANISM_OPTIONS))
-            if derived and len(column_priors) == 1:
-                # A rendered skip, carrying the pack's own reason. NOT taken
-                # when two packs disagree about this column: a disagreement
-                # settled by whichever prior happens to be `derived` is a
-                # disagreement resolved silently, which is the one thing
-                # `priors()` returning a list exists to prevent.
-                q.status = "skipped"
-                q.skip_reason = (
-                    f"Not asked: {derived['reason']} Stated from the "
-                    f"{derived['label'].lower()} lens rather than asked — "
-                    f"change it here if it is wrong.")
-            out.append(q)
+        out.extend(_missingness_questions(
+            missing_columns, missingness_priors, missingness_groups,
+            missingness_exceptions, answered, _miss,
+            settled=missingness_settled))
 
     # ── one question per repairable finding, ranked by the engine ──────────
     for f in _rank(findings):
@@ -717,6 +692,129 @@ def _home_step(f: Dict[str, Any]) -> str:
     `T0-ID-001`'s barrier means they must happen before rows acquire identities.
     """
     return "data"
+
+
+
+def _missingness_questions(missing_columns, priors_by_column, groups,
+                           exceptions, answered, _miss,
+                           settled=None) -> List[Question]:
+    """Clause §07's question, asked over SETS rather than over columns.
+
+    `GUIDED-029`. Before this, one question per column with blanks — 308 of them
+    on `metabolomics_untargeted.csv`, which is roughly ten times the ~32 this
+    project calls Classic's indictment. The count is now **O(1) in the column
+    count**: at most one bulk question per dtype branch, plus one exceptions
+    question per branch, plus a genuine per-column question only where a group
+    has fewer members than a rule is worth writing.
+
+    `groups` arrives resolved against the frame, because this module takes no
+    dataframe. `None` means the caller has not built them — the per-column path
+    is then the whole behavior, which is what every test written before this
+    finding expects.
+    """
+    out: List[Question] = []
+    if groups is None:
+        for col in (missing_columns or []):
+            key = f"missingness::{col}"
+            if key not in answered:
+                out.append(_one_column_question(col, priors_by_column, _miss))
+        return out
+
+    covered = set()
+
+    # THE SKIP SCALES TOO. A pack prior settling 306 columns is ONE stated
+    # fact, not 306 — a rendered skip is still a rendered thing, and §09 wants
+    # skips to group so their density reads as machine work at a glance.
+    for block in (settled or []):
+        covered.update(block["columns"])
+        if block["key"] in answered:
+            continue
+        q = Question(
+            key=block["key"], kind="missingness", step="preprocess",
+            clause="lockbox-07", confidence="high",
+            title=block["title"],
+            why=_miss.MECHANISM_WHY,
+            consumer=_miss.MECHANISM_CONSUMER,
+            options=list(_miss.MECHANISM_OPTIONS))
+        q.status = "skipped"
+        q.skip_reason = (
+            f"Not asked for {block['n']:,} columns: {block['reason']} Stated "
+            f"from the {block['label'].lower()} lens rather than asked — "
+            f"change it here if it is wrong.")
+        out.append(q)
+
+    for group in groups:
+        if not group["is_bulk"]:
+            # A rule over one column is a column with extra words in front of
+            # it. Asked individually below, and no rule is invented for it.
+            continue
+        covered.update(group["members"])
+        if group["key"] in answered:
+            continue
+        out.append(Question(
+            key=group["key"], kind="missingness", step="preprocess",
+            clause="lockbox-07", title=group["title"],
+            why=(f"{_miss.MECHANISM_WHY} You are answering once for "
+                 f"{group['n']:,} columns — the rule is *{group['rule']}*, and "
+                 f"you edit the rule rather than the list."),
+            consumer=(
+                _miss.MECHANISM_CONSUMER
+                + " Answered here for a set rather than a column, so the "
+                  "transcript carries one sentence about "
+                  f"{group['n']:,} columns rather than {group['n']:,} sentences "
+                  "about one each — which is also the sentence a reader wants."),
+            options=list(_miss.MECHANISM_OPTIONS)))
+
+    # Everything no BULK group claimed: a branch with too few columns to be a
+    # rule, and any column a group did not reach.
+    for col in (missing_columns or []):
+        if col in covered or f"missingness::{col}" in answered:
+            continue
+        out.append(_one_column_question(col, priors_by_column, _miss))
+
+    # THE EXCEPTIONS, as a group. A single answer across 294 columns is not
+    # always true — and 500 exceptions asked one at a time would be the
+    # unbounded interview arriving through the back door.
+    for branch, detail in (exceptions or {}).items():
+        key = f"missingness_exceptions::{branch}"
+        if key in answered or not detail.get("columns"):
+            continue
+        out.append(Question(
+            key=key, kind="missingness", step="preprocess", clause="lockbox-07",
+            title=(f"{len(detail['columns']):,} of those columns look like "
+                   f"exceptions"),
+            why=detail["sentence"],
+            consumer=(
+                "The same consumer as the bulk answer, for these columns only. "
+                "They were included in it and the evidence disagrees, so this "
+                "is the chance to answer them differently before a median is "
+                "written over a column that carried signal. Escalated on "
+                "evidence that a reading is wrong, never on the size of the "
+                "consequence."),
+            options=list(_miss.MECHANISM_OPTIONS)))
+    return out
+
+
+def _one_column_question(col, priors_by_column, _miss) -> Question:
+    """The per-column question, unchanged — including its rendered skip."""
+    column_priors = list((priors_by_column or {}).get(col) or [])
+    derived = next((p for p in column_priors
+                    if p.get("marker") == "derived"), None)
+    q = Question(
+        key=f"missingness::{col}", kind="missingness", step="preprocess",
+        clause="lockbox-07",
+        title=_miss.MECHANISM_QUESTION.format(column=col),
+        why=_miss.MECHANISM_WHY,
+        consumer=_miss.MECHANISM_CONSUMER,
+        confidence="high" if derived else None,
+        options=list(_miss.MECHANISM_OPTIONS))
+    if derived and len(column_priors) == 1:
+        q.status = "skipped"
+        q.skip_reason = (
+            f"Not asked: {derived['reason']} Stated from the "
+            f"{derived['label'].lower()} lens rather than asked — "
+            f"change it here if it is wrong.")
+    return q
 
 
 def _repeat_chain(repeats: Dict[str, Any],

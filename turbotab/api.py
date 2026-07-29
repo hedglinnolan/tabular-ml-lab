@@ -615,6 +615,44 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         _recompute(project)
         return _payload(project)
 
+    if decision.kind == "route_missingness_bulk":
+        from turbotab import missingness as _miss
+        payload = decision.payload or {}
+        columns = [str(c) for c in payload.get("columns") or []]
+        branch = str(payload.get("branch") or "")
+        mech = str(payload.get("mechanism") or "")
+        strat = str(payload.get("strategy") or "")
+        # The CONSEQUENCE is surfaced before the refusal, exactly as it is for
+        # one column — and it names the COUNT, because "you are about to impute
+        # over an informatively-missing column" reads very differently when it
+        # is 294 of them.
+        if _miss.blocks(mech, strat) and not payload.get("acknowledge_signal_loss"):
+            total = sum(int(project.df[c].isna().sum())
+                        for c in columns if c in project.df.columns)
+            block = _miss.blocker(f"{len(columns):,} {branch} column(s)",
+                                  mech, strat, total)
+            block["n_columns"] = len(columns)
+            raise HTTPException(409, block)
+        try:
+            project.route_missingness_bulk(
+                branch, mech, strat, columns,
+                uses_columns=payload.get("uses_columns"),
+                acknowledged=bool(payload.get("acknowledge_signal_loss")))
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        _recompute(project)
+        return _payload(project)
+
+    if decision.kind == "except_from_bulk":
+        # Editing the RULE, not the members: a column pulled out of the set
+        # rejoins the individually-asked ones and the rule's sentence says so.
+        column = str(decision.payload.get("column") or decision.subject)
+        try:
+            project.except_from_bulk(column)
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return _payload(project)
+
     if decision.kind == "settle_preprocess":
         try:
             project.settle_preprocess(bool(decision.payload.get("skipped")))
@@ -1391,11 +1429,44 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
     # frame here because `ml/router.py` takes no dataframe. Column by column
     # (`GUIDED-027`): a dataset-level "below the detection limit" would be
     # wrong for most columns of an NHANES-shaped table.
-    from turbotab import packs as _packs
+    from turbotab import bulk as _bulk, packs as _packs
     missingness_priors = {
         col: _packs.prior_for_column(project.lens or [], "missingness_direction",
                                      col, project.df)
         for col in missing_columns} if project.lens else {}
+
+    # THE GROUPS, resolved against the frame here because the Router takes no
+    # dataframe (`GUIDED-029`). A group is what REMAINS after pack priors settle
+    # their columns: a bulk question stating a count the user cannot reconcile
+    # with what they are being shown is worse than no bulk question.
+    survey_rows = project.missingness_survey()
+    settled = {}
+    for row in survey_rows:
+        priors = missingness_priors.get(row["column"]) or []
+        if any(p.get("marker") == "derived" for p in priors) and len(priors) == 1:
+            settled.setdefault(row["branch"], []).append(row["column"])
+    groups = _bulk.group_columns(survey_rows, settled=settled,
+                                 excepted=project.bulk_exceptions())
+    missingness_groups = [g.to_dict() for g in groups]
+    missingness_settled = _bulk.settled_groups(survey_rows, missingness_priors)
+
+    # And the exceptions, computed against the ANSWER the user already gave —
+    # so they exist only after a bulk decision, which is when a disagreement
+    # with it is a thing that can be raised.
+    missingness_exceptions = {}
+    for decision in project.decisions:
+        if decision.kind != "route_missingness_bulk":
+            continue
+        branch = decision.payload.get("branch")
+        group = next((g for g in groups if g.branch == branch), None)
+        if group is None:
+            group = _bulk.Group(question="missingness", branch=branch,
+                                members=tuple(decision.payload.get("columns") or ()))
+        detail = _bulk.exceptions(project.df, group,
+                                  decision.payload.get("mechanism") or "",
+                                  project.target)
+        if detail.get("columns"):
+            missingness_exceptions[branch] = detail
     answered, deferred = [], {}
     for d in project.decisions:
         if d.kind == "set_lens":
@@ -1418,6 +1489,12 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
             answered.append("state_eligibility")
         elif d.kind == "route_missingness":
             answered.append(f"missingness::{d.subject}")
+        elif d.kind == "route_missingness_bulk":
+            answered.append(f"missingness_bulk::{d.subject}")
+            for column in d.payload.get("columns") or []:
+                answered.append(f"missingness::{column}")
+        elif d.kind == "resolve_missingness_exceptions":
+            answered.append(f"missingness_exceptions::{d.subject}")
         elif d.kind == "select_models":
             answered.append("choose_models")
         elif d.kind == "set_preparation_mode":
@@ -1513,7 +1590,10 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
                                 recommendations=recommendations, signals=signals,
                                 missing_columns=missing_columns,
                                 lens_block=lens_block, repeats=repeats_state,
-                                missingness_priors=missingness_priors)
+                                missingness_priors=missingness_priors,
+                                missingness_groups=missingness_groups,
+                                missingness_exceptions=missingness_exceptions,
+                                missingness_settled=missingness_settled)
         router.audit(questions)
     except router.RouterError as exc:                      # noqa: B902
         # A plan that breaks a governing rule is not rendered at all.

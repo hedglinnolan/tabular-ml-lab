@@ -965,6 +965,149 @@ class AnalysisProject:
             kind="route_missingness", subject=str(column),
             text=record["sentence"], payload=dict(record))
 
+    def bulk_exceptions(self) -> List[str]:
+        """Columns the user pulled OUT of a bulk rule, replayed from the record.
+
+        Derived rather than stored, for the same reason a finding's disposition
+        is: the record is what happened, and a second copy of it is a thing that
+        can disagree with it.
+        """
+        out: List[str] = []
+        for d in self.decisions:
+            if d.kind == "except_from_bulk":
+                column = str(d.payload.get("column") or d.subject)
+                if column and column not in out:
+                    out.append(column)
+        return out
+
+    def except_from_bulk(self, column: str) -> Decision:
+        """Pull one column out of the rule. **Editing the rule, not the list.**
+
+        The distinction is what makes this scale. A user who removes a column is
+        narrowing a set from 294 to 293 and the sentence says so; they are not
+        being handed 294 checkboxes.
+        """
+        if column not in list(self.df.columns):
+            raise ProjectError(f"No column named '{column}' in this table.")
+        if column in self.bulk_exceptions():
+            raise ProjectError(
+                f"`{column}` is already answered on its own rather than with "
+                f"the group.")
+        return self.record(
+            kind="except_from_bulk", subject=str(column),
+            text=(f"`{column}` was taken out of the group answer and is asked "
+                  f"on its own."),
+            payload={"column": str(column)})
+
+    def route_missingness_bulk(self, branch: str, mechanism: str,
+                               strategy: str, columns: Sequence[str],
+                               uses_columns: Optional[Sequence[str]] = None,
+                               acknowledged: bool = False) -> Decision:
+        """One decision over N columns (`GUIDED-029`). Not N decisions.
+
+        The record carries the RULE and its members, and the transcript gets one
+        sentence — *"missing values in 294 numeric columns will be filled using
+        the median within each training fold"* — which is also the sentence a
+        reader wants. N sentences saying the same thing about one column each is
+        not a methods section, it is a log.
+
+        Per-column entries are still written to `self.missingness`, because
+        everything downstream reads that list and the plan is genuinely per
+        column; what changes is that the user answered **once**. Each entry
+        carries `bulk` naming the decision it came from, so the record can say
+        that 294 columns were answered together rather than implying 294
+        judgments.
+        """
+        from turbotab import bulk as _bulk, missingness as _miss
+
+        wanted = [str(c) for c in columns]
+        unknown = [c for c in wanted if c not in self.df.columns]
+        if unknown:
+            raise ProjectError(
+                f"No column named '{unknown[0]}' in this table.")
+        if not wanted:
+            raise ProjectError(
+                "A bulk answer needs the columns it covers. An empty set would "
+                "record a decision about nothing.")
+
+        # Every member must be on the branch it claims. A numeric answer
+        # applied to a categorical column is the blanket answer clause §07
+        # routes by dtype specifically to prevent.
+        for column in wanted:
+            actual = ("numeric"
+                      if pd.api.types.is_numeric_dtype(self.df[column])
+                      else "categorical")
+            if actual != branch:
+                raise ProjectError(
+                    f"`{column}` is {actual} and this answer is for the "
+                    f"{branch} columns. Clause §07 routes by dtype, so one "
+                    f"answer cannot cover both branches.")
+            if not bool(self.df[column].isna().any()):
+                raise ProjectError(
+                    f"`{column}` has no missing values, so there is no "
+                    f"missingness to route.")
+
+        records = []
+        for column in wanted:
+            try:
+                record = _miss.declare(
+                    column, branch, mechanism, strategy, target=self.target,
+                    uses_columns=uses_columns, acknowledged=acknowledged,
+                    n_missing=int(self.df[column].isna().sum()))
+            except _miss.MissingnessRefusal as exc:
+                raise ProjectError(str(exc)) from exc
+            record["n_missing"] = int(self.df[column].isna().sum())
+            record["bulk"] = branch
+            records.append(record)
+
+        # The two row-local strategies execute, once each, over the whole set.
+        if strategy == _miss.EXPLICIT_CATEGORY:
+            self._history.append((f"missing::bulk::{branch}", self.df))
+            out = self.df.copy()
+            for column in wanted:
+                col = out[column]
+                if isinstance(col.dtype, pd.CategoricalDtype):
+                    col = col.cat.add_categories(["Missing"])
+                out[column] = col.fillna("Missing")
+            self.df = out
+        elif strategy == _miss.INDICATOR:
+            clashes = [f"{c}_was_missing" for c in wanted
+                       if f"{c}_was_missing" in self.df.columns]
+            if clashes:
+                raise ProjectError(
+                    f"'{clashes[0]}' already exists in this table. Remove it "
+                    f"first, or the indicator would silently replace it.")
+            self._history.append((f"missing::bulk::{branch}", self.df))
+            out = self.df.copy()
+            for column in wanted:
+                out[f"{column}_was_missing"] = self.df[column].isna().astype(int)
+            self.df = out
+            for record in records:
+                record["new_column"] = f"{record['column']}_was_missing"
+
+        answered = {r["column"] for r in records}
+        self.missingness = [d for d in self.missingness
+                            if d["column"] not in answered] + records
+        self.findings_stale = True
+        # ONE cascade entry, not N. A cascade that fires 294 times for one
+        # answer trains the user to ignore it, which is the blocker-budget
+        # argument applied to staleness.
+        self._mark_stale(
+            f"missingness in {len(wanted):,} {branch} column(s) was routed")
+
+        spec = _miss.strategy(strategy)
+        group = _bulk.Group(question="missingness", branch=branch,
+                            members=tuple(sorted(wanted)))
+        return self.record(
+            kind="route_missingness_bulk", subject=branch,
+            text=_bulk.receipt(group, mechanism, strategy,
+                               spec["label"], spec["defers"]),
+            payload={"branch": branch, "mechanism": mechanism,
+                     "strategy": strategy, "n_columns": len(wanted),
+                     "columns": sorted(wanted), "rule": group.rule,
+                     "defers": spec["defers"],
+                     "acknowledged_signal_loss": bool(acknowledged)})
+
     # ── model selection and per-model preparation (L18) ─────────────────────
 
     PREPARATION_MODES = ("per_model", "uniform")

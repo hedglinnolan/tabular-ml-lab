@@ -477,3 +477,51 @@ with the constitution, so a threshold on it would bind against implementing clau
 defect the `irrelevant_questions` identity had before L16. Nothing binds on it today. **If a later
 loop wants to put a threshold there, it needs a constitutional-adjusted denominator first**, and
 that is a new adjudication rather than a tuning.
+
+---
+
+# L21 · the pack's benefit fell because the comparison became fair
+
+**Nothing here binds a threshold.** The routing value check's three datasets are
+unaffected — none is wide and none sets a lens. This entry exists because the
+*discrimination matrix* moved, and it moved for a reason that has to be recorded
+beside the number or the number lies about which direction the product went.
+
+**What happened.** `GUIDED-029`: every per-column question scaled linearly with
+the column count. `metabolomics_untargeted.csv` has 308 columns with blanks, so
+the interview asked **312 questions before any lens** — roughly ten times the
+~32 this project calls Classic's indictment. The metabolomics pack rescued it to
+6, which the L20 report published as **−307**.
+
+That number was measured against a broken baseline.
+
+| | L20 base | L21 base | metabolomics delta, L20 → L21 |
+|---|---:|---:|---|
+| `metabolomics_untargeted` | 312 | **7** | −307 → **−1** |
+| `survey_instrument` | 6 | **4** | · → · |
+| `dietary_recalls` | 3 | 3 | · → · |
+| `clinical_longitudinal` | 3 | 3 | · → · |
+| `genomics_expression` | 14 | 14 | −10 → −10 |
+| `clinic_visits` *(control)* | 13 | 13 | · → · |
+
+**The pack did not get worse. The baseline got honest.** Per-column questions are
+now asked over sets defined by a rule — *"306 numeric columns have blanks;
+answer once for all of them"* — so the interview no longer scales with p, and
+there are no longer 300 questions lying around for a lens to remove.
+
+**This is the coverage-denominator ruling again, from the other side.** L16
+refused to add a `grain::` key to `required_decisions` because a denominator
+that grows with the constitution stops being comparable across loops. Here the
+*numerator* was the problem: a benefit measured against a baseline nobody would
+defend is a number flattering itself, and quoting −307 after this loop would be
+quoting a rescue from a fire the app was setting.
+
+**What to quote, and what not to.** The honest claim for the metabolomics pack
+is now three findings a generic tool would never raise — left-censored
+missingness, instrument drift along run order, pooled QC rows that are not
+participants — plus a **−1** on the question count and one grouped stated fact
+covering 306 columns. That is a smaller number and a truer one.
+
+**Both bases are recorded** so a later loop can tell a real regression from this
+correction. A matrix cell that reads `−1` where the last report said `−307` is
+not a regression, and the only thing that makes that legible is this row.

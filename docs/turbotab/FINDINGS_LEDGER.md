@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**188 of 582 closed.**
+**189 of 582 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 353 |
+| `OPEN` | 352 |
 | `PARTIAL` | 41 |
-| `FIXED` | 185 |
+| `FIXED` | 186 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 353
+## OPEN — 352
 
 
 ### Application state / lockbox — 66
@@ -432,11 +432,10 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Guided-door drive feedback — 6
+### Guided-door drive feedback — 5
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `GUIDED-029` | critical | Per-column questions scale linearly with column count, so a wide table without a matching pack gets hundreds of questions - the lens masks this rather than solving it | `L20 discrimination matrix, metabolomics_untargeted base=313; DOMAIN_PACKS.md 02; the p>>n scoping rule` | Filed by the adjudicator from the L20 matrix. The pack result is real; the base it is measured against is the finding. |
 | `GUIDED-012` | high | Lockbox constitution clause 06 - declaration and execution are separate - has no implementation in either door: nothing applies the row-local vs stateful litmus test | `No module classifies transforms by the litmus test at L14. Classic's pages/03 applies feature engineering to…` | Filed at the start of L14 rather than after building it, deliberately: the check found the clause untracked, and the honest record of an unbuilt clause is an open finding, not a… |
 | `GUIDED-014` | high | DESIGN QUESTION for the product owner: does the exploratory labeling on an undetermined seal read as honest, or as the app giving up? | `docs/turbotab/COPY_DECK.md, 'Data & Target - what the user reads after answering' and 'what the user reads…` | NOT SELF-ASSESSED, deliberately. I wrote this copy at L15; asking the author whether their own prose reads well is the finder-judge problem in a different costume, and this… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
@@ -541,7 +540,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 185
+## FIXED — 186
 
 
 ### Multi-file / JSON import — 69
@@ -657,11 +656,12 @@ Nothing is closed without a regression test named after it.
 | `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — Duplicate of COACH-024 from the state pass, and closed the same way: the… |
 | `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | **test:** `tests/test_cohort_runs.py::test_unrecognizable_rows_yield_nothing_not_everything` — The invariant is implemented, disclosed and tested, and the test's NAME is the… |
 
-### Guided-door drive feedback — 22
+### Guided-door drive feedback — 23
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `GUIDED-024` | critical | Pack priors are declared, reasoned and shape-tested, and consumed by nothing - ten priors across five packs with no reader outside packs.py's own test | `turbotab/packs.py:889 priors(); turbotab/api.py consumes reframe/question/suggest/contradiction but never…` | **test:** `turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_a_derived_column_prior_turns_a_mechanism_question_into_a_stated_fact` — Wired at L20. The priors are typed… |
+| `GUIDED-029` | critical | Per-column questions scale linearly with column count, so a wide table without a matching pack gets hundreds of questions - the lens masks this rather than solving it | `L20 discrimination matrix, metabolomics_untargeted base=313; DOMAIN_PACKS.md 02; the p>>n scoping rule` | **test:** `turbotab/test_one_answer_covers_a_set_defined_by_a_rule.py::test_the_question_count_does_not_grow_with_the_column_count` — FIXED at L21 in turbotab/bulk.py plus… |
 | `GUIDED-001` | high | Import doctor proposes numeric coercion for True/False-coded binary columns (meds_hbp, meds_chol) instead of recognizing a binary variable with informative-missingness potential | `ml/import_doctor.py; screenshot meds_chol` | **test:** `turbotab/test_guided_drive.py::test_a_true_false_column_is_read_as_binary_not_coerced_to_numbers` — Fixed, and reproduced first: a True/False column with blanks is read… |
 | `GUIDED-002` | high | High-missingness finding reports a count but never names the features, and its card carries no snippet and no dtype-aware recommendation | `ml/dataset_profile.py; turbotab explore step; screenshots` | **test:** `turbotab/test_guided_drive.py::test_missingness_routes_by_dtype` — Fixed. Cards name their column in the question text and in a mono chip, carry the count, the share… |
 | `GUIDED-004` | high | No impossibility tier: bp_di values near 1e-15 are at best 'outliers' - the profile does not distinguish medically impossible from medically improbable | `ml/clinical_units.py; ml/physiology_reference.py; ml/dataset_profile.py; screenshot physiologic_check` | **test:** `turbotab/test_guided_drive.py::test_a_diastolic_of_zero_is_impossible_and_a_high_one_is_improbable` — Fixed. The bundled NHANES reference now carries floor/ceiling… |

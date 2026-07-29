@@ -958,5 +958,13 @@
   "classic": "No equivalent. pages/06 carries all four split strategies and nothing decides when each applies; there is no question anywhere in Classic about what varies between one person's rows, so a longitudinal file and a repeated-recall file are treated identically.",
   "state": "guided-only",
   "reason": "Built at L19 in turbotab/repeats.py plus four project methods and four router questions, per lockbox constitution clause 01 and OPENING_SEQUENCE.md section 03. DEBT by the L18 test: clause 01 binds both doors, and Classic already HAS the chronological and grouped split strategies in ml/splits.py with sixteen equivalence tests - what it lacks is the routing that decides between them, which is exactly a missing question rather than a missing capability. The aggregation half is a stronger form of the same debt: Classic can neither combine a person's rows nor refuse to, so a user with two dietary recalls per person gets a row-level model and no sentence saying so. repeats.py is UI-free and imports only pandas and numpy, so the convergence is a call-site change at pages/06 rather than a port."
+ },
+ {
+  "id": "preprocess-bulk-missingness",
+  "step": "preprocess",
+  "capability": "Per-column questions asked over SETS defined by an editable rule — one decision covering N columns, grouped by dtype, with evidence-driven exceptions and grouped rendered skips",
+  "classic": "No equivalent, and the shape of pages/05 forbids one: preprocessing is configured per column through Streamlit widgets, so a 300-column table is 300 widgets. Classic does not ask 300 questions only because it never asks the mechanism question at all.",
+  "state": "guided-only",
+  "reason": "Built at L21 for GUIDED-029. DEBT rather than native by the L18 test - would a reasonable Classic still be missing something? Yes, and more sharply than most rows here: the remedy is not an interaction Guided invented, it is the p >> n specification this project already wrote and applied to transforms but not to per-column questions. Classic will need it the moment it gains a mechanism question, and it will gain one because clause 07 binds both doors. turbotab/bulk.py is UI-free and imports only pandas and numpy, so the convergence is a call-site change rather than a port."
  }
 ]
