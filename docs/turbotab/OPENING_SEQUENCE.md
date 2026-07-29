@@ -42,6 +42,23 @@ Nothing may be resequenced. Three placements are load-bearing and easy to get wr
 - **The lens is first, before diagnosis**, because diagnosis is field-sensitive. 1,847 columns
   across 80 rows reads as malformed to a general-purpose import doctor and is the expected shape
   for an assay panel. Setting the lens first turns a false alarm into a correct reading.
+
+  **What "before diagnosis" means in the code, stated because the first reading of this line was
+  wrong** (L20). The detectors in `ml/import_doctor.py` take a frame and nothing else. They are
+  field-blind by construction, they are frozen, and no lens will ever reach them. So the lens is a
+  parameter of `engine.rank_findings` — *the one function that produces the finding list the app
+  presents* — and not of the detector pass underneath it.
+
+  That is not a weaker claim, and the reason it must be this way is worth the sentence: **reframing
+  annotates and never deletes.** A user who reads *"these are different analytes, not one analyte
+  measured twice"* and still wants to reshape the table can, because `apply` re-runs the raw
+  diagnosis and gets the real repair. A lens that erased the reading at generation would take that
+  route away and turn the annotation into a deletion by another name.
+
+  The governing rule is about what the app **asserts**, not about what it computes. Nothing reaches
+  a user except through `rank_findings`, and
+  `test_the_lens_reaches_every_finding_list_the_app_presents` is what makes that a check rather
+  than a habit.
 - **The impossibility pass is pre-seal** — not for leakage reasons (setting a physiologically
   impossible value to missing is row-local and leaks nothing) but because a stratified or grouped
   split computed over corrupted values is a worse split, and impossible entries are normally an

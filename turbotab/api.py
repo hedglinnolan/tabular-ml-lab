@@ -276,24 +276,14 @@ def _recompute(project: AnalysisProject) -> None:
             "file presents as one the profiler had nothing to say about")
         prof = None
 
-    ranked = engine.rank_findings(structural, prof)
-    # THE LENS IS READ HERE, and this is the whole of `DOMAIN_PACKS.md` §02 in
-    # the code: a pack changes the ANSWERS, not the questions. `reframe`
-    # annotates findings the lens reads differently — it never deletes one,
-    # because deleting `wide_repeated_measures` would also delete it on
-    # `clinic_visits.csv`, where `bp_1`/`bp_2`/`bp_3` is exactly what the
-    # finding is for. `findings` adds what a generic tool would never raise.
-    #
-    # Both are no-ops until the lens is answered, and both are no-ops when the
-    # answer is "something else, or not sure" — the app is fully functional
-    # with no lens.
-    from turbotab import packs as _packs
-    ranked = _packs.reframe(ranked, project.lens or [], project.df)
-    ranked = ranked + project.pack_findings()
-    for i, f in enumerate(ranked):
-        f["rank"] = i
+    # THE LENS IS A PARAMETER OF THE DIAGNOSIS, not something applied to it
+    # afterwards here. `rank_findings` is the one function that produces the
+    # finding list the app presents, and nothing reaches a user except through
+    # it — which is what makes "the lens comes before the diagnosis" a property
+    # of the code rather than of the order of two statements in this function.
     project.set_findings(
-        ranked,
+        engine.rank_findings(structural, prof, lens=project.lens or [],
+                             df=project.df),
         engine.profile_to_dict(prof) if prof is not None else None,
     )
 

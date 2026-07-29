@@ -678,3 +678,66 @@ def test_no_lens_gates_nothing():
             "file": ("dietary_recalls.csv", fh, "text/csv")}).json()["id"]
     assert not client.get(
         f"/project/{pid}/evidence/correlations").json().get("gated")
+
+
+# ── the lens reaches the diagnosis the app presents ──────────────────────────
+
+def test_the_lens_reaches_every_finding_list_the_app_presents():
+    """`OPENING_SEQUENCE.md` orders the lens BEFORE the diagnosis.
+
+    The detectors in `ml/import_doctor.py` take a frame and nothing else, are
+    field-blind by construction, and are frozen. So the lens is a parameter of
+    `rank_findings` — the one function that produces the finding list the app
+    presents — rather than of the detector pass underneath it.
+
+    **And it must be, rather than acting at generation.** Reframing annotates
+    and never deletes: a user who reads *"these are different analytes"* and
+    still wants to reshape can. `apply` and `preview` re-run `diagnose()` and
+    need the real `fix_kind` to execute the repair, so a lens that erased the
+    reading at generation would take that route away and turn the annotation
+    into a deletion by another name.
+
+    This is the executable half. `_recompute` is the only path from a frame to
+    the findings a user sees, and it must pass the lens.
+
+    Discharges `lockbox-01`: the lens comes first.
+    """
+    import inspect
+    from turbotab import api
+
+    source = inspect.getsource(api._recompute)
+    assert "rank_findings" in source
+    assert "lens=project.lens" in source, (
+        "`_recompute` builds the presented finding list without the lens. The "
+        "sequence says the lens comes before the diagnosis; this is where that "
+        "is true or is not.")
+
+    # And nothing else in the API builds one. `diagnose()` is still called
+    # directly by `apply` and `preview`, and those want the RAW reading.
+    api_source = inspect.getsource(api)
+    presented = [line for line in api_source.splitlines()
+                 if "rank_findings(" in line and "def " not in line]
+    assert len(presented) == 1, presented
+
+
+def test_the_raw_reading_survives_for_the_user_who_wants_it_anyway():
+    """The reason the lens acts on presentation rather than on generation.
+
+    A reframed finding is annotated, not withdrawn. `apply` re-diagnoses and
+    gets the real `fix_kind`, so a user who reads the metabolomics reading and
+    decides to reshape the table anyway still can — which is what makes
+    "annotates, never deletes" true of the whole app rather than of one list.
+    """
+    from turbotab import engine
+    df = load("metabolomics_untargeted")
+
+    raw = engine.diagnose(df, target="responder")
+    wide = next(f for f in raw if f.id == "wide_repeated_measures")
+    assert wide.fix_kind == "melt_repeated", (
+        "the raw reading lost its repair, so a user who overrules the lens has "
+        "nowhere to go")
+
+    presented = engine.rank_findings(raw, None, lens=[P.METABOLOMICS], df=df)
+    shown = next(f for f in presented if f["id"] == "wide_repeated_measures")
+    assert shown["fix_kind"] == "none"
+    assert P.METABOLOMICS in shown["reframed_by"]

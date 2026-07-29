@@ -27,7 +27,7 @@ import io
 import math
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -582,18 +582,46 @@ def find_shape_finding(structural: List[ShapeFinding], finding_id: str) -> Shape
 def rank_findings(
     structural: List[ShapeFinding],
     prof: Optional[DatasetProfile] = None,
+    lens: Sequence[str] = (),
+    df: Optional[pd.DataFrame] = None,
 ) -> List[Dict[str, Any]]:
-    """Merge both finding streams into one ranked list.
+    """Merge both finding streams into one ranked list, READ UNDER THE LENS.
 
     Sorted by the engine's severity, then its confidence, then id — a total
     order, so the same table always ranks the same way. `import_doctor.diagnose`
     already sorts its own output by severity; this re-sorts only because the two
     streams have to interleave.
+
+    **This is where the lens reaches the diagnosis, and the placement is the
+    answer to a question worth stating.** `OPENING_SEQUENCE.md` orders the lens
+    before the diagnosis because the diagnosis is field-sensitive; the
+    detectors in `ml/import_doctor.py` take a frame and nothing else, are
+    field-blind by construction, and are frozen. So the lens is a parameter of
+    **the function that produces the finding list the app presents**, not of the
+    detector pass underneath it.
+
+    That is not a fig leaf, and there is a reason it must not be one. Reframing
+    ANNOTATES and never deletes: a user who reads *"these are different
+    analytes, not one analyte measured twice"* and still wants to reshape the
+    table can. `apply` and `preview` re-run `diagnose()` and need the real
+    `fix_kind` to execute the repair — so a lens that erased the reading at
+    GENERATION would take that route away, and the annotation would become a
+    deletion by another name.
+
+    The governing rule is about what the app **asserts**, not about what it
+    computes. Nothing reaches a user except through here, and
+    `test_the_lens_reaches_every_finding_list_the_app_presents` is what makes
+    that a check rather than a habit.
     """
     items = [_with_deferral(shape_finding_to_dict(f)) for f in structural]
     if prof is not None:
         items += [_with_deferral(data_warning_to_dict(w, i))
                   for i, w in enumerate(prof.warnings)]
+
+    if lens and df is not None:
+        from turbotab import packs as _packs
+        items = _packs.reframe(items, lens, df)
+        items = items + _packs.findings(df, lens)
 
     items.sort(key=lambda d: (
         SEVERITY_RANK.get(d["severity"], 99),

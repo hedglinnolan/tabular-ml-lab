@@ -57,6 +57,12 @@ doctor, which is why the lens is set *before* diagnosis rather than after. A pac
 alarm into a correct reading, which is the cheapest possible demonstration that the question was
 worth asking.
 
+**Where that happens, since the answer is not where a reader would first guess.** The import
+doctor's detectors take a frame and nothing else; they are field-blind by construction and frozen.
+The lens is a parameter of the function that produces the finding list the app **presents**, so the
+false alarm is never asserted — and the raw reading survives underneath it, deliberately, because a
+user who overrules the lens must still be able to reach the repair. See `OPENING_SEQUENCE.md` §01.
+
 ---
 
 ## 02 · What a pack changes, and what it must never change
