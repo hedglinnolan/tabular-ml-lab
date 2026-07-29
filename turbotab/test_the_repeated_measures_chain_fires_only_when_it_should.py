@@ -17,6 +17,7 @@ Run:  turbotab/.venv/bin/python -m pytest \\
 """
 from __future__ import annotations
 
+import dataclasses
 import os
 import sys
 from pathlib import Path
@@ -224,6 +225,64 @@ def test_the_mean_is_recommended_for_repeats_with_the_measurement_error_reason()
     assert "attenuates diet–outcome associations toward the null" in menu["reason"]
     assert "measurement error" in menu["reason"]
     assert [o["key"] for o in menu["options"]] == list(R.AGGREGATIONS)
+
+
+def test_the_dietary_reason_is_the_packs_own_sentence_and_not_a_copy(monkeypatch):
+    """`GUIDED-026`: two implementations of one rule, with the documented one
+    inert.
+
+    `repeats.py` carried its own nearly identical sentences and the pack's copy
+    was unreachable — so editing the pack changed nothing, and editing
+    `repeats.py` made the pack's stated prior a false description of the app.
+
+    **The assertion is the DEPENDENCY, not an equality**, and the probe is what
+    forced that. Asserting `menu["reason"] == prior["reason"]` came back GREEN
+    against a `repeats.py` that restated the sentence, because the restated copy
+    was character-identical — an identity check passes on a duplicate right up
+    until somebody edits one side, which is the drift itself rather than a guard
+    against it.
+
+    So the pack's prior is REPLACED here and the rendered sentence has to
+    follow. A restating implementation renders the original and fails.
+    """
+    from turbotab import packs as PK
+    prior = PK.priors(["dietary"], "repeat_treatment")[0]
+    menu = R.menu(R.REPEATS, lens=["dietary"])
+    assert menu["reason"] == prior["reason"]
+    assert menu["marker"] == prior["marker"]
+
+    sentinel = ("Replaced for this test only: the rendered sentence must come "
+                "from the pack rather than from a copy beside it.")
+    pack = PK.PACKS["dietary"]
+    patched = tuple(
+        PK.Prior(question=p.question, marker=p.marker, reason=sentinel,
+                 scope=p.scope, detector=p.detector, values=dict(p.values))
+        if p.question == "repeat_treatment" else p
+        for p in pack.priors)
+    monkeypatch.setitem(PK.PACKS, "dietary",
+                        dataclasses.replace(pack, priors=patched))
+
+    assert R.menu(R.REPEATS, lens=["dietary"])["reason"] == sentinel, (
+        "the rendered reason did not follow the pack; there are two "
+        "implementations of the averaging rule again")
+    # And the record can name where the recommendation came from. A user
+    # reading "averaging reduces measurement error" is entitled to know which
+    # field's convention said so.
+    assert menu["from_pack"] == "dietary"
+    assert menu["from_pack_label"] == PK.LENS_LABELS["dietary"]
+
+
+def test_with_no_dietary_lens_the_general_argument_stands_unattributed():
+    """The general case is arithmetic about noise, not a domain convention, so
+    it survives without a lens — and it is NOT the dietary sentence, because
+    that one is about 24-hour recalls and usual intake."""
+    from turbotab import packs as PK
+    plain = R.menu(R.REPEATS)
+    assert plain["recommended"] == R.MEAN
+    assert plain["from_pack"] is None
+    assert plain["reason"] != PK.priors(["dietary"], "repeat_treatment")[0]["reason"]
+    assert "24-hour recall" not in plain["reason"]
+    assert "diet" not in plain["reason"]
 
 
 def test_nothing_is_recommended_for_time_points_and_that_absence_is_the_finding():

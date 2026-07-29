@@ -327,37 +327,61 @@ def menu(kind: str, lens: Sequence[str] = ()) -> Dict[str, Any]:
     inverts between the two readings:
 
     * **repeats** → the mean, `derived`, with the measurement-error reason
-      stated. This is not a preference: a single 24-hour recall is a noisy
-      estimate of usual intake and that noise attenuates diet–outcome
+      stated. This is not a preference: a single measurement is a noisy
+      estimate of the underlying quantity and that noise attenuates
       associations toward the null. Averaging reduces it.
     * **time points** → **no default at all**, and that absence is the finding.
       Averaging a trajectory destroys the trajectory, and which summary replaces
       it depends on the research question rather than on the data.
+
+    **The dietary reason is READ FROM THE PACK, never restated here**
+    (`GUIDED-026`). This function used to carry its own nearly identical
+    sentences, and the pack's copy was the unreachable one — so editing the pack
+    changed nothing, and editing this file made the pack's stated prior a false
+    description of the app. Two implementations of one rule, with the
+    documented one inert. The pack is the implementation; this reads it and
+    reports which pack supplied it, so the record can name the source of a
+    recommendation rather than asserting it in the app's own voice.
     """
     if kind not in REPEAT_KINDS:
         raise RepeatsError(f"{kind!r} is not one of {list(REPEAT_KINDS)}.")
     options = [{"key": k, **_MENU[k]} for k in AGGREGATIONS]
-    if kind == REPEATS:
-        reason = ("A single measurement is a noisy estimate of the underlying "
-                  "quantity, and that noise attenuates associations toward the "
-                  "null. Using the mean of a person's records reduces it — this "
-                  "is measurement-error reduction, not information loss.")
-        if "dietary" in (lens or []):
-            reason = ("A single 24-hour recall is a noisy estimate of usual "
-                      "intake, and that noise attenuates diet–outcome "
-                      "associations toward the null. Using their mean rather "
-                      "than a single day reduces the within-person measurement "
-                      "error.")
-        return {"options": options, "recommended": MEAN, "marker": "derived",
-                "reason": reason,
+    if kind == TIME_POINTS:
+        return {
+            "options": options, "recommended": None, "marker": "offered",
+            "reason": ("No default. These are different time points, and "
+                       "averaging them destroys the signal — the change over "
+                       "time IS the signal. Which summary replaces it comes "
+                       "from your research question, not from the data."),
+            "from_pack": None, "filed": _FILED}
+
+    from turbotab import packs as _packs
+    supplied = [p for p in _packs.priors(lens or [], "repeat_treatment")
+                if p.get("treatment") == "mean"]
+    if supplied:
+        # The pack's own sentence, and the pack's own name beside it. A user
+        # reading "averaging reduces measurement error" is entitled to know
+        # which field's convention said so.
+        return {"options": options, "recommended": MEAN,
+                "marker": supplied[0]["marker"],
+                "reason": supplied[0]["reason"],
+                "from_pack": supplied[0]["pack"],
+                "from_pack_label": supplied[0]["label"],
                 "filed": _FILED}
-    return {
-        "options": options, "recommended": None, "marker": "offered",
-        "reason": ("No default. These are different time points, and averaging "
-                   "them destroys the signal — the change over time IS the "
-                   "signal. Which summary replaces it comes from your research "
-                   "question, not from the data."),
-        "filed": _FILED}
+
+    # No lens, or a lens with nothing to say about repeated measurements. The
+    # general argument still holds — it is arithmetic about noise, not a domain
+    # convention — so the mean is still recommended, without a pack's name on
+    # it. This sentence is the GENERAL case and is not a copy of any pack's:
+    # the dietary one is about 24-hour recalls and usual intake, and lives
+    # there.
+    return {"options": options, "recommended": MEAN, "marker": "derived",
+            "reason": ("A single measurement is a noisy estimate of the "
+                       "underlying quantity, and that noise attenuates "
+                       "associations toward the null. Using the mean of a "
+                       "person's records reduces it — this is "
+                       "measurement-error reduction, not information loss."),
+            "from_pack": None, "filed": _FILED}
 
 
 # Named rather than silently absent, because a menu of four that does not say

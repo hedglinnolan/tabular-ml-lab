@@ -7363,9 +7363,10 @@
   "detail": "packs.py:794 declares repeat_treatment {marker: derived, treatment: average, reason: '...noise attenuates diet-outcome associations...'}. repeats.py:342-347 carries its own nearly identical sentences and is what actually runs. Two implementations of one rule; editing the pack changes nothing, and editing repeats.py makes the pack's stated prior a false description of the app. Principle-locality, and the register exists to make exactly this countable.",
   "ev": "turbotab/packs.py:794-800 versus turbotab/repeats.py:329-347",
   "act": "One implementation. repeats.py reads the prior rather than restating it; a test asserts the rendered reason comes from the pack.",
-  "status": "OPEN",
-  "note": "Filed by the adjudicator from a qualitative review of the lens routing matrix.",
-  "verified_against": "TurboTab @ HEAD - adjudicator review of the routing matrix, 2026-07-29"
+  "status": "FIXED",
+  "note": "Fixed at L20. repeats.menu() READS the dietary pack's repeat_treatment prior rather than restating it, and reports from_pack so the record can name which field's convention supplied a recommendation instead of asserting it in the app's own voice. The general no-lens case is kept and is deliberately NOT the dietary sentence: averaging reducing measurement error is arithmetic about noise rather than a domain convention, so it survives without a lens, while the dietary sentence is about 24-hour recalls and usual intake and lives in the pack. A test asserts the general one contains neither '24-hour recall' nor 'diet'. THE PROBE FORCED THE TEST TO BE REWRITTEN, TWICE, AND THAT IS THE INTERESTING PART. First revert: edit the pack's reason. GREEN - correctly, because the menu now reads the pack, so both sides of an identity assertion move together; that is the fix working. Second revert: make repeats.py restate the sentence again. ALSO GREEN, because the restated copy was character-identical, and an identity check passes on a duplicate right up until somebody edits one side - which is the drift itself rather than a guard against it. So the test now asserts the DEPENDENCY: the pack's prior is replaced with a sentinel and the rendered sentence has to follow. A restating implementation renders the original and fails, and the third probe is red for 'there are two implementations of the averaging rule again'.",
+  "verified_against": "TurboTab @ HEAD - adjudicator review of the routing matrix, 2026-07-29",
+  "test": "turbotab/test_the_repeated_measures_chain_fires_only_when_it_should.py::test_the_dietary_reason_is_the_packs_own_sentence_and_not_a_copy"
  },
  {
   "id": "GUIDED-027",
