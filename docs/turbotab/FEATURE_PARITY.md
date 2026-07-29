@@ -96,16 +96,46 @@ for two entirely reasonable-sounding reasons at once, and nobody notices until a
 
 ### The mitigation
 
-**A feature register, maintained like the ledger.** Every capability gets a row with four
+**A feature register, maintained like the ledger.** Every capability gets a row with five
 states: `core` (extracted), `both` (extracted and exposed in Guided), `classic-only` (still
-trapped, or deliberately not surfaced), and `guided-only` (built in the Guided door and owed
-back to Classic). Then:
+trapped, or deliberately not surfaced), `guided-only` (built in Guided **and owed back to
+Classic**), and `guided-native` (belongs to Guided's design model; Classic is not expected to
+gain it). Then:
 
-The fourth state is not symmetry for its own sake — **convergence runs both ways.**
+The Guided pair is not symmetry for its own sake — **convergence runs both ways.**
 Preview-before-apply and undo are Guided-first, and Classic today applies a repair from a single
 button with no diff and no undo, which is precisely the blind consent `PRODUCT_VISION.md` §04
 argues against. A `guided-only` row is a debt owed to Classic, and naming it stops the Guided
 door quietly becoming the only place the product's own principles hold.
+
+**Why the pair was split (L18).** `guided-only` originally meant *a debt owed back to Classic*.
+That was true of the three constitutional capabilities it was coined for, and it stopped being
+true as Guided accumulated things Classic will never have — a rendered skip, a read-as-draft
+panel, a question grammar, deferral as a first-class disposition. Left merged, the debt count
+inflates every loop and stops meaning anything: at the split it read 24, and 10 of those were
+not debts at all.
+
+The line, and it is a test rather than a feeling: **would a reasonable Classic still be missing
+something?**
+
+- **Debt** — a constitution clause binds both doors and Classic does not meet it; or Classic has
+  a live defect Guided fixed; or Classic could have it and simply does not. `target-positive-class`
+  is the clearest: Classic label-encodes a two-level target alphabetically, so the event is
+  whichever level sorts last. That is a defect, not a difference.
+- **Native** — the capability presupposes something Classic is not. `cross-deferral-resurface`
+  needs a Router, and `TRANSITION_PLAN.md` §02.5 measured the coach as a pure annotator that can
+  order questions but cannot gate them. Asking Classic for it is asking Classic to be Guided.
+
+**The interesting cases are the ones where both doors have the feature and do different things
+with it.** `feat-selection-methods` is the sharpest: Classic *runs* selection and stores a
+result, Guided *records* what will be selected. Both have all five methods. Filing that as debt
+says Classic owes itself a different implementation of something it already ships; the difference
+is constitution §06's declaration-versus-execution split, which is design model, so it is
+`guided-native`. The row's own text had said *"those are different things"* and then filed it as
+debt anyway — which is exactly the drift the split fixes.
+
+**`guided-native` still requires a reason.** *"It is just how Guided works"* is the shrug this
+register exists to refuse, and it would be the easiest place to hide one.
 
 Also note what the register caught on its very first use: `triage` returns low confidence and
 tells the user to *verify or override*; Classic offers that override, Guided did not. Filing it

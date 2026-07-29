@@ -23,7 +23,19 @@ States
     core          extracted into the shared core (an implementation fact)
     both          exposed in Classic and Guided
     classic-only  Classic has it, Guided does not — a claim to be justified, never a shrug
-    guided-only   Guided has it, Classic does not — a debt owed back to Classic
+    guided-only   Guided has it, Classic does not, AND CLASSIC SHOULD — a debt
+                  owed back, and it stays countable precisely because it is debt
+    guided-native Belongs to Guided's design model; Classic is not expected to
+                  gain it. Still needs a reason, because "it is just how Guided
+                  works" is the shrug this register exists to refuse
+
+The two Guided states were one until L18. `guided-only` meant "a debt owed back
+to Classic", which was true of the three constitutional capabilities it was
+coined for and stopped being true as Guided accumulated things Classic will
+never have — a rendered skip, a read-as-draft panel, a question grammar. Left
+merged, the debt count inflates every loop and the number stops meaning
+anything. Split, `guided-only` answers "what do we owe Classic?" and
+`guided-native` answers "what is Guided FOR?", and both are countable.
 
 Rules `check` enforces
 ----------------------
@@ -46,8 +58,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 DATA = ROOT / "data" / "register.json"
 OUT = ROOT / "FEATURE_REGISTER.md"
 
-STATES = {"core", "both", "classic-only", "guided-only"}
-NEED_REASON = {"classic-only", "guided-only"}
+STATES = {"core", "both", "classic-only", "guided-only", "guided-native"}
+NEED_REASON = {"classic-only", "guided-only", "guided-native"}
 
 # Guided steps that have been built. Building a new step means adding it here,
 # which is what makes "no rows for this step" a checkable failure.
@@ -64,7 +76,8 @@ STEP_NAME = {
     "explain": "Explainability & sensitivity (Classic: pages/07, 08)",
     "report": "Report & export (Classic: pages/10)",
 }
-STATE_ORDER = {"guided-only": 0, "both": 1, "core": 2, "classic-only": 3}
+STATE_ORDER = {"guided-only": 0, "guided-native": 1, "both": 2, "core": 3,
+               "classic-only": 4}
 
 
 def load() -> list[dict]:

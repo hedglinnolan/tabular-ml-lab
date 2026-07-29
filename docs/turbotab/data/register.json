@@ -93,7 +93,7 @@
   "capability": "Preview before apply",
   "classic": "(none)",
   "state": "guided-only",
-  "reason": "Classic applies straight from a button — the blind consent PRODUCT_VISION §04 argues against. Debt owed to Classic: T0-CLASSIC-001."
+  "reason": "Classic applies straight from a button — the blind consent PRODUCT_VISION §04 argues against. Debt owed to Classic: T0-CLASSIC-001. L18 DISPOSITION: guided-only, and it stays guided-only because it is REAL DEBT — Classic is expected to gain this, and the count is what makes 'we owe Classic N things' a number rather than a feeling. PRODUCT_VISION 04 names applying without a preview as blind consent, and it binds BOTH doors. FEATURE_PARITY's own text uses this row as the canonical example of convergence running both ways."
  },
  {
   "id": "audit-undo",
@@ -101,7 +101,7 @@
   "capability": "Undo an applied repair",
   "classic": "(none)",
   "state": "guided-only",
-  "reason": "Engine always supported it (apply_fix never mutates); Classic never exposed it. Owed to Classic with the preview."
+  "reason": "Engine always supported it (apply_fix never mutates); Classic never exposed it. Owed to Classic with the preview. L18 DISPOSITION: guided-only, and it stays guided-only because it is REAL DEBT — Classic is expected to gain this, and the count is what makes 'we owe Classic N things' a number rather than a feeling. Same argument as audit-preview: a fix you cannot undo forces certainty before the user can see what it did, which is the blind consent the preview exists to avoid. Classic is owed it."
  },
  {
   "id": "audit-profile",
@@ -213,7 +213,7 @@
   "capability": "Observable, cancellable background work with explicit per-job RNG",
   "classic": "none — Streamlit reruns instead of scheduling",
   "state": "guided-only",
-  "reason": "turbotab/jobs.py. Owed back to Classic in the sense that Classic cannot have it without a client/server split — this is the component whose absence caused the migration. Jobs that touch process-global RNG are serialized, because snapshot/restore does not isolate threads sharing one RNG; measured, not assumed."
+  "reason": "turbotab/jobs.py. Owed back to Classic in the sense that Classic cannot have it without a client/server split — this is the component whose absence caused the migration. Jobs that touch process-global RNG are serialized, because snapshot/restore does not isolate threads sharing one RNG; measured, not assumed. L18 DISPOSITION: guided-only, and it stays guided-only because it is REAL DEBT — Classic is expected to gain this, and the count is what makes 'we owe Classic N things' a number rather than a feeling. The row's own reason already says it: owed back in the sense that Classic cannot have it without a client/server split. That is a debt with a hard prerequisite, not a design-model difference, and collapsing it into guided-native would make the migration's central justification invisible."
  },
  {
   "id": "macro-shape-cache",
@@ -229,7 +229,7 @@
   "capability": "Stopping a long run",
   "classic": "removed — the button set a flag nothing read",
   "state": "guided-only",
-  "reason": "T0-LIVE-002. Classic's button is removed rather than wired: Streamlit runs one script per session on one thread, so during training no widget is interactive and the button could not be clicked at all. The page now says a run cannot be interrupted, which is true. Guided has real cancellation via the job queue."
+  "reason": "T0-LIVE-002. Classic's button is removed rather than wired: Streamlit runs one script per session on one thread, so during training no widget is interactive and the button could not be clicked at all. The page now says a run cannot be interrupted, which is true. Guided has real cancellation via the job queue. L18 DISPOSITION: guided-only, and it stays guided-only because it is REAL DEBT — Classic is expected to gain this, and the count is what makes 'we owe Classic N things' a number rather than a feeling. Stopping a long run is not a Guided idea, it is a missing capability. Same prerequisite as job-queue."
  },
  {
   "id": "explore-eda-sufficiency-insufficient",
@@ -453,15 +453,15 @@
   "capability": "Recorded acknowledgment to proceed past an unresolved blocker (required sentence; 400 without one)",
   "classic": "(none — Classic has no acknowledgment path at all)",
   "state": "guided-only",
-  "reason": "The tool refuses silence, not the user's judgment. Classic lets a user proceed past a known leak with no record; owed to Classic with the named-column push at L11 convergence of pages/02."
+  "reason": "The tool refuses silence, not the user's judgment. Classic lets a user proceed past a known leak with no record; owed to Classic with the named-column push at L11 convergence of pages/02. L18 DISPOSITION: guided-only, and it stays guided-only because it is REAL DEBT — Classic is expected to gain this, and the count is what makes 'we owe Classic N things' a number rather than a feeling. Routing constitution 03 binds both doors: exiting past a blocker writes an acknowledgment into the record. A constitutional obligation Classic does not meet is debt by definition."
  },
  {
   "id": "cross-deferral-resurface",
   "step": "cross-step",
   "capability": "Deferral that resurfaces: defer requires a target_step, deferred items resurface at the step that can act on them (measured by the routing value check's deferral_closes metric)",
   "classic": "utils/insight_ledger.py records acknowledge/resolve and surfaces insights on relevant pages, but has no defer-to-step contract - no target_step, no resurface guarantee",
-  "state": "guided-only",
-  "reason": "turbotab/api.py rejects a defer without target_step ('a deferral without a target is a discard with manners'); Classic's ledger cannot express the contract. In the definition of done and measured in the value check, yet had no register row - the check could not see the absence. A debt owed back to Classic."
+  "state": "guided-native",
+  "reason": "turbotab/api.py rejects a defer without target_step ('a deferral without a target is a discard with manners'); Classic's ledger cannot express the contract. In the definition of done and measured in the value check, yet had no register row - the check could not see the absence. A debt owed back to Classic. L18 DISPOSITION: guided-native. Deferral as a first-class disposition is the Router's design model, and Classic has no Router — TRANSITION_PLAN 02.5 measured the coach as a pure annotator that can order questions but not gate them. Promoting it is new construction, so this is not a thing Classic is failing to do; it is a thing Classic is not."
  },
  {
   "id": "explore-lockbox-scoped-modeling",
@@ -477,15 +477,15 @@
   "capability": "Binary-coded text detected as binary, outranking numeric coercion, with a 'read as binary' repair",
   "classic": "(none) - import_doctor proposes coerce_numeric for the same column",
   "state": "guided-only",
-  "reason": "GUIDED-001. ml/binary_text.py is engine code and Classic could call it, but pages/01 renders import_doctor.diagnose directly and would show both proposals for one column. The merge lives in turbotab/engine.diagnose because ml/import_doctor.py is frozen as engine-move-only (TRANSITION_PLAN §05) and folding it into diagnose() there would be a behavior change to a frozen file. Owed back to Classic when the freeze lifts."
+  "reason": "GUIDED-001. ml/binary_text.py is engine code and Classic could call it, but pages/01 renders import_doctor.diagnose directly and would show both proposals for one column. The merge lives in turbotab/engine.diagnose because ml/import_doctor.py is frozen as engine-move-only (TRANSITION_PLAN §05) and folding it into diagnose() there would be a behavior change to a frozen file. Owed back to Classic when the freeze lifts. L18 DISPOSITION: guided-only, and it stays guided-only because it is REAL DEBT — Classic is expected to gain this, and the count is what makes 'we owe Classic N things' a number rather than a feeling. Engine capability, not interface. ml/binary_text.py is engine code Classic could call; the blocker is that pages/01 renders a frozen import path. Debt with a freeze in front of it."
  },
  {
   "id": "explore-missingness-decisions",
   "step": "explore",
   "capability": "Per-feature missingness decision cards: features named, routed by dtype, each option carrying its execution timing and its decision sentence",
   "classic": "pages/02_EDA.py missingness_scan (a scan, not a decision) + pages/05 global imputation controls",
-  "state": "guided-only",
-  "reason": "GUIDED-002. Classic has the analysis and the controls, but not the decision: the EDA page reports missingness patterns and the Preprocess page offers imputation strategies as widgets, with no card that names the feature, routes the question by dtype and writes a methods sentence. The action-timing ruling - structural repairs now, statistical transforms recorded now and fitted in the per-model pipeline on training folds - is carried as data on every option (ml/missingness_plan.py TIMING_*), so it moves to Classic with the module."
+  "state": "guided-native",
+  "reason": "GUIDED-002. Classic has the analysis and the controls, but not the decision: the EDA page reports missingness patterns and the Preprocess page offers imputation strategies as widgets, with no card that names the feature, routes the question by dtype and writes a methods sentence. The action-timing ruling - structural repairs now, statistical transforms recorded now and fitted in the per-model pipeline on training folds - is carried as data on every option (ml/missingness_plan.py TIMING_*), so it moves to Classic with the module. L18 DISPOSITION: guided-native. The row's own reason draws the line precisely: Classic has the ANALYSIS and the CONTROLS and not the DECISION. Analysis and controls are capabilities; a decision card that names the feature, routes by dtype and writes a methods sentence is the interview form. The clause-07 OBLIGATIONS Classic genuinely owes are tracked separately as prep-informative-missingness-question, prep-outcome-out-of-imputation and prep-stability-assumption, which is why this one can move without losing the debt."
  },
  {
   "id": "explore-impossibility-band",
@@ -500,8 +500,8 @@
   "step": "explore",
   "capability": "Finding cards embed their evidence: the flagged entries with values and bounds, or the distribution the claim is about",
   "classic": "pages/02_EDA.py renders plots per analysis, in tabs, separate from the finding text",
-  "state": "guided-only",
-  "reason": "GUIDED-003 / GUIDED-005. Classic has more plots than Guided; what it does not have is the plot ATTACHED TO THE CLAIM. A skew finding in the coach ledger and a histogram in the Feature Explorer tab are two screens apart, which is the split-attention cost DESIGN_LANGUAGE §10 layer 2 exists to remove. ml/card_evidence.py is engine code and portable; the attachment is a rendering decision Classic has not made."
+  "state": "guided-native",
+  "reason": "GUIDED-003 / GUIDED-005. Classic has more plots than Guided; what it does not have is the plot ATTACHED TO THE CLAIM. A skew finding in the coach ledger and a histogram in the Feature Explorer tab are two screens apart, which is the split-attention cost DESIGN_LANGUAGE §10 layer 2 exists to remove. ml/card_evidence.py is engine code and portable; the attachment is a rendering decision Classic has not made. L18 DISPOSITION: guided-native. DESIGN_LANGUAGE 09: a finding carries its evidence. That is a property of the card vocabulary, and Classic's vocabulary is Streamlit widgets in page order. Asking Classic for it is asking Classic to be Guided."
  },
  {
   "id": "explore-histogram-pager",
@@ -516,40 +516,40 @@
   "step": "explore",
   "capability": "Every pull affordance declares whether it is wired; unwired ones render disabled with the reason on the control",
   "classic": "(none) - Classic's EDA buttons all run",
-  "state": "guided-only",
-  "reason": "GUIDED-006. Classic does not need this: every button on pages/02 runs an analysis. Guided needed it because the palette is generated from the recommender and outran the endpoints behind it - before L9 no pull chip ran at all, and three of them looked live. The roster is served from turbotab/api.PULL_CAPABILITIES so the page cannot claim a capability the server lacks."
+  "state": "guided-native",
+  "reason": "GUIDED-006. Classic does not need this: every button on pages/02 runs an analysis. Guided needed it because the palette is generated from the recommender and outran the endpoints behind it - before L9 no pull chip ran at all, and three of them looked live. The roster is served from turbotab/api.PULL_CAPABILITIES so the page cannot claim a capability the server lacks. L18 DISPOSITION: guided-native. 'Push the notable, pull the rest' is Guided's interaction thesis. Classic renders everything at once, so there is no pull side to audit — the distinction does not exist there to be honored or violated."
  },
  {
   "id": "cross-read-as-draft",
   "step": "cross-step",
   "capability": "Read-as-draft panel: the recorded decisions rendered as draft methods prose with [AUTHOR REQUIRED] gaps visible",
   "classic": "pages/10_Report_Export.py generates the manuscript at the END of the workflow",
-  "state": "guided-only",
-  "reason": "GUIDED-007, DESIGN_LANGUAGE §10. Classic can generate a manuscript; it cannot show you the draft WHILE you still have time to change the decisions in it, which is the whole pedagogical claim - layer 3 teaching on the user's own data. turbotab/draft.py is a pure fold over the record and holds no state, so Classic could mount it against WorkflowProvenance; it has not."
+  "state": "guided-native",
+  "reason": "GUIDED-007, DESIGN_LANGUAGE §10. Classic can generate a manuscript; it cannot show you the draft WHILE you still have time to change the decisions in it, which is the whole pedagogical claim - layer 3 teaching on the user's own data. turbotab/draft.py is a pure fold over the record and holds no state, so Classic could mount it against WorkflowProvenance; it has not. L18 DISPOSITION: guided-native. The accumulating manuscript IS the product thesis (DESIGN_LANGUAGE 10, layer 3: read-as-draft is a faded worked example). Classic gains a report at the end; the draft-while-you-decide panel is what Guided is FOR."
  },
  {
   "id": "cross-deferral-destination",
   "step": "cross-step",
   "capability": "Deferral affordances name their destination on the control, and the coach ledger shows each waiting item with the step it comes back at",
   "classic": "(none) - Classic's ledger has no defer-to-step contract at all",
-  "state": "guided-only",
-  "reason": "GUIDED-008, and the narrower sibling of cross-deferral-resurface. The API has always rejected a deferral without a target_step, so the destination existed at click time and the button did not say it. ml/router.defer_destination now decides it - structural repairs to Explore, profile findings to Preprocess - and the label travels on every finding. Classic cannot express the contract, so this is owed back with the resurface guarantee, not separately."
+  "state": "guided-native",
+  "reason": "GUIDED-008, and the narrower sibling of cross-deferral-resurface. The API has always rejected a deferral without a target_step, so the destination existed at click time and the button did not say it. ml/router.defer_destination now decides it - structural repairs to Explore, profile findings to Preprocess - and the label travels on every finding. Classic cannot express the contract, so this is owed back with the resurface guarantee, not separately. L18 DISPOSITION: guided-native. Same: a deferral affordance that names its destination presupposes a component that owns 'which step can act on this'. Without a Router there is no destination to name."
  },
  {
   "id": "explore-blocker-costume",
   "step": "explore",
   "capability": "The CONSEQUENCE treatment: small-caps BLOCKER signal word, full-width interruption band in --stop, the reserved notched glyph, two terminal exits",
   "classic": "(none) - Classic renders a leakage warning box in the same style as every other warning",
-  "state": "guided-only",
-  "reason": "DESIGN_LANGUAGE §09. The costume is what makes the tier legible before a word is read, and it is reserved: --stop, the signal word and the notched square appear in exactly one component, enforced by a test that scans the page for the tokens outside it. Both exits are terminal - Resolve drops the column through import_doctor's own drop_columns repair, Acknowledge records the typed object-specific sentence - and the blocker never re-fires on the same facts afterwards. Classic has no acknowledgment path and no reserved tier; owed to Classic with explore-blocker-acknowledgment at L11."
+  "state": "guided-native",
+  "reason": "DESIGN_LANGUAGE §09. The costume is what makes the tier legible before a word is read, and it is reserved: --stop, the signal word and the notched square appear in exactly one component, enforced by a test that scans the page for the tokens outside it. Both exits are terminal - Resolve drops the column through import_doctor's own drop_columns repair, Acknowledge records the typed object-specific sentence - and the blocker never re-fires on the same facts afterwards. Classic has no acknowledgment path and no reserved tier; owed to Classic with explore-blocker-acknowledgment at L11. L18 DISPOSITION: guided-native. The CONSEQUENCE treatment — signal word, full-width interruption, the silhouette surviving color and typography removal. A visual grammar, and grammars do not port as capabilities."
  },
  {
   "id": "target-why-we-ask",
   "step": "data-target",
   "capability": "Every question of fact carries a 'Why we ask' disclosure naming who consumes the answer and what changes; the Router refuses to emit one that cannot",
   "classic": "pages/01 help tooltips on the target and task-type widgets",
-  "state": "guided-only",
-  "reason": "DESIGN_LANGUAGE §09: 'A FACT that cannot state its consumer is a question we have no right to ask.' Classic's tooltips explain what the control does; they do not name what reads the answer or what changes downstream, which is the part that lets a user judge whether to think hard about it. The text lives on ml.router.Question.consumer and router.audit raises on a pushed question of fact without one, so the rule is enforced where a new question would have to pass it rather than in the page. The Router is shared, so Classic can adopt this by asking instead of computing - the same move readiness already made."
+  "state": "guided-native",
+  "reason": "DESIGN_LANGUAGE §09: 'A FACT that cannot state its consumer is a question we have no right to ask.' Classic's tooltips explain what the control does; they do not name what reads the answer or what changes downstream, which is the part that lets a user judge whether to think hard about it. The text lives on ml.router.Question.consumer and router.audit raises on a pushed question of fact without one, so the rule is enforced where a new question would have to pass it rather than in the page. The Router is shared, so Classic can adopt this by asking instead of computing - the same move readiness already made. L18 DISPOSITION: guided-native. Question grammar. DESIGN_LANGUAGE 09 says a FACT that cannot name its consumer is a question we have no right to ask, and it is enforced in router.audit(). Classic has no question objects to carry a consumer."
  },
  {
   "id": "cross-profile-row-scope",
@@ -565,7 +565,7 @@
   "capability": "The outcome is asked which of its levels is the event being predicted, never whether it is binary; the event is never pre-selected at any confidence",
   "classic": "(none) - Classic encodes a two-level target by whatever sklearn's LabelEncoder does with it",
   "state": "guided-only",
-  "reason": "GUIDED-009, on the product owner's ruling that the target's question is different in kind from a feature's. Classic does not ask. ml/splits.py:300 label-encodes a categorical target with LabelEncoder().fit_transform(y.astype(str)), which orders classes ALPHABETICALLY, so the event is whichever level sorts last - verified, not assumed. On messy-clinic that is 'responder' over 'non-responder', which happens to match convention; on the longitudinal fixture it is 'stable' over 'improved', so the model is trained to detect NOT improving, which is almost certainly backwards; and for alive/dead it makes death the event by alphabet. The choice is real, consequential and made by string ordering, with no place in the Classic interface where it is stated or changeable. Guided asks it as its own question, offers convention as a suggestion with the reasoning shown, and refuses to apply without a named level. Dated debt owed back to Classic per PRODUCT_VISION 'Guided is never the less capable door': it lands with the L11 convergence of pages/01, and until then Classic's encoding is alphabetical and undisclosed."
+  "reason": "GUIDED-009, on the product owner's ruling that the target's question is different in kind from a feature's. Classic does not ask. ml/splits.py:300 label-encodes a categorical target with LabelEncoder().fit_transform(y.astype(str)), which orders classes ALPHABETICALLY, so the event is whichever level sorts last - verified, not assumed. On messy-clinic that is 'responder' over 'non-responder', which happens to match convention; on the longitudinal fixture it is 'stable' over 'improved', so the model is trained to detect NOT improving, which is almost certainly backwards; and for alive/dead it makes death the event by alphabet. The choice is real, consequential and made by string ordering, with no place in the Classic interface where it is stated or changeable. Guided asks it as its own question, offers convention as a suggestion with the reasoning shown, and refuses to apply without a named level. Dated debt owed back to Classic per PRODUCT_VISION 'Guided is never the less capable door': it lands with the L11 convergence of pages/01, and until then Classic's encoding is alphabetical and undisclosed. L18 DISPOSITION: guided-only, and it stays guided-only because it is REAL DEBT — Classic is expected to gain this, and the count is what makes 'we owe Classic N things' a number rather than a feeling. Classic label-encodes a two-level target alphabetically, so the event is whichever level sorts last. That is a defect in Classic, not a difference in design model — Classic is owed the question."
  },
  {
   "id": "target-grain-question",
@@ -573,7 +573,7 @@
   "capability": "The grain question — \"Can one person appear in more than one row?\" — asked before the seal, with the heuristic demoted to a suggestion and a name-blind contradiction detector",
   "classic": "pages/01_Upload_and_Audit.py infers it: ensure_lockbox calls detect_repeated_subjects and seals on whatever the name-token gate returns. No control exists to declare the subject column (IMPORT-257).",
   "state": "guided-only",
-  "reason": "Built at L13 in turbotab/grain.py + project.set_grain + engine.draw_holdout, per constitution 02 and ASSEMBLY_SPEC 05. GUIDED-ONLY, NOT A SCOPING-DOWN, and dated: the forward path is Classic calling the same turbotab/grain.py functions from pages/01 at the L14 convergence of pages/01_Upload_and_Audit.py. grain.py is deliberately UI-free and imports only pandas plus utils/test_lockbox constants, so the convergence is a call-site change rather than a port — that is what makes the date credible rather than aspirational. Until it lands, IMPORT-020 and IMPORT-022 stay OPEN against Classic with the convergence phrase, and tests/test_the_seal_states_its_basis.py::test_KNOWN_GAP_an_unrecognized_id_name_is_still_recorded_as_cross_sectional stays GREEN because it pins Classic's ensure_lockbox, which still guesses. That test going red is the signal the convergence landed."
+  "reason": "Built at L13 in turbotab/grain.py + project.set_grain + engine.draw_holdout, per constitution 02 and ASSEMBLY_SPEC 05. GUIDED-ONLY, NOT A SCOPING-DOWN, and dated: the forward path is Classic calling the same turbotab/grain.py functions from pages/01 at the L14 convergence of pages/01_Upload_and_Audit.py. grain.py is deliberately UI-free and imports only pandas plus utils/test_lockbox constants, so the convergence is a call-site change rather than a port — that is what makes the date credible rather than aspirational. Until it lands, IMPORT-020 and IMPORT-022 stay OPEN against Classic with the convergence phrase, and tests/test_the_seal_states_its_basis.py::test_KNOWN_GAP_an_unrecognized_id_name_is_still_recorded_as_cross_sectional stays GREEN because it pins Classic's ensure_lockbox, which still guesses. That test going red is the signal the convergence landed. L18 DISPOSITION: guided-only, and it stays guided-only because it is REAL DEBT — Classic is expected to gain this, and the count is what makes 'we owe Classic N things' a number rather than a feeling. Lockbox constitution 02 binds both doors. IMPORT-020 and IMPORT-022 are Classic's versions of this defect and they are open."
  },
  {
   "id": "feat-polynomial",
@@ -628,8 +628,8 @@
   "step": "features",
   "capability": "Dimensionality reduction: PCA and UMAP components as features",
   "classic": "pages/03 tab 6 — method picker, n_components, compute",
-  "state": "guided-only",
-  "reason": "PCA is BUILT as a DEFERRED spec - recorded now, fitted inside each training fold - which is a stronger position than Classic's, where pages/03 computes components over the whole table and writes them to the working frame. Filed guided-only rather than both because the two doors do materially different things under the same name, and calling that parity would hide the difference. UMAP is NOT built: it is an optional dependency the app does not install, and its absence is a recorded decision rather than an oversight."
+  "state": "guided-native",
+  "reason": "PCA is BUILT as a DEFERRED spec - recorded now, fitted inside each training fold - which is a stronger position than Classic's, where pages/03 computes components over the whole table and writes them to the working frame. Filed guided-only rather than both because the two doors do materially different things under the same name, and calling that parity would hide the difference. UMAP is NOT built: it is an optional dependency the app does not install, and its absence is a recorded decision rather than an oversight. L18 DISPOSITION: guided-native. Not a missing capability — Classic HAS PCA, at pages/03, computed over the whole table and written to the working frame. Guided's version is a deferred spec fitted inside training folds. Calling this debt would say Classic owes itself a different implementation of something it already has; the difference is clause 06's design model, and that is what guided-native names."
  },
  {
   "id": "feat-tda",
@@ -652,8 +652,8 @@
   "step": "features",
   "capability": "Feature selection by LASSO, RFE-CV, univariate, and stability selection",
   "classic": "pages/04 — checkboxes per method, run, consensus across methods",
-  "state": "guided-only",
-  "reason": "BUILT as declarations. Five methods (mutual_info, lasso, rfe, univariate, stability), each producing a spec that a per-model pipeline fits inside each training fold; turbotab/selection.py never selects. Guided-only, and the reason is the point: Classic RUNS selection and stores a result, Guided RECORDS what will be selected. Those are different objects, so this is not parity."
+  "state": "guided-native",
+  "reason": "BUILT as declarations. Five methods (mutual_info, lasso, rfe, univariate, stability), each producing a spec that a per-model pipeline fits inside each training fold; turbotab/selection.py never selects. Guided-only, and the reason is the point: Classic RUNS selection and stores a result, Guided RECORDS what will be selected. Those are different objects, so this is not parity. L18 DISPOSITION: guided-native. Same shape, and sharper: Classic RUNS selection and stores a result, Guided RECORDS what will be selected. Both doors have the five methods. The difference is declaration-versus-execution, which is constitution 06 rather than a gap in Classic's feature list. The row's original text already said 'those are different things' and then filed it as debt anyway."
  },
  {
   "id": "feat-selection-consensus",
@@ -725,7 +725,7 @@
   "capability": "The eligibility question — is your study restricted to part of this data? — asked pre-seal in scientific terms, with the target's distribution withheld",
   "classic": "NOT PRESENT. pages/01 and pages/02 have no eligibility step; the nearest thing is the pages/05 plausibility filter, which is a robustness trim and is post-seal, which is exactly the pair constitution 04 says are different objects.",
   "state": "guided-only",
-  "reason": "BUILT in Guided at L16 as `turbotab/eligibility.py` plus `state_eligibility` on the Router. GUIDED-ONLY, and it is a debt owed back to Classic rather than a Guided luxury: clause 04 binds both doors, and Classic currently has no way for a user to state an exclusion criterion at all, so a restriction they apply by hand in Excel before uploading is invisible to participant flow. The register's fourth state exists for exactly this. The withheld distribution is the part Classic would have to import as well - `permitted_evidence` returns observed min/max, missing count and impossible-value flags and nothing else, because an eligibility criterion comes from the research question and not from the histogram."
+  "reason": "BUILT in Guided at L16 as `turbotab/eligibility.py` plus `state_eligibility` on the Router. GUIDED-ONLY, and it is a debt owed back to Classic rather than a Guided luxury: clause 04 binds both doors, and Classic currently has no way for a user to state an exclusion criterion at all, so a restriction they apply by hand in Excel before uploading is invisible to participant flow. The register's fourth state exists for exactly this. The withheld distribution is the part Classic would have to import as well - `permitted_evidence` returns observed min/max, missing count and impossible-value flags and nothing else, because an eligibility criterion comes from the research question and not from the histogram. L18 DISPOSITION: guided-only, and it stays guided-only because it is REAL DEBT — Classic is expected to gain this, and the count is what makes 'we owe Classic N things' a number rather than a feeling. Lockbox constitution 04 binds both doors, and Classic has no way for a user to state an exclusion criterion at all, so a restriction applied by hand before upload is invisible to participant flow."
  },
  {
   "id": "elig-participant-flow",
@@ -733,7 +733,7 @@
   "capability": "An exclusion records its participant-flow numbers - N before, N excluded, N after, and the reason - as a methods sentence",
   "classic": "NOT PRESENT. The plausibility filter drops rows and reports a count on screen; it writes no criterion, no reason, and nothing a flow diagram can consume.",
   "state": "guided-only",
-  "reason": "BUILT in Guided at L16. TRIPOD+AI names continuous-variable restrictions as an eligibility item reported in participant flow, so the numbers are the deliverable rather than a side effect. A restriction with no stated reason is REFUSED: participant flow reports how many AND why, and a criterion that cannot be written down as a methods sentence should not be applied. The excluded rows' LABELS are deliberately not stored - participant flow needs the count, and keeping the labels would be a second copy of the row identities of people who are no longer in the study."
+  "reason": "BUILT in Guided at L16. TRIPOD+AI names continuous-variable restrictions as an eligibility item reported in participant flow, so the numbers are the deliverable rather than a side effect. A restriction with no stated reason is REFUSED: participant flow reports how many AND why, and a criterion that cannot be written down as a methods sentence should not be applied. The excluded rows' LABELS are deliberately not stored - participant flow needs the count, and keeping the labels would be a second copy of the row identities of people who are no longer in the study. L18 DISPOSITION: guided-only, and it stays guided-only because it is REAL DEBT — Classic is expected to gain this, and the count is what makes 'we owe Classic N things' a number rather than a feeling. Same clause. Classic's plausibility filter drops rows and reports a count on screen, writing no criterion and no reason a flow diagram can consume."
  },
  {
   "id": "trim-arms-obligation",
@@ -741,7 +741,7 @@
   "capability": "A post-seal robustness trim narrows the training partition only and ARMS the extrapolation obligation the report must discharge",
   "classic": "PARTIAL and in the wrong direction. pages/05_Preprocess.py's apply_plausibility_filter narrows rows, and since L13 it restores the sealed rows it would otherwise have removed - so it obeys clause 04. It arms nothing: no record survives the step, so pages/07 exports a single aggregate metric with nothing to object.",
   "state": "guided-only",
-  "reason": "BUILT in Guided at L16 as the ARMING half of clause 05 only. GUIDED-ONLY and owed back to Classic, which has the trim and not the memory. The obligation carries the count of HELD-OUT rows outside the trimmed range, computed at trim time because it is unrecoverable afterwards - the training rows outside the range are gone by then. The FIRING half - export refuses without a stratified in-range / out-of-range breakdown - is deliberately NOT built and is tracked as STATE-105: there is no Report step, and a blocker with nothing to block cannot be tested, which would make it the half-built clause the split exists to prevent."
+  "reason": "BUILT in Guided at L16 as the ARMING half of clause 05 only. GUIDED-ONLY and owed back to Classic, which has the trim and not the memory. The obligation carries the count of HELD-OUT rows outside the trimmed range, computed at trim time because it is unrecoverable afterwards - the training rows outside the range are gone by then. The FIRING half - export refuses without a stratified in-range / out-of-range breakdown - is deliberately NOT built and is tracked as STATE-105: there is no Report step, and a blocker with nothing to block cannot be tested, which would make it the half-built clause the split exists to prevent. L18 DISPOSITION: guided-only, and it stays guided-only because it is REAL DEBT — Classic is expected to gain this, and the count is what makes 'we owe Classic N things' a number rather than a feeling. Lockbox constitution 05 binds both doors. Classic has the trim and not the memory, so pages/07 exports a single aggregate metric with nothing left to object."
  },
  {
   "id": "prep-numeric-imputation",
@@ -773,7 +773,7 @@
   "capability": "Ask whether missingness is INFORMATIVE before choosing how to fill it",
   "classic": "NOT PRESENT. pages/05 offers imputation strategies and a missing-indicator checkbox, and never asks whether a blank could mean something. The mechanism question is not asked in either door.",
   "state": "guided-only",
-  "reason": "BUILT, and it did not exist in either door before L17. `Could a blank in X mean something?` is asked PER COLUMN and BEFORE the strategy, which is the ordering clause 07 requires - asked the other way round, a column that carried information gets a median written over it by a well-meaning default. A FACT that is never skippable, for the same reason as the grain: the app cannot know. `I'm not sure` is first-class and deliberately does NOT block. OWED BACK TO CLASSIC: pages/05 offers imputation strategies and never asks the mechanism."
+  "reason": "BUILT, and it did not exist in either door before L17. `Could a blank in X mean something?` is asked PER COLUMN and BEFORE the strategy, which is the ordering clause 07 requires - asked the other way round, a column that carried information gets a median written over it by a well-meaning default. A FACT that is never skippable, for the same reason as the grain: the app cannot know. `I'm not sure` is first-class and deliberately does NOT block. OWED BACK TO CLASSIC: pages/05 offers imputation strategies and never asks the mechanism. L18 DISPOSITION: guided-only, and it stays guided-only because it is REAL DEBT — Classic is expected to gain this, and the count is what makes 'we owe Classic N things' a number rather than a feeling. Lockbox constitution 07 binds both doors. pages/05 offers imputation strategies and never asks the mechanism."
  },
  {
   "id": "prep-outcome-out-of-imputation",
@@ -781,7 +781,7 @@
   "capability": "The outcome is never placed in the imputation model",
   "classic": "NOT ASKED AND NOT ASSERTED on pages/05. MICE is offered as 'models each feature conditioned on others' with no statement about which columns are in scope.",
   "state": "guided-only",
-  "reason": "BUILT as a REFUSAL rather than a setting. Passing the target inside a MICE scope raises, and no acknowledgment gets round it - unlike the informative-missingness blocker, which a user may legitimately override. Clause 07 says it is a blocker in ANY configuration, so it is not offered as a choice. OWED BACK TO CLASSIC: pages/05 describes MICE as 'models each feature conditioned on others' and says nothing about which columns are in scope."
+  "reason": "BUILT as a REFUSAL rather than a setting. Passing the target inside a MICE scope raises, and no acknowledgment gets round it - unlike the informative-missingness blocker, which a user may legitimately override. Clause 07 says it is a blocker in ANY configuration, so it is not offered as a choice. OWED BACK TO CLASSIC: pages/05 describes MICE as 'models each feature conditioned on others' and says nothing about which columns are in scope. L18 DISPOSITION: guided-only, and it stays guided-only because it is REAL DEBT — Classic is expected to gain this, and the count is what makes 'we owe Classic N things' a number rather than a feeling. Lockbox constitution 07, and it is the hardest kind of debt: Classic offers MICE with no statement about which columns are in scope, so the defect is reachable today."
  },
  {
   "id": "prep-stability-assumption",
@@ -789,7 +789,7 @@
   "capability": "Record the stability assumption - that missingness means the same thing at deployment - as a methods assumption",
   "classic": "NOT PRESENT. No page records it; nothing in the manuscript surface carries it.",
   "state": "guided-only",
-  "reason": "BUILT. Stating a mechanism as informative records the stability assumption on the declaration - that a blank will mean the same thing wherever the model is deployed, which is not checkable from this dataset because missingness patterns are a property of how a site collects data. Recorded as an ASSUMPTION rather than a warning, and the distinction is the point: a warning is dismissed, an assumption is carried by a manuscript. OWED BACK TO CLASSIC."
+  "reason": "BUILT. Stating a mechanism as informative records the stability assumption on the declaration - that a blank will mean the same thing wherever the model is deployed, which is not checkable from this dataset because missingness patterns are a property of how a site collects data. Recorded as an ASSUMPTION rather than a warning, and the distinction is the point: a warning is dismissed, an assumption is carried by a manuscript. OWED BACK TO CLASSIC. L18 DISPOSITION: guided-only, and it stays guided-only because it is REAL DEBT — Classic is expected to gain this, and the count is what makes 'we owe Classic N things' a number rather than a feeling. Lockbox constitution 07. No Classic page records it and nothing in its manuscript surface carries it."
  },
  {
   "id": "prep-numeric-scaling",
