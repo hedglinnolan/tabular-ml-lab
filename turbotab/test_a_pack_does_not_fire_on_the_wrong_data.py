@@ -222,7 +222,12 @@ def test_the_survey_pack_reads_its_own_fixture_and_refuses_to_guess():
         assert f"reverse" not in blob.lower() or item not in ordinal["params"].get(
             "reverse_coded", []), "the pack inferred reverse-coding"
     assert "reverse_coded" not in ordinal["params"]
-    assert P.PACKS[P.SURVEY].priors["reverse_coding"]["variant"] is None
+    reverse = P.priors([P.SURVEY], "reverse_coding", df)
+    assert [r["variant"] for r in reverse] == [None], (
+        "the pack named the reverse-coded items; it must ask for them")
+    assert reverse[0]["marker"] == "offered"
+    # Scoped to the instrument's own items, not to the table (`GUIDED-027`).
+    assert set(reverse[0]["columns"]) == set(ordinal["params"]["columns"])
 
 
 def test_the_genomics_pack_recognizes_the_shape_and_asserts_no_normalization():
@@ -245,10 +250,17 @@ def test_the_genomics_pack_recognizes_the_shape_and_asserts_no_normalization():
     # to prevent. The key is PRESENT and its variant is None — an absent key
     # would be indistinguishable from a pack that never considered the question.
     assert counts["params"]["normalization_default"] is None
-    prior = P.PACKS[P.GENOMICS].priors["normalization"]
-    assert "normalization" in P.PACKS[P.GENOMICS].priors
-    assert prior["variant"] is None
-    assert prior["marker"] == "offered"
+    prior = P.priors([P.GENOMICS], "normalization",
+                     load("genomics_expression"))
+    assert len(prior) == 1, "the considered refusal must be RECORDED"
+    assert prior[0]["variant"] is None
+    assert prior[0]["marker"] == "offered"
+    assert prior[0]["scope"] == P.DATASET
+
+    # AND NOTHING REACHED THE RECIPE TABLE. The recipe table is canonical for
+    # variant preferences, so a genomics pack that registered a normalization
+    # default would be asserting one — the absence here IS the position.
+    assert P.recipe_origins([P.GENOMICS]) == []
 
 
 def test_the_clinical_pack_is_one_prior_and_no_findings():
@@ -259,8 +271,8 @@ def test_the_clinical_pack_is_one_prior_and_no_findings():
     for fixture in FIXTURES:
         assert P.findings(load(fixture), [P.CLINICAL]) == []
 
-    clinical = P.PACKS[P.CLINICAL].priors["missingness_direction"]
-    metabolomics = P.PACKS[P.METABOLOMICS].priors["missingness_direction"]
+    clinical = P.priors([P.CLINICAL], "missingness_direction")[0]
+    metabolomics = P.priors([P.METABOLOMICS], "missingness_direction")[0]
     assert clinical["mechanism"] == "not_ordered"
     assert metabolomics["mechanism"] == "below_detection_limit"
     assert clinical["mechanism"] != metabolomics["mechanism"]
@@ -270,6 +282,10 @@ def test_the_clinical_pack_is_one_prior_and_no_findings():
     # silently winning.
     both = P.priors([P.CLINICAL, P.METABOLOMICS], "missingness_direction")
     assert {p["pack"] for p in both} == {P.CLINICAL, P.METABOLOMICS}
+
+    # The clinical prior is `offered`, so it informs the mechanism question and
+    # never removes it. Only `derived` reaches the skip rule.
+    assert clinical["marker"] == "offered"
 
 
 # ── reframing changes the answer, never the question ─────────────────────────
@@ -382,3 +398,161 @@ def test_detection_is_a_suggestion_and_a_contradiction_detector_never_the_answer
     # And it stays quiet when the answer fits the shape.
     assert P.contradiction(metab, [P.METABOLOMICS]) is None
     assert P.contradiction(load("clinic_visits"), [P.CLINICAL]) is None
+
+
+# ── the priors layer, wired · GUIDED-024 / 025 / 027 ─────────────────────────
+
+def test_a_derived_column_prior_turns_a_mechanism_question_into_a_stated_fact():
+    """`GUIDED-024`: metabolomics, the flagship pack, changed zero questions.
+
+    `DOMAIN_PACKS.md` §02's table is explicit about the intended result — with a
+    metabolomics lens, *"how should missing values be filled?"* leaves the
+    question list. On `metabolomics_untargeted.csv` that is 308 columns with
+    blanks, so the layer being inert was not a rounding error.
+
+    Discharges `lockbox-01`: the lens comes first, and this is what it buys.
+    """
+    df = load("metabolomics_untargeted")
+    with_blanks = [str(c) for c in df.columns if df[c].isna().any()]
+    assert len(with_blanks) > 300
+
+    def plan_for(lens):
+        pri = {c: P.prior_for_column(lens, "missingness_direction", c, df)
+               for c in with_blanks} if lens else {}
+        plan = router.plan([], target="responder", detection=None,
+                           step="preprocess", deferred={},
+                           answered=["choose_models", "choose_preparation_mode"],
+                           recommendations=[], signals=None,
+                           missing_columns=with_blanks, missingness_priors=pri)
+        router.audit(plan)
+        return ([q for q in plan if q.mode == "push" and q.status == "asked"],
+                [q for q in plan if q.status == "skipped"])
+
+    asked, skipped = plan_for([])
+    assert len(asked) == len(with_blanks) and not skipped
+
+    asked, skipped = plan_for([P.METABOLOMICS])
+    assert len(skipped) > 300, "the derived prior did not reach the question"
+    assert len(asked) < 5
+
+    # Every skip carries the PACK'S OWN reason and the reopen affordance —
+    # `audit()` refuses a skip without one, and a skip whose reason was written
+    # at the router would be a second copy of the pack's sentence.
+    reason = P.priors([P.METABOLOMICS], "missingness_direction", df)[0]["reason"]
+    assert all(q.skip_reason and reason in q.skip_reason for q in skipped)
+    assert all(q.confidence == "high" for q in skipped)
+
+
+def test_an_offered_prior_informs_the_question_and_never_removes_it():
+    """Only `derived` reaches the skip rule. The clinical pack's prior is
+    `offered` — it supplies the reading, not the answer."""
+    df = load("metabolomics_untargeted")
+    with_blanks = [str(c) for c in df.columns if df[c].isna().any()]
+    pri = {c: P.prior_for_column([P.CLINICAL], "missingness_direction", c, df)
+           for c in with_blanks}
+    plan = router.plan([], target="responder", detection=None, step="preprocess",
+                       deferred={}, answered=["choose_models",
+                                              "choose_preparation_mode"],
+                       recommendations=[], signals=None,
+                       missing_columns=with_blanks, missingness_priors=pri)
+    router.audit(plan)
+    assert not [q for q in plan if q.status == "skipped"]
+
+
+def test_two_packs_disagreeing_about_a_column_leaves_the_question_asked():
+    """The reason `priors()` returns a list, made operational.
+
+    `age` and `bmi` on the metabolomics fixture are blank on the QC rows AND are
+    clinical reference variables, so both packs have something to say about
+    them and they disagree. A skip taken on whichever prior happens to be
+    `derived` would resolve that silently, which is the one thing the list
+    return exists to prevent.
+    """
+    df = load("metabolomics_untargeted")
+    with_blanks = [str(c) for c in df.columns if df[c].isna().any()]
+    both = [P.METABOLOMICS, P.CLINICAL]
+    contested = [c for c in with_blanks
+                 if len(P.prior_for_column(both, "missingness_direction", c, df)) > 1]
+    assert contested, "the fixture no longer produces a contested column"
+
+    pri = {c: P.prior_for_column(both, "missingness_direction", c, df)
+           for c in with_blanks}
+    plan = router.plan([], target="responder", detection=None, step="preprocess",
+                       deferred={}, answered=["choose_models",
+                                              "choose_preparation_mode"],
+                       recommendations=[], signals=None,
+                       missing_columns=with_blanks, missingness_priors=pri)
+    router.audit(plan)
+    asked = {q.key for q in plan if q.status == "asked" and q.kind == "missingness"}
+    for col in contested:
+        assert f"missingness::{col}" in asked, (
+            f"{col} has two packs disagreeing about it and the question was "
+            f"skipped anyway")
+
+
+def test_a_column_prior_is_withheld_where_its_detector_did_not_fire():
+    """`GUIDED-027`. The scoping information already existed; it simply was not
+    used to scope the prior it justifies."""
+    df = load("dietary_recalls")
+    # No left-censoring here, so the metabolomics prior has nothing to be about
+    # and is withheld rather than applied to the table.
+    assert P.priors([P.METABOLOMICS], "missingness_direction", df) == []
+    # Unscoped, the declaration is still readable — a caller reading the
+    # catalogue rather than a dataset wants that.
+    assert len(P.priors([P.METABOLOMICS], "missingness_direction")) == 1
+
+    metab = load("metabolomics_untargeted")
+    scoped = P.priors([P.METABOLOMICS], "missingness_direction", metab)[0]
+    assert scoped["scope"] == P.COLUMNS
+    assert len(scoped["columns"]) > 300
+    # And it does NOT claim the columns its detector never named.
+    assert "run_order" not in scoped["columns"]
+
+
+def test_a_pack_variant_preference_lives_in_the_recipe_table(monkeypatch):
+    """`GUIDED-025`: the recipe table is canonical, and the packs now reach it.
+
+    Two mechanisms that never met — `register_operation` / `register_default`
+    with specificity resolution and origin tracking, proven by the fake-pack
+    test and called by no real pack, beside a prior dict nothing resolved.
+    """
+    from turbotab import recipes as R
+    state = R.snapshot()
+    P.unload_for_test()
+    try:
+        assert R.resolve("ridge", "scale").variant == "standard"
+        assert R.resolve("ridge", "power").variant == "none"
+
+        P.load([P.METABOLOMICS])
+
+        scaled = R.resolve("ridge", "scale")
+        assert scaled.variant == "pareto"
+        assert scaled.origin == "metabolomics_pack"
+        assert "Pareto" in scaled.reason
+        # Stated AS convention, never in the user's name.
+        assert "The field convention here" in scaled.reason
+        assert "you should" not in scaled.reason.lower()
+
+        powered = R.resolve("ridge", "power")
+        assert powered.variant == "log1p"
+        assert powered.origin == "metabolomics_pack"
+
+        # A tree still gets no scaling: the pack overrode the capability rule,
+        # not the `*` rule, so specificity still decides.
+        assert R.resolve("extratrees_reg", "scale").variant == "none"
+    finally:
+        R.restore(state)
+        P.unload_for_test()
+
+
+def test_loading_a_pack_twice_registers_it_once():
+    from turbotab import recipes as R
+    state = R.snapshot()
+    P.unload_for_test()
+    try:
+        assert P.load([P.METABOLOMICS]) == [P.METABOLOMICS]
+        assert P.load([P.METABOLOMICS]) == []
+        assert len(P.recipe_origins([P.METABOLOMICS])) == 2
+    finally:
+        R.restore(state)
+        P.unload_for_test()

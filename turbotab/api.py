@@ -1116,8 +1116,14 @@ async def get_models(project_id: str) -> Dict[str, Any]:
                  "offered after the seal — the shape it reads must be the "
                  "shape the models will be fitted on.")
     entries = project.model_shelf()
+    from turbotab import packs as _packs
     return {
         "disclosure": _models.SHELF_DISCLOSURE,
+        # Dataset-scoped, and legitimately so: p much greater than n is a
+        # property of the shape rather than of any column. The shelf is ORDERED
+        # by this and never filtered by it — a competent researcher can have a
+        # reason for a tree ensemble at p >> n.
+        "priors": _packs.priors(project.lens or [], "model_ranking", project.df),
         "groups": _models.grouped(entries),
         "selected": project.selected_models,
         "n_available": len(entries),
@@ -1145,8 +1151,12 @@ async def get_recipes(project_id: str) -> Dict[str, Any]:
     derived, compared and found not to change the answer. A row with no pushed
     alternative is not counted — there was no question to suppress.
     """
-    from turbotab import recipes as _rec
+    from turbotab import packs as _packs, recipes as _rec
     project = _project(project_id)
+    # THE RECIPE TABLE IS CANONICAL for a pack's variant preferences
+    # (`GUIDED-025`), so the packs are loaded INTO it here and resolution reads
+    # one structure. Idempotent.
+    _packs.load(project.lens or [])
     numeric = [str(c) for c in project.df.columns
                if pd.api.types.is_numeric_dtype(project.df[c])
                and str(c) != (project.target or "")]
@@ -1187,6 +1197,12 @@ async def get_recipes(project_id: str) -> Dict[str, Any]:
                                                 for p in o.pushed_alternatives]}
                        for o in _rec.operations()],
         "n_choices_suppressed": suppressed,
+        # Read back out of the recipe table rather than mirrored from the pack,
+        # because a second copy of what a pack registered is the drift
+        # `GUIDED-025` names, one level down.
+        "pack_defaults": _packs.recipe_origins(project.lens or []),
+        "normalization": _packs.priors(project.lens or [], "normalization",
+                                       project.df),
     }
 
 
@@ -1198,7 +1214,7 @@ async def get_preprocess(project_id: str) -> Dict[str, Any]:
     `defers`, so an interface can tell the user WHY a choice changes nothing on
     screen instead of leaving them to conclude the app did nothing.
     """
-    from turbotab import missingness as _miss
+    from turbotab import missingness as _miss, packs as _packs
     project = _project(project_id)
     survey = project.missingness_survey()
     return {
@@ -1211,6 +1227,16 @@ async def get_preprocess(project_id: str) -> Dict[str, Any]:
             "why": _miss.MECHANISM_WHY,
             "consumer": _miss.MECHANISM_CONSUMER,
             "options": list(_miss.MECHANISM_OPTIONS),
+            # One entry per column, because the prior is a fact about the
+            # column and not about the table. Where two packs disagree BOTH
+            # appear, named — a mixed table gets the assay reading on its
+            # features and the clinical reading on its labs, and where those
+            # collide the user is shown the collision rather than one of them.
+            "priors": {
+                r["column"]: _packs.prior_for_column(
+                    project.lens or [], "missingness_direction",
+                    r["column"], project.df)
+                for r in survey} if project.lens else {},
         },
         "declared": project.missingness,
         "settled": project.preprocess_settled,
@@ -1326,6 +1352,15 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
     from ml import router
 
     missing_columns = [r["column"] for r in project.missingness_survey()]
+    # The priors that apply to each column with blanks, resolved against the
+    # frame here because `ml/router.py` takes no dataframe. Column by column
+    # (`GUIDED-027`): a dataset-level "below the detection limit" would be
+    # wrong for most columns of an NHANES-shaped table.
+    from turbotab import packs as _packs
+    missingness_priors = {
+        col: _packs.prior_for_column(project.lens or [], "missingness_direction",
+                                     col, project.df)
+        for col in missing_columns} if project.lens else {}
     answered, deferred = [], {}
     for d in project.decisions:
         if d.kind == "set_lens":
@@ -1442,7 +1477,8 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
                                 deferred=deferred, answered=answered,
                                 recommendations=recommendations, signals=signals,
                                 missing_columns=missing_columns,
-                                lens_block=lens_block, repeats=repeats_state)
+                                lens_block=lens_block, repeats=repeats_state,
+                                missingness_priors=missingness_priors)
         router.audit(questions)
     except router.RouterError as exc:                      # noqa: B902
         # A plan that breaks a governing rule is not rendered at all.

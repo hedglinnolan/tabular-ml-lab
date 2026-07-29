@@ -166,6 +166,57 @@ def _is_assay_wide(df: pd.DataFrame, minimum: int = 30) -> bool:
     return len(_numeric(df)) >= minimum
 
 
+def _in_count_block(finding: Dict[str, Any], df: pd.DataFrame) -> bool:
+    """Is this finding's column part of the count matrix?"""
+    block = count_matrix(df)
+    if block is None:
+        return False
+    return str((finding.get("params") or {}).get("column")) in set(block["columns"])
+
+
+def _column_holds_no_numbers(finding: Dict[str, Any], df: pd.DataFrame) -> bool:
+    """`IMPORT-267`'s condition, measured rather than assumed.
+
+    A column no reading of which is numeric cannot mix measurement units. This
+    is a MEASUREMENT and not a domain claim, which is what makes it safe to
+    declare on more than one pack: it fires only where the engine has already
+    asserted something the column's own content refutes.
+    """
+    column = (finding.get("params") or {}).get("column")
+    if column is None or column not in df.columns:
+        return False
+    values = df[column].dropna().astype(str)
+    if values.empty:
+        return False
+    return float(pd.to_numeric(values.str.replace(r"[^\d.eE+-]", "", regex=True),
+                               errors="coerce").notna().mean()) == 0.0
+
+
+def clinical_reference_columns(df: pd.DataFrame) -> List[str]:
+    """Columns the engine's own reference matcher recognizes, that have blanks.
+
+    The clinical pack's `missingness_direction` prior is scoped to these
+    (`GUIDED-027`). On an NHANES-shaped table that is the labs and not the
+    questionnaire items beside them, which is the whole point of the finding.
+
+    Goes through `match_variable_key`, which is exact against the key or a
+    declared alias — never a substring. Borrowing the vetted matcher is the
+    opposite of adding a fifth name list.
+    """
+    try:
+        from ml.physiology_reference import load_reference_bundle, match_variable_key
+        reference = load_reference_bundle()["nhanes"]
+    except Exception:                                      # pragma: no cover
+        return []
+    out = []
+    for c in df.columns:
+        if not pd.api.types.is_numeric_dtype(df[c]):
+            continue
+        if match_variable_key(str(c), reference) and bool(df[c].isna().any()):
+            out.append(str(c))
+    return out
+
+
 def _finding(fid: str, severity: str, title: str, detail: str,
              why: str, *, confidence: str, pack: str, marker: str,
              columns: Sequence[str] = (), params: Optional[Dict] = None,
@@ -237,6 +288,11 @@ def _left_censored(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
         columns=list(worst.index[:8]),
         params={"rho": round(float(rho), 3), "n_features": len(usable),
                 "n_with_blanks": len(with_blanks),
+                # THE FULL LIST, not the eight the card shows. The prior this
+                # finding justifies is scoped to these columns (`GUIDED-027`),
+                # and a prior scoped to a display truncation would be wrong
+                # about 296 of them.
+                "columns": list(worst.index),
                 "suggested_method": "half_minimum"})
 
 
@@ -489,7 +545,8 @@ def _energy_adjustment(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
          "fact."),
         confidence="high", pack=DIETARY, marker="derived",
         columns=[col],
-        params={"energy_column": col, "default_form": "residual",
+        params={"energy_column": col, "columns": [col],
+                "default_form": "residual",
                 "alternative": "nutrient_density"})
 
 
@@ -654,72 +711,61 @@ def _counts_at_p_over_n(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
 _ASSAY_PACKS = (METABOLOMICS, GENOMICS)
 
 
-def _wide_shape_note(lens: Sequence[str], df: pd.DataFrame) -> Optional[str]:
-    if METABOLOMICS in lens and _is_assay_wide(df):
-        return ("These are different analytes, not one analyte measured "
-                "several times. An untargeted panel names its features by mass "
-                "and retention time, which reads as a numbered series to a "
-                "general-purpose importer. Reshaping to long format would "
-                "rebuild what a row is and is not what this table needs.")
-    if GENOMICS in lens and count_matrix(df) is not None:
-        return ("These are different genes, not one gene measured several "
-                "times. Reshaping to long format would rebuild what a row is.")
-    if SURVEY in lens and likert_block(df) is not None:
-        return ("These are the items of one instrument, not one quantity "
-                "measured several times. Items are combined by scoring the "
-                "scale, which is a decision about the instrument, not by "
-                "reshaping the table.")
-    return None
-
-
 def reframe(findings: List[Dict[str, Any]], lens: Sequence[str],
             df: pd.DataFrame) -> List[Dict[str, Any]]:
     """Annotate engine findings the lens reads differently. Never deletes one.
+
+    **An extension point rather than a list of finding IDs** (`GUIDED-028`'s
+    sibling). The first version covered exactly two hardcoded ids, so a pack
+    could not contribute a reframing at all — and `IMPORT-267`, a `critical`
+    asserting that a column of education levels mixes measurement units, was
+    exactly the false alarm a lens should kill and could not. Every reframing
+    now comes from a `Reframing` declared on a pack, and adding one is adding a
+    declaration.
 
     **Annotation, not suppression**, and the distinction is the guard. A pack
     that DELETED `wide_repeated_measures` would also delete it on
     `clinic_visits.csv`, where `bp_1`/`bp_2`/`bp_3` is exactly what the finding
     is for and the reading is correct. What changes here is the ANSWER —
-    severity drops to `info`, the offer is withdrawn, and the reason is carried
-    on the finding so the record can say which lens said so.
+    severity drops, the offer is withdrawn, and the reason is carried on the
+    finding so the record can say which lens said so.
 
     Returns a new list; the input findings are copied rather than mutated,
     because two callers reading one finding must not see each other's edits.
     """
-    lens = list(lens or [])
-    if not lens or lens == [OTHER]:
+    chosen = normalize_quiet(lens)
+    if not chosen or chosen == [OTHER]:
         return list(findings)
 
     out: List[Dict[str, Any]] = []
-    wide_note = _wide_shape_note(lens, df)
-    counts = count_matrix(df) if GENOMICS in lens else None
-    count_cols = set(counts["columns"]) if counts else set()
-
     for raw in findings:
         f = dict(raw)
-        if f.get("id") == "wide_repeated_measures" and wide_note:
-            f["severity"] = "info"
-            f["fix_kind"] = "none"
-            f["fix_label"] = ""
-            f["reframed_by"] = [k for k in lens if k in
-                                (METABOLOMICS, GENOMICS, SURVEY)]
-            f["reframe_note"] = wide_note
-            f["title"] = "The wide shape is expected here"
-        elif (f.get("id", "").startswith("sentinel_missing__")
-              and count_cols
-              and str((f.get("params") or {}).get("column")) in count_cols):
-            f["severity"] = "info"
-            f["fix_kind"] = "none"
-            f["fix_label"] = ""
-            f["reframed_by"] = [GENOMICS]
-            f["reframe_note"] = (
-                "This is a count column, and a small integer in a "
-                "low-expression gene is a count rather than a missing-value "
-                "code. The detector reads an integral column with few distinct "
-                "values as a coded variable, which is the right reading for a "
-                "survey item and the wrong one for a transcript count.")
-            f["title"] = (f"`{(f.get('params') or {}).get('column')}` holds low "
-                          f"counts, not missing-value codes")
+        applied: List[str] = []
+        for key in chosen:
+            for rule in PACKS[key].reframings:
+                try:
+                    if not rule.matches(f, df):
+                        continue
+                except Exception:
+                    # A reframing that cannot read this finding declines it.
+                    # Losing one reading must not lose the whole diagnosis, and
+                    # it must not be quiet about having failed either.
+                    from turbotab import devchecks
+                    devchecks.swallowed(
+                        f"packs.{key}::reframing", _last_exception(),
+                        f"a reframing of {f.get('id')!r} was skipped, so the "
+                        f"engine's original reading stands unannotated")
+                    continue
+                if key not in applied:
+                    applied.append(key)
+                f["severity"] = rule.severity
+                f["fix_kind"] = "none"
+                f["fix_label"] = ""
+                f["reframe_note"] = rule.note(f, df)
+                if rule.title is not None:
+                    f["title"] = rule.title(f, df)
+        if applied:
+            f["reframed_by"] = applied
         out.append(f)
     return out
 
@@ -728,117 +774,383 @@ def reframe(findings: List[Dict[str, Any]], lens: Sequence[str],
 # The packs
 # ─────────────────────────────────────────────────────────────────────────────
 
+DATASET = "dataset"
+COLUMNS = "columns"
+
+
+@dataclass(frozen=True)
+class Prior:
+    """One thing a pack believes about a question that already exists.
+
+    A prior is not a finding and never becomes a question. It changes what the
+    existing question DEFAULTS to, and states why.
+
+    **Scope is the field `GUIDED-027` was filed about.** `missingness_direction`
+    is not a fact about a table — it is a fact about each column. NHANES-shaped
+    data holds dietary columns, lab columns and questionnaire columns side by
+    side, and a dataset-level *"below the detection limit"* prior is wrong for
+    most of them. So a prior says which it is, and a `columns`-scoped prior
+    names its `detector`: the columns it applies to are **the ones that
+    detector identified**, not every column in the table.
+
+    `model_ranking` is genuinely a fact about the dataset — p ≫ n is a property
+    of the shape — and stays `DATASET`.
+    """
+    question: str
+    marker: str                     # derived | convention | offered
+    reason: str
+    scope: str = DATASET
+    # For a `COLUMNS`-scoped prior: the detector whose `params["columns"]` names
+    # the columns this prior applies to. A columns-scoped prior with no detector
+    # would apply to everything, which is the defect being repaired.
+    detector: Optional[str] = None
+    values: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.marker not in ("derived", "convention", "offered"):
+            raise PackError(
+                f"{self.question}: marker must be derived, convention or "
+                f"offered. The marker governs the treatment, so a prior "
+                f"without one cannot be rendered honestly.")
+        if self.scope == COLUMNS and not self.detector:
+            raise PackError(
+                f"{self.question}: a column-scoped prior must name the "
+                f"detector whose columns it applies to. Without one it applies "
+                f"to every column, which is `GUIDED-027` restated.")
+        if len(self.reason) <= 40:
+            raise PackError(
+                f"{self.question}: a prior states its reason. That reason is "
+                f"what the user reads beside the default, so a prior without "
+                f"one raises confidence without earning it.")
+
+
+@dataclass(frozen=True)
+class Reframing:
+    """A finding this pack reads differently, and the sentence it reads it with.
+
+    **The extension point `GUIDED-028`'s sibling `reframe()` did not have.** The
+    first version covered two hardcoded finding IDs, so a pack could not
+    contribute a reframing at all — and `IMPORT-267`, a `critical` asserting
+    that a column of education levels mixes measurement units, is exactly the
+    false alarm a lens should kill and could not.
+
+    `matches` receives the finding and the frame and returns True when this
+    pack reads it differently. `annotate` never deletes: deleting
+    `wide_repeated_measures` would also delete it on `clinic_visits.csv`, where
+    `bp_1`/`bp_2`/`bp_3` is precisely what the finding is for.
+    """
+    matches: Callable[[Dict[str, Any], pd.DataFrame], bool]
+    note: Callable[[Dict[str, Any], pd.DataFrame], str]
+    title: Optional[Callable[[Dict[str, Any], pd.DataFrame], str]] = None
+    severity: str = "info"
+
+
 @dataclass(frozen=True)
 class Pack:
     key: str
     label: str
     detectors: Tuple[Callable[[pd.DataFrame], Optional[Dict[str, Any]]], ...] = ()
-    # Priors the pack sets on questions that already exist. A prior is not a
-    # finding and never becomes a question — it changes what the existing
-    # question DEFAULTS to and states why.
-    priors: Dict[str, Any] = field(default_factory=dict)
+    # Priors the pack sets on questions that already exist.
+    priors: Tuple[Prior, ...] = ()
+    # Findings this pack reads differently. Declared, not hardcoded in
+    # `reframe()`.
+    reframings: Tuple[Reframing, ...] = ()
+    # THE RECIPE TABLE IS CANONICAL for anything that resolves to a variant of
+    # a preprocessing operation (`GUIDED-025`). A pack's variant preferences
+    # live here as `recipes.Operation` / `recipes.Default` and are registered at
+    # pack-load time — never as a parallel dict that nothing resolves. The
+    # callable is deferred so importing this module does not mutate the recipe
+    # table as a side effect.
+    recipes: Optional[Callable[[], None]] = None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The recipe table is where a pack's VARIANT preferences live
+#
+# `GUIDED-025`: `recipes.py` exposed `register_operation` and `register_default`
+# with specificity resolution, origin tracking and a refusal for silent
+# shadowing, all proven by the fake-pack test — and no real pack called either,
+# while the packs declared their variant preferences in a parallel dict nothing
+# resolved. Two extension mechanisms that did not meet.
+#
+# **The recipe table is canonical.** A prior that names an operation and a
+# variant belongs there, because that is the structure that resolves it, records
+# where it came from, and refuses to shadow core silently. `priors()` reads both
+# homes so a consumer still has one entry point, and each fact has exactly one.
+#
+# Registration is deferred until a pack is LOADED — importing this module must
+# not mutate the recipe table, or every test that touches recipes inherits five
+# packs it never asked for.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_LOADED: set = set()
+
+
+def _metabolomics_recipes() -> None:
+    from turbotab import recipes as _rec
+
+    # Pareto scaling is not a variant core knows, so the operation is SHADOWED
+    # — deliberately, with the flag `register_operation` demands. Everything
+    # except the variant list and the pushed pair is copied from core rather
+    # than reworded: a shadow that quietly rewrites the litmus answer would be
+    # a pack changing a classification nobody can see.
+    core = _rec.operation("scale")
+    _rec.register_operation(
+        _rec.Operation(
+            key="scale", label=core.label,
+            variants=tuple(core.variants) + ("pareto",),
+            determinacy=core.determinacy, scope=core.scope,
+            because=core.because, applies_to=core.applies_to,
+            origin=f"{METABOLOMICS}_pack",
+            pushed_alternatives=tuple(core.pushed_alternatives)
+            + (("pareto", "standard"),)),
+        replace_existing=True)
+    _rec.register_default(_rec.Default(
+        operation="scale", variant="pareto",
+        selector="caps:requires_scaled_numeric",
+        origin=f"{METABOLOMICS}_pack",
+        reason=("The field convention here is Pareto scaling. Auto-scaling "
+                "gives every feature equal weight including noise-dominated "
+                "low-abundance ones; dividing by the square root of the "
+                "standard deviation retains some magnitude information. A "
+                "defensible compromise, not a fact — auto-scaling is offered "
+                "beside it.")))
+    _rec.register_default(_rec.Default(
+        operation="power", variant="log1p", selector="*",
+        origin=f"{METABOLOMICS}_pack",
+        reason=("Concentrations are bounded below by zero and combine "
+                "multiplicatively, so the resulting distribution is log-normal "
+                "by construction rather than by convention. This is the one "
+                "transform here that is derived rather than chosen.")))
+
+
+def _survey_recipes() -> None:
+    from turbotab import recipes as _rec
+    _rec.register_default(_rec.Default(
+        operation="encode", variant="ordinal", selector="*",
+        origin=f"{SURVEY}_pack",
+        reason=("The order comes from the instrument rather than from the "
+                "data, so an integer code preserves a real ordering instead of "
+                "inventing one. One-hot would spend a column per response "
+                "level and throw the ordering away.")))
+
+
+# Genomics registers NOTHING, and that is the position rather than an omission.
+# CPM, TPM and VST are not interchangeable; there is no `normalize` operation to
+# hold a default and no default to put in one. The considered refusal is
+# recorded as a prior with `variant: None`, because an absent key would be
+# indistinguishable from a pack that never asked the question.
 
 
 PACKS: Dict[str, Pack] = {
     METABOLOMICS: Pack(
         key=METABOLOMICS, label=LENS_LABELS[METABOLOMICS],
         detectors=(_left_censored, _acquisition_order, _pooled_qc),
-        priors={
-            "log_transform": {
-                "marker": "derived",
-                "reason": ("Concentrations are bounded below by zero and "
-                           "combine multiplicatively, so the resulting "
-                           "distribution is log-normal by construction rather "
-                           "than by convention.")},
-            "scaling": {
-                "marker": "convention", "variant": "pareto",
-                "reason": ("The field convention here is Pareto scaling. "
-                           "Auto-scaling gives every feature equal weight "
-                           "including noise-dominated low-abundance ones; "
-                           "dividing by the square root of the standard "
-                           "deviation retains some magnitude information. A "
-                           "defensible compromise, not a fact — auto-scaling "
-                           "is offered beside it.")},
-            "missingness_direction": {
-                "marker": "derived", "mechanism": "below_detection_limit",
-                "reason": ("A blank here is usually a non-detection, so it "
-                           "carries information about magnitude rather than "
-                           "about the participant.")},
-        }),
+        recipes=_metabolomics_recipes,
+        reframings=(
+            Reframing(
+                matches=lambda f, df: (f.get("id") == "wide_repeated_measures"
+                                       and _is_assay_wide(df)),
+                title=lambda f, df: "The wide shape is expected here",
+                note=lambda f, df: (
+                    "These are different analytes, not one analyte measured "
+                    "several times. An untargeted panel names its features by "
+                    "mass and retention time, which reads as a numbered series "
+                    "to a general-purpose importer. Reshaping to long format "
+                    "would rebuild what a row is and is not what this table "
+                    "needs.")),),
+        priors=(
+            # SCOPED TO THE COLUMNS ITS DETECTOR NAMED (`GUIDED-027`). The
+            # left-censoring reading is about the low-abundance features, and
+            # applying it to `age` because the table is metabolomic would be
+            # the dataset-level error the finding was filed about.
+            Prior(question="missingness_direction", marker="derived",
+                  scope=COLUMNS, detector="pack::metabolomics::left_censored",
+                  values={"mechanism": "below_detection_limit",
+                          "strategy": "half_minimum"},
+                  reason=("A blank in one of these is usually a non-detection "
+                          "rather than a missing observation: they are the "
+                          "lowest-abundance features and the missing rate "
+                          "tracks abundance rank. Filling with a median would "
+                          "place non-detections in the middle of the "
+                          "distribution.")),
+            # DATASET, not COLUMNS, and the distinction is not pedantry:
+            # this prior is about ROWS. Forcing it into a column list it does
+            # not have would be the scope error `GUIDED-027` names, committed
+            # in the act of repairing it.
+            Prior(question="qc_rows_excluded", marker="derived",
+                  scope=DATASET, values={"exclude": True},
+                  reason=("Pooled quality-control injections are not "
+                          "participants. Modeling them is an error with no "
+                          "legitimate reading, and they stay in the table for "
+                          "quality assessment.")),
+        )),
     GENOMICS: Pack(
         key=GENOMICS, label=LENS_LABELS[GENOMICS],
         detectors=(_counts_at_p_over_n,),
-        priors={
-            "model_ranking": {
-                "marker": "derived", "prefer": "regularized",
-                "reason": ("At p much greater than n an unregularized fit is "
-                           "degenerate, and a distance metric over hundreds of "
-                           "features is dominated by noise.")},
-            # Deliberately present and deliberately empty. An ABSENT key would
-            # be indistinguishable from a pack that had not thought about
-            # normalization; this one has, and declined.
-            "normalization": {
-                "marker": "offered", "variant": None,
-                "reason": ("CPM, TPM and VST are not interchangeable and the "
-                           "choice depends on the assay and the question. No "
-                           "default is asserted, which is a position rather "
-                           "than an omission.")},
-        }),
+        reframings=(
+            Reframing(
+                matches=lambda f, df: (
+                    f.get("id") == "wide_repeated_measures"
+                    and count_matrix(df) is not None),
+                title=lambda f, df: "The wide shape is expected here",
+                note=lambda f, df: (
+                    "These are different genes, not one gene measured several "
+                    "times. Reshaping to long format would rebuild what a row "
+                    "is.")),
+            Reframing(
+                matches=lambda f, df: (
+                    f.get("id", "").startswith("sentinel_missing__")
+                    and _in_count_block(f, df)),
+                title=lambda f, df: (
+                    f"`{(f.get('params') or {}).get('column')}` holds low "
+                    f"counts, not missing-value codes"),
+                note=lambda f, df: (
+                    "This is a count column, and a small integer in a "
+                    "low-expression gene is a count rather than a missing-value "
+                    "code. The detector reads an integral column with few "
+                    "distinct values as a coded variable, which is the right "
+                    "reading for a survey item and the wrong one for a "
+                    "transcript count.")),),
+        priors=(
+            # Genuinely a fact about the DATASET: p ≫ n is a property of the
+            # shape, not of any column.
+            Prior(question="model_ranking", marker="derived", scope=DATASET,
+                  values={"prefer": "regularized",
+                          "discourage": "distance_based"},
+                  reason=("At p much greater than n an unregularized fit is "
+                          "degenerate, and a distance metric over hundreds of "
+                          "features is dominated by noise. The shelf is "
+                          "ordered by this and never filtered by it.")),
+            Prior(question="normalization", marker="offered", scope=DATASET,
+                  values={"variant": None},
+                  reason=("CPM, TPM and VST are not interchangeable and the "
+                          "choice depends on the assay and the question. No "
+                          "default is asserted, which is a position rather "
+                          "than an omission — this key exists so that "
+                          "declining is recorded rather than absent.")),
+        )),
     DIETARY: Pack(
         key=DIETARY, label=LENS_LABELS[DIETARY],
         detectors=(_compositional, _implausible_intake, _energy_adjustment),
-        priors={
-            "repeat_treatment": {
-                "marker": "derived", "treatment": "average",
-                "reason": ("A single 24-hour recall is a noisy estimate of "
-                           "usual intake, and that noise attenuates "
-                           "diet-outcome associations toward the null. Using "
-                           "the mean reduces it. This is measurement-error "
-                           "reduction, not information loss.")},
-            "energy_adjustment": {
-                "marker": "convention", "variant": "residual",
-                "reason": ("The residual method decorrelates the nutrient from "
-                           "energy explicitly, which makes the resulting "
-                           "coefficient interpretable. Nutrient density is "
-                           "offered beside it.")},
-        }),
+        priors=(
+            # THE ONE IMPLEMENTATION of the averaging rule (`GUIDED-026`).
+            # `repeats.menu()` reads this reason rather than restating it, and
+            # a test asserts the rendered sentence came from here.
+            Prior(question="repeat_treatment", marker="derived", scope=DATASET,
+                  values={"treatment": "mean"},
+                  reason=("A single 24-hour recall is a noisy estimate of "
+                          "usual intake, and that noise attenuates "
+                          "diet–outcome associations toward the null. Using "
+                          "their mean rather than a single day reduces the "
+                          "within-person measurement error.")),
+            Prior(question="energy_adjustment", marker="convention",
+                  scope=COLUMNS, detector="pack::dietary::energy_adjustment",
+                  values={"variant": "residual",
+                          "alternative": "nutrient_density"},
+                  reason=("The residual method decorrelates the nutrient from "
+                          "energy explicitly, which makes the resulting "
+                          "coefficient interpretable. Nutrient density is "
+                          "offered beside it, and the choice between them is a "
+                          "convention rather than a fact.")),
+            Prior(question="collinearity_figure", marker="derived",
+                  scope=COLUMNS, detector="pack::dietary::compositional",
+                  values={"gate": "log_ratio"},
+                  reason=("These columns are parts of a whole, so ordinary "
+                          "correlation between them is negatively biased by "
+                          "construction — raising one necessarily lowers "
+                          "another. The correlation figure is drawn on "
+                          "log-ratios rather than on the parts.")),
+        )),
     CLINICAL: Pack(
         key=CLINICAL, label=LENS_LABELS[CLINICAL],
         detectors=(),
-        priors={
+        reframings=(
+            # `IMPORT-267`. A pack could not contribute this before, which is
+            # half of why the row stayed open.
+            Reframing(
+                matches=lambda f, df: (f.get("id", "").startswith("mixed_units__")
+                                       and _column_holds_no_numbers(f, df)),
+                title=lambda f, df: (
+                    f"`{(f.get('params') or {}).get('column')}` is a category, "
+                    f"not a measurement"),
+                note=lambda f, df: (
+                    "Nothing in this column parses as a number, so it cannot "
+                    "mix measurement units. The reading came from two values "
+                    "ending in different letters that also happen to name "
+                    "units.")),),
+        priors=(
             # The whole clinical pack, and its thinness is the point:
             # physiologic bounds and unit harmonization already exist in the
-            # core. This adds ONE prior, and it points the opposite way from
-            # the metabolomics one.
-            "missingness_direction": {
-                "marker": "offered", "mechanism": "not_ordered",
-                "reason": ("Missingness here often means the test was not "
-                           "ordered — a clinician saw no reason to run it — "
-                           "which is informative about the patient rather than "
-                           "about the measurement. That is the opposite "
-                           "direction from an assay, where a blank usually "
-                           "means below the detection limit. The mechanism "
-                           "question already asks; this supplies the prior, "
-                           "not the answer.")},
-        }),
+            # core. This adds ONE prior, and it points the OPPOSITE way from
+            # the metabolomics one — which is why `priors()` returns a list.
+            #
+            # Column-scoped to the clinical variables the engine's own
+            # reference matcher recognizes. On an NHANES-shaped table that is
+            # the labs and not the questionnaire items beside them.
+            Prior(question="missingness_direction", marker="offered",
+                  scope=COLUMNS, detector="pack::clinical::reference_columns",
+                  values={"mechanism": "not_ordered"},
+                  reason=("Missingness in a clinical measurement often means "
+                          "the test was not ordered — a clinician saw no "
+                          "reason to run it — which is informative about the "
+                          "patient rather than about the measurement. That is "
+                          "the opposite direction from an assay. The mechanism "
+                          "question already asks; this supplies the prior, not "
+                          "the answer.")),
+        )),
     SURVEY: Pack(
         key=SURVEY, label=LENS_LABELS[SURVEY],
         detectors=(_ordinal_declared,),
-        priors={
-            "ordinal_encoding": {
-                "marker": "derived", "source": "instrument",
-                "reason": ("The order comes from the instrument, which makes "
-                           "the encoding row-local rather than a distribution "
-                           "the app has to learn.")},
-            "reverse_coding": {
-                "marker": "offered", "variant": None,
-                "reason": ("Reverse-coding requires a codebook the app does "
-                           "not have. Inferring it from item correlations "
-                           "would be right whenever the instrument is "
-                           "unidimensional and confidently wrong whenever two "
-                           "subscales measure opposing constructs — and "
-                           "nothing in the numbers separates those cases.")},
-        }),
+        recipes=_survey_recipes,
+        reframings=(
+            Reframing(
+                matches=lambda f, df: (f.get("id") == "wide_repeated_measures"
+                                       and likert_block(df) is not None),
+                title=lambda f, df: "The wide shape is expected here",
+                note=lambda f, df: (
+                    "These are the items of one instrument, not one quantity "
+                    "measured several times. Items are combined by scoring the "
+                    "scale, which is a decision about the instrument, not by "
+                    "reshaping the table.")),
+            Reframing(
+                matches=lambda f, df: (f.get("id", "").startswith("mixed_units__")
+                                       and _column_holds_no_numbers(f, df)),
+                title=lambda f, df: (
+                    f"`{(f.get('params') or {}).get('column')}` is a category, "
+                    f"not a measurement"),
+                note=lambda f, df: (
+                    "Nothing in this column parses as a number, so it cannot "
+                    "mix measurement units. A questionnaire is mostly columns "
+                    "like this one.")),),
+        priors=(
+            # NOT migrated to the recipe table, and the reason is worth stating
+            # rather than leaving as an omission: the pack's claim is that the
+            # ordering is DECLARED, which makes the encoding row-local — a
+            # change to the operation's SCOPE, not to its variant. The recipe
+            # table carries scope per operation, not per column, so expressing
+            # it there would mean shadowing `encode` for the whole table
+            # including its genuinely stateful uses. The VARIANT preference did
+            # migrate; see `_survey_recipes`.
+            Prior(question="ordinal_encoding", marker="derived", scope=COLUMNS,
+                  detector="pack::survey::ordinal_declared",
+                  values={"source": "instrument", "row_local": True},
+                  reason=("The order comes from the instrument, which makes "
+                          "the encoding row-local: the number for a row "
+                          "depends on that row's own answer and on nothing "
+                          "else. An encoding derived from the observed "
+                          "frequencies would have to be fitted inside the "
+                          "training folds.")),
+            Prior(question="reverse_coding", marker="offered", scope=COLUMNS,
+                  detector="pack::survey::ordinal_declared",
+                  values={"variant": None},
+                  reason=("Reverse-coding requires a codebook the app does not "
+                          "have. Inferring it from item correlations would be "
+                          "right whenever the instrument is unidimensional and "
+                          "confidently wrong whenever two subscales measure "
+                          "opposing constructs — and nothing in the numbers "
+                          "separates those cases.")),
+        )),
     OTHER: Pack(key=OTHER, label=LENS_LABELS[OTHER]),
 }
 
@@ -886,19 +1198,122 @@ def normalize_quiet(keys: Optional[Sequence[str]]) -> List[str]:
     return [k for k in (keys or []) if k in LENS_KEYS]
 
 
-def priors(lens: Sequence[str], name: str) -> List[Dict[str, Any]]:
+def load(lens: Sequence[str]) -> List[str]:
+    """Register the selected packs' recipe contributions. Idempotent.
+
+    Called where recipes are resolved rather than at import, because importing
+    this module must not mutate the recipe table — every test that touches
+    recipes would inherit five packs it never asked for.
+    """
+    loaded = []
+    for key in normalize_quiet(lens):
+        pack = PACKS.get(key)
+        if pack is None or pack.recipes is None or key in _LOADED:
+            continue
+        pack.recipes()
+        _LOADED.add(key)
+        loaded.append(key)
+    return loaded
+
+
+def unload_for_test() -> None:
+    """Forget which packs were loaded. Pairs with `recipes.restore`."""
+    _LOADED.clear()
+
+
+def prior_columns(pack_key: str, detector: str,
+                  df: pd.DataFrame) -> Optional[List[str]]:
+    """The columns a column-scoped prior applies to, from its own detector.
+
+    `None` — not `[]` — when the detector did not fire. The difference is the
+    whole of `GUIDED-027`: an empty list would say *"this prior applies to no
+    columns"*, and `None` says *"the evidence for this prior is absent"*, which
+    is why the prior is withheld rather than rendered over nothing.
+    """
+    if detector == "pack::clinical::reference_columns":
+        found = clinical_reference_columns(df)
+        return found or None
+    for f in findings(df, [pack_key]):
+        if f["id"] == detector:
+            columns = (f.get("params") or {}).get("columns")
+            if columns:
+                return [str(c) for c in columns]
+            return [str(c) for c in f.get("affected_columns") or []] or None
+    return None
+
+
+def priors(lens: Sequence[str], name: str,
+           df: Optional[pd.DataFrame] = None) -> List[Dict[str, Any]]:
     """Every selected pack's prior on one question, with the pack named.
 
-    A list rather than one value, because the lens is multi-select and two packs
-    can have opposite priors on the same question — metabolomics and clinical do,
-    on missingness, and that disagreement is real. Resolving it silently would
-    pick one field's reading of a dataset that is both.
+    **A list, and it stays a list.** The lens is multi-select and two packs can
+    hold opposite priors on the same question — metabolomics and clinical
+    genuinely disagree about what a blank means, and on a table that is both
+    they are both right about different columns. Resolving that silently would
+    pick one field's reading of a dataset that is two. The consumer surfaces the
+    disagreement; it never settles it.
+
+    **Column-scoped priors are withheld when their detector did not fire**
+    (`GUIDED-027`). `missingness_direction` is a fact about each column, not
+    about the table, and a dataset-level *"below the detection limit"* on an
+    NHANES-shaped file would be wrong for most of its columns. Passing `df`
+    resolves the scope; omitting it returns the declarations unscoped, which is
+    what a caller reading the catalogue rather than a dataset wants.
     """
-    out = []
+    out: List[Dict[str, Any]] = []
     for key in normalize_quiet(lens):
-        prior = PACKS[key].priors.get(name)
-        if prior:
-            out.append({"pack": key, "label": LENS_LABELS[key], **prior})
+        for prior in PACKS[key].priors:
+            if prior.question != name:
+                continue
+            entry: Dict[str, Any] = {
+                "pack": key, "label": LENS_LABELS[key],
+                "question": prior.question, "marker": prior.marker,
+                "reason": prior.reason, "scope": prior.scope,
+                **prior.values,
+            }
+            if prior.scope == COLUMNS:
+                entry["detector"] = prior.detector
+                if df is not None:
+                    columns = prior_columns(key, prior.detector, df)
+                    if columns is None:
+                        # The evidence is absent, so the prior has nothing to
+                        # be about. Withheld rather than rendered over every
+                        # column, which is the defect being repaired.
+                        continue
+                    entry["columns"] = columns
+            out.append(entry)
+    return out
+
+
+def prior_for_column(lens: Sequence[str], name: str, column: str,
+                     df: pd.DataFrame) -> List[Dict[str, Any]]:
+    """The priors on one question that apply to ONE column.
+
+    Dataset-scoped priors apply to every column and are included. Column-scoped
+    ones are included only where their detector named this column — which is
+    what makes a mixed table get the dietary reading on its recall columns and
+    the lab reading on its labs.
+    """
+    return [p for p in priors(lens, name, df)
+            if p["scope"] == DATASET or column in (p.get("columns") or [])]
+
+
+def recipe_origins(lens: Sequence[str]) -> List[Dict[str, Any]]:
+    """Which recipe rows the selected packs contributed, from the table itself.
+
+    Read back out of `recipes` rather than mirrored here, because the recipe
+    table is canonical (`GUIDED-025`) and a second copy of what a pack
+    registered is the drift this whole finding is about.
+    """
+    from turbotab import recipes as _rec
+    load(lens)
+    wanted = {f"{k}_pack" for k in normalize_quiet(lens)}
+    out = []
+    for d in _rec.defaults():
+        if d.origin in wanted:
+            out.append({"operation": d.operation, "variant": d.variant,
+                        "selector": d.selector, "origin": d.origin,
+                        "reason": d.reason})
     return out
 
 

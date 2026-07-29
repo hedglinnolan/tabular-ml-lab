@@ -200,8 +200,32 @@ def _skip_is_permitted(confidence: Optional[str], kind: str) -> bool:
     * the question is one of *fact*, not of *choice*. A repair is a choice no
       matter how certain the engine is; skipping it would apply a change the
       user never saw.
+
+    **`missingness` was added at L20, and it is the one tier change this rule
+    has taken since Decision B was written**, so the argument is recorded here
+    rather than in a commit message.
+
+    The mechanism question — *"could a blank here mean something?"* — is a
+    question of FACT, and until a lens is set the app genuinely cannot know the
+    answer, which is why it was asked unconditionally. A pack prior at `derived`
+    confidence changes that for the columns its own detector named: on an
+    untargeted panel, missingness tracking abundance rank at rho = -0.99 IS the
+    engine being certain, and `DOMAIN_PACKS.md` §02 shows the intended result in
+    as many words — with a metabolomics lens, *"how should missing values be
+    filled?"* leaves the question list and becomes a rendered skip carrying its
+    reason.
+
+    Three things keep this inside Decision B rather than beside it:
+
+    * **`derived` only.** `convention` and `offered` priors never reach here, so
+      the clinical pack's *not ordered* prior informs the question and does not
+      remove it.
+    * **Column by column.** The skip is granted per column, by the columns the
+      detector named — never to the table (`GUIDED-027`).
+    * **Visible and reversible.** The skip carries the pack's own reason and the
+      reopen affordance, which is what `audit()` demands of every skip.
     """
-    return confidence == "high" and kind in ("task_type",)
+    return confidence == "high" and kind in ("task_type", "missingness")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -284,6 +308,7 @@ def plan(
     missing_columns: Sequence[str] = (),
     lens_block: Optional[Dict[str, Any]] = None,
     repeats: Optional[Dict[str, Any]] = None,
+    missingness_priors: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> List[Question]:
     """Every question this step asks, in order, derived from the record.
 
@@ -552,13 +577,34 @@ def plan(
             key = f"missingness::{col}"
             if key in answered:
                 continue
-            out.append(Question(
+            # The pack priors that apply TO THIS COLUMN. A list, because two
+            # packs can disagree — metabolomics reads a blank as a
+            # non-detection and clinical reads it as a test not ordered, and on
+            # a table that is both they are each right about different columns.
+            # The disagreement is surfaced, never settled here.
+            column_priors = list((missingness_priors or {}).get(col) or [])
+            derived = next((p for p in column_priors
+                            if p.get("marker") == "derived"), None)
+            q = Question(
                 key=key, kind="missingness", step="preprocess",
                 clause="lockbox-07",
                 title=_miss.MECHANISM_QUESTION.format(column=col),
                 why=_miss.MECHANISM_WHY,
                 consumer=_miss.MECHANISM_CONSUMER,
-                options=list(_miss.MECHANISM_OPTIONS)))
+                confidence="high" if derived else None,
+                options=list(_miss.MECHANISM_OPTIONS))
+            if derived and len(column_priors) == 1:
+                # A rendered skip, carrying the pack's own reason. NOT taken
+                # when two packs disagree about this column: a disagreement
+                # settled by whichever prior happens to be `derived` is a
+                # disagreement resolved silently, which is the one thing
+                # `priors()` returning a list exists to prevent.
+                q.status = "skipped"
+                q.skip_reason = (
+                    f"Not asked: {derived['reason']} Stated from the "
+                    f"{derived['label'].lower()} lens rather than asked — "
+                    f"change it here if it is wrong.")
+            out.append(q)
 
     # ── one question per repairable finding, ranked by the engine ──────────
     for f in _rank(findings):

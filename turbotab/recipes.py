@@ -184,6 +184,17 @@ def register_default(d: Default) -> None:
     _DEFAULTS.append(d)
 
 
+def defaults(origin: Optional[str] = None) -> List[Default]:
+    """Every row of the table, in registration order.
+
+    Exists so a caller can ask WHO contributed a row rather than keeping a
+    second copy of what it registered. `packs.recipe_origins` reads this; a
+    mirror in `packs.py` would be the drift `GUIDED-025` is about, one level
+    down from the drift it names.
+    """
+    return [d for d in _DEFAULTS if origin is None or d.origin == origin]
+
+
 def operations(origin: Optional[str] = None) -> List[Operation]:
     out = sorted(_OPERATIONS.values(), key=lambda o: o.key)
     return [o for o in out if origin is None or o.origin == origin]
