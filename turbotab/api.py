@@ -36,7 +36,8 @@ from turbotab import (
     selection as sel_mod,
 )
 from turbotab.project import (
-    AnalysisProject, GrainContradiction, ProjectError, ProjectStore,
+    AnalysisProject, GrainContradiction, LensContradiction, ProjectError,
+    ProjectStore,
 )
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
@@ -461,7 +462,18 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         if keys is None:
             keys = [k for k in (decision.subject or "").split(",") if k]
         try:
-            project.set_lens(keys)
+            project.set_lens(
+                keys,
+                acknowledged_contradiction=bool(
+                    decision.payload.get("acknowledge_contradiction")))
+        except LensContradiction as exc:
+            # 409, not 400: the request is well-formed and the state disagrees
+            # with it. The same shape the grain contradiction uses, and the
+            # exits travel WITH the refusal so an interface cannot render the
+            # interruption without also rendering its way out.
+            raise HTTPException(409, {"message": str(exc),
+                                      "contradiction": exc.detail,
+                                      "exits": exc.detail.get("exits", [])}) from exc
         except ProjectError as exc:
             raise HTTPException(400, str(exc)) from exc
         # The diagnosis is read under the lens, so it is recomputed here rather

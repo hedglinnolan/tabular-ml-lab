@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**189 of 582 closed.**
+**190 of 582 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 352 |
-| `PARTIAL` | 41 |
-| `FIXED` | 186 |
+| `PARTIAL` | 40 |
+| `FIXED` | 187 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
@@ -444,7 +444,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 41
+## PARTIAL — 40
 
 
 ### Application state / lockbox — 10
@@ -532,15 +532,9 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-243` | high | HUNT dtype-mismatch-blocked-but-executed: the screen still shows a red 'will not work' blocker and then combines successfully, though the withheld row count and the recurrence on later legs are both… | `ml/join_doctor.py diagnose_join (a dtype mismatch is still classified blocking, can_proceed False, while…` | PARTIAL, measured at HEAD. A genuine text-vs-numeric key pair still gives dtype_mismatch True, can_proceed False and a red blocking message - and combine_ui overrides the block… |
 | `IMPORT-240` | medium | HUNT stack-empty-file-turns-every-numeric-column-to-text: the dtype corruption is gone, but a header-only cycle now produces a FALSE type-conflict warning and is still never named as contributing… | `utils/combine.py plan_stack (total_rows as a plain sum, no zero-row check) and execute_stack's pd.concat…` | PARTIAL, measured at HEAD. Three cycles with glucose float64 in two of them and an empty header-only frame between: the stacked glucose column comes back float64 with 4 rows - the… |
 
-### Guided-door drive feedback — 1
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `GUIDED-028` | high | The lens contradiction detector fires in one direction only: assay-shaped data described as something else, never the reverse | `turbotab/packs.py:954 contradiction(); :923 suggest()` | HALF ADDRESSED AT L20, and the half that landed is the sibling defect the review found underneath it rather than the asymmetry the row names. reframe() covered two hardcoded… |
-
 ---
 
-## FIXED — 186
+## FIXED — 187
 
 
 ### Multi-file / JSON import — 69
@@ -656,7 +650,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — Duplicate of COACH-024 from the state pass, and closed the same way: the… |
 | `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | **test:** `tests/test_cohort_runs.py::test_unrecognizable_rows_yield_nothing_not_everything` — The invariant is implemented, disclosed and tested, and the test's NAME is the… |
 
-### Guided-door drive feedback — 23
+### Guided-door drive feedback — 24
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -676,6 +670,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-025` | high | No real pack calls the recipes extension point that the fake-pack test proved works | `turbotab/recipes.py:153,169; turbotab/packs.py PACKS; grep shows no non-test caller` | **test:** `turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_a_pack_variant_preference_lives_in_the_recipe_table` — THE RECIPE TABLE IS CANONICAL, decided at L20, and… |
 | `GUIDED-026` | high | repeats.py reimplements the dietary pack's averaging rule and near-duplicates its prose, and the pack's copy is the unreachable one | `turbotab/packs.py:794-800 versus turbotab/repeats.py:329-347` | **test:** `turbotab/test_the_repeated_measures_chain_fires_only_when_it_should.py::test_the_dietary_reason_is_the_packs_own_sentence_and_not_a_copy` — Fixed at L20. repeats.menu()… |
 | `GUIDED-027` | high | Priors are scoped to the dataset where several are properties of a column, which mis-fires on exactly the mixed tables the product targets | `turbotab/packs.py:196 _left_censored returns columns; priors() at :889 takes only a question name` | **test:** `turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_a_column_prior_is_withheld_where_its_detector_did_not_fire` — Fixed at L20. Prior carries scope (dataset… |
+| `GUIDED-028` | high | The lens contradiction detector fires in one direction only: assay-shaped data described as something else, never the reverse | `turbotab/packs.py:954 contradiction(); :923 suggest()` | **test:** `turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_an_assay_lens_over_a_table_that_is_not_a_panel_is_contradicted` — CLOSED at L21. Three directions now, not… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |

@@ -741,3 +741,131 @@ def test_the_raw_reading_survives_for_the_user_who_wants_it_anyway():
     shown = next(f for f in presented if f["id"] == "wide_repeated_measures")
     assert shown["fix_kind"] == "none"
     assert P.METABOLOMICS in shown["reframed_by"]
+
+
+# ── the contradiction detector, both directions · GUIDED-028 ─────────────────
+
+def test_an_assay_lens_over_a_table_that_is_not_a_panel_is_contradicted():
+    """The direction that was missing, and the one that costs.
+
+    Before the priors layer was wired a wrong lens was cosmetic. It is not any
+    more: a stated metabolomics lens over a clinical table settles every blank
+    column as *below the detection limit* at `derived` confidence, which
+    withholds the mechanism question for all of them and schedules half-minimum
+    imputation on data that wants a different reading entirely.
+    """
+    df = load("clinical_longitudinal")
+    clash = P.contradiction(df, [P.METABOLOMICS])
+    assert clash is not None
+    assert clash["kind"] == "stated_assay_lens_but_shape_is_not_a_panel"
+    assert "too few to be a panel" in clash["message"]
+    assert "non-detection" in clash["message"], (
+        "the message must say what the wrong lens would DO, not just that it "
+        "looks wrong")
+    assert P.CLINICAL in clash["suggests"]
+
+    # A CONSEQUENCE resolves or is attested, never a dead end.
+    assert [e["kind"] for e in clash["exits"]] == ["resolve", "attest"]
+
+
+def test_a_genomics_lens_over_values_that_are_not_counts_is_contradicted():
+    """Narrower than the panel check and separate from it, because the two are
+    wrong about different things: a wide table of concentrations IS a panel, so
+    the panel check stays quiet, and the p >> n prior it sets is right while the
+    count reading underneath it is not."""
+    df = load("metabolomics_untargeted")
+    assert P.contradiction(df, [P.METABOLOMICS]) is None, "it is a panel"
+    clash = P.contradiction(df, [P.GENOMICS])
+    assert clash is not None
+    assert clash["kind"] == "stated_genomics_but_values_are_not_counts"
+    assert "not counts" in clash["message"]
+    assert P.METABOLOMICS in clash["suggests"]
+
+
+def test_the_original_direction_still_fires():
+    df = load("metabolomics_untargeted")
+    clash = P.contradiction(df, [P.CLINICAL])
+    assert clash["kind"] == "stated_lens_but_shape_is_an_assay"
+    assert clash["exits"], "the first direction gained its exits too"
+
+
+@pytest.mark.parametrize("fixture,lens", [
+    ("metabolomics_untargeted", P.METABOLOMICS),
+    ("genomics_expression", P.GENOMICS),
+    ("clinical_longitudinal", P.CLINICAL),
+    ("dietary_recalls", P.DIETARY),
+    ("survey_instrument", P.SURVEY),
+    ("clinic_visits", P.CLINICAL),
+])
+def test_a_lens_that_fits_its_own_fixture_is_never_contradicted(fixture, lens):
+    """The other half. A detector that fires on correct answers is a detector
+    that gets switched off, and then it is not a detector."""
+    assert P.contradiction(load(fixture), [lens]) is None
+
+
+def test_the_contradiction_fires_before_any_prior_is_granted():
+    """*"It must fire before the skips are granted, not after."*
+
+    Enforced rather than sequenced: there is no state in which the lens is
+    recorded, the questions are withheld, and the disagreement is raised
+    afterwards. `set_lens` refuses, so the priors have no lens to resolve
+    against.
+    """
+    from turbotab.project import AnalysisProject, LensContradiction
+
+    df = load("clinical_longitudinal")
+    project = AnalysisProject.from_dataframe(df, "clinical.csv")
+    with pytest.raises(LensContradiction) as caught:
+        project.set_lens([P.METABOLOMICS])
+
+    assert project.lens is None, "the lens was recorded despite the refusal"
+    assert caught.value.detail["exits"]
+    # Nothing was settled, because nothing was recorded.
+    assert P.priors(project.lens or [], "missingness_direction", df) == []
+
+    # Attesting records it, WITH the disagreement, so the methods section
+    # carries it rather than losing it.
+    project.set_lens([P.METABOLOMICS], acknowledged_contradiction=True)
+    assert project.lens == [P.METABOLOMICS]
+    payload = project.decisions[-1].payload
+    assert payload["contradiction_acknowledged"] is True
+    assert payload["contradiction"]["kind"] == \
+        "stated_assay_lens_but_shape_is_not_a_panel"
+
+
+def test_the_contradiction_reaches_the_wire_as_a_409_with_its_exits():
+    from fastapi.testclient import TestClient
+    from turbotab import api
+
+    client = TestClient(api.app)
+    with open(DATA / "clinical_longitudinal.csv", "rb") as fh:
+        pid = client.post("/project", files={
+            "file": ("clinical_longitudinal.csv", fh, "text/csv")}).json()["id"]
+
+    r = client.post(f"/project/{pid}/decision",
+                    json={"kind": "set_lens",
+                          "payload": {"lens": [P.METABOLOMICS]}})
+    assert r.status_code == 409, r.text
+    detail = r.json()["detail"]
+    assert detail["contradiction"]["kind"] == \
+        "stated_assay_lens_but_shape_is_not_a_panel"
+    assert [e["kind"] for e in detail["exits"]] == ["resolve", "attest"]
+
+    ok = client.post(f"/project/{pid}/decision",
+                     json={"kind": "set_lens",
+                           "payload": {"lens": [P.METABOLOMICS],
+                                       "acknowledge_contradiction": True}})
+    assert ok.status_code == 200
+
+
+def test_the_suggestion_can_hint_clinical():
+    """`suggest()` was asymmetric the same way — four lenses could be hinted and
+    the fifth could not, so the shape a clinical table has was the one shape the
+    app never named."""
+    hints = {h["lens"] for h in P.suggest(load("clinical_longitudinal"))["hints"]}
+    assert P.CLINICAL in hints
+    hints = {h["lens"] for h in P.suggest(load("clinic_visits"))["hints"]}
+    assert P.CLINICAL in hints
+    # And it does not hint clinical at an assay panel.
+    assert P.CLINICAL not in {
+        h["lens"] for h in P.suggest(load("metabolomics_untargeted"))["hints"]}

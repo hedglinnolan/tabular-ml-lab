@@ -127,6 +127,21 @@ class ProjectError(Exception):
     """The project was asked for something it cannot honestly provide."""
 
 
+class LensContradiction(ProjectError):
+    """The stated lens and the table's shape disagree — one of them is wrong.
+
+    A subclass rather than a flag, exactly as `GrainContradiction` is, so a
+    caller that wants to surface the interruption can catch it specifically
+    while a caller that does not still fails loudly. `detail` carries the
+    evidence and both exits, so an interface cannot render the interruption
+    without also rendering its way out.
+    """
+
+    def __init__(self, message: str, detail: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.detail = detail or {}
+
+
 class GrainContradiction(ProjectError):
     """The stated grain and the data's shape disagree — one of them is wrong.
 
@@ -571,7 +586,8 @@ class AnalysisProject:
         """
         self.stale_downstream.append({"why": why, "at": _now()})
 
-    def set_lens(self, keys: Sequence[str]) -> Decision:
+    def set_lens(self, keys: Sequence[str],
+                 acknowledged_contradiction: bool = False) -> Decision:
         """Record what kind of measurements these are. Asked, never inferred.
 
         The same architecture as the grain question and for the same reason: the
@@ -599,6 +615,16 @@ class AnalysisProject:
         except _packs.PackError as exc:
             raise ProjectError(str(exc)) from exc
 
+        # THE CONTRADICTION FIRES HERE, WHICH IS BEFORE ANY PRIOR IS GRANTED —
+        # enforced rather than sequenced. There is no state in which the lens is
+        # recorded, three hundred questions are withheld on the strength of a
+        # derived prior, and the disagreement is raised afterwards. A user
+        # watching the questions vanish and then being told the lens looks wrong
+        # has already lost the thread (`GUIDED-028`).
+        clash = _packs.contradiction(self.df, chosen)
+        if clash and not acknowledged_contradiction:
+            raise LensContradiction(clash["message"], detail=clash)
+
         changed = self.lens is not None and self.lens != chosen
         self.lens = chosen
         if changed:
@@ -612,7 +638,10 @@ class AnalysisProject:
             text=_packs.methods_sentence(chosen),
             payload={"lens": chosen,
                      "labels": [_packs.LENS_LABELS[k] for k in chosen],
-                     "replaced": changed})
+                     "replaced": changed,
+                     "contradiction_acknowledged": bool(clash
+                                                        and acknowledged_contradiction),
+                     "contradiction": clash if clash else None})
 
     def pack_findings(self) -> List[Dict[str, Any]]:
         """What the selected packs see. Empty until the lens is answered."""

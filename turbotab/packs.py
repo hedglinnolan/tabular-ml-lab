@@ -1330,35 +1330,167 @@ def suggest(df: pd.DataFrame) -> Dict[str, Any]:
     if _reference_column(df, "kcal") is not None:
         hints.append({"lens": DIETARY,
                       "because": "there is a total-energy column"})
+    # CLINICAL WAS MISSING, and the asymmetry was the same defect as the
+    # contradiction detector's (`GUIDED-028`): four lenses could be hinted and
+    # the fifth could not, so the shape a clinical table has was the one shape
+    # the app never named. The evidence goes through the engine's own exact
+    # reference matcher — the same one `clinical_reference_columns` uses — so
+    # this is not a sixth name list.
+    recognized = _clinical_columns(df)
+    # TWO, deliberately low. A hint is a suggestion and never an answer — it
+    # costs nothing to ignore and it is not allowed to change a default — so
+    # the bar is where a reader would start guessing, not where a detector
+    # would be confident. `clinic_visits.csv` has exactly two recognized
+    # measurements among fourteen columns and is unmistakably a clinic export.
+    if len(recognized) >= 2 and not _is_assay_wide(df):
+        hints.append({"lens": CLINICAL,
+                      "because": f"{len(recognized)} columns are recognized "
+                                 f"clinical measurements — "
+                                 + ", ".join(f"`{c}`" for c in recognized[:3])})
     return {"hints": hints}
 
 
+def _clinical_columns(df: pd.DataFrame) -> List[str]:
+    """Numeric columns the reference vocabulary recognizes, blanks or not.
+
+    `clinical_reference_columns` is the missingness-scoped sibling and requires
+    blanks, because a prior about what a blank means has nothing to say about a
+    column with none. A hint is about the table's KIND and wants both.
+    """
+    try:
+        from ml.physiology_reference import load_reference_bundle, match_variable_key
+        reference = load_reference_bundle()["nhanes"]
+    except Exception:                                      # pragma: no cover
+        return []
+    return [str(c) for c in df.columns
+            if pd.api.types.is_numeric_dtype(df[c])
+            and match_variable_key(str(c), reference)]
+
+
+# The two terminal exits a CONTRADICTION carries, so an interface cannot render
+# the interruption without also rendering its way out (`DESIGN_LANGUAGE.md`
+# §09). The same shape `grain.py` uses, and deliberately the same words.
+_LENS_RESOLVE = {
+    "id": "revise", "kind": "resolve", "label": "Change my answer",
+    "detail": "Go back to the question and describe the table differently.",
+}
+
+
+def _lens_attest(what: str) -> Dict[str, str]:
+    return {"id": "attest", "kind": "attest",
+            "label": "My answer is right — the data really is like this",
+            "detail": what}
+
+
 def contradiction(df: pd.DataFrame, lens: Sequence[str]) -> Optional[Dict[str, Any]]:
-    """Evidence that the stated lens and the table disagree.
+    """Evidence that the stated lens and the table disagree. **Both directions.**
 
     §01, and the same escalation rule as everywhere else: *escalate on evidence
-    that a reading is wrong, never on the size of the consequence.* The example
-    the document gives is the one implemented — an answer of "clinical
-    measurements" over a table of hundreds of assay features with a run-order
-    column is a disagreement worth raising.
+    that a reading is wrong, never on the size of the consequence.*
 
-    Advisory, not a refusal. The user may be right and the shape unusual.
+    **The reverse direction was missing and its cost has changed** (`GUIDED-028`).
+    Before the priors layer was wired a wrong lens was cosmetic. It is not any
+    more: a stated metabolomics lens over a 40-column clinical table now settles
+    every one of its blank columns as *below the detection limit* at `derived`
+    confidence, which withholds the mechanism question for all of them and
+    schedules half-minimum imputation on data that wants a different reading
+    entirely. That is the direction where a wrong lens does real work.
+
+    **This fires before any prior is granted**, which is enforced rather than
+    sequenced: `project.set_lens` refuses an unacknowledged contradiction, so
+    there is no state in which the lens is recorded, the skips are taken, and
+    the disagreement is raised afterwards. A user watching three hundred
+    questions vanish and then being told the lens looks wrong has already lost
+    the thread.
+
+    Advisory, not a refusal — both exits are terminal and one of them is *"my
+    answer is right"*. The user may be right and the shape unusual.
     """
-    lens = normalize_quiet(lens)
-    if not lens or df is None or df.empty:
+    chosen = normalize_quiet(lens)
+    if not chosen or chosen == [OTHER] or df is None or df.empty:
         return None
-    assay = _is_assay_wide(df, minimum=100)
-    if assay and not any(k in lens for k in _ASSAY_PACKS):
-        stated = ", ".join(LENS_LABELS[k].lower() for k in lens)
+    numeric = _numeric(df)
+
+    # ── direction 1: the shape is an assay and the answer is not ────────────
+    if len(numeric) >= 100 and not any(k in chosen for k in _ASSAY_PACKS):
+        stated = ", ".join(LENS_LABELS[k].lower() for k in chosen)
+        suggests = GENOMICS if count_matrix(df) is not None else METABOLOMICS
         return {
             "kind": "stated_lens_but_shape_is_an_assay",
             "message": (
-                f"This table has {len(_numeric(df)):,} numeric columns across "
+                f"This table has {len(numeric):,} numeric columns across "
                 f"{len(df):,} rows, which is the shape of an assay panel, and "
                 f"you described it as {stated}. One of those two readings is "
                 f"probably wrong, and which one changes what is looked for."),
-            "n_numeric": len(_numeric(df)), "n_rows": len(df),
-            "suggests": [k for k in (GENOMICS if count_matrix(df) else
-                                     METABOLOMICS,)],
+            "n_numeric": len(numeric), "n_rows": len(df),
+            "suggests": [suggests],
+            "exits": [_LENS_RESOLVE, _lens_attest(
+                "Continue with the lens as stated. The disagreement is "
+                "recorded and travels into the methods section as a stated "
+                "limitation rather than disappearing.")],
+        }
+
+    # ── direction 2: the answer is an assay and the shape is not ────────────
+    #
+    # The one that costs. Deliberately a low floor: 30 measurement columns is
+    # already generous for "too few to be a panel", and an untargeted panel is
+    # hundreds. A table under it that somebody calls metabolomics is either a
+    # targeted assay of a dozen analytes — in which case the LOG-NORMAL and
+    # DETECTION-LIMIT priors are still probably right and this reads as a false
+    # alarm — or it is not an assay at all.
+    assay = [k for k in chosen if k in _ASSAY_PACKS]
+    if assay and not _is_assay_wide(df):
+        stated = ", ".join(LENS_LABELS[k].lower() for k in assay)
+        return {
+            "kind": "stated_assay_lens_but_shape_is_not_a_panel",
+            "message": (
+                f"You described this as {stated}, and it has "
+                f"{len(numeric):,} numeric columns across {len(df):,} rows — "
+                f"too few to be a panel. An assay lens reads a blank as a "
+                f"non-detection and schedules half-minimum imputation for it, "
+                f"which is the wrong reading for a measurement that was simply "
+                f"not taken."),
+            "n_numeric": len(numeric), "n_rows": len(df),
+            "suggests": [CLINICAL] if clinical_reference_columns(df) or _numeric(df)
+                        else [OTHER],
+            "exits": [_LENS_RESOLVE, _lens_attest(
+                "Continue with the assay lens. Its priors apply and the "
+                "disagreement is recorded, so the methods section carries it "
+                "as a stated limitation.")],
+        }
+
+    # ── direction 3: genomics stated, and the values are not counts ─────────
+    #
+    # Narrower than direction 2 and separate from it, because the two are wrong
+    # about different things. A wide table of concentrations described as
+    # genomics is a panel — direction 2 stays quiet — and the p >> n prior it
+    # sets is right while the count reading underneath it is not.
+    if GENOMICS in chosen and _is_assay_wide(df) and count_matrix(df) is None:
+        non_integral = [c for c in numeric
+                        if not _is_integral(df[c])][:5]
+        return {
+            "kind": "stated_genomics_but_values_are_not_counts",
+            "message": (
+                f"You described this as {LENS_LABELS[GENOMICS].lower()}, and "
+                f"its measurement columns are not counts — `"
+                + "`, `".join(non_integral)
+                + "` hold fractional values. Counts and concentrations are "
+                  "different objects, and the difference decides whether a log "
+                  "transform is derived or merely one option among several."),
+            "n_numeric": len(numeric), "n_rows": len(df),
+            "suggests": [METABOLOMICS],
+            "exits": [_LENS_RESOLVE, _lens_attest(
+                "Continue with the genomics lens. The p-much-greater-than-n "
+                "prior applies; the disagreement about counts is recorded.")],
         }
     return None
+
+
+def _is_integral(s: pd.Series) -> bool:
+    values = s.dropna()
+    if values.empty:
+        return False
+    try:
+        return bool(np.all(np.equal(np.mod(values.to_numpy(dtype=float), 1), 0)))
+    except (TypeError, ValueError):                        # pragma: no cover
+        return False
