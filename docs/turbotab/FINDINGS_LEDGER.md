@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**187 of 580 closed.**
+**188 of 581 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 352 |
 | `PARTIAL` | 41 |
-| `FIXED` | 184 |
+| `FIXED` | 185 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
@@ -540,7 +540,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 184
+## FIXED — 185
 
 
 ### Multi-file / JSON import — 69
@@ -743,6 +743,16 @@ Nothing is closed without a regression test named after it.
 | `MINE-021` | high | apply_plausibility_filter resets the index, destroying lockbox and cohort label correspondence | `ml/pipeline.py:109-124; pages/05_Preprocess.py:860; utils/test_lockbox.py:16-17, 248` | **test:** `tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given` — Duplicate of STATE-001 from the landmine pass, and closed. The filter returns… |
 | `MINE-039` | medium | GroupShuffleSplit failure silently degrades the lockbox to a non-grouped split | `utils/test_lockbox.py:176-210, 282-294` | **test:** `tests/test_grouping_picks_the_person.py::test_too_few_groups_to_split_by_is_said_out_loud` — Closed, and the test's own assertion message is the invariant: 'the… |
 
+### Coach to Router — 5
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `COACH-014` | landmine | `ShapeFinding.auto_suggestable` — the property that encodes the app's governing rule — has zero callers. | `ml/import_doctor.py:92-96. Repo-wide grep for `auto_suggestable` finds only its definition.` | **test:** `turbotab/test_skeleton.py::test_only_high_confidence_is_auto_suggestable` — No longer a zero-caller property. turbotab/engine.py:196 reads auto_suggestable when… |
+| `COACH-034` | high | detect_cohort_structure matched column names by SUBSTRING against three local pattern lists, so a wellbeing score was a patient identifier and an income column was a time column | `ml/triage.py detect_cohort_structure, the three pattern lists and their three any(... in ...) sites` | **test:** `tests/test_a_name_registry_matches_exactly_or_says_nothing.py::test_a_subject_matter_code_is_not_a_patient_identifier` — FOUND AND FIXED AT L20, by the guard the loop… |
+| `COACH-024` | invariant | Blockers are never bulk-acknowledged: passing a workflow gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.py:789-794 — the explicit `if i.severity == 'blocker': continue` inside…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — The invariant is implemented at the one place that could violate it, the… |
+| `COACH-028` | invariant | Every model key in ml/model_registry.get_registry() has a viability verdict. | `tests/test_coach_intelligence.py::TestModelViability::test_covers_full_registry — `missing = registry_keys…` | **test:** `tests/test_coach_intelligence.py::TestModelViability::test_covers_full_registry` — The healthiest invariant in this domain, and it is intact: adding a model to the… |
+| `COACH-029` | invariant | The probe is seeded and reproducible. | `ml/coach_probe.py SEED=42 threaded through np.random.default_rng, KFold/StratifiedKFold(random_state=SEED)…` | **test:** `tests/test_coach_intelligence.py::test_seeded_and_deterministic` — Determinism is real and structural: the probe is the one place in the engine that uses… |
+
 ### Record / narrative / export — 5
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -761,15 +771,6 @@ Nothing is closed without a regression test named after it.
 | `TEST-003` | critical | PlausibilityGate violates sklearn's clone() contract — cross-validation raises RuntimeError whenever plausibility bounds are configured | `ml/preprocess_operators.py:49-55; ml/pipeline.py:185; ml/eval.py:161; contrast ml/preprocess_operators.py:13` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_cross_validation_runs_with_plausibility_bounds_configured` — Fixed with STATE-002 - same defect, same edit, and this… |
 | `TEST-013` | high | tests/integration/test_lockbox_split.py is the ONLY integration test that exercises real behavior end-to-end — it must be ported, not dropped | `tests/integration/test_lockbox_split.py:45-112` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page` — Ported before the cut, exactly as this row instructed, and strengthened… |
 | `T0-BUILD-005` | high | The routing harness diagnosed without a target while the API diagnosed with one, so it measured a door that no longer existed - and a composition change in the inventory moves no metric, so nothing… | `tests/integration/test_routing_value_check.py _run_guided; tests/integration/test_routing_baseline.py…` | **test:** `tests/integration/test_routing_baseline.py::test_both_doors_are_scored_against_one_inventory` — Found at L9c while implementing the target-question ruling. Both halves… |
-
-### Coach to Router — 4
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `COACH-014` | landmine | `ShapeFinding.auto_suggestable` — the property that encodes the app's governing rule — has zero callers. | `ml/import_doctor.py:92-96. Repo-wide grep for `auto_suggestable` finds only its definition.` | **test:** `turbotab/test_skeleton.py::test_only_high_confidence_is_auto_suggestable` — No longer a zero-caller property. turbotab/engine.py:196 reads auto_suggestable when… |
-| `COACH-024` | invariant | Blockers are never bulk-acknowledged: passing a workflow gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.py:789-794 — the explicit `if i.severity == 'blocker': continue` inside…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — The invariant is implemented at the one place that could violate it, the… |
-| `COACH-028` | invariant | Every model key in ml/model_registry.get_registry() has a viability verdict. | `tests/test_coach_intelligence.py::TestModelViability::test_covers_full_registry — `missing = registry_keys…` | **test:** `tests/test_coach_intelligence.py::TestModelViability::test_covers_full_registry` — The healthiest invariant in this domain, and it is intact: adding a model to the… |
-| `COACH-029` | invariant | The probe is seeded and reproducible. | `ml/coach_probe.py SEED=42 threaded through np.random.default_rng, KFold/StratifiedKFold(random_state=SEED)…` | **test:** `tests/test_coach_intelligence.py::test_seeded_and_deterministic` — Determinism is real and structural: the probe is the one place in the engine that uses… |
 
 ### Models / training / eval — 4
 

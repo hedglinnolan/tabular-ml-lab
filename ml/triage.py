@@ -11,6 +11,8 @@ import numpy as np
 # answer the question that was actually meant, on both majors.
 from pandas.api import types as _pdt
 
+from ml import name_registry as _name_registry
+
 
 def _is_categorical_like(s) -> bool:
     """Text, category or boolean — anything whose values are labels."""
@@ -143,27 +145,67 @@ def detect_cohort_structure(df: pd.DataFrame, sample_size: int = 1000) -> Dict:
     detected = 'cross_sectional'
     confidence = 'med'
     
-    # Pattern matching for entity ID columns (case-insensitive)
-    entity_id_patterns = [
-        'patient', 'subject', 'person', 'respondent', 'participant',
-        'member', 'mrn', 'subject_id', 'patient_id', 'person_id',
-        'respondent_id', 'participant_id', 'member_id', 'record', 'encounter'
-    ]
-    
-    # Exclude clinical measurement patterns (NOT entity IDs)
-    clinical_measurement_patterns = [
-        'glucose', 'triglyceride', 'cholesterol', 'bmi', 'waist', 
-        'weight', 'height', 'bp', 'blood_pressure', 'kcal', 'hba1c',
-        'insulin', 'ldl', 'hdl', 'creatinine', 'albumin'
-    ]
-    
-    # Pattern matching for time columns (case-insensitive)
-    time_patterns = [
-        'date', 'time', 'visit', 'wave', 'year', 'month', 'day',
-        'timestamp', 'visit_date', 'visit_time', 'assessment_date',
-        'baseline', 'followup', 'follow_up'
-    ]
-    
+    # EXACT KEY OR DECLARED ALIAS; AN UNKNOWN NAME YIELDS SILENCE.
+    #
+    # These three were substring lists, and the class of error is the one
+    # `ml/name_registry.py` records five instances of: `subjective_wellbeing`
+    # contains `subject`, so a wellbeing score was a patient identifier;
+    # `yearly_income` contains `year`, so it was a time column;
+    # `membership_fee`, `encounter_cost` and `recordkeeping_score` were all
+    # entity IDs. Each of those then reaches a real decision — whether the data
+    # is longitudinal, and therefore how the held-out rows are chosen.
+    #
+    # Silence is the correct answer for a name nobody declared. `SEQN`,
+    # `USUBJID` and `study_id` are real identifiers this will not recognize
+    # until somebody adds them, and that is the cost the remedy is paid for:
+    # a gap is visible to the user and costs a question, a wrong claim is
+    # invisible and licenses a split.
+    _ENTITY_ID = _name_registry.build({
+        'patient': ['patient_id', 'patientid', 'pat_id', 'ptid'],
+        'subject': ['subject_id', 'subjectid', 'subj', 'subj_id', 'usubjid'],
+        'person': ['person_id', 'personid'],
+        'respondent': ['respondent_id', 'respondentid'],
+        'participant': ['participant_id', 'participantid', 'pid'],
+        'member': ['member_id', 'memberid'],
+        'mrn': ['medical_record_number'],
+        'record': ['record_id', 'recordid'],
+        'encounter': ['encounter_id', 'encounterid'],
+        'seqn': [],
+        'study_id': ['studyid'],
+    })
+
+    # Names that are measurements rather than identifiers. Kept as an explicit
+    # exclusion rather than trusted to fall through, because a measurement that
+    # is ALSO a declared identifier spelling is a genuine collision and the
+    # registry should say so rather than pick.
+    _CLINICAL_MEASUREMENT = _name_registry.build({
+        'glucose': ['blood_glucose', 'serum_glucose', 'plasma_glucose'],
+        'triglyceride': ['triglycerides'],
+        'cholesterol': ['total_cholesterol'],
+        'bmi': ['body_mass_index'],
+        'waist': ['waist_circumference'],
+        'weight': ['weight_kg', 'body_weight'],
+        'height': ['height_cm', 'standing_height'],
+        'bp': ['blood_pressure', 'bp_sys', 'bp_dia', 'sbp', 'dbp'],
+        'kcal': ['energy_kcal', 'calories'],
+        'hba1c': ['a1c', 'hemoglobin_a1c'],
+        'insulin': [], 'ldl': [], 'hdl': [],
+        'creatinine': [], 'albumin': [],
+    })
+
+    _TIME = _name_registry.build({
+        'date': ['visit_date', 'assessment_date', 'exam_date', 'obs_date'],
+        'time': ['visit_time', 'timestamp'],
+        'visit': ['visit_number', 'visit_no', 'visitnum'],
+        'wave': ['wave_number'],
+        'year': ['study_year'],
+        'month': ['study_month'],
+        'day': ['study_day'],
+        'baseline': [],
+        'followup': ['follow_up'],
+        'timepoint': ['time_point'],
+    })
+
     # Find candidate entity ID columns with stricter criteria
     for col in df.columns:
         col_lower = col.lower()
@@ -172,11 +214,11 @@ def detect_cohort_structure(df: pd.DataFrame, sample_size: int = 1000) -> Dict:
             continue
         
         # Exclude if it matches clinical measurement patterns
-        if any(pattern in col_lower for pattern in clinical_measurement_patterns):
+        if _name_registry.match(col, _CLINICAL_MEASUREMENT) is not None:
             continue
         
         # Check for entity ID patterns
-        if any(pattern in col_lower for pattern in entity_id_patterns):
+        if _name_registry.match(col, _ENTITY_ID) is not None:
             # Additional checks: must be high cardinality and discrete
             n_unique = df[col].nunique()
             unique_ratio = n_unique / len(df) if len(df) > 0 else 0
@@ -202,7 +244,7 @@ def detect_cohort_structure(df: pd.DataFrame, sample_size: int = 1000) -> Dict:
     # Find candidate time columns
     for col in df.columns:
         col_lower = col.lower()
-        if any(pattern in col_lower for pattern in time_patterns):
+        if _name_registry.match(col, _TIME) is not None:
             time_column_candidates.append(col)
         # Also check if column is datetime type or can be parsed as datetime
         elif df[col].dtype == 'datetime64[ns]':
