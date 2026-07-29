@@ -81,3 +81,58 @@ the plan") would still be true and still worth holding.
 So the pattern is **rare rather than systemic**: one instance in the repository. Recorded because
 the negative result is the useful one — it says the ledger does not need a sweep for this
 specific shape, and the rule in `FEATURE_PARITY.md` is prevention rather than cleanup.
+
+---
+
+# L18 · The stratified re-sample, excluding the IMPORT-1xx family
+
+The L17 result carried a stated caveat: twelve of twenty-four rows were `IMPORT-1xx` findings from
+the original 48-file audit, closed against `tests/test_stress_regressions.py` — a characterization
+suite, and it behaves like one. The sample was **weighted toward the ledger's best-tested corner**,
+so the headline could not be read as the ledger's rate.
+
+**Frame:** `FIXED` rows at `critical` or `landmine` severity, carrying a test, with `IMPORT-1*`
+excluded — 52 rows across ten id families. **Sample:** 12, drawn round-robin across families so no
+family dominates, seeded `random.Random(1818)`.
+
+| | rows | share |
+|---|---:|---:|
+| **Guarded** | 12 | 100% |
+| Not guarded | 0 | 0% |
+| Unrunnable | 0 | 0% |
+
+| row | the revert |
+|---|---|
+| `COACH-014` | the engine stops reading `auto_suggestable` and pre-selects everything |
+| `CONTRACT-002` | page 03 hand-rolls its cascade again |
+| `IMPORT-006` | `blank_cell_mask` flags every NaN, so it cannot tell the two blanks apart |
+| `IMPORT-232` | drop the `_ORIGINAL_KEY` coalesce |
+| `MINE-003` | reintroduce the constant-key cache |
+| `MODELS-005` / `STATE-032` | the decorative cancel flag comes back |
+| `RECORD-001` | `to_dict` drops `manuscript_text` |
+| `STATE-055` | cohort runs restore as dicts, which `completed_runs()` filters out |
+| `SWEEP-011` | reintroduce the global fallback pipeline slot |
+| `T0-BUILD-004` | substring matching for clinical variables |
+| `TEST-001` | the production cascade becomes a no-op |
+
+## Reverts reconstructed twice: **zero of eleven**
+
+Against **five of twenty-two** at L17. That difference is the interesting number, and it is not
+luck — it is `FEATURE_PARITY.md`'s *"write the revert down in the row"* rule collecting.
+`IMPORT-232`'s note says in as many words that reverting the obvious `drop(columns=[right_key])`
+does **not** turn the test red and that the real guard is the `_ORIGINAL_KEY` coalesce. The row
+told me where to look. Where a note recorded the guard, the first attempt worked; the L17 misses
+were concentrated in rows whose notes recorded the *finding* and not the *fix*.
+
+## Combined estimate
+
+Three rows appear in both samples (`MINE-003`, `STATE-055`, `TEST-001`), so:
+
+**31 of 33 distinct rows guarded — 93.9%**, with one genuinely weak guard (`STATE-056`) and one
+unrunnable (`MODELS-001`, joined at L18 by `T0-LIVE-003`, the same torch test from the Tier-0 side).
+
+The IMPORT-1xx corner is not the only well-guarded one. The two failures were both found in the
+first sample and neither is of a kind the second sample could have surfaced — one is a
+self-referential round trip, the other an environment skip — which is weak evidence that the
+remaining failure modes are *categorical* rather than distributed, and that finding more of them
+means enumerating shapes rather than drawing more rows.
