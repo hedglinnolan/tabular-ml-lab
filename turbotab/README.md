@@ -36,13 +36,40 @@ Then open **<http://127.0.0.1:8777/>** and drop a CSV on it.
 deliberately messy 140-row table the engine finds fifteen things in. Your own file is the better
 test.
 
-### Tests
+### Two environments, and the reason there are two
 
-```powershell
-turbotab\.venv\Scripts\python.exe -m pytest turbotab\test_skeleton.py -v
+| Environment | What it holds | What it is for |
+|---|---|---|
+| `turbotab/.venv` | `turbotab/requirements.txt` — pandas, numpy, FastAPI, pytest | **running the Guided door**, and being empty of everything else |
+| `./venv` | the app's `requirements.txt` minus shap and torch | **running the whole suite**, which needs scikit-learn and Streamlit |
+
+The split is not tidiness. `turbotab/requirements.txt` claims the whole
+diagnose → profile → detect path needs pandas and numpy and nothing else, and
+**two independent things used to hold that claim up**: an import blocker in
+`tests/test_engine_is_headless.py`, and the plain fact that `turbotab/.venv`
+contained no scikit-learn. At L19 the app's dependencies were installed into it
+to run the full suite, and the second signal went quiet — not wrong, just gone.
+
+`tests/test_the_guided_door_installs_without_the_app.py` is that signal made
+executable, so it cannot go quiet again without something saying so. It skips
+where `turbotab/.venv` is not built, because the claim is about what a
+Guided-door environment *contains* and a machine without one has no opinion.
+
+```bash
+python3 -m venv turbotab/.venv && turbotab/.venv/bin/pip install -r turbotab/requirements.txt
+python3 -m venv venv          && ./venv/bin/pip install -r requirements.txt   # minus shap, torch
 ```
 
-44 tests, about three seconds. They need no server running.
+### Tests
+
+```bash
+turbotab/.venv/bin/python -m pytest turbotab/test_skeleton.py -q   # the Guided door alone
+./venv/bin/python -m pytest turbotab/ tests/ -q                    # everything
+```
+
+The whole suite's baseline is **four failures** — three needing `shap`, one
+needing `torch` — plus one collection error for the same reason. Five means
+something broke.
 
 ### Driving it with the harness on
 

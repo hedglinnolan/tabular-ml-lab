@@ -869,3 +869,147 @@ def test_the_suggestion_can_hint_clinical():
     # And it does not hint clinical at an assay panel.
     assert P.CLINICAL not in {
         h["lens"] for h in P.suggest(load("metabolomics_untargeted"))["hints"]}
+
+
+# ── GUIDED-027, audited rather than assumed ──────────────────────────────────
+
+def test_no_consumer_reads_a_column_scoped_prior_at_table_scope():
+    """`GUIDED-027`'s claim, checked across every consumer rather than the one
+    path the finding named.
+
+    The skip path is scoped. This asserts the property the finding is actually
+    about: **a prior that is a fact about a column is never resolved without
+    columns.** A consumer that called `priors()` with no frame would get the
+    declaration unscoped — which is right for reading the catalogue and wrong
+    for acting on a dataset — so the two uses are separated and every acting
+    site is named here.
+    """
+    import inspect
+    from turbotab import api, repeats
+
+    column_scoped = {p.question for pack in P.PACKS.values()
+                     for p in pack.priors if p.scope == P.COLUMNS}
+    assert column_scoped, "no column-scoped priors; the finding cannot be checked"
+
+    # Every call that ACTS on a dataset resolves against the frame. A call with
+    # no `df` is reading the catalogue and may not reach a user.
+    source = inspect.getsource(api) + inspect.getsource(repeats)
+    acting = [line.strip() for line in source.splitlines()
+              if ("_packs.priors(" in line or "packs.priors(" in line
+                  or "_packs.prior_for_column(" in line)
+              and not line.strip().startswith("#")]
+    assert acting, "no consumers found; the search is wrong, not the code"
+
+    for call in acting:
+        if "prior_for_column(" in call:
+            continue                       # column-scoped by construction
+        question = call.split('"')[1] if '"' in call else ""
+        if question in column_scoped:
+            assert "df" in call or "project.df" in call, (
+                f"{question!r} is a fact about a column and this call resolves "
+                f"it without a frame: {call}")
+
+
+def test_a_column_scoped_prior_resolved_without_a_frame_carries_no_columns():
+    """The catalogue reading is legal and must be UNMISTAKABLE.
+
+    Returning the declaration with no `columns` key is the honest answer to
+    *"what does this pack believe?"*; returning it with every column in the
+    table would be the defect. A consumer cannot act on this by accident,
+    because there is nothing to act on.
+    """
+    unscoped = P.priors([P.METABOLOMICS], "missingness_direction")
+    assert len(unscoped) == 1
+    assert unscoped[0]["scope"] == P.COLUMNS
+    assert "columns" not in unscoped[0]
+    assert unscoped[0]["detector"] == "pack::metabolomics::left_censored"
+
+
+def test_every_column_scoped_prior_names_a_detector_that_exists():
+    """A detector name that resolves to nothing would withhold the prior
+    forever, which is a silence rather than a scope."""
+    known = {"pack::clinical::reference_columns"}
+    for pack in P.PACKS.values():
+        for f in pack.detectors:
+            pass
+    for fixture, (target, matches) in FIXTURES.items():
+        df = load(fixture)
+        for key in matches:
+            for f in P.findings(df, [key]):
+                known.add(f["id"])
+    for key, pack in P.PACKS.items():
+        for prior in pack.priors:
+            if prior.scope != P.COLUMNS:
+                continue
+            assert prior.detector in known, (
+                f"{key}/{prior.question} names detector {prior.detector!r}, "
+                f"which no fixture produces — the prior would be withheld "
+                f"forever and that is a silence, not a scope")
+
+
+def test_every_prior_has_a_consumer_or_is_declared_unconsumed():
+    """`GUIDED-024` closed the layer; this counts what is left of it.
+
+    A prior nothing reads is the finding's own defect surviving for a subset —
+    reasoned, shape-tested and inert. Rather than assert that none remain, the
+    residue is DECLARED with a reason, so a sixth cannot join it quietly. The
+    same shape as the substring-registry guard, and for the same reason: the
+    failure mode is silence, so silence is made a test failure.
+    """
+    import inspect
+    from turbotab import api, repeats
+
+    import re
+
+    all_questions = {p.question for pack in P.PACKS.values() for p in pack.priors}
+    source = inspect.getsource(api) + inspect.getsource(repeats)
+    consumed = set()
+    for line in source.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+        if "priors(" not in stripped and "prior_for_column(" not in stripped:
+            continue
+        # EVERY quoted token on the line, intersected with the known questions —
+        # not `split('"')[1]`, which on
+        #     "priors": _packs.priors(project.lens or [], "model_ranking", ...)
+        # reads the dict KEY and reports a wired prior as inert. The first
+        # version of this test did exactly that.
+        consumed |= set(re.findall(r'"([a-z_]+)"', stripped)) & all_questions
+
+    declared = {
+        "energy_adjustment": (
+            "GUIDED-030. Needs an energy-adjustment step, which is not built. "
+            "The finding pack::dietary::energy_adjustment carries the claim to "
+            "the user today; the prior carries the FORM (residual versus "
+            "nutrient density) and has nowhere to be offered."),
+        "ordinal_encoding": (
+            "GUIDED-030. The recipe table carries the survey pack's VARIANT "
+            "(encode/ordinal, registered at pack load). This prior carries the "
+            "separate claim that the encoding is ROW-LOCAL because the order is "
+            "declared, and the recipe table holds scope per operation rather "
+            "than per column, so there is nowhere to put it yet."),
+        "reverse_coding": (
+            "GUIDED-030. The router's reverse-coding question is gated on the "
+            "survey detector rather than on this prior. Wiring it would let a "
+            "pack turn the question off, which guard 1 forbids — so the prior "
+            "is the RECORD of a considered refusal and the question is asked "
+            "regardless."),
+        "qc_rows_excluded": (
+            "GUIDED-030. Needs a row-exclusion step; the pooled-QC finding is "
+            "surfaced and nothing acts on it. This is the sharpest of the four: "
+            "the pack states at derived confidence that these rows are not "
+            "participants, and the app still models them."),
+    }
+
+    inert = sorted(all_questions - consumed)
+    assert inert == sorted(declared), (
+        f"priors with no consumer: {inert}. Wire it, or declare it here with "
+        f"the reason — a prior nothing reads is GUIDED-024 surviving for a "
+        f"subset.\n  declared: {sorted(declared)}")
+
+    stale = sorted(q for q in declared if q in consumed)
+    assert not stale, (
+        f"these are declared unconsumed and now have a consumer: {stale}. "
+        f"Remove them — a declaration that outlives its reason is the register "
+        f"lying.")

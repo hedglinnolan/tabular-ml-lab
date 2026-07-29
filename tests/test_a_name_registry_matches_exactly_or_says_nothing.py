@@ -265,3 +265,75 @@ def test_the_declared_list_has_not_gone_stale():
     assert not stale, (
         "these declared sites no longer exist; remove them:\n  "
         + "\n  ".join(f"{f} :: {n}" for f, n in stale))
+
+
+# ── all five, asserted as a class ────────────────────────────────────────────
+
+def _physiology_lookup():
+    from ml.physiology_reference import load_reference_bundle, match_variable_key
+    reference = load_reference_bundle()["nhanes"]
+    return lambda name: match_variable_key(name, reference)
+
+
+def _clinical_units_lookup():
+    from ml.clinical_units import match_clinical_variable
+    return match_clinical_variable
+
+
+def _triage_entity_lookup():
+    """`detect_cohort_structure`'s registry, reached through the behavior."""
+    def match(name: str):
+        df = pd.DataFrame({name: [f"X{i:04d}" for i in range(80)],
+                           "age": np.arange(80) % 50 + 20,
+                           "outcome": np.arange(80) % 2})
+        out = detect_cohort_structure(df)
+        return name if name in out["entity_id_candidates"] else None
+    return match
+
+
+# Every registry that answers "is this column that variable?", the exact or
+# aliased spelling it must accept, and a near-miss it must refuse. The near-miss
+# is a real column name in each case, not a contrived one.
+REGISTRIES = [
+    ("physiology_reference", _physiology_lookup, "hba1c", "hba1c_proxy"),
+    ("physiology_reference/alias", _physiology_lookup, "bp_sys", "bp_sys_delta"),
+    ("clinical_units", _clinical_units_lookup, "glucose", "glucose_change"),
+    ("ml.triage entity ids", _triage_entity_lookup, "participant_id",
+     "participants_screened"),
+]
+
+
+@pytest.mark.parametrize("label,factory,exact,near_miss", REGISTRIES)
+def test_every_registry_accepts_a_declared_spelling_and_refuses_a_near_miss(
+        label, factory, exact, near_miss):
+    """*"Apply it as a class this time."*
+
+    Three of these were repaired individually with the same fix and the fourth
+    and fifth arrived anyway. This asserts the RULE across all of them in one
+    place, so the next repair has somewhere to be checked rather than somewhere
+    to be repeated.
+
+    **What this does not claim.** `ml/name_registry.py` states the rule once and
+    `ml/triage.py` is the only registry built on it; `physiology_reference` and
+    `clinical_units` carry their own implementations of the same rule, written
+    before it existed. They behave identically — which is what this test checks
+    — and they are not sharing code. That is a smaller duplication than the one
+    that caused this class and it is worth saying out loud rather than implying
+    a migration that did not happen.
+    """
+    match = factory()
+    assert match(exact) is not None, f"{label} rejects its own declared spelling"
+    assert match(near_miss) is None, (
+        f"{label} resolves {near_miss!r}, so it is still matching by substring "
+        f"and the class has a sixth member")
+
+
+def test_the_shared_rule_and_the_private_ones_agree_on_normalization():
+    """The rule stated once, checked against the implementations that predate
+    it. Case and separators only — nothing stemmed, nothing truncated."""
+    from ml.physiology_reference import load_reference_bundle, match_variable_key
+    reference = load_reference_bundle()["nhanes"]
+    lookup = N.build({"bp_sys": ["systolic", "sbp"]})
+    for spelling in ("bp_sys", "BP_SYS", "bp-sys", "Bp Sys", "bpsys"):
+        assert N.match(spelling, lookup) == "bp_sys"
+        assert match_variable_key(spelling, reference) == "bp_sys"

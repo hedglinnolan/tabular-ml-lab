@@ -16,7 +16,13 @@ import re
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "node_modules", ".venv",
+# `venv` without the dot is the directory the Makefile names (`PYTHON :=
+# ./venv/bin/python`), and it was missing — so this gate crashed with a
+# UnicodeDecodeError on a compiled dependency the moment anybody followed the
+# Makefile. A gate that dies on somebody else's binary is not reporting on this
+# repository's prose.
+SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "node_modules",
+             ".venv", "venv", "env", ".env", "site-packages",
              "build", "dist"}
 EXEMPT_PREFIXES = (os.path.join("docs", "audit"),)
 

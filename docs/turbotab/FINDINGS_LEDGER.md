@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**190 of 582 closed.**
+**190 of 583 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 352 |
+| `OPEN` | 353 |
 | `PARTIAL` | 40 |
 | `FIXED` | 187 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 352
+## OPEN — 353
 
 
 ### Application state / lockbox — 66
@@ -432,7 +432,7 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Guided-door drive feedback — 5
+### Guided-door drive feedback — 6
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -441,6 +441,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
+| `GUIDED-030` | medium | Four pack priors still have no consumer - GUIDED-024's defect surviving for a subset, now declared and counted rather than noticed | `turbotab/packs.py PACKS priors; test_every_prior_has_a_consumer_or_is_declared_unconsumed lists the four with…` | Found at L21 while auditing GUIDED-027 rather than by a detector, and filed rather than fixed because three of the four wait on steps that do not exist. The residue is now… |
 
 ---
 
@@ -669,7 +670,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-022` | high | The 'ask only when the choice changes the answer' check was wired so that it could never fire on any dataset | `turbotab/api.py get_recipes; turbotab/recipes.py worth_asking` | **test:** `test_a_variant_with_no_pushed_alternative_is_an_absence_not_a_suppression` — Found while counting suppressions for the L18 report, which is the only reason it was found… |
 | `GUIDED-025` | high | No real pack calls the recipes extension point that the fake-pack test proved works | `turbotab/recipes.py:153,169; turbotab/packs.py PACKS; grep shows no non-test caller` | **test:** `turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_a_pack_variant_preference_lives_in_the_recipe_table` — THE RECIPE TABLE IS CANONICAL, decided at L20, and… |
 | `GUIDED-026` | high | repeats.py reimplements the dietary pack's averaging rule and near-duplicates its prose, and the pack's copy is the unreachable one | `turbotab/packs.py:794-800 versus turbotab/repeats.py:329-347` | **test:** `turbotab/test_the_repeated_measures_chain_fires_only_when_it_should.py::test_the_dietary_reason_is_the_packs_own_sentence_and_not_a_copy` — Fixed at L20. repeats.menu()… |
-| `GUIDED-027` | high | Priors are scoped to the dataset where several are properties of a column, which mis-fires on exactly the mixed tables the product targets | `turbotab/packs.py:196 _left_censored returns columns; priors() at :889 takes only a question name` | **test:** `turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_a_column_prior_is_withheld_where_its_detector_did_not_fire` — Fixed at L20. Prior carries scope (dataset… |
+| `GUIDED-027` | high | Priors are scoped to the dataset where several are properties of a column, which mis-fires on exactly the mixed tables the product targets | `turbotab/packs.py:196 _left_censored returns columns; priors() at :889 takes only a question name` | **test:** `turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_no_consumer_reads_a_column_scoped_prior_at_table_scope` — Fixed at L20 and AUDITED AT L21. Prior carries… |
 | `GUIDED-028` | high | The lens contradiction detector fires in one direction only: assay-shaped data described as something else, never the reverse | `turbotab/packs.py:954 contradiction(); :923 suggest()` | **test:** `turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_an_assay_lens_over_a_table_that_is_not_a_panel_is_contradicted` — CLOSED at L21. Three directions now, not… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |

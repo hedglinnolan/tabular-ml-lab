@@ -18,7 +18,16 @@
 #
 # Order, most specific first:
 #   $TURBOTAB_PYTHON   explicit override, for an operator who knows better
-#   turbotab/.venv     this repo's own environment, where the gates' deps live
+#   ./venv             the FULL environment (Makefile's `PYTHON`), where the
+#                      whole suite runs
+#   turbotab/.venv     the Guided door's minimal environment — pandas, numpy,
+#                      FastAPI and nothing else. Enough for the four gates, and
+#                      deliberately not enough for the suite: its EMPTINESS is
+#                      a second, independent signal that the diagnose ->
+#                      profile -> detect path needs no scikit-learn, and a
+#                      signal that only exists while nothing is installed into
+#                      it. Preferred second so the gates run under the fuller
+#                      one when both exist.
 #   python / python3   whatever the shell offers
 set -uo pipefail
 
@@ -29,10 +38,13 @@ resolve_python() {
     fi
     local root
     root=$(git rev-parse --show-toplevel 2>/dev/null) || root=.
-    if [ -x "${root}/turbotab/.venv/bin/python" ]; then
-        printf '%s\n' "${root}/turbotab/.venv/bin/python"
-        return 0
-    fi
+    local candidate_venv
+    for candidate_venv in "${root}/venv" "${root}/turbotab/.venv"; do
+        if [ -x "${candidate_venv}/bin/python" ]; then
+            printf '%s\n' "${candidate_venv}/bin/python"
+            return 0
+        fi
+    done
     local candidate
     for candidate in python3 python; do
         if command -v "$candidate" >/dev/null 2>&1; then
