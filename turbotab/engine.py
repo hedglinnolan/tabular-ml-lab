@@ -234,13 +234,94 @@ def shape_finding_to_dict(f: ShapeFinding) -> Dict[str, Any]:
     }
 
 
-def data_warning_to_dict(w: DataWarning, ordinal: int) -> Dict[str, Any]:
+# Which `FeatureProfile` flag names the columns a warning is about. The
+# `DataWarning` dataclass carries no column list — `affected_models`, and
+# nothing else — so the columns have to come from the per-feature profile the
+# same computation already produced.
+#
+# **Read from the profile, never parsed out of `detailed_message`.** The prose
+# does name them, and reading it back would be a substring match against a
+# sentence somebody may reword — which is the failure this project has now
+# filed five times under a different name.
+#
+# Each category reads a STRUCTURED source. `physio_plausibility_flags` is prose
+# — `'glucose: 9.2% outside NHANES reference (70.0-200.0 mg/dL)'` — and the
+# column name is before the colon, so reading it back would be a substring match
+# against a sentence somebody may reword. `card_evidence.plausibility_report`
+# returns the same finding with a `column` key, and that is what is read.
+def _outlier_columns(w, prof, df):
+    return list(getattr(prof, "features_with_outliers", None) or [])
+
+
+def _cardinality_columns(w, prof, df):
+    return list(getattr(prof, "high_cardinality_features", None) or [])
+
+
+def _missing_columns(w, prof, df):
+    if df is None:
+        return []
+    return [str(c) for c in df.columns
+            if not isinstance(df[c], pd.DataFrame) and bool(df[c].isna().any())]
+
+
+def _physiologic_columns(w, prof, df):
+    if df is None:
+        return []
+    report = card_evidence.plausibility_report(df)
+    seen: List[str] = []
+    for tier in ("impossible", "improbable"):
+        for row in report.get(tier) or []:
+            column = str(row.get("column") or "")
+            if column and column not in seen:
+                seen.append(column)
+    return seen
+
+
+_WARNING_COLUMNS = {
+    "outliers": _outlier_columns,
+    "cardinality": _cardinality_columns,
+    "missingness": _missing_columns,
+    "physiologic_plausibility": _physiologic_columns,
+}
+
+
+def warning_columns(w: DataWarning, prof: Optional[DatasetProfile] = None,
+                    df: Optional[pd.DataFrame] = None) -> List[str]:
+    """The columns this warning is about, or an empty list where it is about
+    the table rather than about columns.
+
+    `sample_size`, `imbalance` and `dimensionality` are properties of the whole
+    dataset, and returning every column for them would be worse than returning
+    none: an option offered over "all 400 columns" because the table is small
+    is an option about nothing.
+    """
+    reader = _WARNING_COLUMNS.get(w.category)
+    if reader is None:
+        return []
+    try:
+        return [str(c) for c in reader(w, prof, df)]
+    except Exception as exc:
+        from turbotab import devchecks
+        devchecks.swallowed(
+            f"engine.warning_columns::{w.category}", exc,
+            "a profile warning lost the columns it is about, so every option "
+            "it suggests will have nothing to act on")
+        return []
+
+
+def data_warning_to_dict(w: DataWarning, ordinal: int,
+                         prof: Optional[DatasetProfile] = None,
+                         df: Optional[pd.DataFrame] = None) -> Dict[str, Any]:
     """One profile warning, flattened.
 
     `DataWarning` carries no confidence field, so `confidence` is None and
     `auto_suggestable` is False — a profile warning may never pre-select
     anything. It also carries no fix, hence `fix_kind='none'`: the engine has
     named a problem, not a repair.
+
+    `affected_columns` was hardcoded empty, which was honest about the dataclass
+    and left every option the warning suggests with nothing to act on
+    (`GUIDED-031`). The columns come from the per-feature profile now.
     """
     return {
         "id": f"profile_{w.category}_{ordinal}",
@@ -253,8 +334,13 @@ def data_warning_to_dict(w: DataWarning, ordinal: int) -> Dict[str, Any]:
         "fix_label": None,
         "fix_kind": "none",
         "auto_suggestable": False,
-        "affected_columns": [],
-        "params": {"category": w.category, "affected_models": _plain(w.affected_models)},
+        "affected_columns": warning_columns(w, prof, df),
+        "params": {"category": w.category,
+                   "affected_models": _plain(w.affected_models),
+                   # Named so a consumer can tell "about the table" from "about
+                   # columns we failed to find" — two different claims.
+                   "scope": ("columns" if w.category in _WARNING_COLUMNS
+                             else "dataset")},
         "suggested_actions": _plain(w.suggested_actions),
     }
 
@@ -615,7 +701,7 @@ def rank_findings(
     """
     items = [_with_deferral(shape_finding_to_dict(f)) for f in structural]
     if prof is not None:
-        items += [_with_deferral(data_warning_to_dict(w, i))
+        items += [_with_deferral(data_warning_to_dict(w, i, prof, df))
                   for i, w in enumerate(prof.warnings)]
 
     if lens and df is not None:
@@ -725,3 +811,50 @@ def draw_holdout(df: pd.DataFrame, target: str, task_type: str,
             "exploratory": basis == "undetermined",
         },
     }
+
+
+def offer_simulation(df: pd.DataFrame, columns: Sequence[str], binding: str,
+                     variant: Optional[str] = None,
+                     n: int = 6) -> Dict[str, Any]:
+    """What a distribution-learning operation would move, without moving it.
+
+    `GUIDED-031`. A deferred operation has no row-by-row before/after to show
+    until it is fitted, so a preview of one has to be a preview of the
+    DISTRIBUTION it would learn — how many values it would touch and where the
+    bounds fall. That is the real computation on a copy rather than a
+    description of one, which is the distinction this project keeps finding to
+    matter.
+
+    Computed on the working table and discarded. Nothing here writes.
+    """
+    cols = [str(c) for c in columns if str(c) in df.columns
+            and pd.api.types.is_numeric_dtype(df[str(c)])][:12]
+    rows: List[Dict[str, Any]] = []
+    total = 0
+    for col in cols:
+        s = pd.to_numeric(df[col], errors="coerce").dropna()
+        if s.empty:
+            continue
+        entry: Dict[str, Any] = {"column": col, "n": int(len(s))}
+        if binding == "outliers" and variant == "winsorize":
+            low, high = float(s.quantile(0.01)), float(s.quantile(0.99))
+            touched = int(((s < low) | (s > high)).sum())
+            entry.update(low=round(low, 4), high=round(high, 4),
+                         n_touched=touched,
+                         observed_min=round(float(s.min()), 4),
+                         observed_max=round(float(s.max()), 4))
+        elif binding in ("impute_median", "impute_mean"):
+            fill = float(s.median() if binding == "impute_median" else s.mean())
+            touched = int(pd.to_numeric(df[col], errors="coerce").isna().sum())
+            entry.update(fill=round(fill, 4), n_touched=touched)
+        elif binding == "indicator":
+            touched = int(pd.to_numeric(df[col], errors="coerce").isna().sum())
+            entry.update(new_column=f"{col}_was_missing", n_touched=touched)
+        else:
+            entry.update(n_touched=0)
+        total += int(entry.get("n_touched") or 0)
+        rows.append(entry)
+    return {"kind": "distribution", "binding": binding, "variant": variant,
+            "columns": [r["column"] for r in rows], "rows": rows[:n],
+            "n_columns": len(rows), "n_values_touched": total,
+            "truncated": len(rows) > n}

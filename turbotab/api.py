@@ -655,6 +655,17 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         _recompute(project)
         return _payload(project)
 
+    if decision.kind == "earmark":
+        payload = decision.payload or {}
+        try:
+            project.earmark(str(payload.get("key") or decision.subject),
+                            str(payload.get("target_step") or ""),
+                            str(payload.get("label") or decision.subject),
+                            subject=decision.subject)
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return _payload(project)
+
     if decision.kind == "except_from_bulk":
         # Editing the RULE, not the members: a column pulled out of the set
         # rejoins the individually-asked ones and the rule's sentence says so.
@@ -1124,6 +1135,81 @@ async def get_grain(project_id: str) -> Dict[str, Any]:
     }
 
 
+@app.get("/project/{project_id}/finding/{finding_id}/offers")
+async def finding_offers(project_id: str, finding_id: str) -> Dict[str, Any]:
+    """What this finding offers to DO — options and earmarks (`GUIDED-031`).
+
+    The endpoint behind the branch that used to print `suggested_actions` as
+    em-dash paragraphs and stop. Every entry is classified: an OPTION is
+    something the app does and previews, an EARMARK goes to a person or to the
+    step that owns the decision.
+
+    A `GET`, because it is a question. Nothing is recorded by asking.
+    """
+    from turbotab import actions as _actions
+    project = _project(project_id)
+    try:
+        finding = project.finding(finding_id)
+    except ProjectError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return {"finding_id": finding_id, "title": finding.get("title"),
+            **_actions.offers(finding, project.df, project.target)}
+
+
+@app.get("/project/{project_id}/finding/{finding_id}/offer/{option}/preview")
+async def offer_preview(project_id: str, finding_id: str,
+                        option: str) -> Dict[str, Any]:
+    """What one option would do to the data, without doing it.
+
+    A deferred option still previews — clause §06 permits exactly one override,
+    *a read-only preview not persisted to the modeling table, labeled preview,
+    not applied* — and `features.preview` already computes those on TRAINING
+    ROWS ONLY, so a preview cannot show a picture of the held-out data.
+    """
+    from turbotab import actions as _actions, features as _feat
+    project = _project(project_id)
+    try:
+        finding = project.finding(finding_id)
+    except ProjectError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+    found = next((o for o in _actions.offers(finding, project.df,
+                                             project.target)["options"]
+                  if o["key"] == option), None)
+    if found is None:
+        raise HTTPException(
+            404, f"'{option}' is not one of the options this finding offers.")
+    if not found["columns"]:
+        raise HTTPException(
+            400, "This finding does not name the columns the option would act "
+                 "on, so there is nothing to preview against.")
+
+    body = {k: found[k] for k in ("key", "label", "sentence", "because",
+                                  "defers", "columns", "catalogue")}
+    body["applied"] = False
+    body["label_note"] = ("preview, not applied" if found["defers"]
+                          else "this is what pressing apply would do")
+
+    # A FEATURE binding previews through the catalogue that owns it, which
+    # already draws the before/after and already refuses to fit a deferred
+    # transform on anything but training rows.
+    if found["catalogue"] == _actions.FEATURE:
+        try:
+            body["preview"] = _feat.preview(project.df, found["binding"],
+                                            found["columns"][:1])
+        except _feat.FeatureRefusal as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return body
+
+    # Everything else is a distribution the operation would learn. The honest
+    # preview is the distribution itself and what the operation would move —
+    # a before/after of two numbers, computed on a copy and thrown away.
+    body["preview"] = engine.offer_simulation(
+        project.working_table, found["columns"], found["binding"],
+        found.get("variant"))
+    return body
+
+
 @app.get("/project/{project_id}/repeats")
 async def get_repeats(project_id: str) -> Dict[str, Any]:
     """Questions 4 to 7's material: the reading, its evidence, and the menu.
@@ -1526,6 +1612,13 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
             answered.append(d.subject)
         elif d.kind == "resolve_blocker":
             answered.append(d.subject)
+        elif d.kind == "earmark":
+            # An earmark resurfaces where it was sent, exactly as a deferral
+            # does — the two are the same disposition applied to different
+            # objects, so they share the mechanism rather than growing a second
+            # one beside it.
+            deferred[f"earmark::{d.payload.get('key') or d.subject}"] = \
+                d.payload.get("target_step", "explore")
         elif d.kind == "defer":
             deferred[f"repair::{d.subject}"] = d.payload.get("target_step", "explore")
         elif d.kind == "undismiss":

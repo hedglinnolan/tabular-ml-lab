@@ -994,6 +994,42 @@ class AnalysisProject:
             kind="route_missingness", subject=str(column),
             text=record["sentence"], payload=dict(record))
 
+    def earmark(self, key: str, target_step: str, label: str,
+                subject: str = "") -> Decision:
+        """Record a decision that lives somewhere else (`GUIDED-031`).
+
+        Two destinations, and the difference is the whole point of the object:
+        a step that owns the decision, or **a person**. The app saying out loud
+        that it cannot verify data entry is the governing rule honored at the
+        one place it would be easiest to break — a control that claimed to do it
+        would be the app asserting something false about itself.
+
+        It goes into the record rather than a side list, so it reaches the
+        manuscript as a stated limitation and resurfaces where it belongs. That
+        is what makes an earmark different from a dead end.
+        """
+        from turbotab import actions as _actions
+        from ml.router import STEP_LABELS
+
+        step = str(target_step or "")
+        if step != _actions.YOU and step not in STEP_LABELS:
+            raise ProjectError(
+                f"{step!r} is not a step this interview has. An earmark with "
+                f"nowhere to resurface is a discard with manners.")
+        where = ("you" if step == _actions.YOU
+                 else STEP_LABELS.get(step, step))
+        return self.record(
+            kind="earmark", subject=subject or str(key),
+            text=(f"{label} — earmarked. "
+                  + ("This one is yours: the app cannot do it, and it is "
+                     "recorded here so it reaches the methods section rather "
+                     "than being remembered."
+                     if step == _actions.YOU else
+                     f"It comes back at {where}, which is the step that owns "
+                     f"the decision.")),
+            payload={"key": str(key), "target_step": step, "label": str(label),
+                     "for_a_person": step == _actions.YOU})
+
     def bulk_exceptions(self) -> List[str]:
         """Columns the user pulled OUT of a bulk rule, replayed from the record.
 

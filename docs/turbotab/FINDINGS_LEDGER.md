@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**190 of 585 closed.**
+**191 of 585 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 355 |
+| `OPEN` | 354 |
 | `PARTIAL` | 40 |
-| `FIXED` | 187 |
+| `FIXED` | 188 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 355
+## OPEN — 354
 
 
 ### Application state / lockbox — 66
@@ -432,13 +432,12 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Guided-door drive feedback — 8
+### Guided-door drive feedback — 7
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `GUIDED-012` | high | Lockbox constitution clause 06 - declaration and execution are separate - has no implementation in either door: nothing applies the row-local vs stateful litmus test | `No module classifies transforms by the litmus test at L14. Classic's pages/03 applies feature engineering to…` | Filed at the start of L14 rather than after building it, deliberately: the check found the clause untracked, and the honest record of an unbuilt clause is an open finding, not a… |
 | `GUIDED-014` | high | DESIGN QUESTION for the product owner: does the exploratory labeling on an undetermined seal read as honest, or as the app giving up? | `docs/turbotab/COPY_DECK.md, 'Data & Target - what the user reads after answering' and 'what the user reads…` | NOT SELF-ASSESSED, deliberately. I wrote this copy at L15; asking the author whether their own prose reads well is the finder-judge problem in a different costume, and this… |
-| `GUIDED-031` | high | explainOnly renders suggested_actions as prose bullets and terminates - the one moment the user needs to act is the one place the card offers nothing to act on | `turbotab/web/index.html:1279 explainOnly; contrast :1317 previewFor` | Filed by the adjudicator from the product owner's drive. Their framing: this is the exact moment the dynamic mechanic belongs - choose or earmark, and show what the choice does to… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
@@ -537,7 +536,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 187
+## FIXED — 188
 
 
 ### Multi-file / JSON import — 69
@@ -653,7 +652,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — Duplicate of COACH-024 from the state pass, and closed the same way: the… |
 | `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | **test:** `tests/test_cohort_runs.py::test_unrecognizable_rows_yield_nothing_not_everything` — The invariant is implemented, disclosed and tested, and the test's NAME is the… |
 
-### Guided-door drive feedback — 24
+### Guided-door drive feedback — 25
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -674,6 +673,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-026` | high | repeats.py reimplements the dietary pack's averaging rule and near-duplicates its prose, and the pack's copy is the unreachable one | `turbotab/packs.py:794-800 versus turbotab/repeats.py:329-347` | **test:** `turbotab/test_the_repeated_measures_chain_fires_only_when_it_should.py::test_the_dietary_reason_is_the_packs_own_sentence_and_not_a_copy` — Fixed at L20. repeats.menu()… |
 | `GUIDED-027` | high | Priors are scoped to the dataset where several are properties of a column, which mis-fires on exactly the mixed tables the product targets | `turbotab/packs.py:196 _left_censored returns columns; priors() at :889 takes only a question name` | **test:** `turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_no_consumer_reads_a_column_scoped_prior_at_table_scope` — Fixed at L20 and AUDITED AT L21. Prior carries… |
 | `GUIDED-028` | high | The lens contradiction detector fires in one direction only: assay-shaped data described as something else, never the reverse | `turbotab/packs.py:954 contradiction(); :923 suggest()` | **test:** `turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_an_assay_lens_over_a_table_that_is_not_a_panel_is_contradicted` — CLOSED at L21. Three directions now, not… |
+| `GUIDED-031` | high | explainOnly renders suggested_actions as prose bullets and terminates - the one moment the user needs to act is the one place the card offers nothing to act on | `turbotab/web/index.html:1279 explainOnly; contrast :1317 previewFor` | **test:** `turbotab/test_a_finding_with_no_repair_still_offers_something.py::test_the_outlier_finding_offers_an_operation_and_three_earmarks` — FIXED at L22 in turbotab/actions.py… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |

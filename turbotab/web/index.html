@@ -1276,7 +1276,57 @@
 
   /* Shown when there is no diff to draw: the engine declined to propose a
      repair, or the finding came from the profile rather than the doctor. */
-  function explainOnly(f, err){
+  /* ═════════ WHAT THIS FINDING OFFERS ═════════
+     GUIDED-031. This branch used to print `suggested_actions` as em-dash
+     paragraphs and close with "the engine reports this without proposing a
+     repair" — honest about the engine, and a dead end for the user, who is
+     standing at the exact moment a decision is due.
+
+     The list was already options in prose costume. Three attributes wearing a
+     sentence, which is DESIGN_LANGUAGE §01.4 and the critique that started this
+     project, surviving the rewrite by moving branch.
+
+     The server classifies each one; this renders the two kinds differently,
+     because they ARE different. An option is something the app does and shows
+     you. An earmark goes somewhere — a person, or the step that owns the
+     decision — and it says which. */
+
+  function offerRow(f, o){
+    var timing = o.defers
+      ? '<span class="pv-note">fitted within each training fold</span>'
+      : '<span class="pv-note">applied now</span>';
+    return '<div class="optrow" data-offer-row="' + esc(o.key) + '">' +
+      '<div><strong style="font-size:13px;">' + esc(o.label) + "</strong> " + timing +
+      '<div class="sentence" style="margin-top:4px;">' + esc(o.sentence) + "</div>" +
+      '<div style="margin-top:3px;font-size:12px;color:var(--muted);">' + esc(o.because) + "</div>" +
+      "</div>" +
+      '<div style="display:flex;gap:6px;align-items:flex-start;">' +
+      (o.previewable
+        ? '<button class="f-act" type="button" data-offer-preview="' + esc(f.id) +
+          '" data-offer-key="' + esc(o.key) + '">Show me</button>'
+        : "") +
+      "</div>" +
+      '<div class="offer-pv is-hidden" data-offer-pv="' + esc(o.key) + '"></div>' +
+      "</div>";
+  }
+
+  function earmarkRow(e){
+    /* The app saying out loud what it cannot do. Claiming it can verify data
+       entry would be the governing rule broken in the place built to honor it. */
+    var where = e.is_for_a_person
+      ? '<span class="pv-note">yours to do</span>'
+      : '<span class="pv-note">comes back at ' + esc(STEP_WORDS[e.target_step] || e.target_step) + "</span>";
+    return '<div class="optrow">' +
+      '<div><strong style="font-size:13px;">' + esc(e.label) + "</strong> " + where +
+      '<div style="margin-top:4px;font-size:12px;color:var(--muted);">' + esc(e.why) + "</div>" +
+      "</div>" +
+      '<div><button class="f-act" type="button" data-earmark="' + esc(e.key) +
+      '" data-earmark-step="' + esc(e.target_step) + '" data-earmark-label="' +
+      esc(e.label) + '">Earmark it</button></div>' +
+      "</div>";
+  }
+
+  function explainOnly(f, err, offers){
     var origin = f.source === "structure" ? "ml/import_doctor.py" : "ml/dataset_profile.py";
     var h = '<div class="pv-head"><span class="pv-title">What the engine found</span>' +
             '<span class="pv-note">' + esc(origin) + ' · nothing has been changed</span></div>';
@@ -1288,13 +1338,34 @@
       h += '<p style="margin:0 0 11px;font-size:12.5px;color:var(--muted);">Columns: ' +
            f.affected_columns.map(function(c){ return '<span class="v">' + esc(c) + "</span>"; }).join(" ") +
            "</p>";
-    (f.suggested_actions || []).forEach(function(a){
-      h += '<p style="margin:0 0 7px;font-size:12.5px;color:var(--muted);">— ' + esc(a) + "</p>";
-    });
-    h += '<p style="margin:11px 0 0;font-size:13px;color:var(--muted);">' +
-         (err ? esc(err)
-              : "The engine reports this without proposing a repair. Some findings have to " +
-                "refuse rather than guess, and this is one of them.") + "</p>";
+
+    if (offers && (offers.options.length || offers.earmarks.length)){
+      h += '<p style="margin:0 0 10px;font-size:12.5px;color:var(--muted);">' +
+           esc(offers.summary) + "</p>";
+      if (offers.options.length){
+        h += '<div class="pv-head" style="margin:0 0 6px;"><span class="pv-title">' +
+             "What the app can do</span></div>";
+        offers.options.forEach(function(o){ h += offerRow(f, o); });
+      }
+      if (offers.earmarks.length){
+        h += '<div class="pv-head" style="margin:12px 0 6px;"><span class="pv-title">' +
+             "Decisions that live elsewhere</span></div>";
+        offers.earmarks.forEach(function(e){ h += earmarkRow(e); });
+      }
+      /* A phrase the classification table does not know degrades to the prose
+         it always was, rather than disappearing. */
+      (offers.unclassified || []).forEach(function(a){
+        h += '<p style="margin:0 0 7px;font-size:12.5px;color:var(--muted);">— ' + esc(a) + "</p>";
+      });
+    } else {
+      (f.suggested_actions || []).forEach(function(a){
+        h += '<p style="margin:0 0 7px;font-size:12.5px;color:var(--muted);">— ' + esc(a) + "</p>";
+      });
+      h += '<p style="margin:11px 0 0;font-size:13px;color:var(--muted);">' +
+           (err ? esc(err)
+                : "The engine reports this without proposing a repair. Some findings have to " +
+                  "refuse rather than guess, and this is one of them.") + "</p>";
+    }
     h += "</div>";
     h += '<div class="choice-acts">' +
          '<span class="said"></span>' +
@@ -1467,10 +1538,22 @@
     var box = $("pv-" + id);
 
     if (f.source !== "structure" || !f.fix_kind || f.fix_kind === "none"){
+      /* GUIDED-031: this branch is no longer terminal. The server classifies
+         the engine's own suggestions into things the app does and things that
+         go somewhere, and the card renders both. It is still rendered
+         immediately with the prose fallback, so a slow or failed classification
+         degrades to the old behavior rather than to an empty card. */
       box.innerHTML = explainOnly(f);
       box.classList.remove("is-hidden");
       anim(box, "arrive", 360);
       nudge(box);
+      api("/project/" + P.id + "/finding/" + encodeURIComponent(id) + "/offers")
+        .then(function(offers){
+          if (box.classList.contains("is-hidden")) return;
+          box.innerHTML = explainOnly(f, null, offers);
+          nudge(box);
+        })
+        .catch(function(){ /* the prose is already on screen */ });
       return;
     }
 
@@ -2368,6 +2451,70 @@
       })
       .catch(function(){ /* no harness, no problem */ });
   })();
+
+  /* ═════════ THE TWO NEW CONTROLS ═════════ */
+  document.addEventListener("click", function(ev){
+    var pv = ev.target.closest("[data-offer-preview]");
+    if (pv){
+      var fid = pv.getAttribute("data-offer-preview");
+      var key = pv.getAttribute("data-offer-key");
+      var row = pv.closest("[data-offer-row]");
+      var slot = row ? row.querySelector('[data-offer-pv="' + CSS.escape(key) + '"]') : null;
+      if (!slot) return;
+      slot.classList.remove("is-hidden");
+      slot.innerHTML = '<span class="pv-note">working it out…</span>';
+      job("Working out what that would do…",
+          api("/project/" + P.id + "/finding/" + encodeURIComponent(fid) +
+              "/offer/" + encodeURIComponent(key) + "/preview"))
+        .then(function(r){ slot.innerHTML = offerPreviewHTML(r); })
+        .catch(function(e){ slot.innerHTML = '<span class="pv-note">' + esc(e.message) + "</span>"; });
+      return;
+    }
+    var em = ev.target.closest("[data-earmark]");
+    if (em){
+      var step = em.getAttribute("data-earmark-step");
+      var label = em.getAttribute("data-earmark-label");
+      decide("earmark", em.getAttribute("data-earmark"),
+             { target_step: step, label: label },
+             "Earmarking that…");
+    }
+  });
+
+  function offerPreviewHTML(r){
+    var p = r.preview || {};
+    var h = '<div class="pv-head" style="margin:8px 0 4px;">' +
+            '<span class="pv-title">' + esc(r.label) + "</span>" +
+            '<span class="pv-note">' + esc(r.label_note) + "</span></div>";
+    if (p.rows && p.rows.length && p.rows[0].before !== undefined){
+      /* A row-local transform: the real before and after, from the frame. */
+      h += '<table class="pv-table"><thead><tr><th>row</th><th>before</th>' +
+           "<th>after</th></tr></thead><tbody>";
+      p.rows.forEach(function(x){
+        h += "<tr><td>" + esc(x.label) + '</td><td class="v">' + esc(x.before) +
+             '</td><td class="v">' + esc(x.after) + "</td></tr>";
+      });
+      h += "</tbody></table>";
+    } else if (p.rows && p.rows.length){
+      /* A distribution the operation would learn: what it would move, and
+         where the bounds fall. */
+      h += '<table class="pv-table"><thead><tr><th>column</th><th>what moves</th>' +
+           "<th>values touched</th></tr></thead><tbody>";
+      p.rows.forEach(function(x){
+        var what = (x.low !== undefined)
+          ? "clipped to " + x.low + " – " + x.high + " (observed " + x.observed_min +
+            " – " + x.observed_max + ")"
+          : (x.fill !== undefined ? "filled with " + x.fill
+                                  : (x.new_column ? "adds " + x.new_column : "—"));
+        h += "<tr><td>" + '<span class="v">' + esc(x.column) + "</span></td><td>" +
+             esc(what) + '</td><td class="v">' + esc(x.n_touched) + "</td></tr>";
+      });
+      h += "</tbody></table>";
+      if (p.truncated)
+        h += '<p class="pv-note">…and ' + (p.n_columns - p.rows.length) + " more columns.</p>";
+    }
+    h += '<p class="pv-note" style="margin:6px 0 0;">' + esc(r.sentence) + "</p>";
+    return h;
+  }
 
   /* Deep link: /?project=<id> reopens a project this server still holds. */
   var pid = new URLSearchParams(window.location.search).get("project");

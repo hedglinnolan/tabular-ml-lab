@@ -966,5 +966,13 @@
   "classic": "No equivalent, and the shape of pages/05 forbids one: preprocessing is configured per column through Streamlit widgets, so a 300-column table is 300 widgets. Classic does not ask 300 questions only because it never asks the mechanism question at all.",
   "state": "guided-only",
   "reason": "Built at L21 for GUIDED-029. DEBT rather than native by the L18 test - would a reasonable Classic still be missing something? Yes, and more sharply than most rows here: the remedy is not an interaction Guided invented, it is the p >> n specification this project already wrote and applied to transforms but not to per-column questions. Classic will need it the moment it gains a mechanism question, and it will gain one because clause 07 binds both doors. turbotab/bulk.py is UI-free and imports only pandas and numpy, so the convergence is a call-site change rather than a port."
+ },
+ {
+  "id": "explore-finding-offers",
+  "step": "explore",
+  "capability": "A finding with no proposed repair still offers something — the engine's suggested_actions classified into app operations that preview and earmarks that name where they resurface",
+  "classic": "pages/02 renders suggested_actions as a bulleted list inside an expander and offers nothing to act on. The same list, the same prose, and no branch that does anything with it.",
+  "state": "guided-only",
+  "reason": "Built at L22 for GUIDED-031, found by the product owner driving the app. DEBT, and one of the clearer ones: the classification lives in turbotab/actions.py keyed on the engine's own phrases, imports only pandas, and binds to catalogues both doors read. Classic gains it by calling offers() where it currently loops over suggested_actions. The critique this repairs is DESIGN_LANGUAGE 01.4 - three attributes wearing a sentence costume - which is the critique the whole project started from, so a door that still ships it is a door that has not had the fix."
  }
 ]
