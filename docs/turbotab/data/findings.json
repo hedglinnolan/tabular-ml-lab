@@ -7637,5 +7637,19 @@
   "verified_against": "",
   "test": "turbotab/test_a_hard_question_carries_its_teaching.py::test_every_hard_question_carries_its_teaching",
   "verified_ev": "DESIGN_LANGUAGE.md section 10; grain, unit of analysis and aggregation had no layer-3 content"
+ },
+ {
+  "id": "GUIDED-035",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "Grain and unit of analysis had closed answer spaces, so a matched-pair or crossover design had to be answered with one of three options none of which was true",
+  "detail": "A nested case-control with matched pairs is neither one row per participant nor repeated measures of one participant nor unknown - the rows are matched SETS and a split has to keep a set together for a reason none of the three describes. A crossover trial is the same shape from another direction. Forcing one produces the confidently-wrong answer the constitution forbids, and produces it IN THE RECORD where a reader takes it as a description of the study.",
+  "ev": "turbotab/grain.py ANSWERS; turbotab/repeats.py UNITS",
+  "act": "",
+  "status": "FIXED",
+  "note": "Built at L23. Two INDEPENDENT hatches, because the two questions are independent - the design may be undescribable while the unit is clear, or the reverse. Same shape as not_sure and for the same reason: uncertainty must never cost more than a wrong confident answer, and the test asserts that as a comparison - every step a confident answer reaches, this one reaches too. THE CONSERVATIVE TREATMENT: grouped where a column was named, undetermined otherwise, and NEVER cross_sectional, which would be a claim about independence the user explicitly declined to make. Rows survive and nothing is combined; set_aggregation refuses under the unit hatch with the reason, because the app has no aggregation for a matched set and inventing one would be the confident wrong answer the option exists to avoid. THE SUBTLE PART IS THE EXPLORATORY FLAG. With a grouping column named the basis is genuinely grouped, which is not one of the two bases is_exploratory_basis covers - so the flag cannot be derived from the basis. The basis is honest and the app still cannot vouch that grouping is the right treatment for a design it was never told, so the flag rides on the ANSWER where the reason lives, and the seal sentence says which. THE MANUSCRIPT GAP is placed rather than appended: after=participants for the design, after=study_design for the unit, using narrative_engine's own [AUTHOR REQUIRED] marker so the export's existing gap reporting finds it. It NAMES what it does not know - matched sets, crossover periods, nested sampling - rather than gesturing at it. A record with no hatch taken carries no gap, because a marker that appeared unprompted would be meaningless. ONE SENTENCE HAD TO BE CAUGHT AND FIXED: the unit hatch first reused the record sentence, 'one row is one record', which would have been the app describing a design it was just told it cannot describe. Probed, three reverts, each red for its stated reason.",
+  "verified_against": "",
+  "test": "turbotab/test_the_escape_hatch_records_what_it_cannot_describe.py::test_the_grain_hatch_routes_to_the_conservative_split",
+  "verified_ev": "turbotab/grain.py ANSWERS; turbotab/repeats.py UNITS"
  }
 ]

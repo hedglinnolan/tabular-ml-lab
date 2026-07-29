@@ -684,6 +684,15 @@ class AnalysisProject:
             n_groups = int(self.df[group_col].nunique(dropna=True))
         self.grain = {
             "answer": answer,
+            # THE ESCAPE HATCH CARRIES ITS OWN EXPLORATORY FLAG, and it has to.
+            # With a grouping column named, `seal_basis` returns `grouped` —
+            # which is genuinely the most conservative basis available and is
+            # NOT one of the two bases `is_exploratory_basis` covers. So the
+            # flag cannot be derived from the basis: the basis is honest and the
+            # app still cannot vouch that grouping is the right treatment for a
+            # design it was never told. Recorded on the answer, where the reason
+            # lives.
+            "design_not_described": answer == _grain.DESIGN_NOT_DESCRIBED,
             "group_col": group_col if answer == _grain.PEOPLE_REPEAT else None,
             "n_groups": n_groups if answer == _grain.PEOPLE_REPEAT else None,
             "basis": _grain.seal_basis(answer, group_col, n_groups),
@@ -691,9 +700,15 @@ class AnalysisProject:
             "contradiction_acknowledged": bool(clash and acknowledged_contradiction),
             "contradiction": clash if clash else None,
         }
-        said = {_grain.ONE_ROW_PER_PERSON: "one row per person",
-                _grain.PEOPLE_REPEAT: f"people repeat, identified by '{group_col}'",
-                _grain.NOT_SURE: "unknown — the shape could not be stated"}[answer]
+        said = {
+            _grain.ONE_ROW_PER_PERSON: "one row per person",
+            _grain.PEOPLE_REPEAT: f"people repeat, identified by '{group_col}'",
+            _grain.NOT_SURE: "unknown — the shape could not be stated",
+            _grain.DESIGN_NOT_DESCRIBED: (
+                "none of the offered shapes describes this study"
+                + (f", and '{group_col}' was named as the closest grouping"
+                   if group_col else "")),
+        }[answer]
         return self.record(
             kind="set_grain", subject=group_col or "",
             text=(f"Asked whether one person can appear in more than one row; "
@@ -761,14 +776,28 @@ class AnalysisProject:
                 "they are. Changing what one row means now would describe a "
                 "split that was not drawn this way.")
         self.unit_of_analysis = unit
+        if unit == _rep.UNIT_NOT_DESCRIBED:
+            # NOT the `record` sentence, which is what the first version said —
+            # and it would have been the app describing a design it was just
+            # told it cannot describe. The rows survive because that is the
+            # conservative treatment, not because one row is one record.
+            said = ("Neither one row per participant nor one row per record "
+                    "describes this design. The records are left as they are "
+                    "and nothing is combined, which is the most conservative "
+                    "treatment available — and the methods section carries an "
+                    "[AUTHOR REQUIRED] gap where the unit of analysis would be "
+                    "stated, because the app cannot state it.")
+        elif unit == _rep.UNIT_PERSON:
+            said = ("One row is one person; each person's records are combined "
+                    "into one before anything is held out.")
+        else:
+            said = ("One row is one record; records stay as they are, and "
+                    "held-out people never appear in training.")
         return self.record(
             kind="set_unit_of_analysis", subject=unit,
-            text=("One row is one person; each person's records are combined "
-                  "into one before anything is held out."
-                  if unit == _rep.UNIT_PERSON else
-                  "One row is one record; records stay as they are, and "
-                  "held-out people never appear in training."),
-            payload={"unit": unit})
+            text=said,
+            payload={"unit": unit,
+                     "design_not_described": unit == _rep.UNIT_NOT_DESCRIBED})
 
     def set_aggregation(self, method: str) -> Decision:
         """Question 6. Executes, **pre-seal**, because it changes what a row is.
@@ -788,6 +817,14 @@ class AnalysisProject:
                 "rows that no longer exist, with nothing able to detect it. "
                 "This is the identity barrier, and it is why aggregation is "
                 "pre-seal and cannot move.")
+        if self.unit_of_analysis == _rep.UNIT_NOT_DESCRIBED:
+            raise ProjectError(
+                "You told us the offered units do not describe this design, so "
+                "the rows are left as they are — which is the conservative "
+                "treatment that answer routes to. The app has no aggregation "
+                "for a matched set or a crossover period, and inventing one "
+                "here would be the confident wrong answer that answer exists "
+                "to avoid.")
         if self.unit_of_analysis != _rep.UNIT_PERSON:
             raise ProjectError(
                 "Combining a person's rows only applies when one row is one "

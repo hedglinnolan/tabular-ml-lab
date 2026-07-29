@@ -428,7 +428,10 @@ def plan(
                 "nothing on screen can show you."),
             options=["No, one row per person",
                      "Yes, people repeat",
-                     "I'm not sure"]))
+                     "I'm not sure",
+                     "My design isn't described here"],
+            option_values=["one_row_per_person", "people_repeat", "not_sure",
+                           "design_not_described"]))
 
     # ── questions 4 to 7, all of which fire only when people repeat ─────────
     #
@@ -894,8 +897,9 @@ def _repeat_chain(repeats: Dict[str, Any],
                 "There is NO DEFAULT here: guessing at grain is what produced "
                 "the leak this whole constitution exists to prevent, and the "
                 "same reasoning binds one level down."),
-            options=["One row per person", "One row per record"],
-            option_values=["person", "record"]))
+            options=["One row per person", "One row per record",
+                     "My design isn't described here"],
+            option_values=["person", "record", "not_described"]))
         return out
 
     unit = repeats.get("unit")

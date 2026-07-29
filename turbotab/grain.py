@@ -53,7 +53,23 @@ from utils.test_lockbox import (
 ONE_ROW_PER_PERSON = "one_row_per_person"
 PEOPLE_REPEAT = "people_repeat"
 NOT_SURE = "not_sure"
-ANSWERS = (ONE_ROW_PER_PERSON, PEOPLE_REPEAT, NOT_SURE)
+# THE ESCAPE HATCH, because the answer space is closed and the world is not.
+#
+# A nested case-control with matched pairs has no correct answer among *no*,
+# *yes with this column* and *not sure*: the rows are neither independent
+# participants nor repeated measures of one person, they are matched sets, and a
+# split has to keep a set together for reasons none of the three describe. A
+# crossover trial is the same shape from a different direction. Forcing one of
+# the three produces exactly the confidently-wrong answer the constitution
+# forbids — and it produces it in the record, where a reader would take it as a
+# description of the study.
+#
+# Same shape as `not_sure`, and for the same reason: **uncertainty must never
+# cost more than a wrong confident answer.** It records the fact, routes to the
+# most conservative treatment available, and puts an `[AUTHOR REQUIRED]` gap in
+# the manuscript at exactly the point the app cannot describe.
+DESIGN_NOT_DESCRIBED = "design_not_described"
+ANSWERS = (ONE_ROW_PER_PERSON, PEOPLE_REPEAT, NOT_SURE, DESIGN_NOT_DESCRIBED)
 
 # A column is identifier-SHAPED when its values repeat a handful of times each.
 # Below the floor it is a category ('sex' repeats hundreds of times); above the
@@ -301,6 +317,14 @@ _ANSWERED: Dict[str, str] = {
         "Recorded: people repeat, identified by `{group_col}`. Whole people "
         "will be held out rather than individual rows, so nobody appears on "
         "both sides of the split.",
+    DESIGN_NOT_DESCRIBED:
+        "Recorded: the study design is not one of the shapes offered. The "
+        "analysis continues on the most conservative treatment available — "
+        "held-out rows are chosen by `{group_col}` where a grouping column was "
+        "named and by row otherwise, and no rows are combined. Your numbers are "
+        "labeled exploratory, and the methods section carries an "
+        "[AUTHOR REQUIRED] gap at the point where the design would be "
+        "described, because the app cannot describe a design it was not told.",
     NOT_SURE:
         "Recorded: unknown. That is a legitimate answer and the analysis "
         "continues — but because the shape is unknown, the held-out rows are "
@@ -374,6 +398,15 @@ def seal_basis(answer: str, group_col: Optional[str] = None,
     `group_col: None`, which a consumer cannot tell from a verified
     cross-sectional seal (constitution §03).
     """
+    if answer == DESIGN_NOT_DESCRIBED:
+        # The most conservative basis available: grouped where a column was
+        # named, undetermined otherwise. Never `cross_sectional`, which would be
+        # a claim about independence the user explicitly declined to make.
+        if group_col:
+            if n_groups is not None and n_groups < _MIN_GROUPS_FOR_GROUPED_LOCKBOX:
+                return "repetition_found_grouping_abandoned"
+            return SEAL_GROUPED
+        return SEAL_UNDETERMINED
     if answer == NOT_SURE:
         return SEAL_UNDETERMINED
     if answer == ONE_ROW_PER_PERSON:

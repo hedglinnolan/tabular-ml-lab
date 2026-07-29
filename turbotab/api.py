@@ -318,6 +318,18 @@ def _disclosures(project: AnalysisProject) -> Dict[str, Any]:
         out["seal"] = grain_mod.seal_disclosure(project.lockbox)
         out["exploratory"] = grain_mod.is_exploratory_basis(
             project.lockbox.get("seal_basis"))
+        if (project.grain or {}).get("design_not_described"):
+            # The basis may be `grouped` and honest, and the app still cannot
+            # vouch that grouping is the right treatment for a design it was not
+            # told. Exploratory for a reason the basis cannot express, and the
+            # sentence says which.
+            out["exploratory"] = True
+            out["seal"] += (
+                " Note: you told us none of the offered shapes describes this "
+                "study, so this split is the most conservative treatment "
+                "available rather than one verified against your design. Treat "
+                "these numbers as exploratory, and the methods section carries "
+                "an [AUTHOR REQUIRED] gap where the design would be described.")
         if (project.grain or {}).get("contradiction_acknowledged"):
             # §09: the attestation flows into the record so the manuscript can
             # carry it as a limitation. The seal is where that matters, because
@@ -1244,6 +1256,33 @@ async def offer_preview(project_id: str, finding_id: str,
         project.working_table, found["columns"], found["binding"],
         found.get("variant"))
     return body
+
+
+@app.get("/project/{project_id}/gaps")
+async def get_gaps(project_id: str) -> Dict[str, Any]:
+    """The `[AUTHOR REQUIRED]` gaps this record carries, and where each sits.
+
+    The escape hatch's other half. Recording *"my design isn't described here"*
+    and then writing a methods section that describes it anyway would be the
+    governing rule broken by the mechanism built to honor it — so the gap is a
+    first-class thing the export reads, placed at the point the app cannot
+    describe rather than appended at the end.
+    """
+    from turbotab import repeats as _rep
+    project = _project(project_id)
+    gaps: List[Dict[str, Any]] = []
+    if (project.grain or {}).get("design_not_described"):
+        gaps.append({"where": "study_design", "after": "participants",
+                     "question": "state_grain", "text": _rep.DESIGN_GAP})
+    if project.unit_of_analysis == _rep.UNIT_NOT_DESCRIBED:
+        gaps.append({"where": "unit_of_analysis", "after": "study_design",
+                     "question": "state_unit_of_analysis",
+                     "text": _rep.UNIT_GAP})
+    return {"gaps": gaps, "n": len(gaps),
+            "marker": _rep.AUTHOR_REQUIRED,
+            "note": ("Each gap sits at the point the app cannot describe. "
+                     "Nothing here is generated prose about your design; the "
+                     "app is naming what it does not know.")}
 
 
 @app.get("/project/{project_id}/teaching/{question}")

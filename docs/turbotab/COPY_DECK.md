@@ -32,6 +32,7 @@ Against drift, each hand entry carries a probe — a distinctive fragment of the
 - No, one row per person
 - Yes, people repeat
 - I'm not sure
+- My design isn't described here
 
 The second option opens a follow-up: *which column identifies the person?* — populated from `grain.suggestion`, which offers the name heuristic's candidates first and shape-only candidates after.
 

@@ -77,7 +77,13 @@ REPEAT_KINDS = (REPEATS, TIME_POINTS)
 
 UNIT_PERSON = "person"
 UNIT_RECORD = "record"
-UNITS = (UNIT_PERSON, UNIT_RECORD)
+# The same escape hatch as the grain question's, and it belongs here for the same
+# reason: matched pairs are not one row per person and not one row per record,
+# they are one row per *set*, and the app has no aggregation that means that.
+# Routes to the conservative treatment — rows survive, nothing is combined — and
+# leaves the manuscript gap where the design would be described.
+UNIT_NOT_DESCRIBED = "not_described"
+UNITS = (UNIT_PERSON, UNIT_RECORD, UNIT_NOT_DESCRIBED)
 
 # ── question 6 ───────────────────────────────────────────────────────────────
 
@@ -302,6 +308,27 @@ REOPEN = "Ask me anyway"
 
 
 # ── question 6 · the menu is domain-shaped ───────────────────────────────────
+
+AUTHOR_REQUIRED = "[AUTHOR REQUIRED]"
+
+# What the manuscript carries where the app was told its vocabulary does not fit.
+# `[AUTHOR REQUIRED]` is `ml/narrative_engine.py`'s own marker, borrowed rather
+# than reinvented so the export's existing gap-reporting finds it.
+DESIGN_GAP = (
+    AUTHOR_REQUIRED + " Describe the study design and how it constrains the "
+    "held-out set. The analysis was told that none of the offered shapes — one "
+    "row per participant, repeated measures of one participant, or unknown — "
+    "describes this data, so the app applied the most conservative treatment it "
+    "has and did not attempt a description. Matched sets, crossover periods and "
+    "nested sampling all need a sentence the app cannot write.")
+
+UNIT_GAP = (
+    AUTHOR_REQUIRED + " State what one row of the analyzed table is, and why. "
+    "The app was told that neither one row per participant nor one row per "
+    "record describes this design, so the records were left as they are and "
+    "nothing was combined — the most conservative treatment available. A "
+    "matched set, a crossover period or a cluster is a unit of analysis the app "
+    "has no aggregation for, and the sentence describing it is yours.")
 
 _MENU: Dict[str, Dict[str, str]] = {
     MEAN: {

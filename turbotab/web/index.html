@@ -2655,6 +2655,11 @@
         : "Records these as different time points, which makes averaging them destroy the trajectory.";
     },
     set_unit_of_analysis: function(p){
+      if ((p || {}).unit === "not_described")
+        return "Records that the offered units do not describe this design. " +
+               "The rows are left as they are, nothing is combined, and the " +
+               "methods section carries an [AUTHOR REQUIRED] gap where the " +
+               "unit of analysis would be stated.";
       return (p || {}).unit === "person"
         ? "Records one row per person, and asks next how each person's rows are combined."
         : "Records one row per record. The rows stay as they are and whole people are held out.";
@@ -2680,7 +2685,14 @@
     },
     set_eligibility: function(){ return "Removes the rows the criterion excludes, before anything is held out, and reports the count in participant flow."; },
     seal:            function(){ return "Draws the held-out rows and closes them. Sealed once — this cannot be redrawn."; },
-    set_grain:       function(){ return "Records whether a person can appear more than once, which decides how the held-out rows are chosen."; },
+    set_grain:       function(p){
+      return (p || {}).answer === "design_not_described"
+        ? "Records that none of the offered shapes describes this study. The " +
+          "held-out rows are chosen the most conservative way available, the " +
+          "numbers are labeled exploratory, and the methods section carries an " +
+          "[AUTHOR REQUIRED] gap where the design would be described."
+        : "Records whether a person can appear more than once, which decides how the held-out rows are chosen.";
+    },
     set_selection:   function(p){
       return (p && p.method)
         ? "Records which selection method runs, fitted inside each training fold. Nothing is selected now."
