@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**199 of 600 closed.**
+**200 of 601 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 360 |
 | `PARTIAL` | 41 |
-| `FIXED` | 196 |
+| `FIXED` | 197 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
@@ -553,7 +553,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 196
+## FIXED — 197
 
 
 ### Multi-file / JSON import — 69
@@ -669,12 +669,13 @@ Nothing is closed without a regression test named after it.
 | `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — Duplicate of COACH-024 from the state pass, and closed the same way: the… |
 | `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | **test:** `tests/test_cohort_runs.py::test_unrecognizable_rows_yield_nothing_not_everything` — The invariant is implemented, disclosed and tested, and the test's NAME is the… |
 
-### Guided-door drive feedback — 29
+### Guided-door drive feedback — 30
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `GUIDED-024` | critical | Pack priors are declared, reasoned and shape-tested, and consumed by nothing - ten priors across five packs with no reader outside packs.py's own test | `turbotab/packs.py:889 priors(); turbotab/api.py consumes reframe/question/suggest/contradiction but never…` | **test:** `turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_a_derived_column_prior_turns_a_mechanism_question_into_a_stated_fact` — Wired at L20. The priors are typed… |
 | `GUIDED-029` | critical | Per-column questions scale linearly with column count, so a wide table without a matching pack gets hundreds of questions - the lens masks this rather than solving it | `L20 discrimination matrix, metabolomics_untargeted base=313; DOMAIN_PACKS.md 02; the p>>n scoping rule` | **test:** `turbotab/test_one_answer_covers_a_set_defined_by_a_rule.py::test_the_question_count_does_not_grow_with_the_column_count` — FIXED at L21 in turbotab/bulk.py plus… |
+| `GUIDED-036` | critical | The escape hatch recorded basis grouped with no grouping column, so the split fell through to a row split while the seal announced a grouped one | `turbotab/project.py set_grain group_col/n_groups; turbotab/engine.py draw_holdout:769; turbotab/grain.py…` | **test:** `turbotab/test_the_escape_hatch_records_what_it_cannot_describe.py::test_the_conservative_split_is_actually_grouped` — Found at L23 by DRIVING the feature built earlier… |
 | `GUIDED-001` | high | Import doctor proposes numeric coercion for True/False-coded binary columns (meds_hbp, meds_chol) instead of recognizing a binary variable with informative-missingness potential | `ml/import_doctor.py; screenshot meds_chol` | **test:** `turbotab/test_guided_drive.py::test_a_true_false_column_is_read_as_binary_not_coerced_to_numbers` — Fixed, and reproduced first: a True/False column with blanks is read… |
 | `GUIDED-002` | high | High-missingness finding reports a count but never names the features, and its card carries no snippet and no dtype-aware recommendation | `ml/dataset_profile.py; turbotab explore step; screenshots` | **test:** `turbotab/test_guided_drive.py::test_missingness_routes_by_dtype` — Fixed. Cards name their column in the question text and in a mono chip, carry the count, the share… |
 | `GUIDED-004` | high | No impossibility tier: bp_di values near 1e-15 are at best 'outliers' - the profile does not distinguish medically impossible from medically improbable | `ml/clinical_units.py; ml/physiology_reference.py; ml/dataset_profile.py; screenshot physiologic_check` | **test:** `turbotab/test_guided_drive.py::test_a_diastolic_of_zero_is_impossible_and_a_high_one_is_improbable` — Fixed. The bundled NHANES reference now carries floor/ceiling… |

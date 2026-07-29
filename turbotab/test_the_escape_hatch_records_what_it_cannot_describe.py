@@ -164,6 +164,56 @@ def test_the_unit_hatch_leaves_the_rows_alone_and_refuses_aggregation(client):
     assert "Neither one row per participant nor one row per record" in said["text"]
 
 
+def test_the_conservative_split_is_actually_grouped(client):
+    """The seal SAYS "chosen by subject rather than by row, so no subject appears
+    in both halves." This checks the sentence against the draw.
+
+    It is here because the first version was false. `set_grain` kept `group_col`
+    only for `people_repeat`, so the hatch recorded `basis: grouped` with
+    `group_col: None` — and `draw_holdout` requires BOTH, so it fell through to a
+    ROW split while `seal_disclosure` read the basis and announced a grouped one.
+    The count gave it away ("from 0 subjects"), but the count is a symptom: a
+    subject genuinely could appear on both sides. The escape hatch's whole promise
+    is the conservative treatment, and a promise the split did not keep is worse
+    than the wrong confident answer the option exists to avoid.
+    """
+    import pandas as pd
+
+    pid = _upload(client)
+    _decide(client, pid, "set_grain",
+            {"answer": G.DESIGN_NOT_DESCRIBED, "group_col": "subject_id"})
+    _decide(client, pid, "set_eligibility", {"answer": "everyone"})
+    _decide(client, pid, "seal", {"fraction": 0.15, "seed": 42})
+
+    body = client.get(f"/project/{pid}").json()
+    lb = body["lockbox"]
+    assert lb["group_col"] == "subject_id", "the named column survived to the seal"
+    assert lb["n_groups"] == 200
+    assert body["grain"]["group_col"] == "subject_id"
+
+    df = pd.read_csv(DATA / "clinical_longitudinal.csv")
+    held = {int(x) for x in lb["labels"]}
+    test_subjects = set(df.loc[sorted(held), "subject_id"])
+    train_subjects = set(df.drop(index=sorted(held))["subject_id"])
+    assert not (test_subjects & train_subjects), (
+        f"{len(test_subjects & train_subjects)} subject(s) appear on both sides, "
+        f"and the seal sentence says none do")
+    assert test_subjects, "nothing was held out"
+    assert f"from {len(test_subjects)} subjects" in body["disclosures"]["seal"], (
+        "the count in the sentence is not the count that was drawn")
+
+
+def test_a_grouping_column_that_does_not_exist_is_refused(client):
+    """The same defect from the other end: the existence check ran only for
+    `people_repeat`, so the hatch accepted a name that was not a column and then
+    dropped it — a typo became a silent row split."""
+    pid = _upload(client)
+    r = _decide(client, pid, "set_grain",
+                {"answer": G.DESIGN_NOT_DESCRIBED, "group_col": "subjekt_id"})
+    assert r.status_code == 400
+    assert "subjekt_id" in r.json()["detail"]
+
+
 # ── what the manuscript says at that point ───────────────────────────────────
 
 def test_the_gap_sits_where_the_app_cannot_describe(client):

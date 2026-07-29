@@ -7653,5 +7653,19 @@
   "verified_against": "",
   "test": "turbotab/test_the_escape_hatch_records_what_it_cannot_describe.py::test_the_grain_hatch_routes_to_the_conservative_split",
   "verified_ev": "turbotab/grain.py ANSWERS; turbotab/repeats.py UNITS"
+ },
+ {
+  "id": "GUIDED-036",
+  "area": "GUIDED",
+  "sev": "critical",
+  "item": "The escape hatch recorded basis grouped with no grouping column, so the split fell through to a row split while the seal announced a grouped one",
+  "detail": "set_grain kept group_col only for people_repeat, but computed basis from the same local group_col - so answering 'my design is not described here' and naming subject_id recorded {basis: grouped, group_col: None}. draw_holdout requires BOTH and fell to the else branch, drawing by ROW, while seal_disclosure read the basis and announced '90 rows (15%) from 0 subjects are held out, chosen by subject rather than by row, so no subject appears in both halves.' A subject genuinely could. The count gave it away but the count is the symptom.",
+  "ev": "turbotab/project.py set_grain group_col/n_groups; turbotab/engine.py draw_holdout:769; turbotab/grain.py seal_disclosure",
+  "act": "",
+  "status": "FIXED",
+  "note": "Found at L23 by DRIVING the feature built earlier in the same loop for the report, not by a test - the escape hatch's own nine tests all passed, because every one of them asserted the RECORD and none of them asserted the DRAW against it. The new guard reads the sealed labels back and checks the subject sets are disjoint, which is the sentence checked against what happened rather than against what was recorded. THE ESCAPE HATCH'S ENTIRE PROMISE IS THE CONSERVATIVE TREATMENT, so a promise the split did not keep is worse than the wrong confident answer the option exists to avoid - the user took the hatch specifically to avoid asserting independence, and the app asserted it on their behalf. Second hole from the same root: the column-exists check also ran only for people_repeat, so a typo in the grouping column was accepted and then dropped, turning a typo into a silent row split. Both fixed by keeping the column for every answer that can name one. Two probes, each red for its stated reason.",
+  "verified_against": "",
+  "test": "turbotab/test_the_escape_hatch_records_what_it_cannot_describe.py::test_the_conservative_split_is_actually_grouped",
+  "verified_ev": "turbotab/project.py set_grain group_col/n_groups; turbotab/engine.py draw_holdout:769; turbotab/grain.py seal_disclosure"
  }
 ]

@@ -668,7 +668,10 @@ class AnalysisProject:
                 "The test set is already sealed, and it was drawn against the "
                 "grain answer recorded at the time. Changing that answer now "
                 "would describe a split that was not drawn this way.")
-        if answer == _grain.PEOPLE_REPEAT and group_col:
+        # Both answers that can name a grouping column are validated. The first
+        # version checked only `PEOPLE_REPEAT`, so the escape hatch accepted a
+        # column that does not exist and then silently dropped it.
+        if answer in (_grain.PEOPLE_REPEAT, _grain.DESIGN_NOT_DESCRIBED) and group_col:
             if group_col not in list(self.df.columns):
                 raise ProjectError(f"No column named '{group_col}' in this table.")
 
@@ -679,6 +682,7 @@ class AnalysisProject:
             # readings is wrong and the caller has to say which.
             raise GrainContradiction(clash["message"], detail=clash)
 
+        _GROUPING_ANSWERS = (_grain.PEOPLE_REPEAT, _grain.DESIGN_NOT_DESCRIBED)
         n_groups = None
         if group_col and group_col in self.df.columns:
             n_groups = int(self.df[group_col].nunique(dropna=True))
@@ -693,8 +697,18 @@ class AnalysisProject:
             # design it was never told. Recorded on the answer, where the reason
             # lives.
             "design_not_described": answer == _grain.DESIGN_NOT_DESCRIBED,
-            "group_col": group_col if answer == _grain.PEOPLE_REPEAT else None,
-            "n_groups": n_groups if answer == _grain.PEOPLE_REPEAT else None,
+            # THE COLUMN IS KEPT FOR BOTH ANSWERS THAT CAN NAME ONE, and the
+            # first version's `== PEOPLE_REPEAT` was a false assertion two steps
+            # later. `basis` is computed from this same local `group_col`, so
+            # dropping it left the recorded grain saying `grouped` with no column
+            # to group by — and `draw_holdout` requires BOTH, so it fell through
+            # to a row split while `seal_disclosure` read the basis and announced
+            # "chosen by subject rather than by row, so no subject appears in
+            # both halves." A subject could. The escape hatch's entire promise is
+            # the conservative treatment; a promise the split did not keep is
+            # worse than the wrong confident answer the option exists to avoid.
+            "group_col": group_col if answer in _GROUPING_ANSWERS else None,
+            "n_groups": n_groups if answer in _GROUPING_ANSWERS else None,
             "basis": _grain.seal_basis(answer, group_col, n_groups),
             "basis_source": _grain.basis_source(inherited),
             "contradiction_acknowledged": bool(clash and acknowledged_contradiction),
