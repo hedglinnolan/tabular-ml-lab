@@ -57,6 +57,27 @@ import pandas as pd
 # `drop_rows`) keep the surviving rows' labels and are allowed on either side.
 PRE_BARRIER_ONLY_FIXES = frozenset({"promote_header", "melt_repeated"})
 
+# The preparation-mode question's two answers, and the caveat the manuscript
+# carries automatically when the recommended one is chosen. Recorded here rather
+# than composed at the call site because the caveat IS the deliverable: a
+# per-model comparison whose asymmetry is not disclosed is a comparison a
+# reader cannot interpret.
+_PER_MODEL_SENTENCE = (
+    "Each model receives the preparation it needs: scaling where the model "
+    "measures distances or penalizes coefficients, none where it splits on "
+    "order.")
+_UNIFORM_SENTENCE = (
+    "Every model receives the same preparation, so differences between them "
+    "are differences between the models rather than between their pipelines.")
+_COMPARISON_CAVEAT = (
+    "Models were compared under per-model preprocessing: each was given the "
+    "preparation appropriate to it rather than a single shared pipeline. A "
+    "difference in performance between two models therefore reflects the "
+    "model and its preparation together, and the two cannot be separated from "
+    "these results alone. This is the usual choice — a model handicapped by "
+    "preparation it does not suit is not informative either — and it is stated "
+    "so the comparison is read for what it is.")
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -166,6 +187,19 @@ class AnalysisProject:
     # would mean the held-out rows were chosen from people the study is not
     # about. "Everyone" is a recorded answer, never an absence.
     eligibility: Optional[Dict[str, Any]] = None
+    # The models the user intends to train, chosen at Preprocess so per-model
+    # preparation has something to hang off. Train becomes execution rather
+    # than choice. Ordered as the shelf presented them.
+    selected_models: List[str] = field(default_factory=list)
+    # per-model | uniform. Asked ONCE (L18 task 3): per-model recipes are
+    # correct and introduce a real methodological problem — if one model gets
+    # transformed features and another gets raw ones, a win is ambiguous
+    # between the model and the pipeline.
+    preparation_mode: Optional[str] = None
+    # {model_key: {operation: variant}} — what the user settled, over the
+    # table's defaults. Empty means "the defaults stand", which is a recorded
+    # answer once `preprocess_settled` is true.
+    model_recipes: Dict[str, Dict[str, str]] = field(default_factory=dict)
     # One entry per column whose missingness has been routed (constitution §07).
     # Recorded, not executed, except for the two row-local strategies — almost
     # every preprocessing transform is stateful by clause §06's litmus, so this
@@ -697,6 +731,139 @@ class AnalysisProject:
             kind="route_missingness", subject=str(column),
             text=record["sentence"], payload=dict(record))
 
+    # ── model selection and per-model preparation (L18) ─────────────────────
+
+    PREPARATION_MODES = ("per_model", "uniform")
+
+    def model_shelf(self) -> List[Any]:
+        """Every model this task can use, ordered by fit and never filtered."""
+        from turbotab import engine, models as _models
+        prof = engine.profile(self.df, self.target, self.task_type)
+        return _models.shelf(prof, self.task_type or "regression")
+
+    def select_models(self, keys: Sequence[str]) -> Decision:
+        """Record which models the user intends to train.
+
+        Nothing here refuses on FIT. `PRODUCT_VISION.md`'s ladder puts model
+        choice on the bottom rung — rank and state the concern — because the
+        test for the top rung is whether a competent researcher could have a
+        reason, and for a tree ensemble at p ≫ n they very often do.
+        """
+        from turbotab import models as _models
+        if not self.barrier_raised:
+            raise ProjectError(
+                "Models are chosen after the seal: the shelf is ordered by the "
+                "shape of your data, and the shape it reads must be the shape "
+                "the models will actually be fitted on.")
+        entries = self.model_shelf()
+        try:
+            chosen = _models.validate_selection(entries, list(keys))
+        except _models.ModelSelectionError as exc:
+            raise ProjectError(str(exc)) from exc
+
+        self.selected_models = chosen
+        # Selecting a different set makes every per-model recipe for a model
+        # nobody selected meaningless. Dropped rather than kept, because a
+        # recipe for an unselected model would travel into the record as a
+        # decision about a model that was never trained.
+        self.model_recipes = {k: v for k, v in self.model_recipes.items()
+                              if k in set(chosen)}
+        self.findings_stale = True
+        self._mark_stale(f"{len(chosen)} model(s) were selected for training")
+        note = _models.selection_note(entries, chosen)
+        by_key = {e.key: e for e in entries}
+        return self.record(
+            kind="select_models", subject=",".join(chosen),
+            text=(f"{len(chosen)} model(s) selected for training: "
+                  + ", ".join(by_key[k].name for k in chosen) + "."
+                  + (f" {note}" if note else "")),
+            payload={"models": chosen,
+                     "buckets": {k: by_key[k].bucket for k in chosen},
+                     "concern_note": note})
+
+    def set_preparation_mode(self, mode: str) -> Decision:
+        """Per-model preparation, or one recipe for all of them.
+
+        The question exists because per-model recipes are correct AND create a
+        real methodological problem: if one model gets transformed, scaled
+        features and another gets raw ones, a win is ambiguous between the model
+        and the pipeline. Asked once rather than per model — it is a property of
+        the comparison, not of any one model in it.
+        """
+        if mode not in self.PREPARATION_MODES:
+            raise ProjectError(
+                f"{mode!r} is not one of {list(self.PREPARATION_MODES)}.")
+        self.preparation_mode = mode
+        self.findings_stale = True
+        return self.record(
+            kind="set_preparation_mode", subject=mode,
+            text=(_PER_MODEL_SENTENCE if mode == "per_model"
+                  else _UNIFORM_SENTENCE),
+            payload={"mode": mode,
+                     "caveat": (_COMPARISON_CAVEAT if mode == "per_model"
+                                else None)})
+
+    def set_model_recipe(self, model_key: str, operation: str,
+                         variant: str) -> Decision:
+        """Override one operation for one model. The table supplies the rest."""
+        from turbotab import recipes as _rec
+        if model_key not in self.selected_models:
+            raise ProjectError(
+                f"'{model_key}' is not one of the selected models, so "
+                f"configuring it would record a decision about a model that "
+                f"will never be trained.")
+        try:
+            resolved = _rec.resolve(model_key, operation)
+        except _rec.RecipeError as exc:
+            raise ProjectError(str(exc)) from exc
+        if variant not in resolved.variants:
+            raise ProjectError(
+                f"'{variant}' is not one of {list(resolved.variants)} for "
+                f"{operation}.")
+        self.model_recipes.setdefault(model_key, {})[operation] = variant
+        self.findings_stale = True
+        return self.record(
+            kind="set_model_recipe", subject=f"{model_key}::{operation}",
+            text=(f"{operation} for {model_key} was set to {variant}, over the "
+                  f"default of {resolved.variant}."),
+            payload={"model": model_key, "operation": operation,
+                     "variant": variant, "was_default": resolved.variant})
+
+    def resolved_recipes(self) -> Dict[str, List[Dict[str, Any]]]:
+        """The table's defaults with the user's overrides applied.
+
+        Under `uniform`, every selected model resolves against the FIRST
+        selected model's recipe — so the comparison is about the models. The
+        substitution is recorded on each entry rather than performed silently,
+        because a user reading `ridge`'s recipe under a tree's settings needs to
+        know why it says what it says.
+        """
+        from turbotab import recipes as _rec
+        out: Dict[str, List[Dict[str, Any]]] = {}
+        if not self.selected_models:
+            return out
+        source = (self.selected_models[0]
+                  if self.preparation_mode == "uniform" else None)
+        for key in self.selected_models:
+            rows = []
+            for r in _rec.recipe(source or key):
+                d = r.to_dict()
+                override = (self.model_recipes.get(source or key, {})
+                            .get(r.operation))
+                if override:
+                    d["variant"] = override
+                    d["reason"] = (f"Set by you, over the default of "
+                                   f"{r.variant}.")
+                    d["overridden"] = True
+                if source and source != key:
+                    d["uniform_source"] = source
+                    d["reason"] += (
+                        f" Applied to every model because you chose one shared "
+                        f"preparation; this is {source}'s setting.")
+                rows.append(d)
+            out[key] = rows
+        return out
+
     def settle_preprocess(self, skipped: bool = False) -> Decision:
         """End the step, including by leaving everything alone.
 
@@ -1049,6 +1216,9 @@ class AnalysisProject:
             "stale_downstream": self.stale_downstream,
             "grain": self.grain,
             "eligibility": self.eligibility,
+            "selected_models": self.selected_models,
+            "preparation_mode": self.preparation_mode,
+            "model_recipes": self.model_recipes,
             "missingness": self.missingness,
             "preprocess_settled": self.preprocess_settled,
             "obligations": self.obligations,

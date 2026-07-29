@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**173 of 571 closed.**
+**175 of 573 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 356 |
 | `PARTIAL` | 42 |
-| `FIXED` | 170 |
+| `FIXED` | 172 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
@@ -540,7 +540,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 170
+## FIXED — 172
 
 
 ### Multi-file / JSON import — 68
@@ -674,7 +674,7 @@ Nothing is closed without a regression test named after it.
 | `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |
 
-### Guided-door drive feedback — 16
+### Guided-door drive feedback — 18
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -688,12 +688,14 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-015` | high | An undetermined seal produced no user-facing sentence at all: the basis and the exploratory flag were recorded and nothing said anything, so the Guided door rendered an undetermined seal exactly like… | `turbotab/grain.py answer_disclosure / seal_disclosure / is_exploratory_basis; turbotab/api.py _disclosures…` | **test:** `turbotab/test_grain_is_asked.py::test_an_undetermined_seal_says_so_in_words_the_user_reads` — FIXED at L15. Four seal bases now map to four different sentences, keyed… |
 | `GUIDED-020` | high | Lockbox constitution clause 04's eligibility question is asked in NEITHER door, and the first coverage matcher marked the clause covered because a test for the OTHER half of it existed | `tests/test_every_clause_is_tracked.py, the `lockbox-04` obligations; ROADMAP.md lockbox constitution 04` | **test:** `turbotab/test_eligibility_is_asked.py::test_the_question_withholds_the_distribution_and_says_why` — FIXED at L16. The question is built into the Guided door between the… |
 | `GUIDED-021` | high | Lockbox constitution clause 07 - missingness routes by dtype AND mechanism - is implemented nowhere, and the first coverage matcher passed it on a wildcard that matched a file of unrelated helper… | `tests/test_every_clause_is_tracked.py, the `lockbox-07` obligations; tests/test_missingness_encoding.py…` | **test:** `turbotab/test_missingness_routes_by_mechanism.py::test_imputing_an_informatively_missing_column_is_blocked_with_both_exits` — FIXED at L17. The wildcard link is gone… |
+| `GUIDED-022` | high | The 'ask only when the choice changes the answer' check was wired so that it could never fire on any dataset | `turbotab/api.py get_recipes; turbotab/recipes.py worth_asking` | **test:** `test_a_variant_with_no_pushed_alternative_is_an_absence_not_a_suppression` — Found while counting suppressions for the L18 report, which is the only reason it was found… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |
 | `GUIDED-008` | medium | 'Remind me later' does not tell the user where or when the item resurfaces, though the deferral contract already requires a target_step | `turbotab/api.py (defer requires target_step); screenshots` | **test:** `turbotab/test_guided_drive.py::test_every_finding_carries_the_step_its_deferral_goes_to` — Fixed. The Router owns the destination, because it owns which step can act on… |
 | `GUIDED-018` | medium | required_decisions has no key for a constitutionally mandatory question, so the grain question scores as one irrelevant question on all three value-check datasets - including the one where it matters… | `docs/turbotab/VALUE_CHECK_ADJUDICATION.md section 'The grain question scores as noise'…` | **test:** `tests/test_the_constitutional_category_is_reported_not_subtracted.py::test_labeling_a_question_with_a_clause_does_not_move_the_literal_count` — RULED BY THE PRODUCT… |
 | `GUIDED-019` | medium | The routing value check's drift detector fired correctly and nothing ran it for two loops, so a metric regression I introduced at L13 shipped through L13 and L14 unnoticed | `tests/integration/test_routing_value_check.py::test_routing_value_check; the bisect at L15 (e7910ef green…` | **test:** `tests/integration/test_routing_value_check.py::test_routing_value_check` — FIXED at L16, as a PRE-PUSH HOOK, per the ruling. A LOOP.md obligation was explicitly ruled… |
+| `GUIDED-023` | medium | The preparation-mode question was classified as a FACT in FACT_KINDS; it is a CHOICE | `ml/router.py FACT_KINDS` | **test:** `test_it_is_a_choice_and_therefore_never_skippable` — The routing constitution's own test: a FACT is skippable at high confidence because the engine is certain and the… |
 
 ### Completeness sweep — 9
 

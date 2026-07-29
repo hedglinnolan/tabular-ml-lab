@@ -322,6 +322,9 @@ def build_members(project) -> Dict[str, bytes]:
         # archive is the only place they live: nothing has executed them,
         # and a restored project that lost them would have no record that
         # the step happened at all.
+        "selected_models": [str(m) for m in project.selected_models],
+        "preparation_mode": project.preparation_mode,
+        "model_recipes": _json_safe(project.model_recipes),
         "missingness": _json_safe(project.missingness),
         "preprocess_settled": bool(project.preprocess_settled),
     }
@@ -475,6 +478,9 @@ def from_bytes(raw: bytes):
     project.grain = config.get("grain") or None
     project.eligibility = config.get("eligibility") or None
     project.obligations = list(config.get("obligations") or [])
+    project.selected_models = list(config.get("selected_models") or [])
+    project.preparation_mode = config.get("preparation_mode") or None
+    project.model_recipes = dict(config.get("model_recipes") or {})
     project.missingness = list(config.get("missingness") or [])
     project.preprocess_settled = bool(config.get("preprocess_settled", False))
     project.engineered = list(config.get("engineered") or [])

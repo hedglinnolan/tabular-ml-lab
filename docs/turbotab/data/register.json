@@ -796,32 +796,32 @@
   "step": "preprocess",
   "capability": "Numeric scaling: standard / robust / minmax / none, with the model-family reason for each",
   "classic": "pages/05 per-model tab 2 - selectbox; caption states trees are scale-invariant",
-  "state": "classic-only",
-  "reason": "NOT BUILT at L17, deliberately: this loop's scope was clause 07, and scaling raises no clause-07 question. It is stateful by the litmus and will be a declaration when it lands, not a transform. Recorded so the gap is a claim rather than an omission."
+  "state": "both",
+  "reason": "L18: Guided gained this through turbotab/recipes.py. WHETHER to scale is a FACT the table settles from ModelCapabilities.requires_scaled_numeric, pre-selected with the reason rendered where the question would have been. WHICH scaling, once it happens, is a judgment about this data - standard and robust are put against each other and the question surfaces only when the two would weight the features differently against one another. minmax stays available and is never raised unprompted, which is 'push the notable, pull the rest' applied to variants. Classic offers all four unconditionally on every dataset."
  },
  {
   "id": "prep-power-transform",
   "step": "preprocess",
   "capability": "Power transform: none / log1p / Yeo-Johnson",
   "classic": "pages/05 per-model tab 2 - selectbox, with backward compatibility for an older log_transform boolean",
-  "state": "classic-only",
-  "reason": "NOT BUILT at L17. Note the SPLIT this will need, which the Features step already draws: log1p is ROW-LOCAL and already exists in the Features catalogue as `log1p`, while Yeo-Johnson fits lambda from the column and defers. Building it here as one control would collapse a distinction clause 06 requires."
+  "state": "both",
+  "reason": "L18: Guided gained this through turbotab/recipes.py as a DATA-DETERMINED operation, which means it is asked and stays asked. Whether skew is a measurement artifact or the phenomenon is a judgment about this study, and no confidence in the engine makes a judgment moot - so unlike scaling it is never pre-selected however certain the profile looks. Yeo-Johnson fits lambda from the column and is therefore stateful; log1p is row-local and lives in the Features catalogue, offered here as the null-lambda case for continuity."
  },
  {
   "id": "prep-categorical-encoding",
   "step": "preprocess",
   "capability": "Categorical encoding: onehot / target / ordinal, with the leakage caveat on target encoding",
   "classic": "pages/05 per-model tab 3 - selectbox; target encoding's help says the pipeline uses cross-fitting to mitigate leakage",
-  "state": "classic-only",
-  "reason": "NOT BUILT at L17. All three of Classic's options defer, and target encoding is the sharpest: Classic's own help text says the pipeline uses cross-fitting to mitigate leakage, which is a clause-06 claim that needs its own verification rather than inheritance."
+  "state": "both",
+  "reason": "L18: Guided gained this through turbotab/recipes.py, and it is settled by a test rather than by assertion - a categorical-bearing table is driven through Guided over HTTP, the resolved recipe is executed, and both selected models fit on the unsealed rows only. Trees and boosted ensembles resolve to ordinal because they split on order and one-hot starves the splits at high cardinality; everything else resolves to onehot so no ordering is implied between categories that have none. The operation declares itself STATEFUL and says what the state is a property of - the rows the encoder saw - which is the sentence that tells a reader why it goes inside the split. The leakage caveat Classic renders as prose is now clause 06's litmus answer carried on the operation."
  },
  {
   "id": "prep-outlier-handling",
   "step": "preprocess",
   "capability": "Outlier handling: none / percentile winsorizing / MAD, with thresholds",
   "classic": "pages/05 per-model tab 4 - selectbox plus number inputs for lower/upper percentile and MAD k",
-  "state": "classic-only",
-  "reason": "NOT BUILT at L17. Percentile winsorizing and MAD both learn their thresholds from the column, so both defer. Related to but distinct from the robustness trim, which IS built - the trim removes training rows, these clip values."
+  "state": "both",
+  "reason": "L18: Guided gained this through turbotab/recipes.py as a DATA-DETERMINED operation. Whether an extreme value is an error or a finding is a question about the study and not about the number, so the default is none and the question is asked. Percentile cut-points and a median absolute deviation are both computed across rows, so the operation declares itself stateful and is fitted inside the training folds. Classic's thresholds are configured on pages/05; Guided records the declaration and executes nothing, which is the honest state of a step where almost nothing runs."
  },
  {
   "id": "prep-plausibility-gating",
@@ -852,8 +852,8 @@
   "step": "preprocess",
   "capability": "Per-model pipelines: each selected model gets its own preprocessing configuration",
   "classic": "pages/05 - one st.tabs entry per selected model, all settings keyed per model",
-  "state": "classic-only",
-  "reason": "NOT BUILT at L17, and the register is where the reason belongs: Guided has no model-selection step yet, so there are no per-model tabs to hang configuration on. The project already carries `pipeline_specs` keyed by model, so the data model is ready and the interface is not."
+  "state": "both",
+  "reason": "L18: Guided gained this, and gained the question Classic's version does not ask. Each selected model resolves its own recipe from the table; under the uniform answer every model resolves against the first selected model's settings and each borrowed row says whose settings it is showing, because a user reading a linear model's recipe under a tree's settings needs to know why it says what it says. What remains CLASSIC-ONLY is the before/after pipeline preview, which is its own row."
  },
  {
   "id": "prep-smart-defaults",
@@ -886,5 +886,53 @@
   "classic": "pages/05:1336-1370 - an expander per model with Before and After subheaders",
   "state": "classic-only",
   "reason": "NOT BUILT at L17. The preview a deferred transform is allowed is narrower than Classic's before/after: clause 06 permits a read-only preview NOT persisted to the modeling table and computed on TRAINING ROWS ONLY, which the Features step already implements as `_deferred_preview`. Extending it here is the same mechanism, not a new one."
+ },
+ {
+  "id": "prep-model-selection-here",
+  "step": "preprocess",
+  "capability": "Model selection happens at Preprocess, and per-model preparation hangs off it",
+  "classic": "PRESENT BUT ELSEWHERE. pages/06 selects models at Train, and pages/05 configures per-model pipelines for models the user has not yet chosen - so the pipeline page offers a column per model in the registry and the Train page decides afterwards which of them mattered.",
+  "state": "guided-native",
+  "reason": "BUILT at L18. Guided asks which models the user intends to train BEFORE configuring preparation, because per-model preprocessing has nothing to hang off until there is a selection. Train then becomes execution rather than choice. GUIDED-NATIVE rather than a debt: this is a sequencing property of Guided's interview, and Classic's page order is not something Classic is expected to change - moving model choice earlier in Classic would mean reordering pages other pages already depend on, which is exactly the STATE-101 problem one level up."
+ },
+ {
+  "id": "prep-shelf-never-shortened",
+  "step": "preprocess",
+  "capability": "Every model stays selectable; the judgment is carried by order and prominence, never by absence",
+  "classic": "PRESENT AND WHISPERED. ml.model_coach.model_viability already buckets every model into good/ok/poor with an evidence-bearing clause citing this dataset's numbers, and pages/06 renders the list in taxonomy order with the verdict as a badge. The ranking exists and the eye never reaches it.",
+  "state": "guided-only",
+  "reason": "BUILT at L18 per PRODUCT_VISION 'the shelf is never shortened'. turbotab/models.py sorts by bucket, returns all three groups including empty ones, and carries the coach's clause verbatim rather than summarized. The only exclusion is structural - a classifier cannot fit a continuous outcome - which is the ladder's top rung, no legitimate use exists. OWED BACK TO CLASSIC: the bucketing is already engine code that both doors can read, so this is a rendering debt and not a capability gap, which makes it the cheapest row in this table to pay off and the one the product owner named by name."
+ },
+ {
+  "id": "prep-recipe-table",
+  "step": "preprocess",
+  "capability": "Per-model preprocessing defaults expressed as a resolvable table - model x operation -> variant plus reason - rather than as branches",
+  "classic": "NOT PRESENT AS DATA. pages/05 derives per-model defaults in conditionals keyed on model family, which is correct today and cannot be extended without editing the page.",
+  "state": "guided-native",
+  "reason": "BUILT at L18. turbotab/recipes.py resolves by selector specificity (exact model > capability flag > registry group > every model), and the model-determined layer is SEEDED FROM ModelCapabilities rather than hand-listed, so 22 models are not a second copy of a fact that already exists. GUIDED-NATIVE: DOMAIN_PACKS 02 says a pack supplies detectors, reference data, conventions and prose and never interface, which only holds if the defaults it adjusts are a lookup. Classic is not expected to gain a pack system, so this is Guided's design model rather than a debt. The extension point is proved by a fake pack in the suite that adds one operation and overrides one variant."
+ },
+ {
+  "id": "prep-ask-when-it-changes-the-answer",
+  "step": "preprocess",
+  "capability": "A variant question is raised only when the two variants would produce materially different answers on this data",
+  "classic": "NOT PRESENT. pages/05 offers standard / robust / minmax unconditionally, on every dataset, for every model.",
+  "state": "guided-native",
+  "reason": "BUILT at L18. Both variants are derived, compared, and the question surfaces only on divergence. The statistic for scaling is deliberately not 'are the numbers different' - they always are, by a constant - but whether the two put the columns on DIFFERENT RELATIVE FOOTINGS: the coefficient of variation of sigma over IQR across columns. Near-constant means one global factor no scale-equivariant model can detect; varying means heavy tails in some columns and not others. GUIDED-NATIVE: this is the interview deciding what to ask, and Classic has no interview to decide for. An operation with a pushed alternative and no comparison is RAISED, never suppressed - an unmeasured difference is not a measured sameness."
+ },
+ {
+  "id": "prep-preparation-mode-question",
+  "step": "preprocess",
+  "capability": "Ask once whether each model gets the preparation it needs or all get the same preparation",
+  "classic": "NOT PRESENT. pages/05 configures a pipeline per model and never asks the question, so every Classic comparison is a per-model comparison and none of them say so.",
+  "state": "guided-only",
+  "reason": "BUILT at L18. Per-model recipes are correct AND create a real methodological problem: if one model gets scaled transformed features and another gets raw ones, a win is ambiguous between the model and the pipeline. Asked ONCE because it is a property of the comparison rather than of any model in it, and asked AFTER selection because it is not a question until there is a set to ask it about. A CHOICE and never skippable - the engine has a recommendation and a recommendation is not certainty. OWED BACK TO CLASSIC: Classic already has the per-model pipelines that create the confound."
+ },
+ {
+  "id": "prep-comparison-caveat",
+  "step": "preprocess",
+  "capability": "Choosing per-model preparation writes the comparison caveat into the manuscript automatically",
+  "classic": "NOT PRESENT. Classic's per-model pipelines produce the same confound and nothing records it, so the limitation reaches the methods section only if the user thought of it.",
+  "state": "guided-only",
+  "reason": "BUILT at L18. AUTOMATICALLY is the load-bearing word: a caveat the user has to remember to add appears in the methods sections of careful people and nowhere else, and the careful people were never the risk. Recorded on the decision, drafted into Limitations, and asserted against draft.draft output rather than against the decision record - the record would prove only that the app knew. Not recorded under uniform, because a limitation the study does not have costs the reader as much credibility as omitting one it does. OWED BACK TO CLASSIC alongside prep-preparation-mode-question, which it is the other half of."
  }
 ]

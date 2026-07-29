@@ -299,6 +299,31 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         except _elig.EligibilityRefusal as exc:
             raise HTTPException(400, str(exc)) from exc
 
+    if decision.kind == "select_models":
+        try:
+            project.select_models(decision.payload.get("models") or [])
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return _payload(project)
+
+    if decision.kind == "set_preparation_mode":
+        try:
+            project.set_preparation_mode(
+                str(decision.payload.get("mode") or decision.subject))
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return _payload(project)
+
+    if decision.kind == "set_model_recipe":
+        try:
+            project.set_model_recipe(
+                str(decision.payload.get("model") or ""),
+                str(decision.payload.get("operation") or ""),
+                str(decision.payload.get("variant") or ""))
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return _payload(project)
+
     if decision.kind == "route_missingness":
         from turbotab import missingness as _miss
         col = decision.payload.get("column") or decision.subject
@@ -754,6 +779,96 @@ async def get_grain(project_id: str) -> Dict[str, Any]:
     }
 
 
+@app.get("/project/{project_id}/models")
+async def get_models(project_id: str) -> Dict[str, Any]:
+    """The shelf: every model this task can use, ordered and never filtered.
+
+    Three groups always returned, including empty ones — "nothing is recommended
+    for this data" is a real state and a renderer that only sees two groups
+    cannot say it.
+    """
+    from turbotab import models as _models
+    project = _project(project_id)
+    if not project.barrier_raised:
+        raise HTTPException(
+            400, "The shelf is ordered by the shape of your data, so it is "
+                 "offered after the seal — the shape it reads must be the "
+                 "shape the models will be fitted on.")
+    entries = project.model_shelf()
+    return {
+        "disclosure": _models.SHELF_DISCLOSURE,
+        "groups": _models.grouped(entries),
+        "selected": project.selected_models,
+        "n_available": len(entries),
+        "concern_note": _models.selection_note(entries, project.selected_models),
+    }
+
+
+@app.get("/project/{project_id}/recipes")
+async def get_recipes(project_id: str) -> Dict[str, Any]:
+    """Per-model preprocessing: what the table resolves, and what to ask.
+
+    Two axes, and they are not the same axis:
+
+    * **Determinacy** decides whether the row is a question at all. A FACT is
+      pre-selected with a rendered skip; a CHOICE is asked, and no confidence in
+      the engine makes a judgment about this data moot.
+    * **Divergence** decides whether a pre-selected fact's VARIANT is worth
+      raising. *Whether* a model gets scaled inputs is the model's property and
+      the table settles it. *Which* scaling, once it happens, is a judgment
+      about this data — so standard and robust are put against each other, and
+      the question surfaces only when they would put the columns on different
+      relative footings.
+
+    `n_choices_suppressed` counts the second: variant questions that were
+    derived, compared and found not to change the answer. A row with no pushed
+    alternative is not counted — there was no question to suppress.
+    """
+    from turbotab import recipes as _rec
+    project = _project(project_id)
+    numeric = [str(c) for c in project.df.columns
+               if pd.api.types.is_numeric_dtype(project.df[c])
+               and str(c) != (project.target or "")]
+    resolved = project.resolved_recipes()
+    suppressed = 0
+    for rows in resolved.values():
+        for row in rows:
+            r = _rec.resolve(row["model"], row["operation"])
+            raise_variant, div = _rec.worth_asking(project.df, numeric, r)
+            row["divergence"] = div.to_dict() if div else None
+
+            if row["may_be_preselected"]:
+                # The fact is pre-selected either way; the variant question is
+                # the only thing the divergence check can add or remove.
+                row["ask"] = False
+                row["skip_reason"] = row["reason"]
+                row["variant_worth_raising"] = bool(raise_variant)
+                if raise_variant and div is not None:
+                    row["variant_prompt"] = (
+                        f"{div.b} instead of {div.a}? {div.evidence}")
+                elif div is not None:
+                    suppressed += 1
+                    row["variant_skipped_because"] = div.evidence
+                continue
+
+            # A CHOICE stays asked. The divergence, when known, travels beside
+            # it as evidence — it informs the answer, it does not replace it.
+            row["ask"] = True
+            row["variant_worth_raising"] = bool(raise_variant)
+    return {
+        "mode": project.preparation_mode,
+        "models": resolved,
+        "operations": [{"key": o.key, "label": o.label,
+                        "determinacy": o.determinacy, "scope": o.scope,
+                        "because": o.because, "origin": o.origin,
+                        "variants": list(o.variants),
+                        "pushed_alternatives": [list(p)
+                                                for p in o.pushed_alternatives]}
+                       for o in _rec.operations()],
+        "n_choices_suppressed": suppressed,
+    }
+
+
 @app.get("/project/{project_id}/preprocess")
 async def get_preprocess(project_id: str) -> Dict[str, Any]:
     """The Preprocess step's state: which columns have blanks, what was decided.
@@ -900,6 +1015,10 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
             answered.append("state_eligibility")
         elif d.kind == "route_missingness":
             answered.append(f"missingness::{d.subject}")
+        elif d.kind == "select_models":
+            answered.append("choose_models")
+        elif d.kind == "set_preparation_mode":
+            answered.append("choose_preparation_mode")
         elif d.kind == "settle_features":
             answered.append("choose_features")
         elif d.kind == "set_task_type":

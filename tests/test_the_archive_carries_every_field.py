@@ -64,6 +64,7 @@ PERSISTED = {
     "id", "name", "created_at", "target", "task_type", "task_confidence",
     "task_overridden", "workflow_mode", "pipeline_specs", "grain",
     "eligibility", "obligations", "missingness", "preprocess_settled",
+    "selected_models", "preparation_mode", "model_recipes",
     "engineered",
     "deferred_transforms", "selection_spec", "features_settled",
     "stale_downstream", "lockbox", "cohort", "decisions",
@@ -176,6 +177,15 @@ def _fully_populated() -> AnalysisProject:
     from turbotab import missingness as MISS
     p.route_missingness("glucose", MISS.NOT_INFORMATIVE, MISS.IMPUTE_MICE,
                         uses_columns=["age"])
+
+    # Model selection and per-model preparation. These three are the L18
+    # omission-in-waiting, and they are the same shape as L14's: the recipes
+    # describe transforms that HAVE NOT RUN, so the archive is the only place
+    # they exist. A restored project that lost them would show a settled
+    # Preprocess step with no record of what it settled.
+    p.select_models(["rf", "logreg"])
+    p.set_preparation_mode("uniform")
+    p.set_model_recipe("rf", "power", "log1p")
     p.settle_preprocess()
 
     # The cohort filter, which has its own whitelist.

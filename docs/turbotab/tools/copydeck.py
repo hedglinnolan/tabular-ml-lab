@@ -233,6 +233,131 @@ HAND: List[Dict[str, Any]] = [
               "different question, and it changes N.",
          source="turbotab/project.py",
          probe="A robustness trim is post-seal by definition"),
+
+    # ── Preprocess · the shelf and per-model preparation (L18) ───────────────
+    dict(step="Preprocess", state="models · the disclosure above the shelf",
+         trigger="rendered with the model list, always; not conditional on a "
+                 "poor verdict existing",
+         copy="Every model is available. This order is about your data, not "
+              "about which models are any good — a model low on this list is "
+              "one whose concern applies to a table this shape, and you may "
+              "have a reason it does not apply to yours. Select whatever you "
+              "intend to train.",
+         source="turbotab/models.py", probe="Every model is available"),
+    dict(step="Preprocess", state="models · the third group's label",
+         trigger="the group header, shown even when the group is empty",
+         copy="Not recommended for this data",
+         source="turbotab/models.py", probe="Not recommended for this data"),
+    dict(step="Preprocess", state="models · a low-ranked model was selected",
+         trigger="`select_models` with at least one `not_recommended` key; the "
+                 "sentence the methods section carries, not an on-screen warning",
+         copy="{n} of the selected model(s) carry a stated concern for a table "
+              "this shape: {name} — {the coach's own clause}. Selected "
+              "deliberately; the concern is recorded so it can be reported "
+              "rather than discovered.",
+         source="turbotab/models.py",
+         probe="recorded so it can be reported rather than discovered"),
+    dict(step="Preprocess", state="models · nothing selected",
+         trigger="`select_models([])`",
+         copy="Choose at least one model. Preprocessing is configured per "
+              "model, so there is nothing to configure until you say what you "
+              "intend to train.",
+         source="turbotab/models.py",
+         probe="nothing to configure until you say what you intend to train"),
+    dict(step="Preprocess", state="models · chosen before the seal",
+         trigger="`select_models` while `barrier_raised` is false",
+         copy="Models are chosen after the seal: the shelf is ordered by the "
+              "shape of your data, and the shape it reads must be the shape "
+              "the models will actually be fitted on.",
+         source="turbotab/project.py", probe="Models are chosen after the seal"),
+
+    dict(step="Preprocess", state="recipe · the rendered skip for scaling",
+         trigger="a model whose `requires_scaled_numeric` capability is true; "
+                 "shown where the question would have been",
+         copy="This model measures distances or penalizes coefficients, so a "
+              "column measured in thousands would dominate one measured in "
+              "units purely because of its scale. The registry records this as "
+              "a property of the model, not of your data.",
+         source="turbotab/recipes.py",
+         probe="a property of the model, not of your data"),
+    dict(step="Preprocess", state="recipe · the rendered skip for not scaling",
+         trigger="every other model",
+         copy="Tree-based and rule-based models split on order rather than on "
+              "distance, so rescaling a column changes nothing they can see. "
+              "Scaling them is harmless and pointless.",
+         source="turbotab/recipes.py", probe="harmless and pointless"),
+    dict(step="Preprocess", state="recipe · the variant question was suppressed",
+         trigger="`worth_asking` measured the two scalings and found them "
+                 "immaterial; shown as the reason no question appeared",
+         copy="σ/IQR varies by {pct} across {n} numeric columns — close to the "
+              "constant 1.35 a Gaussian column gives, so the two scalings "
+              "differ by roughly one global factor and no scale-equivariant "
+              "model can tell them apart.",
+         source="turbotab/recipes.py",
+         probe="no scale-equivariant model can tell them apart"),
+    dict(step="Preprocess", state="recipe · the variant question was raised",
+         trigger="`worth_asking` measured the two scalings and found them "
+                 "material on this data",
+         copy="σ/IQR varies by {pct} across {n} numeric columns — heavy tails "
+              "in some columns and not others, so standard and robust scaling "
+              "would weight the features differently against one another and "
+              "the choice changes the fit.",
+         source="turbotab/recipes.py", probe="the choice changes the fit"),
+    dict(step="Preprocess", state="recipe · a shared setting borrowed from another model",
+         trigger="`resolved_recipes` under the uniform answer, on every model "
+                 "other than the one the settings came from",
+         copy="Applied to every model because you chose one shared "
+              "preparation; this is {model}'s setting.",
+         source="turbotab/project.py",
+         probe="because you chose one shared"),
+
+    dict(step="Preprocess", state="preparation mode · the question",
+         trigger="asked once, after the models are chosen",
+         copy="Should each model get the preparation it needs, or should they "
+              "all get the same preparation so the comparison is about the "
+              "models?",
+         source="ml/router.py",
+         probe="so the comparison is about the models"),
+    dict(step="Preprocess", state="preparation mode · why we recommend per-model",
+         trigger="shown with the question; states the recommendation AND what "
+                 "it costs, because a recommendation with no cost attached is "
+                 "advice the reader cannot weigh",
+         copy="Per-model is the usual choice and what we recommend: a model "
+              "handicapped by preparation it does not suit is not informative "
+              "either. The cost is that a difference between two models then "
+              "reflects the model and its preparation together — so if you "
+              "pick it, that caveat is written into your methods section "
+              "automatically.",
+         source="ml/router.py",
+         probe="written into your methods section automatically"),
+    dict(step="Preprocess", state="preparation mode · per-model chosen",
+         trigger="the methods sentence recorded on the decision",
+         copy="Each model receives the preparation it needs: scaling where the "
+              "model measures distances or penalizes coefficients, none where "
+              "it splits on order.",
+         source="turbotab/project.py",
+         probe="none where it splits on order"),
+    dict(step="Preprocess", state="preparation mode · uniform chosen",
+         trigger="the methods sentence recorded on the decision; a recorded "
+                 "answer, because choosing to hold preparation constant is "
+                 "itself a methods sentence",
+         copy="Every model receives the same preparation, so differences "
+              "between them are differences between the models rather than "
+              "between their pipelines.",
+         source="turbotab/project.py",
+         probe="rather than between their pipelines"),
+    dict(step="Preprocess", state="preparation mode · the caveat, into Limitations",
+         trigger="automatically, on choosing per-model; never on uniform",
+         copy="Models were compared under per-model preprocessing: each was "
+              "given the preparation appropriate to it rather than a single "
+              "shared pipeline. A difference in performance between two models "
+              "therefore reflects the model and its preparation together, and "
+              "the two cannot be separated from these results alone. This is "
+              "the usual choice — a model handicapped by preparation it does "
+              "not suit is not informative either — and it is stated so the "
+              "comparison is read for what it is.",
+         source="turbotab/project.py",
+         probe="cannot be separated from these results alone"),
     dict(step="Explore", state="trim · with no stated reason",
          trigger="`trim_training_rows` with an empty `reason`",
          copy="A trim's reason is what the report has to print beside the "

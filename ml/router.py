@@ -172,7 +172,12 @@ BLOCKER_SEVERITIES = frozenset({"blocker"})
 # rather than re-listing kinds at each site.
 FACT_KINDS = frozenset({"target", "task_type", "grain", "eligibility",
                         "missingness"})
-CHOICE_KINDS = frozenset({"repair"})
+# `preparation_mode` is deliberately a CHOICE and not a FACT. The engine has a
+# recommendation — per-model, because a model handicapped by preparation it does
+# not suit is not informative either — and a recommendation is not certainty.
+# What comparison you want to make is not a property of the data, so no
+# confidence in the engine could make it skippable.
+CHOICE_KINDS = frozenset({"repair", "preparation_mode"})
 CONSEQUENCE_KINDS = frozenset({"blocker"})
 
 
@@ -420,6 +425,46 @@ def plan(
     #
     # A FACT that is never skippable, for the same reason as the grain: the app
     # cannot know, and `_skip_is_permitted` admits only `task_type`.
+    # Model selection comes FIRST at this step: per-model preprocessing has
+    # nothing to hang off until the user says what they intend to train, and
+    # `PRODUCT_VISION.md` makes Train execution rather than choice. A CHOICE,
+    # so never skippable at any confidence — the shelf's ORDER carries the
+    # judgment and the selection stays the user's.
+    if step == "preprocess" and target and "choose_models" not in answered:
+        from turbotab import models as _models
+        out.append(Question(
+            key="choose_models", kind="repair", step="preprocess",
+            title="Which models do you want to train?",
+            why=(_models.SHELF_DISCLOSURE),
+            options=["<model keys>"]))
+
+    # Asked ONCE, after the models are chosen, because it is a property of the
+    # COMPARISON rather than of any model in it.
+    if (step == "preprocess" and target and "choose_models" in answered
+            and "choose_preparation_mode" not in answered):
+        out.append(Question(
+            key="choose_preparation_mode", kind="preparation_mode",
+            step="preprocess",
+            title=("Should each model get the preparation it needs, or should "
+                   "they all get the same preparation so the comparison is "
+                   "about the models?"),
+            why=("Per-model is the usual choice and what we recommend: a model "
+                 "handicapped by preparation it does not suit is not "
+                 "informative either. The cost is that a difference between "
+                 "two models then reflects the model and its preparation "
+                 "together — so if you pick it, that caveat is written into "
+                 "your methods section automatically."),
+            consumer=(
+                "The answer decides how `turbotab.recipes` resolves each "
+                "model's operations: per-model resolves each against its own "
+                "capabilities, uniform resolves every model against the first "
+                "selected model's settings. It also decides whether the "
+                "comparison caveat is added to the manuscript — choosing "
+                "per-model adds it, choosing uniform does not, because under "
+                "uniform there is nothing to caveat."),
+            options=["Each model gets the preparation it needs (recommended)",
+                     "All models get the same preparation"]))
+
     if step == "preprocess" and target:
         from turbotab import missingness as _miss
         for col in (missing_columns or []):

@@ -7272,5 +7272,33 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "docs/turbotab/OPENING_SEQUENCE.md; ml/splits.py"
+ },
+ {
+  "id": "GUIDED-022",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The 'ask only when the choice changes the answer' check was wired so that it could never fire on any dataset",
+  "detail": "",
+  "ev": "turbotab/api.py get_recipes; turbotab/recipes.py worth_asking",
+  "act": "",
+  "status": "FIXED",
+  "note": "Found while counting suppressions for the L18 report, which is the only reason it was found at all. As first built, the endpoint short-circuited on may_be_preselected BEFORE consulting the divergence check, and the only operation with a divergence function (scale) is model-determined - so every row that could be measured was skipped before measuring, and every row that was measured had nothing to measure against. n_choices_suppressed was structurally zero and would have stayed zero forever. This is the silence family in a new place: a check that nothing triggers is a check that does not exist, and it reads as 'the mechanism found nothing to suppress' rather than 'the mechanism never ran'. FIXED by separating the two axes. Determinacy decides whether the row is a question at all; divergence decides whether a pre-selected fact's VARIANT is worth raising. Whether a model gets scaled inputs is the model's property and the table settles it; which scaling, once it happens, is a judgment about this data. Operations now name their PUSHED alternatives - measure.py's own push-the-notable-pull-the-rest applied to variants - and a variant with no pushed alternative returns (False, None), an absence rather than a suppression, so the count cannot include questions that never existed. Measured after: 5 of 5 suppressed on a Gaussian fixture, 0 of 5 on a heavy-tailed one, same code path. Revert-verified: reverting worth_asking to iterate every variant makes the absence test red for its own reason.",
+  "verified_against": "",
+  "test": "test_a_variant_with_no_pushed_alternative_is_an_absence_not_a_suppression",
+  "verified_ev": "turbotab/api.py get_recipes; turbotab/recipes.py worth_asking"
+ },
+ {
+  "id": "GUIDED-023",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "The preparation-mode question was classified as a FACT in FACT_KINDS; it is a CHOICE",
+  "detail": "",
+  "ev": "ml/router.py FACT_KINDS",
+  "act": "",
+  "status": "FIXED",
+  "note": "The routing constitution's own test: a FACT is skippable at high confidence because the engine is certain and the transcript can state it. The engine has a RECOMMENDATION here - per-model, because a model handicapped by preparation it does not suit is not informative either - and a recommendation is not certainty. What comparison the user wants to make is not a property of the data, so no confidence could make it skippable. FIXED by moving preparation_mode from FACT_KINDS to CHOICE_KINDS. The consumer text is kept even though only FACTs are required to carry one, because it is the sentence that says what the answer changes. Guarded by a test that asserts against the router's own sets and against _skip_is_permitted rather than against the question's prose, since the sets are what the skip rule reads. Revert-verified: moving the kind back to FACT_KINDS makes it red for its own reason.",
+  "verified_against": "",
+  "test": "test_it_is_a_choice_and_therefore_never_skippable",
+  "verified_ev": "ml/router.py FACT_KINDS"
  }
 ]

@@ -54,6 +54,14 @@ _KIND_SECTION = {
     "unflag": "explore",
     "acknowledge_blocker": "limitations",
     "resolve_blocker": "data",
+    "select_models": "target",
+    "set_model_recipe": "target",
+    # The comparison caveat is a LIMITATION, not a method note. Per-model
+    # preparation is the right default and it makes a between-model difference
+    # ambiguous between the model and its pipeline — which is precisely the
+    # kind of thing a reader needs stated rather than inferred, so it lands
+    # where a reader looks for what the study cannot conclude.
+    "set_preparation_mode": "limitations",
 }
 
 # Decisions that are bookkeeping rather than method. A draft that reports every
@@ -84,6 +92,15 @@ def _sentence_for(d: Dict[str, Any]) -> Optional[str]:
 
     if kind == "set_task_type":
         return text or None
+
+    if kind == "set_preparation_mode":
+        # The CAVEAT is the deliverable, not the answer. Under `uniform` there
+        # is nothing to caveat, so the sentence is the plain statement; under
+        # `per_model` the caveat travels automatically, because a comparison
+        # whose asymmetry is disclosed only on screen is a comparison the
+        # reader of the paper cannot interpret.
+        caveat = (payload.get("caveat") or "").strip()
+        return (f"{text} {caveat}".strip() if caveat else (text or None))
 
     if kind == "apply":
         return text or None
