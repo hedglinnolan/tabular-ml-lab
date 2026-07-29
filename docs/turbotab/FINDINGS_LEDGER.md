@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**191 of 585 closed.**
+**192 of 585 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 354 |
+| `OPEN` | 353 |
 | `PARTIAL` | 40 |
-| `FIXED` | 188 |
+| `FIXED` | 189 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 354
+## OPEN — 353
 
 
 ### Application state / lockbox — 66
@@ -432,7 +432,7 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Guided-door drive feedback — 7
+### Guided-door drive feedback — 6
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -442,7 +442,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
 | `GUIDED-030` | medium | Four pack priors still have no consumer - GUIDED-024's defect surviving for a subset, now declared and counted rather than noticed | `turbotab/packs.py PACKS priors; test_every_prior_has_a_consumer_or_is_declared_unconsumed lists the four with…` | Found at L21 while auditing GUIDED-027 rather than by a detector, and filed rather than fixed because three of the four wait on steps that do not exist. The residue is now… |
-| `GUIDED-032` | medium | The reverse lens contradiction asserts 'too few to be a panel' at 10 numeric columns, which is false for targeted metabolomics and over-fires on weak evidence | `turbotab/packs.py contradiction(); L21 report, the ! cells` | Filed by the adjudicator reviewing the L21 matrix. |
 
 ---
 
@@ -536,7 +535,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 188
+## FIXED — 189
 
 
 ### Multi-file / JSON import — 69
@@ -652,7 +651,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — Duplicate of COACH-024 from the state pass, and closed the same way: the… |
 | `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | **test:** `tests/test_cohort_runs.py::test_unrecognizable_rows_yield_nothing_not_everything` — The invariant is implemented, disclosed and tested, and the test's NAME is the… |
 
-### Guided-door drive feedback — 25
+### Guided-door drive feedback — 26
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -681,6 +680,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-018` | medium | required_decisions has no key for a constitutionally mandatory question, so the grain question scores as one irrelevant question on all three value-check datasets - including the one where it matters… | `docs/turbotab/VALUE_CHECK_ADJUDICATION.md section 'The grain question scores as noise'…` | **test:** `tests/test_the_constitutional_category_is_reported_not_subtracted.py::test_labeling_a_question_with_a_clause_does_not_move_the_literal_count` — RULED BY THE PRODUCT… |
 | `GUIDED-019` | medium | The routing value check's drift detector fired correctly and nothing ran it for two loops, so a metric regression I introduced at L13 shipped through L13 and L14 unnoticed | `tests/integration/test_routing_value_check.py::test_routing_value_check; the bisect at L15 (e7910ef green…` | **test:** `tests/integration/test_routing_value_check.py::test_routing_value_check` — FIXED at L16, as a PRE-PUSH HOOK, per the ruling. A LOOP.md obligation was explicitly ruled… |
 | `GUIDED-023` | medium | The preparation-mode question was classified as a FACT in FACT_KINDS; it is a CHOICE | `ml/router.py FACT_KINDS` | **test:** `test_it_is_a_choice_and_therefore_never_skippable` — The routing constitution's own test: a FACT is skippable at high confidence because the engine is certain and the… |
+| `GUIDED-032` | medium | The reverse lens contradiction asserts 'too few to be a panel' at 10 numeric columns, which is false for targeted metabolomics and over-fires on weak evidence | `turbotab/packs.py contradiction(); L21 report, the ! cells` | **test:** `turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_a_targeted_panel_is_not_contradicted_for_being_narrow` — FIXED at L22 by REMOVING the false claim rather… |
 
 ### Verified against main — 20
 

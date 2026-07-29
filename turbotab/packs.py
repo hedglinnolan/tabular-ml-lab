@@ -1370,6 +1370,13 @@ def _clinical_columns(df: pd.DataFrame) -> List[str]:
 # The two terminal exits a CONTRADICTION carries, so an interface cannot render
 # the interruption without also rendering its way out (`DESIGN_LANGUAGE.md`
 # §09). The same shape `grain.py` uses, and deliberately the same words.
+# Below this there are not enough blank columns for a rank correlation to mean
+# anything, and the honest answer is silence rather than a reading taken from
+# three points. `GUIDED-032`'s whole complaint was a detector confident on thin
+# evidence.
+_MIN_BLANKS_TO_READ = 10
+
+
 _LENS_RESOLVE = {
     "id": "revise", "kind": "resolve", "label": "Change my answer",
     "detail": "Go back to the question and describe the table differently.",
@@ -1430,34 +1437,58 @@ def contradiction(df: pd.DataFrame, lens: Sequence[str]) -> Optional[Dict[str, A
                 "limitation rather than disappearing.")],
         }
 
-    # ── direction 2: the answer is an assay and the shape is not ────────────
+    # ── direction 2: the assay reading of the BLANKS fails its own test ─────
     #
-    # The one that costs. Deliberately a low floor: 30 measurement columns is
-    # already generous for "too few to be a panel", and an untargeted panel is
-    # hundreds. A table under it that somebody calls metabolomics is either a
-    # targeted assay of a dozen analytes — in which case the LOG-NORMAL and
-    # DETECTION-LIMIT priors are still probably right and this reads as a false
-    # alarm — or it is not an assay at all.
+    # `GUIDED-032`. This used to key on column count — *"10 numeric columns
+    # across 600 rows, too few to be a panel"* — and that sentence is **false**:
+    # targeted metabolomics and proteomics panels routinely measure ten to fifty
+    # analytes. A falsehood inside the mechanism built to catch false readings.
+    #
+    # It was also guarding a cost that could not occur. The metabolomics
+    # missingness prior is scoped to the columns `_left_censored` names
+    # (`GUIDED-027`), so on a table with no left-censoring the prior is withheld
+    # and a wrong assay lens grants ZERO skips. The old check asserted something
+    # untrue in order to prevent something that already could not happen, which
+    # is strictly worse than saying nothing.
+    #
+    # What replaces it is the lens's own prediction, measured. An assay lens
+    # says a blank is usually a non-detection, which means missing rates should
+    # track abundance. Where there are enough blanks to read and they do NOT,
+    # the lens has predicted something and the data has disagreed — evidence a
+    # reading is wrong, in the only form that earns an interruption.
     assay = [k for k in chosen if k in _ASSAY_PACKS]
-    if assay and not _is_assay_wide(df):
-        stated = ", ".join(LENS_LABELS[k].lower() for k in assay)
-        return {
-            "kind": "stated_assay_lens_but_shape_is_not_a_panel",
-            "message": (
-                f"You described this as {stated}, and it has "
-                f"{len(numeric):,} numeric columns across {len(df):,} rows — "
-                f"too few to be a panel. An assay lens reads a blank as a "
-                f"non-detection and schedules half-minimum imputation for it, "
-                f"which is the wrong reading for a measurement that was simply "
-                f"not taken."),
-            "n_numeric": len(numeric), "n_rows": len(df),
-            "suggests": [CLINICAL] if clinical_reference_columns(df) or _numeric(df)
-                        else [OTHER],
-            "exits": [_LENS_RESOLVE, _lens_attest(
-                "Continue with the assay lens. Its priors apply and the "
-                "disagreement is recorded, so the methods section carries it "
-                "as a stated limitation.")],
-        }
+    if assay:
+        blanks = [c for c in numeric if bool(df[c].isna().any())]
+        if len(blanks) >= _MIN_BLANKS_TO_READ:
+            rate = df[numeric].isna().mean()
+            abundance = df[numeric].mean(numeric_only=True)
+            usable = [c for c in numeric
+                      if pd.notna(abundance.get(c)) and abundance.get(c, 0) > 0]
+            rho = None
+            if len(usable) >= _MIN_BLANKS_TO_READ:
+                rho = pd.Series(rate[usable]).corr(
+                    pd.Series(np.log(abundance[usable])), method="spearman")
+            if rho is not None and pd.notna(rho) and rho > -0.3:
+                stated = ", ".join(LENS_LABELS[k].lower() for k in assay)
+                return {
+                    "kind": "stated_assay_lens_but_blanks_are_not_censored",
+                    "message": (
+                        f"You described this as {stated}, and its blanks do not "
+                        f"look like non-detections: across {len(usable):,} "
+                        f"measurement columns the missing rate does not track "
+                        f"abundance (rank correlation {rho:+.2f}, where an "
+                        f"assay would be strongly negative). An assay lens "
+                        f"reads a blank as below the detection limit; here that "
+                        f"reading has nothing to rest on."),
+                    "n_numeric": len(numeric), "n_rows": len(df),
+                    "rho": round(float(rho), 3),
+                    "suggests": [CLINICAL] if clinical_reference_columns(df)
+                                else [OTHER],
+                    "exits": [_LENS_RESOLVE, _lens_attest(
+                        "Continue with the assay lens. It will still recognize "
+                        "the shape; what it will not do is read these blanks as "
+                        "non-detections, because nothing here says they are.")],
+                }
 
     # ── direction 3: genomics stated, and the values are not counts ─────────
     #
@@ -1465,15 +1496,26 @@ def contradiction(df: pd.DataFrame, lens: Sequence[str]) -> Optional[Dict[str, A
     # about different things. A wide table of concentrations described as
     # genomics is a panel — direction 2 stays quiet — and the p >> n prior it
     # sets is right while the count reading underneath it is not.
-    if GENOMICS in chosen and _is_assay_wide(df) and count_matrix(df) is None:
-        non_integral = [c for c in numeric
-                        if not _is_integral(df[c])][:5]
+    # `count_matrix` returns None for TWO different reasons — the values are
+    # not integers, or there are not enough columns to be a matrix — and only
+    # the first justifies this sentence. Keying on the function's None was
+    # `GUIDED-032`'s defect about to ship a second time in the same mechanism:
+    # on a 40-item Likert instrument it produced *"its measurement columns are
+    # not counts — `` hold fractional values"*, which is false twice over and
+    # names nothing.
+    #
+    # So the claim is made only where the columns that refute it exist, and it
+    # names them.
+    non_integral = [c for c in numeric if not _is_integral(df[c])]
+    if (GENOMICS in chosen and _is_assay_wide(df) and count_matrix(df) is None
+            and len(non_integral) >= _MIN_BLANKS_TO_READ):
         return {
             "kind": "stated_genomics_but_values_are_not_counts",
             "message": (
                 f"You described this as {LENS_LABELS[GENOMICS].lower()}, and "
-                f"its measurement columns are not counts — `"
-                + "`, `".join(non_integral)
+                f"{len(non_integral):,} of its measurement columns are not "
+                f"counts — `"
+                + "`, `".join(non_integral[:5])
                 + "` hold fractional values. Counts and concentrations are "
                   "different objects, and the difference decides whether a log "
                   "transform is derived or merely one option among several."),

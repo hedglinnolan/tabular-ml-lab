@@ -25,6 +25,7 @@ import os
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -745,42 +746,89 @@ def test_the_raw_reading_survives_for_the_user_who_wants_it_anyway():
 
 # ── the contradiction detector, both directions · GUIDED-028 ─────────────────
 
-def test_an_assay_lens_over_a_table_that_is_not_a_panel_is_contradicted():
-    """The direction that was missing, and the one that costs.
+def _blanks_that_are_not_censored(n_cols: int = 20, n_rows: int = 120):
+    """An assay-shaped frame whose blanks are NOT non-detections.
 
-    Before the priors layer was wired a wrong lens was cosmetic. It is not any
-    more: a stated metabolomics lens over a clinical table settles every blank
-    column as *below the detection limit* at `derived` confidence, which
-    withholds the mechanism question for all of them and schedules half-minimum
-    imputation on data that wants a different reading entirely.
+    Missingness is uniform across the abundance range rather than concentrated
+    in the low-abundance features, which is what an assay lens predicts and
+    would act on.
+    """
+    rng = np.random.default_rng(5)
+    data = {}
+    for i in range(n_cols):
+        col = np.exp(rng.normal(np.log(10.0 ** (i % 5)), 0.4, size=n_rows))
+        col[rng.random(n_rows) < 0.25] = np.nan      # blank AT RANDOM
+        data[f"analyte_{i:03d}"] = col
+    data["outcome"] = rng.integers(0, 2, n_rows)
+    return pd.DataFrame(data)
+
+
+def test_a_targeted_panel_is_not_contradicted_for_being_narrow():
+    """`GUIDED-032`. The old check said *"10 numeric columns across 600 rows —
+    too few to be a panel"*, and that sentence is **false**: targeted
+    metabolomics and proteomics panels routinely measure ten to fifty analytes.
+
+    It was also guarding a cost that could not occur. The metabolomics
+    missingness prior is scoped to the columns `_left_censored` names, so on a
+    table with no left-censoring the prior is withheld and a wrong assay lens
+    grants ZERO skips. Asserting something untrue in order to prevent something
+    that already could not happen is strictly worse than saying nothing.
     """
     df = load("clinical_longitudinal")
+    assert len([c for c in df.columns
+                if pd.api.types.is_numeric_dtype(df[c])]) < 30
+    assert P.contradiction(df, [P.METABOLOMICS]) is None, (
+        "a narrow table is still being called too small to be a panel")
+
+    # And the thing it was guarding is genuinely prevented, which is why
+    # removing the check costs nothing.
+    assert P.priors([P.METABOLOMICS], "missingness_direction", df) == []
+
+
+def test_an_assay_lens_whose_blanks_are_not_censored_is_contradicted():
+    """What replaces it: the lens's own prediction, measured.
+
+    An assay lens says a blank is usually a non-detection, which means missing
+    rates should track abundance. Where there are enough blanks to read and they
+    do not, the lens has predicted something and the data has disagreed —
+    evidence a reading is wrong, in the only form that earns an interruption.
+    """
+    df = _blanks_that_are_not_censored()
     clash = P.contradiction(df, [P.METABOLOMICS])
     assert clash is not None
-    assert clash["kind"] == "stated_assay_lens_but_shape_is_not_a_panel"
-    assert "too few to be a panel" in clash["message"]
-    assert "non-detection" in clash["message"], (
-        "the message must say what the wrong lens would DO, not just that it "
-        "looks wrong")
-    assert P.CLINICAL in clash["suggests"]
-
-    # A CONSEQUENCE resolves or is attested, never a dead end.
+    assert clash["kind"] == "stated_assay_lens_but_blanks_are_not_censored"
+    assert "do not look like non-detections" in clash["message"]
+    assert clash["rho"] > -0.3, "it fired on a censoring signal that is present"
     assert [e["kind"] for e in clash["exits"]] == ["resolve", "attest"]
 
+    # The fixture that DOES show censoring is not contradicted.
+    assert P.contradiction(load("metabolomics_untargeted"),
+                           [P.METABOLOMICS]) is None
 
-def test_a_genomics_lens_over_values_that_are_not_counts_is_contradicted():
-    """Narrower than the panel check and separate from it, because the two are
-    wrong about different things: a wide table of concentrations IS a panel, so
-    the panel check stays quiet, and the p >> n prior it sets is right while the
-    count reading underneath it is not."""
-    df = load("metabolomics_untargeted")
-    assert P.contradiction(df, [P.METABOLOMICS]) is None, "it is a panel"
-    clash = P.contradiction(df, [P.GENOMICS])
-    assert clash is not None
-    assert clash["kind"] == "stated_genomics_but_values_are_not_counts"
-    assert "not counts" in clash["message"]
-    assert P.METABOLOMICS in clash["suggests"]
 
+def test_too_few_blanks_to_read_says_nothing():
+    """The complaint `GUIDED-032` actually made was a detector confident on thin
+    evidence, so the replacement refuses to read three points."""
+    rng = np.random.default_rng(1)
+    data = {f"a_{i}": rng.normal(size=80) for i in range(40)}
+    for i in range(3):                                # only three blank columns
+        data[f"a_{i}"][rng.random(80) < 0.3] = np.nan
+    data["outcome"] = rng.integers(0, 2, 80)
+    assert P.contradiction(pd.DataFrame(data), [P.METABOLOMICS]) is None
+
+
+def test_a_genomics_lens_is_not_contradicted_merely_for_being_narrow():
+    """The same defect was about to ship a second time in the same mechanism.
+
+    `count_matrix` returns None for TWO reasons — the values are not integers,
+    or there are not enough columns — and only the first justifies the sentence.
+    Keyed on the function's None, a 40-item Likert instrument produced *"its
+    measurement columns are not counts — `` hold fractional values"*, which is
+    false twice over and names nothing.
+    """
+    survey = load("survey_instrument")
+    assert P.contradiction(survey, [P.GENOMICS]) is None, (
+        "an instrument of integer items is being told its values are not counts")
 
 def test_the_original_direction_still_fires():
     df = load("metabolomics_untargeted")
@@ -803,7 +851,7 @@ def test_a_lens_that_fits_its_own_fixture_is_never_contradicted(fixture, lens):
     assert P.contradiction(load(fixture), [lens]) is None
 
 
-def test_the_contradiction_fires_before_any_prior_is_granted():
+def test_the_contradiction_fires_before_any_prior_is_granted(tmp_path):
     """*"It must fire before the skips are granted, not after."*
 
     Enforced rather than sequenced: there is no state in which the lens is
@@ -813,8 +861,8 @@ def test_the_contradiction_fires_before_any_prior_is_granted():
     """
     from turbotab.project import AnalysisProject, LensContradiction
 
-    df = load("clinical_longitudinal")
-    project = AnalysisProject.from_dataframe(df, "clinical.csv")
+    df = _blanks_that_are_not_censored()
+    project = AnalysisProject.from_dataframe(df, "uncensored.csv")
     with pytest.raises(LensContradiction) as caught:
         project.set_lens([P.METABOLOMICS])
 
@@ -830,7 +878,7 @@ def test_the_contradiction_fires_before_any_prior_is_granted():
     payload = project.decisions[-1].payload
     assert payload["contradiction_acknowledged"] is True
     assert payload["contradiction"]["kind"] == \
-        "stated_assay_lens_but_shape_is_not_a_panel"
+        "stated_assay_lens_but_blanks_are_not_censored"
 
 
 def test_the_contradiction_reaches_the_wire_as_a_409_with_its_exits():
@@ -838,22 +886,21 @@ def test_the_contradiction_reaches_the_wire_as_a_409_with_its_exits():
     from turbotab import api
 
     client = TestClient(api.app)
-    with open(DATA / "clinical_longitudinal.csv", "rb") as fh:
+    with open(DATA / "metabolomics_untargeted.csv", "rb") as fh:
         pid = client.post("/project", files={
-            "file": ("clinical_longitudinal.csv", fh, "text/csv")}).json()["id"]
+            "file": ("metabolomics_untargeted.csv", fh, "text/csv")}).json()["id"]
 
     r = client.post(f"/project/{pid}/decision",
-                    json={"kind": "set_lens",
-                          "payload": {"lens": [P.METABOLOMICS]}})
+                    json={"kind": "set_lens", "payload": {"lens": [P.CLINICAL]}})
     assert r.status_code == 409, r.text
     detail = r.json()["detail"]
     assert detail["contradiction"]["kind"] == \
-        "stated_assay_lens_but_shape_is_not_a_panel"
+        "stated_lens_but_shape_is_an_assay"
     assert [e["kind"] for e in detail["exits"]] == ["resolve", "attest"]
 
     ok = client.post(f"/project/{pid}/decision",
                      json={"kind": "set_lens",
-                           "payload": {"lens": [P.METABOLOMICS],
+                           "payload": {"lens": [P.CLINICAL],
                                        "acknowledge_contradiction": True}})
     assert ok.status_code == 200
 
