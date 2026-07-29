@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**177 of 573 closed.**
+**177 of 574 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 356 |
+| `OPEN` | 357 |
 | `PARTIAL` | 40 |
 | `FIXED` | 174 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 356
+## OPEN — 357
 
 
 ### Application state / lockbox — 70
@@ -170,7 +170,7 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-067` | low | RFWrapper defines predict_proba and supports_proba twice | `models/rf.py:75-97` | Unchanged at HEAD. Behaviorally harmless because the bodies are identical, and that is exactly why it is worth recording: it is direct evidence the file was edited by paste and… |
 | `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` | Accurate at HEAD: structurally portable as-is, and the row's own last clause is the condition - add tests BEFORE the port, not after. Two live defects in this file argue the point… |
 
-### Multi-file / JSON import — 51
+### Multi-file / JSON import — 52
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -190,6 +190,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-241` | critical | HUNT stack-no-duplicate-subject-or-row-detection: overlapping subjects and exact duplicate rows are stacked with zero warning, inflating n and putting the same person on both sides of the seal | `utils/combine.py plan_stack (diagnosis from names and dtypes only; total_rows as a sum); the reusable…` | REPRODUCES AT HEAD, exactly as recorded. Two cycles of 50 subjects sharing 25 of them stack to 100 rows with plan.blocking, plan.warnings and plan.notes ALL EMPTY; the result… |
 | `IMPORT-242` | critical | HUNT stack-hint-steers-cycles-to-link: the relationship hint reads schema drift as evidence of different measurements, so eight NHANES cycles are confidently steered to the join screen | `utils/combine.py relationship_hint (the shared/union ratio and its thresholds); utils/combine_ui.py:457…` | REPRODUCES AT HEAD. Eight cycles sharing SEQN, RIDAGEYR, RIAGENDR and RIDRETH1 with lab panels drifting in and out give shared 4 of union 17 = 0.24, and relationship_hint returns… |
 | `IMPORT-257` | critical | HUNT no-way-to-declare-subject-column: there is no control anywhere for declaring the subject column, so the declared-entity paths in the lockbox and in Train & Compare are dead code | `pages/01_Upload_and_Audit.py:38 (detect_cohort_structure imported), :1105 (_entity_col read from a detection…` | REPRODUCES AT HEAD. Confirmed by grep: detect_cohort_structure appears once in pages/01, on the import line at :38, and is never called; entity_id_final appears once, at :1105… |
+| `IMPORT-267` | critical | check_numeric_stored_as_text reaches the mixed-units branch on a purely categorical column, and reports 'mixes different units' at CRITICAL severity with no number anywhere in the column | `ml/import_doctor.py check_numeric_stored_as_text, the units branch after the raw_numeric >= 0.99 block…` | Found at L19 while verifying the survey_instrument fixture against the engine rather than against an expectation, which is what the fixtures are for. This is the governing rule's… |
 | `IMPORT-132` | landmine | check_header_in_later_row false-positives on clean narrow frames with a blank header cell: emits the single critical/high-confidence 'promote_header' finding, which drops the first data row and hides… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 32'` | STAYS OPEN, and the L11 note is corrected: it recorded 'a clean narrow frame with a blank header cell produces no findings at all'. It reproduces verbatim at HEAD, both halves.… |
 | `IMPORT-135` | landmine | coerce_numeric silently merges incompatible units (mg/dL + mmol/L, kg + lb) into one column at 'high' confidence, with a detail message that never discloses the mixing | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 35'` | Original finding 35 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository the whole time, two lines above the freeze rule in… |
 | `IMPORT-142` | landmine | diagnose_join suppresses genuine column collisions whenever a key name also exists in the other frame (cross-name joins), so no suffix warning fires and execute_join's methods description names a… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 42'` | STAYS OPEN, and the L11 note is corrected: it recorded that a genuine collision on 'site' IS reported while a key-named column is present on both sides. That measured the control… |

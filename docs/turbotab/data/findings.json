@@ -7300,5 +7300,19 @@
   "verified_against": "",
   "test": "test_it_is_a_choice_and_therefore_never_skippable",
   "verified_ev": "ml/router.py FACT_KINDS"
+ },
+ {
+  "id": "IMPORT-267",
+  "area": "IMPORT",
+  "sev": "critical",
+  "item": "check_numeric_stored_as_text reaches the mixed-units branch on a purely categorical column, and reports 'mixes different units' at CRITICAL severity with no number anywhere in the column",
+  "detail": "_units_present is called before anything establishes that the column holds numbers. _KNOWN_UNITS contains the single letters g, m, l, s and the two-letter in, mo, hr, kg, yr, ml, lb, cm, mm, kj; _TRAILING_UNIT anchors them to the end of a value with NO requirement of a preceding digit. So an ordinary education column of {'High school', 'Some college', 'Bachelors', 'Graduate'} yields units {'l', 's'} - the 'l' of school and the 's' of Bachelors - and the finding fires. Reproduced on turbotab/sample_data/survey_instrument.csv, where it is the only critical the file produces. The class is wide: any text column with two values ending in different letters from that list, e.g. {'Nursing', 'Bachelors'}, {'Farm', 'Berlin'}, {'Fasting', 'Random'}.",
+  "ev": "ml/import_doctor.py check_numeric_stored_as_text, the units branch after the raw_numeric >= 0.99 block; _units_present and _TRAILING_UNIT at module top",
+  "act": "Gate the branch on the column containing numeric content at all - the same _clean_numeric_text parse rate the branch below it already computes - so a column no reading of which is numeric never reaches a units judgment. Requiring a digit before the unit in _TRAILING_UNIT is the narrower repair and would also close it. FROZEN FILE: ml/import_doctor.py is engine-move-only under TRANSITION_PLAN.md section 05, so this is filed and not fixed.",
+  "status": "OPEN",
+  "note": "Found at L19 while verifying the survey_instrument fixture against the engine rather than against an expectation, which is what the fixtures are for. This is the governing rule's own failure at the highest severity the app has: the app asserts, in a card headed CRITICAL, that a column mixes measurement units when the column contains no measurement. Distinct from IMPORT-129, which is FIXED and is the opposite case - a column that genuinely does mix mg/dL and mmol/L being coerced onto one scale. That fix added this finding; this row is the finding firing where there is nothing to find. Documented as a reproduced false alarm in turbotab/sample_data/survey_instrument.md so a driver can tell it from a fixture defect.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "ml/import_doctor.py check_numeric_stored_as_text, the units branch after the raw_numeric >= 0.99 block; _units_present and _TRAILING_UNIT at module top"
  }
 ]
