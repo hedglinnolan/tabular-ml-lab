@@ -480,6 +480,10 @@ def test_a_planted_wrong_number_in_a_disclosure_is_caught_over_http(on, monkeypa
 
     decide("set_target", {"column": "hba1c"})
     decide("set_grain", {"answer": "people_repeat", "group_col": "participant_id"})
+    # People repeat, so clause 01's bracketed steps come before the seal. The
+    # unit is the RECORD, so the 600 rows survive and 90 of them are held out.
+    decide("set_repeat_kind", {"kind": "repeats"})
+    decide("set_unit_of_analysis", {"unit": "record"})
     decide("set_eligibility", {"answer": "everyone"})
     sealed = decide("seal", {"fraction": 0.15, "seed": 42})
 
@@ -521,6 +525,8 @@ def test_the_same_drive_with_no_planted_bug_is_clean(on):
 
     decide("set_target", {"column": "hba1c"})
     decide("set_grain", {"answer": "people_repeat", "group_col": "participant_id"})
+    decide("set_repeat_kind", {"kind": "repeats"})
+    decide("set_unit_of_analysis", {"unit": "record"})
     decide("set_eligibility", {"answer": "everyone"})
     decide("seal", {"fraction": 0.15, "seed": 42})
     client.get(f"/project/{pid}/interview?step=explore")

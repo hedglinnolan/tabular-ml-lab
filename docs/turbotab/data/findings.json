@@ -7239,10 +7239,10 @@
   "detail": "",
   "ev": "docs/turbotab/OPENING_SEQUENCE.md; turbotab/grain.py",
   "act": "",
-  "status": "OPEN",
-  "note": "Tracks lockbox-01 (ROADMAP.md §01, the pre-seal sequence). Filed at L18 when d134b76 rewrote the clause from six steps to eleven and the text-hash check forced re-enumeration; the placement is specified and neither door asks the question.",
+  "status": "FIXED",
+  "note": "Built at L19 in turbotab/repeats.py. Question 4 is USUALLY STATED, citing its evidence, and overturnable - a rendered skip rather than a skipped question, which matters for the audit: Decision B permits a skip only for task_type, so the question is 'asked' with its reading attached rather than status='skipped', which would both break audit() and claim an authority the evidence does not carry. THE EVIDENCE IS SPACING AND NOTHING ELSE. dietary_recalls and clinical_longitudinal have the same grain answer, both have a replicate index numbering each person's records 1,2,3, and both have a date column - so if the reading came from either of those the app would give confidently opposite advice on one of them. Measured: dietary gaps 3-14 days, median 9, CV 0.42, read as repeats; clinical gaps 80-100 days, median 90, CV 0.051, read as time points. Where the evidence is thin - no dates AND no replicate index - it is ASKED, and thin is a measured condition rather than a judgment. Widely spaced but irregular records are also asked, because unscheduled encounters are still time points and that is the one date-bearing case genuinely uncertain. PROBED, AND THE FIRST REVERT WAS WRONG in the way FEATURE_PARITY warns about: replacing the schedule branch with 'elif False' left the test GREEN, because it did not make the two fixtures agree - it made clinical unreadable, so dietary stayed repeats, clinical fell to None, and 'the readings differ' was still true. The defect the row names is the two reading ALIKE, so the correct revert makes the schedule test always pass: both then read time_points and the test goes red for 'assert dietary[reading] != clinical[reading]'.",
   "verified_against": "",
-  "test": "",
+  "test": "turbotab/test_the_repeated_measures_chain_fires_only_when_it_should.py::test_the_two_fixtures_get_opposite_readings_from_spacing_alone",
   "verified_ev": "docs/turbotab/OPENING_SEQUENCE.md; turbotab/grain.py"
  },
  {
@@ -7253,10 +7253,10 @@
   "detail": "",
   "ev": "docs/turbotab/OPENING_SEQUENCE.md; turbotab/project.py PRE_BARRIER_ONLY_FIXES",
   "act": "",
-  "status": "OPEN",
-  "note": "Tracks lockbox-01 (ROADMAP.md §01, the pre-seal sequence). Filed at L18 when d134b76 rewrote the clause from six steps to eleven and the text-hash check forced re-enumeration; the placement is specified and neither door asks the question.",
+  "status": "FIXED",
+  "note": "Built at L19. Question 5 (unit of analysis) has NO DEFAULT, because guessing at grain is what produced the leak the constitution exists to prevent and the same reasoning binds one level down. Question 6 (aggregation) fires only when the unit is the person, and it EXECUTES - it rewrites the table to one row per person, pre-seal. AGGREGATION CANNOT MOVE, and the refusal is Decision A rather than a policy: combining rows changes what a row IS, and the seal holds row LABELS, so afterwards those labels would name rows that no longer exist with nothing able to detect it - the lockbox would still look perfectly well-formed. seal_lockbox refuses symmetrically until the chain is settled, and that ordering is STATED ONCE in repeat_chain_gap() and read by both consumers, because the API's first version checked eligibility first and answered the wrong complaint: a driver who had not said what one row means was told to answer a question two steps further on. The v1 menu is mean/first/last/change-from-baseline; slope, AUC and usual-intake modeling are named as unbuilt rather than quietly absent. A change score does NOT difference the target - 'who improved' is not 'who is ill', and substituting one for the other would be the app choosing the paper's question. Non-numeric columns that varied within a person are named in the receipt, because a compromise nobody is told about is indistinguishable from a computation. PROBED, AND THE FIRST REVERT WAS RED FOR THE WRONG REASON: with the barrier check gone set_aggregation still refuses, since the unit is the record and there is nothing to combine, so pytest.raises(match='identity barrier') failed on the MATCH rather than on DID NOT RAISE. That is the barrier check demonstrably producing the identity-barrier message, and the corrected probe expects the second refusal. The seal-waits-for-the-chain guard probes clean at DID NOT RAISE.",
   "verified_against": "",
-  "test": "",
+  "test": "turbotab/test_the_repeated_measures_chain_fires_only_when_it_should.py::test_aggregation_is_refused_once_the_seal_names_rows",
   "verified_ev": "docs/turbotab/OPENING_SEQUENCE.md; turbotab/project.py PRE_BARRIER_ONLY_FIXES"
  },
  {
@@ -7267,10 +7267,10 @@
   "detail": "",
   "ev": "docs/turbotab/OPENING_SEQUENCE.md; ml/splits.py",
   "act": "",
-  "status": "OPEN",
-  "note": "Tracks lockbox-01 (ROADMAP.md §01, the pre-seal sequence). Filed at L18 when d134b76 rewrote the clause from six steps to eleven and the text-hash check forced re-enumeration; the placement is specified and neither door asks the question.",
+  "status": "FIXED",
+  "note": "Built at L19. Question 7 fires only when TIME POINTS SURVIVE AS ROWS - both conjuncts enforced and each with its own refusal: repeats have no earlier and later to predict across, and combining a person's records into one leaves nothing to split chronologically. Answering yes records the chronological_grouped strategy, which is what ml/splits.py already carries with sixteen equivalence tests and nothing deciding when it applies; answering no records grouped. Both are recorded as named strategies rather than as a boolean, so the record can carry which split was drawn rather than which checkbox was ticked. The barrier check was moved to the TOP of set_temporal_prediction during this build: once the seal exists it is the governing fact whatever else is also true, and a refusal that names a precondition the user could still satisfy, on a project where nothing can change, sends them somewhere there is nothing to do. Probed: removing the time-points precondition turns test_temporal_prediction_is_refused_for_repeats red with DID NOT RAISE.",
   "verified_against": "",
-  "test": "",
+  "test": "turbotab/test_the_repeated_measures_chain_fires_only_when_it_should.py::test_temporal_prediction_routes_to_the_chronological_strategy",
   "verified_ev": "docs/turbotab/OPENING_SEQUENCE.md; ml/splits.py"
  },
  {

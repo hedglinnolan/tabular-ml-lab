@@ -86,6 +86,10 @@ def test_a_pack_adds_no_question_to_a_fixture_it_does_not_match(pack, fixture):
     `[survey-genomics_expression]` in the output is the whole diagnosis, and a
     single test over a nested loop would say only that something somewhere
     fired.
+
+    Discharges `lockbox-01`: the lens comes first, and it earns that position
+    only if it is safe — a lens that fires on the wrong data is worse than no
+    lens at all.
     """
     target, matches = FIXTURES[fixture]
     if pack in matches:
@@ -106,6 +110,9 @@ def test_every_pack_installed_at_once_adds_nothing_to_the_control():
     quiet and collectively noisy: two packs whose priors disagree, or two
     detectors whose preconditions are each nearly met, are exactly the
     combination a per-pack loop never constructs.
+
+    Discharges `lockbox-01`: the lens is first in the sequence, so a pack that
+    fires on a table it does not describe corrupts everything after it.
     """
     df = load("clinic_visits")
     baseline = _questions(df, "outcome", [])

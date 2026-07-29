@@ -171,13 +171,22 @@ BLOCKER_SEVERITIES = frozenset({"blocker"})
 # Named here so the audit rules can speak in the design language's vocabulary
 # rather than re-listing kinds at each site.
 FACT_KINDS = frozenset({"target", "task_type", "grain", "eligibility",
-                        "missingness", "lens", "reverse_coding"})
+                        "missingness", "lens", "reverse_coding",
+                        # Questions 4, 5 and 7. Each is a question about what
+                        # the data IS, and each names what reads its answer.
+                        "repeat_kind", "unit_of_analysis",
+                        "temporal_prediction"})
 # `preparation_mode` is deliberately a CHOICE and not a FACT. The engine has a
 # recommendation — per-model, because a model handicapped by preparation it does
 # not suit is not informative either — and a recommendation is not certainty.
 # What comparison you want to make is not a property of the data, so no
 # confidence in the engine could make it skippable.
-CHOICE_KINDS = frozenset({"repair", "preparation_mode"})
+# `aggregation` is a CHOICE and not a FACT, deliberately. The engine has a
+# recommendation and, for time points, an argument for having none — but which
+# summary of a person's records answers your question is not a property of the
+# table, so no confidence in the engine could make it skippable. It also
+# REWRITES THE TABLE, which is the other half of what makes a choice a choice.
+CHOICE_KINDS = frozenset({"repair", "preparation_mode", "aggregation"})
 CONSEQUENCE_KINDS = frozenset({"blocker"})
 
 
@@ -274,6 +283,7 @@ def plan(
     signals: Any = None,
     missing_columns: Sequence[str] = (),
     lens_block: Optional[Dict[str, Any]] = None,
+    repeats: Optional[Dict[str, Any]] = None,
 ) -> List[Question]:
     """Every question this step asks, in order, derived from the record.
 
@@ -379,6 +389,18 @@ def plan(
             options=["No, one row per person",
                      "Yes, people repeat",
                      "I'm not sure"]))
+
+    # ── questions 4 to 7, all of which fire only when people repeat ─────────
+    #
+    # `repeats` is the chain's state, resolved by the caller: this module is
+    # headless and takes no dataframe, so the EVIDENCE for question 4 is read
+    # where the frame is and passed in. `None` means the grain says people do
+    # not repeat, and then none of the four is in the plan at all — which is
+    # `OPENING_SEQUENCE.md` §02's whole claim, that the count tracks the shape
+    # of the study.
+    if step == "data" and target and repeats and "state_grain" in answered:
+        chain = _repeat_chain(repeats, answered)
+        out.extend(chain)
 
     # ── eligibility, between the grain and the seal. Constitution §01 fixes
     #    that position and §04 says what the question may show: the target's
@@ -649,6 +671,108 @@ def _home_step(f: Dict[str, Any]) -> str:
     `T0-ID-001`'s barrier means they must happen before rows acquire identities.
     """
     return "data"
+
+
+def _repeat_chain(repeats: Dict[str, Any],
+                  answered: Sequence[str]) -> List[Question]:
+    """Questions 4 to 7 of `OPENING_SEQUENCE.md`, each gating the next.
+
+    `repeats` carries the reading resolved against the frame: `reading`
+    (`repeats` | `time_points` | `None` when the evidence is thin), `sentence`,
+    plus whatever the record already holds — `kind`, `unit`, `aggregated`.
+
+    **Question 4 is a rendered skip, not a skipped question**, and the
+    distinction is `audit()`'s. Decision B permits a skip only for `task_type`,
+    which is correct and is not what this is: the app STATES a reading and
+    offers to be asked anyway, so the question is `asked` with its reading
+    attached. A user who agrees presses through in one gesture; a user who does
+    not sees the evidence that was used. Marking it `status="skipped"` would
+    both break the audit and claim an authority the evidence does not carry.
+    """
+    out: List[Question] = []
+    reading = repeats.get("reading")
+    kind = repeats.get("kind")
+
+    if "state_repeat_kind" not in answered:
+        q = Question(
+            key="state_repeat_kind", kind="repeat_kind", step="data",
+            clause="lockbox-01",
+            title="Are these repeats or different time points?",
+            why=(repeats.get("sentence") or "")
+                + (" " if repeats.get("sentence") else "")
+                + ("What varies between one person's rows decides whether "
+                   "averaging them is correct: averaging replicate "
+                   "measurements reduces measurement error, and averaging a "
+                   "trajectory destroys it."),
+            consumer=(
+                "The aggregation menu reads this and inverts on it — the mean "
+                "is recommended for replicates with the measurement-error "
+                "reason stated, and has NO default for time points because "
+                "averaging them destroys the signal. The temporal-prediction "
+                "question fires only when this says time points. Answering "
+                "wrongly does not raise an error; it produces a table whose "
+                "rows are averages of a trajectory."),
+            confidence=repeats.get("confidence"),
+            options=["Repeated measurements of the same quantity",
+                     "Different time points"])
+        # The reading, and the affordance to overturn it, travel WITH the
+        # question so an interface cannot render one without the other.
+        if reading:
+            q.skip_reason = repeats.get("sentence")
+        out.append(q)
+        return out
+
+    if "state_unit_of_analysis" not in answered:
+        out.append(Question(
+            key="state_unit_of_analysis", kind="unit_of_analysis", step="data",
+            clause="lockbox-01",
+            title="When you analyze this, what is one row?",
+            why=("You told us people appear more than once. That leaves two "
+                 "honest options, and they lead to different analyses."),
+            consumer=(
+                "The seal reads it to decide what it is drawing over, and it "
+                "is the last thing that can change what a row IS — after the "
+                "seal, rows have identities and combining them is impossible. "
+                "There is NO DEFAULT here: guessing at grain is what produced "
+                "the leak this whole constitution exists to prevent, and the "
+                "same reasoning binds one level down."),
+            options=["One row per person", "One row per record"]))
+        return out
+
+    unit = repeats.get("unit")
+    if unit == "person" and "state_aggregation" not in answered:
+        menu = repeats.get("menu") or {}
+        out.append(Question(
+            key="state_aggregation", kind="aggregation", step="data",
+            clause="lockbox-01",
+            title="How should each person's rows be combined?",
+            why=menu.get("reason", ""),
+            confidence="high" if menu.get("recommended") else None,
+            consumer=(
+                "This rewrites the table before anything is held out — one row "
+                "per person from here on — and the receipt says how many rows "
+                "became how many. It happens now because it changes what a row "
+                "IS, and a seal drawn beforehand would name rows that no "
+                "longer exist."),
+            options=[o["label"] for o in menu.get("options", [])]))
+        return out
+
+    if (kind == "time_points" and unit == "record"
+            and "state_temporal_prediction" not in answered):
+        out.append(Question(
+            key="state_temporal_prediction", kind="temporal_prediction",
+            step="data", clause="lockbox-01",
+            title=("Are you predicting something that happens later from "
+                   "measurements taken earlier?"),
+            why=("A random split — even one grouped by person — is optimistic "
+                 "when the task is predicting a later outcome from earlier "
+                 "measurements."),
+            consumer=(
+                "`ml/splits.py` reads this to choose between its chronological "
+                "and grouped strategies. Both already exist; what has been "
+                "missing is the routing that decides when each applies."),
+            options=["Yes", "No"]))
+    return out
 
 
 def _repair_question(f: Dict[str, Any], step: str) -> Question:

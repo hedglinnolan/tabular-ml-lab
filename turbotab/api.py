@@ -502,6 +502,31 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
             raise HTTPException(400, str(exc)) from exc
         return _payload(project)
 
+    if decision.kind in ("set_repeat_kind", "set_unit_of_analysis",
+                         "set_aggregation", "set_temporal_prediction"):
+        payload = decision.payload or {}
+        try:
+            if decision.kind == "set_repeat_kind":
+                project.set_repeat_kind(
+                    str(payload.get("kind") or decision.subject),
+                    overturned=bool(payload.get("overturned")))
+            elif decision.kind == "set_unit_of_analysis":
+                project.set_unit_of_analysis(
+                    str(payload.get("unit") or decision.subject))
+            elif decision.kind == "set_aggregation":
+                project.set_aggregation(
+                    str(payload.get("method") or decision.subject))
+            else:
+                project.set_temporal_prediction(bool(payload.get("temporal")))
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        # Aggregation rewrote the table, so the diagnosis is of a different
+        # table. The other three change no value and recompute anyway, because
+        # recomputing a diagnosis is cheap and reasoning about which of four
+        # branches needs it is how one of them stops.
+        _recompute(project)
+        return _payload(project)
+
     if decision.kind == "set_eligibility":
         try:
             project.set_eligibility(
@@ -605,6 +630,13 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
                 400, "The grain question comes before the seal: whether one "
                      "person can appear in more than one row decides how the "
                      "held-out rows are chosen.")
+        # Clause §01's bracketed steps, read from the project rather than
+        # restated here. They sit BETWEEN the grain and eligibility, so this
+        # check does too — the first version put it after and told a driver who
+        # had not said what one row means to answer a question two steps on.
+        gap = project.repeat_chain_gap()
+        if gap:
+            raise HTTPException(400, gap)
         if project.eligibility is None:
             raise HTTPException(
                 400, "The eligibility question comes before the seal: whether "
@@ -1007,6 +1039,46 @@ async def get_grain(project_id: str) -> Dict[str, Any]:
     }
 
 
+@app.get("/project/{project_id}/repeats")
+async def get_repeats(project_id: str) -> Dict[str, Any]:
+    """Questions 4 to 7's material: the reading, its evidence, and the menu.
+
+    A `GET`, because they are questions. `applies: false` is the ordinary
+    answer — most datasets never reach any of these, which is
+    `OPENING_SEQUENCE.md` §02's whole claim about the count tracking the shape
+    of the study.
+    """
+    from turbotab import repeats as _rep
+    project = _project(project_id)
+    grain = project.grain or {}
+    if grain.get("answer") != "people_repeat":
+        return {"applies": False,
+                "why_not": ("These questions only mean something when a person "
+                            "can appear in more than one row. The grain answer "
+                            "says they cannot.")}
+    reading = _rep.read(project.df, grain.get("group_col"))
+    kind = (project.repeat_kind or {}).get("kind")
+    return {
+        "applies": True,
+        "group_col": grain.get("group_col"),
+        "reading": reading,
+        "reopen": _rep.REOPEN,
+        "answered": {
+            "repeat_kind": project.repeat_kind,
+            "unit_of_analysis": project.unit_of_analysis,
+            "aggregation": project.aggregation,
+            "temporal_prediction": project.temporal_prediction,
+        },
+        "menu": _rep.menu(kind, project.lens or []) if kind else None,
+        "temporal": {
+            "applies": bool(kind == _rep.TIME_POINTS
+                            and project.unit_of_analysis == _rep.UNIT_RECORD),
+            "why": _rep.TEMPORAL_WHY,
+            "consumer": _rep.TEMPORAL_CONSUMER,
+        },
+    }
+
+
 @app.get("/project/{project_id}/lens")
 async def get_lens(project_id: str) -> Dict[str, Any]:
     """The lens question's material: the options, the suggestion, the answer.
@@ -1264,6 +1336,14 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
             answered.append("choose_target")
         elif d.kind == "set_grain":
             answered.append("state_grain")
+        elif d.kind == "set_repeat_kind":
+            answered.append("state_repeat_kind")
+        elif d.kind == "set_unit_of_analysis":
+            answered.append("state_unit_of_analysis")
+        elif d.kind == "set_aggregation":
+            answered.append("state_aggregation")
+        elif d.kind == "set_temporal_prediction":
+            answered.append("state_temporal_prediction")
         elif d.kind == "set_eligibility":
             answered.append("state_eligibility")
         elif d.kind == "route_missingness":
@@ -1338,13 +1418,31 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
         from turbotab import packs as _packs
         lens_block = _packs.likert_block(project.df)
 
+    # Questions 4 to 7's state, resolved against the frame HERE for the same
+    # reason: the Router takes no dataframe. `None` when the grain says people
+    # do not repeat, and then none of the four is in the plan — which is how the
+    # question count tracks the shape of the study rather than the pipeline's.
+    repeats_state = None
+    if (project.grain or {}).get("answer") == "people_repeat":
+        from turbotab import repeats as _rep
+        reading = _rep.read(project.df, project.grain.get("group_col"))
+        kind = (project.repeat_kind or {}).get("kind")
+        repeats_state = {
+            "reading": reading["reading"],
+            "sentence": reading["sentence"],
+            "confidence": reading["confidence"],
+            "kind": kind,
+            "unit": project.unit_of_analysis,
+            "menu": (_rep.menu(kind, project.lens or []) if kind else None),
+        }
+
     try:
         questions = router.plan(structural, target=project.target,
                                 detection=detection, step=step,
                                 deferred=deferred, answered=answered,
                                 recommendations=recommendations, signals=signals,
                                 missing_columns=missing_columns,
-                                lens_block=lens_block)
+                                lens_block=lens_block, repeats=repeats_state)
         router.audit(questions)
     except router.RouterError as exc:                      # noqa: B902
         # A plan that breaks a governing rule is not rendered at all.

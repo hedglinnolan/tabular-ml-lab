@@ -62,7 +62,8 @@ from turbotab.project import AnalysisProject                         # noqa: E40
 # read back, because a few land under a different name or shape.
 PERSISTED = {
     "id", "name", "created_at", "target", "task_type", "task_confidence",
-    "lens",
+    "lens", "repeat_kind", "unit_of_analysis", "aggregation",
+    "temporal_prediction",
     "task_overridden", "workflow_mode", "pipeline_specs", "grain",
     "eligibility", "obligations", "missingness", "preprocess_settled",
     "selected_models", "preparation_mode", "model_recipes",
@@ -152,7 +153,7 @@ def _fully_populated() -> AnalysisProject:
     # spec recorded, the step settled. All four are the L14 omission.
     p.add_feature("log", ["glucose"])
     p.defer_feature("standardize", ["age"])
-    from turbotab import selection as S
+    from turbotab import repeats as R, selection as S
     p.set_selection(S.declare("mutual_info", "outcome", ["age", "glucose"],
                               n_features=2))
     p.settle_features()
@@ -161,6 +162,12 @@ def _fully_populated() -> AnalysisProject:
     # `n_test_groups` and `group_noun` are all non-null — the L13 omission.
     p.set_lens(["dietary", "clinical"])
     p.set_grain(G.PEOPLE_REPEAT, "SUBJ")
+    # Questions 4 to 7. The unit is the RECORD rather than the person, so the
+    # rows survive and the seal below still has 60 of them to draw from — and
+    # `temporal_prediction` is reachable, which it is not under aggregation.
+    p.set_repeat_kind(R.TIME_POINTS, overturned=True)
+    p.set_unit_of_analysis(R.UNIT_RECORD)
+    p.set_temporal_prediction(True)
     p.set_eligibility(E.RESTRICTED, column="age", minimum=25,
                       reason="The study is about adults over 25.")
     drawn = engine.draw_holdout(p.df, "outcome", "classification", p.grain)
@@ -200,6 +207,39 @@ def _fully_populated() -> AnalysisProject:
     return p
 
 
+# Two of the persisted fields CANNOT both be non-default on one project, and
+# that is a property of the constitution rather than a gap in the fixture:
+# question 6 (aggregation) fires only when the unit of analysis is the person,
+# question 7 (temporal prediction) only when it is the record. A single fixture
+# populating both would be a project the app refuses to build.
+#
+# So there is a second fixture, and it is named rather than worked around — a
+# test that quietly skipped the assertion for these two would be asserting
+# nothing about them at all.
+EXCLUSIVE_FIXTURE = {"aggregation"}
+
+
+def _aggregated() -> AnalysisProject:
+    """The other branch: one row per person, rows combined before the seal."""
+    from turbotab import repeats as R
+    rng = np.random.default_rng(12)
+    n = 60
+    df = pd.DataFrame({
+        "SUBJ": [f"S{i // 3:03d}" for i in range(n)],
+        "visit": [1 + i % 3 for i in range(n)],
+        "age": rng.integers(20, 80, n).astype(float),
+        "glucose": rng.normal(95, 12, n),
+        "outcome": rng.integers(0, 2, n),
+    })
+    p = AnalysisProject.from_dataframe(df, "aggregated")
+    p.set_target("outcome", "classification", "high", ["two levels"])
+    p.set_grain(G.PEOPLE_REPEAT, "SUBJ")
+    p.set_repeat_kind(R.REPEATS)
+    p.set_unit_of_analysis(R.UNIT_PERSON)
+    p.set_aggregation(R.MEAN)
+    return p
+
+
 @pytest.fixture(scope="module")
 def pair():
     before = _fully_populated()
@@ -207,15 +247,22 @@ def pair():
     return before, after
 
 
+@pytest.fixture(scope="module")
+def exclusive_pair():
+    before = _aggregated()
+    after = archive.from_bytes(archive.to_bytes(before))
+    return before, after
+
+
 @pytest.mark.parametrize("field", sorted(PERSISTED))
-def test_the_field_survives_the_archive(field, pair):
+def test_the_field_survives_the_archive(field, pair, exclusive_pair):
     """One test per persisted field, so a failure names the field that was lost.
 
     Parametrized rather than looped for exactly that reason: a single test
     asserting eighteen fields reports "the archive lost something", and the
     useful sentence is "the archive lost `selection_spec`".
     """
-    before, after = pair
+    before, after = exclusive_pair if field in EXCLUSIVE_FIXTURE else pair
     was, now = getattr(before, field), getattr(after, field)
 
     if field == "decisions":

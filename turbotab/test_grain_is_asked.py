@@ -23,7 +23,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from turbotab import eligibility as E, engine, grain as G       # noqa: E402
+from turbotab import eligibility as E, repeats as R, engine, grain as G       # noqa: E402
 from turbotab.project import (                                    # noqa: E402
     AnalysisProject, GrainContradiction, ProjectError,
 )
@@ -82,6 +82,11 @@ def test_the_grain_cannot_be_restated_after_the_seal_is_drawn():
     p.seal_lockbox(d["labels"], **d["disclosure"])
     with pytest.raises(ProjectError, match="already sealed"):
         p.set_grain(G.PEOPLE_REPEAT, "record_id")
+        # Clause 01's bracketed steps: people repeat, so questions 4 and 5 come
+        # before the seal. The unit is the RECORD, so the rows survive and every
+        # count asserted below is unchanged.
+        p.set_repeat_kind(R.REPEATS)
+        p.set_unit_of_analysis(R.UNIT_RECORD)
 
 
 # ── the contradiction detector is name-blind ─────────────────────────────────
@@ -146,6 +151,11 @@ def test_the_detector_also_fires_the_other_way():
     p = _project(cross_sectional())
     with pytest.raises(GrainContradiction, match="different value on every"):
         p.set_grain(G.PEOPLE_REPEAT, "record_id")
+        # Clause 01's bracketed steps: people repeat, so questions 4 and 5 come
+        # before the seal. The unit is the RECORD, so the rows survive and every
+        # count asserted below is unchanged.
+        p.set_repeat_kind(R.REPEATS)
+        p.set_unit_of_analysis(R.UNIT_RECORD)
 
 
 def test_a_genuinely_cross_sectional_file_earns_no_interruption():
@@ -172,6 +182,11 @@ def test_a_stratum_is_not_mistaken_for_a_roster():
 def test_a_stated_repeat_seals_grouped_and_leaks_nobody():
     p = _project(longitudinal())
     p.set_grain(G.PEOPLE_REPEAT, "SUBJ")
+    # Clause 01's bracketed steps: people repeat, so questions 4 and 5 come
+    # before the seal. The unit is the RECORD, so the rows survive and every
+    # count asserted below is unchanged.
+    p.set_repeat_kind(R.REPEATS)
+    p.set_unit_of_analysis(R.UNIT_RECORD)
     p.set_eligibility(E.EVERYONE)
     d = engine.draw_holdout(p.df, "outcome", "classification", p.grain)
     p.seal_lockbox(d["labels"], **d["disclosure"])
@@ -223,6 +238,11 @@ def test_the_seal_reports_the_row_share_it_actually_held_out():
     df = pd.DataFrame(rows, columns=["SUBJ", "age", "day", "outcome"])
     p = _project(df)
     p.set_grain(G.PEOPLE_REPEAT, "SUBJ")
+    # Clause 01's bracketed steps: people repeat, so questions 4 and 5 come
+    # before the seal. The unit is the RECORD, so the rows survive and every
+    # count asserted below is unchanged.
+    p.set_repeat_kind(R.REPEATS)
+    p.set_unit_of_analysis(R.UNIT_RECORD)
     p.set_eligibility(E.EVERYONE)
     d = engine.draw_holdout(p.df, "outcome", "classification", p.grain)
     p.seal_lockbox(d["labels"], **d["disclosure"])
@@ -309,9 +329,41 @@ def test_a_driver_reaches_a_sealed_project_without_leaving_the_guided_door(clien
     iv = client.get(f"/project/{pid}/interview?step=data").json()
     assert "state_grain" not in [q["key"] for q in iv["questions"]]
 
+    # PEOPLE REPEAT, so clause §01's bracketed steps fire — and they fire in
+    # order, one at a time, each appearing only once the one before it is
+    # settled. This is the sequence made visible rather than merely enforced.
+    iv = client.get(f"/project/{pid}/interview?step=data").json()
+    assert "state_repeat_kind" in [q["key"] for q in iv["questions"]]
+    assert "state_unit_of_analysis" not in [q["key"] for q in iv["questions"]], (
+        "question 5 appeared before question 4 was answered; the chain gates")
+
+    # The reading is STATED with its evidence, and offered to be asked anyway.
+    rep = client.get(f"/project/{pid}/repeats").json()
+    assert rep["applies"] is True
+    assert rep["reopen"] == R.REOPEN
+    kind_q = next(q for q in iv["questions"] if q["key"] == "state_repeat_kind")
+    assert kind_q["consumer"], "a FACT must name what reads its answer"
+
+    client.post(f"/project/{pid}/decision",
+                json={"kind": "set_repeat_kind",
+                      "payload": {"kind": rep["reading"]["reading"] or R.REPEATS}})
+    iv = client.get(f"/project/{pid}/interview?step=data").json()
+    assert "state_unit_of_analysis" in [q["key"] for q in iv["questions"]]
+
+    # The seal is refused while the chain is open, and the refusal SAYS WHICH
+    # step is missing rather than reporting a generic ordering violation.
+    too_soon = client.post(f"/project/{pid}/decision", json={"kind": "seal"})
+    assert too_soon.status_code == 400
+    assert "what one row means" in too_soon.json()["detail"]
+
+    client.post(f"/project/{pid}/decision",
+                json={"kind": "set_unit_of_analysis",
+                      "payload": {"unit": R.UNIT_RECORD}})
+
     # and eligibility is now what the interview asks — clause §01's sequence
     # made visible, not just enforced: the question appears only once the grain
     # is settled, and the seal is refused until it is answered.
+    iv = client.get(f"/project/{pid}/interview?step=data").json()
     eligibility_q = next(q for q in iv["questions"] if q["key"] == "state_eligibility")
     assert eligibility_q["status"] == "asked"
     too_soon = client.post(f"/project/{pid}/decision", json={"kind": "seal"})
@@ -366,6 +418,11 @@ def test_the_grain_and_the_basis_survive_the_save_file():
     from turbotab import archive
     p = _project(longitudinal())
     p.set_grain(G.PEOPLE_REPEAT, "SUBJ")
+    # Clause 01's bracketed steps: people repeat, so questions 4 and 5 come
+    # before the seal. The unit is the RECORD, so the rows survive and every
+    # count asserted below is unchanged.
+    p.set_repeat_kind(R.REPEATS)
+    p.set_unit_of_analysis(R.UNIT_RECORD)
     p.set_eligibility(E.EVERYONE)
     d = engine.draw_holdout(p.df, "outcome", "classification", p.grain)
     p.seal_lockbox(d["labels"], **d["disclosure"])

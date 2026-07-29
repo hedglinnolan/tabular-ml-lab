@@ -311,6 +311,17 @@ def build_members(project) -> Dict[str, bytes]:
         # are a regenerated derivative and would come back looking fresh.
         # `[]` and `None` are different answers here: `None` is never asked.
         "lens": list(project.lens) if project.lens is not None else None,
+        # Questions 4 to 7. `aggregation` is the sharpest of the four: it is the
+        # only one that CHANGED THE TABLE, and the parquet that travels beside
+        # this config holds the combined rows. A restored project that lost the
+        # record would hold a frame of person-rows with nothing saying they were
+        # ever anything else — the receipt for an irreversible operation,
+        # missing.
+        "repeat_kind": _json_safe(project.repeat_kind) if project.repeat_kind else None,
+        "unit_of_analysis": project.unit_of_analysis or None,
+        "aggregation": _json_safe(project.aggregation) if project.aggregation else None,
+        "temporal_prediction": (_json_safe(project.temporal_prediction)
+                                if project.temporal_prediction else None),
         # The grain answer travels with the project, not just with the seal.
         # A restored project that has been sealed must not be able to answer
         # the question again, and one that has NOT been sealed must not be
@@ -487,6 +498,10 @@ def from_bytes(raw: bytes):
     # one place that can reintroduce the state.
     lens = config.get("lens")
     project.lens = list(lens) if isinstance(lens, list) else None
+    project.repeat_kind = config.get("repeat_kind") or None
+    project.unit_of_analysis = config.get("unit_of_analysis") or None
+    project.aggregation = config.get("aggregation") or None
+    project.temporal_prediction = config.get("temporal_prediction") or None
     project.grain = config.get("grain") or None
     project.eligibility = config.get("eligibility") or None
     project.obligations = list(config.get("obligations") or [])

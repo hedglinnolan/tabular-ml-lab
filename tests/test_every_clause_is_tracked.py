@@ -162,7 +162,10 @@ CLAUSES: Dict[str, Dict] = {
                          "because wide assay data reads as malformed to a "
                          "general-purpose import doctor and the diagnosis that "
                          "follows would be a diagnosis of the wrong thing.",
-                findings=["STATE-106"],
+                tests=[("turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py",
+                        "test_a_pack_adds_no_question_to_a_fixture_it_does_not_match"),
+                       ("turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py",
+                        "test_every_pack_installed_at_once_adds_nothing_to_the_control")],
             ),
             "target-comes-before-grain": dict(
                 requires="Target precedes grain, and precedes aggregation, "
@@ -176,20 +179,29 @@ CLAUSES: Dict[str, Dict] = {
                          "means replicate measurements in one study and "
                          "different time points in another, with opposite "
                          "treatments.",
-                findings=["STATE-108"],
+                tests=[("turbotab/test_the_repeated_measures_chain_fires_only_when_it_should.py",
+                        "test_the_two_fixtures_get_opposite_readings_from_spacing_alone"),
+                       ("turbotab/test_the_repeated_measures_chain_fires_only_when_it_should.py",
+                        "test_thin_evidence_is_asked_rather_than_guessed")],
             ),
             "aggregation-cannot-move": dict(
                 requires="Unit of analysis and aggregation sit before the "
                          "seal and their position is fixed, because Decision "
                          "A's identity barrier already forbids rebuilding rows "
                          "after a seal has named them.",
-                findings=["STATE-109"],
+                tests=[("turbotab/test_the_repeated_measures_chain_fires_only_when_it_should.py",
+                        "test_aggregation_is_refused_once_the_seal_names_rows"),
+                       ("turbotab/test_the_repeated_measures_chain_fires_only_when_it_should.py",
+                        "test_the_seal_is_refused_until_the_chain_is_settled")],
             ),
             "temporal-prediction-fires-when-time-survives": dict(
                 requires="The temporal-prediction question fires only when "
                          "time points survive as rows, and routes to the "
                          "chronological split rather than to a random one.",
-                findings=["STATE-110"],
+                tests=[("turbotab/test_the_repeated_measures_chain_fires_only_when_it_should.py",
+                        "test_temporal_prediction_is_refused_for_repeats"),
+                       ("turbotab/test_the_repeated_measures_chain_fires_only_when_it_should.py",
+                        "test_temporal_prediction_routes_to_the_chronological_strategy")],
             ),
             "the-grain-comes-before-the-seal": dict(
                 requires="The seal cannot be drawn before the grain is answered.",

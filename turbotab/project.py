@@ -196,6 +196,18 @@ class AnalysisProject:
     # is the ordering clause §01 fixes, expressed as a precondition rather than
     # as a comment somebody has to remember.
     grain: Optional[Dict[str, Any]] = None
+    # Questions 4 to 7, all of which fire only when the grain answer is *people
+    # repeat*. `None` means not asked, which for three of them is the ordinary
+    # case: most datasets never reach them (`OPENING_SEQUENCE.md` §02 — nine
+    # rows, four to six firing).
+    #
+    # `aggregation` is the one that changes the table, and it is pre-seal and
+    # cannot move: combining a person's rows changes what a row IS, and a seal
+    # drawn beforehand names rows that no longer exist (Decision A).
+    repeat_kind: Optional[Dict[str, Any]] = None
+    unit_of_analysis: Optional[str] = None
+    aggregation: Optional[Dict[str, Any]] = None
+    temporal_prediction: Optional[Dict[str, Any]] = None
     # The answer to "is your study restricted to part of this data?", recorded
     # with its participant-flow numbers (constitution §04). `None` means not yet
     # asked, and the seal cannot be drawn on `None` — clause §01 puts
@@ -659,6 +671,164 @@ class AnalysisProject:
                   f"the answer recorded was: {said}."),
             payload=dict(self.grain))
 
+    # ── questions 4 to 7 (OPENING_SEQUENCE §03, STATE-108/109/110) ──────────
+
+    def set_repeat_kind(self, kind: str, overturned: bool = False) -> Decision:
+        """Question 4. Usually stated from the evidence, always overturnable."""
+        from turbotab import repeats as _rep
+
+        if kind not in _rep.REPEAT_KINDS:
+            raise ProjectError(f"{kind!r} is not one of {list(_rep.REPEAT_KINDS)}.")
+        if not self.grain or self.grain.get("answer") != "people_repeat":
+            raise ProjectError(
+                "This question only means something when people repeat. The "
+                "grain answer says they do not, so there is nothing here to be "
+                "repeats or time points.")
+        if self.barrier_raised:
+            raise ProjectError(
+                "The test set is already sealed. Whether these are repeats or "
+                "time points decides whether the rows were combined before the "
+                "seal was drawn, so changing it now would describe a split that "
+                "was not drawn this way.")
+
+        reading = _rep.read(self.df, self.grain.get("group_col"))
+        self.repeat_kind = {
+            "kind": kind,
+            "stated": bool(reading["stated"] and not overturned),
+            "overturned": bool(overturned),
+            "confidence": reading["confidence"],
+            "evidence": list(reading["evidence"]),
+            "spacing": reading["spacing"],
+        }
+        said = ("repeated measurements of the same quantity"
+                if kind == _rep.REPEATS else "different time points")
+        how = ("overturning the reading the data suggested" if overturned else
+               "stated from the data and left standing" if reading["stated"]
+               else "asked, because the evidence was thin")
+        return self.record(
+            kind="set_repeat_kind", subject=kind,
+            text=(f"A person's rows were treated as {said} — {how}."
+                  + (" " + "; ".join(reading["evidence"]).capitalize() + "."
+                     if reading["evidence"] else "")),
+            payload=dict(self.repeat_kind))
+
+    def set_unit_of_analysis(self, unit: str) -> Decision:
+        """Question 5. **No default**, and the refusal to default is the point.
+
+        Guessing at grain is what produced the leak the whole constitution
+        exists to prevent, and the same reasoning binds one level down.
+        """
+        from turbotab import repeats as _rep
+
+        if unit not in _rep.UNITS:
+            raise ProjectError(f"{unit!r} is not one of {list(_rep.UNITS)}.")
+        if self.repeat_kind is None:
+            raise ProjectError(
+                "Whether these are repeats or time points comes first: it "
+                "decides what combining a person's rows would even mean.")
+        if self.barrier_raised:
+            raise ProjectError(
+                "The test set is already sealed, and it was drawn over rows as "
+                "they are. Changing what one row means now would describe a "
+                "split that was not drawn this way.")
+        self.unit_of_analysis = unit
+        return self.record(
+            kind="set_unit_of_analysis", subject=unit,
+            text=("One row is one person; each person's records are combined "
+                  "into one before anything is held out."
+                  if unit == _rep.UNIT_PERSON else
+                  "One row is one record; records stay as they are, and "
+                  "held-out people never appear in training."),
+            payload={"unit": unit})
+
+    def set_aggregation(self, method: str) -> Decision:
+        """Question 6. Executes, **pre-seal**, because it changes what a row is.
+
+        The refusal below is Decision A's identity barrier, not a policy:
+        combining three visits into one person-row means a seal drawn beforehand
+        names rows that no longer exist, and nothing downstream could detect it —
+        the lockbox would still look perfectly well-formed.
+        """
+        from turbotab import repeats as _rep
+
+        if self.barrier_raised:
+            raise ProjectError(
+                "The test set is already sealed, so a person's rows cannot be "
+                "combined now. Combining them changes what a row IS, and the "
+                "seal holds row labels — afterwards those labels would name "
+                "rows that no longer exist, with nothing able to detect it. "
+                "This is the identity barrier, and it is why aggregation is "
+                "pre-seal and cannot move.")
+        if self.unit_of_analysis != _rep.UNIT_PERSON:
+            raise ProjectError(
+                "Combining a person's rows only applies when one row is one "
+                "person. The unit of analysis says one row is one record, so "
+                "the rows stay as they are.")
+        group_col = (self.grain or {}).get("group_col")
+        if not group_col:
+            raise ProjectError(
+                "There is no identifier column recorded, so there is nothing to "
+                "combine rows by.")
+
+        order_col = None
+        reading = _rep.read(self.df, group_col)
+        if reading.get("spacing"):
+            order_col = reading["spacing"]["column"]
+        elif reading.get("replicate_index"):
+            order_col = reading["replicate_index"]
+
+        try:
+            result = _rep.aggregate(self.df, group_col, method,
+                                    target=self.target, order_col=order_col)
+        except _rep.RepeatsError as exc:
+            raise ProjectError(str(exc)) from exc
+
+        self._history.append((f"aggregate::{method}", self.df))
+        self.df = result["frame"]
+        self.aggregation = {k: v for k, v in result.items() if k != "frame"}
+        self.aggregation["group_col"] = group_col
+        self.aggregation["order_col"] = order_col
+        self.findings_stale = True
+        self._mark_stale(
+            f"{result['n_before']:,} rows were combined into "
+            f"{result['n_after']:,}, one per {group_col}")
+        return self.record(
+            kind="set_aggregation", subject=method,
+            text=result["sentence"], payload=dict(self.aggregation))
+
+    def set_temporal_prediction(self, temporal: bool) -> Decision:
+        """Question 7. Fires only when time points survive as rows."""
+        from turbotab import repeats as _rep
+
+        # The barrier first, because once the seal exists it is the governing
+        # fact whatever else is also true — and a refusal that names a
+        # precondition the user could still satisfy, on a project where nothing
+        # can change, sends them somewhere there is nothing to do.
+        if self.barrier_raised:
+            raise ProjectError(
+                "The test set is already sealed and was drawn under the "
+                "strategy recorded at the time. Changing it now would describe "
+                "a split that was not drawn this way.")
+        if (self.repeat_kind or {}).get("kind") != _rep.TIME_POINTS:
+            raise ProjectError(
+                "This question only applies when a person's rows are different "
+                "time points. They were recorded as repeated measurements, so "
+                "there is no earlier and later to predict across.")
+        if self.unit_of_analysis != _rep.UNIT_RECORD:
+            raise ProjectError(
+                "This question only applies when the time points survive as "
+                "rows. Combining each person's records into one leaves nothing "
+                "to split chronologically.")
+        strategy = _rep.split_strategy(bool(temporal), self.unit_of_analysis)
+        self.temporal_prediction = {"temporal": bool(temporal), **strategy}
+        return self.record(
+            kind="set_temporal_prediction", subject=strategy["strategy"],
+            text=(("The task is predicting a later outcome from earlier "
+                   "measurements. " if temporal else
+                   "The task is not predicting across time. ")
+                  + strategy["sentence"]),
+            payload=dict(self.temporal_prediction))
+
     def set_eligibility(self, answer: str, column: Optional[str] = None,
                         minimum: Optional[float] = None,
                         maximum: Optional[float] = None,
@@ -1025,6 +1195,9 @@ class AnalysisProject:
                 "answered: whether one person can appear in more than one row "
                 "decides how the held-out rows are chosen. Constitution §01 "
                 "fixes that order, and §02 is why.")
+        gap = self.repeat_chain_gap()
+        if gap:
+            raise ProjectError(gap)
         if self.eligibility is None:
             raise ProjectError(
                 "The test set cannot be sealed before the eligibility question "
@@ -1067,6 +1240,43 @@ class AnalysisProject:
             payload={"n_test": int(len(labels)),
                      "seal_basis": self.grain["basis"],
                      "basis_source": self.grain["basis_source"]})
+
+    def repeat_chain_gap(self) -> Optional[str]:
+        """Which of clause §01's bracketed steps is still open, if any.
+
+        Stated ONCE and read by both consumers — `seal_lockbox` raises it, and
+        the API's pre-check reports it — because two statements of one ordering
+        rule are two rules that will disagree. The API's first version checked
+        eligibility before this and answered the wrong complaint: a driver who
+        had not yet said what one row means was told to answer a question two
+        steps further on.
+
+        The steps fire only when the shape calls for them, and when it does they
+        are not optional: the seal is drawn over rows, and whether a person's
+        rows were combined decides what a row IS by the time it is drawn.
+        Sealing first and combining afterwards is the identity barrier violated
+        from the other side.
+        """
+        from turbotab import repeats as _rep
+        if (self.grain or {}).get("answer") != "people_repeat":
+            return None
+        if self.repeat_kind is None:
+            return ("People repeat in this table, so whether their rows are "
+                    "repeated measurements or different time points comes "
+                    "before the seal: it decides whether combining them is "
+                    "correct, and combining them after the seal is drawn is "
+                    "impossible. Constitution §01 fixes that order.")
+        if self.unit_of_analysis is None:
+            return ("People repeat in this table, so what one row means comes "
+                    "before the seal. One row per person and one row per record "
+                    "produce different held-out sets, and the seal cannot be "
+                    "drawn without knowing which.")
+        if self.unit_of_analysis == _rep.UNIT_PERSON and self.aggregation is None:
+            return ("One row is one person, and the rows have not been combined "
+                    "yet. Combining them changes what a row is, so it happens "
+                    "before the seal names rows — afterwards the seal's labels "
+                    "would name rows that no longer exist.")
+        return None
 
     def assert_identity_intact(self) -> None:
         """Every sealed label must still name a row. The post-barrier check."""
@@ -1294,6 +1504,10 @@ class AnalysisProject:
             "stale_downstream": list(self.stale_downstream),
             "lens": list(self.lens) if self.lens is not None else None,
             "grain": _copy(self.grain),
+            "repeat_kind": _copy(self.repeat_kind),
+            "unit_of_analysis": self.unit_of_analysis,
+            "aggregation": _copy(self.aggregation),
+            "temporal_prediction": _copy(self.temporal_prediction),
             "eligibility": _copy(self.eligibility),
             "selected_models": list(self.selected_models),
             "preparation_mode": self.preparation_mode,

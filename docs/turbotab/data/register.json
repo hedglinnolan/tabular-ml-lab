@@ -950,5 +950,13 @@
   "classic": "No equivalent, and no place to put one: the domain knowledge Classic has (physiologic bounds, unit harmonization) is unconditional rather than lens-gated, so it cannot be wrong about a field but also cannot be right about one.",
   "state": "guided-only",
   "reason": "Built at L19. DEBT rather than native, and the distinction matters here: a pack is detectors and reference data, which is engine-shaped, not interaction-shaped. Guard 1 forbids a pack adding a card type precisely so that nothing about a pack presupposes the Guided door's design model - the one exception, the reverse-coding question, is an ordinary FACT that Classic could ask as easily. What Classic lacks is the lens to gate them on, which is data-lens-question's debt and not a second one. Thin where thin is right: the clinical pack has ZERO detectors and one prior, because physiologic plausibility bounds and unit harmonization already exist in the shared core; the genomics pack asserts no normalization default at all, and its priors carry a normalization key with variant None so that declining is recorded rather than absent."
+ },
+ {
+  "id": "data-repeated-measures-chain",
+  "step": "data-target",
+  "capability": "Questions 4 to 7 — repeats-or-time-points (stated from spacing, overturnable), unit of analysis (no default), aggregation (pre-seal, executed), temporal prediction (routes to the chronological split)",
+  "classic": "No equivalent. pages/06 carries all four split strategies and nothing decides when each applies; there is no question anywhere in Classic about what varies between one person's rows, so a longitudinal file and a repeated-recall file are treated identically.",
+  "state": "guided-only",
+  "reason": "Built at L19 in turbotab/repeats.py plus four project methods and four router questions, per lockbox constitution clause 01 and OPENING_SEQUENCE.md section 03. DEBT by the L18 test: clause 01 binds both doors, and Classic already HAS the chronological and grouped split strategies in ml/splits.py with sixteen equivalence tests - what it lacks is the routing that decides between them, which is exactly a missing question rather than a missing capability. The aggregation half is a stronger form of the same debt: Classic can neither combine a person's rows nor refuse to, so a user with two dietary recalls per person gets a row-level model and no sentence saying so. repeats.py is UI-free and imports only pandas and numpy, so the convergence is a call-site change at pages/06 rather than a port."
  }
 ]
