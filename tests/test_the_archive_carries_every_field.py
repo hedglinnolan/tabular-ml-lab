@@ -62,6 +62,7 @@ from turbotab.project import AnalysisProject                         # noqa: E40
 # read back, because a few land under a different name or shape.
 PERSISTED = {
     "id", "name", "created_at", "target", "task_type", "task_confidence",
+    "lens",
     "task_overridden", "workflow_mode", "pipeline_specs", "grain",
     "eligibility", "obligations", "missingness", "preprocess_settled",
     "selected_models", "preparation_mode", "model_recipes",
@@ -158,6 +159,7 @@ def _fully_populated() -> AnalysisProject:
 
     # Grain and the seal, with a grouped basis so `group_col`, `n_groups`,
     # `n_test_groups` and `group_noun` are all non-null — the L13 omission.
+    p.set_lens(["dietary", "clinical"])
     p.set_grain(G.PEOPLE_REPEAT, "SUBJ")
     p.set_eligibility(E.RESTRICTED, column="age", minimum=25,
                       reason="The study is about adults over 25.")

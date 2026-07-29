@@ -304,6 +304,13 @@ def build_members(project) -> Dict[str, bytes]:
         "selection_spec": _json_safe(project.selection_spec) if project.selection_spec else None,
         "features_settled": bool(project.features_settled),
         "stale_downstream": _json_safe(project.stale_downstream),
+        # The lens travels for the same reason the grain does, and for one more:
+        # the structural diagnosis is READ under it, so a restored project that
+        # lost the lens would recompute its findings under a different reading
+        # of what the table is — and would do so silently, because the findings
+        # are a regenerated derivative and would come back looking fresh.
+        # `[]` and `None` are different answers here: `None` is never asked.
+        "lens": list(project.lens) if project.lens is not None else None,
         # The grain answer travels with the project, not just with the seal.
         # A restored project that has been sealed must not be able to answer
         # the question again, and one that has NOT been sealed must not be
@@ -475,6 +482,11 @@ def from_bytes(raw: bytes):
     project.task_overridden = bool(config.get("task_overridden", False))
     project.workflow_mode = config.get("workflow_mode", "quick")
     project.pipeline_specs = dict(config.get("pipeline_specs") or {})
+    # `or None` would collapse a recorded empty list into "never asked", which
+    # `normalize` already refuses to produce — but the archive must not be the
+    # one place that can reintroduce the state.
+    lens = config.get("lens")
+    project.lens = list(lens) if isinstance(lens, list) else None
     project.grain = config.get("grain") or None
     project.eligibility = config.get("eligibility") or None
     project.obligations = list(config.get("obligations") or [])

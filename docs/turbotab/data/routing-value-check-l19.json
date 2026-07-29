@@ -165,6 +165,5 @@
    "longitudinal: deferral_closes = None (nothing deferrable on this dataset; fails only under the literal reading of the prereg)"
   ],
   "passes_under_literal_reading": false
- },
- "replaced_because": "adjudicated in VALUE_CHECK_ADJUDICATION.md, L19: the lens question (clause lockbox-01, STATE-106) is the third constitutional question. +1 asked per dataset, constitutional +1 with it, irrelevant_net unchanged at 0, coverage unchanged at 1.0, no threshold moved, prereg unedited."
+ }
 }

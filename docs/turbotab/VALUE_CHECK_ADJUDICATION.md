@@ -428,3 +428,52 @@ Without it, any question could name anything and vanish from the net reading.
   baseline and cannot gain the label, so its `constitutional` is structurally 0 rather than
   measured 0. A comparison of the two doors' net readings would therefore flatter Guided, and
   nothing in this project should quote it without that sentence attached.
+
+---
+
+# L19 · the lens is the third constitutional question, and the net reading did not move
+
+**What fired.** `test_routing_value_check` failed on drift, not on a threshold, and it named eight
+numbers across three datasets. The cause is one question: clause §01 places the lens first in the
+pre-seal sequence, `STATE-106` recorded that neither door asked it, and this loop built it.
+
+**What moved, measured rather than argued:**
+
+| Dataset | `questions_asked` | `irrelevant_questions` | `constitutional` | `irrelevant_net` | `coverage` |
+|---|---|---|---|---|---|
+| messy-clinic | 11 → **12** | 1 → **2** | 1 → **2** | 0 → **0** | 1.0 → 1.0 |
+| wide-assay | 2 → **3** | 1 → **2** | 1 → **2** | 0 → **0** | 1.0 → 1.0 |
+| longitudinal | 3 → **4** | 1 → **2** | 1 → **2** | 0 → **0** | 1.0 → 1.0 |
+
+`findings_driven` falls on two of the three — 0.8182 → 0.75 and 0.3333 → 0.25 — and it is the same
+arithmetic seen from the numerator's side: the denominator gained a question that cites no finding.
+
+**The ruling: this is the category L16 named, arriving for the third time, and it needed no new
+machinery.** The lens is asked because *the app cannot know* — the fourth origin. It carries
+`clause="lockbox-01"`, cites no finding, and settles no inventory key, so all three conjuncts hold
+and `constitutional` picks it up automatically. That the category absorbed a question invented two
+loops after it was defined is the strongest evidence available that it was defined at the right
+level: the grain question (§02) was the first, eligibility (§04) the second, and this is the third,
+with missingness routing (§07) still expected.
+
+**Banking the new numbers, and why that is not the drift this check exists to stop.**
+
+The distinction the pre-push message draws is between *re-recording a number because it moved* and
+*adjudicating why it moved and then recording it*. This is the second: the cause is a named
+question implementing a named clause against a tracked finding, the movement is exactly +1 per
+dataset with no dataset moving differently, and the metric that carries the thesis is unchanged.
+
+- **`irrelevant_questions` still binds, and still passes.** The ceilings are 4 on messy-clinic and
+  3 on the guards; the literal count is 2. No threshold was moved and the prereg is unedited.
+- **`irrelevant_net` is 0 on all three, unchanged.** Nothing binds on it and nothing is being
+  claimed from it — it is reported because L16 published it, and it is quoted here only to say that
+  the second reading did not move either.
+- **`coverage` is unchanged at 1.0**, which is the metric the roadmap's value check makes stopping
+  conditional on. The Guided door still reaches every required decision on every dataset.
+
+**What this does not settle, and is worth watching.** `findings_driven` has now fallen twice for
+this reason, and it will fall again with §07. It is a ratio whose denominator legitimately grows
+with the constitution, so a threshold on it would bind against implementing clauses — the same
+defect the `irrelevant_questions` identity had before L16. Nothing binds on it today. **If a later
+loop wants to put a threshold there, it needs a constitutional-adjusted denominator first**, and
+that is a new adjudication rather than a tuning.

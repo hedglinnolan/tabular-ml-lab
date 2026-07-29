@@ -171,7 +171,7 @@ BLOCKER_SEVERITIES = frozenset({"blocker"})
 # Named here so the audit rules can speak in the design language's vocabulary
 # rather than re-listing kinds at each site.
 FACT_KINDS = frozenset({"target", "task_type", "grain", "eligibility",
-                        "missingness"})
+                        "missingness", "lens", "reverse_coding"})
 # `preparation_mode` is deliberately a CHOICE and not a FACT. The engine has a
 # recommendation — per-model, because a model handicapped by preparation it does
 # not suit is not informative either — and a recommendation is not certainty.
@@ -273,6 +273,7 @@ def plan(
     recommendations: Sequence[Any] = (),
     signals: Any = None,
     missing_columns: Sequence[str] = (),
+    lens_block: Optional[Dict[str, Any]] = None,
 ) -> List[Question]:
     """Every question this step asks, in order, derived from the record.
 
@@ -281,6 +282,12 @@ def plan(
     as a first-class disposition.
 
     `answered` is the keys already settled — the record, replayed.
+
+    `lens_block` is the survey pack's detector result, passed in rather than
+    computed: this module is headless and takes no dataframe, which is what
+    keeps `plan()` a pure function of the record. `None` means either no survey
+    lens or no shared response scale, and both mean the same thing here — the
+    reverse-coding question is not in the plan.
     """
     if step not in STEPS:
         raise RouterError(f"Unknown step {step!r}; expected one of {list(STEPS)}.")
@@ -288,7 +295,26 @@ def plan(
     answered = set(answered)
     out: List[Question] = []
 
-    # ── the target, first, because nothing below it can be decided ──────────
+    # ── the lens, before everything, because the DIAGNOSIS is field-sensitive
+    #    (`DOMAIN_PACKS.md` §01, clause `lockbox-01`). 400 columns across 80
+    #    rows reads as malformed to a general-purpose import doctor and is the
+    #    expected shape for an assay panel; setting the lens first turns a false
+    #    alarm into a correct reading.
+    #
+    #    A FACT, and never skippable — `_skip_is_permitted` admits only
+    #    `task_type`. The same reasoning as the grain: the app CANNOT KNOW, and
+    #    asking only when a detector fires is how `IMPORT-020` happened. The
+    #    heuristic is a suggestion and a contradiction detector, never the
+    #    answer.
+    if step == "data" and "state_lens" not in answered:
+        from turbotab import packs as _packs
+        spec = _packs.question()
+        out.append(Question(
+            key=spec["key"], kind="lens", step="data", clause=spec["clause"],
+            title=spec["title"], why=spec["why"], consumer=spec["consumer"],
+            options=[o["label"] for o in spec["options"]]))
+
+    # ── the target, first among the questions about the analysis ────────────
     if step == "data" and "choose_target" not in answered:
         out.append(Question(
             key="choose_target", kind="target", step="data",
@@ -371,6 +397,39 @@ def plan(
             why=spec["why"] + " " + spec["withheld"],
             consumer=spec["consumer"],
             options=list(spec["options"])))
+
+    # ── reverse-coding: the ONE question a pack is allowed to add ───────────
+    #
+    # Guard #1 says a pack may not add interview components, and this is the
+    # deliberate exception rather than a hole in it. Reverse-coding needs a
+    # codebook the app does not have, so it cannot be a stated fact and cannot
+    # be a default; it is a question, and it exists only where its own detector
+    # fires. On any table without a shared declared response scale it is not in
+    # the plan at all, which is what keeps guard #2 true.
+    #
+    # And it is NEVER inferred from item correlations. On a unidimensional
+    # instrument that inference is right; on two subscales measuring opposing
+    # constructs it is confidently wrong, and nothing in the numbers separates
+    # the two. `survey_instrument.csv` is built so the wrong answer looks right.
+    if (step == "data" and lens_block and "state_reverse_coding" not in answered):
+        out.append(Question(
+            key="state_reverse_coding", kind="reverse_coding", step="data",
+            clause="lockbox-01",
+            title="Are any of these items reverse-coded?",
+            why=(f"{len(lens_block['columns']):,} columns share one "
+                 f"{len(lens_block['scale'])}-point response scale. If some of "
+                 f"them are worded so that agreeing means the opposite, they "
+                 f"have to be flipped before the scale means anything."),
+            consumer=(
+                "Scoring reads this to decide which items to reverse before "
+                "combining them, and the methods section carries the list. "
+                "Nothing here is inferred: the app can see that some items "
+                "correlate negatively with the rest, and that is the same "
+                "evidence two subscales measuring opposing constructs produce. "
+                "Answering wrongly does not raise an error — it produces a "
+                "scale score that means nothing, with every downstream number "
+                "computed from it."),
+            options=list(lens_block["columns"])))
 
     # ── the Features step, constitution §06 ─────────────────────────────────
     # Two questions, because the clause draws two different objects. Building

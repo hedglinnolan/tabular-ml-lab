@@ -7211,10 +7211,10 @@
   "detail": "",
   "ev": "docs/turbotab/ROADMAP.md:210; docs/turbotab/OPENING_SEQUENCE.md",
   "act": "",
-  "status": "OPEN",
-  "note": "Tracks lockbox-01 (ROADMAP.md §01, the pre-seal sequence). Filed at L18 when d134b76 rewrote the clause from six steps to eleven and the text-hash check forced re-enumeration; the placement is specified and neither door asks the question.",
+  "status": "FIXED",
+  "note": "Built at L19. The lens is asked FIRST at the data step - turbotab/packs.py holds the question, the five packs and their detectors; project.set_lens records the answer and the methods sentence; ml/router.py emits state_lens ahead of choose_target with clause lockbox-01; api._recompute reads the diagnosis under it. THE GUARD THAT MATTERS IS GUARD 2, not the content: a pack that fires on the wrong data asserts something false authoritatively, which is harder for a user to catch than an ordinary bug. The named test is the discrimination matrix - every pack against every fixture, parametrized both ways so a failure names the pair - plus the control assertion that all five packs installed TOGETHER add nothing to clinic_visits.csv. GUARD 2 EARNED ITS KEEP ON ITS FIRST RUN: the survey pack fired on genomics_expression, because 30 low-expression genes all take values in {0,1,2,3} and shared that scale exactly, so a 30-item instrument was detected in a count matrix. The discriminator is the shape of the distribution and it is stark - an instrument's categories are all used and comparable (the survey fixture's busiest holds 29%) while a low-expression gene decays (78% at zero). likert_block now requires every category used and no category above 60%, in 70% of the block. Probed: removing that requirement turns the matrix red with 'the survey pack added 1 question(s) to genomics_expression'. Guard 1 holds with ONE deliberate exception, named rather than left as an unexplained plus-one: reverse-coding is a question because it needs a codebook the app does not have, and it is gated on its own detector. VALUE CHECK: +1 question per dataset, constitutional +1 with it, irrelevant_net unchanged at 0, coverage unchanged at 1.0. Adjudicated in VALUE_CHECK_ADJUDICATION.md, prereg unedited, no threshold moved.",
   "verified_against": "",
-  "test": "",
+  "test": "turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_a_pack_adds_no_question_to_a_fixture_it_does_not_match",
   "verified_ev": "docs/turbotab/ROADMAP.md:210; docs/turbotab/OPENING_SEQUENCE.md"
  },
  {

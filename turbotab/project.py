@@ -184,6 +184,12 @@ class AnalysisProject:
     findings_stale: bool = False
     # True when the user contradicted the detection rather than confirming it.
     task_overridden: bool = False
+    # The answer to "what kind of measurements are in this table?" — the FIRST
+    # question of clause §01's pre-seal sequence, asked before the structural
+    # diagnosis because the diagnosis is field-sensitive (`DOMAIN_PACKS.md`
+    # §01). A list, because real studies are intersections; `["other"]` is a
+    # recorded answer and not an absence, and `None` means not yet asked.
+    lens: Optional[List[str]] = None
     # The answer to "can one person appear in more than one row?", recorded
     # ONCE and read by both consumers (constitution §02, ASSEMBLY_SPEC §05).
     # `None` means not yet asked, and the seal cannot be drawn on `None` — that
@@ -552,6 +558,54 @@ class AnalysisProject:
         the cascade had been dealt with. The step that trains is what clears it.
         """
         self.stale_downstream.append({"why": why, "at": _now()})
+
+    def set_lens(self, keys: Sequence[str]) -> Decision:
+        """Record what kind of measurements these are. Asked, never inferred.
+
+        The same architecture as the grain question and for the same reason: the
+        user knows and the engine can only guess. Detection reaches this method
+        no more than the grouping heuristics reach `set_grain` — what lands here
+        is what the user said.
+
+        Refused after the seal, and the refusal is the clause. The lens is
+        FIRST in the pre-seal sequence because the structural diagnosis is
+        field-sensitive; a lens set afterwards would mean the diagnosis, the
+        impossibility pass and the split were all computed under a different
+        reading of what the table is.
+        """
+        from turbotab import packs as _packs
+
+        if self.barrier_raised:
+            raise ProjectError(
+                "The test set is already sealed. The lens is the first question "
+                "of the pre-seal sequence because the structural diagnosis is "
+                "field-sensitive — setting it now would mean the diagnosis, the "
+                "impossibility pass and the split were all computed under a "
+                "different reading of what this table is.")
+        try:
+            chosen = _packs.normalize(keys)
+        except _packs.PackError as exc:
+            raise ProjectError(str(exc)) from exc
+
+        changed = self.lens is not None and self.lens != chosen
+        self.lens = chosen
+        if changed:
+            # The diagnosis is read under the lens, so a different lens is a
+            # different reading of the same table. Marked, never dropped.
+            self.findings_stale = True
+            self._mark_stale("the lens was changed, and the structural "
+                             "diagnosis is read under it")
+        return self.record(
+            kind="set_lens", subject=",".join(chosen),
+            text=_packs.methods_sentence(chosen),
+            payload={"lens": chosen,
+                     "labels": [_packs.LENS_LABELS[k] for k in chosen],
+                     "replaced": changed})
+
+    def pack_findings(self) -> List[Dict[str, Any]]:
+        """What the selected packs see. Empty until the lens is answered."""
+        from turbotab import packs as _packs
+        return _packs.findings(self.df, self.lens or [])
 
     def set_grain(self, answer: str, group_col: Optional[str] = None,
                   inherited: bool = False,
@@ -1238,6 +1292,7 @@ class AnalysisProject:
             "selection_spec": _copy(self.selection_spec),
             "features_settled": self.features_settled,
             "stale_downstream": list(self.stale_downstream),
+            "lens": list(self.lens) if self.lens is not None else None,
             "grain": _copy(self.grain),
             "eligibility": _copy(self.eligibility),
             "selected_models": list(self.selected_models),

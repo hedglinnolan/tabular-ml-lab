@@ -243,13 +243,34 @@ def _recompute(project: AnalysisProject) -> None:
     prof = None
     try:
         prof = engine.profile(project.df, project.target, project.task_type)
-    except ValueError:
+    except ValueError as exc:
         # `compute_dataset_profile` raises on a frame it cannot profile. The
         # structural findings are still real and still worth showing — reporting
         # nothing here would present an unprofiled file as a clean one.
+        devchecks.swallowed(
+            "api._recompute::profile", exc,
+            "every profile-derived finding is absent from this render, and the "
+            "file presents as one the profiler had nothing to say about")
         prof = None
+
+    ranked = engine.rank_findings(structural, prof)
+    # THE LENS IS READ HERE, and this is the whole of `DOMAIN_PACKS.md` §02 in
+    # the code: a pack changes the ANSWERS, not the questions. `reframe`
+    # annotates findings the lens reads differently — it never deletes one,
+    # because deleting `wide_repeated_measures` would also delete it on
+    # `clinic_visits.csv`, where `bp_1`/`bp_2`/`bp_3` is exactly what the
+    # finding is for. `findings` adds what a generic tool would never raise.
+    #
+    # Both are no-ops until the lens is answered, and both are no-ops when the
+    # answer is "something else, or not sure" — the app is fully functional
+    # with no lens.
+    from turbotab import packs as _packs
+    ranked = _packs.reframe(ranked, project.lens or [], project.df)
+    ranked = ranked + project.pack_findings()
+    for i, f in enumerate(ranked):
+        f["rank"] = i
     project.set_findings(
-        engine.rank_findings(structural, prof),
+        ranked,
         engine.profile_to_dict(prof) if prof is not None else None,
     )
 
@@ -420,6 +441,42 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         except ProjectError as exc:
             raise HTTPException(400, str(exc)) from exc
         _recompute(project)
+        return _payload(project)
+
+    if decision.kind == "set_lens":
+        keys = decision.payload.get("lens")
+        if keys is None:
+            keys = [k for k in (decision.subject or "").split(",") if k]
+        try:
+            project.set_lens(keys)
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        # The diagnosis is read under the lens, so it is recomputed here rather
+        # than left to go stale — clause §01 puts the lens BEFORE the structural
+        # diagnosis, and a lens that changed nothing on screen would be a
+        # question the user could not see the point of.
+        _recompute(project)
+        return _payload(project)
+
+    if decision.kind == "set_reverse_coding":
+        # Asked, never inferred. The list may legitimately be EMPTY — "none of
+        # them are reverse-coded" is a recorded answer, and the difference
+        # between that and never having asked is the whole recorded-absence
+        # rule. So the empty list is stored, not treated as no answer.
+        columns = list(decision.payload.get("columns") or [])
+        unknown = [c for c in columns if c not in list(project.df.columns)]
+        if unknown:
+            raise HTTPException(
+                400, f"No column named '{unknown[0]}' in this table.")
+        project.record(
+            "set_reverse_coding", subject=",".join(columns),
+            text=(f"{len(columns)} item(s) were declared reverse-coded and will "
+                  f"be flipped before the scale is scored: "
+                  + ", ".join(f"`{c}`" for c in columns) + "."
+                  if columns else
+                  "No items were declared reverse-coded; the scale is scored "
+                  "with every item in the direction it was recorded."),
+            payload={"columns": columns, "source": "declared"})
         return _payload(project)
 
     if decision.kind == "set_grain":
@@ -950,6 +1007,27 @@ async def get_grain(project_id: str) -> Dict[str, Any]:
     }
 
 
+@app.get("/project/{project_id}/lens")
+async def get_lens(project_id: str) -> Dict[str, Any]:
+    """The lens question's material: the options, the suggestion, the answer.
+
+    A `GET`, because it is a question. The suggestion is offered beside the
+    options and is never the answer — the same demotion constitution §02 applies
+    to the grouping heuristics, for the same reason: a pack that fires on the
+    wrong data asserts something false authoritatively, which is harder to catch
+    than an ordinary bug.
+    """
+    from turbotab import packs as _packs
+    project = _project(project_id)
+    return {
+        **_packs.question(_packs.suggest(project.df)),
+        "answered": project.lens,
+        "methods_sentence": (_packs.methods_sentence(project.lens)
+                             if project.lens else None),
+        "contradiction": _packs.contradiction(project.df, project.lens or []),
+    }
+
+
 @app.get("/project/{project_id}/models")
 async def get_models(project_id: str) -> Dict[str, Any]:
     """The shelf: every model this task can use, ordered and never filtered.
@@ -1178,7 +1256,11 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
     missing_columns = [r["column"] for r in project.missingness_survey()]
     answered, deferred = [], {}
     for d in project.decisions:
-        if d.kind == "set_target":
+        if d.kind == "set_lens":
+            answered.append("state_lens")
+        elif d.kind == "set_reverse_coding":
+            answered.append("state_reverse_coding")
+        elif d.kind == "set_target":
             answered.append("choose_target")
         elif d.kind == "set_grain":
             answered.append("state_grain")
@@ -1247,12 +1329,22 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
                 "the step renders as though the data raised nothing")
             recommendations, signals = [], None
 
+    # The survey pack's detector, resolved HERE and passed in: `ml/router.py` is
+    # headless and takes no dataframe, which is what keeps `plan()` a pure
+    # function of the record. Gated on the lens, so a Likert block in a table
+    # nobody called a survey asks nothing.
+    lens_block = None
+    if project.lens and "survey" in project.lens:
+        from turbotab import packs as _packs
+        lens_block = _packs.likert_block(project.df)
+
     try:
         questions = router.plan(structural, target=project.target,
                                 detection=detection, step=step,
                                 deferred=deferred, answered=answered,
                                 recommendations=recommendations, signals=signals,
-                                missing_columns=missing_columns)
+                                missing_columns=missing_columns,
+                                lens_block=lens_block)
         router.audit(questions)
     except router.RouterError as exc:                      # noqa: B902
         # A plan that breaks a governing rule is not rendered at all.
