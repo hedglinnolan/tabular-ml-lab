@@ -14,7 +14,9 @@ Usage in coaching_ui.py:
 Usage in insight_ledger.py:
     Insight(..., theory_anchor="skewness")
 """
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+
+from ml import name_registry as _name_registry
 import streamlit as st
 
 
@@ -397,20 +399,62 @@ THEORY_ANCHORS: Dict[str, Dict[str, str]] = {
 # Key: (category, issue_subtype) → anchor key
 # issue_subtype comes from the insight ID pattern or metadata.
 
-INSIGHT_CATEGORY_TO_ANCHOR = {
-    "skewness": "skewness",
-    "outliers": "outliers",
-    "collinearity": "collinearity",
-    "class_imbalance": "class_imbalance",
-    "missing_data": "missing_data",
-    "high_dimensionality": "high_dimensionality",
-    "low_sample_size": "sample_size",
-    "feature_scale": "scaling",
-    "leakage": "leakage",
-    "calibration": "calibration",
-    "seed_sensitivity": "seed_sensitivity",
-    "non_normality": "skewness",  # close enough conceptually
+# ─────────────────────────────────────────────────────────────────────────────
+# Which insight earns which theory anchor
+#
+# **Exact key or declared alias; an unknown insight yields silence.** This is
+# `ml/name_registry.py`'s remedy, and this registry is the FIFTH member of the
+# class it exists for — after `clinical_units`, `physiology_reference`,
+# `_KNOWN_UNITS` (`IMPORT-267`) and `ml/triage.py`'s three local lists
+# (`COACH-034`).
+#
+# It was matched three ways, and the third was the dangerous one:
+#
+#   1. an explicit `theory_anchor` field — exact, and correct;
+#   2. `keyword in insight.id.lower() or keyword in insight.category.lower()` —
+#      substring against a structured identifier;
+#   3. **a substring scan of `insight.finding`, which is PROSE.** Twenty
+#      keywords against a sentence, so `"missing"` matched *"no missing values"*
+#      and linked a clean column to the missing-data theory, `"seed"` matched
+#      *"seeds were not varied"* and *"seed"* inside any word containing it, and
+#      a reworded finding silently lost its link entirely.
+#
+# `FEATURE_PARITY.md` calls this pair *the most fragile intelligent feature in
+# the app*. The prose scan is gone: an insight whose category is not declared
+# here gets **no theory link**, which is the governing rule's *may be silent*
+# branch taken deliberately. A missing link is a gap the user can see; a wrong
+# link teaches the wrong concept beside the right number.
+#
+# Every keyword the prose scan carried that names a real concept is declared
+# below as an alias, so nothing that was reliably reachable became unreachable.
+_INSIGHT_ANCHORS: Dict[str, List[str]] = {
+    "skewness": ["skew", "non_normality", "non_normal", "log_transform"],
+    "outliers": ["outlier", "extreme_values", "winsorize"],
+    "collinearity": ["collinear", "vif", "multicollinearity", "correlated_features"],
+    "class_imbalance": ["imbalance", "imbalanced", "class_balance", "minority_class"],
+    "missing_data": ["missing", "missingness", "imputation", "imput", "nan"],
+    "high_dimensionality": ["dimension", "dimensionality", "p_over_n", "wide_data"],
+    "sample_size": ["low_sample_size", "small_sample", "epv",
+                    "events_per_variable"],
+    "scaling": ["feature_scale", "feature_scaling", "standardization"],
+    "leakage": ["target_leakage", "data_leakage"],
+    "calibration": ["calibrat", "ece", "brier"],
+    "seed_sensitivity": ["seed", "seed_variance", "random_state"],
+    "bootstrap": ["confidence_interval", "resampling"],
+    "shap": ["shapley", "feature_attribution"],
+    "regularization": ["regulariz", "ridge", "lasso", "elasticnet", "penalty"],
 }
+
+# Kept as a name so anything importing it still resolves. Derived from the
+# registry rather than maintained beside it — two lists of the same fact is the
+# drift this whole class is about.
+INSIGHT_CATEGORY_TO_ANCHOR = {
+    alias: anchor
+    for anchor, aliases in _INSIGHT_ANCHORS.items()
+    for alias in [anchor, *aliases]
+}
+
+_INSIGHT_LOOKUP = _name_registry.build(_INSIGHT_ANCHORS)
 
 
 def get_theory_anchor(anchor_key: str) -> Optional[Dict[str, str]]:
@@ -419,48 +463,28 @@ def get_theory_anchor(anchor_key: str) -> Optional[Dict[str, str]]:
 
 
 def infer_theory_anchor(insight: "Insight") -> Optional[str]:
-    """Try to infer the best theory anchor key for an insight.
+    """The theory anchor for this insight, or `None`.
 
-    Checks:
-    1. Explicit theory_anchor field on the insight
-    2. Keyword matching from insight.id and insight.category
+    Two sources, both exact:
+
+    1. an explicit `theory_anchor` field, which is the insight saying so;
+    2. the declared registry, matched against `category` and `id` — structured
+       identifiers, by exact key or declared alias.
+
+    **The prose scan is gone**, and its absence is the fix rather than a
+    regression. Twenty keywords against `insight.finding` meant `"missing"`
+    matched *"no missing values"*, and a reworded finding lost its link with
+    nothing saying so. `None` is an answer: this insight has no theory link, and
+    a gap the user can see beats a wrong concept beside a right number.
     """
-    # 1. Explicit
     anchor = getattr(insight, "theory_anchor", None)
     if anchor and anchor in THEORY_ANCHORS:
         return anchor
 
-    # 2. Match from category-based mapping
-    for keyword, anchor_key in INSIGHT_CATEGORY_TO_ANCHOR.items():
-        if keyword in insight.id.lower() or keyword in insight.category.lower():
-            return anchor_key
-
-    # 3. Check finding text for known concept keywords
-    finding_lower = (insight.finding or "").lower()
-    for keyword, anchor_key in [
-        ("skew", "skewness"),
-        ("outlier", "outliers"),
-        ("collinear", "collinearity"),
-        ("vif", "collinearity"),
-        ("imbalance", "class_imbalance"),
-        ("imbalanced", "class_imbalance"),
-        ("missing", "missing_data"),
-        ("imput", "missing_data"),
-        ("calibrat", "calibration"),
-        ("ece", "calibration"),
-        ("leakage", "leakage"),
-        ("seed", "seed_sensitivity"),
-        ("bootstrap", "bootstrap"),
-        ("dimension", "high_dimensionality"),
-        ("epv", "sample_size"),
-        ("sample size", "sample_size"),
-        ("scaling", "scaling"),
-        ("shap", "shap"),
-        ("regulariz", "regularization"),
-    ]:
-        if keyword in finding_lower:
-            return anchor_key
-
+    for field in (getattr(insight, "category", None), getattr(insight, "id", None)):
+        found = _name_registry.match(field, _INSIGHT_LOOKUP)
+        if found and found in THEORY_ANCHORS:
+            return found
     return None
 
 

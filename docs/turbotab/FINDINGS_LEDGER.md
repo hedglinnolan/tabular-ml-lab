@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**194 of 597 closed.**
+**195 of 598 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 362 |
 | `PARTIAL` | 41 |
-| `FIXED` | 191 |
+| `FIXED` | 192 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
@@ -555,7 +555,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 191
+## FIXED — 192
 
 
 ### Multi-file / JSON import — 69
@@ -753,6 +753,17 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-016` | high | Active cohort run and completed runs are not persisted at all | `utils/cohorts.py:334-344 (CohortRun), :389-407 (_ACTIVE_KEY/_DONE_KEY); utils/session_manager.py:73-162 (key…` | **test:** `tests/test_session_carries_the_run.py::test_the_active_run_comes_back` — Closed for both keys. The failure this row describes - a save taken mid-cohort-run restoring… |
 | `CONTRACT-050` | medium | Boundary FeatureSel: feature_selection_results and consensus_features | `pages/04_Feature_Selection.py:277-282, :447-448, :493-494; utils/session_state.py:283-298, :355-357` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_keeping_a_stage_does_not_keep_its_descendants` — The subtlety survived the port, and in the form the action… |
 
+### Coach to Router — 6
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `COACH-014` | landmine | `ShapeFinding.auto_suggestable` — the property that encodes the app's governing rule — has zero callers. | `ml/import_doctor.py:92-96. Repo-wide grep for `auto_suggestable` finds only its definition.` | **test:** `turbotab/test_skeleton.py::test_only_high_confidence_is_auto_suggestable` — No longer a zero-caller property. turbotab/engine.py:196 reads auto_suggestable when… |
+| `COACH-034` | high | detect_cohort_structure matched column names by SUBSTRING against three local pattern lists, so a wellbeing score was a patient identifier and an income column was a time column | `ml/triage.py detect_cohort_structure, the three pattern lists and their three any(... in ...) sites` | **test:** `tests/test_a_name_registry_matches_exactly_or_says_nothing.py::test_a_subject_matter_code_is_not_a_patient_identifier` — FOUND AND FIXED AT L20, by the guard the loop… |
+| `COACH-035` | high | infer_theory_anchor scanned insight.finding PROSE for twenty keywords, so a clean column got the missing-data theory and a reworded finding silently lost its link | `utils/theory_anchors.py infer_theory_anchor step 3; utils/theory_demos.py DEMO_REGISTRY` | **test:** `tests/test_the_theory_registry_pair_matches.py::test_a_theory_link_is_never_inferred_from_prose` — FIXED at L23, and the key test was written FIRST because layer 3 is… |
+| `COACH-024` | invariant | Blockers are never bulk-acknowledged: passing a workflow gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.py:789-794 — the explicit `if i.severity == 'blocker': continue` inside…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — The invariant is implemented at the one place that could violate it, the… |
+| `COACH-028` | invariant | Every model key in ml/model_registry.get_registry() has a viability verdict. | `tests/test_coach_intelligence.py::TestModelViability::test_covers_full_registry — `missing = registry_keys…` | **test:** `tests/test_coach_intelligence.py::TestModelViability::test_covers_full_registry` — The healthiest invariant in this domain, and it is intact: adding a model to the… |
+| `COACH-029` | invariant | The probe is seeded and reproducible. | `ml/coach_probe.py SEED=42 threaded through np.random.default_rng, KFold/StratifiedKFold(random_state=SEED)…` | **test:** `tests/test_coach_intelligence.py::test_seeded_and_deterministic` — Determinism is real and structural: the probe is the one place in the engine that uses… |
+
 ### Silent-failure landmines — 5
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -762,16 +773,6 @@ Nothing is closed without a regression test named after it.
 | `MINE-016` | high | EDA's _data_fingerprint is schema-only — it cannot see value changes | `pages/02_EDA.py:122-125, 146-169, 809, 920, 957, 988, 1082; ml/import_doctor.py:876-895` | **test:** `tests/test_eda_caches_follow_the_data.py::test_the_page_has_one_fingerprint_and_it_follows_the_values` — Closed, and closed against a stronger requirement than this row… |
 | `MINE-021` | high | apply_plausibility_filter resets the index, destroying lockbox and cohort label correspondence | `ml/pipeline.py:109-124; pages/05_Preprocess.py:860; utils/test_lockbox.py:16-17, 248` | **test:** `tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given` — Duplicate of STATE-001 from the landmine pass, and closed. The filter returns… |
 | `MINE-039` | medium | GroupShuffleSplit failure silently degrades the lockbox to a non-grouped split | `utils/test_lockbox.py:176-210, 282-294` | **test:** `tests/test_grouping_picks_the_person.py::test_too_few_groups_to_split_by_is_said_out_loud` — Closed, and the test's own assertion message is the invariant: 'the… |
-
-### Coach to Router — 5
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `COACH-014` | landmine | `ShapeFinding.auto_suggestable` — the property that encodes the app's governing rule — has zero callers. | `ml/import_doctor.py:92-96. Repo-wide grep for `auto_suggestable` finds only its definition.` | **test:** `turbotab/test_skeleton.py::test_only_high_confidence_is_auto_suggestable` — No longer a zero-caller property. turbotab/engine.py:196 reads auto_suggestable when… |
-| `COACH-034` | high | detect_cohort_structure matched column names by SUBSTRING against three local pattern lists, so a wellbeing score was a patient identifier and an income column was a time column | `ml/triage.py detect_cohort_structure, the three pattern lists and their three any(... in ...) sites` | **test:** `tests/test_a_name_registry_matches_exactly_or_says_nothing.py::test_a_subject_matter_code_is_not_a_patient_identifier` — FOUND AND FIXED AT L20, by the guard the loop… |
-| `COACH-024` | invariant | Blockers are never bulk-acknowledged: passing a workflow gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.py:789-794 — the explicit `if i.severity == 'blocker': continue` inside…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — The invariant is implemented at the one place that could violate it, the… |
-| `COACH-028` | invariant | Every model key in ml/model_registry.get_registry() has a viability verdict. | `tests/test_coach_intelligence.py::TestModelViability::test_covers_full_registry — `missing = registry_keys…` | **test:** `tests/test_coach_intelligence.py::TestModelViability::test_covers_full_registry` — The healthiest invariant in this domain, and it is intact: adding a model to the… |
-| `COACH-029` | invariant | The probe is seeded and reproducible. | `ml/coach_probe.py SEED=42 threaded through np.random.default_rng, KFold/StratifiedKFold(random_state=SEED)…` | **test:** `tests/test_coach_intelligence.py::test_seeded_and_deterministic` — Determinism is real and structural: the probe is the one place in the engine that uses… |
 
 ### Record / narrative / export — 5
 

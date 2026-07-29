@@ -7609,5 +7609,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "ml/router.py choose_selection at the features step; turbotab/web/index.html had no set_selection"
+ },
+ {
+  "id": "COACH-035",
+  "area": "COACH",
+  "sev": "high",
+  "item": "infer_theory_anchor scanned insight.finding PROSE for twenty keywords, so a clean column got the missing-data theory and a reworded finding silently lost its link",
+  "detail": "The registry pair FEATURE_PARITY calls the most fragile intelligent feature in the app. Three matching paths and the third was a substring scan of free prose: 'missing' matched 'no missing values' and linked a clean column to the missing-data theory, 'seed' matched any word containing it, and rewording a finding dropped the link with nothing saying so. THE FIFTH SUBSTRING REGISTRY after clinical_units, physiology_reference, _KNOWN_UNITS (IMPORT-267) and ml/triage.py's three local lists (COACH-034). Separately the 19-key pair had no test asserting the keys match, which FEATURE_PARITY names explicitly.",
+  "ev": "utils/theory_anchors.py infer_theory_anchor step 3; utils/theory_demos.py DEMO_REGISTRY",
+  "act": "",
+  "status": "FIXED",
+  "note": "FIXED at L23, and the key test was written FIRST because layer 3 is about to build on this pair - a registry that drifts under a new consumer fails in the consumer and gets diagnosed there. The prose scan is REMOVED rather than tightened: an insight whose category is not declared gets no theory link, which is the governing rule's may-be-silent branch, and a gap the user can see beats a wrong concept beside a right number. Matching is now ml/name_registry's rule applied rather than repeated - exact key or declared alias against category and id, which are structured identifiers. Every keyword the scan carried that names a real concept is declared as an alias, so nothing reliably reachable became unreachable, and INSIGHT_CATEGORY_TO_ANCHOR is DERIVED from the registry rather than maintained beside it. Both key directions are asserted separately, because a missing demo is a broken link and an orphan demo is dead content and a set equality would report whichever it found first. THE FIRST VERSION OF THE FIELD TEST WAS WRONG: it asserted title and concept, which the registry does not have - the keys are chapter, section, why_it_matters, what_to_look_for and misconception. A test written from a guess about a schema tests the guess, so the fields are read off the registry.",
+  "verified_against": "",
+  "test": "tests/test_the_theory_registry_pair_matches.py::test_a_theory_link_is_never_inferred_from_prose",
+  "verified_ev": "utils/theory_anchors.py infer_theory_anchor step 3; utils/theory_demos.py DEMO_REGISTRY"
  }
 ]
