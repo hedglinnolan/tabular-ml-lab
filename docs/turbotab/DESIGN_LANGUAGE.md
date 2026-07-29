@@ -119,6 +119,41 @@ disclosure.
 user who has scrolled up to read. (This revises an earlier "never auto-scroll" rule that building
 the prototype disproved.)
 
+### 05.1 · Acknowledgment — the voice that reports
+
+Settle and arrive describe *motion*. Neither says what the app **says**, and the product owner drove
+the app and found controls labeled `Earmark it` and `Show me` that named themselves and nothing else
+(`DRIVE-003`, `DRIVE-004`). So this is the missing rule, and it is a **distinct voice from the coach**:
+§06.3's coach observes and waits. Acknowledgment reports. It never advises, never hedges, and never
+appears before there is a fact to state.
+
+**One sentence, seen at three moments.**
+
+| | | |
+|---|---|---|
+| **Before** | The control states what it will do — on hover and to a screen reader. | *"Records this and brings it back at Explore."* |
+| **During** | That same sentence is the job label, so what is happening is what was promised. | *"Recording this and bringing it back at Explore…"* |
+| **After** | The subcard collapses, and the row that replaces it says what was done. | *"One row is one person; each person's records are combined into one before anything is held out."* |
+
+Four rules govern it:
+
+1. **A control whose effect cannot be stated in one sentence should not exist.** The effect table is
+   therefore the test of whether a control has earned its place, not documentation of one that has.
+2. **Never a bare verb.** `Earmark it`, `Apply`, `Show me` name the mechanism. The sentence names the
+   *consequence* — what changes, where it lands, and whether it can be undone.
+3. **The after-sentence is a quotation, never a composition.** It is the sentence the *record* holds,
+   read back verbatim. This is not tidiness: it makes the acknowledgment and the transcript the same
+   string by construction, so the interface cannot report an effect the record does not carry, and a
+   promise the server did not keep surfaces as a visible disagreement instead of as a reassuring
+   sentence the page made up.
+4. **An action that disappears has not acknowledged anything.** An answered question leaves the plan,
+   so without a collapsed row the card simply vanishes and the user infers success from an absence —
+   which is the one thing §09 reserves green for.
+
+Refusals are acknowledgments too, and they carry the reason: *"The test set is already sealed, so a
+person's rows cannot be combined now."* An action that declines and says nothing is
+indistinguishable from one that broke.
+
 ---
 
 ## 06 · Voice — how the app talks

@@ -223,6 +223,106 @@ def test_a_generic_question_states_its_effect_before_it_is_taken():
         f"exist.")
 
 
+def test_every_action_acknowledges_itself_after_it_is_taken():
+    """`DRIVE-004`, the third moment.
+
+    An answered question leaves the Router's plan entirely, so the card VANISHES.
+    A control that disappears when pressed has acknowledged nothing — the user is
+    left inferring from an absence, which is the one thing §09 reserves green for.
+    """
+    page = _page()
+    ack = _js_object_keys("ACK_LABEL")
+    start = page.index("var ANSWERABLE = {")
+    kinds = set(re.findall(r'kind:\s*"([a-z_]+)"', page[start:page.index("};", start)]))
+    missing = sorted(kinds - set(ack))
+    assert not missing, (
+        f"these actions can be taken and say nothing afterward: {missing}. The "
+        f"card leaves the plan when answered, so with no acknowledgment row it "
+        f"simply disappears.")
+
+
+def test_the_acknowledgment_quotes_the_record_rather_than_composing_a_sentence():
+    """Why it is a quotation and not a past-tense rewrite.
+
+    The acknowledgment and the transcript are then the same string BY
+    CONSTRUCTION, so the interface cannot report an effect the record does not
+    carry. `EFFECTS` promises, this reports, and a promise the server did not keep
+    surfaces as a visible disagreement rather than as a reassuring sentence the
+    page made up.
+    """
+    page = _page()
+    body = page[page.index("function ackRows()"):]
+    body = body[:body.index("\n  }")]
+    assert "esc(d.text)" in body, (
+        "the acknowledgment composes its own sentence; it must quote the "
+        "decision the server recorded")
+    assert "EFFECTS" not in body and "effectOf" not in body, (
+        "the acknowledgment is reading the promise back to the user instead of "
+        "the record, so an unkept promise would read as kept")
+
+
+def test_the_quoted_record_is_never_empty(tmp_path):
+    """The load-bearing half, over HTTP: a row quoting an empty string is a
+    collapsed row that says nothing, which is the vanishing card with extra
+    steps."""
+    from fastapi.testclient import TestClient
+
+    from turbotab import api
+    client = TestClient(api.app)
+    with open(DATA / "clinical_longitudinal.csv", "rb") as fh:
+        pid = client.post("/project", files={
+            "file": ("clinical_longitudinal.csv", fh, "text/csv")}).json()["id"]
+
+    def decide(project, kind, payload):
+        r = client.post(f"/project/{project}/decision",
+                        json={"kind": kind, "payload": payload})
+        assert r.status_code == 200, (kind, r.text)
+
+    # Two drives, because the chain REFUSES the union of these answers and it is
+    # right to: `set_temporal_prediction` does not apply once the rows are
+    # recorded as repeated measurements of one quantity, and `set_aggregation`
+    # does not apply once they are recorded as time points. The branches are
+    # mutually exclusive by construction, so a single drive cannot reach both
+    # sentences and a test that tried would be testing a state the app forbids.
+    decide(pid, "set_target", {"column": "progressed"})
+    decide(pid, "set_lens", {"lens": ["clinical"]})
+    decide(pid, "set_grain", {"answer": "people_repeat", "group_col": "subject_id"})
+    decide(pid, "set_repeat_kind", {"kind": "repeats"})
+    decide(pid, "set_unit_of_analysis", {"unit": "person"})
+    decide(pid, "set_aggregation", {"method": "mean"})
+
+    with open(DATA / "clinical_longitudinal.csv", "rb") as fh:
+        pid2 = client.post("/project", files={
+            "file": ("clinical_longitudinal.csv", fh, "text/csv")}).json()["id"]
+    decide(pid2, "set_target", {"column": "progressed"})
+    decide(pid2, "set_grain", {"answer": "people_repeat", "group_col": "subject_id"})
+    decide(pid2, "set_repeat_kind", {"kind": "time_points"})
+    decide(pid2, "set_unit_of_analysis", {"unit": "record"})
+    decide(pid2, "set_temporal_prediction", {"temporal": True})
+
+    # A third, for the two kinds neither longitudinal branch reaches: reverse
+    # coding belongs to a survey and `set_selection` to the Features step.
+    with open(DATA / "survey_instrument.csv", "rb") as fh:
+        pid3 = client.post("/project", files={
+            "file": ("survey_instrument.csv", fh, "text/csv")}).json()["id"]
+    decide(pid3, "set_target", {"column": "sought_support"})
+    decide(pid3, "set_reverse_coding", {"columns": ["item_03"]})
+    decide(pid3, "set_selection", {})          # "every column goes to the models"
+
+    labeled = set(_js_object_keys("ACK_LABEL"))
+    seen = set()
+    for project in (pid, pid2, pid3):
+        for d in client.get(f"/project/{project}").json()["decisions"]:
+            if d["kind"] not in labeled:
+                continue
+            seen.add(d["kind"])
+            assert d["text"].strip(), f"{d['kind']} recorded an empty sentence"
+            # A statement of fact, not a restatement of the control's name.
+            assert len(d["text"]) > 25, f"{d['kind']}: {d['text']!r}"
+    assert seen == labeled, (
+        f"unexercised: {sorted(labeled - seen)}. Every kind the page can label must have a sentence a drive actually produced.")
+
+
 # ── one thing reading the page as text CAN prove ─────────────────────────────
 
 def test_the_pages_javascript_parses():

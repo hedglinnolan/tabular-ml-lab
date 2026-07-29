@@ -1839,8 +1839,44 @@
       return q.mode === "push" && q.status === "asked" &&
              HANDLED_QUESTION_KEYS.indexOf(q.key) === -1;
     });
-    if (!asked.length){ host.innerHTML = ""; return; }
-    host.innerHTML = asked.map(askedCard).join("");
+    var acks = ackRows();
+    if (!asked.length && !acks){ host.innerHTML = ""; return; }
+    host.innerHTML = (acks ? '<div class="stepcard">' + acks + "</div>" : "") +
+                     asked.map(askedCard).join("");
+  }
+
+  /* ═════════ THE THIRD MOMENT: AFTER ═════════
+     An answered question leaves the Router's plan entirely, so before this the
+     card simply VANISHED. A control that disappears when pressed has not
+     acknowledged anything — the user is left inferring from an absence, which is
+     the one thing §09 says green is for.
+
+     The sentence shown is the one the SERVER recorded, quoted, not a past-tense
+     rewrite composed in here. That matters beyond tidiness: the acknowledgment
+     and the record are then the same string by construction, so the interface
+     cannot report an effect the transcript does not carry. The `EFFECTS` table
+     promises; this reports; and because the report is a quotation, a promise the
+     server did not keep shows up as a visible disagreement rather than as a
+     reassuring sentence the page made up. */
+  var ACK_LABEL = {
+    set_lens:                  "Measurements",
+    set_reverse_coding:        "Reverse-coded",
+    set_repeat_kind:           "Repeats",
+    set_unit_of_analysis:      "One row is",
+    set_aggregation:           "Combined by",
+    set_temporal_prediction:   "Task",
+    set_selection:             "Selection"
+  };
+  window.__TURBOTAB_ACK_LABEL = ACK_LABEL;
+
+  function ackRows(){
+    if (!P) return "";
+    return P.decisions.filter(function(d){ return ACK_LABEL[d.kind]; })
+      .map(function(d){
+        return '<div class="answered"><span class="lab">' +
+               esc(ACK_LABEL[d.kind]) + '</span><span class="val">' +
+               esc(d.text) + "</span></div>";
+      }).join("");
   }
 
   function askedCard(q){

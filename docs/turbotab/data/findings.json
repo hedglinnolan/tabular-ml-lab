@@ -7508,9 +7508,10 @@
   "detail": "Named in the drive: 'earmark it', 'decide at Explore' (deciding what?), 'before/after' when there is no before/after to show, 'set these entries to missing', 'mark for manuscript' (what exactly goes in?), and 'treat it as a common level'. The product owner's remedy is a hover carrying a short coach insert stating the effect before the click. This is the same failure as explainOnly in a different place - the app knows precisely what each control does and does not say so.",
   "ev": "The drive; turbotab/web/index.html action rows",
   "act": "Every action states its effect before it is taken. A control whose effect cannot be stated in a sentence is a control that should not be there.",
-  "status": "OPEN",
-  "note": "From the product owner's second NHANES drive. Their words are the specification.",
-  "verified_against": "TurboTab @ HEAD - product owner NHANES drive, 2026-07-29"
+  "status": "FIXED",
+  "note": "Closed at L23. The EFFECTS table plus effectOf: one sentence per action kind, and the check that every kind the generic channel can submit HAS one - so a control cannot reach a user saying only its own name. Earmark it, Apply and Show me name the mechanism; the sentence names the consequence, where it lands, and whether it can be undone. Written up as DESIGN_LANGUAGE 05.1, whose first rule is the real content: a control whose effect cannot be stated in one sentence should not exist, which makes the table the TEST of whether a control has earned its place rather than documentation of one that has.",
+  "verified_against": "TurboTab @ HEAD - product owner NHANES drive, 2026-07-29",
+  "test": "turbotab/test_the_page_asks_what_the_router_serves.py::test_a_generic_question_states_its_effect_before_it_is_taken"
  },
  {
   "id": "DRIVE-004",
@@ -7520,9 +7521,10 @@
   "detail": "Clicking 'Show me what this means' opens a panel and clicking it again does nothing; the same holds for other disclosures. And an action leaves its subcard open with no confirmation that it happened. The product owner drew the architectural distinction that matters here: this is the app communicating its own behavior, which sits ABOVE the coach's advisory voice rather than inside it. The design language has motion rules for settle and arrive and no rule for acknowledgment.",
   "ev": "The drive; DESIGN_LANGUAGE.md 05",
   "act": "Every disclosure toggles. Every action collapses its subcard and states what was done. Add the acknowledgment rule to DESIGN_LANGUAGE 05 as a distinct voice from the coach.",
-  "status": "OPEN",
-  "note": "From the product owner's second NHANES drive. Their words are the specification.",
-  "verified_against": "TurboTab @ HEAD - product owner NHANES drive, 2026-07-29"
+  "status": "FIXED",
+  "note": "Closed at L23, in two halves. THE DISCLOSURE half toggles: the teaching panel's button flips between 'Show me what each answer does' and 'Hide that' with aria-expanded following, so an opened panel can be closed and the control reports its own state. THE ACKNOWLEDGMENT half is the third moment of the one sentence, and it exposed a defect worse than a missing label: an answered question leaves the Router's plan entirely, so the card VANISHED. A control that disappears when pressed has acknowledged nothing - the user infers success from an absence, which is the one thing DESIGN_LANGUAGE 09 reserves green for. Now the subcard collapses into an .answered row, using the collapsed vocabulary the CSS already had. THE SENTENCE IS A QUOTATION, NOT A COMPOSITION - it is the sentence the SERVER recorded, read back verbatim. That is not tidiness. It makes the acknowledgment and the transcript the same string by construction, so the interface cannot report an effect the record does not carry, and a promise the server did not keep surfaces as a visible disagreement instead of as a reassuring sentence the page made up. Three guards: every submittable kind has a label, the row quotes d.text and never effectOf, and a drive proves every labeled kind produces a non-empty sentence over 25 characters. The third needed THREE fixtures and TWO longitudinal branches, because set_temporal_prediction and set_aggregation are mutually exclusive by construction - a single drive cannot reach both sentences and a test that tried would be testing a state the app forbids. Two probes were red for the wrong reason on the first attempt and were reconstructed.",
+  "verified_against": "TurboTab @ HEAD - product owner NHANES drive, 2026-07-29",
+  "test": "turbotab/test_the_page_asks_what_the_router_serves.py::test_every_action_acknowledges_itself_after_it_is_taken"
  },
  {
   "id": "DRIVE-005",

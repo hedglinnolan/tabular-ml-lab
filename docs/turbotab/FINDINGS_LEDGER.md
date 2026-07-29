@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**197 of 600 closed.**
+**199 of 600 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 362 |
+| `OPEN` | 360 |
 | `PARTIAL` | 41 |
-| `FIXED` | 194 |
+| `FIXED` | 196 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 362
+## OPEN — 360
 
 
 ### Application state / lockbox — 66
@@ -432,14 +432,12 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### DRIVE — 9
+### DRIVE — 7
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `DRIVE-009` | critical | The domain-specific EDA plot vision is unbuilt, and it is the product's stated centerpiece | `The drive; DESIGN_LANGUAGE.md 07; DOMAIN_PACKS.md 08` | From the product owner's second NHANES drive. Their words are the specification. |
 | `DRIVE-002` | high | A repair affecting nine features requires nine separate show-me-then-apply cycles; the bulk affordance was built for questions and not for repairs | `The drive; contrast turbotab bulk missingness affordance` | From the product owner's second NHANES drive. Their words are the specification. |
-| `DRIVE-003` | high | Action buttons do not say what they will do, so the driver could not tell what several of them meant | `The drive; turbotab/web/index.html action rows` | From the product owner's second NHANES drive. Their words are the specification. |
-| `DRIVE-004` | high | Disclosures do not toggle and actions do not acknowledge - the app never narrates its own behavior | `The drive; DESIGN_LANGUAGE.md 05` | From the product owner's second NHANES drive. Their words are the specification. |
 | `DRIVE-005` | high | Situational-awareness findings get one card each, which turns ten improbable-value flags into accidental infinite scroll | `The drive; clinical_longitudinal and NHANES` | From the product owner's second NHANES drive. Their words are the specification. |
 | `DRIVE-006` | high | Auto-scroll skips past the noticed card, so the driver has to scroll back up every time | `The drive; DESIGN_LANGUAGE.md 05 scroll rule` | From the product owner's second NHANES drive. Their words are the specification. |
 | `DRIVE-007` | high | Impossible values cannot be taken out of the app, and there is no way to mark a feature as unclean | `The drive; the impossibility pass on NHANES bp_di` | From the product owner's second NHANES drive. Their words are the specification. |
@@ -555,7 +553,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 194
+## FIXED — 196
 
 
 ### Multi-file / JSON import — 69
@@ -804,18 +802,20 @@ Nothing is closed without a regression test named after it.
 | `MODELS-017` | invariant | ModelCapabilities.requires_scaled_numeric determines each model's preprocessing pipeline; a model that needs scaling must not be trained on an unscaled pipeline. | `pages/05_Preprocess.py:487, 801, 847, 1059 read spec.capabilities.requires_scaled_numeric to build per-model…` | **test:** `tests/workflow/test_per_model_pipelines.py::test_scaled_vs_unscaled_outputs_differ` — The invariant holds on both sides of the migration and has a test that would catch… |
 | `MODELS-022` | invariant | Degenerate bootstrap resamples are DROPPED, never substituted with the point estimate, and a run with too few valid replicates returns a NaN CI rather than a narrow one. | `ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot =…` | **test:** `tests/test_review_fixes.py::TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples` — The invariant is implemented with the reasoning in the… |
 
+### DRIVE — 3
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `DRIVE-001` | critical | The lens question is unreachable through the interface - it has a dedicated endpoint the page never calls, so the entire domain-pack arc is invisible | `turbotab/api.py:1289 versus :1545; turbotab/web/index.html has no lens reference` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_the_page_renders_every_question_the_router_can_serve` — FIXED at L23, and the class is closed rather than… |
+| `DRIVE-003` | high | Action buttons do not say what they will do, so the driver could not tell what several of them meant | `The drive; turbotab/web/index.html action rows` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_a_generic_question_states_its_effect_before_it_is_taken` — Closed at L23. The EFFECTS table plus effectOf… |
+| `DRIVE-004` | high | Disclosures do not toggle and actions do not acknowledge - the app never narrates its own behavior | `The drive; DESIGN_LANGUAGE.md 05` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_every_action_acknowledges_itself_after_it_is_taken` — Closed at L23, in two halves. THE DISCLOSURE half… |
+
 ### Features / preprocessing — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `T0-BUILD-004` | critical | clinical_units.infer_unit matches by substring and decides the conversion factor actually applied to the data | `ml/clinical_units.py:139-142 (`if var_name in col_lower`); ml/pipeline.py:60 build_unit_harmonization_config…` | **test:** `tests/test_no_column_inherits_a_unit_conversion.py::test_a_resembling_name_earns_no_conversion` — Fixed with ruling 4's discipline, applied where it bites hardest.… |
 | `T0-BUILD-003` | high | physiology_reference.match_variable_key matches by substring, so any column whose name contains a reference key is measured against that variable's intervals | `ml/physiology_reference.py match_variable_key (`if key in col_lower`); ml/card_evidence.py…` | **test:** `tests/test_doubt_the_reading_not_the_data.py::test_an_unknown_suffix_yields_silence_rather_than_inherited_bounds` — Fixed on the adjudicator's ruling: exact key or… |
-
-### DRIVE — 1
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `DRIVE-001` | critical | The lens question is unreachable through the interface - it has a dedicated endpoint the page never calls, so the entire domain-pack arc is invisible | `turbotab/api.py:1289 versus :1545; turbotab/web/index.html has no lens reference` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_the_page_renders_every_question_the_router_can_serve` — FIXED at L23, and the class is closed rather than… |
 
 ---
 
