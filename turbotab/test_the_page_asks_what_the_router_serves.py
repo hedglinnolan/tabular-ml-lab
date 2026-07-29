@@ -1,0 +1,260 @@
+"""`DRIVE-001` — a question can be built, tested, measured and invisible.
+
+The product owner uploaded NHANES and saw no domain question. That was **exactly
+correct behavior for the code as written**: `GET /project/{id}/lens` existed, the
+Router served `state_lens` through `/interview`, five packs and a reframe layer
+and a priors layer sat behind it, the 313 → 7 result was measured over HTTP — and
+`grep lens turbotab/web/index.html` returned nothing.
+
+Five loops of work, unreachable by a human.
+
+## The class, and why nothing caught it
+
+Every question in the page had been **hand-written**, so a new question rendered
+nowhere and nothing said so. And `test_guided_drive.py` states its own limit
+honestly — its frontend assertions read `index.html` as text and cannot prove it
+renders. That honesty is exactly how the lens got through: the limit was
+declared, and then relied on.
+
+This file closes the half that is checkable without a browser: **every question
+key the Router can serve is either handled by a dedicated section or answerable
+through the generic channel.** A question that is servable and unanswerable is
+the same dead end in a new place, which is what the lens was.
+
+## What it still cannot prove
+
+That a card is *visible*. Reading `index.html` as text proves a handler exists,
+not that a human sees it. So this is a necessary check and not a sufficient one,
+and it is worth saying rather than implying: the remaining gap needs a browser,
+and the honest form of that is the driver.
+"""
+from __future__ import annotations
+
+import os
+import re
+import sys
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from ml import router                                                 # noqa: E402
+from turbotab import bulk as B, engine, missingness as MISS           # noqa: E402
+from turbotab import packs as P, repeats as R                         # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[1]
+PAGE = ROOT / "turbotab" / "web" / "index.html"
+DATA = Path(__file__).resolve().parent / "sample_data"
+
+
+def _page() -> str:
+    return PAGE.read_text(encoding="utf-8")
+
+
+def _js_array(name: str) -> list:
+    """One exported JS array of string literals, read from the page."""
+    text = _page()
+    start = text.index(f"var {name} = [")
+    end = text.index("];", start)
+    return re.findall(r'"([^"]+)"', text[start:end])
+
+
+def _js_object_keys(name: str) -> list:
+    text = _page()
+    start = text.index(f"var {name} = {{")
+    depth, i = 0, text.index("{", start)
+    while True:
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        i += 1
+    return re.findall(r"^\s{4}([A-Za-z_][A-Za-z0-9_]*)\s*:", text[start:i],
+                      re.MULTILINE)
+
+
+# Keys whose rendering belongs to a section this page has always had, matched by
+# prefix because they are per-column or per-finding and their count is data.
+HANDLED_PREFIXES = (
+    "repair::",                  # the finding cards
+    "blocker::",                 # renderBlockers
+    "look::",                    # the pull palette
+    "missingness::",             # the Preprocess step's own card per column
+    "missingness_bulk::",        # the same card, over a group
+    "missingness_settled::",     # a rendered skip, via renderSkips
+    "missingness_exceptions::",  # the same card, over the exceptions
+)
+
+
+def _every_key_the_router_can_serve() -> set:
+    """Drive `plan()` over every fixture, every step, and both grain branches.
+
+    Enumerated by RUNNING the Router rather than by reading a list of keys,
+    because a list is the thing that goes stale — and a key nobody enumerated is
+    exactly the failure being checked.
+    """
+    keys: set = set()
+    fixtures = {
+        "clinic_visits": "outcome",
+        "metabolomics_untargeted": "responder",
+        "dietary_recalls": "hba1c",
+        "clinical_longitudinal": "progressed",
+        "survey_instrument": "sought_support",
+        "genomics_expression": "condition",
+    }
+    for name, target in fixtures.items():
+        df = pd.read_csv(DATA / f"{name}.csv")
+        ranked = engine.rank_findings(engine.diagnose(df, target=target), None)
+        rows = MISS.survey(df, target)
+        columns = [r["column"] for r in rows]
+        groups = [g.to_dict() for g in B.group_columns(rows)]
+        block = P.likert_block(df)
+        reading = R.read(df, None)
+        for step in router.STEPS:
+            for answered in ([], ["state_lens", "choose_target", "state_grain",
+                                  "state_repeat_kind", "state_unit_of_analysis",
+                                  "choose_models", "choose_preparation_mode"]):
+                for repeats in (None,
+                                {"reading": R.REPEATS, "sentence": reading["sentence"],
+                                 "confidence": "medium", "kind": R.REPEATS,
+                                 "unit": R.UNIT_PERSON,
+                                 "menu": R.menu(R.REPEATS)},
+                                {"reading": R.TIME_POINTS, "sentence": "…",
+                                 "confidence": "high", "kind": R.TIME_POINTS,
+                                 "unit": R.UNIT_RECORD, "menu": R.menu(R.TIME_POINTS)}):
+                    plan = router.plan(
+                        ranked, target=target, detection=None, step=step,
+                        deferred={}, answered=answered, recommendations=[],
+                        signals=None, missing_columns=columns,
+                        lens_block=block, repeats=repeats,
+                        missingness_groups=groups)
+                    router.audit(plan)
+                    for q in plan:
+                        if q.mode == "push":
+                            keys.add(q.key)
+    return keys
+
+
+def test_the_page_renders_every_question_the_router_can_serve():
+    """The check `DRIVE-001` says was missing.
+
+    A key in neither list is a question the interview asks and the interface
+    cannot answer — which is what the lens was for five loops.
+    """
+    handled = set(_js_array("HANDLED_QUESTION_KEYS"))
+    answerable = set(_js_object_keys("ANSWERABLE"))
+    served = _every_key_the_router_can_serve()
+    assert served, "the enumeration found nothing; the driver is wrong"
+
+    orphans = sorted(
+        k for k in served
+        if k not in handled and k not in answerable
+        and not k.startswith(HANDLED_PREFIXES))
+    assert not orphans, (
+        "the Router can serve these and the page can neither render nor answer "
+        "them:\n  " + "\n  ".join(orphans)
+        + "\n\nAdd the key to ANSWERABLE in turbotab/web/index.html with the "
+          "decision it records, or to HANDLED_QUESTION_KEYS if a dedicated "
+          "section already asks it. A question the interview asks and the "
+          "interface cannot answer is DRIVE-001.")
+
+
+def test_the_lens_is_the_case_this_check_was_written_for():
+    """Named specifically, because the general check would pass again the day
+    somebody removed the lens from the plan."""
+    served = _every_key_the_router_can_serve()
+    assert "state_lens" in served, "the Router no longer serves the lens"
+    assert "state_lens" in set(_js_object_keys("ANSWERABLE"))
+    page = _page()
+    assert "set_lens" in page, "the page cannot record a lens answer"
+
+
+def test_the_lens_options_carry_values_and_not_only_labels():
+    """The other half of why it was unanswerable.
+
+    The lens's labels are prose — *"Metabolomics or proteomics"* — and its values
+    are keys. A page rendering labels had nothing to submit, so `option_values`
+    travels beside `options` and the page reads it.
+    """
+    plan = router.plan([], target=None, detection=None, step="data",
+                       deferred={}, answered=[], recommendations=[],
+                       signals=None, missing_columns=[])
+    lens = next(q.to_dict() for q in plan if q.key == "state_lens")
+    assert lens["multi_select"] is True
+    assert lens["option_values"][:2] == ["metabolomics", "genomics"]
+    assert lens["options"][0] == "Metabolomics or proteomics"
+    assert len(lens["options"]) == len(lens["option_values"])
+    assert "other" in lens["option_values"], (
+        "'Something else, or not sure' must be reachable; it is first-class")
+
+    page = _page()
+    assert "data-answer-value=" in page, "the page submits labels, not values"
+    assert "option_values" in page or "q.options" in page
+
+
+@pytest.mark.parametrize("key", [
+    "state_repeat_kind", "state_unit_of_analysis", "state_aggregation",
+    "state_temporal_prediction", "state_reverse_coding",
+])
+def test_every_generic_question_can_be_answered(key):
+    """The chain and the survey question ride the same channel, so they are
+    subject to the same check rather than to a second one."""
+    answerable = _js_object_keys("ANSWERABLE")
+    assert key in answerable
+
+
+def test_a_generic_question_states_its_effect_before_it_is_taken():
+    """`DRIVE-003`. Every kind the generic channel can submit has an effect
+    sentence, so no control reaches a user saying only its own name."""
+    page = _page()
+    effects = _js_object_keys("EFFECTS")
+    start = page.index("var ANSWERABLE = {")
+    end = page.index("};", start)
+    kinds = re.findall(r'kind:\s*"([a-z_]+)"', page[start:end])
+    assert kinds, "the answer map has no kinds"
+    missing = sorted(k for k in kinds if k not in effects)
+    assert not missing, (
+        f"these actions can be taken and cannot state their effect: {missing}. "
+        f"A control whose effect cannot be stated in one sentence should not "
+        f"exist.")
+
+
+# ── one thing reading the page as text CAN prove ─────────────────────────────
+
+def test_the_pages_javascript_parses():
+    """`test_guided_drive.py` says its frontend assertions read `index.html` as
+    text and cannot prove it renders. True — and this is the one thing that
+    reading it can prove, which is worth having: a syntax error kills the ENTIRE
+    controller, so every question goes invisible at once rather than one at a
+    time.
+
+    Skipped where no JS engine is installed, because the claim is about the file
+    and a machine without an engine cannot check it. `test_engine_is_headless`
+    is the precedent — a check that cannot run says so rather than passing.
+    """
+    import shutil
+    import subprocess
+    import tempfile
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("no JS engine on this machine")
+
+    page = _page()
+    script = page[page.index("<script>") + len("<script>"):page.rindex("</script>")]
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False,
+                                     encoding="utf-8") as fh:
+        fh.write(script)
+        path = fh.name
+    try:
+        out = subprocess.run([node, "--check", path], capture_output=True,
+                             text=True, timeout=60)
+    finally:
+        os.unlink(path)
+    assert out.returncode == 0, (
+        "the page's JavaScript does not parse, so nothing in the interview "
+        "renders:\n" + (out.stderr or out.stdout)[-1200:])

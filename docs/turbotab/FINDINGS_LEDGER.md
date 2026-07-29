@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**193 of 596 closed.**
+**194 of 597 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 362 |
 | `PARTIAL` | 41 |
-| `FIXED` | 190 |
+| `FIXED` | 191 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
@@ -432,11 +432,10 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### DRIVE — 10
+### DRIVE — 9
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `DRIVE-001` | critical | The lens question is unreachable through the interface - it has a dedicated endpoint the page never calls, so the entire domain-pack arc is invisible | `turbotab/api.py:1289 versus :1545; turbotab/web/index.html has no lens reference` | From the product owner's second NHANES drive. Their words are the specification. |
 | `DRIVE-009` | critical | The domain-specific EDA plot vision is unbuilt, and it is the product's stated centerpiece | `The drive; DESIGN_LANGUAGE.md 07; DOMAIN_PACKS.md 08` | From the product owner's second NHANES drive. Their words are the specification. |
 | `DRIVE-002` | high | A repair affecting nine features requires nine separate show-me-then-apply cycles; the bulk affordance was built for questions and not for repairs | `The drive; contrast turbotab bulk missingness affordance` | From the product owner's second NHANES drive. Their words are the specification. |
 | `DRIVE-003` | high | Action buttons do not say what they will do, so the driver could not tell what several of them meant | `The drive; turbotab/web/index.html action rows` | From the product owner's second NHANES drive. Their words are the specification. |
@@ -447,12 +446,13 @@ Nothing is closed without a regression test named after it.
 | `DRIVE-008` | high | The missingness pop-out shows what would change and does not let the driver do it | `The drive; the missingness what-the-app-can-do panel` | From the product owner's second NHANES drive. Their words are the specification. |
 | `DRIVE-010` | high | After the target is chosen the app does not ask which features to use, or whether to slice by subgroup | `The drive` | From the product owner's second NHANES drive. Their words are the specification. |
 
-### Guided-door drive feedback — 5
+### Guided-door drive feedback — 6
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `GUIDED-012` | high | Lockbox constitution clause 06 - declaration and execution are separate - has no implementation in either door: nothing applies the row-local vs stateful litmus test | `No module classifies transforms by the litmus test at L14. Classic's pages/03 applies feature engineering to…` | Filed at the start of L14 rather than after building it, deliberately: the check found the clause untracked, and the honest record of an unbuilt clause is an open finding, not a… |
 | `GUIDED-014` | high | DESIGN QUESTION for the product owner: does the exploratory labeling on an undetermined seal read as honest, or as the app giving up? | `docs/turbotab/COPY_DECK.md, 'Data & Target - what the user reads after answering' and 'what the user reads…` | NOT SELF-ASSESSED, deliberately. I wrote this copy at L15; asking the author whether their own prose reads well is the finder-judge problem in a different costume, and this… |
+| `DRIVE-011` | high | The Features selection step has no interface at all - choose_selection is served, set_selection is never called, and the method picker does not exist | `ml/router.py choose_selection at the features step; turbotab/web/index.html had no set_selection` | Filed at L23 rather than fixed, because a method picker with an explainability-cost column is a card and not a wiring change, and this loop's mandate was the invisible-question… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
@@ -555,7 +555,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 190
+## FIXED — 191
 
 
 ### Multi-file / JSON import — 69
@@ -807,6 +807,12 @@ Nothing is closed without a regression test named after it.
 |---|---|---|---|---|
 | `T0-BUILD-004` | critical | clinical_units.infer_unit matches by substring and decides the conversion factor actually applied to the data | `ml/clinical_units.py:139-142 (`if var_name in col_lower`); ml/pipeline.py:60 build_unit_harmonization_config…` | **test:** `tests/test_no_column_inherits_a_unit_conversion.py::test_a_resembling_name_earns_no_conversion` — Fixed with ruling 4's discipline, applied where it bites hardest.… |
 | `T0-BUILD-003` | high | physiology_reference.match_variable_key matches by substring, so any column whose name contains a reference key is measured against that variable's intervals | `ml/physiology_reference.py match_variable_key (`if key in col_lower`); ml/card_evidence.py…` | **test:** `tests/test_doubt_the_reading_not_the_data.py::test_an_unknown_suffix_yields_silence_rather_than_inherited_bounds` — Fixed on the adjudicator's ruling: exact key or… |
+
+### DRIVE — 1
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `DRIVE-001` | critical | The lens question is unreachable through the interface - it has a dedicated endpoint the page never calls, so the entire domain-pack arc is invisible | `turbotab/api.py:1289 versus :1545; turbotab/web/index.html has no lens reference` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_the_page_renders_every_question_the_router_can_serve` — FIXED at L23, and the class is closed rather than… |
 
 ---
 

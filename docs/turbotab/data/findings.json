@@ -7483,9 +7483,10 @@
   "detail": "GET /project/{id}/lens at api.py:1289 is separate from /interview at :1545. Every other question rides the generic interview channel and renders without frontend work; the lens was built as a special case and the page was never wired to it. grep for 'lens' in web/index.html returns nothing. Consequence: five packs, the reframe layer, the priors wiring and the 313 to 7 result were all measured over HTTP and none of it is reachable by a driver. The product owner uploaded NHANES and saw no domain question, which is exactly correct behavior for the code as written. Underneath is a testing gap: test_guided_drive.py states plainly that its frontend assertions read index.html as text and cannot prove it renders, and nothing asserts the page asks what the Router serves.",
   "ev": "turbotab/api.py:1289 versus :1545; turbotab/web/index.html has no lens reference",
   "act": "Serve the lens through the interview channel like every other question, or wire the page to its endpoint. Then add the missing check: every question key the Router can serve is rendered by the page.",
-  "status": "OPEN",
-  "note": "From the product owner's second NHANES drive. Their words are the specification.",
-  "verified_against": "TurboTab @ HEAD - product owner NHANES drive, 2026-07-29"
+  "status": "FIXED",
+  "note": "FIXED at L23, and the class is closed rather than the instance. THE CAUSE was that every question in the page had been hand-written, so a new question rendered nowhere and nothing said so. A GENERIC QUESTION CHANNEL now renders any pushed asked question with no dedicated section, reading the Router's own title, why, consumer and options - so the next question is visible the day the Router serves it rather than the day somebody remembers to write its card. THE OTHER HALF OF WHY IT WAS UNANSWERABLE: the lens's labels are prose and its values are keys, so a page rendering labels had nothing to submit. Question now carries option_values beside options and a multi_select flag, and the page reads both. THE CHECK: every question key the Router can serve is either in HANDLED_QUESTION_KEYS, matches a handled prefix, or is in ANSWERABLE - and the keys are enumerated by RUNNING plan() over every fixture, every step and both grain branches rather than from a list, because a list is the thing that goes stale. IT FOUND A SECOND INVISIBLE QUESTION ON ITS FIRST RUN: choose_selection, filed as DRIVE-011. The whole Features selection step had no interface. Also added: a node --check on the page's script, which is the one thing reading index.html as text CAN prove - a syntax error kills the entire controller and takes every question with it at once. What it still cannot prove is that a card is VISIBLE; that needs a browser, and the honest form of that is the driver.",
+  "verified_against": "TurboTab @ HEAD - product owner NHANES drive, 2026-07-29",
+  "test": "turbotab/test_the_page_asks_what_the_router_serves.py::test_the_page_renders_every_question_the_router_can_serve"
  },
  {
   "id": "DRIVE-002",
@@ -7594,5 +7595,19 @@
   "status": "OPEN",
   "note": "From the product owner's second NHANES drive. Their words are the specification.",
   "verified_against": "TurboTab @ HEAD - product owner NHANES drive, 2026-07-29"
+ },
+ {
+  "id": "DRIVE-011",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The Features selection step has no interface at all - choose_selection is served, set_selection is never called, and the method picker does not exist",
+  "detail": "Found by DRIVE-001's coverage check on its first run, which is the second instance of the same class in one loop. The Router serves choose_selection at the features step; grep for set_selection, selection_methods and choose_selection in web/index.html all returned zero. The engine carries all five selection methods and turbotab/selection.py declares them without executing them, per clause 06 - what is missing is any control for choosing one. 'Every column' is now answerable in one press through the generic channel, and 'a chosen subset' is rendered VISIBLY UNBUILT with its reason, which is the pull palette's established treatment. So the step is no longer silent; it is honest about being half-built.",
+  "ev": "ml/router.py choose_selection at the features step; turbotab/web/index.html had no set_selection",
+  "act": "Build the method picker: five methods with their explainability cost, n_features where the method needs one, and the recorded-not-executed sentence. selection.declare already produces the spec.",
+  "status": "OPEN",
+  "note": "Filed at L23 rather than fixed, because a method picker with an explainability-cost column is a card and not a wiring change, and this loop's mandate was the invisible-question CLASS rather than every instance of it. The half that closes the class landed: the option is answerable where it can be and says so where it cannot.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "ml/router.py choose_selection at the features step; turbotab/web/index.html had no set_selection"
  }
 ]

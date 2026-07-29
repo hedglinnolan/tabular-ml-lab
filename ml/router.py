@@ -102,6 +102,14 @@ class Question:
     confidence: Optional[str] = None
     severity: Optional[str] = None
     options: List[str] = field(default_factory=list)
+    # The VALUE each option submits, parallel to `options`. Empty means the
+    # label is the value, which is true of every question written before the
+    # lens — and the lens is why this exists: its labels are prose
+    # ("Metabolomics or proteomics") and its values are keys ("metabolomics"),
+    # so a page rendering labels had nothing to submit. `DRIVE-001` is what that
+    # costs when a question is servable and unanswerable.
+    option_values: List[str] = field(default_factory=list)
+    multi_select: bool = False
     # Who consumes this answer, and what for. DESIGN_LANGUAGE §09: "Every FACT
     # carries a 'Why we ask' disclosure that names who consumes the answer and
     # what for. A FACT that cannot state its consumer is a question we have no
@@ -155,6 +163,8 @@ class Question:
             "status": self.status, "skip_reason": self.skip_reason,
             "defer_target": self.defer_target, "deferred_from": self.deferred_from,
             "options": list(self.options),
+            "option_values": list(self.option_values or self.options),
+            "multi_select": bool(self.multi_select),
             "consumer": self.consumer,
             "clause": self.clause,
         }
@@ -350,7 +360,9 @@ def plan(
         out.append(Question(
             key=spec["key"], kind="lens", step="data", clause=spec["clause"],
             title=spec["title"], why=spec["why"], consumer=spec["consumer"],
-            options=[o["label"] for o in spec["options"]]))
+            multi_select=True,
+            options=[o["label"] for o in spec["options"]],
+            option_values=[o["key"] for o in spec["options"]]))
 
     # ── the target, first among the questions about the analysis ────────────
     if step == "data" and "choose_target" not in answered:
@@ -479,7 +491,7 @@ def plan(
                 "Answering wrongly does not raise an error — it produces a "
                 "scale score that means nothing, with every downstream number "
                 "computed from it."),
-            options=list(lens_block["columns"])))
+            options=list(lens_block["columns"]), multi_select=True))
 
     # ── the Features step, constitution §06 ─────────────────────────────────
     # Two questions, because the clause draws two different objects. Building
@@ -523,7 +535,8 @@ def plan(
                 "method and the timing. Nothing is selected at the moment you "
                 "answer — a set chosen now would have been chosen with the "
                 "held-out rows in view."),
-            options=["every column", "a chosen subset"]))
+            options=["every column", "a chosen subset"],
+            option_values=["every_column", "chosen_subset"]))
 
     # ── Preprocess, constitution §07 ────────────────────────────────────────
     # One question per column with blanks, and the MECHANISM comes first: "could
@@ -858,7 +871,8 @@ def _repeat_chain(repeats: Dict[str, Any],
                 "rows are averages of a trajectory."),
             confidence=repeats.get("confidence"),
             options=["Repeated measurements of the same quantity",
-                     "Different time points"])
+                     "Different time points"],
+            option_values=["repeats", "time_points"])
         # The reading, and the affordance to overturn it, travel WITH the
         # question so an interface cannot render one without the other.
         if reading:
@@ -880,7 +894,8 @@ def _repeat_chain(repeats: Dict[str, Any],
                 "There is NO DEFAULT here: guessing at grain is what produced "
                 "the leak this whole constitution exists to prevent, and the "
                 "same reasoning binds one level down."),
-            options=["One row per person", "One row per record"]))
+            options=["One row per person", "One row per record"],
+            option_values=["person", "record"]))
         return out
 
     unit = repeats.get("unit")
@@ -898,7 +913,8 @@ def _repeat_chain(repeats: Dict[str, Any],
                 "became how many. It happens now because it changes what a row "
                 "IS, and a seal drawn beforehand would name rows that no "
                 "longer exist."),
-            options=[o["label"] for o in menu.get("options", [])]))
+            options=[o["label"] for o in menu.get("options", [])],
+            option_values=[o["key"] for o in menu.get("options", [])]))
         return out
 
     if (kind == "time_points" and unit == "record"
@@ -915,7 +931,7 @@ def _repeat_chain(repeats: Dict[str, Any],
                 "`ml/splits.py` reads this to choose between its chronological "
                 "and grouped strategies. Both already exist; what has been "
                 "missing is the routing that decides when each applies."),
-            options=["Yes", "No"]))
+            options=["Yes", "No"], option_values=["yes", "no"]))
     return out
 
 

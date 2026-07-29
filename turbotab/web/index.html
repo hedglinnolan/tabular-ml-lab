@@ -813,6 +813,17 @@
           <p class="prose" id="d-target-text"></p>
           <button class="chg" id="d-target-chg" type="button">change</button>
         </div>
+        <!-- EVERY PUSHED QUESTION THE ROUTER SERVES THAT HAS NO DEDICATED
+             SECTION ABOVE. DRIVE-001: the lens was built, tested, measured and
+             invisible, because each question in this page had been hand-written
+             and a new one rendered nowhere. A generic channel means the next
+             question is visible the day the Router serves it, rather than the
+             day somebody remembers to write its card.
+
+             `test_the_page_renders_every_question_the_router_can_serve` is what
+             keeps that true. -->
+        <div id="askedQuestions"></div>
+
         <!-- A question the interview did NOT ask, and why. Decision B allows a
              skip only where a high-confidence finding settles a question of
              fact, and only if the skip is visible and reversible — so it is
@@ -1784,6 +1795,7 @@
     api("/project/" + P.id + "/interview?step=data")
       .then(function(plan){
         LAST_DATA_PLAN = plan;
+        renderAsked(plan);
         renderSkips(plan);
         fillConsumers();
       })
@@ -1797,6 +1809,70 @@
         renderPalette(plan);
       })
       .catch(function(){ $("palette").style.display = "none"; });
+  }
+
+  /* ═════════ QUESTIONS WITH A DEDICATED SECTION ABOVE ═════════
+     Every other pushed question the Router serves is rendered by renderAsked
+     below. This list is the seam, and it is exported to the coverage test —
+     a key that is in neither place is a question nobody can answer, which is
+     DRIVE-001 and is how the lens stayed invisible through five loops. */
+  var HANDLED_QUESTION_KEYS = [
+    "choose_target",            /* the target card, section 02 */
+    "confirm_task_type",        /* the task-type row inside it */
+    "state_grain",              /* the grain card */
+    "state_eligibility",        /* the eligibility card */
+    "choose_features",          /* the Features step */
+    "choose_models",            /* the Preprocess shelf */
+    "choose_preparation_mode"   /* the preparation-mode row */
+  ];
+  window.__TURBOTAB_HANDLED_KEYS = HANDLED_QUESTION_KEYS;
+
+  /* ═════════ THE GENERIC QUESTION CHANNEL ═════════
+     One card per asked pushed question with no dedicated section. Reads the
+     Router's own fields — title, why, consumer, options — so a question is
+     rendered from what the server says about it rather than from a copy of that
+     in here. Multi-select is declared by the server; the page does not guess. */
+  function renderAsked(plan){
+    var host = $("askedQuestions");
+    if (!host) return;
+    var asked = plan.questions.filter(function(q){
+      return q.mode === "push" && q.status === "asked" &&
+             HANDLED_QUESTION_KEYS.indexOf(q.key) === -1;
+    });
+    if (!asked.length){ host.innerHTML = ""; return; }
+    host.innerHTML = asked.map(askedCard).join("");
+  }
+
+  function askedCard(q){
+    var multi = q.multi_select === true;
+    var h = '<div class="stepcard" data-asked="' + esc(q.key) + '">' +
+            '<div class="sub"><div class="subhead"><span class="sub-num">' +
+            esc(q.clause ? "§" : "?") + '</span></div>' +
+            "<h2>" + esc(q.title) + "</h2>";
+    if (q.why) h += '<p class="why">' + esc(q.why) + "</p>";
+    if (q.consumer)
+      h += '<details class="wa"><summary>Why we ask</summary><p>' +
+           esc(q.consumer) + "</p></details>";
+    h += '<div class="answers">';
+    (q.options || []).forEach(function(opt, i){
+      var label = (typeof opt === "string") ? opt : (opt.label || opt.key);
+      var value = (typeof opt === "string") ? opt : (opt.key || opt.label);
+      var spec = ANSWERABLE[q.key] || {};
+      var why = (spec.unbuilt || {})[value];
+      h += '<button class="answer' + (multi ? " multi" : "") +
+           (why ? " notbuilt" : "") + '" type="button" ' +
+           'data-answer-key="' + esc(q.key) + '" ' +
+           'data-answer-value="' + esc(value) + '" ' +
+           'data-answer-multi="' + (multi ? "1" : "0") + '" ' +
+           'data-tip="' + esc(why || effectOf(spec.kind, null)) + '" ' +
+           'aria-pressed="false">' + esc(label) + "</button>";
+    });
+    h += "</div>";
+    if (multi)
+      h += '<div class="answers"><button class="answer primary" type="button" ' +
+           'data-answer-commit="' + esc(q.key) + '">That is all of them</button></div>';
+    h += "</div></div>";
+    return h;
   }
 
   /* A rendered skip is a muted provenance row, not a decision. Green means a
@@ -2514,6 +2590,189 @@
     }
     h += '<p class="pv-note" style="margin:6px 0 0;">' + esc(r.sentence) + "</p>";
     return h;
+  }
+
+  /* ═════════ THE ACKNOWLEDGMENT VOICE ═════════
+     DRIVE-003 and DRIVE-004. The product owner named the architectural gap:
+     the app narrating its own behavior sits ABOVE the coach's advisory voice,
+     and DESIGN_LANGUAGE §05 had rules for settle and arrive and none for
+     acknowledge. The coach advises. This reports.
+
+     Three obligations, and they are one function because they are one sentence
+     seen at three moments:
+
+       BEFORE  — the control says what it will do, on hover and to a screen
+                 reader. "Earmark it" told the driver nothing.
+       DURING  — the same sentence is the job label, so what is happening is
+                 what was promised.
+       AFTER   — the same fact in the past tense, and the subcard collapses.
+
+     A control whose effect cannot be stated in one sentence should not exist,
+     which makes this table the test of whether a control has earned its place. */
+  var EFFECTS = {
+    earmark: function(p){
+      return p && p.target_step === "you"
+        ? "Records this as yours to do, so it reaches the methods section rather than your memory."
+        : "Records this and brings it back at " + esc(STEP_WORDS[(p || {}).target_step] ||
+            (p || {}).target_step || "the step that owns it") + ".";
+    },
+    defer: function(p){
+      return "Sets this aside and asks again at " +
+             esc(STEP_WORDS[(p || {}).target_step] || "Explore") +
+             ", which is the step that can act on it.";
+    },
+    dismiss:   function(){ return "Takes this off the list. It stays in the record and can be brought back."; },
+    undismiss: function(){ return "Puts this back on the list."; },
+    flag:      function(){ return "Marks the finding and its evidence for the manuscript, so the figure and its caption travel into the export."; },
+    unflag:    function(){ return "Unmarks it. Nothing about it reaches the export."; },
+    apply:     function(){ return "Rewrites the working table now, and the change can be undone."; },
+    revert:    function(){ return "Puts the table back exactly as it was before the last change."; },
+    set_lens:  function(p){
+      var n = ((p || {}).lens || []).length;
+      return "Records what kind of measurements these are, which changes what is looked for in " +
+             "the diagnosis. " + (n ? n + " selected." : "");
+    },
+    set_reverse_coding: function(p){
+      var n = ((p || {}).columns || []).length;
+      return n ? "Records " + n + " item(s) as reverse-coded, to be flipped before the scale is scored."
+               : "Records that no items are reverse-coded.";
+    },
+    set_repeat_kind: function(p){
+      return (p || {}).kind === "repeats"
+        ? "Records these as repeated measurements of one quantity, which makes averaging them correct."
+        : "Records these as different time points, which makes averaging them destroy the trajectory.";
+    },
+    set_unit_of_analysis: function(p){
+      return (p || {}).unit === "person"
+        ? "Records one row per person, and asks next how each person's rows are combined."
+        : "Records one row per record. The rows stay as they are and whole people are held out.";
+    },
+    set_aggregation: function(p){
+      return "Rewrites the table to one row per person, before anything is held out. " +
+             "The receipt says how many rows became how many.";
+    },
+    set_temporal_prediction: function(p){
+      return (p || {}).temporal
+        ? "Records a temporal task, and the held-out rows become the latest ones rather than a random draw."
+        : "Records a non-temporal task. Whole people are held out and the order of rows does not matter.";
+    },
+    route_missingness: function(p){
+      return "Records how the blanks in this column are handled. Nothing is filled in now.";
+    },
+    route_missingness_bulk: function(p){
+      var n = ((p || {}).columns || []).length;
+      return "Answers once for " + n + " column(s). One decision, one sentence in the transcript.";
+    },
+    except_from_bulk: function(p){
+      return "Takes this column out of the group answer and asks it on its own.";
+    },
+    set_eligibility: function(){ return "Removes the rows the criterion excludes, before anything is held out, and reports the count in participant flow."; },
+    seal:            function(){ return "Draws the held-out rows and closes them. Sealed once — this cannot be redrawn."; },
+    set_grain:       function(){ return "Records whether a person can appear more than once, which decides how the held-out rows are chosen."; },
+    set_selection:   function(p){
+      return (p && p.method)
+        ? "Records which selection method runs, fitted inside each training fold. Nothing is selected now."
+        : "Records that every column goes to the models. An absence of selection is an answer, and this is it.";
+    }
+  };
+
+  /* The one sentence, in the tense the moment needs. */
+  function effectOf(kind, payload){
+    var f = EFFECTS[kind];
+    return f ? f(payload) : "Records your answer.";
+  }
+  window.__TURBOTAB_EFFECTS = EFFECTS;
+
+  /* ═════════ ANSWERING A GENERIC QUESTION ═════════
+     One map from a Router question key to the decision it records. This is the
+     other half of DRIVE-001: the lens was SERVABLE and UNANSWERABLE, and a
+     channel that renders a question it cannot submit is the same dead end in a
+     new place.
+
+     Exported so the coverage test can assert every key the Router can serve is
+     either handled by a dedicated section or answerable here. */
+  var ANSWERABLE = {
+    state_lens:                { kind: "set_lens",                field: "lens",     multi: true },
+    state_reverse_coding:      { kind: "set_reverse_coding",      field: "columns",  multi: true },
+    state_repeat_kind:         { kind: "set_repeat_kind",         field: "kind" },
+    state_unit_of_analysis:    { kind: "set_unit_of_analysis",    field: "unit" },
+    state_aggregation:         { kind: "set_aggregation",         field: "method" },
+    state_temporal_prediction: { kind: "set_temporal_prediction", field: "temporal", bool: true },
+    /* Found by the coverage check on its FIRST run — a second instance of
+       DRIVE-001's class. `choose_selection` is served at the Features step and
+       `grep set_selection index.html` returned nothing: the entire selection
+       step had no interface.
+
+       "Every column" is answerable in one press and is wired. "A chosen subset"
+       needs a method picker that is not built, so that option is rendered
+       VISIBLY UNBUILT with its reason — the same treatment the pull palette
+       uses, because a solid-bordered control that silently no-ops asserts a
+       capability that does not exist (GUIDED-006). Tracked as DRIVE-011. */
+    choose_selection: {
+      kind: "set_selection", field: "method",
+      values: {
+        every_column: null,          /* `set_selection(None)` — every column goes forward */
+        chosen_subset: "__unbuilt__"
+      },
+      unbuilt: {
+        chosen_subset: "The method picker is not built in this build. The engine " +
+                       "has all five selection methods; the Guided door has no " +
+                       "control for choosing one, and a button that silently did " +
+                       "nothing would be worse than one that says so."
+      }
+    }
+  };
+  window.__TURBOTAB_ANSWERABLE = ANSWERABLE;
+
+  var PENDING = {};   /* key -> selected values, for the multi-selects */
+
+  document.addEventListener("click", function(ev){
+    var one = ev.target.closest("[data-answer-key]");
+    if (one){
+      var key = one.getAttribute("data-answer-key");
+      var value = one.getAttribute("data-answer-value");
+      var spec = ANSWERABLE[key];
+      if (!spec) return;
+      if (spec.multi){
+        /* Selection is visible before it is submitted, so a multi-select does
+           not record on the first press. */
+        PENDING[key] = PENDING[key] || [];
+        var at = PENDING[key].indexOf(value);
+        if (at === -1) PENDING[key].push(value); else PENDING[key].splice(at, 1);
+        one.setAttribute("aria-pressed", at === -1 ? "true" : "false");
+        return;
+      }
+      submitAnswer(key, spec, [value]);
+      return;
+    }
+    var commit = ev.target.closest("[data-answer-commit]");
+    if (commit){
+      var ckey = commit.getAttribute("data-answer-commit");
+      submitAnswer(ckey, ANSWERABLE[ckey], PENDING[ckey] || []);
+    }
+  });
+
+  function submitAnswer(key, spec, values){
+    if (!spec) return;
+    /* An option the server can serve and this build cannot perform. Said out
+       loud rather than no-oped. */
+    if (spec.unbuilt && spec.unbuilt[values[0]]){
+      setErr(spec.unbuilt[values[0]]);
+      return;
+    }
+    var payload = {};
+    if (spec.values && Object.prototype.hasOwnProperty.call(spec.values, values[0])){
+      payload = spec.values[values[0]] === null ? {} : payload;
+      if (spec.values[values[0]] === null){
+        decide(spec.kind, "", payload, effectOf(spec.kind, payload));
+        return;
+      }
+    }
+    if (spec.multi)      payload[spec.field] = values;
+    else if (spec.bool)  payload[spec.field] = values[0] === "yes";
+    else                 payload[spec.field] = values[0];
+    delete PENDING[key];
+    decide(spec.kind, "", payload, effectOf(spec.kind, payload));
   }
 
   /* Deep link: /?project=<id> reopens a project this server still holds. */
