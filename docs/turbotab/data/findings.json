@@ -7434,5 +7434,29 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "turbotab/packs.py PACKS priors; test_every_prior_has_a_consumer_or_is_declared_unconsumed lists the four with their reasons"
+ },
+ {
+  "id": "GUIDED-031",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "explainOnly renders suggested_actions as prose bullets and terminates - the one moment the user needs to act is the one place the card offers nothing to act on",
+  "detail": "Two preview branches exist. previewFor renders a real before/after with an Apply button when the engine proposes a repair. explainOnly fires when it does not, prints f.suggested_actions as em-dash paragraphs, and closes with 'the engine reports this without proposing a repair'. That is honest about the engine and a dead end for the user, who is standing at the exact moment a decision is due. And suggested_actions is already a list of options in prose costume - 'consider winsorizing', 'tree models are robust', 'investigate if outliers are errors' are three different decisions rendered as bullets. This is the same failure as the original Train-page critique that started the project (DESIGN_LANGUAGE.md 01.4, 'three attributes wearing a sentence costume'), surviving the rewrite by moving branch.",
+  "ev": "turbotab/web/index.html:1279 explainOnly; contrast :1317 previewFor",
+  "act": "explainOnly stops being terminal. Split suggested_actions into app-operations, which become options each carrying a preview, and human tasks, which become earmarks with a target step. Every option is applicable now or earmarked; clause 06 decides which executes when and the decision sentence states the timing. A deferred option previews as a read-only simulation labeled 'preview, not applied'.",
+  "status": "OPEN",
+  "note": "Filed by the adjudicator from the product owner's drive. Their framing: this is the exact moment the dynamic mechanic belongs - choose or earmark, and show what the choice does to the data.",
+  "verified_against": "TurboTab @ HEAD - product owner drive, 2026-07-29"
+ },
+ {
+  "id": "GUIDED-032",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "The reverse lens contradiction asserts 'too few to be a panel' at 10 numeric columns, which is false for targeted metabolomics and over-fires on weak evidence",
+  "detail": "Targeted metabolomics and proteomics panels routinely measure 10 to 50 analytes, so a 10-column assay table is ordinary rather than contradictory. The detector keys on column count alone, which does not discriminate targeted assay from clinical chemistry, and the message states a falsehood inside the mechanism built to catch false readings. The cost it guards against also scales with width: on 10 columns a wrong assay lens grants 10 skips, not 300, so the escalation is disproportionate to the evidence - the rule is escalate on evidence a reading is wrong, never on the size of the consequence.",
+  "ev": "turbotab/packs.py contradiction(); L21 report, the ! cells",
+  "act": "Key on something that discriminates - feature-name shape, or the absence of any left-censored missingness pattern - rather than column count. If evidence stays weak, demote from a 409 to an advisory beside the answer.",
+  "status": "OPEN",
+  "note": "Filed by the adjudicator reviewing the L21 matrix.",
+  "verified_against": "TurboTab @ HEAD - product owner drive, 2026-07-29"
  }
 ]
