@@ -207,7 +207,13 @@ imputation).
 
 ### 01 · The pre-seal sequence is fixed
 
-> **load → structural repairs and the impossibility pass → grain → eligibility → SEAL → EDA**
+> **lens → structural repairs and the impossibility pass → target → grain → *(repeats or time
+> points)* → *(unit of analysis)* → *(aggregation)* → *(temporal prediction)* → eligibility →
+> SEAL → EDA**
+
+Bracketed steps fire only when the shape calls for them; most datasets see four to six questions
+in total. The full specification, with copy, firing conditions and fixtures, is
+[`OPENING_SEQUENCE.md`](OPENING_SEQUENCE.md).
 
 Nothing may be resequenced. Two of those steps are pre-seal for reasons that are easy to miss:
 

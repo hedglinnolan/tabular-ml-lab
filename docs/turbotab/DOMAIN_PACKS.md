@@ -168,4 +168,78 @@ That is a document to mark up, not a consulting engagement.
 
 Also open: whether the pack list is coarse (metabolomics) or fine (untargeted LC-MS metabolomics).
 Coarse risks being wrong about a subfield; fine risks a list nobody finds themselves on. The
-current lean is coarse, with the pack hedging its claims accordingly.
+current lean is **coarse**, and it survives scrutiny for a specific reason: *a pack does not need
+the label, it needs properties.* Detection-limit imputation is triggered by "missingness
+concentrates in low-abundance features," not by "this is LC-MS." Batch correction is triggered by
+"a run-order column exists," not by "untargeted." **The label sets priors; the data resolves them
+into findings.** Nothing is asserted from the label alone, which is what makes a coarse list safe.
+
+---
+
+## 07 · The defaults, and the reasoning behind each
+
+Set by judgment and by the mathematics rather than by a domain reviewer, because one was not
+available. Each carries a **confidence marker**, and the marker governs the treatment: `derived`
+defaults are pre-selected with their reason shown; `convention` defaults are pre-selected but
+stated *as* convention; `offered` items are never defaulted at all.
+
+**The principle that decided the hard cases:** where a statistically optimal method and a
+transparently explainable one disagree, **prefer the explainable one.** The product is the methods
+section, and *"values below the detection limit were imputed as half the minimum observed"* is a
+sentence a reader can evaluate. A more sophisticated imputation that a reader cannot check buys
+accuracy the app cannot spend.
+
+### Metabolomics / proteomics
+
+| Default | Confidence | Reasoning |
+|---|---|---|
+| log-transform | **derived** | Concentrations are bounded below by zero and combine multiplicatively; the resulting distribution is log-normal by construction, not by convention. |
+| Pareto scaling | **convention** | Auto-scaling gives every feature equal weight including noise-dominated low-abundance ones; Pareto (divide by √SD) retains some magnitude information. A defensible compromise, not a fact — auto-scaling is offered beside it. |
+| detection-limit imputation, half-minimum | **convention** | The *detection* is derived: missingness correlating with abundance rank is left-censoring, not randomness. The *method* is a choice, and half-minimum wins on explainability over QRILC per the principle above. |
+| batch correction | **offered** | Fires only when a run-order column exists **and** intensity correlates with it. Detection is derived; correction is never automatic because it alters every value. |
+| QC-RSD feature filter | **offered** | Requires pooled QC rows. Drops features, so it changes the analysis and must be chosen. 30% is convention, stated as such. |
+| pooled QC rows excluded from modeling | **derived** | They are not participants. Modeling them is an error with no legitimate reading. |
+
+### Dietary intake
+
+| Default | Confidence | Reasoning |
+|---|---|---|
+| average repeated recalls | **derived** | A single 24-hour recall is a noisy estimate of usual intake, and that noise attenuates diet–outcome associations toward null. Averaging reduces it. This is measurement-error reduction, not information loss. |
+| energy adjustment required | **derived** | Every nutrient association is confounded by total intake. That the adjustment is needed is not in dispute. |
+| residual method as the default *form* | **convention** | Decorrelates the nutrient from energy explicitly, which makes the resulting coefficient interpretable. Nutrient density is offered beside it. |
+| macronutrient compositionality flagged | **derived** | Columns summing to a constant are compositional; correlation between parts of a whole is negatively biased by construction. This gates the collinearity figure rather than adding a step. |
+| implausible-intake exclusion | **offered** | Changes N, so it is an eligibility criterion the user states — never a silent filter. |
+
+### Clinical measurements and labs
+
+Mostly built. Physiologic plausibility bounds and unit harmonization exist and are now exact-match
+rather than substring. The pack adds one prior: **missingness here often means *not ordered*,
+which is informative in the opposite direction from metabolomics** — a test not run because the
+clinician saw no reason to run it. The mechanism question already asks this; the pack supplies the
+prior, not the answer.
+
+### Genomics / transcriptomics — deliberately thin in v1
+
+The pack recognizes the shape (extreme p, count data rather than concentrations, severe
+multiple-testing burden) and sets p ≫ n priors on model ranking. **It asserts no normalization
+default.** CPM, TPM and VST are not interchangeable and the choice depends on the assay and the
+question; a thin pack that declines is honest, and a thick pack that guesses would be the
+confidently-wrong failure this document exists to prevent.
+
+### Survey instruments
+
+Ordinal encoding is **declared, never frequency-derived** — the order comes from the instrument,
+which makes it row-local rather than deferred. Reverse-coding requires a codebook the app does not
+have, so it is **asked**, never inferred from item correlations.
+
+---
+
+## 08 · Packs change what is drawn, not only what is computed
+
+A correlation heatmap of 1,847 features is a grey square. High-dimensional data needs a clustered
+summary or a distribution of correlations, not the full matrix, and that is a *presentation*
+decision the lens is better placed to make than the user.
+
+So guard #1 — *a pack may not add interview components* — is scoped deliberately: it forbids new
+**card types**, not new **figure choices**. A pack may change which visualization answers a
+question; it may not invent a new kind of question to ask.

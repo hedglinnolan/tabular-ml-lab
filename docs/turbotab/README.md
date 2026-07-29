@@ -33,6 +33,7 @@ Baseline for all analysis: `origin/main` @ `24c3446` (PR #145 merged).
 | [`ROADMAP.md`](ROADMAP.md) | **All twelve loops, the three decision gates, and what "done" means.** Read this to see the whole road, not just the next step. Contains both constitutions: routing (what the app asks) and lockbox (what it may know, and when). |
 | [`ASSEMBLY_SPEC.md`](ASSEMBLY_SPEC.md) | **Multi-file assembly.** The research, the interaction, and the seven acceptance criteria the audit produced. The grain question it specifies is the same one the lockbox seal needs. |
 | [`COPY_DECK.md`](COPY_DECK.md) | **Every user-facing string in the Guided door, by step and by state, with the condition that triggers it.** So copy can be reviewed without running the app. Half generated from source, half hand-assembled and probe-checked — `tools/copydeck.py regen` after changing a string. |
+| [`OPENING_SEQUENCE.md`](OPENING_SEQUENCE.md) | **Everything before the seal** — upload to drawn lockbox, in one place because the order is load-bearing. Nine questions, four to six firing, with copy, conditions and fixtures. |
 | [`DOMAIN_PACKS.md`](DOMAIN_PACKS.md) | **How the app becomes field-aware without becoming a different app.** The opening lens question, what a pack may and may not change, and the filter that decides which science earns its place. |
 | [`METHODOLOGY.md`](METHODOLOGY.md) | Provenance: what was measured, what was verified by hand, what must still be re-checked. |
 
