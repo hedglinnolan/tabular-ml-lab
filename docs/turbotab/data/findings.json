@@ -7384,13 +7384,13 @@
  {
   "id": "GUIDED-028",
   "area": "GUIDED",
-  "sev": "medium",
+  "sev": "high",
   "item": "The lens contradiction detector fires in one direction only: assay-shaped data described as something else, never the reverse",
   "detail": "contradiction() detects a wide numeric table stated as non-assay. A user who answers 'metabolomics' over a 40-column clinical table gets nothing, and that is the direction where a wrong lens silently applies log-transform and Pareto scaling to data that wants neither. suggest() is likewise asymmetric - it hints genomics, metabolomics, survey and dietary, and never clinical.",
   "ev": "turbotab/packs.py:954 contradiction(); :923 suggest()",
   "act": "Detect the reverse: a stated assay lens over a table with too few numeric columns to be a panel. Same escalation rule - evidence the reading is wrong, not the size of the consequence.",
   "status": "PARTIAL",
-  "note": "HALF ADDRESSED AT L20, and the half that landed is the sibling defect the review found underneath it rather than the asymmetry the row names. reframe() covered two hardcoded finding ids, so a pack could not contribute a reframing at all - every reframing is now a Reframing declared on a pack, with matches/note/title callables, and a fake-pack test proves an outside contribution reaches it without editing reframe(). The rule that reframing ANNOTATES and never deletes is unchanged and still asserted on the control, where wide_repeated_measures over bp_1/bp_2/bp_3 is the correct reading. WHAT REMAINS IS THE ROW'S OWN CLAIM: contradiction() still fires in one direction only. A user who answers 'metabolomics' over a 40-column clinical table gets nothing, and that is the direction where a wrong lens now does real work - since L20 it withholds 300-odd mechanism questions on the strength of a derived prior, so a wrongly-stated assay lens is more expensive than it was when this row was filed, not less. suggest() is likewise asymmetric and never hints clinical. Both are unbuilt. Left PARTIAL rather than closed because the reverse direction is the defect and it is still open.",
+  "note": "HALF ADDRESSED AT L20, and the half that landed is the sibling defect the review found underneath it rather than the asymmetry the row names. reframe() covered two hardcoded finding ids, so a pack could not contribute a reframing at all - every reframing is now a Reframing declared on a pack, with matches/note/title callables, and a fake-pack test proves an outside contribution reaches it without editing reframe(). The rule that reframing ANNOTATES and never deletes is unchanged and still asserted on the control, where wide_repeated_measures over bp_1/bp_2/bp_3 is the correct reading. WHAT REMAINS IS THE ROW'S OWN CLAIM: contradiction() still fires in one direction only. A user who answers 'metabolomics' over a 40-column clinical table gets nothing, and that is the direction where a wrong lens now does real work - since L20 it withholds 300-odd mechanism questions on the strength of a derived prior, so a wrongly-stated assay lens is more expensive than it was when this row was filed, not less. suggest() is likewise asymmetric and never hints clinical. Both are unbuilt. Left PARTIAL rather than closed because the reverse direction is the defect and it is still open. Severity raised at L20: the builder's own flag. Before the priors layer was wired a wrong lens was cosmetic; it now withholds 300-odd questions on the strength of a derived prior, so the missing direction of the detector is load-bearing rather than tidy.",
   "verified_against": "TurboTab @ HEAD - adjudicator review of the routing matrix, 2026-07-29"
  },
  {
@@ -7406,5 +7406,17 @@
   "verified_against": "",
   "test": "tests/test_a_name_registry_matches_exactly_or_says_nothing.py::test_a_subject_matter_code_is_not_a_patient_identifier",
   "verified_ev": "ml/triage.py detect_cohort_structure, the three pattern lists and their three any(... in ...) sites"
+ },
+ {
+  "id": "GUIDED-029",
+  "area": "GUIDED",
+  "sev": "critical",
+  "item": "Per-column questions scale linearly with column count, so a wide table without a matching pack gets hundreds of questions - the lens masks this rather than solving it",
+  "detail": "The L20 discrimination matrix records metabolomics_untargeted at a BASE of 313 questions - 308 columns with blanks producing 308 mechanism questions, roughly ten times Classic's ~32. The metabolomics pack rescues it to 6. A user with the same table who answers 'something else, or not sure' still gets 313, and so does any wide table in a field no pack covers. This is a class, not one question: missingness, encoding, power transform and outlier handling are all asked per column, and each is unbounded in p. The remedy is already specified and was built for transforms but not for these - operations apply to sets defined by a RULE and the user edits the rule, not the members ('308 columns have blanks. Answer once for all of them, or review them individually'), which scales identically at 12 columns and 12,000.",
+  "ev": "L20 discrimination matrix, metabolomics_untargeted base=313; DOMAIN_PACKS.md 02; the p>>n scoping rule",
+  "act": "Give every per-column question a bulk affordance with an editable rule. The lens then accelerates a scalable interview instead of rescuing an unscalable one.",
+  "status": "OPEN",
+  "note": "Filed by the adjudicator from the L20 matrix. The pack result is real; the base it is measured against is the finding.",
+  "verified_against": "TurboTab @ HEAD, 2026-07-29"
  }
 ]

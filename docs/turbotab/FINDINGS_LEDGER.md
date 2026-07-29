@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**188 of 581 closed.**
+**188 of 582 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 352 |
+| `OPEN` | 353 |
 | `PARTIAL` | 41 |
 | `FIXED` | 185 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 352
+## OPEN — 353
 
 
 ### Application state / lockbox — 66
@@ -432,10 +432,11 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Guided-door drive feedback — 5
+### Guided-door drive feedback — 6
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
+| `GUIDED-029` | critical | Per-column questions scale linearly with column count, so a wide table without a matching pack gets hundreds of questions - the lens masks this rather than solving it | `L20 discrimination matrix, metabolomics_untargeted base=313; DOMAIN_PACKS.md 02; the p>>n scoping rule` | Filed by the adjudicator from the L20 matrix. The pack result is real; the base it is measured against is the finding. |
 | `GUIDED-012` | high | Lockbox constitution clause 06 - declaration and execution are separate - has no implementation in either door: nothing applies the row-local vs stateful litmus test | `No module classifies transforms by the litmus test at L14. Classic's pages/03 applies feature engineering to…` | Filed at the start of L14 rather than after building it, deliberately: the check found the clause untracked, and the honest record of an unbuilt clause is an open finding, not a… |
 | `GUIDED-014` | high | DESIGN QUESTION for the product owner: does the exploratory labeling on an undetermined seal read as honest, or as the app giving up? | `docs/turbotab/COPY_DECK.md, 'Data & Target - what the user reads after answering' and 'what the user reads…` | NOT SELF-ASSESSED, deliberately. I wrote this copy at L15; asking the author whether their own prose reads well is the finder-judge problem in a different costume, and this… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
@@ -536,7 +537,7 @@ Nothing is closed without a regression test named after it.
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `GUIDED-028` | medium | The lens contradiction detector fires in one direction only: assay-shaped data described as something else, never the reverse | `turbotab/packs.py:954 contradiction(); :923 suggest()` | HALF ADDRESSED AT L20, and the half that landed is the sibling defect the review found underneath it rather than the asymmetry the row names. reframe() covered two hardcoded… |
+| `GUIDED-028` | high | The lens contradiction detector fires in one direction only: assay-shaped data described as something else, never the reverse | `turbotab/packs.py:954 contradiction(); :923 suggest()` | HALF ADDRESSED AT L20, and the half that landed is the sibling defect the review found underneath it rather than the asymmetry the row names. reframe() covered two hardcoded… |
 
 ---
 
