@@ -195,6 +195,15 @@ def settled_groups(rows: Sequence[Dict[str, Any]],
 # Evidence-driven exceptions
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _standard_error(n_blank: int, n_present: int) -> float:
+    """Roughly how large a difference this comparison produces by chance.
+
+    A blank-versus-present comparison on 8 rows and 64 is a noisy comparison,
+    and a fixed effect threshold treats it exactly like one on 4,000 and 4,000.
+    """
+    return float(np.sqrt(1.0 / max(n_blank, 1) + 1.0 / max(n_present, 1))) * 0.5
+
+
 def _association_with_outcome(df: pd.DataFrame, column: str,
                               target: str) -> Optional[float]:
     """How differently the outcome behaves where this column is blank.
@@ -210,7 +219,8 @@ def _association_with_outcome(df: pd.DataFrame, column: str,
     if target not in df.columns or column not in df.columns:
         return None
     blank = df[column].isna()
-    if int(blank.sum()) < 5 or int((~blank).sum()) < 5:
+    n_blank, n_present = int(blank.sum()), int((~blank).sum())
+    if n_blank < 5 or n_present < 5:
         return None
     y = df[target]
     if y.isna().all():
@@ -259,10 +269,30 @@ def exceptions(df: pd.DataFrame, group: Group, mechanism: str,
     if mechanism != "not_informative" or not target or target not in df.columns:
         return {"columns": [], "evidence": {}, "sentence": ""}
 
+    # THE FLOOR RISES WITH THE NOISE, and this is not a refinement — the first
+    # version flagged 31 of 306 columns on `metabolomics_untargeted.csv`, which
+    # is almost exactly the false-positive rate for a rate difference on 72
+    # participants at a fixed 0.20 threshold. An exceptions question listing 31
+    # columns none of which is real teaches the user to dismiss the next one,
+    # which is the blocker-budget argument arriving at a different card.
+    #
+    # Two corrections, both crude on purpose. A comparison on 8 blanks and 64
+    # present is noisier than one on 4,000 and 4,000, so the threshold scales
+    # with the standard error; and testing 306 columns finds a 1-in-20 event
+    # fifteen times, so it scales with the count as well. Neither is a p-value:
+    # a multiple-testing correction the app would then have to explain is worse
+    # than an effect size the user can look at beside the column.
+    multiplicity = float(np.sqrt(np.log(max(len(group.members), 2))))
     hits: List[Tuple[str, float]] = []
     for column in group.members:
         effect = _association_with_outcome(df, column, target)
-        if effect is not None and effect >= threshold:
+        if effect is None:
+            continue
+        blank = df[column].isna()
+        floor = max(threshold,
+                    2.0 * multiplicity * _standard_error(int(blank.sum()),
+                                                         int((~blank).sum())))
+        if effect >= floor:
             hits.append((column, round(effect, 3)))
     hits.sort(key=lambda p: -p[1])
     if not hits:

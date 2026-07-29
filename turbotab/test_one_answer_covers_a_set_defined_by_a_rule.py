@@ -421,3 +421,45 @@ def test_a_contested_column_is_not_settled_and_not_grouped():
                     {"pack": "clinical", "label": "C", "marker": "offered",
                      "mechanism": "not_ordered", "reason": "y" * 60}]}
     assert B.settled_groups(rows, priors) == []
+
+
+def test_three_hundred_columns_of_noise_produce_no_exceptions():
+    """The other half of the exceptions check, and the one that decides whether
+    it is usable.
+
+    The first version used a fixed 0.20 effect threshold and flagged **31 of
+    306** columns on `metabolomics_untargeted.csv` — almost exactly the
+    false-positive rate for a rate difference on 72 participants. An exceptions
+    question listing 31 columns none of which is real teaches the user to
+    dismiss the next one, which is the blocker-budget argument arriving at a
+    different card.
+
+    The threshold now scales with the standard error of each comparison and with
+    the number of columns tested. Neither is a p-value: a multiple-testing
+    correction the app would then have to explain is worse than an effect size
+    the user can look at beside the column.
+    """
+    df = pd.read_csv(DATA / "metabolomics_untargeted.csv")
+    rows = MISS.survey(df, "responder")
+    group = B.Group("missingness", "numeric",
+                    tuple(r["column"] for r in rows if r["branch"] == "numeric"))
+    assert group.n > 300
+
+    found = B.exceptions(df, group, MISS.NOT_INFORMATIVE, "responder")
+    assert found["columns"] == [], (
+        f"{len(found['columns'])} of {group.n} columns flagged on a fixture "
+        f"whose missingness is driven by abundance rather than by the outcome; "
+        f"the threshold is reporting noise")
+
+
+def test_a_real_signal_still_survives_the_higher_floor():
+    """A threshold raised until nothing fires is a check that does not exist.
+
+    Same frame as the detection test, and the effect is large enough that no
+    reasonable floor should lose it.
+    """
+    df = _frame_with_one_informative_column()
+    group = B.Group("missingness", "numeric",
+                    members=tuple(c for c in df.columns if c != "y"))
+    found = B.exceptions(df, group, MISS.NOT_INFORMATIVE, "y")
+    assert "ordered_only_when_sick" in found["columns"]
