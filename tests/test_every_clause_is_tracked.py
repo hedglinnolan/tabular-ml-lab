@@ -147,9 +147,50 @@ CLAUSES: Dict[str, Dict] = {
 
     # ── the lockbox constitution (ROADMAP.md §01–§08) ────────────────────────
     "lockbox-01": dict(
-        text="ef06ad85c3ee",
+        # L18 · RE-ENUMERATED. `d134b76` rewrote the sequence from six steps to
+        # eleven, and the hash check fired exactly as designed. Re-reading the
+        # clause found FIVE new placements, none of them built and none of them
+        # previously tracked: the lens, target's position ahead of grain,
+        # repeats-or-time-points, unit-of-analysis-and-aggregation, and temporal
+        # prediction. Each gets an obligation with an open finding rather than a
+        # stub test — a clause nobody has built gets the truthful record.
+        text="798f0f3d8cd8",
         title="The pre-seal sequence is fixed",
         obligations={
+            "the-lens-comes-first": dict(
+                requires="The domain lens is the first step of the sequence, "
+                         "because wide assay data reads as malformed to a "
+                         "general-purpose import doctor and the diagnosis that "
+                         "follows would be a diagnosis of the wrong thing.",
+                findings=["STATE-106"],
+            ),
+            "target-comes-before-grain": dict(
+                requires="Target precedes grain, and precedes aggregation, "
+                         "because combining rows requires first deciding which "
+                         "outcome the combination is of.",
+                findings=["STATE-107"],
+            ),
+            "repeats-or-time-points-comes-after-grain": dict(
+                requires="Whether repeated rows are replicates or time points "
+                         "is asked, not inferred: the same structural shape "
+                         "means replicate measurements in one study and "
+                         "different time points in another, with opposite "
+                         "treatments.",
+                findings=["STATE-108"],
+            ),
+            "aggregation-cannot-move": dict(
+                requires="Unit of analysis and aggregation sit before the "
+                         "seal and their position is fixed, because Decision "
+                         "A's identity barrier already forbids rebuilding rows "
+                         "after a seal has named them.",
+                findings=["STATE-109"],
+            ),
+            "temporal-prediction-fires-when-time-survives": dict(
+                requires="The temporal-prediction question fires only when "
+                         "time points survive as rows, and routes to the "
+                         "chronological split rather than to a random one.",
+                findings=["STATE-110"],
+            ),
             "the-grain-comes-before-the-seal": dict(
                 requires="The seal cannot be drawn before the grain is answered.",
                 tests=[("turbotab/test_grain_is_asked.py",
