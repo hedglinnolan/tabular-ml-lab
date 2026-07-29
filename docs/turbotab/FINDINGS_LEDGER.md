@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**175 of 573 closed.**
+**177 of 573 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 356 |
-| `PARTIAL` | 42 |
-| `FIXED` | 172 |
+| `PARTIAL` | 40 |
+| `FIXED` | 174 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
@@ -448,7 +448,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 42
+## PARTIAL — 40
 
 
 ### Application state / lockbox — 10
@@ -491,23 +491,13 @@ Nothing is closed without a regression test named after it.
 | `TEST-026` | medium | scripts/integration_test_apptest.py and scripts/integration_test.py are unreachable from CI and duplicate tests/integration/ | `.github/workflows/ci.yml (only `pytest tests/` and `pytest tests/integration`); Makefile:22-40…` | Half the row's premise is wrong at HEAD and the correction changes the disposition. scripts/integration_test.py is NOT unreachable from CI - ci.yml:90-94 runs it as the E2E smoke… |
 | `TEST-032` | medium | tests/test_page_imports.py and tests/test_insight_id_integrity.py are AST-based over pages/ — they die with pages/ but encode rules worth keeping | `tests/test_page_imports.py:123; tests/test_insight_id_integrity.py:52` | Half the row is closed. test_insight_id_integrity can no longer pass vacuously over an empty or renamed directory - that is SWEEP-014, and it was fixed in exactly the way this row… |
 
-### Verified against main — 4
+### Verified against main — 3
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `T0-STRUCT-001` | critical | Global fallback pipeline slot picks an arbitrary member by dict insertion order AND returns a shared object that .fit() mutates in place | `utils/session_state.py:501; pages/06:1813-1821 now DISCLOSES borrowers but root cause unchanged` | PR #145 added disclosure, not a fix |
 | `T0-STRUCT-002` | critical | Row identity: lockbox seals index LABELS, splits store POSITIONS (np.where(mask)[0]), page 07 reads df_raw.iloc[test_indices] | `pages/06:398,696-702; pages/07:185,196; utils/test_lockbox.py train_row_mask` | PR #145 fixed the reset_index instance + test_row_labels_are_identities.py; conventions still dual |
-| `T0-LIVE-003` | high | SklearnCompatible NN fit() marks fitted without training; clone-and-refit yields a silently untrained model that still predicts | `models/nn_whuber.py fit() in both regressor and classifier` | **test:** `tests/test_characterization_wrappers.py::test_clone_and_refit_now_raises_instead_of_answering_from_the_old_model` — fit() now raises NotFittedError unless the adapter… |
 | `T0-STATE-001` | medium | reset_downstream_results clears keys three different ways — pop, = None, and = {} — so 'cleared' has three observable meanings | `utils/session_state.py reset_downstream_results; L5 gate probe (agent report at 4366b23)` | The pages/03 half is done: its nineteen-line hand-rolled cascade now calls reset_downstream_results, so the fifteen keys it missed (cv_results, dataset_profile, eda_results… |
-
-### Models / training / eval — 4
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `MODELS-001` | landmine | SklearnCompatibleNNRegressor.fit() and SklearnCompatibleNNClassifier.fit() do not train. They set is_fitted_=True, record n_features_in_ (and classes_), and return self. Any sklearn utility that… | `models/nn_whuber.py:115-128 (regressor) and 174-188 (classifier); reachable through…` | **test:** `tests/test_characterization_wrappers.py::test_clone_and_refit_now_raises_instead_of_answering_from_the_old_model` — Closed the right way round. fit() no longer marks… |
-| `MODELS-004` | landmine | task_type_final and data_config.task_type can diverge (the user's task-type override), and the training loop mixes them. y_test_proba is assigned only in the classification branch but read… | `pages/06_Train_and_Compare.py:161 (`task_type_final = task_type_detection.final if task_type_detection.final…` | The divergence is reconciled; the guard against its return is not. pages/06:174-175 now assigns data_config.task_type = task_type_final immediately after resolving the override… |
-| `MODELS-011` | landmine | RegistryModelWrapper re-derives the task type from the data with a fragile heuristic instead of being told, and it is the only wrapper honoring sample_weight. | `models/registry_wrappers.py:44 — `if len(np.unique(y_train)) < 20 and y_train.dtype in [np.int64, np.int32…` | The dtype half was repaired; the cardinality half was not. The test is no longer dtype-identity against ['int64','int32'] - it now asks through pd.api.types.is_integer_dtype with… |
-| `MODELS-014` | landmine | NN classification silently remaps unseen validation classes to index 0, and models/base, glm, huber_glm, rf and registry_wrappers have literally zero test coverage. | `models/nn_whuber.py:337 — `y_val_mapped = np.array([class_to_idx.get(cls, 0) for cls in y_val])` (note: the…` | The coverage half is closed; the silent remap is not. models/base, glm, huber_glm, rf and registry_wrappers are no longer untested - tests/test_characterization_wrappers.py… |
 
 ### Completeness sweep — 3
 
@@ -516,6 +506,14 @@ Nothing is closed without a regression test named after it.
 | `SWEEP-009` | critical | INVARIANT — reset_downstream_results supports PARTIAL resets; a naive 'invalidate everything downstream of node N' DAG cannot express them | `CODE_REVIEW.md '2026-07 · Feature-engineering state drift' (04:440, 04:483); ARCHITECTURE.md:278` | Per-edge suppression is done and tested; the restore-previous-value path is not in the graph. turbotab/cascade.py:189-210 expresses partial invalidation as keys_to_clear(changed… |
 | `SWEEP-013` | critical | INVARIANT — 'Absent is better than false': the invalidation cascade must visibly clear ALL FOUR planes, not just the data plane | `docs/ARCHITECTURE_SCROLLYTELLING_BRIEF.md §4B, §9; CODE_REVIEW.md C5; brief §0 table (InsightLedger…` | Two of the planes the row names are in the graph; the Record plane is not. Data and provenance are modeled - Stage carries provenance_sections, provenance_sections_to_clear walks… |
 | `SWEEP-015` | critical | Known test-fidelity hole exactly at the model-object boundary — the transition's safety net does not cover models/ | `CODE_REVIEW.md 'Dynamic testing summary' note; tests/integration/conftest.py:67…` | The named instance is fixed and models/ now has coverage; the fixture-fidelity hole itself is not. FIXED half: pages/08:419 now does _est_for_dropout = model_obj.get_model() if… |
+
+### Models / training / eval — 3
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `MODELS-004` | landmine | task_type_final and data_config.task_type can diverge (the user's task-type override), and the training loop mixes them. y_test_proba is assigned only in the classification branch but read… | `pages/06_Train_and_Compare.py:161 (`task_type_final = task_type_detection.final if task_type_detection.final…` | The divergence is reconciled; the guard against its return is not. pages/06:174-175 now assigns data_config.task_type = task_type_final immediately after resolving the override… |
+| `MODELS-011` | landmine | RegistryModelWrapper re-derives the task type from the data with a fragile heuristic instead of being told, and it is the only wrapper honoring sample_weight. | `models/registry_wrappers.py:44 — `if len(np.unique(y_train)) < 20 and y_train.dtype in [np.int64, np.int32…` | The dtype half was repaired; the cardinality half was not. The test is no longer dtype-identity against ['int64','int32'] - it now asks through pd.api.types.is_integer_dtype with… |
+| `MODELS-014` | landmine | NN classification silently remaps unseen validation classes to index 0, and models/base, glm, huber_glm, rf and registry_wrappers have literally zero test coverage. | `models/nn_whuber.py:337 — `y_val_mapped = np.array([class_to_idx.get(cls, 0) for cls in y_val])` (note: the…` | The coverage half is closed; the silent remap is not. models/base, glm, huber_glm, rf and registry_wrappers are no longer untested - tests/test_characterization_wrappers.py… |
 
 ### Coach to Router — 2
 
@@ -540,7 +538,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 172
+## FIXED — 174
 
 
 ### Multi-file / JSON import — 68
@@ -650,7 +648,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — Duplicate of COACH-024 from the state pass, and closed the same way: the… |
 | `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | **test:** `tests/test_cohort_runs.py::test_unrecognizable_rows_yield_nothing_not_everything` — The invariant is implemented, disclosed and tested, and the test's NAME is the… |
 
-### Verified against main — 19
+### Verified against main — 20
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -663,6 +661,7 @@ Nothing is closed without a regression test named after it.
 | `T0-ID-001` | critical | Four of nine repair kinds renumber rows, invalidating row identity mid-analysis | `ml/import_doctor.py apply_fix — promote_header / drop_empty_rows / drop_rows / melt_repeated` | **test:** `turbotab/test_project_model.py::test_pre_barrier_repairs_are_unreachable_once_the_lockbox_exists` — The barrier is a phase rule now. The project owns the lockbox, so… |
 | `T0-PREREG-002` | critical | The pre-registered routing baseline was not frozen: the test suite rewrote it on every run, and had done so since the Router landed | `tests/integration/test_routing_baseline.py:299 (write_baseline on the frozen path) and :342 (the leaky one)…` | **test:** `tests/integration/test_routing_baseline.py::test_the_adjudicated_reference_differs_from_the_frozen_one_only_as_ruled` — Fixed at L9, and the damage was contained: the… |
 | `T0-LIVE-002` | high | Cancel Training writes st.session_state.cancel_training; nothing ever reads it | `pages/06_Train_and_Compare.py:1289-1301 (grep returns only these 4 lines)` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Resolved both ways, as the two doors need. Guided gets real cancellation… |
+| `T0-LIVE-003` | high | SklearnCompatible NN fit() marks fitted without training; clone-and-refit yields a silently untrained model that still predicts | `models/nn_whuber.py fit() in both regressor and classifier` | **test:** `tests/test_the_pretrained_mark_does_not_survive_a_clone.py::test_the_pretrained_mark_does_not_survive_a_clone` — Closed at L19 with MODELS-001, which is the same defect… |
 | `T0-DOC-001` | high | ARCHITECTURE.md over-reported Streamlit coupling: static analysis counted function-level imports as module-level | `ml/model_coach.py:634,1080; docs/turbotab/ARCHITECTURE.md §01` | **test:** `docs/turbotab/ARCHITECTURE.md §01 runtime blocker snippet` — Corrected 2026-07; the empirical run had already disagreed with the static pass and the static pass was… |
 | `T0-DOC-002` | high | The ARCHITECTURE.md reproduce snippet could not fail — it used find_module, removed in Python 3.12, and passed vacuously without Streamlit installed | `docs/turbotab/ARCHITECTURE.md §01 (previous revision)` | **test:** `docs/turbotab/ARCHITECTURE.md §01 self-check (`blocker is not working` guard)` — Found by the walking-skeleton loop. A test that cannot fail proves nothing — the guard… |
 | `T0-TOOL-001` | high | ledger.py regen destroyed FINDINGS_LEDGER.md on Windows, and check reported success over the wreckage | `docs/turbotab/tools/ledger.py load/save/regen` | **test:** `docs/turbotab/tools/ledger.py check (markdown-currency guard; verified by emptying the file)` — Reported by the build agent, who recovered from git and used… |
@@ -760,10 +759,11 @@ Nothing is closed without a regression test named after it.
 | `COACH-028` | invariant | Every model key in ml/model_registry.get_registry() has a viability verdict. | `tests/test_coach_intelligence.py::TestModelViability::test_covers_full_registry — `missing = registry_keys…` | **test:** `tests/test_coach_intelligence.py::TestModelViability::test_covers_full_registry` — The healthiest invariant in this domain, and it is intact: adding a model to the… |
 | `COACH-029` | invariant | The probe is seeded and reproducible. | `ml/coach_probe.py SEED=42 threaded through np.random.default_rng, KFold/StratifiedKFold(random_state=SEED)…` | **test:** `tests/test_coach_intelligence.py::test_seeded_and_deterministic` — Determinism is real and structural: the probe is the one place in the engine that uses… |
 
-### Models / training / eval — 3
+### Models / training / eval — 4
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
+| `MODELS-001` | landmine | SklearnCompatibleNNRegressor.fit() and SklearnCompatibleNNClassifier.fit() do not train. They set is_fitted_=True, record n_features_in_ (and classes_), and return self. Any sklearn utility that… | `models/nn_whuber.py:115-128 (regressor) and 174-188 (classifier); reachable through…` | **test:** `tests/test_the_pretrained_mark_does_not_survive_a_clone.py::test_the_pretrained_mark_does_not_survive_a_clone` — Closed at L19 against a guard that RUNS in this… |
 | `MODELS-005` | landmine | The 'Cancel Training' button is decorative — st.session_state.cancel_training is written and NEVER read anywhere in the codebase. | `pages/06_Train_and_Compare.py:1252-1253 (init), 1263-1264 (set to True). grep for 'cancel_training' across…` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Closed by removal plus an honest replacement, which is the right shape. The decorative… |
 | `MODELS-017` | invariant | ModelCapabilities.requires_scaled_numeric determines each model's preprocessing pipeline; a model that needs scaling must not be trained on an unscaled pipeline. | `pages/05_Preprocess.py:487, 801, 847, 1059 read spec.capabilities.requires_scaled_numeric to build per-model…` | **test:** `tests/workflow/test_per_model_pipelines.py::test_scaled_vs_unscaled_outputs_differ` — The invariant holds on both sides of the migration and has a test that would catch… |
 | `MODELS-022` | invariant | Degenerate bootstrap resamples are DROPPED, never substituted with the point estimate, and a run with too few valid replicates returns a NaN CI rather than a narrow one. | `ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot =…` | **test:** `tests/test_review_fixes.py::TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples` — The invariant is implemented with the reasoning in the… |

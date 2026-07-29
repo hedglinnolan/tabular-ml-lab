@@ -25,6 +25,14 @@ set -uo pipefail
 
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
+# shellcheck source=lib.sh
+. "$(dirname "$0")/lib.sh"
+if ! PY=$(resolve_python); then
+    printf '\nCOMMIT REFUSED — no Python interpreter found for the gates.\n'
+    printf '  Set TURBOTAB_PYTHON to one, or create turbotab/.venv.\n'
+    exit 1
+fi
+
 # Nothing here touches application behavior, so a commit that changes neither
 # the ledger data nor any tracked markdown still pays ~2s. That is cheap enough
 # to be unconditional, and conditional gates are how gates get skipped.
@@ -42,10 +50,10 @@ run() {
 }
 
 printf 'pre-commit gates:\n'
-run "ledger schema"      python docs/turbotab/tools/ledger.py check
-run "register schema"    python docs/turbotab/tools/register.py check
-run "American spelling"  python -m pytest tests/test_american_spelling.py -q --no-header
-run "copy deck"          python docs/turbotab/tools/copydeck.py check
+run "ledger schema"      "$PY" docs/turbotab/tools/ledger.py check
+run "register schema"    "$PY" docs/turbotab/tools/register.py check
+run "American spelling"  "$PY" -m pytest tests/test_american_spelling.py -q --no-header
+run "copy deck"          "$PY" docs/turbotab/tools/copydeck.py check
 
 if [ "$FAILED" -ne 0 ]; then
     cat <<'EOF'

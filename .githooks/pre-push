@@ -32,6 +32,14 @@ set -uo pipefail
 
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
+# shellcheck source=lib.sh
+. "$(dirname "$0")/lib.sh"
+if ! PY=$(resolve_python); then
+    printf '\nPUSH REFUSED — no Python interpreter found for the gate.\n'
+    printf '  Set TURBOTAB_PYTHON to one, or create turbotab/.venv.\n'
+    exit 1
+fi
+
 # A branch deletion pushes nothing to check. `git push origin :branch` sends a
 # local ref of all-zeroes, and running a two-second test suite to approve a
 # deletion is noise.
@@ -46,7 +54,7 @@ if [ "$DELETING_ONLY" -eq 1 ]; then
 fi
 
 printf 'pre-push gate (the slow one):\n'
-if out=$(python -m pytest tests/integration/test_routing_value_check.py \
+if out=$("$PY" -m pytest tests/integration/test_routing_value_check.py \
                           tests/integration/test_routing_baseline.py \
                           -q --no-header 2>&1); then
     printf '  ✓ routing value check + frozen baseline\n'
