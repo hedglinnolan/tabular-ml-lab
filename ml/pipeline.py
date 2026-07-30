@@ -147,6 +147,7 @@ def build_preprocessing_pipeline(
     plausibility_mode: str = 'clip',  # 'clip' = set out-of-range to NaN; 'filter' = drop rows
     categorical_imputation: str = 'most_frequent',  # 'most_frequent', 'constant'
     categorical_encoding: str = 'onehot',  # 'onehot', 'target' (if enabled)
+    categorical_target_type: str = 'auto',  # TargetEncoder: 'auto', 'continuous', 'binary', 'multiclass'
     handle_unknown: str = 'ignore',  # For one-hot encoding
     # Optional feature engineering steps
     use_kmeans_features: bool = False,
@@ -253,9 +254,13 @@ def build_preprocessing_pipeline(
         
         # Encoding
         if categorical_encoding == 'target' and _HAS_TARGET_ENCODER:
+            # target_type must be told, not inferred: type_of_target() calls an
+            # INTEGER regression target (age in years, a count, a score)
+            # 'multiclass', and TargetEncoder then emits one column per distinct
+            # value per feature -- 121 columns where 3 were meant.
             categorical_steps.append(('encoder', TargetEncoder(
                 smooth='auto',
-                target_type='auto',
+                target_type=categorical_target_type,
             )))
         elif categorical_encoding == 'ordinal':
             categorical_steps.append(('encoder', OrdinalEncoder(
@@ -406,6 +411,12 @@ def get_pipeline_recipe(pipeline: Pipeline, plausibility_mode: Optional[str] = N
                     elif step_name == 'encoder':
                         if isinstance(step_transformer, OneHotEncoder):
                             step_parts.append("One-hot encoding (sparse)")
+                        elif isinstance(step_transformer, OrdinalEncoder):
+                            step_parts.append("Ordinal encoding")
+                        elif _HAS_TARGET_ENCODER and isinstance(step_transformer, TargetEncoder):
+                            step_parts.append(
+                                "Target encoding (cross-fitted, smoothed means)"
+                            )
                 step_desc += " → ".join(step_parts) if step_parts else "No transformation"
                 steps.append(step_desc)
     

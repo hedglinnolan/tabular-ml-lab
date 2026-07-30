@@ -161,8 +161,7 @@ with _sens_tabs[0]:
                 # Re-fit the preprocessing on THIS seed's training rows
                 if pipeline is not None:
                     _pipe_seed = clone(pipeline)
-                    _pipe_seed.fit(X_tr_raw)
-                    X_tr = _pipe_seed.transform(X_tr_raw)
+                    X_tr = _pipe_seed.fit_transform(X_tr_raw, y_tr)
                     X_te = _pipe_seed.transform(X_te_raw)
                 else:
                     X_tr = X_tr_raw.values
@@ -447,8 +446,7 @@ with _sens_tabs[1]:
 
                 if pipeline is not None:
                     _pipe_abl = clone(pipeline)
-                    _pipe_abl.fit(X_tr_abl)
-                    X_tr_vals = _pipe_abl.transform(X_tr_abl)
+                    X_tr_vals = _pipe_abl.fit_transform(X_tr_abl, y_train)
                     X_te_vals = _pipe_abl.transform(X_te_abl)
                 else:
                     from sklearn.impute import SimpleImputer
