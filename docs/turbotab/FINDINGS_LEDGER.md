@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**210 of 608 closed.**
+**211 of 608 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 356 |
+| `OPEN` | 355 |
 | `PARTIAL` | 42 |
-| `FIXED` | 207 |
+| `FIXED` | 208 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 356
+## OPEN — 355
 
 
 ### Application state / lockbox — 66
@@ -443,12 +443,11 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
 
-### DRIVE — 3
+### DRIVE — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `DRIVE-009` | critical | The domain-specific EDA plot vision is unbuilt, and it is the product's stated centerpiece | `The drive; DESIGN_LANGUAGE.md 07; DOMAIN_PACKS.md 08` | From the product owner's second NHANES drive. Their words are the specification. |
-| `DRIVE-008` | high | The missingness pop-out shows what would change and does not let the driver do it | `The drive; the missingness what-the-app-can-do panel` | From the product owner's second NHANES drive. Their words are the specification. |
 | `DRIVE-010` | high | After the target is chosen the app does not ask which features to use, or whether to slice by subgroup | `The drive` | From the product owner's second NHANES drive. Their words are the specification. |
 
 ---
@@ -555,7 +554,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 207
+## FIXED — 208
 
 
 ### Multi-file / JSON import — 69
@@ -752,6 +751,18 @@ Nothing is closed without a regression test named after it.
 | `SWEEP-024` | high | INVARIANT — reconcile_pipeline_columns: drift must self-heal loudly, never crash cryptically; its sibling reconcile_state_with_df is imported but never called | `CODE_REVIEW.md 2026-07 'Backstop'; CODE_REVIEW.md C7; utils/reconcile.py` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_reconcile_leaves_a_gated_pipeline_alone_when_nothing_drifted` — Both halves closed. The dormant-reconciler half was… |
 | `SWEEP-025` | high | INVARIANT — CV strategy is bound to the SPLIT strategy, and cv_strategy/cv_groups_train are cleared WITH the split | `CODE_REVIEW.md 2026-07 'Strategy-aware cross-validation' and 'Test-set slider guardrail'…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_grouped_split_matches_the_page` — Both halves of the invariant are implemented and tested. The CV scheme is… |
 
+### DRIVE — 7
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `DRIVE-001` | critical | The lens question is unreachable through the interface - it has a dedicated endpoint the page never calls, so the entire domain-pack arc is invisible | `turbotab/api.py:1289 versus :1545; turbotab/web/index.html has no lens reference` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_the_page_renders_every_question_the_router_can_serve` — FIXED at L23, and the class is closed rather than… |
+| `DRIVE-002` | high | A repair affecting nine features requires nine separate show-me-then-apply cycles; the bulk affordance was built for questions and not for repairs | `The drive; contrast turbotab bulk missingness affordance` | **test:** `turbotab/test_one_repair_covers_a_set_of_features.py::test_applying_to_a_selected_set_changes_those_columns_and_no_others` — bulk.py's rule-scope pointed at repairs… |
+| `DRIVE-003` | high | Action buttons do not say what they will do, so the driver could not tell what several of them meant | `The drive; turbotab/web/index.html action rows` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_a_generic_question_states_its_effect_before_it_is_taken` — Closed at L23. The EFFECTS table plus effectOf… |
+| `DRIVE-004` | high | Disclosures do not toggle and actions do not acknowledge - the app never narrates its own behavior | `The drive; DESIGN_LANGUAGE.md 05` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_every_action_acknowledges_itself_after_it_is_taken` — Closed at L23, in two halves. THE DISCLOSURE half… |
+| `DRIVE-005` | high | Situational-awareness findings get one card each, which turns ten improbable-value flags into accidental infinite scroll | `The drive; clinical_longitudinal and NHANES` | **test:** `turbotab/test_action_free_findings_share_one_paged_card.py::test_many_improbable_features_become_one_card_with_a_pager` — THE LINE IS ACTION, NOT SEVERITY, and stating… |
+| `DRIVE-006` | high | Auto-scroll skips past the noticed card, so the driver has to scroll back up every time | `The drive; DESIGN_LANGUAGE.md 05 scroll rule` | **test:** `turbotab/test_the_page_never_moves_the_viewport.py::test_a_drive_with_many_findings_never_scrolls_the_page` — The nudge is DELETED rather than tuned, and the reason the… |
+| `DRIVE-008` | high | The missingness pop-out shows what would change and does not let the driver do it | `The drive; the missingness what-the-app-can-do panel` | **test:** `turbotab/test_the_missingness_panel_can_execute.py::test_a_row_local_choice_changes_the_working_table_now` — WORSE THAN NOT WIRED. Pressing 'Record this' posted a NOTE… |
+
 ### Stage-boundary contracts — 6
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -773,17 +784,6 @@ Nothing is closed without a regression test named after it.
 | `COACH-024` | invariant | Blockers are never bulk-acknowledged: passing a workflow gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.py:789-794 — the explicit `if i.severity == 'blocker': continue` inside…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — The invariant is implemented at the one place that could violate it, the… |
 | `COACH-028` | invariant | Every model key in ml/model_registry.get_registry() has a viability verdict. | `tests/test_coach_intelligence.py::TestModelViability::test_covers_full_registry — `missing = registry_keys…` | **test:** `tests/test_coach_intelligence.py::TestModelViability::test_covers_full_registry` — The healthiest invariant in this domain, and it is intact: adding a model to the… |
 | `COACH-029` | invariant | The probe is seeded and reproducible. | `ml/coach_probe.py SEED=42 threaded through np.random.default_rng, KFold/StratifiedKFold(random_state=SEED)…` | **test:** `tests/test_coach_intelligence.py::test_seeded_and_deterministic` — Determinism is real and structural: the probe is the one place in the engine that uses… |
-
-### DRIVE — 6
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `DRIVE-001` | critical | The lens question is unreachable through the interface - it has a dedicated endpoint the page never calls, so the entire domain-pack arc is invisible | `turbotab/api.py:1289 versus :1545; turbotab/web/index.html has no lens reference` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_the_page_renders_every_question_the_router_can_serve` — FIXED at L23, and the class is closed rather than… |
-| `DRIVE-002` | high | A repair affecting nine features requires nine separate show-me-then-apply cycles; the bulk affordance was built for questions and not for repairs | `The drive; contrast turbotab bulk missingness affordance` | **test:** `turbotab/test_one_repair_covers_a_set_of_features.py::test_applying_to_a_selected_set_changes_those_columns_and_no_others` — bulk.py's rule-scope pointed at repairs… |
-| `DRIVE-003` | high | Action buttons do not say what they will do, so the driver could not tell what several of them meant | `The drive; turbotab/web/index.html action rows` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_a_generic_question_states_its_effect_before_it_is_taken` — Closed at L23. The EFFECTS table plus effectOf… |
-| `DRIVE-004` | high | Disclosures do not toggle and actions do not acknowledge - the app never narrates its own behavior | `The drive; DESIGN_LANGUAGE.md 05` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_every_action_acknowledges_itself_after_it_is_taken` — Closed at L23, in two halves. THE DISCLOSURE half… |
-| `DRIVE-005` | high | Situational-awareness findings get one card each, which turns ten improbable-value flags into accidental infinite scroll | `The drive; clinical_longitudinal and NHANES` | **test:** `turbotab/test_action_free_findings_share_one_paged_card.py::test_many_improbable_features_become_one_card_with_a_pager` — THE LINE IS ACTION, NOT SEVERITY, and stating… |
-| `DRIVE-006` | high | Auto-scroll skips past the noticed card, so the driver has to scroll back up every time | `The drive; DESIGN_LANGUAGE.md 05 scroll rule` | **test:** `turbotab/test_the_page_never_moves_the_viewport.py::test_a_drive_with_many_findings_never_scrolls_the_page` — The nudge is DELETED rather than tuned, and the reason the… |
 
 ### Silent-failure landmines — 5
 

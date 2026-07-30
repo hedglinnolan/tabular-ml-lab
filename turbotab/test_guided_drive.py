@@ -174,11 +174,19 @@ def test_every_option_states_when_it_happens(client, project):
     fitted inside the per-model pipeline on training folds. Every option carries
     which it is, and the decision sentence says so in methods prose.
     """
-    from ml.missingness_plan import TIMING_IMMEDIATE, TIMING_IN_PIPELINE
+    # `TIMING_MIXED` is the third, added at `DRIVE-008` — two options are
+    # genuinely both, the indicator landing now and the fill running in the
+    # fold. It is admitted here rather than the option being forced into one of
+    # the two, because "the frontend cannot invent a third timing" is a rule
+    # about the INTERFACE inventing one; the engine naming a compound it really
+    # performs is the clause being stated more precisely, not less.
+    from ml.missingness_plan import (TIMING_IMMEDIATE, TIMING_IN_PIPELINE,
+                                     TIMING_MIXED)
     cards = client.get(f"/project/{project}/evidence/missingness").json()["cards"]
     for c in cards:
         for o in c["options"]:
-            assert o["timing"] in (TIMING_IMMEDIATE, TIMING_IN_PIPELINE)
+            assert o["timing"] in (TIMING_IMMEDIATE, TIMING_IN_PIPELINE,
+                                   TIMING_MIXED)
             assert o["timing_prose"]
             assert o["decision_sentence"].endswith("."), (
                 "a decision sentence that is not a sentence cannot appear in a "

@@ -163,6 +163,9 @@ def survey(df: pd.DataFrame, target: Optional[str] = None) -> List[Dict[str, Any
 
 CATEGORICAL_STRATEGIES = (EXPLICIT_CATEGORY, INDICATOR, IMPUTE_MODE, LEAVE)
 NUMERIC_STRATEGIES = (INDICATOR, IMPUTE_MEDIAN, IMPUTE_MEAN, IMPUTE_MICE, LEAVE)
+# Every strategy this module can declare, from the two branches rather than from
+# a third list — a third list is the one that goes stale.
+STRATEGIES_ALL = frozenset(CATEGORICAL_STRATEGIES) | frozenset(NUMERIC_STRATEGIES)
 
 _LABELS = {
     EXPLICIT_CATEGORY: "Keep blanks as an explicit `Missing` category",
@@ -319,6 +322,89 @@ def _sentence(column: str, mechanism: str, key: str, spec: Dict[str, Any]) -> st
     return (f"Missing values in `{column}` will be filled using "
             f"{_LABELS[key].lower().replace('fill with ', '').replace('fill by ', '')}"
             f"{where}.")
+
+
+def executes_now(strategy_key: str) -> bool:
+    """Clause §06's litmus, as a question about one strategy.
+
+    > **Does this transform's output for row *i* depend on any other row?**
+
+    No for `explicit_category` and `indicator` — a blank becomes the level
+    `Missing`, or a `1` in a was-it-missing column, and neither reading consults
+    another row. Yes for every imputation, which is why they are declared and
+    fired inside training folds.
+
+    `leave` is row-local and executes nothing, which is not the same as being
+    stateful: it is a recorded decision with no operation behind it. It is
+    excluded here because *"applied now"* would be a receipt for work that did
+    not happen.
+    """
+    return strategy_key in (EXPLICIT_CATEGORY, INDICATOR)
+
+
+MISSING_LEVEL = "Missing"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The card's vocabulary and the record's, joined
+#
+# `DRIVE-008`. `ml/missingness_plan.py` builds the card the user reads and names
+# its options `explicit_missing`, `impute_mode`, `indicator_and_impute`. This
+# module names the DECLARATIONS `explicit_category`, `impute_mode`, `indicator`.
+# Two vocabularies for one concept, and the panel bridged them by recording a
+# free-text `note` — so pressing *"Record this"* wrote a sentence and routed
+# nothing, which is why the panel showed and could not execute.
+#
+# The join lives here rather than in `ml/`, because the engine builds a card for
+# both doors and must not learn the Guided door's record shape. A card option
+# with no entry is refused rather than guessed at: a missing key would otherwise
+# become a silent default, which is the failure `declare` already refuses for
+# strategies.
+CARD_STRATEGY: Dict[str, str] = {
+    "explicit_missing": EXPLICIT_CATEGORY,
+    "indicator": INDICATOR,
+    "indicator_and_impute": INDICATOR,
+    "impute_mode": IMPUTE_MODE,
+    "impute_median": IMPUTE_MEDIAN,
+    "impute_mean": IMPUTE_MEAN,
+    "impute_iterative": IMPUTE_MICE,
+    "leave": LEAVE,
+}
+
+# The one card option that is NOT a missingness strategy, with the reason.
+# Clause §04: dropping the rows with no value for a column changes who the study
+# is about, which makes it an eligibility criterion reported in participant
+# flow — not a way of handling a blank. Routing it through `declare` would file
+# an exclusion as a preprocessing decision and lose it from the flow diagram.
+NOT_A_STRATEGY: Dict[str, str] = {
+    "drop_rows": (
+        "Dropping every row with no value for this column is a complete-case "
+        "analysis: it changes who the study is about, so it is an eligibility "
+        "criterion reported in participant flow rather than a way of handling "
+        "a blank. It is asked as one, before the seal."),
+}
+
+
+def strategy_for_card_option(key: str) -> str:
+    """The declaration a card option records, or a refusal saying why not."""
+    if key in NOT_A_STRATEGY:
+        raise MissingnessRefusal(NOT_A_STRATEGY[key])
+    if key not in CARD_STRATEGY:
+        raise MissingnessRefusal(
+            f"{key!r} is not an option this record knows how to keep. A card "
+            f"option with no declaration behind it would be recorded as a "
+            f"sentence and executed as nothing.")
+    return CARD_STRATEGY[key]
+
+
+def indicator_column(column: str) -> str:
+    """The name a was-it-missing indicator takes.
+
+    Stated once and read three times — by the executor in
+    `project.route_missingness`, by the collision check beside it, and by
+    anything asking whether a column is one of these. The name was a literal in
+    one place and a claim in another before `DRIVE-008`.
+    """
+    return f"{column}_was_missing"
 
 
 def plan_receipt(declared: Sequence[Dict[str, Any]],

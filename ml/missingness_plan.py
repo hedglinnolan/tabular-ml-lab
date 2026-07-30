@@ -53,11 +53,92 @@ HIGH_MISSING_SHARE = 0.20
 # third timing, and so a test can assert that no card claims one.
 TIMING_IMMEDIATE = "immediate"
 TIMING_IN_PIPELINE = "in_pipeline"
+# A third, because two of these options are genuinely BOTH (`DRIVE-008`). Adding
+# a was-it-missing indicator is row-local and runs now; filling the value under
+# it learns from a distribution and runs in the fold. Calling that compound
+# "in_pipeline" understated what had already happened to the table, and calling
+# it "immediate" would have overstated it — and clause §06's whole point is that
+# the user is told WHEN.
+TIMING_MIXED = "mixed"
 
 _TIMING_PROSE = {
     TIMING_IMMEDIATE: "applied to the working table now",
     TIMING_IN_PIPELINE: "fitted inside each model's pipeline, on training folds only",
+    TIMING_MIXED: ("the indicator is added now; the value under it is fitted "
+                   "inside each model's pipeline, on training folds only"),
 }
+
+
+# How many rows of real data travel with a card. Three blank and three present:
+# enough to see what a blank looks like beside what a value looks like, and few
+# enough that the card is still a card rather than a table viewer.
+SNIPPET_ROWS = 3
+
+# Columns shown beside the one in question. The card is about ONE column, and a
+# snippet of that column alone is a list of the word "missing" — the question is
+# what the rows where it is blank have in common, which needs neighbors.
+SNIPPET_COLUMNS = 3
+
+
+def _snippet(df: "pd.DataFrame", column: str,
+             series: "pd.Series") -> Dict[str, Any]:
+    """Real rows from this table: some where the column is blank, some not.
+
+    `DRIVE-008`. Row LABELS, not positions, because that is what row identity
+    is in this project and it is what makes the snippet checkable against the
+    file the user has open.
+
+    Neighboring columns are the first few that are not the column itself and
+    are not mostly blank themselves — a neighbor with no values in it answers
+    nothing and spends a column doing it.
+    """
+    labels = [str(c) for c in df.columns if str(c) != column]
+    neighbors: List[str] = []
+    for name in labels:
+        col = df[name]
+        if isinstance(col, pd.DataFrame):
+            continue
+        if float(col.isna().mean()) > 0.5:
+            continue
+        neighbors.append(name)
+        if len(neighbors) >= SNIPPET_COLUMNS:
+            break
+
+    blank_idx = list(series[series.isna()].index[:SNIPPET_ROWS])
+    present_idx = list(series[series.notna()].index[:SNIPPET_ROWS])
+
+    def row(label: Any, missing: bool) -> Dict[str, Any]:
+        cells = {}
+        for name in neighbors:
+            value = df.at[label, name]
+            cells[name] = None if pd.isna(value) else _plainly(value)
+        return {"row": _plainly(label), "missing": missing,
+                "value": None if missing else _plainly(series.loc[label]),
+                "cells": cells}
+
+    return {
+        "column": column,
+        "neighbors": neighbors,
+        "rows": ([row(i, True) for i in blank_idx]
+                 + [row(i, False) for i in present_idx]),
+        "n_blank_shown": len(blank_idx),
+        "n_present_shown": len(present_idx),
+    }
+
+
+def _plainly(value: Any) -> Any:
+    """A cell as JSON, without pretending a numpy scalar is a Python one."""
+    if value is None:
+        return None
+    if isinstance(value, (bool, int, float, str)):
+        return value
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            return item()
+        except (ValueError, TypeError):                    # pragma: no cover
+            pass
+    return str(value)
 
 
 def _kind_of(series: pd.Series) -> str:
@@ -95,7 +176,8 @@ def _binary_options(column: str, n_missing: int, n_rows: int) -> List[Dict[str, 
             (f"Missingness in `{column}` was treated as informative: a binary "
              f"indicator was added and the value itself imputed within each "
              f"training fold."),
-            TIMING_IN_PIPELINE,
+            # The sentence above says both halves; the timing now does too.
+            TIMING_MIXED,
             (f"Adds one column. The model can learn from *whether* {column} was "
              f"recorded, which is the right reading when the absence has a cause "
              f"— not asked, not applicable, refused."),
@@ -172,7 +254,10 @@ def _numeric_options(column: str, series: pd.Series, n_missing: int) -> List[Dic
             "Impute, and record that it was missing",
             (f"Missing values in `{column}` were imputed with the training-fold "
              f"median and a missingness indicator was retained."),
-            TIMING_IN_PIPELINE,
+            # Compound, like the binary `indicator` above and for the same
+            # reason: the indicator is row-local and lands now, the median is
+            # fitted in the fold.
+            TIMING_MIXED,
             (f"Adds one column and keeps the fact that {n_missing:,} value(s) "
              "were absent available to the model."),
         ),
@@ -189,7 +274,12 @@ def _categorical_options(column: str, series: pd.Series, n_missing: int) -> List
             "Make Missing its own level",
             (f"Missing values in `{column}` were encoded as an explicit "
              f"`Missing` category."),
-            TIMING_IN_PIPELINE,
+            # ROW-LOCAL, and this said `in_pipeline` (`DRIVE-008`). A blank
+            # becoming the literal level `Missing` consults nothing but that
+            # row's own cell, and `project.route_missingness` has always
+            # executed it immediately — so the card was stating a timing the
+            # server contradicted, on the one clause that is about timing.
+            TIMING_IMMEDIATE,
             ("Keeps the absence as a fact about the participant, and lets the "
              "model estimate whether it carries signal. Adds one level to the "
              "encoding."),
@@ -273,6 +363,16 @@ def missingness_cards(df: pd.DataFrame,
             "question": question,
             "because": because,
             "options": options,
+            # THE ACTUAL ROWS (`DRIVE-008`). The panel stated a count, a share
+            # and what each option would write into the transcript, and showed
+            # none of the data — so a user was asked what a blank in this
+            # column MEANS while looking at no blanks.
+            #
+            # Blank rows and present rows together, deliberately. A snippet of
+            # only the blanks answers "how many" a second time; the question is
+            # what distinguishes the rows where it is missing from the rows
+            # where it is not, and that needs both.
+            "snippet": _snippet(df, str(col), series),
             # Named here so the deferral affordance can state its destination
             # rather than saying "later" (GUIDED-008).
             "target_step": "preprocess",

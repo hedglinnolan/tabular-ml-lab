@@ -746,6 +746,20 @@
   .rowacts{display:flex;align-items:center;gap:9px;margin-top:7px}
   .copied{font-family:var(--sans);font-size:11px;color:var(--ok)}
 
+  /* ——— the missingness card's own rows (DRIVE-008) ———
+     Closed by default: the card's job is the question, and the data is what
+     you open when the question needs it. */
+  .snip{margin:0 0 11px}
+  .snip>summary{font-family:var(--sans);font-size:11.5px;font-weight:600;
+                color:var(--muted);cursor:pointer;list-style:none}
+  .snip>summary::-webkit-details-marker{display:none}
+  .snip>summary::before{content:"▸ ";font-family:var(--mono);font-size:9px;
+                        color:var(--faint)}
+  .snip[open]>summary::before{content:"▾ "}
+  .snip>summary:hover{color:var(--accent-ink)}
+  .snip .mini{margin-top:7px}
+  .snip-blank{background:var(--warn-tint)}
+
   /* A hover that states an effect is a SENTENCE, and a sentence that cannot
      wrap runs off the edge of the screen. The tips have carried sentences
      since DRIVE-003; the rule assuming a word was never revisited, and
@@ -2500,6 +2514,41 @@
       .catch(function(){ box.innerHTML = ""; });
   }
 
+  /* ═════════ THE ACTUAL ROWS ═════════ `DRIVE-008`.
+     The panel stated a count, a share, and the sentence each option would
+     write, and showed none of the data — so a user was asked what a blank in
+     this column MEANS while looking at no blanks.
+
+     Blank rows and present rows together, deliberately: a snippet of only the
+     blanks answers "how many" a second time, and the question is what
+     distinguishes the rows where it is missing from the rows where it is not.
+     Neighboring columns for the same reason — a column of the word "missing"
+     answers nothing. */
+  function missSnippet(c){
+    var s = c.snippet;
+    if (!s || !s.rows || !s.rows.length) return "";
+    var cols = s.neighbors || [];
+    var h = '<details class="snip"><summary>Show me these rows</summary>' +
+            '<table class="mini"><thead><tr><th>row</th><th>' + esc(c.column) +
+            "</th>" + cols.map(function(n){ return "<th>" + esc(n) + "</th>"; })
+              .join("") + "</tr></thead><tbody>";
+    s.rows.forEach(function(r){
+      h += '<tr class="' + (r.missing ? "snip-blank" : "") + '"><td>' +
+           esc(r.row) + "</td>" +
+           (r.missing
+             ? '<td class="bad">— missing —</td>'
+             : '<td class="v">' + esc(r.value) + "</td>") +
+           cols.map(function(n){
+             var v = r.cells[n];
+             return '<td class="v">' + (v === null || v === undefined
+                                         ? "—" : esc(v)) + "</td>";
+           }).join("") + "</tr>";
+    });
+    return h + "</tbody></table><p class=\"pv-note\">" +
+           s.n_blank_shown + " row(s) where it is blank and " +
+           s.n_present_shown + " where it is not, from your table.</p></details>";
+  }
+
   function missCard(c){
     var h = '<article class="miss" id="miss-' + esc(c.column) + '">';
     h += "<h3>" + esc(c.question).replace(/`([^`]+)`/g, function(_, m){
@@ -2511,9 +2560,11 @@
          esc(c.n_rows.toLocaleString()) + " missing</span>" +
          '<span class="chip">' + esc(pct(c.share)) + "</span></div>";
     h += '<p class="because">' + esc(c.because) + "</p>";
+    h += missSnippet(c);
     h += '<div id="misshist-' + esc(c.column) + '"></div>';
     h += '<div class="opts">';
     (c.options || []).forEach(function(o){
+      MISS_TIMING[o.key] = o.timing;
       h += '<div class="optrow' + (o.recommended ? " rec" : "") + '">' +
            '<div class="otop"><span class="oname">' + esc(o.label) + "</span>" +
            '<span class="when">' + esc(o.timing_prose) + "</span>" +
@@ -2523,7 +2574,14 @@
            '<p class="conseq">' + esc(o.consequence) + "</p>" +
            '<div class="oacts">' +
            '<button class="cbtn" data-miss-choose="' + esc(c.column) + '" data-miss-opt="' +
-           esc(o.key) + '" type="button">Record this</button>' +
+           esc(o.key) + '" data-miss-mech="' + esc(c.mechanism || "not_sure") + '" ' +
+           'data-tip="' + esc(o.timing === "immediate"
+             ? "Rewrites this column in the working table now, and it can be undone."
+             : "Records this now and fits it inside each training fold, so the "
+               + "held-out rows never inform the fill.") + '" ' +
+           'type="button">' +
+           (o.timing === "immediate" ? "Apply this now" : "Record this") +
+           "</button>" +
            (o.key.indexOf("impute_m") === 0
              ? '<button class="f-act" data-miss-preview="' + esc(c.column) +
                '" data-miss-opt="' + esc(o.key) + '" type="button">Before / after</button>'
@@ -3014,12 +3072,25 @@
       return;
     }
 
-    /* ── missingness: recorded now, executed inside the pipeline ── */
+    /* ── missingness: ROUTED, and executed where clause §06 permits ──
+       `DRIVE-008`. This used to post a `note` — a free-text sentence with the
+       column and the option in its payload and no routing behind it. The panel
+       showed what would change and changed nothing, and the transcript carried
+       a sentence describing work that never happened, which is worse than the
+       button not existing.
+
+       `route_missingness` is the real path: it declares the decision, executes
+       the row-local strategies on the working table now, and leaves the
+       stateful ones to the training folds — with the timing on the card. */
     if (t.hasAttribute("data-miss-choose")){
-      decide("note", "missing__" + t.dataset.missChoose,
-             { text: missSentence(t.dataset.missChoose, t.dataset.missOpt),
-               option: t.dataset.missOpt, column: t.dataset.missChoose },
-             "Recording that decision…");
+      var mcol = t.dataset.missChoose;
+      decide("route_missingness", mcol,
+             { column: mcol,
+               card_option: t.dataset.missOpt,
+               mechanism: t.dataset.missMech || "not_sure" },
+             missTiming(t.dataset.missOpt) === "immediate"
+               ? "Applying that to the working table…"
+               : "Recording that, to run inside each training fold…");
       return;
     }
     if (t.hasAttribute("data-miss-preview")){
@@ -3082,6 +3153,14 @@
   /* The sentence a missingness choice writes into the transcript. Read off the
      card the server rendered rather than composed here — the decision sentence
      and the option the user pressed must be the same string. */
+  /* The timing the SERVER put on this option, held per card so the job label
+     can say "applying" or "recording" truthfully. Read from the card payload
+     rather than inferred from the option key: a page that decided for itself
+     which operations are row-local would hold a second copy of clause §06, and
+     the copy is what drifts. */
+  var MISS_TIMING = {};
+  function missTiming(optKey){ return MISS_TIMING[optKey] || "in_pipeline"; }
+
   function missSentence(column, optKey){
     var row = document.querySelector('#miss-' + CSS.escape(column) +
                                      ' [data-miss-choose="' + column.replace(/"/g, '\\"') +

@@ -655,6 +655,19 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         col = decision.payload.get("column") or decision.subject
         mech = str(decision.payload.get("mechanism") or "")
         strat = str(decision.payload.get("strategy") or "")
+        # `DRIVE-008`. The missingness panel names its options in the CARD's
+        # vocabulary (`explicit_missing`, `indicator_and_impute`) and the record
+        # keeps them in the declaration's (`explicit_category`, `indicator`).
+        # The panel used to bridge that by posting a free-text `note`, so
+        # pressing "Record this" wrote a sentence and routed nothing. The join
+        # is `turbotab/missingness.CARD_STRATEGY`, and an option with no
+        # declaration behind it is refused rather than defaulted.
+        if decision.payload.get("card_option"):
+            try:
+                strat = _miss.strategy_for_card_option(
+                    str(decision.payload["card_option"]))
+            except _miss.MissingnessRefusal as exc:
+                raise HTTPException(400, str(exc)) from exc
         # The CONSEQUENCE is surfaced BEFORE the refusal is raised, so the
         # interface gets the interruption with both exits attached rather than
         # a 400 it has to interpret. §09: resolves or is attested.

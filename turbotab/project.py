@@ -1135,11 +1135,11 @@ class AnalysisProject:
             out = self.df.copy()
             col = out[column]
             if isinstance(col.dtype, pd.CategoricalDtype):
-                col = col.cat.add_categories(["Missing"])
-            out[column] = col.fillna("Missing")
+                col = col.cat.add_categories([_miss.MISSING_LEVEL])
+            out[column] = col.fillna(_miss.MISSING_LEVEL)
             self.df = out
         elif strategy == _miss.INDICATOR:
-            name = f"{column}_was_missing"
+            name = _miss.indicator_column(column)
             if name in self.df.columns:
                 raise ProjectError(
                     f"'{name}' already exists in this table. Remove it first, "
