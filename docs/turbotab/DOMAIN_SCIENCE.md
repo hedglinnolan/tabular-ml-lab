@@ -264,6 +264,118 @@ because the packs wrote it already. It flows into the existing finding and skip 
 The ratio is the reassuring part: **seven primitives, and everything else is content.** Breadth does
 not eat the design language, which was the whole bet of `DOMAIN_PACKS.md` §02.
 
+### The correction that has to be attached to this section
+
+**The three bins above sort by design cost. They do not sort by value, and reading them as though they
+did inverts the truth.** The product owner caught this and the correction belongs here rather than in a
+chat log:
+
+> *"That research also revealed real content we can introduce into the app with the correct routing. It
+> is more than just a series of documents that dictate the meta structure of the app, it is also a well
+> of knowledge from real research we can leverage in all facets of the app."*
+
+The seven primitives are scaffolding. **A researcher does not pay for scaffolding.** They pay for the
+app knowing that a bimodal glucose column at a ratio of exactly 18.0 is a unit collision, that BMI must
+equal FMI + FFMI, that their two recalls cannot yield a prevalence of inadequacy, and that the 812
+blood pressures above 140 mmHg are the sickest patients rather than outliers. **That is the content
+bin, and it is the product.** The primitives exist so the content can be delivered without lying.
+
+So the bins are a *sequencing* aid and nothing more. Nothing in §05 licenses shipping the scaffolding
+and deferring the science. **A pack with badges and no content is a worse product than the app we have
+today**, because it has added ceremony without adding knowledge.
+
+---
+
+## 03b · Where the content lands — the routing inventory
+
+Written as an inventory because content that lives only in a research file is content that will be
+forgotten, and this repository has already learned that lesson once: *a record that points at
+ephemeral storage will eventually lie, and it lies toward "the work is gone."* A research file that no
+builder prompt ever cites is the same failure with a different address.
+
+**This is a standing instruction.** Every builder prompt that touches a pack surface must name the
+specific findings it is drawing from these four files, and no loop should consist only of primitives.
+
+### Import doctor — detectors that do not exist today
+
+| Detector | Source | Why it earns its place |
+|---|---|---|
+| **Atwater reconstruction** — `4P + 4C + 9F + 7A` vs declared energy, with the ratio table (4.18 → kJ; drift with total energy → mixed units across rows) | nutrition | Nothing else in the app can infer an energy unit, and a unit error there propagates into every downstream number invisibly |
+| **BMI = FMI + FFMI** identity; recompute BMI from wt/ht² and compare to declared (±0.2) | nutrition | A free data-quality check on a derived column |
+| **Bimodal analyte at a known conversion ratio** — glucose ×18.0, creatinine ×88.4, cholesterol ×38.67, height in vs cm, temp °F vs °C | clinical | A mixed-unit predictor is not a noisy predictor; it is a variable whose meaning changes between rows |
+| **Sentinel codes in a bounded block** — a `9` in a 1–5 item, `77/88/99`, `-8/-9`, SAS special missing | survey | The highest-yield check in the survey pack. Detect and ask; never recode |
+| **Feature-ID grammars** — `M123T456`, `784.5876@8.21`, `ENSG…`, `PC 34:1`, UniProt | metabolomics, genomics | Drives orientation ID-grammar-first, which is the version that does not get a targeted panel backwards |
+| **NHANES DXA 5-implicate structure** | nutrition | Unhandled, the naive N is inflated 5× and standard errors are far too small |
+| **Repeated-digit / default-value mass** at 120/80, 98.6, 0 | clinical | A documented EHR artifact — value preference and manual entry, not measurement |
+| **Temporal implausibility** — adult height moving >5 cm between visits; weight ±30% in <30 days; labs timestamped after death | clinical | Kahn et al.'s framework distinguishes atemporal from temporal plausibility; we only do the first |
+| **Already-transformed data** — negatives present, or max <40 with low dynamic range | metabolomics | A second log transform is a silent catastrophe |
+| **Zero vs NA semantics differ by vendor** — XCMS fills, MZmine writes 0, MaxQuant writes 0 for "not quantified" | metabolomics | Defaulting wrong corrupts every subsequent step |
+
+### Coaching — sentences that correct what the app currently implies
+
+The line that matters most, because it answers the product owner's own drive observation that a
+diastolic pressure near zero is an entry error rather than an outlier:
+
+> *"4 systolic values are below 30 mmHg — physiologically impossible in a living outpatient, almost
+> certainly entry errors. **This is different from the 812 values above 140 mmHg, which are abnormal but
+> real and must be kept:** excluding abnormal-but-possible values would remove the sickest patients and
+> bias the model toward the healthy."*
+
+**Physiologically impossible and statistically extreme are different categories, and generic outlier
+rules (±3 SD, IQR fences) cannot tell them apart.** That is a correction to behavior we ship.
+
+Others in the same class: *reference intervals are not disease thresholds* (~5% of healthy people fall
+outside by construction) · *reliability is a property of scores in a sample, not of an instrument —
+"the scale has been validated" is not a statement that can be true* · *nutrients cluster by food source,
+not by biology, so an association with any nutrient in a cluster is an association with the food
+source* · *these are model coefficients, not risk factors* · *in EHR data, missingness is a fact about
+the patient's clinical trajectory, not a defect in the measurement.*
+
+### EDA and figures — the signature set
+
+The shrinkage plot · missingness-vs-outcome forest · missingness-over-calendar-time · calibration with
+its risk-distribution rug · decision curve · diverging stacked bar · FMI/FFMI with BMI iso-lines ·
+intake-vs-DRI with the EAR region shaded — **and the refusal to compute a prevalence of inadequacy from
+an AI, or from the RDA, or from anything that is not a usual-intake distribution.** A refusal with a
+stated reason is content too, and it is the kind a reviewer notices.
+
+### Preprocessing and modeling — content that changes defaults
+
+Energy adjustment's five models with their estimands named · the modified 80% rule and why the plain one
+deletes the finding you are looking for · QRILC vs half-minimum routed by the missingness-vs-intensity
+plot · PQN over TIC for biofluids, with TIC's named failure mode · **calibration ranked above AUC** ·
+splines over dichotomization · Riley sample size over EPV≥10, counting candidate parameters including
+the ones later dropped.
+
+### The anti-pattern registries are an audit of the engine we already have
+
+Across the four files there are on the order of **150 named anti-patterns**, each written as a specific,
+checkable behavior. They were commissioned as content for the packs. They are also, unmodified, a
+conformance suite against the current codebase — and the first pass already found a real defect.
+
+**Worked example, found on the first look.** `ml/dataset_profile.py:429` advises *"Use class weights in
+training"* and *"Consider SMOTE or other resampling."* `ml/eda_recommender.py:419` repeats it.
+`ml/narrative_engine.py:1065` writes it **into the generated manuscript**: *"To address class imbalance,
+class_weight='balanced' was applied…"*
+
+The clinical pack's flagship finding is that this is wrong for risk prediction. Van den Goorbergh, van
+Smeden, Timmerman & Van Calster (*JAMIA* 2022;29:1525) showed random undersampling, random oversampling
+and SMOTE all produce **strong overestimation of minority-class probability without improving
+discrimination**, and that any apparent sensitivity gain is reproducible by simply shifting the
+threshold. Replicated for machine-learning methods by Carriero et al. (*Stat Med* 2025). Rare outcomes
+are a real problem, but the problem is **small-sample overfitting, not imbalance**, and the remedy is
+penalization and adequate sample size.
+
+So the app currently recommends a step that damages the property clinical prediction cares about most,
+and then asserts it in the artifact that is the product. **That is not a future feature request; it is a
+defect the research found in shipped code.** Under the governing rule it is the serious kind — the app
+asserting something false — and it should be filed as such rather than as a pack enhancement.
+
+The generalizable move: **run each pack's anti-pattern registry against the engine before building the
+pack.** The registries are cheap to check, they are already written, and they measure the app against
+the literature rather than against its own description of itself — which is precisely the record-vs-draw
+distinction the audit work has been circling.
+
 ---
 
 ## 04 · The honest risks
@@ -316,3 +428,9 @@ Ordered by ratio of what it changes to what it costs, not by domain.
 
 The sensitivity fork and the generalized leakage detector sit outside this order deliberately: both are
 engine-level, both are independent of any pack, and both can land at any point.
+
+**And one constraint on the whole sequence, from §03b.** No loop may consist only of primitives. Each
+one carries content from the research files alongside its scaffolding, and each builder prompt names
+the specific findings it is drawing on. The anti-pattern audit runs ahead of the pack it belongs to,
+because a defect the research already found in shipped code outranks a pack feature that has not been
+built yet.
