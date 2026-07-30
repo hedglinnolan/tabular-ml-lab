@@ -172,3 +172,62 @@ class TestClusterStructureOnNoise:
         from utils.insight_ledger import get_ledger
         ids = {i.id for i in get_ledger().insights}
         assert "eda_kmeans_structure" not in ids
+
+
+class TestVifResolvesTheCollinearityInsight:
+    """Running VIF must close the collinearity clusters the page detected.
+
+    The Deep Dive teardown removed _resolve_insights_from_eda_result and
+    replaced it with a plain upsert of any insights an action returns. Upsert
+    is not resolve, and multicollinearity_vif returns no insights, so the
+    eda_corr_cluster_* warning stayed open after the user ran the very
+    diagnostic that answers it — and reached the manuscript as a limitation.
+    """
+
+    @staticmethod
+    def _collinear(n=300, seed=7):
+        rng = np.random.default_rng(seed)
+        bmi = rng.normal(27, 5, n)
+        return pd.DataFrame({
+            "bmi": bmi,
+            "weight": bmi * 2.9 + rng.normal(0, 0.01, n),   # r ~ 1.00
+            "waist": bmi * 2.4 + rng.normal(0, 0.01, n),
+            "age": rng.normal(50, 12, n),
+            "glucose": rng.normal(100, 15, n),
+        })
+
+    def _cluster_insights(self, at):
+        return [
+            (i.id, i.resolved)
+            for i in at.session_state["insight_ledger"].insights
+            if i.id.startswith("eda_corr_cluster_")
+        ]
+
+    def test_vif_run_resolves_it(self):
+        at = _run_eda(self._collinear(), timeout=180)
+        _assert_clean(at, "EDA with collinear features")
+
+        before = self._cluster_insights(at)
+        assert before, "no collinearity cluster insight was detected to begin with"
+        assert all(not resolved for _, resolved in before)
+
+        vif = [b for b in at.button if b.key == "run_multicollinearity_vif"]
+        assert vif, "VIF button not found"
+        vif[0].click().run()
+        _assert_clean(at, "after running VIF")
+
+        after = self._cluster_insights(at)
+        assert after and all(resolved for _, resolved in after), (
+            f"VIF did not resolve the collinearity insight: {after}"
+        )
+
+    def test_resolution_records_what_answered_it(self):
+        at = _run_eda(self._collinear(), timeout=180)
+        next(b for b in at.button if b.key == "run_multicollinearity_vif").click().run()
+        resolved = [
+            i for i in at.session_state["insight_ledger"].insights
+            if i.id.startswith("eda_corr_cluster_") and i.resolved
+        ]
+        assert resolved
+        assert "VIF" in (resolved[0].resolved_by or ""), resolved[0].resolved_by
+        assert resolved[0].resolved_on_page == "02_EDA"

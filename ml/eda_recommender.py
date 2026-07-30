@@ -533,30 +533,14 @@ def recommend_eda(signals: DatasetSignals) -> List[EDARecommendation]:
                 run_action="outlier_influence"
             ))
     
-    # R10: Quick probe baselines (always)
-    if signals.target_name:
-        recommendations.append(EDARecommendation(
-            id="r10_baselines",
-            title="Quick Baseline Models",
-            priority=6,
-            cost="low",
-            why=[
-                "Establish performance floor before complex modeling",
-                "Fast sanity check on data quality"
-            ],
-            what_you_learn=[
-                "Baseline performance (constant predictor, simple GLM, shallow RF)",
-                "Whether data has predictive signal",
-                "Expected performance range"
-            ],
-            model_implications=[
-                "If baselines perform well → data is easy, simple models may suffice",
-                "If baselines fail → need complex models or feature engineering",
-                "Baseline gap shows potential improvement ceiling"
-            ],
-            run_action="quick_probe_baselines"
-        ))
-    
+    # R10 (Quick Baseline Models) is deliberately absent. Its action split the
+    # full frame with a bare train_test_split and never consulted the test
+    # lockbox, so its "held-out" scores were fit and scored partly on sealed
+    # rows. The evidence probe on the Preprocess page answers the same question
+    # on training rows only, with a permuted-target null and a learning-curve
+    # slope, and the Baselines tab on Train & Compare scores real baselines
+    # through each model's own fitted pipeline with bootstrap intervals.
+
     # Sort by priority
     recommendations.sort(key=lambda x: x.priority)
     

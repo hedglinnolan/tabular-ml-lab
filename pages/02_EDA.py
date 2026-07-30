@@ -1481,14 +1481,25 @@ with _eda_tabs[2]:
                                     key="fig_eda_kmeans_scatter",
                                 )
                                 _var2 = sum(_proj["explained"][:2])
-                                st.caption(
-                                    f"These two components carry {_var2:.0%} of the variance. "
-                                    + ("At that level the picture is a rough sketch — clusters that look "
-                                       "merged here may be separated in directions this projection drops."
-                                       if _var2 < 0.40 else
-                                       "The projection was chosen without reference to the cluster labels, "
-                                       "so separation you see here is not manufactured by the plot.")
-                                )
+                                if not np.isfinite(_var2):
+                                    # A zero-variance matrix (every feature
+                                    # categorical with the weight slider at 0)
+                                    # makes PCA's ratio NaN. Left alone it
+                                    # printed "nan%" and then, since nan < 0.40
+                                    # is False, the reassuring branch.
+                                    st.caption(
+                                        "This matrix has no variance left to project — every column is "
+                                        "constant once scaled. Add a feature, or raise the categorical weight."
+                                    )
+                                else:
+                                    st.caption(
+                                        f"These two components carry {_var2:.0%} of the variance. "
+                                        + ("At that level the picture is a rough sketch — clusters that look "
+                                           "merged here may be separated in directions this projection drops."
+                                           if _var2 < 0.40 else
+                                           "The projection was chosen without reference to the cluster labels, "
+                                           "so separation you see here is not manufactured by the plot.")
+                                    )
 
                         with _km_tabs[1]:
                             st.plotly_chart(
@@ -1508,7 +1519,7 @@ with _eda_tabs[2]:
 
                         with _km_tabs[2]:
                             _profile = _clus.cluster_profile(
-                                df, _labels, _prep["row_index"], _prep["numeric_cols"],
+                                df, _labels, _prep["row_pos"], _prep["numeric_cols"],
                                 data_id=_data_fingerprint,
                             )
                             if "error" in _profile:
@@ -1532,7 +1543,7 @@ with _eda_tabs[2]:
                             # matrix — a column dropped during preparation
                             # cannot be what drove the split.
                             _dominance = _clus.feature_dominance(
-                                df, _labels, _prep["row_index"],
+                                df, _labels, _prep["row_pos"],
                                 _prep["numeric_cols"] + _prep["categorical_cols"],
                                 data_id=_data_fingerprint,
                             )
@@ -1559,7 +1570,7 @@ with _eda_tabs[2]:
                                 st.caption("No target selected, so there is nothing held out to test against.")
                             else:
                                 _assoc = _clus.target_association(
-                                    df, _labels, _prep["row_index"], target_col,
+                                    df, _labels, _prep["row_pos"], target_col,
                                     task_type_final or "regression", data_id=_data_fingerprint,
                                 )
                                 if "error" in _assoc:
@@ -1572,10 +1583,20 @@ with _eda_tabs[2]:
                                     )
                                     table(_assoc["table"].round(3), key="eda_kmeans_target")
                                     _eff = _assoc["effect"]
+                                    # The threshold comes from the result, not
+                                    # from here: Cramer's V and eta-squared are
+                                    # different scales, and 0.06 on V is below
+                                    # "small" — it called pure noise worth
+                                    # following up on most random draws.
+                                    _eff_thr = _assoc.get("effect_threshold", 0.06)
+                                    _eff_real = (
+                                        np.isfinite(_eff) and _eff >= _eff_thr
+                                        and _assoc["p_value"] < 0.05
+                                    )
                                     st.caption(
                                         f"{_assoc['effect_name']} = {_eff:.3f}, p = {_assoc['p_value']:.2g}. "
                                         + ("The clusters differ on the target by an amount worth following up."
-                                           if np.isfinite(_eff) and _eff >= 0.06 else
+                                           if _eff_real else
                                            "The effect is small — the clusters barely distinguish the outcome.")
                                     )
                                     if _assoc["kind"] == "regression":
@@ -1593,17 +1614,25 @@ with _eda_tabs[2]:
                                         st.plotly_chart(_fig_tgt, key="fig_eda_kmeans_target")
 
                         # -- Record the run, and the finding if there is one ----
-                        log_methodology(step="EDA", action="Ran k-means cluster exploration", details={
-                            "k": int(_k_choice),
-                            "n_features": len(km_feats),
-                            "n_rows_clustered": _prep["n_rows"],
-                            "scaling": _km_config[1],
-                            "silhouette": round(_fit["silhouette"], 3),
-                            "shuffled_baseline": round(
-                                next(r["null_silhouette"] for r in _sweep["table"] if r["k"] == _k_choice), 3
-                            ),
-                            "seed_stability_ari": round(_stability.get("mean_ari", float("nan")), 3),
-                        })
+                        # Streamlit re-executes the whole script on any widget
+                        # touch anywhere on the page, so this block re-renders
+                        # constantly. Log once per distinct (config, k): the
+                        # ledger de-duplicates by id, but methodology_log does
+                        # not, and it is what the manuscript methods read.
+                        _km_logged = (_km_config, int(_k_choice))
+                        if st.session_state.get("eda_km_logged") != _km_logged:
+                            st.session_state["eda_km_logged"] = _km_logged
+                            log_methodology(step="EDA", action="Ran k-means cluster exploration", details={
+                                "k": int(_k_choice),
+                                "n_features": len(km_feats),
+                                "n_rows_clustered": _prep["n_rows"],
+                                "scaling": _km_config[1],
+                                "silhouette": round(_fit["silhouette"], 3),
+                                "shuffled_baseline": round(
+                                    next(r["null_silhouette"] for r in _sweep["table"] if r["k"] == _k_choice), 3
+                                ),
+                                "seed_stability_ari": round(_stability.get("mean_ari", float("nan")), 3),
+                            })
 
                         if (
                             _rec_k == _k_choice
@@ -2003,6 +2032,29 @@ def _run_and_show(action_id: str, title: str, run_action: str):
                             ledger.upsert(_insight)
                         except Exception:
                             pass  # A malformed insight must not lose the analysis.
+                    # Running VIF answers the collinearity clusters the page
+                    # detected from pairwise correlation, so it closes them.
+                    # Nothing else in the app resolves eda_corr_cluster_*, and
+                    # left open they reach the manuscript as a limitation the
+                    # user has in fact already investigated.
+                    if action_id == "multicollinearity_vif":
+                        _vif_summary = (result.get("findings") or [title])[0]
+                        for _ins in list(ledger.insights):
+                            if _ins.resolved or not _ins.id.startswith("eda_corr_cluster_"):
+                                continue
+                            try:
+                                ledger.resolve(
+                                    _ins.id,
+                                    resolved_by=f"{title}: {_vif_summary}",
+                                    resolved_on_page="02_EDA",
+                                    resolution_details={
+                                        "action_type": "diagnostic_analysis",
+                                        "method": action_id,
+                                        "stats": result.get("stats", {}),
+                                    },
+                                )
+                            except Exception:
+                                pass
                     try:
                         from utils.workflow_provenance import get_provenance
                         get_provenance().record_eda_analysis(title)

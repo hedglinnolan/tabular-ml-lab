@@ -91,7 +91,7 @@ class TestFindsStructureThatIsThere:
         prep = _prep(df)
         fit = clus.fit_clusters(prep["X"], 3)
         profile = clus.cluster_profile(
-            df, fit["labels"], prep["row_index"], prep["numeric_cols"], data_id=1
+            df, fit["labels"], prep["row_pos"], prep["numeric_cols"], data_id=1
         )
         assert profile["ranked_features"][-1] == "noise"
 
@@ -228,7 +228,7 @@ class TestPreparation:
         assert prep["sampled"] is True
         assert prep["n_rows"] == 200
         assert prep["n_source_rows"] == 900
-        assert len(prep["row_index"]) == 200
+        assert len(prep["row_pos"]) == 200
 
     def test_errors_instead_of_raising_when_nothing_usable_survives(self):
         df = pd.DataFrame({"constant": [1.0] * 50, "also": [2.0] * 50})
@@ -261,7 +261,7 @@ class TestDominance:
         })
         prep = _prep(df)
         fit = clus.fit_clusters(prep["X"], 2)
-        dom = clus.feature_dominance(df, fit["labels"], prep["row_index"], list(df.columns), data_id=1)
+        dom = clus.feature_dominance(df, fit["labels"], prep["row_pos"], list(df.columns), data_id=1)
         assert dom["dominant"] == "marker"
 
     def test_does_not_flag_genuine_multivariate_structure(self):
@@ -269,7 +269,7 @@ class TestDominance:
         df, _ = _blobs()
         prep = _prep(df)
         fit = clus.fit_clusters(prep["X"], 3)
-        dom = clus.feature_dominance(df, fit["labels"], prep["row_index"], list(df.columns), data_id=2)
+        dom = clus.feature_dominance(df, fit["labels"], prep["row_pos"], list(df.columns), data_id=2)
         assert dom["dominant"] is None
 
     def test_ignores_near_unique_categorical_columns(self):
@@ -283,7 +283,7 @@ class TestDominance:
         })
         prep = _prep(df, features=["a", "b"])
         fit = clus.fit_clusters(prep["X"], 3)
-        dom = clus.feature_dominance(df, fit["labels"], prep["row_index"], list(df.columns), data_id=3)
+        dom = clus.feature_dominance(df, fit["labels"], prep["row_pos"], list(df.columns), data_id=3)
         assert "row_id" not in [r["Feature"] for r in dom["table"]]
 
 
@@ -298,7 +298,7 @@ class TestTargetAssociation:
         prep = _prep(df, features=["ldl", "hdl", "crp", "noise"])
         fit = clus.fit_clusters(prep["X"], 3)
         assoc = clus.target_association(
-            df, fit["labels"], prep["row_index"], "outcome", "regression", data_id=1
+            df, fit["labels"], prep["row_pos"], "outcome", "regression", data_id=1
         )
         assert assoc["kind"] == "regression"
         assert assoc["effect"] > 0.5
@@ -311,7 +311,7 @@ class TestTargetAssociation:
         prep = _prep(df, features=["ldl", "hdl", "crp", "noise"])
         fit = clus.fit_clusters(prep["X"], 3)
         assoc = clus.target_association(
-            df, fit["labels"], prep["row_index"], "outcome", "regression", data_id=2
+            df, fit["labels"], prep["row_pos"], "outcome", "regression", data_id=2
         )
         assert assoc["effect"] < 0.05
 
@@ -323,7 +323,7 @@ class TestTargetAssociation:
         prep = _prep(df, features=["ldl", "hdl", "crp"])
         fit = clus.fit_clusters(prep["X"], 3)
         assoc = clus.target_association(
-            df, fit["labels"], prep["row_index"], "cls", "classification", data_id=3
+            df, fit["labels"], prep["row_pos"], "cls", "classification", data_id=3
         )
         assert assoc["kind"] == "classification"
         assert all(isinstance(c, str) for c in assoc["table"].columns)
@@ -340,7 +340,7 @@ class TestPlots:
         fit = clus.fit_clusters(prep["X"], 3)
         proj = clus.project_for_display(prep["X"])
         profile = clus.cluster_profile(
-            df, fit["labels"], prep["row_index"], prep["numeric_cols"], data_id=1
+            df, fit["labels"], prep["row_pos"], prep["numeric_cols"], data_id=1
         )
         assert clus.plot_k_sweep(sweep) is not None
         assert clus.plot_cluster_scatter(proj["coords"], fit["labels"], proj["explained"]) is not None
@@ -360,3 +360,150 @@ class TestPlots:
         assert clus.silhouette_reading(0.3) == "weak, overlapping structure"
         assert clus.silhouette_reading(0.05) == "no substantial structure"
         assert clus.silhouette_reading(float("nan")) == "not computable"
+
+
+# ── Regressions found by adversarial review ──────────────────────────
+
+class TestPrefixCollidingCategoricalNames:
+    """A column name that is a prefix of another must not merge their spans.
+
+    Widths were once recovered by counting encoded names starting with the
+    column name plus an underscore, so "site" swallowed "site_x". The two
+    variables then moved as one unit under the permutation null, which
+    preserved the exact relationship the null exists to destroy — and the
+    verdict flipped to "no structure" on perfectly separated data.
+    """
+
+    @staticmethod
+    def _colliding(n=600, seed=21):
+        rng = np.random.default_rng(seed)
+        site = rng.choice(["A", "B", "C"], n)
+        return pd.DataFrame({"site": site, "site_x": np.char.add("v", site)})
+
+    def test_spans_are_not_merged(self):
+        prep = _prep(self._colliding())
+        assert prep["encoded_levels"] == {"site": 3, "site_x": 3}
+        assert prep["variable_spans"] == ((0, 3), (3, 6))
+
+    def test_no_span_runs_past_the_matrix(self):
+        prep = _prep(self._colliding())
+        n_cols = prep["X"].shape[1]
+        for start, end in prep["variable_spans"]:
+            assert 0 <= start < end <= n_cols, (start, end, n_cols)
+
+    def test_structure_is_still_found(self):
+        """The bug's signature: a false negative on separable data."""
+        prep = _prep(self._colliding())
+        assert _sweep(prep, k_max=4)["recommended_k"] == 3
+
+    def test_spans_survive_binary_drop_and_rare_levels(self):
+        rng = np.random.default_rng(22)
+        n = 1200
+        df = pd.DataFrame({
+            "sex": rng.choice(["M", "F"], n),                                  # drop='if_binary'
+            "sex_at_birth": rng.choice(["M", "F"], n),                          # prefix collision
+            "site": rng.choice(["A", "B", "rare"], n, p=[0.6, 0.39, 0.01]),     # min_frequency
+        })
+        prep = _prep(df)
+        spans = prep["variable_spans"]
+        assert sum(e - s for s, e in spans) == prep["X"].shape[1]
+        for (_, prev_end), (start, _) in zip(spans, spans[1:]):
+            assert prev_end == start
+
+
+class TestDuplicateIndexLabels:
+    """pd.concat of two uploads yields duplicate labels; .loc then expands.
+
+    The consumers realigned with _df.loc[row_index], which cartesian-expands on
+    a duplicated label and handed back twice the rows of the label array. Every
+    downstream consumer raised, and the whole EDA page died.
+    """
+
+    @staticmethod
+    def _duplicated(n_half=150, seed=23):
+        rng = np.random.default_rng(seed)
+
+        def half():
+            grp = rng.integers(0, 3, n_half)
+            return pd.DataFrame(
+                {"a": grp * 5.0 + rng.normal(0, 1, n_half),
+                 "b": rng.normal(0, 1, n_half),
+                 "outcome": grp * 2.0 + rng.normal(0, 1, n_half)},
+                index=range(n_half),
+            )
+
+        return pd.concat([half(), half()])
+
+    def test_positions_are_returned_and_are_usable(self):
+        df = self._duplicated()
+        assert not df.index.is_unique
+        prep = _prep(df, features=["a", "b"])
+        assert len(prep["row_pos"]) == prep["X"].shape[0]
+        assert len(df.iloc[prep["row_pos"]]) == prep["X"].shape[0]
+
+    def test_every_consumer_survives(self):
+        df = self._duplicated()
+        prep = _prep(df, features=["a", "b"])
+        fit = clus.fit_clusters(prep["X"], 3)
+        for name, result in [
+            ("dominance", clus.feature_dominance(df, fit["labels"], prep["row_pos"], ["a", "b"], data_id=1)),
+            ("profile", clus.cluster_profile(df, fit["labels"], prep["row_pos"], ["a", "b"], data_id=2)),
+            ("target", clus.target_association(
+                df, fit["labels"], prep["row_pos"], "outcome", "regression", data_id=3)),
+        ]:
+            assert "error" not in result, f"{name} failed on a duplicated index: {result.get('error')}"
+
+    def test_matches_the_unique_index_answer(self):
+        """Duplicate labels must not change the result, only survive it."""
+        from sklearn.metrics import adjusted_rand_score
+        df = self._duplicated()
+        prep_dup = _prep(df, features=["a", "b"])
+        unique = df.reset_index(drop=True)
+        prep_uniq = _prep(unique, features=["a", "b"])
+        a = clus.fit_clusters(prep_dup["X"], 3)["labels"]
+        b = clus.fit_clusters(prep_uniq["X"], 3)["labels"]
+        assert adjusted_rand_score(a, b) == pytest.approx(1.0)
+
+
+class TestEffectThresholdTravelsWithTheMeasure:
+    """Cramer's V and eta-squared are different scales.
+
+    A single 0.06 cutoff was applied to both. On a variance share that is
+    Cohen's "medium"; on a correlation-like V it is below "small", so the one
+    comparison the page advertises as non-circular called noise a finding.
+    """
+
+    def test_classification_threshold_is_stricter_than_regression(self):
+        rng = np.random.default_rng(24)
+        df, truth = _blobs(n=400)
+        df["cls"] = (truth > 0).astype(int)
+        df["num"] = rng.normal(0, 1, len(df))
+        prep = _prep(df, features=["ldl", "hdl", "crp"])
+        fit = clus.fit_clusters(prep["X"], 3)
+
+        clf = clus.target_association(
+            df, fit["labels"], prep["row_pos"], "cls", "classification", data_id=1)
+        reg = clus.target_association(
+            df, fit["labels"], prep["row_pos"], "num", "regression", data_id=2)
+        assert clf["effect_threshold"] > reg["effect_threshold"]
+        assert reg["effect_threshold"] == pytest.approx(0.06)
+
+    def test_independent_labels_do_not_clear_the_bar(self):
+        """The reproduction: labels drawn independently of the target."""
+        rng = np.random.default_rng(25)
+        n = 800
+        df = pd.DataFrame({
+            "f1": rng.normal(0, 1, n), "f2": rng.normal(0, 1, n),
+            "cls": rng.integers(0, 2, n),
+        })
+        prep = _prep(df, features=["f1", "f2"])
+        promoted = 0
+        for k in range(2, 8):
+            fit = clus.fit_clusters(prep["X"], k)
+            assoc = clus.target_association(
+                df, fit["labels"], prep["row_pos"], "cls", "classification", data_id=k)
+            if "error" in assoc:
+                continue
+            if assoc["effect"] >= assoc["effect_threshold"] and assoc["p_value"] < 0.05:
+                promoted += 1
+        assert promoted == 0, "unrelated labels were promoted to a real target association"

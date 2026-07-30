@@ -152,10 +152,16 @@ def prepare_cluster_matrix(
 
     frame = _df[features]
 
-    # Row subsample first, so every downstream cost is bounded.
+    # Row subsample first, so every downstream cost is bounded. Positions are
+    # what travel onward, not index labels: a frame concatenated from two
+    # uploads carries duplicate labels, and .loc on a duplicated label
+    # cartesian-expands, so the realigned frame comes back longer than the
+    # label array it has to line up with.
+    row_pos = np.arange(len(frame))
     sampled = len(frame) > max_rows
     if sampled:
-        frame = frame.sample(max_rows, random_state=SEED)
+        row_pos = np.sort(np.random.default_rng(SEED).choice(len(frame), max_rows, replace=False))
+        frame = frame.iloc[row_pos]
     row_index = frame.index
 
     dropped: List[str] = []
@@ -237,9 +243,30 @@ def prepare_cluster_matrix(
             cat_mat = enc.fit_transform(cat)
             names = list(enc.get_feature_names_out(categorical_cols))
 
+        # Widths come from the encoder, never from name prefixes. Counting
+        # encoded names that start with the column name plus an underscore
+        # breaks the moment one column's name is a prefix of another's
+        # ("site" and "site_x", "drug" and "drug_class"): the first column's
+        # span swallows the second's block, and the permutation null then
+        # shuffles the two variables as one unit — preserving exactly the
+        # relationship between them that the null exists to destroy. It fails
+        # in the direction that hides structure, on precisely the categorical
+        # data the null was built for.
+        _infrequent = getattr(enc, "infrequent_categories_", None)
+        _drop_idx = getattr(enc, "drop_idx_", None)
+        widths: List[int] = []
+        for i, col in enumerate(categorical_cols):
+            width = len(enc.categories_[i])
+            if _infrequent is not None and _infrequent[i] is not None:
+                width = width - len(_infrequent[i]) + 1  # rare levels collapse to one
+            if _drop_idx is not None and _drop_idx[i] is not None:
+                width -= 1
+            widths.append(int(width))
+        if sum(widths) != cat_mat.shape[1]:
+            return {"error": "Categorical encoding produced an unexpected shape."}
+
         cursor = len(column_names)
-        for col in categorical_cols:
-            width = sum(1 for n in names if n.startswith(f"{col}_"))
+        for col, width in zip(categorical_cols, widths):
             encoded_levels[col] = width
             if width:
                 variable_spans.append((cursor, cursor + width))
@@ -264,7 +291,8 @@ def prepare_cluster_matrix(
     return {
         "X": X,
         "variable_spans": tuple(variable_spans),
-        "row_index": row_index,
+        "row_pos": row_pos,      # positional; safe under duplicate index labels
+        "row_index": row_index,  # labels, for display only
         "column_names": column_names,
         "numeric_cols": numeric_cols,
         "categorical_cols": categorical_cols,
@@ -461,7 +489,7 @@ def seed_stability(X: np.ndarray, k: int, n_seeds: int = 10, seed: int = SEED) -
 def feature_dominance(
     _df: pd.DataFrame,
     labels: np.ndarray,
-    _row_index: pd.Index,
+    _row_pos: np.ndarray,
     features: Sequence[str],
     top_n: int = 5,
     data_id: Any = None,
@@ -482,7 +510,7 @@ def feature_dominance(
     """
     from scipy import stats
 
-    aligned = _df.loc[_row_index]
+    aligned = _df.iloc[_row_pos]
     scored: List[Dict[str, Any]] = []
 
     for col in features:
@@ -559,7 +587,7 @@ def feature_dominance(
 def cluster_profile(
     _df: pd.DataFrame,
     labels: np.ndarray,
-    _row_index: pd.Index,
+    _row_pos: np.ndarray,
     numeric_features: Sequence[str],
     top_n: int = 15,
     data_id: Any = None,
@@ -574,7 +602,7 @@ def cluster_profile(
     if not cols:
         return {"error": "No numeric features available to profile."}
 
-    aligned = _df.loc[_row_index, cols].astype(float)
+    aligned = _df.iloc[_row_pos][cols].astype(float)
     means = aligned.mean()
     stds = aligned.std(ddof=0).replace(0, np.nan)
     z = (aligned - means) / stds
@@ -609,7 +637,7 @@ def cluster_profile(
 def target_association(
     _df: pd.DataFrame,
     labels: np.ndarray,
-    _row_index: pd.Index,
+    _row_pos: np.ndarray,
     target_col: str,
     task_type: str,
     data_id: Any = None,
@@ -626,7 +654,7 @@ def target_association(
     if target_col not in _df.columns:
         return {"error": "Target not available."}
 
-    y = _df.loc[_row_index, target_col]
+    y = _df.iloc[_row_pos][target_col]
     frame = pd.DataFrame({"cluster": labels, "target": y.values}).dropna()
     if len(frame) < 10 or frame["cluster"].nunique() < 2:
         return {"error": "Not enough complete rows to test against the target."}
@@ -656,6 +684,10 @@ def target_association(
             "p_value": float(p),
             "effect": cramers_v,
             "effect_name": "Cramer's V",
+            # Cramer's V is correlation-like and upward-biased at small cell
+            # counts; eta-squared is a variance share. One number cannot read
+            # both scales, so the threshold travels with the measure.
+            "effect_threshold": 0.15,
         }
 
     try:
@@ -677,6 +709,7 @@ def target_association(
         "p_value": float(p),
         "effect": float(eta_sq),
         "effect_name": "eta-squared",
+        "effect_threshold": 0.06,  # Cohen's "medium" for a variance share
     }
 
 
