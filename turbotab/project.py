@@ -386,6 +386,46 @@ class AnalysisProject:
         self.decisions.append(d)
         return d
 
+    def unskip(self, key: str, title: str = "") -> Decision:
+        """Reopen a question the Router settled from the file. `GUIDED-041`.
+
+        *"Ask me anyway"* used to record `set_task_type` with the ENGINE'S OWN
+        reading as the answer — so pressing the reopen affordance answered the
+        question on the user's behalf with the guess they were reaching past,
+        the skip vanished, and there was nothing left to reopen. A rendered skip
+        whose reopen affordance discards is worse than no affordance at all: it
+        teaches that opening a skip loses your place.
+
+        Decision B permits a skip only where it is **visible and reversible**,
+        and reversible means the question comes back **asked** — not answered
+        with the value being disputed.
+
+        It is a recorded decision rather than a flag, for the reason §09's
+        recorded-absence rule gives about everything else here: *"I did not
+        accept the engine's reading of this"* is a sentence the methods section
+        can carry, and a mutated flag is not. An `unskip` with no answer after
+        it is a question still open, which is exactly what it should look like.
+        """
+        key = str(key or "").strip()
+        if not key:
+            raise ProjectError("Reopening a question needs the question's key.")
+        return self.record(
+            kind="unskip", subject=key,
+            text=(f"The question '{title or key}' was reopened rather than "
+                  f"settled from the file; it is asked and not yet answered."),
+            payload={"key": key, "title": title})
+
+    def unskipped(self) -> List[str]:
+        """Question keys the user asked to be asked, folded out of the record.
+
+        Derived, never stored: the same fold the interview does for every other
+        disposition, so two readers of one record cannot drift. Answering a
+        reopened question does not clear this — the answer settles the question
+        on its own, and keeping the reopen in the record is what lets the
+        transcript say the user declined the engine's reading.
+        """
+        return [d.subject for d in self.decisions if d.kind == "unskip"]
+
     def set_target(self, column: str, task_type: Optional[str],
                    confidence: Optional[str], reasons: List[str]) -> Decision:
         """Choose the target and record having chosen it.

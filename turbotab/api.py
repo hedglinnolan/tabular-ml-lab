@@ -714,6 +714,18 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
             raise HTTPException(400, str(exc)) from exc
         return _payload(project)
 
+    if decision.kind == "unskip":
+        # `GUIDED-041`. The question comes back ASKED. This endpoint records
+        # nothing about the answer, deliberately — the previous implementation's
+        # whole defect was that reopening wrote an answer.
+        payload = decision.payload or {}
+        try:
+            project.unskip(str(payload.get("key") or decision.subject),
+                           str(payload.get("title") or ""))
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return _payload(project)
+
     if decision.kind == "except_from_bulk":
         # Editing the RULE, not the members: a column pulled out of the set
         # rejoins the individually-asked ones and the rule's sentence says so.
@@ -1796,7 +1808,11 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
                                 missingness_priors=missingness_priors,
                                 missingness_groups=missingness_groups,
                                 missingness_exceptions=missingness_exceptions,
-                                missingness_settled=missingness_settled)
+                                missingness_settled=missingness_settled,
+                                # Folded out of the record like `answered` and
+                                # `deferred` beside it, so the three cannot
+                                # drift (`GUIDED-041`).
+                                unskipped=project.unskipped())
         router.audit(questions)
     except router.RouterError as exc:                      # noqa: B902
         # A plan that breaks a governing rule is not rendered at all.

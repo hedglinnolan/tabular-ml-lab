@@ -2102,8 +2102,11 @@
       skipped.map(function(q){
         return '<div class="skip"><span class="clause"><b>' + esc(q.title) + "</b> — " +
                esc(q.skip_reason || "") + "</span>" +
-               '<button class="again" data-unskip="' + esc(q.key) + '" type="button">' +
-               "Ask me anyway</button></div>";
+               '<button class="again" data-unskip="' + esc(q.key) + '" ' +
+               'data-unskip-title="' + esc(q.title) + '" ' +
+               'data-tip="' + esc(effectOf("unskip", null)) + '" ' +
+               'aria-label="Ask me anyway — ' + esc(effectOf("unskip", null)) +
+               '" type="button">Ask me anyway</button></div>';
       }).join("") + "</div>";
   }
 
@@ -2527,9 +2530,25 @@
       return;
     }
     if (t.hasAttribute("data-unskip")){
-      // Reversible: the skip is undone by asking the question outright.
-      decide("set_task_type", "", {task_type: P.task_type},
-             "Recording that you want to confirm it yourself…");
+      /* ═════════ REOPEN, NOT DISMISS ═════════
+         `GUIDED-041`. This used to send
+
+             decide("set_task_type", "", {task_type: P.task_type})
+
+         which recorded THE ENGINE'S OWN READING as the user's answer. Pressing
+         "Ask me anyway" therefore answered the question with the very guess the
+         user was reaching past, the skip vanished, and there was nothing left
+         to reopen. A rendered skip whose reopen affordance discards is worse
+         than no affordance at all — it teaches that opening a skip loses your
+         place.
+
+         `unskip` records that the question is to be ASKED. It carries no
+         answer, which is the whole point, and it is generic in the key so this
+         closes the class rather than the task-type instance: any rendered skip
+         the Router serves is reopenable the day it exists. */
+      decide("unskip", t.dataset.unskip,
+             { key: t.dataset.unskip, title: t.dataset.unskipTitle || "" },
+             "Putting that question back…");
       return;
     }
 
@@ -2835,6 +2854,9 @@
              esc(STEP_WORDS[(p || {}).target_step] || "Explore") +
              ", which is the step that can act on it.";
     },
+    /* The sentence says PUT BACK, and it says the engine's reading is not being
+       accepted — because the control used to accept it. `GUIDED-041`. */
+    unskip:    function(){ return "Puts the question back on the list, unanswered, so you answer it yourself. Nothing the engine read is recorded as your answer."; },
     dismiss:   function(){ return "Takes this off the list. It stays in the record and can be brought back."; },
     undismiss: function(){ return "Puts this back on the list."; },
     flag:      function(){ return "Marks the finding and its evidence for the manuscript, so the figure and its caption travel into the export."; },

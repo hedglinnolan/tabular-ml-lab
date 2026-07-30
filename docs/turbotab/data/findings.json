@@ -7723,5 +7723,19 @@
   "verified_against": "",
   "test": "turbotab/test_a_follow_on_card_says_where_it_sits.py::test_no_question_the_page_renders_carries_a_bare_question_mark",
   "verified_ev": "turbotab/web/index.html askedCard sub-num; renderAsked filter"
+ },
+ {
+  "id": "GUIDED-041",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "'Ask me anyway' recorded the engine's own reading as the user's answer, so pressing the reopen affordance answered the question it was reopening and the skip vanished",
+  "detail": "",
+  "ev": "turbotab/web/index.html data-unskip handler; ml/router._skip_is_permitted",
+  "act": "",
+  "status": "FIXED",
+  "note": "Decision B permits a skip only where it is VISIBLE AND REVERSIBLE. The visible half was built; the reversible half sent decide('set_task_type', '', {task_type: P.task_type}) - P.task_type being the engine's own reading, which is the thing the user is reaching past. So the question left the plan ANSWERED, the skip disappeared because the question was gone, and the transcript said a human had confirmed something no human looked at. Worse than no affordance: a skip with no reopen is honestly incomplete, a reopen that discards teaches that opening a skip loses your place and the next skip goes unopened. THE FIX IS A RECORDED DECISION, NOT A FLAG - unskip carries the question key and no answer, because 'I did not accept the engine's reading of this' is a sentence a methods section can carry and a mutated boolean is not, and an unskip with nothing after it is a question still open, which is what it should look like. GENERIC IN THE KEY, so it closes the class rather than the task-type instance: the pack-settled missingness blocks are reopenable too, and that is where being unable to reopen costs most since one skip stands for 306 columns. AND THE SECOND HALF, which a test written only against 'does it come back' would have missed: the engine's confidence does not change when a human disagrees with it, so without _skip_is_permitted reading unskipped the question would be re-skipped on the very next render and the reopen would appear to do nothing. Enforced in the one place Decision B lives rather than at each of the three skip sites.",
+  "verified_against": "",
+  "test": "turbotab/test_ask_me_anyway_reopens_the_question.py::test_reopening_a_skipped_question_brings_it_back_asked_and_unanswered",
+  "verified_ev": "turbotab/web/index.html data-unskip handler; ml/router._skip_is_permitted"
  }
 ]

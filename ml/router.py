@@ -262,7 +262,8 @@ CHOICE_KINDS = frozenset({"repair", "preparation_mode", "aggregation"})
 CONSEQUENCE_KINDS = frozenset({"blocker"})
 
 
-def _skip_is_permitted(confidence: Optional[str], kind: str) -> bool:
+def _skip_is_permitted(confidence: Optional[str], kind: str,
+                       key: str = "", unskipped: Sequence[str] = ()) -> bool:
     """Decision B, in one place.
 
     Two conditions, both necessary:
@@ -296,7 +297,18 @@ def _skip_is_permitted(confidence: Optional[str], kind: str) -> bool:
       detector named — never to the table (`GUIDED-027`).
     * **Visible and reversible.** The skip carries the pack's own reason and the
       reopen affordance, which is what `audit()` demands of every skip.
+
+    **And reversible now MEANS something (`GUIDED-041`).** Decision B has always
+    required the skip to be reversible, and until this loop nothing in this
+    module could be told that a user had reversed one — so *"Ask me anyway"*
+    recorded `set_task_type` with the engine's own reading and the question left
+    the plan as ANSWERED. Pressing the reopen affordance answered the question
+    with the guess it was reaching past. A key the user has reopened is never
+    skipped again, at any confidence, because their asking is a higher authority
+    than the engine's certainty — the same asymmetry §02 draws for the grain.
     """
+    if key and key in set(unskipped):
+        return False
     return confidence == "high" and kind in ("task_type", "missingness")
 
 
@@ -384,6 +396,7 @@ def plan(
     missingness_groups: Optional[List[Dict[str, Any]]] = None,
     missingness_exceptions: Optional[Dict[str, Dict[str, Any]]] = None,
     missingness_settled: Optional[List[Dict[str, Any]]] = None,
+    unskipped: Sequence[str] = (),
 ) -> List[Question]:
     """Every question this step asks, in order, derived from the record.
 
@@ -398,6 +411,11 @@ def plan(
     keeps `plan()` a pure function of the record. `None` means either no survey
     lens or no shared response scale, and both mean the same thing here — the
     reverse-coding question is not in the plan.
+
+    `unskipped` is the keys the user pressed *"Ask me anyway"* on, folded out of
+    the record like everything else. A key in it is never skipped again, at any
+    confidence — Decision B's *visible and reversible* with the second half made
+    real (`GUIDED-041`).
     """
     if step not in STEPS:
         raise RouterError(f"Unknown step {step!r}; expected one of {list(STEPS)}.")
@@ -463,7 +481,7 @@ def plan(
                 "produces a complete set of numbers for a question you did not "
                 "ask."),
             options=["classification", "regression"])
-        if _skip_is_permitted(conf, "task_type"):
+        if _skip_is_permitted(conf, "task_type", "confirm_task_type", unskipped):
             q.status = "skipped"
             q.skip_reason = (
                 f"The engine reads {target} as {detection.get('detected')} at high "
@@ -665,7 +683,7 @@ def plan(
         out.extend(_missingness_questions(
             missing_columns, missingness_priors, missingness_groups,
             missingness_exceptions, answered, _miss,
-            settled=missingness_settled))
+            settled=missingness_settled, unskipped=unskipped))
 
     # ── one question per repairable finding, ranked by the engine ──────────
     for f in _rank(findings):
@@ -792,7 +810,7 @@ def _home_step(f: Dict[str, Any]) -> str:
 
 def _missingness_questions(missing_columns, priors_by_column, groups,
                            exceptions, answered, _miss,
-                           settled=None) -> List[Question]:
+                           settled=None, unskipped=()) -> List[Question]:
     """Clause §07's question, asked over SETS rather than over columns.
 
     `GUIDED-029`. Before this, one question per column with blanks — 308 of them
@@ -812,7 +830,8 @@ def _missingness_questions(missing_columns, priors_by_column, groups,
         for col in (missing_columns or []):
             key = f"missingness::{col}"
             if key not in answered:
-                out.append(_one_column_question(col, priors_by_column, _miss))
+                out.append(_one_column_question(col, priors_by_column, _miss,
+                                                unskipped))
         return out
 
     covered = set()
@@ -824,6 +843,7 @@ def _missingness_questions(missing_columns, priors_by_column, groups,
         covered.update(block["columns"])
         if block["key"] in answered:
             continue
+        reopened = block["key"] in set(unskipped)
         q = Question(
             key=block["key"], kind="missingness", step="preprocess",
             clause="lockbox-07", confidence="high",
@@ -831,11 +851,12 @@ def _missingness_questions(missing_columns, priors_by_column, groups,
             why=_miss.MECHANISM_WHY,
             consumer=_miss.MECHANISM_CONSUMER,
             options=list(_miss.MECHANISM_OPTIONS))
-        q.status = "skipped"
-        q.skip_reason = (
-            f"Not asked for {block['n']:,} columns: {block['reason']} Stated "
-            f"from the {block['label'].lower()} lens rather than asked — "
-            f"change it here if it is wrong.")
+        if not reopened:
+            q.status = "skipped"
+            q.skip_reason = (
+                f"Not asked for {block['n']:,} columns: {block['reason']} Stated "
+                f"from the {block['label'].lower()} lens rather than asked — "
+                f"change it here if it is wrong.")
         out.append(q)
 
     for group in groups:
@@ -890,7 +911,8 @@ def _missingness_questions(missing_columns, priors_by_column, groups,
     return out
 
 
-def _one_column_question(col, priors_by_column, _miss) -> Question:
+def _one_column_question(col, priors_by_column, _miss,
+                         unskipped=()) -> Question:
     """The per-column question, unchanged — including its rendered skip."""
     column_priors = list((priors_by_column or {}).get(col) or [])
     derived = next((p for p in column_priors
@@ -903,7 +925,7 @@ def _one_column_question(col, priors_by_column, _miss) -> Question:
         consumer=_miss.MECHANISM_CONSUMER,
         confidence="high" if derived else None,
         options=list(_miss.MECHANISM_OPTIONS))
-    if derived and len(column_priors) == 1:
+    if derived and len(column_priors) == 1 and q.key not in set(unskipped):
         q.status = "skipped"
         q.skip_reason = (
             f"Not asked: {derived['reason']} Stated from the "
