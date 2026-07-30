@@ -7695,5 +7695,19 @@
   "verified_against": "",
   "test": "turbotab/test_answering_the_lens_changes_the_recorded_lens.py::test_the_submit_control_refuses_at_zero_and_says_why_in_the_servers_words",
   "verified_ev": "turbotab/web/index.html askedCard commit row"
+ },
+ {
+  "id": "GUIDED-039",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "All six lens options carried the same hover sentence, so the one moment the app could say what a lens changes said nothing about any of them",
+  "detail": "",
+  "ev": "turbotab/web/index.html askedCard data-tip; turbotab/packs.py PACKS",
+  "act": "",
+  "status": "FIXED",
+  "note": "Every option got effectOf('set_lens', null) - the question-level effect, six times - so hovering Metabolomics or proteomics said exactly what hovering Dietary intake said. DOMAIN_PACKS section 02 says the payoff of a lens is a finding a generic tool would never raise, and the control offering that named none of them. THE FIX IS A REGISTRY, NOT SIX STRINGS IN THE PAGE: Pack.looks_for binds each phrase to the SOURCE that produces it - a detector's finding id, prior::question for a pack that sets a prior without a detector, question::key for the one question a pack may add - and test_a_pack_names_what_it_will_look_for is the key-match test asserted in BOTH directions, which is exactly the guard FEATURE_PARITY says the theory_anchors/theory_demos pair lacks and is most fragile for wanting. The ids are checked by RUNNING each pack's detectors against the fixture that pack was built for, never from a list. TWO RULES ON THE PHRASES: a noun phrase and never a claim, because 'your missing values cluster in the lowest-abundance features' is a finding and putting it on a hover asserts it of a table nobody has read under this lens - checked as the absence of a category rather than as a sentence about restraint. And the check that the check is not vacuous: a pack declaring detectors must fire them on its own fixture, so clinical's genuine emptiness cannot hide a pack whose detectors stopped working. Also fixed the tooltip's white-space:nowrap, which has been running sentences off the screen edge since DRIVE-003 made the tips sentences.",
+  "verified_against": "",
+  "test": "turbotab/test_a_pack_names_what_it_will_look_for.py::test_every_lens_option_says_something_different_from_every_other",
+  "verified_ev": "turbotab/web/index.html askedCard data-tip; turbotab/packs.py PACKS"
  }
 ]

@@ -386,7 +386,8 @@ def plan(
             min_selections=spec["min_selections"],
             min_reason=spec["min_reason"],
             options=[o["label"] for o in spec["options"]],
-            option_values=[o["key"] for o in spec["options"]]))
+            option_values=[o["key"] for o in spec["options"]],
+            option_notes=[o["note"] for o in spec["options"]]))
 
     # ── the target, first among the questions about the analysis ────────────
     if step == "data" and "choose_target" not in answered:

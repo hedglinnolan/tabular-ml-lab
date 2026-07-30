@@ -834,9 +834,44 @@ class Reframing:
 
 
 @dataclass(frozen=True)
+class LooksFor:
+    """One thing this pack will look for, nameable before the user answers.
+
+    **`GUIDED-039`.** All six lens options carried the same hover string —
+    `effectOf("set_lens", null)` — so hovering *Metabolomics or proteomics* said
+    exactly what hovering *Dietary intake* said, and the one moment where the
+    app could explain why the answer matters explained nothing. Picking a lens
+    is a bet on what the app will then notice, and the app knows what it will
+    notice.
+
+    Two rules, both load-bearing.
+
+    **`phrase` is a noun phrase, never a claim.** *"Your missing values cluster
+    in the lowest-abundance features"* is a finding — it asserts something about
+    a table nobody has looked at through this lens yet. On a hover, before the
+    question is answered, that would be the governing rule's own violation in
+    the smallest possible place. So the hover names what will be *looked for*
+    and the finding remains the only thing that says what was *found*.
+
+    **`source` binds it to the detector.** It is the finding id the detector
+    emits, or `prior::<question>` where a pack sets a prior without a detector,
+    or `question::<key>` for the one question a pack is allowed to add. That is
+    what makes this a registry rather than a second description sitting beside
+    the first: `test_a_pack_names_what_it_will_look_for` asserts the two sets
+    match in both directions, which is exactly the key-match test
+    `FEATURE_PARITY.md` says the `theory_anchors`/`theory_demos` pair is missing
+    and is the most fragile thing in the app for want of.
+    """
+    source: str
+    phrase: str
+
+
+@dataclass(frozen=True)
 class Pack:
     key: str
     label: str
+    # What this pack will look for, in its own words, before anything is found.
+    looks_for: Tuple[LooksFor, ...] = ()
     detectors: Tuple[Callable[[pd.DataFrame], Optional[Dict[str, Any]]], ...] = ()
     # Priors the pack sets on questions that already exist.
     priors: Tuple[Prior, ...] = ()
@@ -934,6 +969,17 @@ PACKS: Dict[str, Pack] = {
     METABOLOMICS: Pack(
         key=METABOLOMICS, label=LENS_LABELS[METABOLOMICS],
         detectors=(_left_censored, _acquisition_order, _pooled_qc),
+        looks_for=(
+            LooksFor("pack::metabolomics::left_censored",
+                     "missing values clustering in the lowest-abundance "
+                     "features, which is usually a detection limit rather "
+                     "than randomness"),
+            LooksFor("pack::metabolomics::run_order",
+                     "a run-order column, and instrument drift that tracks it"),
+            LooksFor("pack::metabolomics::pooled_qc",
+                     "pooled quality-control rows, which are not participants "
+                     "and must not be modeled"),
+        ),
         recipes=_metabolomics_recipes,
         reframings=(
             Reframing(
@@ -996,6 +1042,17 @@ PACKS: Dict[str, Pack] = {
     GENOMICS: Pack(
         key=GENOMICS, label=LENS_LABELS[GENOMICS],
         detectors=(_counts_at_p_over_n,),
+        looks_for=(
+            LooksFor("pack::genomics::counts_p_over_n",
+                     "count columns far outnumbering samples, which orders the "
+                     "model shelf toward regularized fits"),
+            # The considered refusal is a thing the pack will do, so it is named
+            # here for the same reason it is a prior with `variant: None`: a
+            # decline nobody can see is indistinguishable from never asking.
+            LooksFor("prior::normalization",
+                     "and it asserts no normalization default, because CPM, TPM "
+                     "and VST are not interchangeable"),
+        ),
         reframings=(
             Reframing(
                 matches=lambda f, df: (
@@ -1041,6 +1098,17 @@ PACKS: Dict[str, Pack] = {
     DIETARY: Pack(
         key=DIETARY, label=LENS_LABELS[DIETARY],
         detectors=(_compositional, _implausible_intake, _energy_adjustment),
+        looks_for=(
+            LooksFor("pack::dietary::compositional",
+                     "columns that sum to a constant, whose correlations with "
+                     "each other are biased by construction"),
+            LooksFor("pack::dietary::implausible_intake",
+                     "implausible daily intakes, offered as an exclusion and "
+                     "never applied on their own"),
+            LooksFor("pack::dietary::energy_adjustment",
+                     "a total-energy column, without which every nutrient "
+                     "association is confounded by total intake"),
+        ),
         priors=(
             # THE ONE IMPLEMENTATION of the averaging rule (`GUIDED-026`).
             # `repeats.menu()` reads this reason rather than restating it, and
@@ -1073,6 +1141,17 @@ PACKS: Dict[str, Pack] = {
     CLINICAL: Pack(
         key=CLINICAL, label=LENS_LABELS[CLINICAL],
         detectors=(),
+        # A pack with no detectors still looks for something — its prior is
+        # scoped to the columns the engine's reference matcher recognizes, so
+        # the recognition IS the looking. Sourced `prior::` rather than `pack::`
+        # because there is no finding behind it, which the key-match test reads
+        # as the honest case rather than as a missing row.
+        looks_for=(
+            LooksFor("prior::missingness_direction",
+                     "recognized clinical measurements, where a blank often "
+                     "means a test was not ordered rather than a value lost — "
+                     "the opposite direction from an assay"),
+        ),
         # NO REFRAMINGS, and the reason is worth recording. `IMPORT-267` — a
         # column of education levels asserted at `critical` to mix measurement
         # units — was the false alarm this pack was going to reframe. The freeze
@@ -1104,6 +1183,18 @@ PACKS: Dict[str, Pack] = {
     SURVEY: Pack(
         key=SURVEY, label=LENS_LABELS[SURVEY],
         detectors=(_ordinal_declared,),
+        looks_for=(
+            LooksFor("pack::survey::ordinal_declared",
+                     "a block of items sharing one response scale, whose order "
+                     "comes from the instrument rather than from the data"),
+            # The one question a pack is allowed to add (guard #1's deliberate
+            # exception), so it is named where the user decides whether to
+            # invite it.
+            LooksFor("question::state_reverse_coding",
+                     "and it asks which of those items are reverse-coded, "
+                     "because that needs a codebook and can never be inferred "
+                     "from the numbers"),
+        ),
         recipes=_survey_recipes,
         reframings=(
             Reframing(
@@ -1310,6 +1401,48 @@ def recipe_origins(lens: Sequence[str]) -> List[Dict[str, Any]]:
     return out
 
 
+def _and_list(items: Sequence[str]) -> str:
+    items = [i for i in items if i]
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    # A phrase that already opens with "and" is a continuation the author wrote
+    # deliberately (genomics's refusal, survey's added question), so it joins
+    # with a semicolon and is not given a second conjunction.
+    head, tail = items[:-1], items[-1]
+    joined = "; ".join(head)
+    return f"{joined}; {tail}" if tail.startswith("and ") else f"{joined}; and {tail}"
+
+
+def option_note(key: str) -> str:
+    """What picking this lens sets the app looking for — one sentence.
+
+    `GUIDED-039`. Composed from the pack's own `looks_for` entries rather than
+    written here, so the hover and the detectors cannot drift: a detector added
+    without a phrase fails `test_a_pack_names_what_it_will_look_for`, and a
+    phrase for a detector that does not exist fails the same test from the other
+    side.
+
+    Every phrase is a noun phrase. The sentence says what will be *looked for*,
+    never what has been *found* — the second would be a claim about a table
+    nobody has read under this lens yet, on a control the user has not pressed.
+    """
+    if key == OTHER:
+        return ("Records that the listed kinds do not describe this table. "
+                "Nothing extra is looked for and nothing is limited — the app "
+                "is fully functional with no lens.")
+    pack = PACKS.get(key)
+    if pack is None or not pack.looks_for:                 # pragma: no cover
+        raise PackError(
+            f"{key!r} has nothing to say about what it will look for. A lens "
+            f"option whose hover cannot be written is a bet the user is being "
+            f"asked to make blind.")
+    return ("Sets the app looking for " + _and_list([lf.phrase for lf in pack.looks_for])
+            + ". It changes what is looked for and what is suggested; it never "
+              "removes an option.")
+
+
 def question(suggestion: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """The lens question, as the Router and the page both read it."""
     return {
@@ -1323,7 +1456,8 @@ def question(suggestion: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         # selection with rather than a second sentence saying the same thing.
         "min_selections": 1,
         "min_reason": LENS_EMPTY_REFUSAL,
-        "options": [{"key": k, "label": LENS_LABELS[k]} for k in LENS_KEYS],
+        "options": [{"key": k, "label": LENS_LABELS[k],
+                     "note": option_note(k)} for k in LENS_KEYS],
         "suggestion": suggestion or {},
     }
 
