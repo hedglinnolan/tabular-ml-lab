@@ -5,10 +5,10 @@ Architecture: Data first, coaching second.
   Section 0: At-a-Glance Header
   Section 1: Data Snapshot (interactive table + column inspector)
   Section 2: Shape of the Data (distributions, outliers, missing)
-  Section 3: Relationships (correlations, target, feature explorer)
+  Section 3: Relationships (correlations, target, feature explorer, clusters)
   Section 4: Macro Shape (PCA, UMAP, TDA, Mapper) — ≥16 features only
   Section 5: Coaching Layer (insight ledger summary)
-  Section 6: Deep Dive Diagnostics (tabbed, intent-based)
+  Section 6: Classical Diagnostics (plausibility, Q-Q, VIF, influence)
   Section 7: Table 1 (publication summary, collapsed)
 
 Data flow:
@@ -47,12 +47,8 @@ from ml.regime import detect_regime
 from ml.eda_recommender import compute_dataset_signals, recommend_eda, DatasetSignals, EDARecommendation
 from ml import eda_actions
 from ml.plot_narrative import (
-    narrative_eda_linearity,
-    narrative_eda_residuals,
     narrative_eda_influence,
     narrative_eda_normality,
-    narrative_eda_sufficiency,
-    narrative_eda_scaling,
     narrative_eda_multicollinearity,
 )
 
@@ -371,6 +367,31 @@ def _auto_generate_insights():
                 relevant_pages=["06_Train_and_Compare"],
                 model_scope=ISSUE_MODEL_RELEVANCE["skewness"],  # linear, neural, distance
                 metadata={"skewness": float(skew)},
+            ))
+
+    # Target outliers. ml/eda_actions.target_profile() used to detect this from
+    # the Deep Dive tab; that action is delisted, so the finding is detected here
+    # from the same signals.target_stats it read. Same insight id on both sides,
+    # so if target_profile() is ever dispatched again the two upserts collapse
+    # into one entry instead of filing the finding twice.
+    if _has_target and task_type_final == "regression":
+        target_outlier_rate = signals.target_stats.get("outlier_rate", 0) or 0
+        if target_outlier_rate > 0.1:
+            ledger.upsert(Insight(
+                id="eda_target_outliers",
+                source_page="02_EDA", category="distribution", severity="warning",
+                finding=f"High outlier rate in target: {target_outlier_rate:.1%} of values flagged",
+                implication="Squared-error losses are dominated by the extremes, so a model can be tuned almost entirely by a small tail of observations.",
+                manuscript_text=(
+                    f"{target_outlier_rate:.1%} of outcome values were flagged as "
+                    f"outliers, which inflates squared-error losses and can allow a "
+                    f"small number of observations to dominate model fitting"
+                ),
+                affected_features=[target_col],
+                recommended_action="Use a robust loss (Huber) or tree-based models in Train & Compare, or trim the target if the extreme values are measurement artifacts.",
+                relevant_pages=["06_Train_and_Compare"],
+                model_scope=ISSUE_MODEL_RELEVANCE["outliers"],  # linear, neural, distance
+                metadata={"outlier_rate": float(target_outlier_rate), "detection_method": outlier_method},
             ))
 
     # Class imbalance — affects all models
@@ -895,6 +916,93 @@ with _eda_tabs[1]:
                 )
                 st.plotly_chart(fig_pattern)
 
+        # -- Is that missingness informative? ----------------------------------
+        # A gap can itself be data: if the target differs between the rows where
+        # a column is missing and the rows where it is present, the missingness
+        # carries signal and deserves an indicator column, not a silent median
+        # fill. Nothing else in the app asks this question.
+        if _has_target and task_type_final in ("regression", "classification"):
+
+            # `cols` is hashed, not underscore-skipped: changing the selected
+            # features must invalidate this, and the dataset fingerprint alone
+            # would not notice.
+            @st.cache_data(show_spinner=False)
+            def _missingness_target_assoc(_df, target, task_type, cols, data_id=None):
+                return eda_actions.missingness_target_association(
+                    _df, target, task_type, candidate_cols=list(cols)
+                )
+
+            _mt = _missingness_target_assoc(
+                df, target_col, task_type_final, tuple(feature_cols), data_id=_data_fingerprint
+            )
+            _mt_table = _mt.get("table")
+            if _mt_table is not None and len(_mt_table) > 0:
+                _mt_sig = _mt["n_significant"]
+                with st.expander(
+                    (f"Informative missingness — {_mt_sig} of {_mt['n_tested']} columns track {target_col}"
+                     if _mt_sig else
+                     f"Informative missingness — none of the {_mt['n_tested']} columns tested track {target_col}"),
+                    expanded=bool(_mt_sig),
+                ):
+                    st.caption(
+                        f"Each row compares **{target_col}** between the rows where that column is "
+                        f"missing and the rows where it is present. A real gap means the values are "
+                        f"not missing at random, and being missing is itself a predictor. q-values are "
+                        f"Benjamini–Hochberg adjusted across the {_mt['n_tested']} tests — read those, "
+                        f"not the raw p-values."
+                    )
+                    _mt_show = _mt_table.copy()
+                    _mt_show["Missing %"] = (_mt_show["Missing %"] * 100).round(1)
+                    for _mt_col in ("p-value", "q-value (BH)"):
+                        _mt_show[_mt_col] = _mt_show[_mt_col].map(
+                            lambda v: "—" if pd.isna(v) else (f"{v:.2e}" if v < 1e-4 else f"{v:.4f}")
+                        )
+                    for _mt_col in _mt_show.columns:
+                        if pd.api.types.is_float_dtype(_mt_show[_mt_col]):
+                            _mt_show[_mt_col] = _mt_show[_mt_col].round(3)
+                    table(_mt_show, key="eda_missingness_association")
+                    if _mt["skipped_low_n"]:
+                        _mt_skipped = _mt["skipped_low_n"]
+                        st.caption(
+                            f"Not tested: {len(_mt_skipped)} column(s) have fewer than 20 rows on one "
+                            f"side of the missing/present split, too few for the result to mean "
+                            f"anything — {', '.join(map(str, _mt_skipped[:6]))}"
+                            f"{f' +{len(_mt_skipped) - 6} more' if len(_mt_skipped) > 6 else ''}."
+                        )
+
+                if _mt_sig:
+                    _mt_top = _mt_table.iloc[0]
+                    ledger.upsert(Insight(
+                        id="eda_missing_informative",
+                        source_page="02_EDA", category="data_quality", severity="warning",
+                        finding=(
+                            f"Missingness is associated with {target_col} in "
+                            f"{_count_word(_mt_sig, 'column')} — strongest is {_mt_top['Column']} "
+                            f"({_mt_top['Test']}, BH q={_mt_top['q-value (BH)']:.3g})"
+                        ),
+                        implication=(
+                            "The values are not missing at random. Imputing these columns without "
+                            "recording that the value was absent discards signal and can bias estimates."
+                        ),
+                        affected_features=list(_mt["significant_cols"]),
+                        recommended_action=(
+                            "Add missing-indicator columns in Preprocessing, or train a model that takes "
+                            "NaN natively (HistGradientBoosting, LightGBM, XGBoost)."
+                        ),
+                        manuscript_text=(
+                            f"missingness was associated with the outcome for "
+                            f"{_count_word(_mt_sig, 'predictor')} (Benjamini-Hochberg adjusted q < 0.05), "
+                            f"indicating the values were not missing completely at random"
+                        ),
+                        relevant_pages=["05_Preprocess"],
+                        metadata={
+                            "n_significant": int(_mt_sig),
+                            "n_tested": int(_mt["n_tested"]),
+                            "top_column": str(_mt_top["Column"]),
+                            "top_q": float(_mt_top["q-value (BH)"]),
+                        },
+                    ))
+
 
     # ============================================================================
     # SECTION 3: RELATIONSHIPS
@@ -1038,7 +1146,7 @@ with _eda_tabs[2]:
 
     # -- Feature Explorer (interactive scatter) --------------------------------
     st.subheader("Feature Explorer")
-    st.caption("Pick any two features to visualize their relationship.")
+    st.caption("Pick any two features and color the points by a third — by default, the target.")
 
     if len(feature_cols) >= 2:
         fe_col1, fe_col2, fe_col3 = st.columns(3)
@@ -1049,27 +1157,76 @@ with _eda_tabs[2]:
             feat_y = st.selectbox("Y axis", feature_cols, index=default_y, key="fe_y")
         with fe_col3:
             color_options = ["None"] + ([target_col] if _has_target else []) + feature_cols
-            color_by = st.selectbox("Color by", color_options, index=0, key="fe_color")
+            # Default to the target: seeing where the outcome sits in a feature
+            # pair is the reason this control exists.
+            color_by = st.selectbox(
+                "Color by", color_options,
+                index=1 if _has_target else 0, key="fe_color",
+            )
 
-        plot_df = df[[feat_x, feat_y]].copy()
-        if color_by != "None" and color_by in df.columns:
-            plot_df[color_by] = df[color_by]
+        # Build column-by-column: df[[x, y]] duplicates the column when x == y,
+        # which plotly express rejects.
+        plot_df = pd.DataFrame({"__x": df[feat_x], "__y": df[feat_y]}, index=df.index)
+        _color_active = color_by != "None" and color_by in df.columns
+        if _color_active:
+            plot_df["__color"] = df[color_by]
 
-        plot_df = plot_df.dropna(subset=[feat_x, feat_y])
+        plot_df = plot_df.dropna(subset=["__x", "__y"])
+        _n_before_color_drop = len(plot_df)
+        if _color_active:
+            plot_df = plot_df.dropna(subset=["__color"])
+        _n_full = len(plot_df)
         if regime.needs_sampling and len(plot_df) > regime.sample_size:
             plot_df = plot_df.sample(regime.sample_size, random_state=42)
 
-        fig_explorer = px.scatter(
-            plot_df, x=feat_x, y=feat_y,
-            color=color_by if color_by != "None" else None,
-            opacity=0.5,
-            title=f"{feat_x} vs {feat_y}",
+        # Continuous vs categorical color. Decided by column semantics, not
+        # dtype — a classification target coded 0/1 is numeric and would
+        # otherwise render as two shades of one colorbar.
+        _color_is_discrete = False
+        if _color_active:
+            from utils.column_utils import color_by_category
+            _color_is_discrete = color_by_category(
+                plot_df["__color"],
+                is_classification_target=(
+                    color_by == target_col and task_type_final == "classification"
+                ),
+            )
+            if _color_is_discrete:
+                plot_df["__color"] = plot_df["__color"].astype(str)
+
+        _scatter_kwargs = dict(
+            x="__x", y="__y", opacity=0.5,
+            title=f"{feat_x} vs {feat_y}" + (f", colored by {color_by}" if _color_active else ""),
+            labels={"__x": feat_x, "__y": feat_y, "__color": color_by if _color_active else ""},
         )
+        if _color_active:
+            _scatter_kwargs["color"] = "__color"
+            if _color_is_discrete:
+                _scatter_kwargs["color_discrete_sequence"] = px.colors.qualitative.Set2
+            else:
+                _scatter_kwargs["color_continuous_scale"] = "Viridis"
+
+        fig_explorer = px.scatter(plot_df, **_scatter_kwargs)
         fig_explorer.update_layout(template="plotly_white", height=450)
+        if _color_active:
+            fig_explorer.update_layout(legend_title_text=color_by)
         st.plotly_chart(fig_explorer)
 
+        # Say what was left out, rather than quietly plotting a subset.
+        _notes = []
+        if len(plot_df) < _n_full:
+            _notes.append(f"showing a random {len(plot_df):,} of {_n_full:,} rows")
+        if _color_active and _n_full < _n_before_color_drop:
+            _notes.append(f"{_n_before_color_drop - _n_full:,} rows dropped for missing {color_by}")
+        if _notes:
+            st.caption(" · ".join(_notes).capitalize())
+
         # Show correlation for this pair
-        if pd.api.types.is_numeric_dtype(df[feat_x]) and pd.api.types.is_numeric_dtype(df[feat_y]):
+        if (
+            feat_x != feat_y
+            and pd.api.types.is_numeric_dtype(df[feat_x])
+            and pd.api.types.is_numeric_dtype(df[feat_y])
+        ):
             r = df[feat_x].corr(df[feat_y])
             if not np.isnan(r):
                 st.caption(f"Pearson r = {r:.3f}")
@@ -1119,6 +1276,402 @@ with _eda_tabs[2]:
                     st.caption("No strong interaction effects detected.")
             except Exception as e:
                 st.caption(f"Interaction detection skipped: {str(e)[:80]}")
+
+    # -- Cluster Structure (k-means) -------------------------------------------
+    st.markdown("---")
+    st.subheader("Cluster Structure")
+    st.caption(
+        "Does this cohort divide into subgroups, or is it one population? "
+        "k-means always returns the number of clusters you ask for, so every result here "
+        "is scored against the same pipeline run on shuffled data with no structure in it."
+    )
+
+    from ml import clustering as _clus
+
+    _km_candidates = [f for f in feature_cols if f in df.columns]
+    if len(_km_candidates) < 2 or len(df) < 30:
+        st.info("Clustering needs at least 2 features and 30 rows.")
+    else:
+        _km_numeric = [f for f in _km_candidates if pd.api.types.is_numeric_dtype(df[f])]
+        _km_default = (_km_numeric or _km_candidates)[: min(15, _clus.MAX_CLUSTER_FEATURES)]
+
+        km_feats = st.multiselect(
+            "Features to cluster on",
+            options=_km_candidates,
+            default=_km_default,
+            key="eda_km_feats",
+            help=(
+                "Every column you include is a vote, and correlated columns vote as a bloc — "
+                "eight correlated labs will outweigh one comorbidity flag. Choose deliberately."
+            ),
+        )
+
+        kc1, kc2 = st.columns(2)
+        with kc1:
+            km_scaler = st.pills(
+                "Scaling", ["Standard", "Robust"], default="Standard", key="eda_km_scaler",
+                help=(
+                    "Scaling is not optional for k-means: the objective is not invariant to "
+                    "rescaling, so unscaled data clusters on your unit choices. Robust "
+                    "(median/IQR) resists extreme values."
+                ),
+            )
+        _km_has_cat = any(not pd.api.types.is_numeric_dtype(df[f]) for f in km_feats)
+        with kc2:
+            if _km_has_cat:
+                km_cat_weight = st.slider(
+                    "Categorical weight", 0.0, 2.0, 1.0, 0.25, key="eda_km_catw",
+                    help=(
+                        "At 1.0 each categorical variable carries about the weight of one "
+                        "standardized numeric feature. Raise it to let categories drive the "
+                        "split, lower it to make the split mostly numeric."
+                    ),
+                )
+            else:
+                km_cat_weight = 1.0
+                st.caption("All selected features are numeric.")
+
+        if len(km_feats) > _clus.MAX_CLUSTER_FEATURES:
+            st.caption(
+                f"Clustering on the first {_clus.MAX_CLUSTER_FEATURES} of {len(km_feats)} selected "
+                "features — beyond that, Euclidean distance stops discriminating and every row "
+                "looks equidistant from every other."
+            )
+            km_feats = km_feats[: _clus.MAX_CLUSTER_FEATURES]
+
+        _km_config = (tuple(km_feats), (km_scaler or "Standard").lower(), float(km_cat_weight))
+
+        if st.button("Explore cluster structure", key="eda_km_run", type="primary"):
+            if len(km_feats) < 2:
+                st.warning("Select at least 2 features.")
+            else:
+                st.session_state["eda_km_config"] = _km_config
+
+        if st.session_state.get("eda_km_config") == _km_config and len(km_feats) >= 2:
+            with st.spinner("Clustering and comparing against a no-structure baseline…"):
+                _prep = _clus.prepare_cluster_matrix(
+                    df, km_feats, scaler=_km_config[1],
+                    categorical_weight=_km_config[2], data_id=_data_fingerprint,
+                )
+
+            if "error" in _prep:
+                st.warning(_prep["error"])
+            else:
+                _X = _prep["X"]
+                _prep_notes = [
+                    f"{_prep['n_rows']:,} rows × {_prep['effective_p']} columns after encoding",
+                    f"{_km_config[1]} scaling",
+                ]
+                if _prep["sampled"]:
+                    _prep_notes.append(f"random subsample of {_prep['n_source_rows']:,} rows")
+                if _prep["skew_transformed"]:
+                    _prep_notes.append(
+                        f"Yeo-Johnson applied to {len(_prep['skew_transformed'])} heavily skewed "
+                        f"{'column' if len(_prep['skew_transformed']) == 1 else 'columns'}"
+                    )
+                if _prep["categorical_variance_share"] is not None:
+                    _prep_notes.append(
+                        f"categoricals carry {_prep['categorical_variance_share']:.0%} of the variance"
+                    )
+                st.caption(" · ".join(_prep_notes))
+                if _prep["dropped"]:
+                    st.caption("Dropped: " + ", ".join(_prep["dropped"][:6]) + (
+                        f" (+{len(_prep['dropped']) - 6} more)" if len(_prep["dropped"]) > 6 else ""))
+
+                _k_max = _clus.max_supported_k(_prep["n_rows"])
+                _k_values = tuple(range(2, _k_max + 1))
+
+                with st.spinner("Sweeping k against the shuffled baseline…"):
+                    _sweep = _clus.sweep_k(_X, _k_values, _prep["variable_spans"])
+
+                if "error" in _sweep:
+                    st.warning(_sweep["error"])
+                else:
+                    st.plotly_chart(_clus.plot_k_sweep(_sweep), key="fig_eda_kmeans_sweep")
+
+                    _sweep_df = pd.DataFrame([{
+                        "k": r["k"],
+                        "Silhouette": round(r["silhouette"], 3),
+                        "Shuffled baseline": round(r["null_silhouette"], 3),
+                        "Excess over baseline": round(r["excess"], 3),
+                        "p (vs shuffled)": round(r["p_value"], 3),
+                        "Calinski-Harabasz": round(r["calinski_harabasz"], 1),
+                        "Davies-Bouldin": round(r["davies_bouldin"], 3),
+                        "Smallest cluster": r["min_cluster_size"],
+                    } for r in _sweep["table"]])
+                    with st.expander("All k values, scored", expanded=False):
+                        table(_sweep_df, key="eda_kmeans_sweep")
+                        st.caption(
+                            "Inertia is deliberately absent: it falls monotonically with k by "
+                            "construction, so the \"elbow\" is an artifact of the plot's aspect "
+                            "ratio rather than a method for choosing k."
+                        )
+
+                    _rec_k = _sweep["recommended_k"]
+                    if _rec_k is None:
+                        st.warning(
+                            "**No evidence of cluster structure.** At every k tried, this data scored "
+                            "no better than shuffled copies of itself — copies with identical column "
+                            "distributions but every relationship between columns destroyed. "
+                            "k-means will still hand you clusters below; treat them as a partition of "
+                            "one population, not as discovered subgroups."
+                        )
+                        st.caption(
+                            "One blind spot worth knowing: because the shuffled copies keep each "
+                            "column's own distribution, this comparison cannot see structure that "
+                            "lives inside a single column — a column with three distinct humps stays "
+                            "three-humped after shuffling. The dominance check under **Cluster "
+                            "profile** is what catches that case."
+                        )
+                    else:
+                        _rec_row = next(r for r in _sweep["table"] if r["k"] == _rec_k)
+                        st.success(
+                            f"**Strongest structure at k = {_rec_k}** — silhouette "
+                            f"{_rec_row['silhouette']:.3f} versus {_rec_row['null_silhouette']:.3f} on "
+                            f"shuffled data (p = {_rec_row['p_value']:.2f}). That is "
+                            f"{_clus.silhouette_reading(_rec_row['silhouette'])}."
+                        )
+
+                    _k_choice = st.selectbox(
+                        "Number of clusters to inspect",
+                        options=[r["k"] for r in _sweep["table"]],
+                        index=[r["k"] for r in _sweep["table"]].index(_rec_k) if _rec_k else 0,
+                        key="eda_km_k",
+                    )
+
+                    _fit = _clus.fit_clusters(_X, int(_k_choice))
+                    if "error" in _fit:
+                        st.warning(_fit["error"])
+                    else:
+                        _labels = _fit["labels"]
+                        _stability = _clus.seed_stability(_X, int(_k_choice))
+
+                        # -- Sizes and stability, above the profile ------------
+                        _size_rows = []
+                        for _cid, _size in enumerate(_fit["sizes"]):
+                            _mask = _labels[_fit["silhouette_index"]] == _cid
+                            _cluster_sil = float(np.nanmean(_fit["silhouette_samples"][_mask])) if _mask.any() else float("nan")
+                            _size_rows.append({
+                                "Cluster": _cid,
+                                "n": int(_size),
+                                "% of rows": f"{_size / max(1, _prep['n_rows']):.1%}",
+                                "Mean silhouette": round(_cluster_sil, 3),
+                                "Underpowered": "yes" if _size < max(20, 0.02 * _prep["n_rows"]) else "",
+                            })
+                        table(pd.DataFrame(_size_rows), key="eda_kmeans_sizes")
+
+                        if "error" not in _stability:
+                            _verdict_icon = {"stable": "✅", "suggestive": "⚠️", "unstable": "🚨"}[_stability["verdict"]]
+                            st.caption(
+                                f"{_verdict_icon} **Seed stability:** refitting under "
+                                f"{_stability['n_seeds']} random starts gives mean adjusted Rand "
+                                f"{_stability['mean_ari']:.2f} (worst pair {_stability['min_ari']:.2f}) — "
+                                f"{_stability['verdict']}. A fixed seed buys reproducibility, not stability."
+                            )
+
+                        _km_tabs = st.tabs(["Projection", "Per-row silhouette", "Cluster profile", "Against the target"])
+
+                        with _km_tabs[0]:
+                            _proj = _clus.project_for_display(_X)
+                            if "error" in _proj:
+                                st.caption(_proj["error"])
+                            else:
+                                st.plotly_chart(
+                                    _clus.plot_cluster_scatter(_proj["coords"], _labels, _proj["explained"]),
+                                    key="fig_eda_kmeans_scatter",
+                                )
+                                _var2 = sum(_proj["explained"][:2])
+                                st.caption(
+                                    f"These two components carry {_var2:.0%} of the variance. "
+                                    + ("At that level the picture is a rough sketch — clusters that look "
+                                       "merged here may be separated in directions this projection drops."
+                                       if _var2 < 0.40 else
+                                       "The projection was chosen without reference to the cluster labels, "
+                                       "so separation you see here is not manufactured by the plot.")
+                                )
+
+                        with _km_tabs[1]:
+                            st.plotly_chart(
+                                _clus.plot_silhouette_knife(
+                                    _fit["silhouette_samples"],
+                                    _labels[_fit["silhouette_index"]],
+                                    _fit["silhouette"],
+                                ),
+                                key="fig_eda_kmeans_knife",
+                            )
+                            st.caption(
+                                "Rows below zero sit closer to a different cluster than their own — "
+                                "they are the rows that would move under a different seed. Clusters of "
+                                "wildly different thickness, or clusters sitting mostly below the mean "
+                                "line, mean this k is not describing the data well."
+                            )
+
+                        with _km_tabs[2]:
+                            _profile = _clus.cluster_profile(
+                                df, _labels, _prep["row_index"], _prep["numeric_cols"],
+                                data_id=_data_fingerprint,
+                            )
+                            if "error" in _profile:
+                                st.caption(_profile["error"])
+                            else:
+                                st.plotly_chart(
+                                    _clus.plot_cluster_profile(_profile["centroids_z"]),
+                                    key="fig_eda_kmeans_profile",
+                                )
+                                st.caption(
+                                    "Columns are ranked by how much of their variance the split explains. "
+                                    "A centroid at +1.5 SD is only meaningful if the cluster is tighter "
+                                    "than that — check the spread before naming a group."
+                                )
+                                table(
+                                    _profile["centroids_z"].reset_index().rename(columns={"_cluster": "Cluster"}),
+                                    key="eda_kmeans_profile",
+                                )
+
+                            # Score only the columns that actually reached the
+                            # matrix — a column dropped during preparation
+                            # cannot be what drove the split.
+                            _dominance = _clus.feature_dominance(
+                                df, _labels, _prep["row_index"],
+                                _prep["numeric_cols"] + _prep["categorical_cols"],
+                                data_id=_data_fingerprint,
+                            )
+                            if "error" not in _dominance:
+                                if _dominance["dominant"]:
+                                    st.warning(
+                                        f"**{_dominance['dominant']} alone explains this split** "
+                                        f"({_dominance['dominant_score']:.0%} of that column is accounted "
+                                        "for by the cluster label). This partition is a re-labeling of a "
+                                        "column you already have, not a discovered subgroup."
+                                    )
+                                else:
+                                    st.caption(
+                                        "Share of each column accounted for by the split: "
+                                        + ", ".join(
+                                            f"{r['Feature']} {r['Explained by split']:.0%}"
+                                            for r in _dominance["table"][:3]
+                                        )
+                                        + " — no single column explains it on its own."
+                                    )
+
+                        with _km_tabs[3]:
+                            if not _has_target:
+                                st.caption("No target selected, so there is nothing held out to test against.")
+                            else:
+                                _assoc = _clus.target_association(
+                                    df, _labels, _prep["row_index"], target_col,
+                                    task_type_final or "regression", data_id=_data_fingerprint,
+                                )
+                                if "error" in _assoc:
+                                    st.caption(_assoc["error"])
+                                else:
+                                    st.markdown(
+                                        f"**{target_col} was held out of the clustering**, so this is the one "
+                                        "comparison here that is not circular. Testing the clusters on the "
+                                        "features they were built from would return p ≈ 0 by construction."
+                                    )
+                                    table(_assoc["table"].round(3), key="eda_kmeans_target")
+                                    _eff = _assoc["effect"]
+                                    st.caption(
+                                        f"{_assoc['effect_name']} = {_eff:.3f}, p = {_assoc['p_value']:.2g}. "
+                                        + ("The clusters differ on the target by an amount worth following up."
+                                           if np.isfinite(_eff) and _eff >= 0.06 else
+                                           "The effect is small — the clusters barely distinguish the outcome.")
+                                    )
+                                    if _assoc["kind"] == "regression":
+                                        _tgt_plot_df = _assoc["values"].copy()
+                                        _tgt_plot_df["cluster"] = _tgt_plot_df["cluster"].astype(str)
+                                        _fig_tgt = px.box(
+                                            _tgt_plot_df, x="cluster", y="target", color="cluster",
+                                            color_discrete_sequence=px.colors.qualitative.Set2,
+                                            labels={"cluster": "Cluster", "target": target_col},
+                                        )
+                                        _fig_tgt.update_layout(
+                                            template="plotly_white", height=380, showlegend=False,
+                                            title=f"{target_col} by cluster",
+                                        )
+                                        st.plotly_chart(_fig_tgt, key="fig_eda_kmeans_target")
+
+                        # -- Record the run, and the finding if there is one ----
+                        log_methodology(step="EDA", action="Ran k-means cluster exploration", details={
+                            "k": int(_k_choice),
+                            "n_features": len(km_feats),
+                            "n_rows_clustered": _prep["n_rows"],
+                            "scaling": _km_config[1],
+                            "silhouette": round(_fit["silhouette"], 3),
+                            "shuffled_baseline": round(
+                                next(r["null_silhouette"] for r in _sweep["table"] if r["k"] == _k_choice), 3
+                            ),
+                            "seed_stability_ari": round(_stability.get("mean_ari", float("nan")), 3),
+                        })
+
+                        if (
+                            _rec_k == _k_choice
+                            and _stability.get("verdict") == "stable"
+                            and not _dominance.get("dominant")
+                        ):
+                            ledger.upsert(Insight(
+                                id="eda_kmeans_structure",
+                                source_page="02_EDA", category="topology", severity="opportunity",
+                                finding=(
+                                    f"{_k_choice} stable subgroups detected across {len(km_feats)} features "
+                                    f"(silhouette {_fit['silhouette']:.2f} vs "
+                                    f"{next(r['null_silhouette'] for r in _sweep['table'] if r['k'] == _k_choice):.2f} "
+                                    f"on shuffled data)"
+                                ),
+                                implication=(
+                                    "A single global model averages over these subgroups; linear models "
+                                    "in particular fit one slope where the data may hold several"
+                                ),
+                                recommended_action=(
+                                    "Consider k-means cluster features in Preprocess, or report "
+                                    "performance stratified by subgroup"
+                                ),
+                                relevant_pages=["05_Preprocess", "06_Train_and_Compare"],
+                                model_scope=[MODEL_FAMILY_LINEAR],
+                                metadata={
+                                    "k": int(_k_choice),
+                                    "silhouette": round(_fit["silhouette"], 3),
+                                    "n_features": len(km_feats),
+                                    "seed_stability_ari": round(_stability["mean_ari"], 3),
+                                },
+                                manuscript_text=(
+                                    f"k-means clustering across {len(km_feats)} features identified "
+                                    f"{_k_choice} subgroups whose separation exceeded that obtained on "
+                                    f"permuted data with matched marginal distributions"
+                                ),
+                                resolved=True, resolved_by="Positive signal — no action needed",
+                                resolved_on_page="02_EDA", auto_generated=True,
+                            ))
+
+                        try:
+                            from utils.llm_ui import (
+                                build_llm_context, render_interpretation_with_llm_button,
+                                gather_session_context,
+                            )
+                            _bg_km = gather_session_context()
+                            _km_summary = (
+                                f"k={_k_choice}; silhouette={_fit['silhouette']:.3f}; "
+                                f"shuffled_baseline={next(r['null_silhouette'] for r in _sweep['table'] if r['k'] == _k_choice):.3f}; "
+                                f"cluster_sizes={_fit['sizes']}; "
+                                f"seed_stability_ari={_stability.get('mean_ari', float('nan')):.3f}; "
+                                f"features={len(km_feats)}"
+                            )
+                            _ctx_km = build_llm_context(
+                                "kmeans_clusters", _km_summary,
+                                where="EDA cluster structure",
+                                sample_size=_bg_km.pop("sample_size", _prep["n_rows"]),
+                                task_type=_bg_km.pop("task_type", task_type_final),
+                                feature_names=_bg_km.pop("feature_names", km_feats),
+                                **_bg_km,
+                            )
+                            render_interpretation_with_llm_button(
+                                _ctx_km, key="llm_eda_kmeans",
+                                result_session_key="llm_result_eda_kmeans",
+                                plot_type="kmeans_clusters",
+                            )
+                        except Exception:
+                            pass  # Interpretation is optional; it should never break the page.
 
 
     # ============================================================================
@@ -1396,103 +1949,48 @@ else:
 
 
 # ============================================================================
-# SECTION 6: DEEP DIVE DIAGNOSTICS
+# SECTION 6: CLASSICAL DIAGNOSTICS
 # ============================================================================
-
-st.markdown("---")
-st.header("Deep Dive Diagnostics")
-st.caption("Specialized analyses organized by intent. Run what's relevant, skip what isn't.")
+#
+# These four were the survivors of the old "Deep Dive Diagnostics" tab strip.
+# The other eleven analyses it offered had been overtaken by the always-on
+# sections above — the target histogram, class bar, missingness bar,
+# correlation matrix, outlier heatmap, feature-vs-target gallery and
+# interaction detector all moved into Sections 1-3, and the InsightLedger now
+# states the verbal conclusions (skew, imbalance, leakage, sufficiency,
+# scaling) those analyses used to restate as findings.
+#
+# What is left is the classical-statistics layer nothing else in the app
+# implements: NHANES unit and reference-range checking, a Q-Q plot and
+# Shapiro-Wilk on residuals, variance inflation, and leverage / Cook's D.
+# Each is now its own section rather than a button inside a tab, because a
+# diagnostic nobody can find is a diagnostic nobody runs.
 
 from ml.physiology_reference import load_reference_bundle, match_variable_key
 _ref_bundle = load_reference_bundle()
 _nhanes_ref = _ref_bundle.get("nhanes", {}) if _ref_bundle else {}
-_has_physio_matches = any(match_variable_key(f, _nhanes_ref) for f in feature_cols) if _nhanes_ref else False
+# Scan every column, not just the features: a dataset whose only NHANES-matching
+# column is the target (predicting HbA1c, say) still deserves the unit check.
+_physio_scan_cols = list(dict.fromkeys(list(feature_cols) + ([target_col] if _has_target else [])))
+_has_physio_matches = any(match_variable_key(f, _nhanes_ref) for f in _physio_scan_cols) if _nhanes_ref else False
 
 if "eda_results" not in st.session_state:
     st.session_state.eda_results = {}
 
 
-# Map recommendation panel action IDs to the ledger insight IDs they address.
-# When a user runs a recommended analysis, the corresponding insight should be
-# updated with the structured findings — closing the observation → analysis → action chain.
-_ACTION_TO_INSIGHT_MAP = {
-    "multicollinearity_vif": {"prefix": "eda_corr_cluster_", "category": "collinearity"},
-    "leakage_scan": {"prefix": "eda_leakage_", "category": "leakage"},
-    "missingness_scan": {"prefix": "eda_missing_", "category": "missing_data"},
-    "target_profile": {"exact": ["eda_target_skew"], "category": "target"},
-    "data_sufficiency_check": {"exact": ["eda_sufficiency_insufficient", "eda_sufficiency_borderline"], "category": "sufficiency"},
-}
-
-
-def _resolve_insights_from_eda_result(action_id: str, result: dict, title: str) -> None:
-    """Resolve or enrich ledger insights based on recommendation panel analysis results.
-
-    This bridges the gap where EDA analyses stored results in eda_results
-    but never fed structured findings back into the InsightLedger.
-    """
-    try:
-        mapping = _ACTION_TO_INSIGHT_MAP.get(action_id)
-        if not mapping:
-            return
-
-        findings = result.get("findings", [])
-        warnings = result.get("warnings", [])
-        stats = result.get("stats", {})
-
-        resolution_details = {
-            "action_type": "diagnostic_analysis",
-            "method": action_id,
-            "findings": findings,
-            "warnings": warnings,
-        }
-        if stats:
-            resolution_details["stats"] = stats
-
-        resolved_msg = f"Diagnostic analysis performed: {title}"
-        if findings:
-            resolved_msg = f"{title}: {findings[0]}"
-
-        # Find matching insights by exact ID or prefix
-        exact_ids = mapping.get("exact", [])
-        prefix = mapping.get("prefix", "")
-
-        for insight in ledger.insights:
-            if insight.resolved:
-                continue
-            match = (
-                insight.id in exact_ids
-                or (prefix and insight.id.startswith(prefix))
-            )
-            if match:
-                ledger.resolve(
-                    insight.id,
-                    resolved_by=resolved_msg,
-                    resolved_on_page="02_EDA",
-                    resolution_details=resolution_details,
-                )
-    except Exception:
-        pass  # Never break the workflow
-
-
 ACTION_NEXT_STEPS = {
     'multicollinearity_vif': '→ **Next:** Go to Feature Selection to use LASSO/RFE to resolve collinearity, or apply Ridge/ElasticNet regularization in training.',
-    'missingness_scan': '→ **Next:** Configure imputation strategy in Preprocess. Consider whether missingness is informative (MNAR) before choosing a method.',
-    'data_sufficiency_check': '→ **Next:** Consider reducing features via Feature Selection, or use simpler models (Ridge, LASSO) that handle high dimensionality better.',
     'influence_diagnostics': '→ **Next:** Review flagged high-influence points. Consider target trimming on the Train page, or use robust regression (Huber).',
-    'leakage_scan': '→ **Next:** Remove suspected leakage columns in Upload & Audit before proceeding to modeling.',
-    'target_profile': '→ **Next:** Apply target transformation (Log, Yeo-Johnson, Box-Cox) on the Train & Compare page.',
-    'feature_scaling_check': '→ **Next:** Configure scaling in Preprocess. StandardScaler for normal features, RobustScaler if outliers are present.',
-    'linearity_scatter': '→ **Next:** If non-linear patterns are visible, consider tree-based models or polynomial features in Feature Engineering.',
     'plausibility_check': '→ **Next:** Review flagged implausible values. Apply target trimming or filter rows in Upload & Audit.',
+    'normality_residuals': '→ **Next:** If residuals depart from normality, prefer bootstrap confidence intervals over parametric ones, or use a robust loss on the Train page.',
 }
 
 
-def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""):
-    """Run an EDA action and display results with optional LLM interpretation."""
+def _run_and_show(action_id: str, title: str, run_action: str):
+    """Run a diagnostic and display its figures, narrative, and next step."""
     from utils.llm_ui import build_llm_context, build_eda_full_results_context, render_interpretation_with_llm_button, gather_session_context
 
-    key_prefix = f"{tab_key}_{action_id}" if tab_key else action_id
-    if st.button(f"Run {title}", key=f"run_{key_prefix}", type="primary"):
+    if st.button(f"Run {title}", key=f"run_{action_id}", type="primary"):
         try:
             action_func = getattr(eda_actions, run_action, None)
             if action_func:
@@ -1500,7 +1998,11 @@ def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""
                     result = action_func(df, target_col, feature_cols, signals, st.session_state)
                     st.session_state.eda_results[action_id] = result
                     log_methodology(step="EDA", action=f"Ran {title}", details={"analysis": run_action})
-                    _resolve_insights_from_eda_result(action_id, result, title)
+                    for _insight in result.get("insights", []) or []:
+                        try:
+                            ledger.upsert(_insight)
+                        except Exception:
+                            pass  # A malformed insight must not lose the analysis.
                     try:
                         from utils.workflow_provenance import get_provenance
                         get_provenance().record_eda_analysis(title)
@@ -1517,15 +2019,10 @@ def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""
         for w in result.get("warnings", []):
             st.warning(w)
 
-        # Narrative interpretation
         ACTION_NARRATIVE = {
-            "linearity_scatter": narrative_eda_linearity,
-            "residual_analysis": narrative_eda_residuals,
             "influence_diagnostics": narrative_eda_influence,
             "normality_residuals": narrative_eda_normality,
             "multicollinearity_vif": narrative_eda_multicollinearity,
-            "data_sufficiency_check": narrative_eda_sufficiency,
-            "feature_scaling_check": narrative_eda_scaling,
         }
         findings = result.get("findings", [])[:2]
         stats = result.get("stats", {})
@@ -1534,9 +2031,9 @@ def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""
 
         for idx, (fig_type, fig_data) in enumerate(result.get("figures", [])):
             if fig_type == "plotly":
-                st.plotly_chart(fig_data, key=f"fig_{key_prefix}_{idx}")
+                st.plotly_chart(fig_data, key=f"fig_{action_id}_{idx}")
             elif fig_type == "table":
-                table(fig_data, key=f"tbl_{key_prefix}_{idx}")
+                table(fig_data, key=f"tbl_{action_id}_{idx}")
 
         if interp:
             st.markdown(f"**Summary:** {interp}")
@@ -1550,8 +2047,8 @@ def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""
                 **bg,
             )
             render_interpretation_with_llm_button(
-                ctx, key=f"llm_{key_prefix}",
-                result_session_key=f"llm_result_{key_prefix}",
+                ctx, key=f"llm_{action_id}",
+                result_session_key=f"llm_result_{action_id}",
                 plot_type=action_id,
             )
         next_step = ACTION_NEXT_STEPS.get(action_id)
@@ -1559,105 +2056,80 @@ def _run_and_show(action_id: str, title: str, run_action: str, tab_key: str = ""
             st.markdown(next_step)
 
 
-_recommendations = []
-if signals.high_missing_cols:
-    _recommendations.append(('missingness_scan', 'Missingness Deep Dive', f'{len(signals.high_missing_cols)} columns have >20% missing data'))
-if signals.collinearity_summary.get('high_pairs'):
-    _recommendations.append(('multicollinearity_vif', 'VIF (Multicollinearity)', f'High correlation detected between feature pairs'))
-if signals.target_stats.get('skew') and abs(signals.target_stats['skew']) > 1.5:
-    _recommendations.append(('target_profile', 'Target Profile', f'Target is skewed (skew={signals.target_stats["skew"]:.1f})'))
-if hasattr(signals, 'leakage_flags') and signals.leakage_flags:
-    _recommendations.append(('leakage_scan', 'Leakage Detection', f'{len(signals.leakage_flags)} potential leakage flags'))
-n_p_ratio = len(df) / max(1, len(feature_cols))
-if n_p_ratio < 20:
-    _recommendations.append(('data_sufficiency_check', 'Data Sufficiency', f'n/p ratio is {n_p_ratio:.1f} (< 20)'))
+# -- Physiologic Plausibility ------------------------------------------------
 
-_recommendations = [(aid, title, reason) for aid, title, reason in _recommendations if aid not in st.session_state.get('eda_results', {})]
-
-if _recommendations:
-    st.markdown('#### 🎯 Recommended for Your Data')
-    for aid, title, reason in _recommendations[:3]:
-        col_rec_1, col_rec_2 = st.columns([3, 1])
-        with col_rec_1:
-            st.markdown(f'**{title}** — {reason}')
-        with col_rec_2:
-            if st.button(f'Run', key=f'rec_run_{aid}', type='primary'):
-                action_func = getattr(eda_actions, aid, None)
-                if action_func:
-                    with st.spinner(f'Running {title}...'):
-                        result = action_func(df, target_col, feature_cols, signals, st.session_state)
-                        st.session_state.eda_results[aid] = result
-                        log_methodology(step='EDA', action=f'Ran {title}', details={'analysis': aid})
-                        _resolve_insights_from_eda_result(aid, result, title)
-                        try:
-                            from utils.workflow_provenance import get_provenance
-                            get_provenance().record_eda_analysis(title)
-                        except Exception:
-                            pass  # Provenance recording should never break the workflow
-                        st.rerun()
-    st.markdown('---')
-
-tab_readiness, tab_quality, tab_advanced = st.tabs(
-    ["Model Readiness", "Feature Quality", "Advanced"]
+st.markdown("---")
+st.header("Physiologic Plausibility")
+st.caption(
+    "Reads each column against NHANES reference ranges and clinical guideline bands, "
+    "after inferring its units. This is the check that catches a glucose column recorded "
+    "in mmol/L being read as mg/dL — a mix-up that produces no statistical outliers at all."
 )
-
-with tab_readiness:
-    st.caption("Check assumptions for linear and parametric models.")
-    st.info(
-        "💡 These diagnostics fit a **simple OLS regression as a quick proxy** to check linear modeling "
-        "assumptions. This is standard EDA practice — the OLS here is a diagnostic tool, not your final "
-        "model. Results help you decide whether linear models are appropriate and identify influential "
-        "observations before committing to a full training run."
+if _has_physio_matches:
+    _run_and_show("plausibility_check", "Physiologic Plausibility", "plausibility_check")
+else:
+    st.caption(
+        "No columns matched a known biomedical variable, so there are no reference "
+        "ranges to check against."
     )
-    _run_and_show("linearity_scatter", "Linearity Check", "linearity_scatter", "readiness")
-    st.markdown("---")
-    if task_type_final == 'regression':
-        _run_and_show("residual_analysis", "Residual Analysis", "residual_analysis", "readiness")
-    else:
-        st.caption("Regression only — not applicable for classification tasks.")
-    st.markdown("---")
-    if task_type_final == 'regression':
-        _run_and_show("normality_residuals", "Normality of Residuals", "normality_residuals", "readiness")
-    else:
-        st.caption("Regression only — not applicable for classification tasks.")
-    st.markdown("---")
-    _run_and_show("multicollinearity_vif", "VIF (Multicollinearity)", "multicollinearity_vif", "readiness")
-    st.markdown("---")
-    if task_type_final == 'regression':
-        _run_and_show("influence_diagnostics", "Influence Diagnostics", "influence_diagnostics", "readiness")
-    else:
-        st.caption("Regression only — not applicable for classification tasks.")
 
-with tab_quality:
-    st.caption("Validate data integrity and detect problems.")
-    if _has_physio_matches:
-        _run_and_show("plausibility_check", "Physiologic Plausibility", "plausibility_check", "quality")
-    else:
-        st.caption("Physiologic plausibility checks require biomedical variables with known reference ranges.")
-    st.markdown("---")
-    _run_and_show("leakage_scan", "Leakage Detection", "leakage_scan", "quality")
-    st.markdown("---")
-    _run_and_show("missingness_scan", "Missingness Deep Dive", "missingness_scan", "quality")
-    st.markdown("---")
-    _run_and_show("data_sufficiency_check", "Data Sufficiency", "data_sufficiency_check", "quality")
-    st.markdown("---")
-    _run_and_show("feature_scaling_check", "Feature Scaling", "feature_scaling_check", "quality")
 
-with tab_advanced:
-    st.caption("Interaction effects, dose-response, and quick baselines.")
-    _run_and_show("interaction_analysis", "Interaction Detection", "interaction_analysis", "advanced")
-    st.markdown("---")
-    if task_type_final == 'regression':
-        _run_and_show("dose_response_trends", "Dose-Response Trends", "dose_response_trends", "advanced")
-    else:
-        st.caption("Regression only — not applicable for classification tasks.")
-    st.markdown("---")
-    _run_and_show("outlier_influence", "Outlier Influence", "outlier_influence", "advanced")
-    st.markdown("---")
-    _run_and_show("target_profile", "Target Profile", "target_profile", "advanced")
-    st.markdown("---")
-    _run_and_show("quick_probe_baselines", "Quick Baselines", "quick_probe_baselines", "advanced")
+# -- Residual Normality ------------------------------------------------------
 
+st.markdown("---")
+st.header("Residual Normality")
+st.caption(
+    "Q-Q plot and Shapiro-Wilk on the residuals of a quick OLS fit. Residual normality, "
+    "not the normality of any single column, is what governs whether parametric confidence "
+    "intervals and p-values from a linear model can be trusted."
+)
+if task_type_final == 'regression':
+    st.info(
+        "💡 This fits a **simple OLS regression as a diagnostic proxy** — standard EDA "
+        "practice. The OLS here is an instrument, not your final model."
+    )
+    _run_and_show("normality_residuals", "Normality of Residuals", "normality_residuals")
+else:
+    st.caption("Regression only — residual normality is not a classification assumption.")
+
+
+# -- Multicollinearity (VIF) -------------------------------------------------
+
+st.markdown("---")
+st.header("Multicollinearity (VIF)")
+st.caption(
+    "Variance inflation factor per feature. This is not the same question the correlation "
+    "matrix above answers: a feature that is a linear combination of several others can be "
+    "invisible to every pairwise correlation and still make a linear fit unstable."
+)
+_collinear_pairs = signals.collinearity_summary.get('high_corr_pairs') or []
+if _collinear_pairs:
+    st.warning(
+        f"{len(_collinear_pairs)} feature pairs are already correlated above the flagging "
+        "threshold. VIF will show whether the problem is wider than those pairs."
+    )
+_run_and_show("multicollinearity_vif", "VIF (Multicollinearity)", "multicollinearity_vif")
+
+
+# -- Influence Diagnostics ---------------------------------------------------
+
+st.markdown("---")
+st.header("Influence Diagnostics")
+st.caption(
+    "Leverage and Cook's distance per observation. Univariate outlier flags find rows with an "
+    "extreme value in some column; these find rows that move the fitted surface, which is a "
+    "different set — a point can have high leverage with no extreme value anywhere."
+)
+if task_type_final == 'regression':
+    if len(df) > 20_000:
+        st.info(
+            f"Skipped: this builds an n×n hat matrix and would need roughly "
+            f"{(len(df) ** 2 * 8) / 1e9:.0f} GB at {len(df):,} rows. Run it on a subset if you need it."
+        )
+    else:
+        _run_and_show("influence_diagnostics", "Influence Diagnostics", "influence_diagnostics")
+else:
+    st.caption("Regression only — leverage and Cook's distance are defined for a least-squares fit.")
 
 # ============================================================================
 # SECTION 7: TABLE 1 — PUBLICATION SUMMARY

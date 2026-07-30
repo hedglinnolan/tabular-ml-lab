@@ -24,6 +24,13 @@ from ml.stats_tests import (
     categorical_association_test,
     normality_check,
 )
+# Insights are built here but written by the caller. These are plain functions,
+# and get_ledger() reaches into st.session_state, which silently no-ops outside
+# a script run — bare-mode Streamlit warns and drops the write, so a smoke test
+# would pass while the finding went nowhere. Returning them in
+# result['insights'] keeps the analysis testable and lets the page upsert them
+# where a session actually exists.
+from utils.insight_ledger import Insight, ISSUE_MODEL_RELEVANCE
 
 
 def plausibility_check(
@@ -42,6 +49,7 @@ def plausibility_check(
     findings = []
     warnings = []
     figures = []
+    insights: List[Insight] = []
     reference_bundle = load_reference_bundle()
     nhanes_ref = reference_bundle["nhanes"]
     clinical_guidelines = reference_bundle["clinical"]
@@ -185,23 +193,70 @@ def plausibility_check(
     if unit_overrides:
         findings.append(f"Using {len(unit_overrides)} user-specified unit overrides")
     
-    # Add insight if unit issues found
+    # A unit mismatch (mmol/L read as mg/dL) shifts a whole column without
+    # producing a single statistical outlier, so no other check in the app can
+    # catch it. This observation has to reach the ledger.
     if signals.physio_plausibility_flags or out_of_range:
         num_flags = len(signals.physio_plausibility_flags) if signals.physio_plausibility_flags else 0
-        num_out_of_range = len(out_of_range) if out_of_range else 0
-        insight_finding = f"Physiologic plausibility: {num_flags} empirical flags, {num_out_of_range} columns with out-of-range values"
-        insight_implication = "Review units and validate values against NHANES reference intervals. Clinical thresholds are informational only."
-        try:
-            import streamlit as st
-            from utils.storyline import add_insight
-            add_insight('physio_plausibility', insight_finding, insight_implication, 'data_quality')
-        except:
-            pass
+        num_out_of_range = len(out_of_range)
+        cols_str = ", ".join(out_of_range[:6])
+        if num_out_of_range > 6:
+            cols_str += f" +{num_out_of_range - 6} more"
+        if out_of_range:
+            manuscript = (
+                f"{num_out_of_range} {'variable' if num_out_of_range == 1 else 'variables'} "
+                f"contained values outside the NHANES p01-p99 reference interval for the "
+                f"inferred unit ({cols_str}), which may reflect unit inconsistency or "
+                f"measurement error rather than true physiological extremes"
+            )
+        else:
+            manuscript = (
+                f"{num_flags} empirical plausibility "
+                f"{'flag was' if num_flags == 1 else 'flags were'} raised against published "
+                f"reference ranges, which may reflect unit inconsistency or measurement "
+                f"error rather than true physiological extremes"
+            )
+        insights.append(Insight(
+            id="eda_plausibility_out_of_range",
+            source_page="02_EDA",
+            category="data_quality",
+            severity="warning",
+            finding=(
+                f"Physiologic plausibility: {num_out_of_range} column(s) outside NHANES "
+                f"reference intervals"
+                + (f" ({cols_str})" if cols_str else "")
+                + f", {num_flags} empirical plausibility flag(s)"
+            ),
+            implication=(
+                "Values outside a reference interval are more often a unit mismatch or a "
+                "data-entry error than real physiology, and every downstream model inherits "
+                "the error unchallenged."
+            ),
+            recommended_action=(
+                "Confirm the inferred units in Upload & Audit (unit overrides), then correct "
+                "or filter the rows that remain implausible."
+            ),
+            manuscript_text=manuscript,
+            affected_features=list(out_of_range),
+            relevant_pages=["01_Upload_and_Audit", "10_Report_Export"],
+            # Explicit: the category default for data_quality is TRIPOD 9
+            # (missing data), and a units check does not satisfy that item.
+            tripod_keys=["predictors_defined"],
+            # model_scope omitted → implausible values affect every model family.
+            metadata={
+                "n_columns_checked": len(checked_cols),
+                "n_out_of_range_columns": num_out_of_range,
+                "out_of_range_columns": list(out_of_range),
+                "n_empirical_flags": num_flags,
+                "unit_overrides_applied": sorted(unit_overrides.keys()),
+            },
+        ))
     
     return {
         'findings': findings,
         'warnings': warnings,
-        'figures': figures
+        'figures': figures,
+        'insights': insights,
     }
 
 
@@ -212,11 +267,16 @@ def missingness_scan(
     signals: Any,
     session_state: Any
 ) -> Dict[str, Any]:
-    """Analyze missingness patterns and association with target."""
+    """Analyze missingness patterns and association with target.
+
+    The informative-missingness insight is written by the EDA page, which runs
+    missingness_target_association() inline next to its missing-data chart.
+    Writing it here too would file the same finding twice.
+    """
     findings = []
     warnings = []
     figures = []
-    
+
     if not target or target not in df.columns:
         return {
             'findings': ["Target not available for missingness analysis"],
@@ -242,81 +302,189 @@ def missingness_scan(
         figures.append(('plotly', fig))
         findings.append(f"{len(missing_df)} columns have missing values")
     
-    # Missingness vs target association
-    if signals.task_type_final == 'regression':
-        target_vals = df[target].dropna().values
-        _, norm_p, _ = normality_check(target_vals)
-        parametric = not (norm_p < 0.05 if not (norm_p != norm_p) else False)
-        associations = []
-        for col in signals.high_missing_cols[:10]:
-            if col in df.columns and col != target:
-                missing_mask = df[col].isnull()
-                if missing_mask.sum() > 0 and (~missing_mask).sum() > 0:
-                    t_m = df.loc[missing_mask, target].dropna().values
-                    t_nm = df.loc[~missing_mask, target].dropna().values
-                    if len(t_m) >= 2 and len(t_nm) >= 2:
-                        stat, p, name = two_sample_location_test(t_m, t_nm, parametric)
-                        associations.append({
-                            'Column': col,
-                            'Target Mean (Missing)': float(np.mean(t_m)),
-                            'Target Mean (Non-Missing)': float(np.mean(t_nm)),
-                            'Difference': float(abs(np.mean(t_m) - np.mean(t_nm))),
-                            'Test': name,
-                            'p-value': p,
-                        })
-        if associations:
-            assoc_df = pd.DataFrame(associations).sort_values('Difference', ascending=False)
-            figures.append(('table', assoc_df))
-            findings.append("Missingness may be informative (associated with target)")
-            for row in assoc_df.head(3).itertuples():
-                pv = getattr(row, 'p_value', None)
-                if pv is not None and np.isfinite(pv):
-                    findings.append(f"  {row.Column}: {row.Test} p={pv:.4f}")
-            top_assoc = assoc_df.iloc[0] if len(assoc_df) > 0 else None
-            if top_assoc is not None and top_assoc['Difference'] > 0:
-                insight_finding = f"Missingness in {top_assoc['Column']} correlates with target (Δ={top_assoc['Difference']:.2f})"
-                insight_implication = "Add missingness indicator features; consider tree/boosting models that handle missing values natively"
-                try:
-                    from utils.storyline import add_insight
-                    add_insight('missingness_association', insight_finding, insight_implication, 'data_quality')
-                except Exception:
-                    pass
-    elif signals.task_type_final == 'classification':
-        associations = []
-        for col in signals.high_missing_cols[:10]:
-            if col in df.columns and col != target:
-                missing_mask = df[col].isnull()
-                if missing_mask.sum() > 0 and (~missing_mask).sum() > 0:
-                    cont = pd.crosstab(missing_mask, df[target])
-                    if cont.size >= 1:
-                        stat, p, name = categorical_association_test(cont.values, use_fisher=(cont.shape == (2, 2)))
-                        max_diff = 0.0
-                        try:
-                            mp = df.loc[missing_mask, target].value_counts(normalize=True)
-                            np_ = df.loc[~missing_mask, target].value_counts(normalize=True)
-                            com = mp.reindex(np_.index, fill_value=0).fillna(0)
-                            max_diff = (np_.reindex(com.index, fill_value=0) - com).abs().max()
-                        except Exception:
-                            pass
-                        associations.append({
-                            'Column': col,
-                            'Max Class Prop Difference': max_diff,
-                            'Test': name,
-                            'p-value': p,
-                        })
-        if associations:
-            assoc_df = pd.DataFrame(associations).sort_values('Max Class Prop Difference', ascending=False)
-            figures.append(('table', assoc_df))
-            findings.append("Missingness may be informative (associated with class)")
-            for row in assoc_df.head(3).itertuples():
-                pv = getattr(row, 'p_value', None)
-                if pv is not None and np.isfinite(pv):
-                    findings.append(f"  {row.Column}: {row.Test} p={pv:.4f}")
+    # Missingness vs target association. Delegated to the focused function so
+    # there is exactly one implementation of this test — the EDA page renders
+    # the same table inline next to its missing-data bar chart.
+    assoc = missingness_target_association(
+        df, target, signals.task_type_final,
+        candidate_cols=[c for c in df.columns if c != target],
+    )
+    assoc_df = assoc.get('table')
+    if assoc_df is not None and len(assoc_df) > 0:
+        figures.append(('table', assoc_df))
+        if assoc['n_significant'] > 0:
+            findings.append(
+                f"Missingness is informative in {assoc['n_significant']} of "
+                f"{assoc['n_tested']} columns tested (Benjamini-Hochberg q < 0.05)"
+            )
+        else:
+            findings.append(
+                f"No target association found in the {assoc['n_tested']} columns tested"
+            )
+        # iterrows, not itertuples: pandas renames 'p-value' to a positional
+        # attribute, so the old row.p_value lookup silently found nothing.
+        for _, row in assoc_df.head(3).iterrows():
+            pv = row['p-value']
+            if pd.notna(pv):
+                findings.append(f"  {row['Column']}: {row['Test']} p={pv:.4g}")
+    if assoc.get('skipped_low_n'):
+        findings.append(
+            f"{len(assoc['skipped_low_n'])} column(s) had too few rows on one side "
+            f"of the missing/present split to test"
+        )
     
     return {
         'findings': findings,
         'warnings': warnings,
         'figures': figures
+    }
+
+
+def missingness_target_association(
+    df: pd.DataFrame,
+    target: Optional[str],
+    task_type: Optional[str],
+    candidate_cols: Optional[List[str]] = None,
+    max_cols: int = 15,
+    min_group_n: int = 20,
+) -> Dict[str, Any]:
+    """Test whether *being missing* in a column is associated with the target.
+
+    This is the informative-missingness check. If the target differs between the
+    rows where a column is missing and the rows where it is present, the gap is
+    not random (MAR/MNAR) and the fact of being missing is itself a predictor —
+    which argues for a missing-indicator column rather than a silent median fill.
+
+    Columns are gated on absolute group size, not on missing *rate*. A column
+    that is 2% missing in 50,000 rows has 1,000 missing rows and ample power —
+    and is exactly where an "ordered only when the clinician suspected something"
+    pattern hides. A column that is 8% missing in 200 rows has 16 and no power.
+    The old >5%-rate gate had it backwards on both counts.
+
+    Args:
+        df: The working table.
+        target: Target column name.
+        task_type: 'regression' or 'classification'; anything else returns empty.
+        candidate_cols: Columns to consider (defaults to every column but the target).
+        max_cols: Cap on columns tested, taken by missing count descending.
+        min_group_n: Minimum rows required on BOTH sides of the missing/present split.
+
+    Returns:
+        {'table': DataFrame | None,   # one row per tested column, sorted by p
+         'n_tested': int, 'n_candidates': int, 'skipped_low_n': List[str],
+         'n_significant': int,        # count with BH q < 0.05
+         'significant_cols': List[str], 'top': dict | None, 'effect_col': str}
+    """
+    empty: Dict[str, Any] = {
+        'table': None, 'n_tested': 0, 'n_candidates': 0, 'skipped_low_n': [],
+        'n_significant': 0, 'significant_cols': [], 'top': None, 'effect_col': '',
+    }
+    if not target or target not in df.columns or task_type not in ('regression', 'classification'):
+        return empty
+
+    cols = candidate_cols if candidate_cols is not None else list(df.columns)
+    n_missing_by_col: Dict[str, int] = {}
+    skipped: List[str] = []
+    for col in cols:
+        if col == target or col not in df.columns:
+            continue
+        n_miss = int(df[col].isnull().sum())
+        if n_miss == 0:
+            continue
+        if n_miss < min_group_n or (len(df) - n_miss) < min_group_n:
+            skipped.append(col)
+            continue
+        n_missing_by_col[col] = n_miss
+
+    empty['n_candidates'] = len(n_missing_by_col)
+    empty['skipped_low_n'] = skipped
+    ranked = sorted(n_missing_by_col, key=lambda c: n_missing_by_col[c], reverse=True)[:max_cols]
+    if not ranked:
+        return empty
+
+    rows: List[Dict[str, Any]] = []
+    if task_type == 'regression':
+        target_vals = pd.to_numeric(df[target], errors='coerce').dropna().to_numpy(dtype=float)
+        if len(target_vals) < 3:
+            return empty
+        _, norm_p, _ = normality_check(target_vals)
+        parametric = not (np.isfinite(norm_p) and norm_p < 0.05)
+        target_sd = float(np.std(target_vals)) if len(target_vals) > 1 else 0.0
+        for col in ranked:
+            missing_mask = df[col].isnull()
+            t_missing = pd.to_numeric(df.loc[missing_mask, target], errors='coerce').dropna().to_numpy(dtype=float)
+            t_present = pd.to_numeric(df.loc[~missing_mask, target], errors='coerce').dropna().to_numpy(dtype=float)
+            if len(t_missing) < 2 or len(t_present) < 2:
+                skipped.append(col)
+                continue
+            _stat, p, test_name = two_sample_location_test(t_missing, t_present, parametric)
+            diff = float(np.mean(t_missing) - np.mean(t_present))
+            rows.append({
+                'Column': col,
+                'Missing n': int(missing_mask.sum()),
+                'Missing %': float(missing_mask.mean()),
+                f'Mean {target} | missing': float(np.mean(t_missing)),
+                f'Mean {target} | present': float(np.mean(t_present)),
+                'Difference': diff,
+                'Std. difference': (diff / target_sd) if target_sd > 0 else float('nan'),
+                'Test': test_name,
+                'p-value': float(p),
+            })
+        effect_col = 'Difference'
+    else:
+        for col in ranked:
+            missing_mask = df[col].isnull()
+            cont = pd.crosstab(missing_mask, df[target])
+            if cont.shape[0] < 2 or cont.shape[1] < 2:
+                skipped.append(col)
+                continue
+            _stat, p, test_name = categorical_association_test(
+                cont.values, use_fisher=(cont.shape == (2, 2))
+            )
+            rate_missing = df.loc[missing_mask, target].value_counts(normalize=True)
+            rate_present = df.loc[~missing_mask, target].value_counts(normalize=True)
+            classes = rate_missing.index.union(rate_present.index)
+            max_gap = float(
+                (rate_missing.reindex(classes, fill_value=0.0)
+                 - rate_present.reindex(classes, fill_value=0.0)).abs().max()
+            )
+            rows.append({
+                'Column': col,
+                'Missing n': int(missing_mask.sum()),
+                'Missing %': float(missing_mask.mean()),
+                'Max class-rate gap': max_gap,
+                'Test': test_name,
+                'p-value': float(p),
+            })
+        effect_col = 'Max class-rate gap'
+
+    if not rows:
+        return empty
+
+    assoc = pd.DataFrame(rows)
+    # Benjamini-Hochberg. Up to 15 tests at alpha=.05 expects a false positive
+    # most of the time, so the number worth reading is the q-value.
+    p_vals = assoc['p-value'].to_numpy(dtype=float)
+    q_vals = np.full(len(p_vals), np.nan)
+    finite_idx = np.where(np.isfinite(p_vals))[0]
+    if len(finite_idx) > 0:
+        order = finite_idx[np.argsort(p_vals[finite_idx], kind='stable')]
+        m = len(order)
+        stepped = p_vals[order] * m / np.arange(1, m + 1)
+        q_vals[order] = np.minimum(np.minimum.accumulate(stepped[::-1])[::-1], 1.0)
+    assoc['q-value (BH)'] = q_vals
+    assoc = assoc.sort_values('p-value', na_position='last').reset_index(drop=True)
+
+    significant = assoc.loc[assoc['q-value (BH)'] < 0.05, 'Column'].tolist()
+    return {
+        'table': assoc,
+        'n_tested': len(assoc),
+        'n_candidates': len(n_missing_by_col),
+        'skipped_low_n': skipped,
+        'n_significant': len(significant),
+        'significant_cols': significant,
+        'top': assoc.iloc[0].to_dict(),
+        'effect_col': effect_col,
     }
 
 
@@ -375,6 +543,7 @@ def target_profile(
     findings = []
     warnings = []
     figures = []
+    insights: List[Insight] = []
     
     if not target or target not in df.columns:
         return {
@@ -418,16 +587,34 @@ def target_profile(
         if outlier_rate > 0.05:
             warnings.append(f"High outlier rate ({outlier_rate:.1%}) - consider robust loss")
         
-        # Add insight for outliers
+        # Same id as the page-level detector in pages/02_EDA.py: upsert dedupes
+        # by id, so whichever runs first writes it and the other refreshes it in
+        # place rather than filing the same finding twice.
         if outlier_rate > 0.1:
-            insight_finding = f"High outlier rate in target: {outlier_rate:.1%}"
-            insight_implication = "Consider robust loss functions (Huber) or tree-based models (RF/ExtraTrees) which are less sensitive to outliers"
-            try:
-                import streamlit as st
-                from utils.storyline import add_insight
-                add_insight('target_outliers', insight_finding, insight_implication, 'target_characteristics')
-            except:
-                pass
+            insights.append(Insight(
+                id="eda_target_outliers",
+                source_page="02_EDA",
+                category="distribution",
+                severity="warning",
+                finding=f"High outlier rate in target: {outlier_rate:.1%} of values flagged",
+                implication=(
+                    "Squared-error losses are dominated by the extremes, so a model can be "
+                    "tuned almost entirely by a small tail of observations."
+                ),
+                recommended_action=(
+                    "Use a robust loss (Huber) or tree-based models in Train & Compare, or "
+                    "trim the target if the extreme values are measurement artifacts."
+                ),
+                manuscript_text=(
+                    f"{outlier_rate:.1%} of outcome values were flagged as outliers, which "
+                    f"inflates squared-error losses and can allow a small number of "
+                    f"observations to dominate model fitting"
+                ),
+                affected_features=[target],
+                relevant_pages=["06_Train_and_Compare"],
+                model_scope=ISSUE_MODEL_RELEVANCE["outliers"],  # linear, neural, distance
+                metadata={"outlier_rate": float(outlier_rate), "skewness": float(skew)},
+            ))
     
     elif signals.task_type_final == 'classification':
         # Class counts
@@ -455,7 +642,8 @@ def target_profile(
     return {
         'findings': findings,
         'warnings': warnings,
-        'figures': figures
+        'figures': figures,
+        'insights': insights,
     }
 
 
@@ -603,21 +791,17 @@ def collinearity_map(
     
     # Find high correlation pairs
     high_corr_pairs = signals.collinearity_summary.get('high_corr_pairs', [])
-    max_corr = signals.collinearity_summary.get('max_corr', 0)
     if high_corr_pairs:
         findings.append(f"Found {len(high_corr_pairs)} highly correlated pairs (>0.85)")
         warnings.append("High collinearity may cause GLM coefficient instability")
     
-    # Add insight for high collinearity
-    if max_corr > 0.85:
-        insight_finding = f"High multicollinearity detected: max correlation = {max_corr:.2f}"
-        insight_implication = "Use regularized linear models (Ridge/Lasso/ElasticNet) to stabilize coefficients; consider PCA for dimensionality reduction"
-        try:
-            import streamlit as st
-            from utils.storyline import add_insight
-            add_insight('collinearity', insight_finding, insight_implication, 'feature_relationships')
-        except:
-            pass
+    # No ledger insight here. pages/02_EDA.py already writes eda_corr_cluster_*
+    # from the same signals.collinearity_summary, grouping the correlated
+    # features into clusters; a second "max correlation = X" entry would repeat
+    # that finding under a different id in the manuscript's limitations list.
+    # This function is unreachable in any case — nothing dispatches
+    # collinearity_map; its only reference is ml/eda_recommender.py, whose
+    # recommend_eda() output pages/02_EDA.py assigns and never renders.
     
     return {
         'findings': findings,
