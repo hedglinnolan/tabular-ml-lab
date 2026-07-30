@@ -54,6 +54,10 @@ run "ledger schema"      "$PY" docs/turbotab/tools/ledger.py check
 run "register schema"    "$PY" docs/turbotab/tools/register.py check
 run "American spelling"  "$PY" -m pytest tests/test_american_spelling.py -q --no-header
 run "copy deck"          "$PY" docs/turbotab/tools/copydeck.py check
+# Every pack claim carries an evidence badge and a source that resolves. Same
+# posture and the same honest limit as the ledger's `check`: it verifies a
+# source is NAMED and RESOLVABLE, never that the claim is faithful to it.
+run "evidence badges"    "$PY" docs/turbotab/tools/evidence.py check
 
 if [ "$FAILED" -ne 0 ]; then
     cat <<'EOF'

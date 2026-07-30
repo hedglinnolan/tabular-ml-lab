@@ -255,7 +255,12 @@ def test_the_dietary_reason_is_the_packs_own_sentence_and_not_a_copy(monkeypatch
                 "from the pack rather than from a copy beside it.")
     pack = PK.PACKS["dietary"]
     patched = tuple(
+        # The evidence badge is carried through rather than dropped: a prior is
+        # not constructible without one since `GUIDED-047`, and rebuilding it
+        # without the badge would be this test asserting a shape the app
+        # forbids.
         PK.Prior(question=p.question, marker=p.marker, reason=sentinel,
+                 evidence=p.evidence,
                  scope=p.scope, detector=p.detector, values=dict(p.values))
         if p.question == "repeat_treatment" else p
         for p in pack.priors)

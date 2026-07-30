@@ -185,6 +185,11 @@ def settled_groups(rows: Sequence[Dict[str, Any]],
             "branch": branch, "pack": pack, "label": prior["label"],
             "columns": sorted(columns), "n": len(columns),
             "mechanism": mechanism, "reason": prior["reason"],
+            # The badge travels with the group. A prior that settles 306
+            # columns is the single loudest claim the pack makes on this table,
+            # so it is the last one that should reach the user unbadged.
+            "evidence_status": prior.get("evidence_status"),
+            "source": prior.get("source"),
             "title": (f"{len(columns):,} {branch} columns were settled by the "
                       f"{prior['label'].lower()} lens"),
         })

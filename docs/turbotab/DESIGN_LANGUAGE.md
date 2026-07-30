@@ -375,6 +375,57 @@ Two mechanics bind the layers to the flow:
 
 ---
 
+## 11 · The evidence badge — a token, and deliberately not a component
+
+All four domain-research threads arrived at the same recommendation without being
+asked for it: **surface the epistemic status of every claim the app makes.** The
+clinical thread says why in one sentence — *"that single design decision is what would
+make TurboTab trustworthy to a methodologist, because it makes the tool's epistemic
+position legible rather than uniformly confident."*
+
+**It is a token, not a card type, and that is load-bearing rather than tidy.**
+`DOMAIN_PACKS.md` guard #1 says a pack may not add interview components; a badge that
+arrived as a new card would be the packs buying breadth with the design language, which
+is the thing guard #1 exists to prevent. This adds no silhouette, no mood, no verb. It
+is a small mono chip rendered **inside** an advisory that already exists — beside the
+`derived`/`convention` marker the card already carries, in the same row.
+
+| Badge | The field's position | Rendering obligation |
+|---|---|---|
+| **SETTLED** | Methodological consensus. A tool asserting the opposite would be wrong. | May be a pre-selected default, **with its reason shown**. |
+| **CONVENTION** | No strong evidence base, but field expectation. Deviating invites reviewer friction. | May be pre-selected, and **must be stated as convention, never as fact**. |
+| **DISPUTED** | Live disagreement among competent methodologists. | **Never defaulted silently.** Both positions stated, and a sensitivity analysis offered. |
+
+**Type and color follow the existing rules rather than extending them.** The badge is
+mono, because it is *data about the claim* rather than the app's voice (§03). It takes
+no new hue: SETTLED wears `--ok` because the field has recorded a position, CONVENTION
+wears `--warn` because that is the coach's advisory voice and a convention is exactly
+advisory, and DISPUTED wears **`--ink` on `--surface-2` — deliberately not `--stop`**.
+§02 reserves `--stop` for the blocker band alone, and a disagreement among competent
+methodologists is not an invalid downstream; treating it as one would spend the
+strongest claim in the palette on the honest case.
+
+**It sharpens the three markers rather than replacing them.** `derived`/`convention`/
+`offered` describe **the app's** confidence; SETTLED/CONVENTION/DISPUTED describe **the
+field's**. The second is the one a reviewer can check. They are not a translation — a
+compatibility table, because `offered` admits all three: pooled QC rows are not
+participants (SETTLED) and the app still only *offers* the exclusion, because acting on
+a high-confidence detection whose consequence is irreversible if wrong is what every
+pack's hard-stop list forbids. **Settled science and a withheld hand are compatible,
+and that combination is one of the most important in the product.**
+
+**The consequence for the governing rule.** *"The app may be silent, and it may refuse,
+but it must never assert something false"* gains a fourth mode: **the app may state
+that the field disagrees.** That is not hedging. On a DISPUTED claim it is the only true
+sentence available, and the badge is what makes it a sentence the app can actually
+write.
+
+**Every badge names a source, and the source is checked.**
+`docs/turbotab/tools/evidence.py check` runs in the pre-commit gate and resolves the
+named file and the named section. Its limit is exactly `ledger.py check`'s and is stated
+in the same breath: it verifies that a source is **named and resolvable**, never that
+the claim is faithful to it.
+
 ## Open items recorded, not resolved
 
 - **Attestation polymorphism.** Whether typed attestation stays meaningful for repeat users is

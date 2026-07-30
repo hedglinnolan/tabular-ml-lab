@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**213 of 611 closed.**
+**214 of 612 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 355 |
 | `PARTIAL` | 43 |
-| `FIXED` | 210 |
+| `FIXED` | 211 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
@@ -555,7 +555,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 210
+## FIXED — 211
 
 
 ### Multi-file / JSON import — 69
@@ -632,7 +632,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-136` | medium | coerce_numeric's methods-section description omits how many values it blanked (up to 20% of a column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 36'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 36 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-147` | medium | Duplicated key column name crashes normalize_key and therefore diagnose_join / execute_join / repair_keys (AttributeError), and silently blanks find_key_candidates | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 47'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 47 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 
-### Guided-door drive feedback — 39
+### Guided-door drive feedback — 40
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -667,6 +667,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-042` | high | The lens contradiction detector reads per column, so on a table exported features-in-rows it told the user their lens was wrong when their table was turned around | `turbotab/packs.py contradiction; driven on a transposed copy of metabolomics_untargeted.csv` | **test:** `turbotab/test_a_transposed_assay_table_is_turned_around_before_diagnosis.py::test_the_lens_contradiction_is_silent_while_the_table_may_be_turned_around` — Found while… |
 | `GUIDED-045` | high | The assertion whose pass set is broader than its claim - a sixth axis, and three tests were green against a page emptied to <body></body> | `turbotab/test_answering_the_lens_changes_the_recorded_lens.py docstring; six frontend test files` | **test:** `turbotab/test_an_absence_assertion_carries_a_positive_control.py::test_no_page_test_asserts_only_absences` — THE CLASS THE DOCSTRING NAMED AND DID NOT FILE.… |
 | `GUIDED-046` | high | The routing value check's exact-key matcher cannot express one question settling several, and it moved the numbers twice before anybody fixed the matcher | `tests/integration/test_routing_value_check.py _record; VALUE_CHECK_ADJUDICATION L18 and L24` | **test:** `turbotab/test_one_repair_covers_a_set_of_features.py::test_the_group_cites_a_finding_so_it_counts_as_findings_driven` — TWO OCCURRENCES, ONE CAUSE. covers=q.key if… |
+| `GUIDED-047` | high | Every pack advisory asserted the app's confidence with no statement of where the field stands, so a convention and a consensus reached the user identically | `turbotab/packs.py Prior; docs/turbotab/DOMAIN_SCIENCE.md section 01.1` | **test:** `turbotab/test_every_pack_claim_says_where_the_field_stands.py::test_every_source_resolves_to_a_real_section_of_a_real_file` — ALL FOUR RESEARCH THREADS ARRIVED AT THIS… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |

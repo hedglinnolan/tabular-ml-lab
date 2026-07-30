@@ -170,6 +170,13 @@ class Question:
     # the page did not know. The page did not; this module does, because the
     # sequence is a constitution clause and not a rendering preference.
     seq: Optional[str] = None
+    # THE EVIDENCE BADGE (`DOMAIN_SCIENCE.md` §01.1, `DESIGN_LANGUAGE.md` §11).
+    # Where the FIELD stands on the claim behind this question, and where that
+    # was read. Carried on the Question rather than looked up by the page, for
+    # the same reason `consumer` is: a badge the interface composed would be the
+    # interface deciding the app's epistemic position.
+    evidence_status: Optional[str] = None
+    evidence_source: Optional[str] = None
 
     # asked | skipped | deferred — every one of which is visible in the
     # transcript. There is no fourth state, because a question that is neither
@@ -210,6 +217,8 @@ class Question:
             "consumer": self.consumer,
             "clause": self.clause,
             "seq": self.seq,
+            "evidence_status": self.evidence_status,
+            "evidence_source": self.evidence_source,
         }
 
 
@@ -982,6 +991,8 @@ def _missingness_questions(missing_columns, priors_by_column, groups,
             title=block["title"],
             why=_miss.MECHANISM_WHY,
             consumer=_miss.MECHANISM_CONSUMER,
+            evidence_status=block.get("evidence_status"),
+            evidence_source=block.get("source"),
             options=list(_miss.MECHANISM_OPTIONS))
         if not reopened:
             q.status = "skipped"
@@ -1057,6 +1068,9 @@ def _one_column_question(col, priors_by_column, _miss,
         consumer=_miss.MECHANISM_CONSUMER,
         confidence="high" if derived else None,
         options=list(_miss.MECHANISM_OPTIONS))
+    if derived:
+        q.evidence_status = derived.get("evidence_status")
+        q.evidence_source = derived.get("source")
     if derived and len(column_priors) == 1 and q.key not in set(unskipped):
         q.status = "skipped"
         q.skip_reason = (

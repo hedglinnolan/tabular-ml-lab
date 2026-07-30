@@ -7812,5 +7812,19 @@
   "verified_against": "",
   "test": "turbotab/test_one_repair_covers_a_set_of_features.py::test_the_group_cites_a_finding_so_it_counts_as_findings_driven",
   "verified_ev": "tests/integration/test_routing_value_check.py _record; VALUE_CHECK_ADJUDICATION L18 and L24"
+ },
+ {
+  "id": "GUIDED-047",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "Every pack advisory asserted the app's confidence with no statement of where the field stands, so a convention and a consensus reached the user identically",
+  "detail": "",
+  "ev": "turbotab/packs.py Prior; docs/turbotab/DOMAIN_SCIENCE.md section 01.1",
+  "act": "",
+  "status": "FIXED",
+  "note": "ALL FOUR RESEARCH THREADS ARRIVED AT THIS UNPROMPTED. Every advisory, default and finding a pack produces now carries evidence_status - SETTLED, CONVENTION or DISPUTED - and a source naming a research file and a section, and the source RESOLVES. A TOKEN, NOT A CARD TYPE, which is what keeps DOMAIN_PACKS guard #1 true: a badge arriving as a new component would be the packs buying breadth with the design language. No silhouette, no mood, no verb, no new hue - mono because it is data ABOUT the claim, and DISPUTED deliberately does NOT wear --stop, which section 02 reserves for the blocker band; a disagreement among competent methodologists is not an invalid downstream. IT SHARPENS THE THREE MARKERS RATHER THAN REPLACING THEM: derived/convention/offered is the APP'S confidence, SETTLED/CONVENTION/DISPUTED is the FIELD'S, and the second is the one a reviewer can check. A compatibility table and not a translation - and the first version got that wrong by forbidding SETTLED with offered, which section 01.2 names directly: there is a class of thing the app must detect and must not act on. Pooled QC rows are not participants (settled) and the app still only OFFERS the exclusion. Settled science and a withheld hand are compatible. THE OBLIGATIONS ARE ENFORCED, NOT DOCUMENTED: a DISPUTED prior whose marker pre-selects raises at construction, and a DISPUTED claim with one position stated raises too. THE ORDER OF THOSE TWO CHECKS IS LOAD-BEARING - written second, the pre-select branch was UNREACHABLE because derived and convention both failed the compatibility table first, which is GUIDED-045's axis committed inside the rule that enforces the badge. THE GATE: docs/turbotab/tools/evidence.py check runs in pre-commit, resolves every file and section, and refuses any number the research marks [verify-at-build] appearing as a literal in pack code. Its limit is stated in the tool, in DESIGN_LANGUAGE 11 and in the test - it verifies a source is NAMED AND RESOLVABLE, never that the claim is faithful to it, which is exactly ledger.py check's posture.",
+  "verified_against": "",
+  "test": "turbotab/test_every_pack_claim_says_where_the_field_stands.py::test_every_source_resolves_to_a_real_section_of_a_real_file",
+  "verified_ev": "turbotab/packs.py Prior; docs/turbotab/DOMAIN_SCIENCE.md section 01.1"
  }
 ]

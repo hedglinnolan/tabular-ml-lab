@@ -760,6 +760,22 @@
   .snip .mini{margin-top:7px}
   .snip-blank{background:var(--warn-tint)}
 
+  /* ——— the evidence badge (§11) ———
+     A TOKEN, not a component: no silhouette, no mood, no verb, and no new hue.
+     Mono because it is data ABOUT the claim rather than the app's voice (§03).
+     DISPUTED wears ink on surface-2 and deliberately NOT --stop: §02 reserves
+     that for the blocker band, and a disagreement among competent
+     methodologists is not an invalid downstream. Spending the strongest claim
+     in the palette on the honest case would be the badge undoing §02. */
+  .badge{font-family:var(--mono);font-size:9px;letter-spacing:.06em;
+         text-transform:uppercase;border-radius:4px;padding:1px 5px;
+         border:1px solid var(--line);color:var(--muted);
+         background:var(--surface-2);white-space:nowrap}
+  .badge.settled{color:var(--ok);border-color:var(--ok)}
+  .badge.convention{color:var(--warn);border-color:var(--warn-line)}
+  .badge.disputed{color:var(--ink);border-color:var(--line);
+                  background:var(--surface-2);font-weight:700}
+
   /* A hover that states an effect is a SENTENCE, and a sentence that cannot
      wrap runs off the edge of the screen. The tips have carried sentences
      since DRIVE-003; the rule assuming a word was never revisited, and
@@ -2421,13 +2437,37 @@
       '<div class="skips"><div class="skips-lab">Not asked — settled from the file</div>' +
       skipped.map(function(q){
         return '<div class="skip"><span class="clause"><b>' + esc(q.title) + "</b> — " +
-               esc(q.skip_reason || "") + "</span>" +
+               esc(q.skip_reason || "") + evidenceBadge(q) + "</span>" +
                '<button class="again" data-unskip="' + esc(q.key) + '" ' +
                'data-unskip-title="' + esc(q.title) + '" ' +
                'data-tip="' + esc(effectOf("unskip", null)) + '" ' +
                'aria-label="Ask me anyway — ' + esc(effectOf("unskip", null)) +
                '" type="button">Ask me anyway</button></div>';
       }).join("") + "</div>";
+  }
+
+  /* ═════════ THE EVIDENCE BADGE ═════════ §11, `GUIDED-047`.
+     Where the FIELD stands on the claim this advisory rests on — not where the
+     app's confidence sits, which is what `derived`/`convention` already said.
+     The second is the one a reviewer can check.
+
+     Rendered from what the server sends and never inferred here: a page that
+     decided a claim was settled would be the interface taking an epistemic
+     position, which is the one thing the badge exists to make legible rather
+     than to invent. Absent status, absent badge — silence over a guess. */
+  function evidenceBadge(q){
+    var status = (q || {}).evidence_status;
+    if (!status) return "";
+    var tip = status === "DISPUTED"
+      ? "Competent methodologists disagree about this. It is never applied by "
+        + "default; both positions are stated and the choice is yours."
+      : status === "CONVENTION"
+      ? "Field convention rather than settled evidence. Stated as a convention, "
+        + "never as a fact, and it can be overturned."
+      : "Methodological consensus. A tool asserting the opposite would be wrong.";
+    return ' <span class="badge ' + esc(status.toLowerCase()) + '" ' +
+           'data-tip="' + esc(tip + (q.evidence_source ? " Source: " + q.evidence_source : "")) +
+           '" title="' + esc(status) + '">' + esc(status) + "</span>";
   }
 
   /* Wired, or visibly not built. A solid-bordered chip that silently no-ops

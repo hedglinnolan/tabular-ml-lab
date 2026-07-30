@@ -49,6 +49,7 @@ that is unusually good at five.
 from __future__ import annotations
 
 import itertools
+import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -787,6 +788,11 @@ class Prior:
     question: str
     marker: str                     # derived | convention | offered
     reason: str
+    # WHERE THE FIELD STANDS, and where that was read (`GUIDED-047`). `marker`
+    # is the app's confidence and `evidence` is the field's; a prior with the
+    # first and not the second is the app being uniformly confident, which is
+    # the state all four research threads independently asked to end.
+    evidence: Optional["Evidence"] = None
     scope: str = DATASET
     # For a `COLUMNS`-scoped prior: the detector whose `params["columns"]` names
     # the columns this prior applies to. A columns-scoped prior with no detector
@@ -805,6 +811,35 @@ class Prior:
                 f"{self.question}: a column-scoped prior must name the "
                 f"detector whose columns it applies to. Without one it applies "
                 f"to every column, which is `GUIDED-027` restated.")
+        if self.evidence is None:
+            raise PackError(
+                f"{self.question}: a prior states where the field stands and "
+                f"where that was read. A prior with a marker and no evidence "
+                f"badge asserts the app's confidence as if it were the "
+                f"field's, which is the state `DOMAIN_SCIENCE.md` §01.1 exists "
+                f"to end.")
+        # THE RENDERING OBLIGATION FIRST, and the order is load-bearing.
+        #
+        # Written second, this branch was UNREACHABLE: `derived` and
+        # `convention` both fail the compatibility table below, so the specific
+        # message about pre-selection never fired and the generic one about
+        # markers spoke instead. A check that cannot be reached is the sixth
+        # axis committed inside the rule that enforces the badge — and the
+        # revert probe's own lesson says it: the most diagnostic assertion has
+        # to be first.
+        if self.evidence.status == DISPUTED and self.marker != "offered":
+            raise PackError(
+                f"{self.question}: DISPUTED is never defaulted silently, and "
+                f"marker {self.marker!r} pre-selects. Both positions are "
+                f"stated and the user chooses.")
+        allowed = MARKER_STATUS[self.marker]
+        if self.evidence.status not in allowed:
+            raise PackError(
+                f"{self.question}: marker {self.marker!r} and evidence "
+                f"{self.evidence.status!r} disagree. A `derived` prior is the "
+                f"engine being certain and can only rest on SETTLED science; "
+                f"`offered` is the one that splits, into "
+                f"{list(MARKER_STATUS['offered'])}.")
         if len(self.reason) <= 40:
             raise PackError(
                 f"{self.question}: a prior states its reason. That reason is "
@@ -831,6 +866,121 @@ class Reframing:
     note: Callable[[Dict[str, Any], pd.DataFrame], str]
     title: Optional[Callable[[Dict[str, Any], pd.DataFrame], str]] = None
     severity: str = "info"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The evidence badge — the epistemic status of every claim a pack makes
+#
+# All four research threads arrived at this independently, and the clinical one
+# states why: *"that single design decision is what would make TurboTab
+# trustworthy to a methodologist, because it makes the tool's epistemic position
+# legible rather than uniformly confident."*
+#
+# It is NOT a card type, so guard #1 holds. It is a token, rendered beside an
+# advisory that already exists (`DESIGN_LANGUAGE.md` §11).
+#
+# **It subsumes and sharpens `derived` / `convention` / `offered`.** Those three
+# describe THE APP'S confidence. These three describe THE FIELD'S — and the
+# second is the honest one, because it is the one a reviewer can check. The
+# mapping is not one-to-one, and the place it is not is the whole point:
+# `offered` splits, because some offered items are genuinely disputed and some
+# are merely expensive, and rendering those two the same way was the app being
+# uniformly confident in a different direction.
+SETTLED = "SETTLED"
+CONVENTION_STATUS = "CONVENTION"
+DISPUTED = "DISPUTED"
+EVIDENCE_STATUSES = (SETTLED, CONVENTION_STATUS, DISPUTED)
+
+# What each status PERMITS. Read by `recipes.register_default` and by the
+# interface, so the obligation is enforced rather than documented.
+MAY_PRESELECT = frozenset({SETTLED, CONVENTION_STATUS})
+
+
+class EvidenceError(Exception):
+    """A claim the app cannot honestly badge."""
+
+
+@dataclass(frozen=True)
+class Evidence:
+    """Where a pack's claim comes from, and how firmly the field holds it.
+
+    `status` is the field's position, not the app's confidence:
+
+    * **SETTLED** — methodological consensus; a tool asserting the opposite
+      would be wrong. May be a pre-selected default with its reason shown.
+    * **CONVENTION** — no strong evidence base, but field expectation.
+      May be pre-selected, and **must be stated as convention, never as fact**.
+    * **DISPUTED** — live disagreement among competent methodologists.
+      **Never defaulted silently.** Both positions stated, and a sensitivity
+      analysis offered.
+
+    `source` names a research file and a section in it, and
+    `docs/turbotab/tools/evidence.py check` resolves both. The honest limit is
+    exactly `ledger.py check`'s: **it verifies that a source is named and
+    resolvable, not that the claim is faithful to it.** A citation that resolves
+    to the wrong section is a defect this cannot see, and saying so is the
+    difference between a gate and a reassurance.
+
+    `both_sides` is required on DISPUTED and forbidden elsewhere. A disputed
+    claim with one position stated is the app picking a side while wearing a
+    badge that says it has not.
+    """
+    status: str
+    source: str
+    both_sides: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.status not in EVIDENCE_STATUSES:
+            raise EvidenceError(
+                f"{self.status!r} is not one of {list(EVIDENCE_STATUSES)}. The "
+                f"badge is what makes the app's epistemic position legible, so "
+                f"a claim it cannot describe is one the app may not make.")
+        if not re.match(r"^research/[A-Z_]+\.md#.+", self.source or ""):
+            raise EvidenceError(
+                f"{self.source!r} is not a resolvable source. The form is "
+                f"`research/FILE.md#Section heading`, and it is checked — a "
+                f"citation nobody can follow is a citation nobody can check.")
+        if self.status == DISPUTED and not (self.both_sides or "").strip():
+            raise EvidenceError(
+                f"{self.source}: a DISPUTED claim must state both positions. "
+                f"One side stated under a DISPUTED badge is the app picking a "
+                f"side while wearing a badge that says it has not.")
+        if self.status != DISPUTED and self.both_sides:
+            raise EvidenceError(
+                f"{self.source}: `both_sides` belongs to DISPUTED only. On a "
+                f"SETTLED or CONVENTION claim it invents a controversy.")
+
+    @property
+    def may_preselect(self) -> bool:
+        return self.status in MAY_PRESELECT
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"evidence_status": self.status, "source": self.source,
+                "both_sides": self.both_sides,
+                "may_preselect": self.may_preselect}
+
+
+# Which evidence status each marker may rest on. The two axes are genuinely
+# different questions — `marker` is **what the app does**, `status` is **where
+# the field stands** — so this is a compatibility table and not a translation.
+#
+# `offered` admits ALL THREE, and the first version of this forbade
+# `SETTLED + offered` and was wrong. `DOMAIN_SCIENCE.md` §01.2 names the class
+# it would have outlawed: *there is a class of thing the app must detect and
+# must not act on.* Pooled QC rows are not participants — that is settled, not a
+# convention — and the app still only OFFERS the exclusion, because acting on a
+# high-confidence detection whose consequences are irreversible if wrong is the
+# thing every pack's `hard_stops` list forbids. Settled science and a withheld
+# hand are compatible, and the combination is one of the most important in the
+# product.
+#
+# What is NOT compatible is the other direction, and it is enforced separately:
+# a DISPUTED claim may never pre-select.
+MARKER_STATUS: Dict[str, Tuple[str, ...]] = {
+    "derived": (SETTLED,),
+    "convention": (CONVENTION_STATUS,),
+    "offered": (SETTLED, CONVENTION_STATUS, DISPUTED),
+}
 
 
 @dataclass(frozen=True)
@@ -999,6 +1149,10 @@ PACKS: Dict[str, Pack] = {
             # applying it to `age` because the table is metabolomic would be
             # the dataset-level error the finding was filed about.
             Prior(question="missingness_direction", marker="derived",
+                  evidence=Evidence(
+                      status=SETTLED,
+                      source="research/METABOLOMICS_PACK.md#03 · Missing data",
+                  ),
                   scope=COLUMNS, detector="pack::metabolomics::left_censored",
                   values={"mechanism": "below_detection_limit",
                           "strategy": "half_minimum"},
@@ -1028,6 +1182,10 @@ PACKS: Dict[str, Pack] = {
             # behavior the app does not have, which is the governing rule broken
             # by the layer built to enforce it.
             Prior(question="qc_rows_excluded", marker="offered",
+                  evidence=Evidence(
+                      status=SETTLED,
+                      source="research/METABOLOMICS_PACK.md#01 · Import and structure",
+                  ),
                   scope=DATASET,
                   values={"exclude": True, "detector": "pack::metabolomics::pooled_qc",
                           "offers": "eligibility_criterion"},
@@ -1081,6 +1239,10 @@ PACKS: Dict[str, Pack] = {
             # Genuinely a fact about the DATASET: p ≫ n is a property of the
             # shape, not of any column.
             Prior(question="model_ranking", marker="derived", scope=DATASET,
+                  evidence=Evidence(
+                      status=SETTLED,
+                      source="research/GENOMICS_PACK.md#08 · Modeling at p >> n",
+                  ),
                   values={"prefer": "regularized",
                           "discourage": "distance_based"},
                   reason=("At p much greater than n an unregularized fit is "
@@ -1088,6 +1250,16 @@ PACKS: Dict[str, Pack] = {
                           "features is dominated by noise. The shelf is "
                           "ordered by this and never filtered by it.")),
             Prior(question="normalization", marker="offered", scope=DATASET,
+                  evidence=Evidence(
+                      status=DISPUTED,
+                      source="research/GENOMICS_PACK.md#04 · Normalization — no default asserted",
+                      both_sides=(
+                          "CPM, TPM and VST are not interchangeable and the choice "
+                          "depends on the assay and the question. The research asserts no "
+                          "default and neither does this pack; the disagreement is the "
+                          "finding, and declining is recorded rather than absent."
+                      ),
+                  ),
                   values={"variant": None},
                   reason=("CPM, TPM and VST are not interchangeable and the "
                           "choice depends on the assay and the question. No "
@@ -1114,6 +1286,10 @@ PACKS: Dict[str, Pack] = {
             # `repeats.menu()` reads this reason rather than restating it, and
             # a test asserts the rendered sentence came from here.
             Prior(question="repeat_treatment", marker="derived", scope=DATASET,
+                  evidence=Evidence(
+                      status=SETTLED,
+                      source="research/NUTRITION_PACK.md#03 · ★ Repeated recalls and measurement error",
+                  ),
                   values={"treatment": "mean"},
                   reason=("A single 24-hour recall is a noisy estimate of "
                           "usual intake, and that noise attenuates "
@@ -1121,6 +1297,10 @@ PACKS: Dict[str, Pack] = {
                           "their mean rather than a single day reduces the "
                           "within-person measurement error.")),
             Prior(question="energy_adjustment", marker="convention",
+                  evidence=Evidence(
+                      status=CONVENTION_STATUS,
+                      source="research/NUTRITION_PACK.md#04 · Energy adjustment — the methodological signature",
+                  ),
                   scope=COLUMNS, detector="pack::dietary::energy_adjustment",
                   values={"variant": "residual",
                           "alternative": "nutrient_density"},
@@ -1130,6 +1310,10 @@ PACKS: Dict[str, Pack] = {
                           "offered beside it, and the choice between them is a "
                           "convention rather than a fact.")),
             Prior(question="collinearity_figure", marker="derived",
+                  evidence=Evidence(
+                      status=SETTLED,
+                      source="research/NUTRITION_PACK.md#05 · Compositional structure and substitution modeling",
+                  ),
                   scope=COLUMNS, detector="pack::dietary::compositional",
                   values={"gate": "log_ratio"},
                   reason=("These columns are parts of a whole, so ordinary "
@@ -1170,6 +1354,10 @@ PACKS: Dict[str, Pack] = {
             # reference matcher recognizes. On an NHANES-shaped table that is
             # the labs and not the questionnaire items beside them.
             Prior(question="missingness_direction", marker="offered",
+                  evidence=Evidence(
+                      status=CONVENTION_STATUS,
+                      source="research/CLINICAL_SURVEY_PACK.md#A2 · ★ Missing data — where TurboTab differentiates itself",
+                  ),
                   scope=COLUMNS, detector="pack::clinical::reference_columns",
                   values={"mechanism": "not_ordered"},
                   reason=("Missingness in a clinical measurement often means "
@@ -1217,6 +1405,10 @@ PACKS: Dict[str, Pack] = {
             # including its genuinely stateful uses. The VARIANT preference did
             # migrate; see `_survey_recipes`.
             Prior(question="ordinal_encoding", marker="derived", scope=COLUMNS,
+                  evidence=Evidence(
+                      status=SETTLED,
+                      source="research/CLINICAL_SURVEY_PACK.md#B2 · Scale construction",
+                  ),
                   detector="pack::survey::ordinal_declared",
                   values={"source": "instrument", "row_local": True},
                   reason=("The order comes from the instrument, which makes "
@@ -1226,6 +1418,16 @@ PACKS: Dict[str, Pack] = {
                           "frequencies would have to be fitted inside the "
                           "training folds.")),
             Prior(question="reverse_coding", marker="offered", scope=COLUMNS,
+                  evidence=Evidence(
+                      status=DISPUTED,
+                      source="research/CLINICAL_SURVEY_PACK.md#B4 · ★ Ordinal vs interval — the long-running dispute",
+                      both_sides=(
+                          "A negative item-rest correlation has four incompatible causes "
+                          "- needs reversing, already reversed, a method factor, or the "
+                          "item does not belong - and no correlational signature "
+                          "separates them. The pack asks; it never infers."
+                      ),
+                  ),
                   detector="pack::survey::ordinal_declared",
                   values={"variant": None},
                   reason=("Reverse-coding requires a codebook the app does not "
@@ -1353,6 +1555,11 @@ def priors(lens: Sequence[str], name: str,
                 "pack": key, "label": LENS_LABELS[key],
                 "question": prior.question, "marker": prior.marker,
                 "reason": prior.reason, "scope": prior.scope,
+                # THE BADGE TRAVELS WITH THE PRIOR. A status computed on the
+                # server and dropped at the boundary would be `DRIVE-001`'s
+                # class: built, correct, and unreachable by a reader — and the
+                # whole argument for the badge is that it reaches a reader.
+                **prior.evidence.to_dict(),
                 **prior.values,
             }
             if prior.scope == COLUMNS:
