@@ -680,6 +680,35 @@
                   border:1px solid var(--warn-line);border-radius:5px;padding:0 5px;white-space:nowrap}
   .draft-foot{font-family:var(--sans);font-size:10.5px;color:var(--faint);margin-top:11px;
               padding-top:9px;border-top:1px solid var(--line-soft)}
+
+  /* ——— a pick you can see (GUIDED-037) ———
+     The multi-select's click handler set `aria-pressed` and NOTHING in any
+     sheet read it, so picking a lens changed the DOM and not the screen —
+     indistinguishable from a broken control, which is how it was reported.
+
+     Redundantly coded per §09: the box FILLS, the border moves, the ground
+     tints. Remove color and the filled box still says it; remove the box and
+     the border still does. A state carried by one channel is a state that fails
+     with that channel. */
+  .answer.multi::before{content:"";inline-size:12px;block-size:12px;flex:none;
+                        border:1.5px solid var(--line);border-radius:3px;
+                        transition:background .12s ease,border-color .12s ease}
+  .answer.multi[aria-pressed="true"]::before{background:var(--accent);
+                        border-color:var(--accent);
+                        box-shadow:inset 0 0 0 2px var(--surface)}
+  .answer[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-tint);
+                               color:var(--accent-ink)}
+  /* An option this build cannot perform, or one whose submittable value the
+     server did not supply. Said out loud, never a solid chip that no-ops
+     (GUIDED-006). */
+  .answer.notbuilt{border-style:dashed;border-color:var(--line-soft);color:var(--faint);
+                   font-weight:500;cursor:not-allowed}
+  .answer.notbuilt:hover{border-color:var(--line-soft);background:var(--surface)}
+  .answer.notbuilt .nb{font-family:var(--mono);font-size:9px;letter-spacing:.05em;
+                       text-transform:uppercase;margin-left:6px;color:var(--faint)}
+  .answer[disabled]{opacity:.6;cursor:not-allowed}
+  .answer.primary[disabled]{background:var(--surface);color:var(--muted);
+                            border-color:var(--line);filter:none}
 </style>
 
 <div class="topbar">
@@ -1901,26 +1930,114 @@
            "</button>" +
            '<div class="teach-body is-hidden" data-teach-body="' + esc(q.key) +
            '"></div></div>';
+    /* ═════════ THE VALUE IS NOT THE LABEL ═════════
+       `GUIDED-037`. The Router serves `option_values` beside `options` because
+       the lens's labels are prose — "Metabolomics or proteomics" — and its
+       values are keys — `metabolomics`. This loop read `q.options` twice and
+       posted the LABEL, which `packs.normalize` refuses with a 400, so clicking
+       an answer on question 1 did nothing and the interview could not start.
+       `DRIVE-001` one layer in: servable, rendered, and unanswerable.
+
+       The values are read positionally against the labels, and a server that
+       supplies a mismatched pair gets a REFUSAL rather than a guess — a button
+       that will 400 asserts it can record your answer, which is the one thing
+       the governing rule forbids. */
+    var vals = q.option_values;
+    var labels = q.options || [];
+    var paired = Array.isArray(vals) && vals.length === labels.length;
     h += '<div class="answers">';
-    (q.options || []).forEach(function(opt, i){
+    var picked = PENDING[q.key] || [];
+    labels.forEach(function(opt, i){
       var label = (typeof opt === "string") ? opt : (opt.label || opt.key);
-      var value = (typeof opt === "string") ? opt : (opt.key || opt.label);
+      var value = paired ? vals[i]
+                : ((typeof opt === "string") ? opt : (opt.key || opt.label));
       var spec = ANSWERABLE[q.key] || {};
-      var why = (spec.unbuilt || {})[value];
+      var why = paired ? (spec.unbuilt || {})[value]
+              : ("The server did not send a value this option can be recorded "
+                 + "as, so pressing it would post something the record refuses. "
+                 + "Reported rather than offered.");
+      var on = multi && picked.indexOf(value) !== -1;
+      var sentence = why || optionNote(q, i) || effectOf(spec.kind, null);
       h += '<button class="answer' + (multi ? " multi" : "") +
            (why ? " notbuilt" : "") + '" type="button" ' +
+           (why ? "disabled aria-disabled=\"true\" " : "") +
            'data-answer-key="' + esc(q.key) + '" ' +
            'data-answer-value="' + esc(value) + '" ' +
            'data-answer-multi="' + (multi ? "1" : "0") + '" ' +
-           'data-tip="' + esc(why || effectOf(spec.kind, null)) + '" ' +
-           'aria-pressed="false">' + esc(label) + "</button>";
+           'data-tip="' + esc(sentence) + '" ' +
+           'aria-label="' + esc(label + " — " + sentence) + '" ' +
+           'aria-pressed="' + (on ? "true" : "false") + '">' + esc(label) +
+           (why ? '<span class="nb">not offered</span>' : "") + "</button>";
     });
     h += "</div>";
-    if (multi)
-      h += '<div class="answers"><button class="answer primary" type="button" ' +
-           'data-answer-commit="' + esc(q.key) + '">That is all of them</button></div>';
+    if (multi) h += commitRow(q, picked);
     h += "</div></div>";
     return h;
+  }
+
+  /* One option's own sentence, when the server has one for it.
+     `GUIDED-039`: six lens options shared one hover string, so hovering
+     *Metabolomics or proteomics* said the same thing as hovering *Dietary
+     intake*. The tailored sentence belongs to the pack — the pack is what will
+     do the looking — so it travels as `option_notes` and is quoted here.
+     Absent, the control falls back to the question-level effect, which is what
+     every non-lens question has and is not a lie about anything. */
+  function optionNote(q, i){
+    var notes = q.option_notes;
+    return (Array.isArray(notes) && notes.length === (q.options || []).length)
+      ? (notes[i] || "") : "";
+  }
+
+  /* ═════════ THE SUBMIT AFFORDANCE FOR A MULTI-SELECT ═════════
+     `GUIDED-038`. *"That is all of them"* is the grammar of confirming an
+     enumeration you have finished. It fits a set that may legitimately be
+     empty, and it is nonsense on a question that must be answered — which the
+     lens is: **picking is the action, and at least one is required.** The
+     driver read it as "confirm you have listed everything", which is not what
+     the question asks.
+
+     So the control says what it will record and how much of it, and at zero it
+     does not offer a press the record would refuse — it states the requirement.
+
+     `min_selections` and `min_reason` come from the Router because the
+     requirement is the server's, and the two multi-selects disagree about it:
+     reverse-coding's zero IS an answer — *"no items are reverse-coded"*, the
+     recorded-absence rule — and the lens's zero is not. A page that hardcoded
+     either would be a second copy of a rule that already exists in
+     `packs.normalize`, which is the two-implementations failure at string
+     scale. */
+  function commitRow(q, picked){
+    var spec = ANSWERABLE[q.key] || {};
+    var n = (picked || []).length;
+    var min = q.min_selections || 0;
+    var blocked = n < min;
+    var short = n === 0 ? (min > 0 ? "Pick at least one" : "Record none of them")
+              : n === 1 ? "Record this one"
+              : "Record these " + n;
+    var sentence = blocked
+      ? (q.min_reason || "This question needs at least " + min + " picked.")
+      : effectOf(spec.kind, payloadFor(spec, picked || []));
+    return '<div class="answers"><button class="answer primary" type="button" ' +
+           (blocked ? 'disabled aria-disabled="true" ' : "") +
+           'data-answer-commit="' + esc(q.key) + '" ' +
+           'data-tip="' + esc(sentence) + '" ' +
+           'aria-label="' + esc(short + " — " + sentence) + '">' +
+           esc(short) + "</button></div>";
+  }
+
+  /* The promise and the act compose the SAME payload, by calling one function.
+     `commitRow`'s hover states the effect of pressing it, and `submitAnswer`
+     performs it; two constructions of the payload would let the tip describe a
+     request the page does not send — §05.1's quotation rule, applied to the
+     BEFORE moment rather than the after one. */
+  function payloadFor(spec, values){
+    var payload = {};
+    if (!spec) return payload;
+    values = values || [];
+    if (spec.multi)          payload[spec.field] = values;
+    else if (spec.bool)      payload[spec.field] = values[0] === "yes";
+    else if (values.length)  payload[spec.field] = values[0];
+    return payload;
   }
 
   /* A rendered skip is a muted provenance row, not a decision. Green means a
@@ -2869,11 +2986,18 @@
       if (!spec) return;
       if (spec.multi){
         /* Selection is visible before it is submitted, so a multi-select does
-           not record on the first press. */
+           not record on the first press.
+
+           `GUIDED-037`'s other half: this line was already here and the sheet
+           had no rule reading `aria-pressed` on `.answer`, so the state changed
+           in the DOM and not on the screen. The style is the fix; the re-render
+           below is what keeps the SUBMIT control honest, because its label and
+           its promised effect are both functions of what is picked. */
         PENDING[key] = PENDING[key] || [];
         var at = PENDING[key].indexOf(value);
         if (at === -1) PENDING[key].push(value); else PENDING[key].splice(at, 1);
         one.setAttribute("aria-pressed", at === -1 ? "true" : "false");
+        renderAsked(LAST_DATA_PLAN);
         return;
       }
       submitAnswer(key, spec, [value]);
@@ -2902,9 +3026,7 @@
         return;
       }
     }
-    if (spec.multi)      payload[spec.field] = values;
-    else if (spec.bool)  payload[spec.field] = values[0] === "yes";
-    else                 payload[spec.field] = values[0];
+    payload = payloadFor(spec, values);
     delete PENDING[key];
     decide(spec.kind, "", payload, effectOf(spec.kind, payload));
   }

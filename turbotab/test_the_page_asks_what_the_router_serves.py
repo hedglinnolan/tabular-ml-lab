@@ -193,7 +193,21 @@ def test_the_lens_options_carry_values_and_not_only_labels():
 
     page = _page()
     assert "data-answer-value=" in page, "the page submits labels, not values"
-    assert "option_values" in page or "q.options" in page
+    # THIS LINE USED TO READ
+    #     assert "option_values" in page or "q.options" in page
+    # and it passed for five loops on the wrong half of the disjunction. The
+    # page said `q.options` twice, never read `option_values`, and posted the
+    # label — `GUIDED-037`, the interview unable to start at question 1.
+    #
+    # `FEATURE_PARITY.md`: *a substring of a message is a wildcard wearing an
+    # assertion's clothes.* A grep cannot tell a page that READS a field from
+    # one that merely names it, so the real check is behavioral and lives in
+    # `test_answering_the_lens_changes_the_recorded_lens.py`, which runs the
+    # page's own controller and reads the record back. What stays here is the
+    # narrow structural half a text search CAN carry.
+    assert "q.option_values" in page, (
+        "the page never reads the values array, so every option submits its "
+        "prose label — see test_answering_the_lens_changes_the_recorded_lens")
 
 
 @pytest.mark.parametrize("key", [

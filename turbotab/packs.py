@@ -76,6 +76,16 @@ LENS_LABELS: Dict[str, str] = {
     OTHER: "Something else, or not sure",
 }
 
+# WHY AN EMPTY LENS IS REFUSED, stated once and read twice: `normalize` raises
+# it, and the Router serves it as the submit control's `min_reason` so the
+# interface can say why the button is not offered. `GUIDED-038` is what happens
+# when the interface composes its own version — the two drift, and the one the
+# user reads is the one nothing tests.
+LENS_EMPTY_REFUSAL = (
+    "The lens question needs an answer, and 'Something else, or not sure' is "
+    "one — the app is fully functional without a lens. An empty selection "
+    "would be indistinguishable from never having asked.")
+
 LENS_TITLE = "What kind of measurements are in this table?"
 LENS_WHY = ("Pick all that apply. This changes what we look for and what we "
             "suggest — it never limits what you can do.")
@@ -106,11 +116,7 @@ def normalize(keys: Sequence[str]) -> List[str]:
         raise PackError(
             f"{unknown[0]!r} is not one of {list(LENS_KEYS)}.")
     if not chosen:
-        raise PackError(
-            "The lens question needs an answer, and 'Something else, or not "
-            "sure' is one — the app is fully functional without a lens. An "
-            "empty selection would be indistinguishable from never having "
-            "asked.")
+        raise PackError(LENS_EMPTY_REFUSAL)
     seen: List[str] = []
     for k in LENS_KEYS:                       # a stable order, not click order
         if k in chosen and k not in seen:
@@ -1313,6 +1319,10 @@ def question(suggestion: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "why": LENS_WHY,
         "consumer": LENS_CONSUMER,
         "multi_select": True,
+        # Mandatory, and the reason is the one `normalize` refuses an empty
+        # selection with rather than a second sentence saying the same thing.
+        "min_selections": 1,
+        "min_reason": LENS_EMPTY_REFUSAL,
         "options": [{"key": k, "label": LENS_LABELS[k]} for k in LENS_KEYS],
         "suggestion": suggestion or {},
     }

@@ -109,7 +109,26 @@ class Question:
     # so a page rendering labels had nothing to submit. `DRIVE-001` is what that
     # costs when a question is servable and unanswerable.
     option_values: List[str] = field(default_factory=list)
+    # One sentence per option, parallel to `options`, saying what THAT answer
+    # leads the app to look for. Empty means the question-level effect sentence
+    # is the whole truth, which is the case for every question whose options are
+    # variants of one operation. `GUIDED-039`: the lens is the case where it is
+    # not — its six options select five different packs, and one shared hover
+    # said nothing about any of them.
+    option_notes: List[str] = field(default_factory=list)
     multi_select: bool = False
+    # For a multi-select: how many answers the record requires, and the reason
+    # in the words of whatever enforces it.
+    #
+    # `GUIDED-038`. The two multi-selects DISAGREE, which is why this cannot be
+    # a property of the interface: reverse-coding's zero is a real answer — *"no
+    # items are reverse-coded"*, the recorded-absence rule — and the lens's zero
+    # is refused by `packs.normalize`, because an empty selection is
+    # indistinguishable from never having asked. A page that hardcoded either
+    # would hold a second copy of a rule that already exists, and the copy is
+    # what drifts.
+    min_selections: int = 0
+    min_reason: Optional[str] = None
     # Who consumes this answer, and what for. DESIGN_LANGUAGE §09: "Every FACT
     # carries a 'Why we ask' disclosure that names who consumes the answer and
     # what for. A FACT that cannot state its consumer is a question we have no
@@ -164,7 +183,10 @@ class Question:
             "defer_target": self.defer_target, "deferred_from": self.deferred_from,
             "options": list(self.options),
             "option_values": list(self.option_values or self.options),
+            "option_notes": list(self.option_notes),
             "multi_select": bool(self.multi_select),
+            "min_selections": int(self.min_selections),
+            "min_reason": self.min_reason,
             "consumer": self.consumer,
             "clause": self.clause,
         }
@@ -361,6 +383,8 @@ def plan(
             key=spec["key"], kind="lens", step="data", clause=spec["clause"],
             title=spec["title"], why=spec["why"], consumer=spec["consumer"],
             multi_select=True,
+            min_selections=spec["min_selections"],
+            min_reason=spec["min_reason"],
             options=[o["label"] for o in spec["options"]],
             option_values=[o["key"] for o in spec["options"]]))
 

@@ -7667,5 +7667,33 @@
   "verified_against": "",
   "test": "turbotab/test_the_escape_hatch_records_what_it_cannot_describe.py::test_the_conservative_split_is_actually_grouped",
   "verified_ev": "turbotab/project.py set_grain group_col/n_groups; turbotab/engine.py draw_holdout:769; turbotab/grain.py seal_disclosure"
+ },
+ {
+  "id": "GUIDED-037",
+  "area": "GUIDED",
+  "sev": "critical",
+  "item": "The generic question channel submits option LABELS where the server requires option KEYS, so question 1 of the pre-seal sequence cannot be answered and the interview cannot start",
+  "detail": "",
+  "ev": "turbotab/web/index.html askedCard; ml/router.py Question.option_values",
+  "act": "",
+  "status": "FIXED",
+  "note": "DRIVE-001 ONE LAYER IN. The Router serves option_values beside options because the lens's labels are prose and its values are keys; askedCard read q.options TWICE, so every button carried the label as its data-answer-value and pressing submit posted {'lens': ['Metabolomics or proteomics']}, which packs.normalize refuses with a 400. Reproduced over HTTP before the fix. WHY NOTHING CAUGHT IT: test_the_lens_options_carry_values_and_not_only_labels ended with 'assert \"option_values\" in page or \"q.options\" in page' - a disjunction the wrong half satisfies, which is FEATURE_PARITY's 'a substring of a message is a wildcard wearing an assertion's clothes' in a new costume. Every frontend assertion in this tree was a text search over index.html, and a text search cannot tell a page that READS a field from one that merely names it. THE STRUCTURAL FIX is turbotab/pageharness.py: the page's real controller runs under node with a DOM shim, its real click handlers are dispatched, and the body its real decide() composes is replayed against the real API - so the assertion is 'the record now says metabolomics', not 'a click was registered'. Both halves revert-probed: reverting the page half gives 'the server refused the body the page composes'; reverting project.set_lens's assignment gives 'answering did not change it'. SECOND HALF: the click handler set aria-pressed and no stylesheet rule read it, so a pick was invisible - fixed with redundant coding per section 09 and asserted on the render, not on a grep.",
+  "verified_against": "",
+  "test": "turbotab/test_answering_the_lens_changes_the_recorded_lens.py::test_answering_the_lens_changes_the_recorded_lens",
+  "verified_ev": "turbotab/web/index.html askedCard; ml/router.py Question.option_values"
+ },
+ {
+  "id": "GUIDED-038",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The mandatory multi-select's submit control said 'That is all of them', which is the grammar of confirming an enumeration rather than of answering a required question",
+  "detail": "",
+  "ev": "turbotab/web/index.html askedCard commit row",
+  "act": "",
+  "status": "FIXED",
+  "note": "The lens is mandatory: picking IS the action and at least one is required, so a control that asks you to confirm you have finished listing describes a different question. The control now says what it will record and how much of it, and at zero it is not pressable - a press the record would refuse is a control asserting it can record your answer. min_selections and min_reason come from the Router because the requirement is the server's and the two multi-selects DISAGREE: reverse-coding's zero is a real answer under the recorded-absence rule, the lens's zero is refused by packs.normalize. The refusal sentence is hoisted to packs.LENS_EMPTY_REFUSAL and read twice - raised by normalize, served as min_reason - so the interface quotes the rule instead of composing a second one beside it. The tip and the POST body are built by ONE payload function, so the promise and the act cannot disagree.",
+  "verified_against": "",
+  "test": "turbotab/test_answering_the_lens_changes_the_recorded_lens.py::test_the_submit_control_refuses_at_zero_and_says_why_in_the_servers_words",
+  "verified_ev": "turbotab/web/index.html askedCard commit row"
  }
 ]

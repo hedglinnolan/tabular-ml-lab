@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**200 of 601 closed.**
+**202 of 603 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 360 |
 | `PARTIAL` | 41 |
-| `FIXED` | 197 |
+| `FIXED` | 199 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
@@ -553,7 +553,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 197
+## FIXED — 199
 
 
 ### Multi-file / JSON import — 69
@@ -669,13 +669,14 @@ Nothing is closed without a regression test named after it.
 | `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — Duplicate of COACH-024 from the state pass, and closed the same way: the… |
 | `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | **test:** `tests/test_cohort_runs.py::test_unrecognizable_rows_yield_nothing_not_everything` — The invariant is implemented, disclosed and tested, and the test's NAME is the… |
 
-### Guided-door drive feedback — 30
+### Guided-door drive feedback — 32
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `GUIDED-024` | critical | Pack priors are declared, reasoned and shape-tested, and consumed by nothing - ten priors across five packs with no reader outside packs.py's own test | `turbotab/packs.py:889 priors(); turbotab/api.py consumes reframe/question/suggest/contradiction but never…` | **test:** `turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_a_derived_column_prior_turns_a_mechanism_question_into_a_stated_fact` — Wired at L20. The priors are typed… |
 | `GUIDED-029` | critical | Per-column questions scale linearly with column count, so a wide table without a matching pack gets hundreds of questions - the lens masks this rather than solving it | `L20 discrimination matrix, metabolomics_untargeted base=313; DOMAIN_PACKS.md 02; the p>>n scoping rule` | **test:** `turbotab/test_one_answer_covers_a_set_defined_by_a_rule.py::test_the_question_count_does_not_grow_with_the_column_count` — FIXED at L21 in turbotab/bulk.py plus… |
 | `GUIDED-036` | critical | The escape hatch recorded basis grouped with no grouping column, so the split fell through to a row split while the seal announced a grouped one | `turbotab/project.py set_grain group_col/n_groups; turbotab/engine.py draw_holdout:769; turbotab/grain.py…` | **test:** `turbotab/test_the_escape_hatch_records_what_it_cannot_describe.py::test_the_conservative_split_is_actually_grouped` — Found at L23 by DRIVING the feature built earlier… |
+| `GUIDED-037` | critical | The generic question channel submits option LABELS where the server requires option KEYS, so question 1 of the pre-seal sequence cannot be answered and the interview cannot start | `turbotab/web/index.html askedCard; ml/router.py Question.option_values` | **test:** `turbotab/test_answering_the_lens_changes_the_recorded_lens.py::test_answering_the_lens_changes_the_recorded_lens` — DRIVE-001 ONE LAYER IN. The Router serves… |
 | `GUIDED-001` | high | Import doctor proposes numeric coercion for True/False-coded binary columns (meds_hbp, meds_chol) instead of recognizing a binary variable with informative-missingness potential | `ml/import_doctor.py; screenshot meds_chol` | **test:** `turbotab/test_guided_drive.py::test_a_true_false_column_is_read_as_binary_not_coerced_to_numbers` — Fixed, and reproduced first: a True/False column with blanks is read… |
 | `GUIDED-002` | high | High-missingness finding reports a count but never names the features, and its card carries no snippet and no dtype-aware recommendation | `ml/dataset_profile.py; turbotab explore step; screenshots` | **test:** `turbotab/test_guided_drive.py::test_missingness_routes_by_dtype` — Fixed. Cards name their column in the question text and in a mono chip, carry the count, the share… |
 | `GUIDED-004` | high | No impossibility tier: bp_di values near 1e-15 are at best 'outliers' - the profile does not distinguish medically impossible from medically improbable | `ml/clinical_units.py; ml/physiology_reference.py; ml/dataset_profile.py; screenshot physiologic_check` | **test:** `turbotab/test_guided_drive.py::test_a_diastolic_of_zero_is_impossible_and_a_high_one_is_improbable` — Fixed. The bundled NHANES reference now carries floor/ceiling… |
@@ -695,6 +696,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-033` | high | qc_rows_excluded stated at derived confidence that pooled QC rows are not participants, and the app modeled them anyway | `turbotab/packs.py PACKS[metabolomics] priors qc_rows_excluded; no consumer` | **test:** `turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_the_qc_rows_are_offered_as_an_eligibility_criterion` — FIXED at L22, and both halves were needed. CLAIM… |
 | `GUIDED-034` | high | DESIGN_LANGUAGE section 10's layer 3 was aspirational - the three hardest questions had no teaching, and the app asks them anyway | `DESIGN_LANGUAGE.md section 10; grain, unit of analysis and aggregation had no layer-3 content` | **test:** `turbotab/test_a_hard_question_carries_its_teaching.py::test_every_hard_question_carries_its_teaching` — Built at L23 in turbotab/teaching.py. Four sub-questions per… |
 | `GUIDED-035` | high | Grain and unit of analysis had closed answer spaces, so a matched-pair or crossover design had to be answered with one of three options none of which was true | `turbotab/grain.py ANSWERS; turbotab/repeats.py UNITS` | **test:** `turbotab/test_the_escape_hatch_records_what_it_cannot_describe.py::test_the_grain_hatch_routes_to_the_conservative_split` — Built at L23. Two INDEPENDENT hatches… |
+| `GUIDED-038` | high | The mandatory multi-select's submit control said 'That is all of them', which is the grammar of confirming an enumeration rather than of answering a required question | `turbotab/web/index.html askedCard commit row` | **test:** `turbotab/test_answering_the_lens_changes_the_recorded_lens.py::test_the_submit_control_refuses_at_zero_and_says_why_in_the_servers_words` — The lens is mandatory… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |
