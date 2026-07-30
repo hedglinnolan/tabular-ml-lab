@@ -218,6 +218,92 @@ The test for the top rung is not severity — it is whether a competent research
 reason. There is no analysis in which the outcome belongs in the imputation model; there are many
 in which a suspicious column is measured before the outcome and the researcher knows it.
 
+### The resolution statement — what the app may say about a study, as opposed to a method
+
+**Status: specified, unbuilt.** The design guidance is here so it is not re-derived; the loop that
+builds it is not yet scheduled.
+
+Every finding the app has attaches to a **column** or a **decision**. Nothing attaches to the
+**study**. The three-rung ladder above governs what the app says about a *method*. There is no
+equivalent for the case where the honest observation is about the whole project — an assay with
+n=80, or a nutrition exposure whose attenuation factor implies an eightfold sample-size penalty.
+
+#### The obvious version is wrong, and wrong in a way the research already names
+
+The tempting card reads *"this study is underpowered for the claim you've described."* It fails
+twice.
+
+**We do not hold the claim.** At the seal we know the target, task type, grain, eligibility and
+purpose. We do not know the expected effect size, which predictor is the exposure of interest, or
+what magnitude would be scientifically meaningful. Asserting a verdict on a claim we were never
+told is exactly the overreach the governing rule forbids.
+
+**And it is post-hoc power in a nicer suit** — listed flatly as an anti-pattern in
+`research/METABOLOMICS_PACK.md` §10 and echoed in the nutrition and clinical threads. The app would
+be committing a named error while presenting itself as the tool that catches them.
+
+#### The correct form inverts it
+
+State the **instrument's resolution** and let the researcher judge their claim against it.
+
+> *"With n=80 and a typical per-metabolite CV of 25%, this study can detect roughly a 1.6-fold
+> change at 80% power after FDR correction. Anything smaller is invisible here."*
+
+> *"Your exposure's attenuation factor is 0.35. Relative to an error-free measurement, matching this
+> study's power would take roughly eight times the sample size. That is a property of the
+> instrument, not of your hypothesis."*
+
+This asserts nothing about their science. It is arithmetic over quantities the app already holds,
+and it is the same posture as asking eligibility in scientific terms with the outcome's distribution
+withheld: **the app supplies what only it can compute, and withholds the judgment that is the
+researcher's to make.**
+
+#### Design guidance
+
+**Inputs must be derivable at seal.** n, event count, candidate parameter count (*parameters, not
+variables* — a 4-knot spline is 3), observed per-feature variance or CV, outcome prevalence, and
+where repeated measures exist, λ from the variance components. Nothing that requires an effect size
+the user has not stated.
+
+**It is always available, and unprompted only when stark.** This is a pull surface by default —
+`PRODUCT_VISION.md` §04's *push the notable, pull the rest*. It pushes only when the arithmetic is
+unambiguous: fewer events than Riley's criteria require for the declared parameter count, or an
+attenuation factor low enough that the implied penalty exceeds an order of magnitude. A resolution
+statement that fires on every dataset is wallpaper.
+
+**It never says "don't."** No refusal, no blocked action, no severity that gates a step. The shelf is
+not shortened here either. A researcher who wants to model 12 samples per group may; the app states
+what that study can see and records the sentence.
+
+**It is a recorded decision, and it belongs in the manuscript.** *"This study was powered to detect
+a 1.6-fold change"* is a limitations sentence a reviewer would otherwise compute themselves, and
+the reporting standards in all four packs expect a sample-size justification or an explicit
+statement that the work is hypothesis-generating. The statement is that sentence.
+
+**Its natural home is the seal, extended.** The seal already states its basis in four states. A
+fifth thing a seal can honestly report is what the sealed cohort can resolve — the sealed n is the
+input, and the seal is the moment the cohort stops changing. It is a statement *beside* the basis,
+not a fifth basis value.
+
+**Per-domain forms, all already researched.** Metabolomics: detectable fold change given CV and FDR
+(`METABOLOMICS_PACK.md` §08.4). Nutrition: λ, the 1/λ² penalty, and days-needed
+(`NUTRITION_PACK.md` §03). Clinical: Riley's criteria-based minimum, counting candidate parameters
+including those later dropped (`CLINICAL_SURVEY_PACK.md` §A5.4). Survey: attenuation by scale
+reliability (`§B6`).
+
+#### The related change it forces
+
+**The holdout should track n.** A 20% test set at n=80 is 16 rows, and a C-statistic estimated on 16
+rows has a confidence interval spanning most of the unit interval — an honest number that answers
+nothing. The clinical thread is direct: a single train/test split is the weakest option at typical
+sample sizes, and bootstrap optimism correction is preferred because it uses all the data.
+
+So whether to draw a holdout at all is a **consequence card at the seal**, not a default — the same
+treatment the constitution already gives every choice whose cost is invisible at the moment it is
+made. And at small n the deliverable shifts with it: the **prediction-instability plot** and the
+resolution statement stop being supplementary and become the headline, which is the app being
+useful at small n by being loud about it rather than by refusing.
+
 ### Users should be able to switch doors mid-analysis
 
 This falls out of the architecture almost for free, and it is the strongest argument for the
