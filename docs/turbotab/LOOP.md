@@ -208,7 +208,10 @@ Append this to any unsupervised prompt.
 > is reverted** — see `FEATURE_PARITY.md`, "the revert probe". **First command in a fresh clone:**
 > `git config core.hooksPath .githooks`. Commit after every batch so nothing is lost. If you are
 > blocked or something looks structurally wrong, stop and write what you found to
-> `docs/turbotab/BLOCKED.md` rather than guessing.
+> `docs/turbotab/BLOCKED.md` rather than guessing. **Domain science comes from
+> `docs/turbotab/research/`, never from recollection** — where a research file and your memory
+> disagree, the file wins, and a number marked `[verify-at-build]` may not ship as a hard-coded
+> constant. See "Loops that build a domain pack" below.
 
 **Run the documented setup path, or find out that nobody has.** `Makefile` names
 `./venv/bin/python` and nothing had created it in a long time — long enough that
@@ -248,6 +251,101 @@ The rule, its permissions and the three gates that lift it are stated **once**, 
 `TRANSITION_PLAN.md` §05. Do not restate them here: this file said "never modify" while §05 said
 "engine-move-only — no signature changes", which are different rules, and a reader following the
 stricter one could not do the work §05 permits.
+
+---
+
+## Loops that build a domain pack
+
+The four research threads in `docs/turbotab/research/` are **3,602 lines and are the authoritative
+source** for every pack detector, coaching sentence, threshold and figure specification. They are not
+background reading. A loop that builds pack content without citing them has invented its content,
+which is the failure this whole apparatus exists to prevent.
+
+Three problems have to be solved together, and they are solved differently.
+
+### 1 · Volume — bounded reads, named in the task block
+
+Nobody holds 3,602 lines. **The task block names the file and the section**, and the agent reads that
+slice:
+
+> Implement the Atwater reconstruction check as an import-doctor detector. **Source of truth:
+> `docs/turbotab/research/NUTRITION_PACK.md` §01, "The Atwater reconstruction check" — read that
+> section before writing anything.** The ratio table is normative, including the drift-with-total-energy
+> row, which is the mixed-units-across-rows case.
+
+This is cheap, it works with a nearly-full context window, and it makes the citation the *input* to the
+work rather than a footnote added afterward. **A task block that says "build the nutrition detectors"
+without section pointers is a malformed task block** — it has handed the agent the job of deciding what
+the science is.
+
+### 2 · Provenance — a field, and a gate
+
+Every pack advisory, detector and figure spec carries a **`source`** field naming file and section, and
+an **`evidence_status`** of `SETTLED` / `CONVENTION` / `DISPUTED`.
+
+A checker verifies that the named section exists in the named file, and that `evidence_status` is
+present and one of the three. **It runs in `.githooks/pre-commit` beside the other three gates.**
+
+What this does and does not buy, stated plainly, because the ledger's own gate has the same shape:
+`ledger.py check` enforces that a test is *named* and cannot verify the test is any good. This checker
+enforces that a source is *named and resolvable* and cannot verify the claim is faithful to it. That is
+still most of the value — it makes fabrication require deliberate effort rather than inattention, and
+it makes spot-checking one line of work instead of a research project.
+
+**The rule behind the field.** Where the research file and the model's recollection disagree, *the file
+wins.* The files were built under a blocked egress proxy and they say so; a threshold in the file is a
+recorded, checkable claim, and a threshold from memory is neither. This is the same reason the app
+prefers a stated basis to a confident one.
+
+### 3 · `[verify-at-build]` is a hard stop, not a comment
+
+The research files mark specific numbers as unverified — QC-RSD thresholds, the D-ratio 50% criterion,
+software defaults that change between versions, the Goldberg/Black algebra, the DRI tables.
+
+**A `[verify-at-build]` number may not ship as a hard-coded constant until it is verified against the
+primary source.** Until then it ships one of two ways: as an `offered` item the user chooses with the
+uncertainty stated, or not at all. Shipping a wrong number is the worst failure mode a pack has — the
+files say so themselves — and it is worse than shipping nothing, because a wrong number arrives with
+the app's authority behind it.
+
+Where a fact is genuinely unavailable, that is a `BLOCKED.md` entry, not a guess.
+
+### 4 · Sequencing — one pack end-to-end, then three that are mostly content
+
+The natural reading of "build each domain out fully" is four parallel verticals. **That is the wrong
+shape and it will cost a loop.** The four packs share far more than they differ: the figure spec, the
+annotation engine, the badge rendering, the checklist engine, the hard-stop class. Built four times,
+they are built four different ways; built once at the end, the first three packs get rewritten.
+
+So: **one pack end-to-end first, as the reference implementation.** Its job is to discover the
+abstractions — that is the deliverable, alongside the pack. The remaining three are then mostly
+content-loading against a proven spine, which is the regime where per-domain loops actually work.
+
+**Nutrition goes first**, for a reason that has nothing to do with the science being easier:
+
+- It is the product owner's own field, so **he can adjudicate whether the content is right** — and at
+  the reference-implementation stage that review is the point, because we are finding out whether the
+  pack architecture can carry real domain content at all.
+- It is the NHANES data already being driven, so the fixtures are real rather than synthetic.
+- It exercises the widest spread of primitives in one pack: complex survey design, repeated measures,
+  compositional closure, an estimand that must be named, and — valuable and rare — **a refusal**, in
+  the app declining to compute a prevalence of inadequacy from an AI.
+
+That last one is worth stating separately. A pack that can only *add* findings has not been tested. The
+refusal path is where the architecture either holds or doesn't.
+
+### 5 · The anti-pattern audit runs ahead of all of it
+
+Across the four files there are on the order of 150 named anti-patterns, each a specific checkable
+behavior. They are content for the packs **and** a conformance suite against the engine that exists
+today, and the first pass already found a live defect: the app recommends class weighting and SMOTE
+(`ml/dataset_profile.py`, `ml/eda_recommender.py`) and asserts it into the generated manuscript
+(`ml/narrative_engine.py`), against the primary literature. See `DOMAIN_SCIENCE.md` §03b.
+
+**A defect the research already found in shipped code outranks a pack feature that has not been built
+yet**, because the first is the app asserting something false and the second is only the app being less
+useful than it could be. The audit is also good loop work by this file's own standard — well-specified,
+gated, and testing behavior that already exists.
 
 ---
 
