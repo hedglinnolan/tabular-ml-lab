@@ -710,6 +710,23 @@
   .answer.primary[disabled]{background:var(--surface);color:var(--muted);
                             border-color:var(--line);filter:none}
 
+  /* ——— the aggregate advisory card, paged sideways (DRIVE-005) ———
+     Ten same-kind action-free findings were ten stacked cards. Nothing here is
+     hidden: every page is in the DOM and the count is on the card, so the size
+     of the set is readable before you decide to look — as against ten cards
+     whose count you learn by scrolling to the bottom. */
+  .ev.paged{position:relative}
+  .pg-page.is-hidden{display:none}
+  .pg-bar{display:flex;align-items:center;justify-content:flex-end;gap:8px;
+          padding:7px 11px;border-top:1px solid var(--line-soft)}
+  .pg-btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);
+          border-radius:7px;min-inline-size:28px;block-size:24px;font-size:14px;
+          line-height:1;font-family:var(--sans);cursor:pointer}
+  .pg-btn:hover{border-color:var(--accent);background:var(--accent-tint);
+                color:var(--accent-ink)}
+  .pg-at{font-family:var(--mono);font-size:10px;letter-spacing:.04em;
+         color:var(--muted);font-variant-numeric:tabular-nums}
+
   /* A hover that states an effect is a SENTENCE, and a sentence that cannot
      wrap runs off the edge of the screen. The tips have carried sentences
      since DRIVE-003; the rule assuming a word was never revisited, and
@@ -1235,9 +1252,17 @@
   /* Plausibility evidence is attached to the profile finding that claims it,
      rather than living in a panel of its own: the claim and its proof belong in
      the same card (§10, split attention). */
+  /* Where each aggregate advisory card is paged to, and how many pages it has.
+     Held here rather than in the DOM so the position survives a re-render and
+     so the pager is drivable — see the `data-pg-step` handler. */
+  var PAGE_AT = {}, PAGE_N = {}, LAST_PLAUSIBILITY = null;
+
   function attachPlausibility(rep){
-    var slots = all(".ev-slot");
-    if (!slots.length) return;
+    /* The `all(".ev-slot").length` guard that used to open this function was
+       redundant with the `!slot` check below — `$()` returns null when the
+       finding card is not rendered, which is the same condition — and it was
+       the one thing standing between this path and being drivable. */
+    LAST_PLAUSIBILITY = rep;
     var target = null;
     (P.findings || []).forEach(function(f){
       if (((f.params || {}).category || "") === "physiologic_plausibility") target = f;
@@ -1273,16 +1298,83 @@
            '<button class="cbtn" data-keep-impossible="' + esc(b.column) + '" type="button">' +
            'Keep as is</button></div>';
     });
-    (rep.improbable || []).forEach(function(b){
-      h += evBlock(
-        "Improbable — " + b.column,
-        b.n_flagged.toLocaleString() + " entr" + (b.n_flagged === 1 ? "y" : "ies") +
-          " outside the NHANES reference interval (" + num(b.low, 2) + "–" +
-          num(b.high, 2) + " " + b.unit + ")",
-        entryTable(b),
-        "Advisory. A value can be unusual and correct — this is reported, not proposed.");
-    });
+    /* ═════════ ONE CARD, PAGED SIDEWAYS ═════════ `DRIVE-005`.
+       Ten features with improbable values produced ten stacked blocks with no
+       action button — because there IS no action, the finding is for awareness
+       — and the step became accidental infinite scroll.
+
+       **A finding with no action does not earn a card of its own.** The
+       impossible blocks above keep theirs, and the difference is not severity:
+       they carry a decision the user has to make, so each needs its own space
+       and its own recorded answer. These carry a fact. Facts of the same kind
+       across many columns are one fact with a column axis, and a column axis is
+       a pager. */
+    h += pagedAdvisory("improbable", rep.improbable || [], function(b){
+      return {
+        label: b.column,
+        note: b.n_flagged.toLocaleString() + " entr" +
+              (b.n_flagged === 1 ? "y" : "ies") +
+              " outside the NHANES reference interval (" + num(b.low, 2) + "–" +
+              num(b.high, 2) + " " + b.unit + ")",
+        body: entryTable(b)
+      };
+    }, "Advisory. A value can be unusual and correct — this is reported, not "
+     + "proposed.");
     if (h) slot.innerHTML = h;
+  }
+
+  /* ═════════ THE AGGREGATE ADVISORY CARD ═════════ `DRIVE-005`.
+     One card for N same-kind findings that carry no action, paged sideways.
+
+     Three rules it keeps, and each is a thing the ten stacked cards got wrong:
+
+     * **Nothing is hidden, only unstacked.** Every page is in the DOM and the
+       count is on the card, so "10 features" is a number the user can read
+       before deciding to look — as against ten cards whose count you learn by
+       scrolling to the bottom.
+     * **The pager is a control, not decoration.** It carries `aria` state and
+       the page indicator is mono, because it is data.
+     * **One member is not a pager.** A single improbable column renders as the
+       plain block it always was; wrapping it in navigation would assert a set
+       where there is one thing. */
+  function pagedAdvisory(kind, blocks, shape, footer){
+    if (!blocks.length) return "";
+    if (blocks.length === 1){
+      var only = shape(blocks[0]);
+      return evBlock(titleFor(kind) + " — " + only.label, only.note, only.body,
+                     footer);
+    }
+    PAGE_N[kind] = blocks.length;
+    var at = Math.min(PAGE_AT[kind] || 0, blocks.length - 1);
+    var pages = blocks.map(function(b, i){
+      var s = shape(b);
+      return '<div class="pg-page' + (i === at ? "" : " is-hidden") + '" ' +
+             'data-pg-page="' + esc(kind) + '" data-pg-index="' + i + '">' +
+             '<div class="ev-head"><span class="ev-lab">' + esc(s.label) +
+             '</span><span class="ev-note">' + esc(s.note) + "</span></div>" +
+             '<div class="ev-body">' + s.body + "</div></div>";
+    }).join("");
+    return '<div class="ev paged" data-pg="' + esc(kind) + '">' +
+           '<div class="ev-head"><span class="ev-lab">' + esc(titleFor(kind)) +
+           "</span><span class=\"ev-note\">" + blocks.length +
+           " features. There is nothing to decide here — this is reported so " +
+           "you know it.</span></div>" + pages +
+           '<div class="pg-bar">' +
+           '<button class="pg-btn" type="button" data-pg-step="-1" ' +
+           'data-pg-for="' + esc(kind) + '" aria-label="Previous feature" ' +
+           'data-tip="Shows the previous feature. Nothing is changed.">‹</button>' +
+           '<span class="pg-at" data-pg-at="' + esc(kind) + '" role="status">' +
+           (at + 1) + " / " + blocks.length + "</span>" +
+           '<button class="pg-btn" type="button" data-pg-step="1" ' +
+           'data-pg-for="' + esc(kind) + '" aria-label="Next feature" ' +
+           'data-tip="Shows the next feature. Nothing is changed.">›</button>' +
+           "</div>" +
+           (footer ? '<p class="ev-more">' + esc(footer) + "</p>" : "") +
+           "</div>";
+  }
+
+  function titleFor(kind){
+    return kind === "improbable" ? "Improbable values" : kind;
   }
 
   /* A shape claim carries the shape it is about. A skew number with no
@@ -2517,8 +2609,36 @@
       "[data-event-for]," +
       "[data-look],[data-unskip],[data-blk-resolve],[data-blk-attest],[data-att-send]," +
       "[data-impossible],[data-keep-impossible],[data-miss-choose],[data-miss-preview]," +
-      "[data-hist-page]") : null;
+      "[data-hist-page],[data-pg-step]") : null;
     if (!t || t.disabled) return;
+
+    /* The aggregate advisory card's pager (`DRIVE-005`).
+
+       The page's current position is STATE, and pressing an arrow re-renders
+       the panel from it — rather than reaching into the DOM to toggle two
+       classes and rewrite a label. Three things fall out of that, and the third
+       is why it is written this way:
+
+       * the pager survives any other re-render of the panel, where a DOM toggle
+         would silently reset to page 1;
+       * the label and the visible pane cannot disagree, because one function
+         produces both;
+       * and it is drivable. A handler that mutates children of an `innerHTML`
+         string is a handler only a browser can watch, so the alternative was a
+         control whose wiring nothing could check — which is `DRIVE-001`'s class
+         arriving through the back door.
+
+       Wraps rather than stopping at the ends: a set of ten facts has no first
+       or last one, and an arrow that dies at the edge is a control that stops
+       working for a reason the user has to infer. */
+    if (t.hasAttribute("data-pg-step")){
+      var pk = t.dataset.pgFor;
+      var count = PAGE_N[pk] || 1;
+      PAGE_AT[pk] = (((PAGE_AT[pk] || 0) + parseInt(t.dataset.pgStep, 10)) % count
+                     + count) % count;
+      if (LAST_PLAUSIBILITY) attachPlausibility(LAST_PLAUSIBILITY);
+      return;
+    }
 
     if (t.hasAttribute("data-target-col")){
       decide("set_target", t.dataset.targetCol, { column: t.dataset.targetCol },
