@@ -727,6 +727,25 @@
   .pg-at{font-family:var(--mono);font-size:10px;letter-spacing:.04em;
          color:var(--muted);font-variant-numeric:tabular-nums}
 
+  /* ——— the way out to the file (DRIVE-007) ———
+     Closed by default: the card's job is the reading, and 125 identifiers are
+     not a reading. The count is on the summary so the size of the job is
+     legible without opening it. */
+  .rowlist{margin-top:9px;border-top:1px solid var(--line-soft);padding-top:8px}
+  .rowlist>summary{font-family:var(--sans);font-size:11.5px;font-weight:600;
+                   color:var(--muted);cursor:pointer;list-style:none}
+  .rowlist>summary::-webkit-details-marker{display:none}
+  .rowlist>summary::before{content:"▸ ";font-family:var(--mono);font-size:9px;
+                           color:var(--faint)}
+  .rowlist[open]>summary::before{content:"▾ "}
+  .rowlist>summary:hover{color:var(--accent-ink)}
+  .rowbox{inline-size:100%;margin-top:7px;font-family:var(--mono);font-size:10.5px;
+          line-height:1.5;color:var(--ink);background:var(--surface-2);
+          border:1px solid var(--line);border-radius:7px;padding:7px 9px;
+          resize:vertical}
+  .rowacts{display:flex;align-items:center;gap:9px;margin-top:7px}
+  .copied{font-family:var(--sans);font-size:11px;color:var(--ok)}
+
   /* A hover that states an effect is a SENTENCE, and a sentence that cannot
      wrap runs off the edge of the screen. The tips have carried sentences
      since DRIVE-003; the rule assuming a word was never revisited, and
@@ -1182,7 +1201,53 @@
       h += "<tr><td>" + esc(e.row) + '</td><td class="bad">' + esc(num(e.value, 4)) +
            "</td><td>" + esc(e.side) + " " + esc(num(e.bound, 2)) + " " + esc(block.unit) + "</td></tr>";
     });
-    return h + "</tbody></table>";
+    return h + "</tbody></table>" + rowList(block);
+  }
+
+  /* ═════════ THE WAY OUT TO THE FILE ═════════ `DRIVE-007`.
+     125 entries of `bp_di` are physiologically impossible and the card shows
+     twelve. The product owner's first instinct was to go back to the CSV and
+     repair it at source, and the app made that hard by being the only thing
+     that knew which rows.
+
+     So: every affected row label, selectable, with a copy control. Not an
+     export feature — it is the list you paste into a filter in the file you
+     are about to fix.
+
+     **Closed by default.** The card's job is the reading; 125 identifiers are
+     not a reading, and opening with them would trade one unusable card for
+     another. And the summary line carries the real count, so the size of the
+     job is legible without opening it.
+
+     **The count comes from `n_flagged`, never from the list's length.** They
+     differ when the server capped the list, and a summary that counted what it
+     was handed would quietly report 20,000 for a column with more — the card
+     asserting a completeness the payload does not have. */
+  function rowList(block){
+    var rows = block.all_rows || [];
+    if (!rows.length) return "";
+    var text = rows.join("\n");
+    var n = (block.n_flagged === undefined || block.n_flagged === null)
+      ? rows.length : block.n_flagged;
+    return '<details class="rowlist"><summary>' +
+           "All " + n.toLocaleString() + " affected row" + (n === 1 ? "" : "s") +
+           "</summary>" +
+           (block.all_rows_truncated
+             ? '<p class="pv-note">Showing the first ' +
+               rows.length.toLocaleString() + " of " + n.toLocaleString() +
+               ". The rest are in the file.</p>"
+             : "") +
+           '<textarea class="rowbox" readonly rows="4" ' +
+           'aria-label="Every affected row label, selectable">' + esc(text) +
+           "</textarea>" +
+           '<div class="rowacts"><button class="cbtn" type="button" ' +
+           'data-copy-rows="' + esc(block.column) + '" ' +
+           'data-tip="Puts every affected row label on your clipboard, so you ' +
+           'can find them in the file itself. Nothing in your data changes." ' +
+           'aria-label="Copy every affected row label. Nothing in your data ' +
+           'changes.">Copy the row list</button>' +
+           '<span class="copied" data-copied="' + esc(block.column) +
+           '" role="status"></span></div></details>';
   }
 
   function histSVG(h){
@@ -2609,8 +2674,31 @@
       "[data-event-for]," +
       "[data-look],[data-unskip],[data-blk-resolve],[data-blk-attest],[data-att-send]," +
       "[data-impossible],[data-keep-impossible],[data-miss-choose],[data-miss-preview]," +
-      "[data-hist-page],[data-pg-step]") : null;
+      "[data-hist-page],[data-pg-step],[data-copy-rows]") : null;
     if (!t || t.disabled) return;
+
+    /* `DRIVE-007`. The clipboard write can be refused — an insecure origin, a
+       permission the user declined — and a Copy button that silently does
+       nothing is worse than none, because the user walks away believing they
+       have the list. So the acknowledgment reports which of the two happened,
+       and the textarea beside it is the fallback that always works. */
+    if (t.hasAttribute("data-copy-rows")){
+      var col = t.dataset.copyRows;
+      var box = document.querySelector('[data-copied="' + col.replace(/"/g, '\\"') + '"]');
+      var area = t.closest("details");
+      var ta = area ? area.querySelector("textarea") : null;
+      var say = function(msg){ if (box) box.textContent = msg; };
+      if (!ta){ say("Nothing to copy."); return; }
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(ta.value)
+          .then(function(){ say("Copied."); })
+          .catch(function(){ say("Your browser refused the clipboard — select the list above and copy it."); });
+      } else {
+        ta.focus(); ta.select();
+        say("Selected — press copy.");
+      }
+      return;
+    }
 
     /* The aggregate advisory card's pager (`DRIVE-005`).
 

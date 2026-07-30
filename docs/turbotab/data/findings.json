@@ -7560,9 +7560,10 @@
   "detail": "125 entries of bp_di are physiologically impossible and the card shows 12. The product owner's first instinct was to go back to the CSV and repair it at source, which the app makes hard by not supplying the row list. Two things missing: a copyable list of every affected row for work outside the app, and a way to mark a feature unclean so that when feature selection arrives the user can exclude it. The second is a new mechanic and a good one - it carries a judgment forward across steps instead of asking the user to remember it.",
   "ev": "The drive; the impossibility pass on NHANES bp_di",
   "act": "Copyable full row list. A per-feature unclean mark that surfaces at feature selection as a suggested exclusion.",
-  "status": "OPEN",
-  "note": "From the product owner's second NHANES drive. Their words are the specification.",
-  "verified_against": "TurboTab @ HEAD - product owner NHANES drive, 2026-07-29"
+  "status": "PARTIAL",
+  "note": "THE COPYABLE ROW LIST IS DONE; THE UNCLEAN-FEATURE MARK IS NOT, AND THAT IS DELIBERATE. The list: every affected row label travels with the block, closed by default, selectable, with a copy control. The card is RIGHT to show twelve - 125 identifiers are not a reading, and opening with them would trade one unusable card for another - so what was missing was the way out, and the app was the only thing that knew which rows and kept them. Not an export feature: it is the list you paste into a filter in the file you are about to fix, which is where the driver's first instinct went. TWO THINGS THAT ARE EASY TO GET WRONG and are both asserted: the count comes from n_flagged and never from len(all_rows), because they differ exactly when the server capped the list and a summary counting what it was handed would report 12 for a column with 4321 - the card asserting a completeness the payload does not have; and the cap is DECLARED rather than silent, for the same reason. The second was found by a revert probe reporting GREEN - no fixture in the tree is large enough to cap, so the distinction is exercised by handing the renderer a capped block directly, which is a shape the server really produces. WHAT REMAINS: the unclean-feature mark. It is a new mechanic that carries a judgment ACROSS steps and it pairs with DRIVE-010's working-feature-set question; they get designed together, because half of a cross-step mechanic is worse than none - the mark would be recordable and nothing would read it.",
+  "verified_against": "TurboTab @ HEAD - product owner NHANES drive, 2026-07-29",
+  "test": "turbotab/test_the_flagged_rows_can_leave_the_app.py::test_every_flagged_row_travels_with_the_block_not_only_the_twelve_shown"
  },
  {
   "id": "DRIVE-008",

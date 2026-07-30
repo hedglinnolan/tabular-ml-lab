@@ -48,6 +48,17 @@ MAX_FEATURES_FOR_GALLERY = 50
 # list is capped, and says so, because a card is not a data export.
 MAX_ENTRIES = 12
 
+# How many ROW LABELS travel beside them (`DRIVE-007`). A card is not a data
+# export and the row list is not one either — it is the thing you paste into a
+# filter in the file you are about to fix, which is where the driver's first
+# instinct went and where the app gave them nothing.
+#
+# Three orders of magnitude above `MAX_ENTRIES` because the two answer different
+# questions: twelve entries are what a human reads, and the row list is what a
+# spreadsheet consumes. The cap exists so the payload has a bound and is
+# DECLARED alongside the list, because "every affected row" is a claim.
+MAX_ROW_LIST = 20000
+
 # ─────────────────────────────────────────────────────────────────────────────
 # When to doubt the reading instead of the data
 #
@@ -408,6 +419,21 @@ def _entry_block(column, var_key, present, converted, hit,
         "share": share,
         "entries": entries,
         "truncated": bool(len(hit) > len(entries)),
+        # EVERY affected row label, not only the handful the card shows
+        # (`DRIVE-007`). The card displays 12 of 125 because 125 rows is not a
+        # table anybody reads — but the driver's first instinct on seeing an
+        # impossible value is to go back to the CSV and fix it at source, and
+        # the app made that hard by being the only thing that knew which rows.
+        #
+        # Capped, and the cap is DECLARED rather than silent, because *"every
+        # affected row"* is a claim: a list that quietly stopped at 20,000 would
+        # be the card asserting a completeness it does not have. In practice the
+        # cap is unreachable on the impossible tier — a column with tens of
+        # thousands of impossible entries is a mis-united column, and
+        # `whole_column_suspect` replaces the entry list with the reading
+        # correction before this is rendered at all.
+        "all_rows": [_label(label) for label in list(hit.index)[:MAX_ROW_LIST]],
+        "all_rows_truncated": bool(len(hit) > MAX_ROW_LIST),
         # The verdict travels with the block rather than the block being
         # dropped: staying silent about the values would be the other way of
         # asserting something false.
