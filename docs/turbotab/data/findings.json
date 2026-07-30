@@ -7546,9 +7546,10 @@
   "detail": "The product owner's reading: if cards simply build out, they scroll themselves. This reverses DESIGN_LANGUAGE 05's scroll rule, which itself revised an earlier never-auto-scroll position after the prototype - so the prototype's lesson did not survive contact with a real dataset producing many findings.",
   "ev": "The drive; DESIGN_LANGUAGE.md 05 scroll rule",
   "act": "Remove the nudge. Cards build downward and the user's own scroll follows them. Record why the earlier revision was wrong.",
-  "status": "OPEN",
-  "note": "From the product owner's second NHANES drive. Their words are the specification.",
-  "verified_against": "TurboTab @ HEAD - product owner NHANES drive, 2026-07-29"
+  "status": "FIXED",
+  "note": "The nudge is DELETED rather than tuned, and the reason the earlier revision was wrong is recorded in DESIGN_LANGUAGE section 05 because the same argument will be made again. THREE POSITIONS ON ONE RULE: never auto-scroll; then, after the prototype, nudge only when the content sits below the viewport; now, the page never moves the viewport. The middle rule was written against a prototype where a section held two or three cards, so 'below the viewport' meant 'the next card' and the nudge landed on the thing that had just appeared. On metabolomics_untargeted there are nine structural findings and revealing Explore scrolled the user from the middle of them to the top of a section below them, past the card they were reading, every time. WHAT IS WORTH EXTRACTING is not that the threshold was wrong but WHY A THRESHOLD WAS THERE: the revised rule had a size-dependent condition, so it was right at one dataset size and wrong at another and nothing in the interface could tell which. The replacement has no free parameter. TWO HARNESS DEFECTS FOUND BY THE REVERT PROBE, both of the same shape - the harness asserting something false about the code it instruments. getBoundingClientRect returned zeros, which is not 'no layout' but a claim the element is at the top of the viewport, so the nudge's own below-the-fold guard was false. And elements started classless, so is-hidden was never present and reveal() returned early without running its body at all - the whole reveal path read as dead code on every drive. Both fixed in pageharness; the probe went from GREEN to RED for the stated reason.",
+  "verified_against": "TurboTab @ HEAD - product owner NHANES drive, 2026-07-29",
+  "test": "turbotab/test_the_page_never_moves_the_viewport.py::test_a_drive_with_many_findings_never_scrolls_the_page"
  },
  {
   "id": "DRIVE-007",

@@ -76,6 +76,30 @@ def page_script() -> str:
     return text[text.index("<script>") + len("<script>"):text.rindex("</script>")]
 
 
+_ID_TAG = re.compile(r"<[a-zA-Z][^>]*\bid=\"([^\"]+)\"[^>]*>")
+_CLASS_IN = re.compile(r'\bclass="([^"]*)"')
+
+
+def seed_classes() -> Dict[str, List[str]]:
+    """The classes each `id` carries in the markup, so elements start as
+    declared.
+
+    Not a nicety. `reveal()` returns early unless its section is `is-hidden`,
+    and with classless elements that branch never ran — so the harness reported
+    the whole reveal path as dead on every drive, and a textually restored
+    `DRIVE-006` nudge probed GREEN. An element that lies about its starting
+    state makes every branch keyed on that state unobservable, which is a
+    harness asserting something false about the code it instruments.
+    """
+    text = PAGE.read_text(encoding="utf-8")
+    body = text[text.rindex("</style>"):text.index("<script>")]
+    out: Dict[str, List[str]] = {}
+    for m in _ID_TAG.finditer(body):
+        cls = _CLASS_IN.search(m.group(0))
+        out[m.group(1)] = cls.group(1).split() if cls else []
+    return out
+
+
 _SHIM = r"""
 'use strict';
 // ── the smallest DOM the Guided controller needs ────────────────────────────
@@ -133,8 +157,23 @@ El.prototype.querySelectorAll = function(){ return []; };
 El.prototype.closest = function(sel){ return matches(this, sel) ? this : null; };
 El.prototype.focus = function(){};
 El.prototype.click = function(){};
+// DELIBERATELY JUST BELOW THE FOLD, and this is the one place the shim takes a
+// position rather than reporting what it was told.
+//
+// A rect of zeros is not "no layout", it is a CLAIM that the element is at the
+// top of the viewport — and code guarded by "is this below the fold?" then never
+// runs, so a harness returning zeros reports every scroll-on-reveal path as
+// dead. That is how the DRIVE-006 probe first came back GREEN with the nudge
+// textually restored: the defect was present, unreachable, and therefore
+// invisible, which reads exactly like a fix.
+//
+// So the default errs toward MAKING the guarded path run. A viewport-moving
+// code path is then always observable: this shim can report a scroll that a
+// real browser might not have made, and it cannot miss one that it would. For a
+// guard that is the correct direction to be wrong in.
 El.prototype.getBoundingClientRect = function(){
-  return {top:0, left:0, right:0, bottom:0, width:0, height:0};
+  var top = this._rect !== undefined ? this._rect : (globalThis.innerHeight || 900) + 40;
+  return {top: top, left: 0, right: 0, bottom: top, width: 0, height: 0};
 };
 Object.defineProperty(El.prototype, "children", {get: function(){ return this._children; }});
 Object.defineProperty(El.prototype, "lastChild", {
@@ -173,12 +212,25 @@ function matches(el, sel){
 
 var __byId = Object.create(null);
 var __docListeners = Object.create(null);
+// The classes each id CARRIES IN THE DOCUMENT, read out of index.html's markup.
+//
+// Without this every element started classless, so `is-hidden` was never
+// present and `reveal()` — which returns early unless the section is hidden —
+// never ran its body at all. The harness reported the reveal path as dead code
+// on every drive, which is how the DRIVE-006 probe reported a textually
+// restored nudge as GREEN. An element that lies about its starting state makes
+// every branch keyed on that state unobservable.
+var __seed = __SEED__;
 
 var document = {
   documentElement: new El("html"),
   body: new El("body"),
   getElementById: function(id){
-    if (!__byId[id]) __byId[id] = new El("div", id);
+    if (!__byId[id]){
+      var el = new El("div", id);
+      (__seed[id] || []).forEach(function(c){ el.classList.add(c); });
+      __byId[id] = el;
+    }
     return __byId[id];
   },
   createElement: function(t){ return new El(t); },
@@ -282,6 +334,7 @@ def run(body: str, *, routes: Optional[Dict[str, Any]] = None,
     script = page_script()
     shim = (_SHIM
             .replace("__ROUTES__", json.dumps(routes or {}))
+            .replace("__SEED__", json.dumps(seed_classes()))
             .replace("__SEARCH__", json.dumps(search))
             .replace("__SENTINEL__", _SENTINEL))
     # `setTimeout(..., 0)` chained four deep drains the promise queue the

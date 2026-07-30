@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**207 of 608 closed.**
+**208 of 608 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 360 |
+| `OPEN` | 359 |
 | `PARTIAL` | 41 |
-| `FIXED` | 204 |
+| `FIXED` | 205 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 360
+## OPEN — 359
 
 
 ### Application state / lockbox — 66
@@ -432,18 +432,6 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### DRIVE — 7
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `DRIVE-009` | critical | The domain-specific EDA plot vision is unbuilt, and it is the product's stated centerpiece | `The drive; DESIGN_LANGUAGE.md 07; DOMAIN_PACKS.md 08` | From the product owner's second NHANES drive. Their words are the specification. |
-| `DRIVE-002` | high | A repair affecting nine features requires nine separate show-me-then-apply cycles; the bulk affordance was built for questions and not for repairs | `The drive; contrast turbotab bulk missingness affordance` | From the product owner's second NHANES drive. Their words are the specification. |
-| `DRIVE-005` | high | Situational-awareness findings get one card each, which turns ten improbable-value flags into accidental infinite scroll | `The drive; clinical_longitudinal and NHANES` | From the product owner's second NHANES drive. Their words are the specification. |
-| `DRIVE-006` | high | Auto-scroll skips past the noticed card, so the driver has to scroll back up every time | `The drive; DESIGN_LANGUAGE.md 05 scroll rule` | From the product owner's second NHANES drive. Their words are the specification. |
-| `DRIVE-007` | high | Impossible values cannot be taken out of the app, and there is no way to mark a feature as unclean | `The drive; the impossibility pass on NHANES bp_di` | From the product owner's second NHANES drive. Their words are the specification. |
-| `DRIVE-008` | high | The missingness pop-out shows what would change and does not let the driver do it | `The drive; the missingness what-the-app-can-do panel` | From the product owner's second NHANES drive. Their words are the specification. |
-| `DRIVE-010` | high | After the target is chosen the app does not ask which features to use, or whether to slice by subgroup | `The drive` | From the product owner's second NHANES drive. Their words are the specification. |
-
 ### Guided-door drive feedback — 6
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -454,6 +442,17 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
+
+### DRIVE — 6
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `DRIVE-009` | critical | The domain-specific EDA plot vision is unbuilt, and it is the product's stated centerpiece | `The drive; DESIGN_LANGUAGE.md 07; DOMAIN_PACKS.md 08` | From the product owner's second NHANES drive. Their words are the specification. |
+| `DRIVE-002` | high | A repair affecting nine features requires nine separate show-me-then-apply cycles; the bulk affordance was built for questions and not for repairs | `The drive; contrast turbotab bulk missingness affordance` | From the product owner's second NHANES drive. Their words are the specification. |
+| `DRIVE-005` | high | Situational-awareness findings get one card each, which turns ten improbable-value flags into accidental infinite scroll | `The drive; clinical_longitudinal and NHANES` | From the product owner's second NHANES drive. Their words are the specification. |
+| `DRIVE-007` | high | Impossible values cannot be taken out of the app, and there is no way to mark a feature as unclean | `The drive; the impossibility pass on NHANES bp_di` | From the product owner's second NHANES drive. Their words are the specification. |
+| `DRIVE-008` | high | The missingness pop-out shows what would change and does not let the driver do it | `The drive; the missingness what-the-app-can-do panel` | From the product owner's second NHANES drive. Their words are the specification. |
+| `DRIVE-010` | high | After the target is chosen the app does not ask which features to use, or whether to slice by subgroup | `The drive` | From the product owner's second NHANES drive. Their words are the specification. |
 
 ---
 
@@ -553,7 +552,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 204
+## FIXED — 205
 
 
 ### Multi-file / JSON import — 69
@@ -810,13 +809,14 @@ Nothing is closed without a regression test named after it.
 | `MODELS-017` | invariant | ModelCapabilities.requires_scaled_numeric determines each model's preprocessing pipeline; a model that needs scaling must not be trained on an unscaled pipeline. | `pages/05_Preprocess.py:487, 801, 847, 1059 read spec.capabilities.requires_scaled_numeric to build per-model…` | **test:** `tests/workflow/test_per_model_pipelines.py::test_scaled_vs_unscaled_outputs_differ` — The invariant holds on both sides of the migration and has a test that would catch… |
 | `MODELS-022` | invariant | Degenerate bootstrap resamples are DROPPED, never substituted with the point estimate, and a run with too few valid replicates returns a NaN CI rather than a narrow one. | `ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot =…` | **test:** `tests/test_review_fixes.py::TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples` — The invariant is implemented with the reasoning in the… |
 
-### DRIVE — 3
+### DRIVE — 4
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `DRIVE-001` | critical | The lens question is unreachable through the interface - it has a dedicated endpoint the page never calls, so the entire domain-pack arc is invisible | `turbotab/api.py:1289 versus :1545; turbotab/web/index.html has no lens reference` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_the_page_renders_every_question_the_router_can_serve` — FIXED at L23, and the class is closed rather than… |
 | `DRIVE-003` | high | Action buttons do not say what they will do, so the driver could not tell what several of them meant | `The drive; turbotab/web/index.html action rows` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_a_generic_question_states_its_effect_before_it_is_taken` — Closed at L23. The EFFECTS table plus effectOf… |
 | `DRIVE-004` | high | Disclosures do not toggle and actions do not acknowledge - the app never narrates its own behavior | `The drive; DESIGN_LANGUAGE.md 05` | **test:** `turbotab/test_the_page_asks_what_the_router_serves.py::test_every_action_acknowledges_itself_after_it_is_taken` — Closed at L23, in two halves. THE DISCLOSURE half… |
+| `DRIVE-006` | high | Auto-scroll skips past the noticed card, so the driver has to scroll back up every time | `The drive; DESIGN_LANGUAGE.md 05 scroll rule` | **test:** `turbotab/test_the_page_never_moves_the_viewport.py::test_a_drive_with_many_findings_never_scrolls_the_page` — The nudge is DELETED rather than tuned, and the reason the… |
 
 ### Features / preprocessing — 2
 

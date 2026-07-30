@@ -115,9 +115,27 @@ disclosure.
 5. **Nothing else moves.** No ambient animation, no hover theatrics beyond elevation, and
    `prefers-reduced-motion` collapses everything to instant state changes.
 
-**Scroll:** new content is nudged into view *only when it sits below the viewport*. Never yank a
-user who has scrolled up to read. (This revises an earlier "never auto-scroll" rule that building
-the prototype disproved.)
+**Scroll: the page never moves the viewport.** Cards build downward and the user's scroll follows
+them. There is no condition under which the interface scrolls on the user's behalf.
+
+This is the third position on one rule, and the history is the argument (`DRIVE-006`). The original
+rule was *never auto-scroll*. Building the prototype appeared to disprove it, and it was revised to
+*new content is nudged into view only when it sits below the viewport — never yank a user who has
+scrolled up to read.* That revision was written against a prototype where a section held two or
+three cards, so "below the viewport" meant "the next card", the nudge landed on the thing that had
+just appeared, and it read as helpful.
+
+**The prototype's lesson did not survive a dataset with many findings.**
+`metabolomics_untargeted.csv` produces nine structural findings; revealing the Explore section
+scrolled the user from the middle of those findings to the top of a section below them — past the
+card they were reading, every time. The drive became: read, get yanked, scroll back, repeat.
+
+What is worth extracting is not "the threshold was wrong" but **why a threshold was there at all**.
+The revised rule had a size-dependent condition in it, so it was correct at one dataset size and
+incorrect at another, and nothing in the interface could tell which one it was in. The rule that
+replaces it has no condition, which is why it cannot be wrong at the next scale. Prefer a rule with
+no free parameter over a rule with a tuned one, and treat a lesson learned on synthetic data as a
+hypothesis until a real dataset has seen it.
 
 ### 05.1 · Acknowledgment — the voice that reports
 

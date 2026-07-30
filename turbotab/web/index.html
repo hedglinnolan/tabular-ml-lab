@@ -943,21 +943,36 @@
     el.classList.add(cls);
     setTimeout(function(){ el.classList.remove(cls); }, ms);
   }
-  function nudge(el){
-    if (!el) return;
-    requestAnimationFrame(function(){
-      var r = el.getBoundingClientRect();
-      if (r.top > window.innerHeight - 140)
-        window.scrollTo({ top: window.scrollY + r.top - 110, behavior: reduced ? "auto" : "smooth" });
-    });
-  }
+  /* ═════════ THE NUDGE IS GONE ═════════ `DRIVE-006`.
+
+     There used to be a `nudge(el)` here that scrolled a newly revealed section
+     to the top of the viewport when it sat below the fold. It is deleted rather
+     than tuned, and the reason the earlier revision was wrong is worth keeping
+     because the same argument will be made again.
+
+     DESIGN_LANGUAGE §05 said: *new content is nudged into view only when it
+     sits below the viewport. Never yank a user who has scrolled up to read.*
+     That rule was written against the PROTOTYPE, where a section held two or
+     three cards and "below the viewport" meant "the next card" — so the nudge
+     landed on the thing that had just appeared, and it read as helpful.
+
+     On a real dataset the sections are long. `metabolomics_untargeted.csv`
+     produces nine structural findings, and revealing Explore scrolled the user
+     from the middle of those findings to the top of a section below them —
+     past the card they were reading, every time, so the drive became: read,
+     get yanked, scroll back, repeat.
+
+     The rule that survives contact with data is the product owner's, and it is
+     simpler: **cards build downward and the user's scroll follows them.** The
+     page never moves the viewport. That cannot be wrong at any dataset size,
+     because it has no size-dependent condition in it — which is exactly what
+     the old rule had, and the reason it worked at one scale and not the other. */
   function reveal(key){
     var el = $(SEC[key]);
     if (!el || !el.classList.contains("is-hidden")) return false;
     el.classList.remove("is-hidden");
     anim(el, "arrive", 360);
     setMap(key, "now");
-    nudge(el);
     return true;
   }
   function setMap(key, state){
