@@ -7770,5 +7770,19 @@
   "verified_against": "",
   "test": "turbotab/test_a_transposed_assay_table_is_turned_around_before_diagnosis.py::test_the_diagnosis_the_user_sees_is_computed_on_the_turned_around_table",
   "verified_ev": "docs/turbotab/OPENING_SEQUENCE.md section 01; turbotab/orientation.py"
+ },
+ {
+  "id": "GUIDED-044",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "Seven of the harness's eight guards were tested only against hand-built dicts, so a guard inert on the real path was indistinguishable from a guard that works",
+  "detail": "",
+  "ev": "turbotab/devchecks.py check_transition; turbotab/test_the_harness_reports_and_does_not_stop_the_drive.py",
+  "act": "",
+  "status": "PARTIAL",
+  "note": "FOUND BY THE PART D SWEEP, and not where the sweep was pointed. The five named effects - the seal, the cascade, apply, aggregation, the deferred-transform byte-identical claim - ARE read back: test_a_stated_repeat_seals_grouped_and_leaks_nobody intersects the drawn subject sets, test_applying_changes_the_table_and_reverting_restores_it compares frames, and the repeated-measures chain asserts 600 rows become 300 with participant_id unique and one participant's mean equal to the mean. THE GAP IS ONE LEVEL IN, IN THE INSTRUMENT. devchecks runs eight guards on every action of every drive and they are the standing record-versus-draw defense; seven were asserted only against constructed before/after pairs like {'fingerprint': 'aaaa'} versus {'fingerprint': 'bbbb'}, which tests that the comparator compares two strings. That says nothing about whether the guard ever SEES a real drive - whether the field it reads is populated, whether the action kind the API emits is the kind its contract table is keyed on, whether the shape it expects is the shape _dev_state produces. A guard inert for any of those reasons is indistinguishable from one that works, because both are silent on a clean drive and silence is what a clean drive is supposed to produce. The one guard that HAD a planted test was found broken by writing it, which is the evidence this is worth repeating. FOUR MORE PLANTED THIS LOOP: the seal recorded grouped and drawn by row, a deferred transform that touches the table, a cascade that does not fire, a post-seal relabeling. Five of eight now, three filed with what a plant would have to do. TWO FALSE STARTS WORTH KEEPING: the byte-identical guard looked permanently inert because grep fingerprint turbotab/api.py returns nothing - it is written by project.to_dict and arrives through _dev_state, and that is now asserted rather than assumed; and the first planted seal took the FIRST n labels, which on a record-unit table takes whole subjects and is a correct grouped split, so the probe was verifying that the guard stayed quiet about nothing. Also: the first version of the counting test scanned test files for guard names, and this file mentions all eight, so it counted itself and reported 8 of 8 - replaced with a declared register.",
+  "verified_against": "",
+  "test": "turbotab/test_every_guard_is_planted_against_the_real_path.py::test_every_guard_is_classified_as_planted_or_filed",
+  "verified_ev": "turbotab/devchecks.py check_transition; turbotab/test_the_harness_reports_and_does_not_stop_the_drive.py"
  }
 ]

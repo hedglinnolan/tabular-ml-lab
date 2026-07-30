@@ -20,13 +20,13 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**211 of 608 closed.**
+**211 of 609 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 355 |
-| `PARTIAL` | 42 |
+| `PARTIAL` | 43 |
 | `FIXED` | 208 |
 | `NOT-A-DEFECT` | 3 |
 
@@ -452,7 +452,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 42
+## PARTIAL — 43
 
 
 ### Application state / lockbox — 10
@@ -540,10 +540,11 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-243` | high | HUNT dtype-mismatch-blocked-but-executed: the screen still shows a red 'will not work' blocker and then combines successfully, though the withheld row count and the recurrence on later legs are both… | `ml/join_doctor.py diagnose_join (a dtype mismatch is still classified blocking, can_proceed False, while…` | PARTIAL, measured at HEAD. A genuine text-vs-numeric key pair still gives dtype_mismatch True, can_proceed False and a red blocking message - and combine_ui overrides the block… |
 | `IMPORT-240` | medium | HUNT stack-empty-file-turns-every-numeric-column-to-text: the dtype corruption is gone, but a header-only cycle now produces a FALSE type-conflict warning and is still never named as contributing… | `utils/combine.py plan_stack (total_rows as a plain sum, no zero-row check) and execute_stack's pd.concat…` | PARTIAL, measured at HEAD. Three cycles with glucose float64 in two of them and an empty header-only frame between: the stacked glucose column comes back float64 with 4 rows - the… |
 
-### Guided-door drive feedback — 1
+### Guided-door drive feedback — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
+| `GUIDED-044` | high | Seven of the harness's eight guards were tested only against hand-built dicts, so a guard inert on the real path was indistinguishable from a guard that works | `turbotab/devchecks.py check_transition; turbotab/test_the_harness_reports_and_does_not_stop_the_drive.py` | **test:** `turbotab/test_every_guard_is_planted_against_the_real_path.py::test_every_guard_is_classified_as_planted_or_filed` — FOUND BY THE PART D SWEEP, and not where the sweep… |
 | `GUIDED-030` | medium | Four pack priors still have no consumer - GUIDED-024's defect surviving for a subset, now declared and counted rather than noticed | `turbotab/packs.py PACKS priors; test_every_prior_has_a_consumer_or_is_declared_unconsumed lists the four with…` | Four priors had no consumer at L21 and three still do. THE ONE REAL DEFECT IS FIXED as GUIDED-033: qc_rows_excluded stated at derived confidence that pooled QC rows are not… |
 
 ### DRIVE — 1
