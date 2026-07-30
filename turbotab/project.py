@@ -1799,6 +1799,27 @@ class AnalysisProject:
                      "reverts_to": len(self._history) - 1},
         )
 
+    def apply_fix_quietly(self, new_df: pd.DataFrame, finding_id: str,
+                          row_identity_preserved: bool) -> None:
+        """Install a repaired frame and record NOTHING. `DRIVE-002`.
+
+        The undo stack still gets its entry, because reversibility is per frame
+        and a bulk repair that could not be stepped back would be nine changes
+        the user has to accept together or not at all.
+
+        What it does not do is write a decision. A bulk repair is **one**
+        decision covering N features — that is the whole finding — and N
+        `apply` rows beside one `apply_bulk` row would make the transcript say
+        the work happened twice. The caller records the single sentence.
+
+        Named `quietly` rather than `_apply_fix` because the quiet part is the
+        contract: a reader of a call site has to see that this one does not
+        record, or the missing receipt reads as an oversight.
+        """
+        self._history.append((finding_id, self.df))
+        self.df = new_df
+        self.findings_stale = True
+
     def revert_last_fix(self) -> Decision:
         """Undo the most recent applied fix. Appends; never erases the record."""
         if not self._history:

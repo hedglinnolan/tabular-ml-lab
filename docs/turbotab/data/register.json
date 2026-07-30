@@ -982,5 +982,13 @@
   "classic": "none — Classic reads column dtypes off whatever it is handed",
   "state": "guided-native",
   "reason": "Presupposes a Router with a fixed pre-seal sequence and a question that can act before the diagnosis rather than annotate its output. Classic's diagnosis runs at pages/01 with no question before it and no place to put one; asking Classic for this is asking Classic to be Guided. NOT filed as a debt for that reason, and the register's own line is the test: a reasonable Classic would not be missing something it has no sequence to hold. The underlying reading and the transpose live in turbotab/orientation.py and take a frame and nothing else, so they are portable the day a door wants them."
+ },
+ {
+  "id": "bulk-repair",
+  "step": "data-target",
+  "capability": "One preview, a selectable set, one apply, one decision covering N features that need the same repair",
+  "classic": "none — pages/01 applies one import-doctor fix per button, with no diff and no undo",
+  "state": "guided-only",
+  "reason": "A DEBT, not a native. Classic already runs every one of these repairs; what it lacks is the grouping, the selection and the single receipt, and there is nothing about Classic that prevents them. The register's own line is the test: a reasonable Classic would still be missing something. The grouping rule is engine-side in turbotab/repairs.py and takes findings and nothing else, so it is portable the day pages/01 is converged (and pages/01 is frozen until the import tail closes, which is why this is owed rather than done)."
  }
 ]

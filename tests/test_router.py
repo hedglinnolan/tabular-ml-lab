@@ -144,7 +144,13 @@ def test_only_repairable_findings_become_questions(messy):
     prompts an interview replaces."""
     _, findings, detection = messy
     plan = router.plan(findings, target="outcome", detection=detection, step="data")
+    # A question can settle SEVERAL findings since `DRIVE-002` — one bulk repair
+    # covers the N it groups. Reading `triggering_finding` alone would report
+    # every member but the cited one as "never asked", which is grouping
+    # scoring as silence. `covers` is what the question says it settles, and it
+    # is the same list the interface and the value-check harness read.
     asked = {q.triggering_finding for q in plan if q.kind == "repair"}
+    asked |= {c for q in plan if q.kind == "repair" for c in q.covers}
 
     for f in findings:
         repairable = (f["severity"] in ("critical", "warning")

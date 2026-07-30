@@ -843,6 +843,14 @@
 
         <div id="appliedBox"></div>
 
+        <!-- N findings that are the SAME repair, as one card (DRIVE-002).
+             Above the individual findings because a group is the more general
+             statement, and because its members are withheld from the list
+             below — two controls applying one repair is worse than a duplicate
+             card, since pressing the second runs it against a table the first
+             replaced. -->
+        <div id="repairGroups"></div>
+
         <div class="stepcard calm is-hidden" id="card-struct">
           <div class="sub">
             <div class="subhead"><span class="sub-num">noticed</span></div>
@@ -1845,7 +1853,24 @@
         "Every check the import doctor runs came back clean on this file. That is a statement about " +
         "the checks that ran, not a guarantee about the data.";
     }
-    $("structList").innerHTML = structural.map(findingCard).join("");
+    /* A finding a bulk card has taken over is NOT rendered again here. The
+       server says which — `covers` on the group question — because the grouping
+       rule lives in `turbotab/repairs.py` and a second copy of it in this file
+       would drift (`DRIVE-002`, and `GUIDED-040`'s lesson one object over). */
+    var taken = groupedFindingIds();
+    $("structList").innerHTML = structural
+      .filter(function(f){ return taken.indexOf(f.id) === -1; })
+      .map(findingCard).join("");
+  }
+
+  function groupedFindingIds(){
+    var out = [];
+    (LAST_DATA_PLAN.questions || []).forEach(function(q){
+      (q.covers || []).forEach(function(id){
+        if (out.indexOf(id) === -1) out.push(id);
+      });
+    });
+    return out;
   }
 
   function renderTarget(){
@@ -2003,8 +2028,13 @@
     api("/project/" + P.id + "/interview?step=data")
       .then(function(plan){
         LAST_DATA_PLAN = plan;
+        renderRepairGroups(plan);
         renderAsked(plan);
         renderSkips(plan);
+        /* The structural list is filtered by what the groups took over, and the
+           plan is what says so — so it is re-rendered here, after the plan
+           lands, rather than in `renderData` which runs before it. */
+        renderData();
         fillConsumers();
       })
       .catch(function(){ /* the interview is an overlay on findings, not a gate */ });
@@ -2050,6 +2080,7 @@
      another is the same silence as a capability with no row. */
   var HANDLED_QUESTION_PREFIXES = [
     "repair::",                  /* the finding cards, in `structList` */
+    "repair_bulk::",             /* renderRepairGroups — DRIVE-002 */
     "blocker::",                 /* renderBlockers, the full-width band */
     "look::",                    /* the pull palette */
     "missingness::",             /* the per-column missingness card */
@@ -2071,6 +2102,108 @@
      Router's own fields — title, why, consumer, options — so a question is
      rendered from what the server says about it rather than from a copy of that
      in here. Multi-select is declared by the server; the page does not guess. */
+  /* ═════════ N FINDINGS, ONE REPAIR, ONE DECISION ═════════ `DRIVE-002`.
+     Nine binary-text features required nine show-me-then-apply cycles for one
+     idea. The product owner's remedy is the specification: show what it means
+     for one, let the user select which features to run it on, apply to the
+     selected set.
+
+     THE SET IS EDITABLE MEMBER BY MEMBER, and that is not a contradiction of
+     `bulk.py`'s rule-scope principle. A missingness rule ranges over hundreds of
+     columns where nobody can hold the membership in their head, so editing
+     members is the thing that does not scale. A repair group is small by
+     construction — the columns one detector claimed — and *"`sex` is binary text
+     but leave it alone"* is a real and common judgment. */
+  var PICKED = {};      /* fix_kind -> finding ids selected; absent = "all" */
+  var RG_OPEN = {};     /* fix_kind -> the group payload, while its panel is open */
+
+  function renderRepairGroups(plan){
+    var host = $("repairGroups");
+    if (!host) return;
+    var groups = plan.questions.filter(function(q){
+      return q.mode === "push" && q.status === "asked" &&
+             q.key.indexOf("repair_bulk::") === 0;
+    });
+    if (!groups.length){ host.innerHTML = ""; return; }
+    host.innerHTML = groups.map(function(q){
+      var kind = q.key.slice("repair_bulk::".length);
+      return '<div class="stepcard calm" data-rg-card="' + esc(kind) + '">' +
+             '<div class="sub"><div class="subhead"><span class="sub-num">' +
+             esc(q.seq || "noticed") + "</span></div>" +
+             "<h2>" + esc(q.title) + "</h2>" +
+             '<p class="why">' + esc(q.why) + "</p>" +
+             '<div class="answers">' +
+             '<button class="answer" type="button" data-rg-show="' + esc(kind) + '" ' +
+             'data-tip="Shows what this repair does to one of these features, ' +
+             'and lets you choose which to run it on. Nothing changes until you ' +
+             'apply it.">Show me what changes</button>' +
+             '<button class="answer ghost" type="button" data-rg-defer="' + esc(kind) + '" ' +
+             'data-tip="Sets the whole group aside and brings it back at ' +
+             'Explore.">Decide later</button></div>' +
+             '<div class="rg-body" data-rg-body="' + esc(kind) + '"></div>' +
+             "</div></div>";
+    }).join("");
+  }
+
+  function repairGroupPanel(g){
+    var kind = g.fix_kind;
+    var chosen = PICKED[kind] || g.members.map(function(m){ return m.id; });
+    var ex = g.example || {};
+    var first = (g.members[0] || {}).columns || [];
+    var h = '<div class="pv-head"><span class="pv-title">What it does to ' +
+            '<span class="v">' + esc(first[0] || "the first one") + "</span>" +
+            '</span><span class="pv-note">one worked example — each feature ' +
+            "gets its own diff when it runs</span></div>";
+    if (g.example_error){
+      h += '<p class="pv-note" style="color:var(--stop);">' +
+           "The worked example could not be computed: " + esc(g.example_error) +
+           ". Applying without one would be a change nobody looked at, so it " +
+           "is not offered.</p>";
+    } else if (ex.sample){
+      /* THE PAGE'S OWN BEFORE/AFTER RENDERER, not a second one. Two diff
+         tables would be two chances for the interface to describe a change
+         differently from the way it describes the same change elsewhere. */
+      var s = ex.sample;
+      h += '<div class="pv-cols"><div class="pv-side"><div class="pv-lab">' +
+           "Before</div>" + miniTable(s.columns, s.rows, "before") + "</div>" +
+           '<div class="pv-arrow" aria-hidden="true">→</div>' +
+           '<div class="pv-side"><div class="pv-lab after">After</div>' +
+           miniTable(s.columns, s.rows, "after") + "</div></div>";
+      if (ex.row_identity_preserved === false && ex.row_identity_note){
+        h += '<div style="padding:11px 14px;background:var(--warn-tint);' +
+             "border-bottom:1px solid var(--warn-line);font-size:12.5px;" +
+             "color:var(--warn);\"><strong>This renumbers your rows.</strong> " +
+             esc(ex.row_identity_note) + "</div>";
+      }
+    }
+    h += '<div class="pv-head" style="margin:12px 0 4px;"><span class="pv-title">' +
+         "Which features?</span><span class=\"pv-note\">" + chosen.length +
+         " of " + g.members.length + " selected</span></div>";
+    h += '<div class="rg-picks">';
+    g.members.forEach(function(m){
+      var on = chosen.indexOf(m.id) !== -1;
+      h += '<button class="answer multi" type="button" ' +
+           'data-rg-pick="' + esc(kind) + '" data-rg-id="' + esc(m.id) + '" ' +
+           'aria-pressed="' + (on ? "true" : "false") + '" ' +
+           'data-tip="' + esc(m.title) + '">' +
+           esc((m.columns || []).join(", ") || m.id) + "</button>";
+    });
+    h += "</div>";
+    h += '<div class="choice-acts" style="margin-top:11px;">' +
+         '<span class="said">' + esc(g.effect) + "</span>" +
+         '<button class="cbtn" type="button" data-rg-apply="' + esc(kind) + '"' +
+         (chosen.length && !g.example_error ? "" : " disabled") +
+         ' data-tip="Rewrites ' + chosen.length + ' column(s) now, in one step, ' +
+         'and records one decision covering the whole group. It can be undone.">' +
+         "Apply to the " + chosen.length + " selected</button>" +
+         '<button class="cbtn" type="button" data-rg-decline="' + esc(kind) + '" ' +
+         'data-tip="Records that all ' + g.members.length + ' were considered ' +
+         'and left as they are. That is an answer, and it goes in the ' +
+         'transcript.">Leave all ' + g.members.length + " as they are</button>" +
+         "</div>";
+    return h;
+  }
+
   function renderAsked(plan){
     var host = $("askedQuestions");
     if (!host) return;
@@ -2674,8 +2807,60 @@
       "[data-event-for]," +
       "[data-look],[data-unskip],[data-blk-resolve],[data-blk-attest],[data-att-send]," +
       "[data-impossible],[data-keep-impossible],[data-miss-choose],[data-miss-preview]," +
-      "[data-hist-page],[data-pg-step],[data-copy-rows]") : null;
+      "[data-hist-page],[data-pg-step],[data-copy-rows]," +
+      "[data-rg-show],[data-rg-defer],[data-rg-pick],[data-rg-apply]," +
+      "[data-rg-decline]") : null;
     if (!t || t.disabled) return;
+
+    /* ── the bulk repair card (`DRIVE-002`) ── */
+    if (t.hasAttribute("data-rg-show")){
+      var rk = t.dataset.rgShow;
+      var body = document.querySelector('[data-rg-body="' + rk.replace(/"/g, '\\"') + '"]');
+      if (!body) return;
+      if (RG_OPEN[rk]){ RG_OPEN[rk] = null; body.innerHTML = ""; return; }
+      body.innerHTML = '<span class="pv-note">working it out…</span>';
+      job("Working out what this repair does…",
+          api("/project/" + P.id + "/repair_group/" + encodeURIComponent(rk)))
+        .then(function(g){ RG_OPEN[rk] = g; body.innerHTML = repairGroupPanel(g); })
+        .catch(function(e){ body.innerHTML = '<span class="pv-note">' +
+                                             esc(e.message) + "</span>"; });
+      return;
+    }
+    if (t.hasAttribute("data-rg-pick")){
+      var pkk = t.dataset.rgPick, g0 = RG_OPEN[pkk];
+      if (!g0) return;
+      var cur = PICKED[pkk] || g0.members.map(function(m){ return m.id; });
+      var id = t.dataset.rgId, ix = cur.indexOf(id);
+      PICKED[pkk] = ix === -1 ? cur.concat([id])
+                              : cur.filter(function(x){ return x !== id; });
+      /* Re-rendered from the selection rather than toggled in place, for the
+         same reason the advisory pager is: the Apply button's label and its
+         tooltip both count the selection, and three places computing one count
+         is three chances to disagree. */
+      var b2 = document.querySelector('[data-rg-body="' + pkk.replace(/"/g, '\\"') + '"]');
+      if (b2) b2.innerHTML = repairGroupPanel(g0);
+      return;
+    }
+    if (t.hasAttribute("data-rg-apply")){
+      var ak = t.dataset.rgApply, ga = RG_OPEN[ak];
+      if (!ga) return;
+      var picks = PICKED[ak] || ga.members.map(function(m){ return m.id; });
+      if (!picks.length) return;
+      decide("apply_bulk", ak, { findings: picks },
+             "Applying it to " + picks.length + " feature(s)…");
+      return;
+    }
+    if (t.hasAttribute("data-rg-decline")){
+      decide("decline_bulk", t.dataset.rgDecline, {},
+             "Recording that they were left as they are…");
+      return;
+    }
+    if (t.hasAttribute("data-rg-defer")){
+      decide("defer", "repair_bulk::" + t.dataset.rgDefer,
+             { target_step: "explore" },
+             "Setting the whole group aside…");
+      return;
+    }
 
     /* `DRIVE-007`. The clipboard write can be refused — an insecure origin, a
        permission the user declined — and a Copy button that silently does
@@ -3086,6 +3271,15 @@
     flag:      function(){ return "Marks the finding and its evidence for the manuscript, so the figure and its caption travel into the export."; },
     unflag:    function(){ return "Unmarks it. Nothing about it reaches the export."; },
     apply:     function(){ return "Rewrites the working table now, and the change can be undone."; },
+    apply_bulk: function(p){
+      var n = ((p || {}).findings || []).length;
+      return "Rewrites " + n + " column(s) now, in one step, and records one " +
+             "decision covering the whole group. It can be undone.";
+    },
+    decline_bulk: function(){
+      return "Records that every feature in the group was considered and left " +
+             "as recorded. That is an answer, and it goes in the transcript.";
+    },
     revert:    function(){ return "Puts the table back exactly as it was before the last change."; },
     set_lens:  function(p){
       var n = ((p || {}).lens || []).length;

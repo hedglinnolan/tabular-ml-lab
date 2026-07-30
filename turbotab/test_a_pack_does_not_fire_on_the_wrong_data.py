@@ -148,9 +148,20 @@ def test_no_pack_adds_a_question_to_a_fixture_it_does_match_either():
     # it: domain knowledge should make the interview SHORTER, and the naive
     # reading of "support more fields" is "ask more questions", which is the
     # failure the whole product exists to escape. The genomics lens rereads ten
-    # `critical` sentinel findings as counts, so ten repair questions stop
-    # being asked.
-    assert removed == {(P.GENOMICS, "genomics_expression"): 10}, removed
+    # `critical` sentinel findings as counts, so those repairs stop being asked.
+    #
+    # **This number was 10 until `DRIVE-002` landed, and its fall to 1 is the
+    # result improving rather than degrading.** The ten sentinel findings share
+    # one `fix_kind`, so they are now one bulk question with ten members — the
+    # interview asked ONE question about them before the lens, not ten, and the
+    # lens removes that one.
+    #
+    # `GUIDED-029`'s argument, arriving where it was aimed: *a benefit measured
+    # against a broken baseline is a number flattering itself.* A lens that
+    # removed ten questions from an interview that should never have asked ten
+    # was being credited with repairing an unscalable baseline. What it removes
+    # now is what it actually contributes.
+    assert removed == {(P.GENOMICS, "genomics_expression"): 1}, removed
 
 
 # ── the other half: a pack that never fires is worthless ─────────────────────

@@ -92,7 +92,12 @@ def test_no_question_the_page_renders_carries_a_bare_question_mark():
                     f"sequence or the step that raised it")
                 assert d["seq"] not in ("?", "§"), d["key"]
                 seen += 1
-    assert seen >= 24, f"the drive covered only {seen} questions"
+    # An anti-vacuity floor, not a target. The number FALLS as the interview
+    # gets better — `DRIVE-002`'s grouping took it from 24 to 22 by asking
+    # fewer questions about the same findings — so the bar is "did this drive
+    # actually enumerate questions", and a bound tight enough to track the
+    # count would fail every time the product improves.
+    assert seen >= 15, f"the drive covered only {seen} questions"
 
 
 def test_the_marker_is_the_sequence_the_document_states():
@@ -160,15 +165,26 @@ def test_a_repair_is_rendered_once_and_not_twice():
 
     from turbotab import api
     client = TestClient(api.app)
-    with open(DATA / "metabolomics_untargeted.csv", "rb") as fh:
+    # `clinic_visits`, not `metabolomics_untargeted`, since `DRIVE-002` landed:
+    # every binary-text repair on the metabolomics fixture is now covered by one
+    # group, so `repair::` questions no longer exist there and the assertion
+    # below would pass on an empty set. This fixture still serves both kinds —
+    # two groups AND three ungrouped repairs — which is the case worth guarding.
+    with open(DATA / "clinic_visits.csv", "rb") as fh:
         project = client.post("/project", files={
-            "file": ("m.csv", fh, "text/csv")}).json()
+            "file": ("c.csv", fh, "text/csv")}).json()
     pid = project["id"]
+    client.post(f"/project/{pid}/decision",
+                json={"kind": "set_target", "payload": {"column": "outcome"}})
+    project = client.get(f"/project/{pid}").json()
     plan = client.get(f"/project/{pid}/interview?step=data").json()
     served = [q["key"] for q in plan["questions"]
               if q["mode"] == "push" and q["status"] == "asked"
               and q["key"].startswith("repair::")]
+    grouped = [q["key"] for q in plan["questions"]
+               if q["key"].startswith("repair_bulk::")]
     assert served, "no repair questions on this fixture; the test proves nothing"
+    assert grouped, "no repair GROUPS on this fixture; half the check is idle"
 
     html = H.run("__emit(__harness.html('askedQuestions'));", routes={
         f"/project/{pid}": project,
@@ -178,7 +194,7 @@ def test_a_repair_is_rendered_once_and_not_twice():
     }, search=f"?project={pid}")
 
     leaked = sorted({b["data-answer-key"] for b in H.elements(html)
-                     if b.get("data-answer-key", "").startswith("repair::")})
+                     if b.get("data-answer-key", "").startswith("repair")})
     assert not leaked, (
         f"{len(leaked)} repair question(s) rendered a second time in the "
         f"generic channel, with buttons that do nothing: {leaked[:4]}")

@@ -129,6 +129,13 @@ class Question:
     # what drifts.
     min_selections: int = 0
     min_reason: Optional[str] = None
+    # The finding ids a question has TAKEN OVER, so the interface can stop
+    # rendering them separately. `DRIVE-002`'s bulk repair question covers N
+    # findings; without this the page would render the group card and the N
+    # member cards, which is `GUIDED-040`'s duplicate one object over — and
+    # worse, because both controls apply the same repair and pressing the
+    # second runs it against a table the first replaced.
+    covers: List[str] = field(default_factory=list)
     # Who consumes this answer, and what for. DESIGN_LANGUAGE §09: "Every FACT
     # carries a 'Why we ask' disclosure that names who consumes the answer and
     # what for. A FACT that cannot state its consumer is a question we have no
@@ -199,6 +206,7 @@ class Question:
             "multi_select": bool(self.multi_select),
             "min_selections": int(self.min_selections),
             "min_reason": self.min_reason,
+            "covers": list(self.covers),
             "consumer": self.consumer,
             "clause": self.clause,
             "seq": self.seq,
@@ -741,12 +749,80 @@ def plan(
             missingness_exceptions, answered, _miss,
             settled=missingness_settled, unskipped=unskipped))
 
-    # ── one question per repairable finding, ranked by the engine ──────────
+    # ── repairs that are the SAME repair get one question, not N ───────────
+    #
+    # `DRIVE-002`. Nine NHANES features are binary written as text; the engine
+    # found all nine and the driver ran nine show-me-then-apply cycles for one
+    # idea. This is `bulk.py`'s rule-scope pointed at repairs rather than at
+    # questions — one preview, a selectable set, one apply, one decision
+    # covering N features.
+    #
+    # A grouped finding does NOT also get its own question. Both would be
+    # `GUIDED-040`'s duplicate card one object over, and worse here: two
+    # controls that apply the same repair, where pressing both is a second
+    # apply against a table the first replaced.
+    from turbotab import repairs as _repairs
+    ranked = _rank([f for f in findings if _is_repairable(f)])
+    groups = _repairs.group(ranked)
+    taken = _repairs.grouped_ids(ranked)
+    for g in groups:
+        if g.key in answered:
+            continue
+        # A group is deferred or dismissed as a unit, because it is one
+        # decision. Its members are not separately dispositioned — that is what
+        # makes it one decision rather than a batch of N.
+        d = g.to_dict()
+        q = Question(
+            key=g.key, kind="repair", step=step, seq="noticed",
+            title=(f"{d['n']} features need the same repair: {d['label']}"),
+            why=(f"{d['n']} columns were read the same way by the same check — "
+                 f"{', '.join(d['columns'][:6])}"
+                 f"{'…' if len(d['columns']) > 6 else ''}. Look at what it does "
+                 f"to one of them, then choose which to run it on."),
+            confidence=d["confidence"], severity=d["severity"],
+            # IT CITES A FINDING, because it exists because of findings. The
+            # first member is the one whose worked example the card shows, so
+            # the citation and the evidence on screen are the same object. The
+            # rest travel in `covers`.
+            #
+            # Without this a bulk question read as not findings-driven, and
+            # `findings_driven` fell purely because the findings-driven
+            # questions were the ones that compressed.
+            triggering_finding=d["members"][0]["id"],
+            covers=[m["id"] for m in d["members"]],
+            options=["show me what changes", "remind me later", "dismiss"])
+        # DEFERRAL RESURFACES, and the first version of this did not.
+        #
+        # It set `status = "deferred"` whenever the key was in `deferred`,
+        # regardless of the step being planned — so a group deferred to Explore
+        # stayed deferred AT Explore and never came back. Deferral would have
+        # been "a discard with manners", which is the sentence
+        # `test_a_deferred_question_resurfaces_at_the_step_it_names` exists to
+        # make impossible, and it caught this.
+        #
+        # The individual-repair loop below has always had this logic; the group
+        # path now mirrors it rather than reimplementing a simpler version.
+        # Members share a `fix_kind`, so they share a home step.
+        home = _home_step(g.findings[0])
+        target_step = deferred.get(g.key, home)
+        if target_step != step:
+            if home == step:
+                q.status = "deferred"
+                q.defer_target = target_step
+                out.append(q)
+            continue
+        if g.key in deferred:
+            q.deferred_from = home
+        out.append(q)
+
+    # ── one question per remaining repairable finding, ranked by the engine ──
     for f in _rank(findings):
         key = f"repair::{f['id']}"
         if key in answered:
             continue
         if not _is_repairable(f):
+            continue
+        if f["id"] in taken:
             continue
 
         home = _home_step(f)

@@ -525,3 +525,95 @@ covering 306 columns. That is a smaller number and a truer one.
 **Both bases are recorded** so a later loop can tell a real regression from this
 correction. A matrix cell that reads `−1` where the last report said `−307` is
 not a regression, and the only thing that makes that legible is this row.
+
+---
+
+# L24 · `DRIVE-002` — the metric penalized the improvement, twice
+
+## What happened
+
+Bulk repairs landed: N findings that are the same repair became one question
+with a selectable set. On `messy-clinic` that turns ten repair questions into
+two groups plus three ungrouped ones, and the value check went red with
+
+    verdict.passes:      True  → False
+    questions_asked:     12    → 8
+    irrelevant_questions: 2    → 0
+    findings_driven:     0.75  → 0.625
+    coverage:            1.0   → 0.4
+
+Two of those five are the result improving. Two were the metric failing to see
+it. One is real and is recorded as a cost.
+
+## Coverage 1.0 → 0.4 — a metric regression produced entirely by the metric
+
+`_record` mapped a question to the requirement it settles by **exact key
+match**: `covers=q.key if q.key in keys else None`. That was true of every
+question that existed when it was written, and false from the moment one
+question could settle several. A bulk question keyed `repair_bulk::read_as_binary`
+matched no requirement, so the four `repair::<id>` decisions it settles all read
+as uncovered — and grouping questions read as the door going silent about them,
+which is the exact failure `coverage` exists to catch.
+
+**This is the expiring-guarantee shape on a measurement rather than on a
+baseline.** True when written, false when a component landed, announced by
+nothing. `FEATURE_PARITY.md`'s third defense is *audit every "before X exists"
+claim when X ships*; the claim here was never written down as one, which is why
+nothing triggered.
+
+**Repaired in the matcher, not in the record.** The Router already publishes
+`Question.covers` — the list the interface reads to stop rendering a grouped
+finding twice — so the harness was failing to read a fact the app was already
+stating. `QuestionRecord.also_covers` carries it and `covered_keys` is what
+every coverage computation now reads. Coverage returns to **10/10**.
+
+Not circular: `covers` is checked against `required_decisions`, which is built
+from the engine's findings and from nothing the Router said.
+
+## findings_driven 0.75 → 0.625 — half artifact, half real, and it is recorded
+
+The first half was a defect in the feature and is fixed: the bulk question set
+no `triggering_finding`, so a question that exists *because of findings* scored
+as not findings-driven. It now cites its first member — the one whose worked
+example the card shows, so the citation and the evidence on screen are the same
+object. That recovered 0.375 → 0.625.
+
+**The remaining 0.75 → 0.625 is real, and it is arithmetic rather than
+regression.** The metric is *findings-driven questions ÷ all questions*.
+Grouping compresses the numerator and leaves the denominator's constitutional
+questions — lens, target, task type, grain — untouched, so a door that asks
+strictly less about findings and exactly the same about the constitution scores
+lower. Nine of twelve became five of eight.
+
+**No threshold was moved and the prereg is unedited.** The floor is 0.5 and
+0.625 clears it. That is the honest outcome: the number fell, it still passes,
+and the reason it fell is written down rather than legislated away.
+
+**What it says about the metric, for a later loop.** `findings_driven` measures
+*what fraction of the interview is findings-driven*, and it will fall on any
+change that makes findings cheaper to answer without making the constitution
+cheaper. That is not a defect to fix now — inventing a per-finding
+denominator after seeing this result would be fitting the metric to the outcome,
+which is what `test_the_prereg_predates_the_router` exists to prevent. It is
+recorded as a known property, and if a later loop wants a different
+denominator it must pre-register it.
+
+## questions_asked 12 → 8 and irrelevant 2 → 0
+
+Both improvements, both within the pre-registered ceilings, no threshold
+touched. `constitutional` stays at 2 and `irrelevant_net` at 0.
+
+## The ruling
+
+**PASSES.** `routing-value-check.json` is re-recorded with `replaced_because`
+naming this section, per the precedent set at L19. `routing-baseline.json` is
+untouched — it is the frozen Classic measurement and nothing here concerns it.
+
+## Precedent added
+
+**A metric that maps one question to one requirement expires the day a question
+can settle several.** The general form: *any measurement that assumes a
+cardinality is a temporal guarantee, and it will fail silently in the direction
+that looks like a regression.* When a change makes one control do the work of
+N, check the harness before believing the number — and prefer a matcher that
+reads what the component declares over one that infers from a key.

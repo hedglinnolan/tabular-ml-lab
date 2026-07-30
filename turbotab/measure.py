@@ -58,7 +58,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 SCHEMA_VERSION = "1.0"
 
@@ -104,6 +104,22 @@ class QuestionRecord:
     # explicit mapping rather than by comparing key strings — otherwise every
     # door scores zero against every requirement and the metric says nothing.
     covers: Optional[str] = None
+    # The OTHER required decisions this one question settles.
+    #
+    # `covers` above assumed one question settles at most one requirement, which
+    # was true of every question that existed when it was written. `DRIVE-002`
+    # made it false: one bulk repair question settles the N repairs it groups,
+    # and the exact-key matcher could see none of them — so grouping nine
+    # questions into one read as coverage collapsing from 1.0 to 0.4, a metric
+    # regression produced entirely by the metric.
+    #
+    # The expiring-guarantee shape, on a measurement rather than on a baseline:
+    # an assumption that was true when written, false from the moment a
+    # component landed, and announced by nothing. What makes this a repair to
+    # the matcher rather than a re-recording is that the Router already declares
+    # `covers` on the question — the harness was not reading a fact the app was
+    # publishing.
+    also_covers: Tuple[str, ...] = ()
     # push | pull. A pull affordance is offered, not asked: ignoring it costs
     # nothing and it never blocks. The thresholds bind on pushed questions only,
     # or the palette reads as a regression the moment it lands.
@@ -111,6 +127,18 @@ class QuestionRecord:
     # The constitution clause that requires this question, when one does. See
     # `Measurement.constitutional` for what it is counted as and what it is not.
     clause: Optional[str] = None
+
+    @property
+    def covered_keys(self) -> Tuple[str, ...]:
+        """Every required decision this question settles, in one place.
+
+        Read instead of `covers` wherever coverage is computed, so a question
+        that settles several cannot be counted as settling one.
+        """
+        out = list(self.also_covers)
+        if self.covers and self.covers not in out:
+            out.insert(0, self.covers)
+        return tuple(out)
 
     @property
     def is_question(self) -> bool:
@@ -245,7 +273,7 @@ class Measurement:
     @property
     def uncovered(self) -> List[str]:
         """Required decisions this door never puts to the user."""
-        raised = {q.covers for q in self.questions if q.covers}
+        raised = {k for q in self.questions for k in q.covered_keys}
         return [r.key for r in self.required if r.key not in raised]
 
     @property
@@ -259,13 +287,13 @@ class Measurement:
         """
         if not self.required:
             return float("nan")
-        raised = {q.covers for q in self.questions if q.covers}
+        raised = {k for q in self.questions for k in q.covered_keys}
         return sum(1 for r in self.required if r.key in raised) / len(self.required)
 
     @property
     def covered(self) -> int:
         """How many required decisions the door raised — coverage's numerator."""
-        raised = {q.covers for q in self.questions if q.covers}
+        raised = {k for q in self.questions for k in q.covered_keys}
         return sum(1 for r in self.required if r.key in raised)
 
     def coverage_ratio(self, measured_at: Optional[str] = None) -> str:

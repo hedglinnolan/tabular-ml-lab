@@ -203,21 +203,40 @@ def _record(q, dataset: str, required) -> QuestionRecord:
         skipped=(q.status != "asked"),
         skip_reason=q.skip_reason or (
             f"deferred to {q.defer_target}" if q.status == "deferred" else None),
-        covers=q.key if q.key in keys else None)
+        covers=q.key if q.key in keys else None,
+        # THE QUESTION SAYS WHAT IT SETTLES, and the harness reads it rather
+        # than inferring from the key. `DRIVE-002`'s bulk repair question is
+        # keyed `repair_bulk::<kind>` and settles the N `repair::<id>`
+        # requirements it groups; an exact-key matcher sees none of them, so
+        # nine questions becoming one read as coverage falling to 0.4.
+        #
+        # This is not circularity. `covers` is the Router declaring which
+        # findings a control has taken over — the same list the interface uses
+        # to stop rendering them twice — and it is checked against
+        # `required_decisions`, which is built from the engine's findings and
+        # not from anything the Router said.
+        #
+        # `covers` holds FINDING IDS, because that is what the interface needs
+        # to stop rendering a finding twice. `required_decisions` keys a repair
+        # as `repair::<id>`. The prefix is added here rather than stored twice:
+        # a Router that carried the harness's key naming would be the app
+        # shaped to its own metric.
+        also_covers=tuple(k for k in (f"repair::{i}" for i in (q.covers or []))
+                          if k in keys))
 
 
 def _surfaced_coverage(m: Measurement) -> float:
     """Asked OR visibly deferred, which is what the prereg counts."""
     if not m.required:
         return float("nan")
-    surfaced = {q.covers for q in m.questions if q.covers}
+    surfaced = {k for q in m.questions for k in q.covered_keys}
     return sum(1 for r in m.required if r.key in surfaced) / len(m.required)
 
 
 def _asked_coverage(m: Measurement) -> float:
     if not m.required:
         return float("nan")
-    asked = {q.covers for q in m.questions if q.covers and not q.skipped}
+    asked = {k for q in m.questions if not q.skipped for k in q.covered_keys}
     return sum(1 for r in m.required if r.key in asked) / len(m.required)
 
 
@@ -261,8 +280,9 @@ def test_routing_value_check():
         # deferral ambiguity's were: a threshold met under one denominator and
         # missed under the other is a result, not a detail.
         frozen_keys = [r["key"] for r in frozen[name]["required"]]
-        raised = {q.covers for q in g.questions if q.covers}
-        raised_asked = {q.covers for q in g.questions if q.covers and not q.skipped}
+        raised = {k for q in g.questions for k in q.covered_keys}
+        raised_asked = {k for q in g.questions if not q.skipped
+                        for k in q.covered_keys}
         surfaced_frozen = sum(1 for k in frozen_keys if k in raised) / len(frozen_keys)
         asked_frozen = sum(1 for k in frozen_keys if k in raised_asked) / len(frozen_keys)
 

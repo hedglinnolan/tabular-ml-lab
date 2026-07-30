@@ -2,7 +2,7 @@
  "schema_version": "1.0",
  "prereg": "VALUE_CHECK_PREREG.md",
  "adjudication": "VALUE_CHECK_ADJUDICATION.md",
- "measured_at": "6aac856",
+ "measured_at": "62157c2",
  "classic_reference": "routing-baseline-l9c.json",
  "classic_frozen_reference": "routing-baseline.json",
  "rows": [
@@ -32,21 +32,21 @@
    },
    "guided": {
     "required_decisions": 10,
-    "questions_asked": 12,
-    "irrelevant_questions": 2,
+    "questions_asked": 8,
+    "irrelevant_questions": 0,
     "constitutional": 2,
     "irrelevant_net": 0,
-    "findings_driven": 0.75,
+    "findings_driven": 0.625,
     "deferral_closes": 1.0,
     "coverage": 1.0,
     "covered": 10,
-    "coverage_ratio": "10/10 @ 6aac856",
-    "measured_at": "6aac856",
+    "coverage_ratio": "10/10",
+    "measured_at": null,
     "pull_affordances": 7,
     "surfaced_coverage": 1.0,
     "asked_coverage": 1.0,
-    "surfaced_ratio": "10/10 @ 6aac856",
-    "asked_ratio": "10/10 @ 6aac856"
+    "surfaced_ratio": "10/10 @ 23a9123",
+    "asked_ratio": "10/10 @ 23a9123"
    },
    "guided_under_frozen_denominator": {
     "n_required": 9,
@@ -90,13 +90,13 @@
     "deferral_closes": null,
     "coverage": 1.0,
     "covered": 1,
-    "coverage_ratio": "1/1 @ 6aac856",
-    "measured_at": "6aac856",
+    "coverage_ratio": "1/1",
+    "measured_at": null,
     "pull_affordances": 3,
     "surfaced_coverage": 1.0,
     "asked_coverage": 1.0,
-    "surfaced_ratio": "1/1 @ 6aac856",
-    "asked_ratio": "1/1 @ 6aac856"
+    "surfaced_ratio": "1/1 @ 23a9123",
+    "asked_ratio": "1/1 @ 23a9123"
    },
    "guided_under_frozen_denominator": {
     "n_required": 1,
@@ -140,13 +140,13 @@
     "deferral_closes": null,
     "coverage": 1.0,
     "covered": 2,
-    "coverage_ratio": "2/2 @ 6aac856",
-    "measured_at": "6aac856",
+    "coverage_ratio": "2/2",
+    "measured_at": null,
     "pull_affordances": 5,
     "surfaced_coverage": 1.0,
     "asked_coverage": 1.0,
-    "surfaced_ratio": "2/2 @ 6aac856",
-    "asked_ratio": "2/2 @ 6aac856"
+    "surfaced_ratio": "2/2 @ 23a9123",
+    "asked_ratio": "2/2 @ 23a9123"
    },
    "guided_under_frozen_denominator": {
     "n_required": 1,
@@ -166,5 +166,5 @@
   ],
   "passes_under_literal_reading": false
  },
- "replaced_because": "adjudicated in VALUE_CHECK_ADJUDICATION.md, L19: the lens question (clause lockbox-01, STATE-106) is the third constitutional question. +1 asked per dataset, constitutional +1 with it, irrelevant_net unchanged at 0, coverage unchanged at 1.0, no threshold moved, prereg unedited."
+ "replaced_because": "adjudicated in VALUE_CHECK_ADJUDICATION.md, L24 (DRIVE-002 bulk repairs): N findings that are the same repair became one question with a selectable set. questions_asked 12 -> 8 and irrelevant 2 -> 0 are the improvement; coverage 1.0 -> 0.4 was the harness's exact-key matcher failing to see one question settle several, repaired by reading the Router's own `covers` and back to 10/10; findings_driven 0.75 -> 0.625 is half a defect in the feature (the bulk question cited no finding, now fixed) and half arithmetic (grouping compresses the numerator and leaves the constitutional questions in the denominator). The 0.5 floor still holds. No threshold moved, prereg unedited, routing-baseline.json untouched."
 }

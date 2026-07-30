@@ -892,6 +892,109 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         _recompute(project)
         return _payload(project)
 
+    if decision.kind == "decline_bulk":
+        # "Leave all N as they are" — its own kind rather than `apply_bulk`
+        # with an empty list, because the record should say what happened in
+        # its own words. §09's recorded-absence rule: *nothing to do here* is
+        # an answer and it gets a sentence, or a group the user considered and
+        # declined is indistinguishable from a group nobody reached.
+        from turbotab import repairs as _repairs
+        found = [g for g in _repairs.group(project.findings)
+                 if g.fix_kind == (decision.subject or "")]
+        if not found:
+            raise HTTPException(404, f"No repair group '{decision.subject}'.")
+        the_group = found[0]
+        project.record(
+            kind="decline_bulk", subject=decision.subject or "",
+            text=_repairs.sentence(the_group.label, [], the_group.columns),
+            payload={"fix_kind": decision.subject, "label": the_group.label,
+                     "declined": [m["id"] for m in the_group.findings],
+                     "declined_columns": the_group.columns,
+                     "n_offered": the_group.n})
+        return _payload(project)
+
+    if decision.kind == "apply_bulk":
+        # `DRIVE-002`. One preview, a selectable set, ONE apply, ONE decision
+        # covering N features.
+        #
+        # Every selected column gets its OWN diff computed and applied — the
+        # card shows one worked example because nine before/after tables are
+        # unreadable, and a preview of one column standing in for the apply of
+        # nine would be exactly the blind consent the preview exists to end.
+        from turbotab import repairs as _repairs
+        wanted = [str(i) for i in (decision.payload.get("findings") or [])]
+        if not wanted:
+            raise HTTPException(
+                400, "A bulk repair needs at least one feature selected. "
+                     "Applying it to none is not a repair, and leaving every "
+                     "column alone is what 'dismiss' records.")
+        structural = engine.diagnose(project.df, target=project.target)
+        offered = [f for f in _repairs.group(project.findings)
+                   if f.fix_kind == (decision.subject or "")]
+        if not offered:
+            raise HTTPException(
+                404, f"No repair group '{decision.subject}' in this table. "
+                     f"Findings are recomputed after every change, so a group "
+                     f"from before a fix may no longer exist.")
+        the_group = offered[0]
+        n_offered = the_group.n
+        label = the_group.label
+
+        applied_columns: List[str] = []
+        try:
+            for finding_id in wanted:
+                # RE-DIAGNOSED PER COLUMN, because each apply replaces the
+                # frame and the next finding must be located in the table that
+                # now exists rather than in the one that did.
+                structural = engine.diagnose(project.df, target=project.target)
+                live = engine.find_shape_finding(structural, finding_id)
+                project.check_repair_allowed(live.fix_kind)
+                if live.fix_kind != the_group.fix_kind:
+                    raise HTTPException(
+                        400, f"'{finding_id}' is a {live.fix_kind} repair and "
+                             f"this group applies {the_group.fix_kind}. One "
+                             f"control may not stand for two operations.")
+                prev = engine.preview_fix(project.df, live)
+                if not prev.get("applicable"):
+                    raise HTTPException(
+                        400, f"'{finding_id}' has no automatic repair — it "
+                             f"needs a human decision, so it cannot travel "
+                             f"inside a bulk one.")
+                new_df, _description = engine.apply_fix(project.df, live)
+                project.apply_fix_quietly(new_df, live.id,
+                                          prev["row_identity_preserved"])
+                applied_columns.extend(str(c) for c in (live.affected_columns or []))
+        except engine.EngineRefusal as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+        # THE DECLINED MEMBERS ARE PART OF THE DECISION, not left open.
+        #
+        # "One decision covering N features" is the finding's own words, and N
+        # is the set that was OFFERED. A user who applied seven of nine decided
+        # about all nine — and the first version of this recorded "2 others were
+        # deliberately left as recorded" in the transcript while the interview
+        # re-asked them on their own cards. The record and the draw disagreed,
+        # which is precisely the failure this loop is sweeping for.
+        #
+        # Reopening one is still free: `undismiss` already removes
+        # `repair::<id>` from the answered set, and it is the affordance a
+        # declined member's row carries.
+        declined = [m for m in the_group.findings if m["id"] not in wanted]
+        declined_columns = [str(c) for m in declined
+                            for c in (m.get("affected_columns") or [])]
+        project.record(
+            kind="apply_bulk", subject=decision.subject or "",
+            text=_repairs.sentence(label, applied_columns, declined_columns),
+            payload={"fix_kind": decision.subject, "label": label,
+                     "findings": wanted, "columns": applied_columns,
+                     "declined": [m["id"] for m in declined],
+                     "declined_columns": declined_columns,
+                     "n_selected": len(wanted), "n_offered": n_offered})
+        _recompute(project)
+        return _payload(project)
+
     if decision.kind == "revert":
         try:
             project.revert_last_fix()
@@ -1080,6 +1183,52 @@ PULL_CAPABILITIES: Dict[str, Dict[str, Any]] = {
 NOT_BUILT_REASON = ("Not in this build. The engine has the analysis; the Guided "
                     "door has not been wired to it yet, and a control that "
                     "silently does nothing is worse than one that says so.")
+
+
+@app.get("/project/{project_id}/repair_group/{fix_kind}")
+async def repair_group(project_id: str, fix_kind: str) -> Dict[str, Any]:
+    """One worked example, and the set it could be run on. `DRIVE-002`.
+
+    The worked example is the group's **first** member rather than a
+    representative chosen by any cleverness — the findings arrive ranked, so the
+    first is the one the engine put first, and a "representative" picked on some
+    other basis would be the card quietly deciding which column is typical.
+
+    Every member carries its own row count, because *"nine features"* is not the
+    number a user needs to decide with; *"`sex`: 400 rows, `batch`: 400 rows,
+    `qc_flag`: 12 rows"* is.
+    """
+    from turbotab import repairs as _repairs
+
+    project = _project(project_id)
+    found = [g for g in _repairs.group(project.findings) if g.fix_kind == fix_kind]
+    if not found:
+        raise HTTPException(
+            404, f"No repair group '{fix_kind}' in this table. Findings are "
+                 f"recomputed after every change, so a group from before a fix "
+                 f"may no longer exist.")
+    the_group = found[0]
+    payload = the_group.to_dict()
+
+    structural = engine.diagnose(project.df, target=project.target)
+    example, error = None, None
+    try:
+        live = engine.find_shape_finding(structural, the_group.findings[0]["id"])
+        example = engine.preview_fix(project.df, live)
+        example["finding_id"] = live.id
+    except engine.EngineRefusal as exc:
+        # Reported, never swallowed. A group whose worked example cannot be
+        # computed must not render as a group with nothing to show — the user
+        # would press Apply on a preview they never saw.
+        devchecks.swallowed(
+            "api.repair_group::preview", exc,
+            "the bulk card has no worked example and would offer an apply "
+            "over a diff nobody looked at")
+        error = str(exc)
+    payload["example"] = example
+    payload["example_error"] = error
+    payload["effect"] = _repairs.sentence(the_group.label, the_group.columns)
+    return payload
 
 
 def _project(project_id: str) -> AnalysisProject:
@@ -1728,6 +1877,14 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
             answered.append("confirm_task_type")
         elif d.kind in ("apply", "dismiss"):
             answered.append(f"repair::{d.subject}")
+        elif d.kind in ("apply_bulk", "decline_bulk"):
+            # The group is answered, and so is every member — a member left out
+            # of the selection was left out ON PURPOSE, and re-asking it on its
+            # own would turn a recorded decision back into an open question.
+            answered.append(f"repair_bulk::{d.subject}")
+            for finding_id in ((d.payload.get("findings") or [])
+                               + (d.payload.get("declined") or [])):
+                answered.append(f"repair::{finding_id}")
         elif d.kind == "acknowledge_blocker":
             # A terminal state is guaranteed (DESIGN_LANGUAGE §09). A blocker
             # never re-fires on the same facts after acknowledgment: a flag that
