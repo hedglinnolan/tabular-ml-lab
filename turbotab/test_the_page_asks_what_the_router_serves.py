@@ -328,9 +328,20 @@ def test_the_quoted_record_is_never_empty(tmp_path):
     decide(pid3, "set_reverse_coding", {"columns": ["item_03"]})
     decide(pid3, "set_selection", {})          # "every column goes to the models"
 
+    # A fourth, for the one kind no upright table can reach: question 1.5 fires
+    # only on a feature-major assay export, so the drive that exercises it has
+    # to be driven on one. Built by turning a shipped fixture around rather than
+    # written by hand.
+    from turbotab.test_a_transposed_assay_table_is_turned_around_before_diagnosis \
+        import _transposed_bytes
+    pid4 = client.post("/project", files={
+        "file": ("t.csv", _transposed_bytes(), "text/csv")}).json()["id"]
+    decide(pid4, "set_lens", {"lens": ["metabolomics"]})
+    decide(pid4, "set_orientation", {"answer": "rows_are_features"})
+
     labeled = set(_js_object_keys("ACK_LABEL"))
     seen = set()
-    for project in (pid, pid2, pid3):
+    for project in (pid, pid2, pid3, pid4):
         for d in client.get(f"/project/{project}").json()["decisions"]:
             if d["kind"] not in labeled:
                 continue

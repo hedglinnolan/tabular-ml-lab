@@ -27,6 +27,7 @@ a decision taken on their behalf.
 | # | Question | Fires | Kind |
 |---|---|---|---|
 | 1 | **What kind of measurements are in this table?** | always | asked · multi-select |
+| 1.5 | **Which way round is this table?** | only if 1 includes an assay pack **and** the shape reads feature-major | asked |
 | — | *structural diagnosis, repairs, impossibility pass* | always | findings |
 | 2 | **What are you predicting?** (+ which level is the event) | always | asked |
 | 3 | **Can one person appear in more than one row?** | always | asked |
@@ -59,6 +60,42 @@ Nothing may be resequenced. Three placements are load-bearing and easy to get wr
   a user except through `rank_findings`, and
   `test_the_lens_reaches_every_finding_list_the_app_presents` is what makes that a check rather
   than a habit.
+- **Question 1.5 is the one that genuinely acts before the diagnosis**, and it is what gives this
+  ordering its teeth (L24). Everything above says the lens is a parameter of `rank_findings` —
+  presentation — and defends that at length, correctly. But *presentation* is the whole of what a
+  lens can fix, and there is a failure it cannot touch: **an assay table exported features-in-rows
+  and samples-in-columns is transposed, and every finding computed on it is garbage.** The
+  "columns" are participants, so column dtypes are meaningless, missingness per column is
+  missingness per participant, the impossibility pass compares one subject's entire panel against a
+  reference range for a single analyte, and the target list on offer is a list of sample
+  identifiers. **Annotation cannot fix a frame.**
+
+  So this question does not annotate the diagnosis, it precedes it: answering *"each row is a
+  feature"* transposes the working table, records the decision, and states it in the methods
+  sentence — *"the table was supplied with features in rows and samples in columns, and was
+  transposed to one row per sample before any diagnosis was run."*
+
+  **It fires narrowly**, because a question asked of a table it does not describe is guard #2
+  broken: only when the lens includes an assay pack (a clinical export or a survey is not shipped
+  transposed) **and** the shape reads feature-major. The reading is the ratio of the spread of row
+  means to the spread of column means, on a log scale — in a sample-major assay table the columns
+  are analytes and differ by orders of magnitude while the rows are comparable samples, and
+  feature-major is that fact with the axes exchanged. Measured rather than chosen: every fixture in
+  this tree reads between 0.05 and 1.51, a transposed copy of `metabolomics_untargeted.csv` reads
+  23, and the threshold is 4.
+
+  **Two placements follow from it.** The target question is *withheld* while 1.5 is open — on a
+  feature-major table the column list is a list of samples — and `set_orientation` refuses once a
+  target exists, because after the turn that column is a row. And it is refused after the seal, by
+  Decision A rather than by preference: transposing changes what a row *is*, which is the same
+  class as `melt_repeated`.
+
+  **One detector had to be taught to stay quiet** (`GUIDED-042`). The lens contradiction check
+  reads per column, so on a feature-major table it measured missingness-against-abundance across
+  the wrong axis and told the user, in the app's most interruptive voice, that their blanks *"do
+  not look like non-detections"* — when read the right way round they do. Two readings competed,
+  *the lens is wrong* and *the table is turned around*, and the second explains the first. It now
+  defers to 1.5, which is where that is settled.
 - **The impossibility pass is pre-seal** — not for leakage reasons (setting a physiologically
   impossible value to missing is row-local and leaks nothing) but because a stratified or grouped
   split computed over corrupted values is a worse split, and impossible entries are normally an
@@ -76,18 +113,23 @@ without question 2 answered.
 
 ## 02 · How many actually fire
 
-The sequence is nine rows and most datasets see four to six. Worked from the fixtures:
+The sequence is ten rows and most datasets see four to six. Worked from the fixtures:
 
 | Dataset | Asked | Stated | Skipped |
 |---|---:|---:|---:|
-| Cross-sectional clinical CSV | 4 | 0 | 4 |
-| NHANES-style: 2 dietary recalls per person | 6 | 1 | 2 |
-| Longitudinal clinical, visit-level modeling | 7 | 1 | 1 |
-| Untargeted metabolomics, one sample per subject | 4 | 0 | 4 |
+| Cross-sectional clinical CSV | 4 | 0 | 5 |
+| NHANES-style: 2 dietary recalls per person | 6 | 1 | 3 |
+| Longitudinal clinical, visit-level modeling | 7 | 1 | 2 |
+| Untargeted metabolomics, one sample per subject | 4 | 0 | 5 |
+| The same metabolomics table exported features-in-rows | 5 | 0 | 4 |
 
 Worst case is seven questions before modeling begins, against Classic's ~32 asked regardless of
 the data. The count *tracks the shape of the study*, which is the differentiator's whole claim
 applied to the opening.
+
+**Question 1.5 costs nothing on nine of ten tables and is the difference between an analysis and a
+wasted afternoon on the tenth.** That asymmetry is the argument for it: it is a question with a
+narrow, measurable firing condition and an unbounded consequence when it does not get asked.
 
 ---
 
@@ -110,6 +152,30 @@ expensive than a confident wrong answer.
 Records a decision and a methods sentence, because a lens the manuscript cannot see is a lens the
 reader cannot check. Detection runs as a *suggestion* and as a *contradiction detector*, never as
 the answer. See `DOMAIN_PACKS.md`.
+
+### 1.5 · Which way round is the table
+
+> **Which way round is this table?**
+> Across 396 rows and 80 numeric columns, the rows differ from each other by orders of magnitude
+> and the columns barely differ at all. In an assay table that is what features in rows looks like:
+> different analytes have very different abundances, and samples of the same kind do not.
+> — **Each row is a sample or participant**
+> — **Each row is a feature, and the columns are samples**
+
+A FACT, not a CHOICE — there is one true answer and the rewrite follows from it rather than
+expressing a preference — and **never skippable at any confidence**, by two independent guards:
+`_skip_is_permitted` admits only `task_type` and `missingness`, and the shape reading never returns
+`high`. A reading that could auto-advance would be the app transposing a table on its own
+authority, which is the single most destructive silent act available to it.
+
+Both answers are recorded, because both are claims. *"The table was already one row per sample"* is
+a sentence a methods section can carry; without it, a table that was checked and a table nobody
+looked at read identically (§09's recorded-absence rule).
+
+Two refusals, and each has a reason worth reading rather than a validation message: **duplicate
+feature names** are refused, because two rows with one name become two columns with one name and
+every consumer downstream silently sees whichever one pandas hands it; and a **name collision with
+`sample_id`** is refused for the same reason applied to the identifiers.
 
 ### 2 · The target
 
@@ -202,6 +268,7 @@ about **not firing** as about firing.
 | `clinical_longitudinal` | 200 people × 3 visits, vitals, some physiologically impossible values | grain = repeat · time points stated · averaging *not* recommended · temporal question fires · impossibility pass pre-seal |
 | `survey_instrument` | 300 × 40 Likert items, some reverse-coded | ordinal recognized as declared, not frequency-derived · scale scoring offered |
 | `clinic_visits` *(existing)* | the generic messy fixture | **zero new questions** when every pack is installed |
+| *a transposed copy of* `metabolomics_untargeted` | 396 × 81, feature ids in the first column, sample ids for headers | question 1.5 fires · the target question is **withheld** until it is answered · answering *features in rows* produces an 80 × 397 table and a methods sentence · the lens contradiction detector stays **silent** |
 
 That last row is guard #2 from `DOMAIN_PACKS.md` made executable: a pack that fires on
 non-matching data has failed, and the value check's `irrelevant_questions` metric already measures

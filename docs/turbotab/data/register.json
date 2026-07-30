@@ -974,5 +974,13 @@
   "classic": "pages/02 renders suggested_actions as a bulleted list inside an expander and offers nothing to act on. The same list, the same prose, and no branch that does anything with it.",
   "state": "guided-only",
   "reason": "Built at L22 for GUIDED-031, found by the product owner driving the app. DEBT, and one of the clearer ones: the classification lives in turbotab/actions.py keyed on the engine's own phrases, imports only pandas, and binds to catalogues both doors read. Classic gains it by calling offers() where it currently loops over suggested_actions. The critique this repairs is DESIGN_LANGUAGE 01.4 - three attributes wearing a sentence costume - which is the critique the whole project started from, so a door that still ships it is a door that has not had the fix."
+ },
+ {
+  "id": "table-orientation",
+  "step": "data-target",
+  "capability": "Which way round is this table? — transposing a feature-major assay export before the diagnosis (opening sequence 1.5)",
+  "classic": "none — Classic reads column dtypes off whatever it is handed",
+  "state": "guided-native",
+  "reason": "Presupposes a Router with a fixed pre-seal sequence and a question that can act before the diagnosis rather than annotate its output. Classic's diagnosis runs at pages/01 with no question before it and no place to put one; asking Classic for this is asking Classic to be Guided. NOT filed as a debt for that reason, and the register's own line is the test: a reasonable Classic would not be missing something it has no sequence to hold. The underlying reading and the transpose live in turbotab/orientation.py and take a frame and nothing else, so they are portable the day a door wants them."
  }
 ]

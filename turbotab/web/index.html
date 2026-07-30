@@ -1926,6 +1926,7 @@
      reassuring sentence the page made up. */
   var ACK_LABEL = {
     set_lens:                  "Measurements",
+    set_orientation:           "Table",
     set_reverse_coding:        "Reverse-coded",
     set_repeat_kind:           "Repeats",
     set_unit_of_analysis:      "One row is",
@@ -2868,6 +2869,15 @@
       return "Records what kind of measurements these are, which changes what is looked for in " +
              "the diagnosis. " + (n ? n + " selected." : "");
     },
+    set_orientation: function(p){
+      return (p || {}).answer === "rows_are_features"
+        ? "Turns the table around before anything is diagnosed, so the columns "
+          + "become the measurements and the rows become the samples. This "
+          + "changes what a row is, so it can only happen before the test set "
+          + "is drawn."
+        : "Records that the table is already one row per sample. Nothing is "
+          + "changed, and the shape reading above is recorded as overruled.";
+    },
     set_reverse_coding: function(p){
       var n = ((p || {}).columns || []).length;
       return n ? "Records " + n + " item(s) as reverse-coded, to be flipped before the scale is scored."
@@ -2941,6 +2951,10 @@
      either handled by a dedicated section or answerable here. */
   var ANSWERABLE = {
     state_lens:                { kind: "set_lens",                field: "lens",     multi: true },
+    /* Question 1.5, and the only answer in this map that REWRITES THE TABLE
+       rather than recording a decision about it. Single-select and never
+       pre-selected: the app reads the shape and the user says what it is. */
+    state_orientation:         { kind: "set_orientation",         field: "answer" },
     state_reverse_coding:      { kind: "set_reverse_coding",      field: "columns",  multi: true },
     state_repeat_kind:         { kind: "set_repeat_kind",         field: "kind" },
     state_unit_of_analysis:    { kind: "set_unit_of_analysis",    field: "unit" },

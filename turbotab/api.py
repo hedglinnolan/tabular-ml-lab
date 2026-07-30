@@ -714,6 +714,19 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
             raise HTTPException(400, str(exc)) from exc
         return _payload(project)
 
+    if decision.kind == "set_orientation":
+        answer = decision.payload.get("answer") or decision.subject
+        try:
+            project.set_orientation(str(answer))
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        # RECOMPUTED, not marked and left. The whole claim of question 1.5 is
+        # that it acts BEFORE the diagnosis; a turned-around table whose
+        # findings were still the old ones would be the clause stated and not
+        # kept, and the findings are what the user acts on next.
+        _recompute(project)
+        return _payload(project)
+
     if decision.kind == "unskip":
         # `GUIDED-041`. The question comes back ASKED. This endpoint records
         # nothing about the answer, deliberately — the previous implementation's
@@ -1679,6 +1692,8 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
     for d in project.decisions:
         if d.kind == "set_lens":
             answered.append("state_lens")
+        elif d.kind == "set_orientation":
+            answered.append("state_orientation")
         elif d.kind == "set_reverse_coding":
             answered.append("state_reverse_coding")
         elif d.kind == "set_target":
@@ -1780,6 +1795,18 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
         from turbotab import packs as _packs
         lens_block = _packs.likert_block(project.df)
 
+    # Question 1.5's evidence, resolved here for the same reason as everything
+    # else on this list: `ml/router.py` takes no dataframe. `None` unless BOTH
+    # conditions hold — an assay lens and a feature-major shape — so the
+    # question is absent from the plan on every table it does not describe,
+    # which is guard #2 expressed as a precondition rather than as restraint.
+    orientation_state = None
+    if project.lens and project.orientation is None:
+        from turbotab import orientation as _orient
+        reading = _orient.read(project.df)
+        if _orient.fires(project.lens, reading):
+            orientation_state = reading
+
     # Questions 4 to 7's state, resolved against the frame HERE for the same
     # reason: the Router takes no dataframe. `None` when the grain says people
     # do not repeat, and then none of the four is in the plan — which is how the
@@ -1804,7 +1831,9 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
                                 deferred=deferred, answered=answered,
                                 recommendations=recommendations, signals=signals,
                                 missing_columns=missing_columns,
-                                lens_block=lens_block, repeats=repeats_state,
+                                lens_block=lens_block,
+                                orientation=orientation_state,
+                                repeats=repeats_state,
                                 missingness_priors=missingness_priors,
                                 missingness_groups=missingness_groups,
                                 missingness_exceptions=missingness_exceptions,

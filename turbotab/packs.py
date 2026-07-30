@@ -1580,6 +1580,34 @@ def contradiction(df: pd.DataFrame, lens: Sequence[str]) -> Optional[Dict[str, A
     chosen = normalize_quiet(lens)
     if not chosen or chosen == [OTHER] or df is None or df.empty:
         return None
+
+    # ── SILENT WHERE THE TABLE MAY BE THE OTHER WAY ROUND ───────────────────
+    #
+    # `GUIDED-042`, found while building question 1.5 and worth stating in full
+    # because it is this detector's own failure mode turned on itself.
+    #
+    # Every reading below is computed PER COLUMN. On a table exported
+    # features-in-rows the columns are samples, so *"the missing rate does not
+    # track abundance"* is measured across the wrong axis and says nothing about
+    # the lens at all. Driven, a transposed copy of `metabolomics_untargeted.csv`
+    # produced exactly that: a 409 asserting, authoritatively and in the app's
+    # most interruptive voice, that the user's blanks *"do not look like
+    # non-detections"* — when read the right way round they do.
+    #
+    # Two readings compete: *the lens is wrong* and *the table is turned around*.
+    # The second explains the first, and question 1.5 is where it is settled. So
+    # this one stays quiet and lets the sequence do its work. That is the
+    # escalation rule applied honestly — escalate on evidence that a reading is
+    # wrong, and here the evidence is against THIS detector's reading.
+    #
+    # It is not a hole: 1.5 fires on exactly this condition, so the user is not
+    # left with silence. They are asked the question that can actually be
+    # answered, and the contradiction check runs again on whatever frame they
+    # confirm.
+    from turbotab import orientation as _orient
+    if _orient.read(df).get("reading") == _orient.FEATURE_MAJOR:
+        return None
+
     numeric = _numeric(df)
 
     # ── direction 1: the shape is an assay and the answer is not ────────────

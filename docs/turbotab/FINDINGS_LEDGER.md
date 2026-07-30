@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**205 of 606 closed.**
+**207 of 608 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 360 |
 | `PARTIAL` | 41 |
-| `FIXED` | 202 |
+| `FIXED` | 204 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
@@ -553,7 +553,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 202
+## FIXED — 204
 
 
 ### Multi-file / JSON import — 69
@@ -630,7 +630,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-136` | medium | coerce_numeric's methods-section description omits how many values it blanked (up to 20% of a column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 36'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 36 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-147` | medium | Duplicated key column name crashes normalize_key and therefore diagnose_join / execute_join / repair_keys (AttributeError), and silently blanks find_key_candidates | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 47'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 47 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 
-### Guided-door drive feedback — 35
+### Guided-door drive feedback — 37
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -638,6 +638,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-029` | critical | Per-column questions scale linearly with column count, so a wide table without a matching pack gets hundreds of questions - the lens masks this rather than solving it | `L20 discrimination matrix, metabolomics_untargeted base=313; DOMAIN_PACKS.md 02; the p>>n scoping rule` | **test:** `turbotab/test_one_answer_covers_a_set_defined_by_a_rule.py::test_the_question_count_does_not_grow_with_the_column_count` — FIXED at L21 in turbotab/bulk.py plus… |
 | `GUIDED-036` | critical | The escape hatch recorded basis grouped with no grouping column, so the split fell through to a row split while the seal announced a grouped one | `turbotab/project.py set_grain group_col/n_groups; turbotab/engine.py draw_holdout:769; turbotab/grain.py…` | **test:** `turbotab/test_the_escape_hatch_records_what_it_cannot_describe.py::test_the_conservative_split_is_actually_grouped` — Found at L23 by DRIVING the feature built earlier… |
 | `GUIDED-037` | critical | The generic question channel submits option LABELS where the server requires option KEYS, so question 1 of the pre-seal sequence cannot be answered and the interview cannot start | `turbotab/web/index.html askedCard; ml/router.py Question.option_values` | **test:** `turbotab/test_answering_the_lens_changes_the_recorded_lens.py::test_answering_the_lens_changes_the_recorded_lens` — DRIVE-001 ONE LAYER IN. The Router serves… |
+| `GUIDED-043` | critical | An assay table exported features-in-rows was diagnosed, profiled and offered as a target list across the wrong axis, and nothing in the app could say so | `docs/turbotab/OPENING_SEQUENCE.md section 01; turbotab/orientation.py` | **test:** `turbotab/test_a_transposed_assay_table_is_turned_around_before_diagnosis.py::test_the_diagnosis_the_user_sees_is_computed_on_the_turned_around_table` — THE GAP THE LENS… |
 | `GUIDED-001` | high | Import doctor proposes numeric coercion for True/False-coded binary columns (meds_hbp, meds_chol) instead of recognizing a binary variable with informative-missingness potential | `ml/import_doctor.py; screenshot meds_chol` | **test:** `turbotab/test_guided_drive.py::test_a_true_false_column_is_read_as_binary_not_coerced_to_numbers` — Fixed, and reproduced first: a True/False column with blanks is read… |
 | `GUIDED-002` | high | High-missingness finding reports a count but never names the features, and its card carries no snippet and no dtype-aware recommendation | `ml/dataset_profile.py; turbotab explore step; screenshots` | **test:** `turbotab/test_guided_drive.py::test_missingness_routes_by_dtype` — Fixed. Cards name their column in the question text and in a mono chip, carry the count, the share… |
 | `GUIDED-004` | high | No impossibility tier: bp_di values near 1e-15 are at best 'outliers' - the profile does not distinguish medically impossible from medically improbable | `ml/clinical_units.py; ml/physiology_reference.py; ml/dataset_profile.py; screenshot physiologic_check` | **test:** `turbotab/test_guided_drive.py::test_a_diastolic_of_zero_is_impossible_and_a_high_one_is_improbable` — Fixed. The bundled NHANES reference now carries floor/ceiling… |
@@ -661,6 +662,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-039` | high | All six lens options carried the same hover sentence, so the one moment the app could say what a lens changes said nothing about any of them | `turbotab/web/index.html askedCard data-tip; turbotab/packs.py PACKS` | **test:** `turbotab/test_a_pack_names_what_it_will_look_for.py::test_every_lens_option_says_something_different_from_every_other` — Every option got effectOf('set_lens', null)… |
 | `GUIDED-040` | high | The generic question channel rendered a bare question mark where every dedicated card renders a position, and rendered every repair question a second time with buttons that do nothing | `turbotab/web/index.html askedCard sub-num; renderAsked filter` | **test:** `turbotab/test_a_follow_on_card_says_where_it_sits.py::test_no_question_the_page_renders_carries_a_bare_question_mark` — TWO DEFECTS IN ONE FUNCTION, both found by… |
 | `GUIDED-041` | high | 'Ask me anyway' recorded the engine's own reading as the user's answer, so pressing the reopen affordance answered the question it was reopening and the skip vanished | `turbotab/web/index.html data-unskip handler; ml/router._skip_is_permitted` | **test:** `turbotab/test_ask_me_anyway_reopens_the_question.py::test_reopening_a_skipped_question_brings_it_back_asked_and_unanswered` — Decision B permits a skip only where it is… |
+| `GUIDED-042` | high | The lens contradiction detector reads per column, so on a table exported features-in-rows it told the user their lens was wrong when their table was turned around | `turbotab/packs.py contradiction; driven on a transposed copy of metabolomics_untargeted.csv` | **test:** `turbotab/test_a_transposed_assay_table_is_turned_around_before_diagnosis.py::test_the_lens_contradiction_is_silent_while_the_table_may_be_turned_around` — Found while… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |

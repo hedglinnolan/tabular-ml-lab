@@ -7737,5 +7737,33 @@
   "verified_against": "",
   "test": "turbotab/test_ask_me_anyway_reopens_the_question.py::test_reopening_a_skipped_question_brings_it_back_asked_and_unanswered",
   "verified_ev": "turbotab/web/index.html data-unskip handler; ml/router._skip_is_permitted"
+ },
+ {
+  "id": "GUIDED-042",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The lens contradiction detector reads per column, so on a table exported features-in-rows it told the user their lens was wrong when their table was turned around",
+  "detail": "",
+  "ev": "turbotab/packs.py contradiction; driven on a transposed copy of metabolomics_untargeted.csv",
+  "act": "",
+  "status": "FIXED",
+  "note": "Found while building question 1.5, and it is this detector's own failure mode turned on itself. Every reading in contradiction() is computed PER COLUMN; on a feature-major table the columns are samples, so 'the missing rate does not track abundance' is measured across the wrong axis and says nothing about the lens. Driven, a transposed copy of metabolomics_untargeted.csv made set_lens(['metabolomics']) return 409 with the app asserting - authoritatively, in its most interruptive voice - that the user's blanks do not look like non-detections. Read the right way round, they do. TWO READINGS COMPETED: the lens is wrong, and the table is turned around. The second explains the first, and question 1.5 is where it is settled, so this detector defers rather than announcing the wrong one. That is the escalation rule applied honestly - escalate on evidence a reading is wrong, and here the evidence was against THIS detector's reading. NOT A HOLE: 1.5 fires on exactly this condition, so the user gets the question that can actually be answered rather than silence, and the check runs again on whatever frame they confirm. The silence is asserted to be scoped - the upright fixture described as clinical still gets its interruption.",
+  "verified_against": "",
+  "test": "turbotab/test_a_transposed_assay_table_is_turned_around_before_diagnosis.py::test_the_lens_contradiction_is_silent_while_the_table_may_be_turned_around",
+  "verified_ev": "turbotab/packs.py contradiction; driven on a transposed copy of metabolomics_untargeted.csv"
+ },
+ {
+  "id": "GUIDED-043",
+  "area": "GUIDED",
+  "sev": "critical",
+  "item": "An assay table exported features-in-rows was diagnosed, profiled and offered as a target list across the wrong axis, and nothing in the app could say so",
+  "detail": "",
+  "ev": "docs/turbotab/OPENING_SEQUENCE.md section 01; turbotab/orientation.py",
+  "act": "",
+  "status": "FIXED",
+  "note": "THE GAP THE LENS COULD NOT REACH. The lens acts at rank_findings, which is presentation, and OPENING_SEQUENCE section 01 defends that at length and correctly - reframing annotates and never deletes. But presentation is the whole of what a lens can fix. A transposed assay export has participants for columns, so column dtypes are meaningless, missingness per column is missingness per participant, the impossibility pass compares one subject's whole panel against a reference range for one analyte, and the target list on offer is a list of sample identifiers. ANNOTATION CANNOT FIX A FRAME. Question 1.5 is therefore the one question that genuinely ACTS before the diagnosis, and it is what gives clause 01's ordering its teeth. FIRES NARROWLY: an assay lens AND a feature-major shape. The reading is the ratio of the spread of row means to the spread of column means on a log scale - MEASURED rather than chosen, against every fixture in the tree before a threshold was picked: all of them read 0.05 to 1.51, a transposed copy of metabolomics_untargeted reads 23, threshold 4. wide_assay.csv at 1.51 is asserted to stay silent, which is the corollary about checks tested only against a constructed signal. TWO PLACEMENTS FOLLOW: the target question is withheld while 1.5 is open, because on a feature-major table the column list is a list of samples; and set_orientation refuses once a target exists, because after the turn that column is a row. Refused after the seal by Decision A - transposing changes what a row IS, the same class as melt_repeated. THE ASSERTION THAT MATTERS is not that the decision was recorded but that the findings the user then sees are the ones the turned-around frame produces, compared against a direct engine call rather than against the project's description of itself.",
+  "verified_against": "",
+  "test": "turbotab/test_a_transposed_assay_table_is_turned_around_before_diagnosis.py::test_the_diagnosis_the_user_sees_is_computed_on_the_turned_around_table",
+  "verified_ev": "docs/turbotab/OPENING_SEQUENCE.md section 01; turbotab/orientation.py"
  }
 ]

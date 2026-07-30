@@ -62,7 +62,12 @@ from turbotab.project import AnalysisProject                         # noqa: E40
 # read back, because a few land under a different name or shape.
 PERSISTED = {
     "id", "name", "created_at", "target", "task_type", "task_confidence",
-    "lens", "repeat_kind", "unit_of_analysis", "aggregation",
+    # `orientation` is the sharpest field in this set after `aggregation`, for
+    # the same reason: answering it TRANSPOSED the frame, and the parquet in the
+    # archive holds the turned-around table. A restored project that lost the
+    # record would hold sample-rows with nothing saying they were ever columns —
+    # the receipt for an irreversible operation, missing.
+    "lens", "orientation", "repeat_kind", "unit_of_analysis", "aggregation",
     "temporal_prediction",
     "task_overridden", "workflow_mode", "pipeline_specs", "grain",
     "eligibility", "obligations", "missingness", "preprocess_settled",
@@ -161,6 +166,13 @@ def _fully_populated() -> AnalysisProject:
     # Grain and the seal, with a grouped basis so `group_col`, `n_groups`,
     # `n_test_groups` and `group_noun` are all non-null — the L13 omission.
     p.set_lens(["dietary", "clinical"])
+    # Question 1.5, answered the way that does NOT rewrite the table — this
+    # fixture is upright, and turning it around here would invalidate every
+    # column name the rest of this drive names. The record still has to carry
+    # it: "the table was confirmed as one row per sample" is a claim, and a
+    # restored project that lost it could not tell a table that was checked
+    # from one nobody looked at.
+    p.set_orientation("rows_are_samples")
     p.set_grain(G.PEOPLE_REPEAT, "SUBJ")
     # Questions 4 to 7. The unit is the RECORD rather than the person, so the
     # rows survive and the seal below still has 60 of them to draw from — and

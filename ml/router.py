@@ -217,6 +217,11 @@ class Question:
 # does not contain.
 SEQUENCE: Dict[str, str] = {
     "state_lens": "01",
+    # 1.5 rather than a renumbering, because every other position is cited in
+    # the constitution, the fixtures and three documents — and because the
+    # fractional number is itself true: this question was inserted between two
+    # that were already fixed, and it fires on a minority of tables.
+    "state_orientation": "1.5",
     "choose_target": "02",
     "confirm_task_type": "02",
     "state_grain": "03",
@@ -244,6 +249,21 @@ BLOCKER_SEVERITIES = frozenset({"blocker"})
 # rather than re-listing kinds at each site.
 FACT_KINDS = frozenset({"target", "task_type", "grain", "eligibility",
                         "missingness", "lens", "reverse_coding",
+                        # A FACT, not a CHOICE, even though answering it
+                        # rewrites the table. `aggregation` is a CHOICE because
+                        # which summary of a person's records answers your
+                        # question is not a property of the table; which way
+                        # round the table is IS a property of the table, with
+                        # one true answer. The rewrite follows from the fact
+                        # rather than expressing a preference.
+                        #
+                        # It is nonetheless never skippable, by two independent
+                        # guards: `_skip_is_permitted` admits only `task_type`
+                        # and `missingness`, and `orientation.read` never
+                        # returns `high` confidence — a shape reading that could
+                        # auto-advance would be the app transposing a table on
+                        # its own authority.
+                        "orientation",
                         # Questions 4, 5 and 7. Each is a question about what
                         # the data IS, and each names what reads its answer.
                         "repeat_kind", "unit_of_analysis",
@@ -391,6 +411,7 @@ def plan(
     signals: Any = None,
     missing_columns: Sequence[str] = (),
     lens_block: Optional[Dict[str, Any]] = None,
+    orientation: Optional[Dict[str, Any]] = None,
     repeats: Optional[Dict[str, Any]] = None,
     missingness_priors: Optional[Dict[str, List[Dict[str, Any]]]] = None,
     missingness_groups: Optional[List[Dict[str, Any]]] = None,
@@ -447,8 +468,43 @@ def plan(
             option_values=[o["key"] for o in spec["options"]],
             option_notes=[o["note"] for o in spec["options"]]))
 
+    # ── 1.5 · which way round is the table, BEFORE the diagnosis ────────────
+    #
+    # The one question in the sequence that genuinely ACTS before the diagnosis
+    # rather than annotating its output. The lens is a parameter of
+    # `rank_findings`, which is presentation and is the right place for it —
+    # reframing annotates and never deletes. This is not presentation: an assay
+    # table exported features-in-rows has participants for columns, so every
+    # per-column reading beneath it answers a question about a participant and
+    # reports it as a fact about a measurement. Annotation cannot fix a frame.
+    #
+    # `orientation` arrives resolved by the caller, because this module takes no
+    # dataframe. `None` means it does not fire, which is the ordinary case: it
+    # needs an assay lens AND a feature-major shape, and either alone would be a
+    # question asked of data it does not describe.
+    orientation_open = False
+    if (step == "data" and orientation and "state_orientation" not in answered):
+        from turbotab import orientation as _orient
+        spec = _orient.question(orientation)
+        orientation_open = True
+        out.append(Question(
+            key=spec["key"], kind="orientation", step="data",
+            clause=spec["clause"], seq=spec["seq"],
+            title=spec["title"], why=spec["why"], consumer=spec["consumer"],
+            confidence=orientation.get("confidence"),
+            options=[o["label"] for o in spec["options"]],
+            option_values=[o["key"] for o in spec["options"]],
+            option_notes=[o["note"] for o in spec["options"]]))
+
     # ── the target, first among the questions about the analysis ────────────
-    if step == "data" and "choose_target" not in answered:
+    #
+    # WITHHELD while the orientation question is open, and this is the ordering
+    # having teeth rather than being stated. On a feature-major table the column
+    # list is a list of samples, so a target chosen from it is a participant id;
+    # and `set_orientation` refuses to turn a table around once a target exists,
+    # because after the turn that column is a row. Asking both at once would
+    # offer the user a way to make the second question unanswerable.
+    if step == "data" and "choose_target" not in answered and not orientation_open:
         out.append(Question(
             key="choose_target", kind="target", step="data",
             title="What are you predicting?",

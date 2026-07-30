@@ -205,6 +205,17 @@ class AnalysisProject:
     # §01). A list, because real studies are intersections; `["other"]` is a
     # recorded answer and not an absence, and `None` means not yet asked.
     lens: Optional[List[str]] = None
+    # The answer to "which way round is this table?" — question 1.5, between the
+    # lens and the diagnosis, and the ONE question that genuinely acts before
+    # the diagnosis rather than annotating its output.
+    #
+    # It fires only where an assay lens meets a feature-major shape, so on most
+    # tables it is `None` for the ordinary reason: it was never in the plan. Where
+    # it fires, BOTH answers are recorded — "the table was already one row per
+    # sample" is a claim, and §09's recorded-absence rule says a claim needs a
+    # record, or a table that was checked and a table nobody looked at read the
+    # same.
+    orientation: Optional[Dict[str, Any]] = None
     # The answer to "can one person appear in more than one row?", recorded
     # ONCE and read by both consumers (constitution §02, ASSEMBLY_SPEC §05).
     # `None` means not yet asked, and the seal cannot be drawn on `None` — that
@@ -682,6 +693,68 @@ class AnalysisProject:
                      "contradiction_acknowledged": bool(clash
                                                         and acknowledged_contradiction),
                      "contradiction": clash if clash else None})
+
+    def set_orientation(self, answer: str) -> Decision:
+        """Question 1.5. Which way round is the table — and turn it if it is not.
+
+        **The one question that genuinely acts before the diagnosis.** The lens
+        acts at `rank_findings`, which is presentation, and that is correct for
+        interpreting findings; annotation cannot fix a frame. A table exported
+        features-in-rows has participants for columns, so every per-column
+        reading below it is answering a question about a participant and
+        reporting it as a fact about a measurement.
+
+        Refused after the seal, and the refusal is Decision A rather than a
+        preference: transposing changes what a row *is*, which puts it in the
+        same class as `melt_repeated` — a pre-barrier structural repair, and a
+        seal drawn beforehand would name rows that no longer exist.
+
+        Refused after a target is chosen, for a reason one step smaller: the
+        target is a column, and after the turn that column is a row. Rather than
+        silently dropping the choice the app declines and says which order the
+        two go in.
+        """
+        from turbotab import orientation as _orient
+
+        answer = str(answer or "").strip()
+        if answer not in (_orient.ROWS_ARE_SAMPLES, _orient.ROWS_ARE_FEATURES):
+            raise ProjectError(
+                f"{answer!r} is not one of "
+                f"{[_orient.ROWS_ARE_SAMPLES, _orient.ROWS_ARE_FEATURES]}.")
+        if self.barrier_raised:
+            raise ProjectError(
+                "The test set is already sealed. Turning the table around "
+                "changes what a row is, so a seal drawn beforehand would name "
+                "rows that no longer exist — the same rule that keeps a "
+                "structural repair on the near side of the barrier.")
+
+        detail: Dict[str, Any] = {}
+        if answer == _orient.ROWS_ARE_FEATURES:
+            if self.target:
+                raise ProjectError(
+                    f"'{self.target}' is already chosen as the target, and "
+                    f"after the table is turned around it is a row rather than "
+                    f"a column. This question comes before the target for that "
+                    f"reason; start again rather than have the choice dropped "
+                    f"underneath you.")
+            try:
+                turned = _orient.transpose(self.df)
+            except _orient.OrientationError as exc:
+                raise ProjectError(str(exc)) from exc
+            detail = {k: v for k, v in turned.items() if k != "df"}
+            self.df = turned["df"]
+            # Everything computed on the old frame described a different table.
+            # Marked stale rather than dropped, and the caller recomputes —
+            # the same treatment a changed lens gets, for a larger reason.
+            self.findings_stale = True
+            self._mark_stale("the table was turned around, and every reading "
+                             "below was computed across the other axis")
+
+        self.orientation = {"answer": answer, **detail}
+        return self.record(
+            kind="set_orientation", subject=answer,
+            text=_orient.methods_sentence(answer, detail),
+            payload={"answer": answer, **detail})
 
     def pack_findings(self) -> List[Dict[str, Any]]:
         """What the selected packs see. Empty until the lens is answered."""
@@ -1802,6 +1875,7 @@ class AnalysisProject:
             "features_settled": self.features_settled,
             "stale_downstream": list(self.stale_downstream),
             "lens": list(self.lens) if self.lens is not None else None,
+            "orientation": _copy(self.orientation),
             "grain": _copy(self.grain),
             "repeat_kind": _copy(self.repeat_kind),
             "unit_of_analysis": self.unit_of_analysis,

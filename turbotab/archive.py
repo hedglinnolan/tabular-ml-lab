@@ -311,6 +311,13 @@ def build_members(project) -> Dict[str, bytes]:
         # are a regenerated derivative and would come back looking fresh.
         # `[]` and `None` are different answers here: `None` is never asked.
         "lens": list(project.lens) if project.lens is not None else None,
+        # The orientation answer travels, and it is the sharpest case in this
+        # config after `aggregation`: answering *features in rows* TRANSPOSED
+        # the frame, and the parquet beside this holds the turned-around table.
+        # A restored project that lost the record would hold sample-rows with
+        # nothing saying they were ever columns — the receipt for an
+        # irreversible operation, missing.
+        "orientation": _json_safe(project.orientation) if project.orientation else None,
         # Questions 4 to 7. `aggregation` is the sharpest of the four: it is the
         # only one that CHANGED THE TABLE, and the parquet that travels beside
         # this config holds the combined rows. A restored project that lost the
@@ -498,6 +505,7 @@ def from_bytes(raw: bytes):
     # one place that can reintroduce the state.
     lens = config.get("lens")
     project.lens = list(lens) if isinstance(lens, list) else None
+    project.orientation = config.get("orientation") or None
     project.repeat_kind = config.get("repeat_kind") or None
     project.unit_of_analysis = config.get("unit_of_analysis") or None
     project.aggregation = config.get("aggregation") or None
