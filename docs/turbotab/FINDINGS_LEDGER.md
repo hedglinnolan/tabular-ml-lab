@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**203 of 604 closed.**
+**204 of 605 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 360 |
 | `PARTIAL` | 41 |
-| `FIXED` | 200 |
+| `FIXED` | 201 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
@@ -553,7 +553,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 200
+## FIXED — 201
 
 
 ### Multi-file / JSON import — 69
@@ -669,7 +669,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — Duplicate of COACH-024 from the state pass, and closed the same way: the… |
 | `STATE-096` | invariant | apply_cohort returns NOTHING rather than everything when the run's rows cannot be identified. | `utils/cohorts.apply_cohort:441-454 (fall back to the grouping column, else set _cohort_filter_broken and…` | **test:** `tests/test_cohort_runs.py::test_unrecognizable_rows_yield_nothing_not_everything` — The invariant is implemented, disclosed and tested, and the test's NAME is the… |
 
-### Guided-door drive feedback — 33
+### Guided-door drive feedback — 34
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -698,6 +698,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-035` | high | Grain and unit of analysis had closed answer spaces, so a matched-pair or crossover design had to be answered with one of three options none of which was true | `turbotab/grain.py ANSWERS; turbotab/repeats.py UNITS` | **test:** `turbotab/test_the_escape_hatch_records_what_it_cannot_describe.py::test_the_grain_hatch_routes_to_the_conservative_split` — Built at L23. Two INDEPENDENT hatches… |
 | `GUIDED-038` | high | The mandatory multi-select's submit control said 'That is all of them', which is the grammar of confirming an enumeration rather than of answering a required question | `turbotab/web/index.html askedCard commit row` | **test:** `turbotab/test_answering_the_lens_changes_the_recorded_lens.py::test_the_submit_control_refuses_at_zero_and_says_why_in_the_servers_words` — The lens is mandatory… |
 | `GUIDED-039` | high | All six lens options carried the same hover sentence, so the one moment the app could say what a lens changes said nothing about any of them | `turbotab/web/index.html askedCard data-tip; turbotab/packs.py PACKS` | **test:** `turbotab/test_a_pack_names_what_it_will_look_for.py::test_every_lens_option_says_something_different_from_every_other` — Every option got effectOf('set_lens', null)… |
+| `GUIDED-040` | high | The generic question channel rendered a bare question mark where every dedicated card renders a position, and rendered every repair question a second time with buttons that do nothing | `turbotab/web/index.html askedCard sub-num; renderAsked filter` | **test:** `turbotab/test_a_follow_on_card_says_where_it_sits.py::test_no_question_the_page_renders_carries_a_bare_question_mark` — TWO DEFECTS IN ONE FUNCTION, both found by… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |

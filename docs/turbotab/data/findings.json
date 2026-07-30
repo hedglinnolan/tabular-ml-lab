@@ -7709,5 +7709,19 @@
   "verified_against": "",
   "test": "turbotab/test_a_pack_names_what_it_will_look_for.py::test_every_lens_option_says_something_different_from_every_other",
   "verified_ev": "turbotab/web/index.html askedCard data-tip; turbotab/packs.py PACKS"
+ },
+ {
+  "id": "GUIDED-040",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The generic question channel rendered a bare question mark where every dedicated card renders a position, and rendered every repair question a second time with buttons that do nothing",
+  "detail": "",
+  "ev": "turbotab/web/index.html askedCard sub-num; renderAsked filter",
+  "act": "",
+  "status": "FIXED",
+  "note": "TWO DEFECTS IN ONE FUNCTION, both found by driving the page under the node harness rather than by reading it. THE MARKER: askedCard rendered esc(q.clause ? 'section' : '?') while every dedicated card renders 01, so a follow-on card carried a literal question mark in the slot a reader has been taught holds a position - DESIGN_LANGUAGE section 08 inverted, since a ? encodes that the page did not know. It did not have to: the pre-seal sequence is FIXED by constitution clause 01, so ml/router.SEQUENCE holds the positions and test_the_marker_is_the_sequence_the_document_states reads the numbers back out of OPENING_SEQUENCE section 01's own table so the document and the interface cannot drift apart in silence. A question OUTSIDE the sequence gets a word: the survey pack's reverse-coding question is not a step of the pre-seal agreement and numbering it would assert an ordering the constitution does not contain. THE DUPLICATE: renderAsked filtered on the exact-key list alone, and the prefixes whose count is data lived only in the coverage TEST - so nine repair questions on metabolomics_untargeted rendered TWICE, once as finding cards and once as generic cards with twenty-seven buttons that no-op, because ANSWERABLE has no repair:: entry and submitAnswer returns on a missing spec. The coverage test could not see it: it asks whether a key is renderable somewhere and the answer was yes, twice. Fixed by principle-locality - the list lives in the page and the test reads it from there.",
+  "verified_against": "",
+  "test": "turbotab/test_a_follow_on_card_says_where_it_sits.py::test_no_question_the_page_renders_carries_a_bare_question_mark",
+  "verified_ev": "turbotab/web/index.html askedCard sub-num; renderAsked filter"
  }
 ]

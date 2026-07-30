@@ -152,6 +152,18 @@ class Question:
     # denominator that moves every loop.
     clause: Optional[str] = None
 
+    # Where this question sits in the FIXED pre-seal sequence
+    # (`OPENING_SEQUENCE.md` §01), or a short word naming why it is being asked
+    # when it sits outside that sequence.
+    #
+    # `GUIDED-040`: the generic channel rendered `?` in the slot every dedicated
+    # card renders `01` in, so a follow-on card carried a literal question mark
+    # where the reader has been taught a position lives. DESIGN_LANGUAGE §08 —
+    # *structural devices must encode something true* — and a `?` encodes that
+    # the page did not know. The page did not; this module does, because the
+    # sequence is a constitution clause and not a rendering preference.
+    seq: Optional[str] = None
+
     # asked | skipped | deferred — every one of which is visible in the
     # transcript. There is no fourth state, because a question that is neither
     # asked nor accounted for is the silence this whole design removes.
@@ -189,7 +201,35 @@ class Question:
             "min_reason": self.min_reason,
             "consumer": self.consumer,
             "clause": self.clause,
+            "seq": self.seq,
         }
+
+
+# The fixed pre-seal sequence, as positions rather than as an ordering the code
+# happens to produce. `OPENING_SEQUENCE.md` §01 is the source; this is the same
+# table in the one place a renderer can read it, and
+# `test_the_marker_is_the_constitutional_position` asserts the two agree so the
+# document cannot drift from the interface silently.
+#
+# Questions OUTSIDE the sequence deliberately have no entry: a pack's added
+# question and a Features-step question are not steps of the pre-seal
+# agreement, and giving them numbers would assert an ordering the constitution
+# does not contain.
+SEQUENCE: Dict[str, str] = {
+    "state_lens": "01",
+    "choose_target": "02",
+    "confirm_task_type": "02",
+    "state_grain": "03",
+    "state_repeat_kind": "04",
+    "state_unit_of_analysis": "05",
+    "state_aggregation": "06",
+    "state_temporal_prediction": "07",
+    "state_eligibility": "08",
+}
+
+
+def _seq(key: str, fallback: Optional[str] = None) -> Optional[str]:
+    return SEQUENCE.get(key, fallback)
 
 
 # Severities that are questions of consequence. `blocker` is the engine's own
@@ -505,6 +545,11 @@ def plan(
         out.append(Question(
             key="state_reverse_coding", kind="reverse_coding", step="data",
             clause="lockbox-01",
+            # NOT a position: this question is not a step of the pre-seal
+            # sequence, it is the one question a pack may add. The marker says
+            # that, because *why is this card here* is what a reader of the slot
+            # wants and a fabricated number would answer a different question.
+            seq="pack",
             title="Are any of these items reverse-coded?",
             why=(f"{len(lens_block['columns']):,} columns share one "
                  f"{len(lens_block['scale'])}-point response scale. If some of "
@@ -657,6 +702,15 @@ def plan(
     # The pull palette sits beside the questions, never among them.
     if recommendations:
         out.extend(palette(recommendations, step=step))
+
+    # THE MARKER, resolved in one place rather than at twelve construction
+    # sites, because the sequence is one table and twelve copies of a lookup is
+    # twelve places for it to go stale. A question that set its own marker keeps
+    # it — that is how the pack's added question says `pack` rather than `data`,
+    # which is the truthful answer to *why is this card here*.
+    for q in out:
+        if q.seq is None:
+            q.seq = SEQUENCE.get(q.key) or q.step
 
     return out
 

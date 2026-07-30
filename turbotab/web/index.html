@@ -1863,6 +1863,37 @@
   ];
   window.__TURBOTAB_HANDLED_KEYS = HANDLED_QUESTION_KEYS;
 
+  /* The same seam for the keys whose COUNT is data — one per finding, per
+     column, per group — so they are matched by prefix rather than listed.
+
+     `GUIDED-040`: this list existed only in the coverage TEST, and
+     `renderAsked` filtered on the exact-key list alone. So every `repair::`
+     question the Router served was rendered TWICE — once as its finding card
+     in `structList`, and once more as a generic card whose answer buttons had
+     no `ANSWERABLE` entry and therefore did nothing at all. Duplicate cards
+     with dead controls, on the busiest step in the app.
+
+     Stated once, here, and read by the test rather than restated there. That
+     is the principle-locality rule: a list written in one place and applied in
+     another is the same silence as a capability with no row. */
+  var HANDLED_QUESTION_PREFIXES = [
+    "repair::",                  /* the finding cards, in `structList` */
+    "blocker::",                 /* renderBlockers, the full-width band */
+    "look::",                    /* the pull palette */
+    "missingness::",             /* the per-column missingness card */
+    "missingness_bulk::",        /* the same card over a group */
+    "missingness_settled::",     /* a rendered skip, via renderSkips */
+    "missingness_exceptions::"   /* the same card over the exceptions */
+  ];
+  window.__TURBOTAB_HANDLED_PREFIXES = HANDLED_QUESTION_PREFIXES;
+
+  function handledElsewhere(key){
+    if (HANDLED_QUESTION_KEYS.indexOf(key) !== -1) return true;
+    for (var i = 0; i < HANDLED_QUESTION_PREFIXES.length; i++)
+      if (key.indexOf(HANDLED_QUESTION_PREFIXES[i]) === 0) return true;
+    return false;
+  }
+
   /* ═════════ THE GENERIC QUESTION CHANNEL ═════════
      One card per asked pushed question with no dedicated section. Reads the
      Router's own fields — title, why, consumer, options — so a question is
@@ -1872,8 +1903,7 @@
     var host = $("askedQuestions");
     if (!host) return;
     var asked = plan.questions.filter(function(q){
-      return q.mode === "push" && q.status === "asked" &&
-             HANDLED_QUESTION_KEYS.indexOf(q.key) === -1;
+      return q.mode === "push" && q.status === "asked" && !handledElsewhere(q.key);
     });
     var acks = ackRows();
     if (!asked.length && !acks){ host.innerHTML = ""; return; }
@@ -1917,9 +1947,21 @@
 
   function askedCard(q){
     var multi = q.multi_select === true;
+    /* ═════════ THE MARKER SAYS WHERE YOU ARE ═════════
+       This rendered `§` or `?`, and every dedicated card above renders `01`.
+       So a follow-on card carried a literal question mark in the slot the
+       reader has been taught holds a position — DESIGN_LANGUAGE §08's rule
+       inverted: *structural devices must encode something true*, and a `?`
+       encodes that the page did not know.
+
+       It does know. The pre-seal sequence is FIXED (`OPENING_SEQUENCE.md` §01,
+       constitution clause 01) and every question in it has a position, so the
+       Router serves that position and the page renders it. A question outside
+       the sequence — a pack's added question, a Features-step question — has no
+       number, and gets a WORD naming why it is here rather than a fake one. */
     var h = '<div class="stepcard" data-asked="' + esc(q.key) + '">' +
             '<div class="sub"><div class="subhead"><span class="sub-num">' +
-            esc(q.clause ? "§" : "?") + '</span></div>' +
+            esc(q.seq || q.step || "asked") + '</span></div>' +
             "<h2>" + esc(q.title) + "</h2>";
     if (q.why) h += '<p class="why">' + esc(q.why) + "</p>";
     if (q.consumer)

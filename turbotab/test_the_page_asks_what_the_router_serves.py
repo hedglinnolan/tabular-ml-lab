@@ -61,6 +61,12 @@ def _js_array(name: str) -> list:
     return re.findall(r'"([^"]+)"', text[start:end])
 
 
+def _js_array_at_import(name: str) -> list:
+    """`_js_array` before the module body has finished — same reader, named so
+    the import-time use is obviously deliberate."""
+    return _js_array(name)
+
+
 def _js_object_keys(name: str) -> list:
     text = _page()
     start = text.index(f"var {name} = {{")
@@ -79,15 +85,14 @@ def _js_object_keys(name: str) -> list:
 
 # Keys whose rendering belongs to a section this page has always had, matched by
 # prefix because they are per-column or per-finding and their count is data.
-HANDLED_PREFIXES = (
-    "repair::",                  # the finding cards
-    "blocker::",                 # renderBlockers
-    "look::",                    # the pull palette
-    "missingness::",             # the Preprocess step's own card per column
-    "missingness_bulk::",        # the same card, over a group
-    "missingness_settled::",     # a rendered skip, via renderSkips
-    "missingness_exceptions::",  # the same card, over the exceptions
-)
+#
+# READ OUT OF THE PAGE, not restated here. This tuple used to be a second copy,
+# and `renderAsked` filtered on the exact-key list alone — so every `repair::`
+# question was rendered twice, once as its finding card and once as a generic
+# card with dead buttons, while this test happily reported full coverage
+# (`GUIDED-040`). A list written in one place and applied in another is the same
+# silence as a capability with no row.
+HANDLED_PREFIXES = tuple(_js_array_at_import("HANDLED_QUESTION_PREFIXES"))
 
 
 def _every_key_the_router_can_serve() -> set:
