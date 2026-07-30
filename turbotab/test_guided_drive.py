@@ -396,7 +396,26 @@ def test_both_docks_are_expandable():
 
 
 def test_no_internal_placeholder_string_renders():
-    """A coach item printed the literal engineering to-do in production UI."""
+    """A coach item printed the literal engineering to-do in production UI.
+
+    **The positive control is the load-bearing half** (`GUIDED-045`). Every
+    assertion below is of the form *"this string does not appear"*, and an
+    absence assertion over a file gets **monotonically easier as the file loses
+    content**: `pageprobe.py` found this test green against a page emptied to
+    `<body></body>`. A guard that passes hardest when there is nothing to guard
+    is not measuring what its name says.
+
+    So it first asserts the page is THERE. Deleting the controller now fails
+    this test, which is the property an absence claim cannot otherwise have.
+    """
+    assert len(BODY) > 20_000, (
+        f"the page is {len(BODY)} characters; every absence assertion below "
+        f"would pass on an empty file, so they are checked against a page that "
+        f"exists first")
+    assert "askedQuestions" in BODY and "data-answer-key" in BODY, (
+        "the page no longer contains the interview it is being checked for "
+        "placeholders in")
+
     for ghost in ("not built yet", "TODO", "FIXME", "TBD", "lorem ipsum",
                   "XXX", "coming soon", "stub", "dummy"):
         assert ghost.lower() not in BODY.lower(), (
@@ -514,7 +533,23 @@ def test_the_stop_token_exists_in_both_themes():
 
 def test_nothing_but_the_blocker_borrows_the_blocker_treatment():
     """Exclusivity is what makes the shape semantic. Habituation starts at the
-    second exposure, so the treatment survives only if nothing else wears it."""
+    second exposure, so the treatment survives only if nothing else wears it.
+
+    **Exclusivity is two claims and this asserted one** (`GUIDED-045`): that
+    nothing else wears the treatment, and — silently assumed — that the blocker
+    does. Only the first was checked, and it is an absence assertion, so
+    deleting every `--stop` rule in the sheet made the test pass *more*
+    easily. `pageprobe.py` found it green against an empty page: a stylesheet
+    with no blocker treatment at all satisfies "nothing else borrows it"
+    perfectly.
+    """
+    worn = [l for l in BODY.splitlines()
+            if "var(--stop)" in l and "blocker" in l]
+    assert worn, (
+        "nothing in the page wears the blocker treatment, so 'nothing ELSE "
+        "wears it' is true of a page with no blocker — which is the reading "
+        "this test is supposed to make impossible")
+
     for token in ("var(--stop)", "var(--stop-tint)", "var(--stop-line)"):
         for line in BODY.splitlines():
             if token not in line or line.strip().startswith("*"):

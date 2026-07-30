@@ -250,6 +250,12 @@ def test_every_action_acknowledges_itself_after_it_is_taken():
     left inferring from an absence, which is the one thing §09 reserves green for.
     """
     page = _page()
+    # The positive control (`GUIDED-045`). Every assertion below is an absence
+    # claim, and an absence claim over a file passes hardest when the file is
+    # empty. The page is asserted to be there first.
+    assert len(page) > 20_000 and "renderAll" in page, (
+        "the controller is missing, so 'no kind is unlabeled' would be true of "
+        "a page with no kinds at all")
     ack = _js_object_keys("ACK_LABEL")
     start = page.index("var ANSWERABLE = {")
     kinds = set(re.findall(r'kind:\s*"([a-z_]+)"', page[start:page.index("};", start)]))

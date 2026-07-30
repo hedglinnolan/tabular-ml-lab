@@ -7784,5 +7784,33 @@
   "verified_against": "",
   "test": "turbotab/test_every_guard_is_planted_against_the_real_path.py::test_every_guard_is_classified_as_planted_or_filed",
   "verified_ev": "turbotab/devchecks.py check_transition; turbotab/test_the_harness_reports_and_does_not_stop_the_drive.py"
+ },
+ {
+  "id": "GUIDED-045",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The assertion whose pass set is broader than its claim - a sixth axis, and three tests were green against a page emptied to <body></body>",
+  "detail": "",
+  "ev": "turbotab/test_answering_the_lens_changes_the_recorded_lens.py docstring; six frontend test files",
+  "act": "",
+  "status": "FIXED",
+  "note": "THE CLASS THE DOCSTRING NAMED AND DID NOT FILE. Twenty-three tests across six files assert on index.html as text, and a text search cannot tell a page that READS a field from one that merely names it. SWEPT BY MUTATION rather than by reading: docs/turbotab/tools/pageprobe.py guts the controller, guts the stylesheets, and guts the page entirely, and the verdict is the third - a test whose claim is about the page must go red when there is no page. 23 in the class, 23 bounded, 0 broader after the repair; before it, 3 were green against an empty page. THE SHARP FORM IS NOT THE TEXT SEARCH. All three survivors assert 'this string does not appear', and an absence assertion over a file is MONOTONICALLY EASIER TO SATISFY AS THE FILE LOSES CONTENT - delete the thing being guarded and the guard passes harder. 'Nothing else wears the blocker treatment' is trivially true of a stylesheet with no blocker treatment at all. Repaired with positive controls: assert the thing you are searching within is THERE, so the deletion that would otherwise satisfy you fails instead. WHY IT IS A NEW AXIS: the five in FEATURE_PARITY - space, time, occasion, environment, call site - all describe a guard that does not run or runs on the wrong thing. This one runs, on the right thing, and asserts less than it appears to; it is invisible because every run is green and green is what correct looks like. TWO SELF-INFLICTED INSTANCES WHILE BUILDING IT, both kept in the source: the probe's first two mutations left the static markup alone, so absence tests survived them for the wrong reason and a third mutation was needed; and the fast checker's ABSENCE pattern matched 'out.returncode == 0', classifying a subprocess success claim as an absence claim. THE TRIGGER: the structural check runs every suite; pageprobe is the deeper instrument and its trigger is any loop that edits web/index.html.",
+  "verified_against": "",
+  "test": "turbotab/test_an_absence_assertion_carries_a_positive_control.py::test_no_page_test_asserts_only_absences",
+  "verified_ev": "turbotab/test_answering_the_lens_changes_the_recorded_lens.py docstring; six frontend test files"
+ },
+ {
+  "id": "GUIDED-046",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The routing value check's exact-key matcher cannot express one question settling several, and it moved the numbers twice before anybody fixed the matcher",
+  "detail": "",
+  "ev": "tests/integration/test_routing_value_check.py _record; VALUE_CHECK_ADJUDICATION L18 and L24",
+  "act": "",
+  "status": "FIXED",
+  "note": "TWO OCCURRENCES, ONE CAUSE. covers=q.key if q.key in keys else None maps a question to at most ONE requirement. That was true of every question that existed when it was written and false from the moment one control could settle several. It moved the value check at L18 and again at L24, and both times the READING was adjudicated - the denominator argued about, the coverage ratio re-derived - while the matcher stayed as it was. THE MATCHER IS THE DEFECT, NOT THE READING. An instance of the sixth axis on a MEASUREMENT rather than on a test: the matcher runs, runs on the right object, and is unable to express the fact the Router was already publishing. Fixed at L24 by reading Question.covers and QuestionRecord.also_covers, with coverage back to 10/10 - but the finding is that two adjudications went past it, so it is filed as its own row rather than left inside L24's note.",
+  "verified_against": "",
+  "test": "turbotab/test_one_repair_covers_a_set_of_features.py::test_the_group_cites_a_finding_so_it_counts_as_findings_driven",
+  "verified_ev": "tests/integration/test_routing_value_check.py _record; VALUE_CHECK_ADJUDICATION L18 and L24"
  }
 ]

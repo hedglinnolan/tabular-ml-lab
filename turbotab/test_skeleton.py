@@ -708,9 +708,20 @@ def test_the_frontend_has_no_synthetic_constants_left():
     scoreboard, the seeded RNG, the fabricated correlation matrix, the
     hard-coded 918-row dataset. If one reappears, something is being drawn from
     a literal instead of from the engine.
+
+    **The positive control is not decoration** (`GUIDED-045`). Every assertion
+    here is *"this string does not appear"*, and an absence assertion over a
+    file gets **monotonically easier as the file loses content** —
+    `pageprobe.py` found this test green against a page emptied to
+    `<body></body>`, where of course no synthetic constant survives, because
+    nothing does. The controller is asserted present first, so deleting the
+    thing being checked fails the check.
     """
     page = (REPO_ROOT / "turbotab" / "web" / "index.html").read_text(encoding="utf-8")
     body = page[page.index("</style>"):]
+    assert len(body) > 20_000 and "renderAll" in body, (
+        f"the controller is {len(body)} characters and does not define "
+        f"renderAll; every absence assertion below would pass on an empty page")
     for ghost in ("918", "CORRM", "CORRVARS", "HISTS", "RANGES",
                   "var MODELS", "PREVIEWS", "NOTES", "1664525", "0.934"):
         assert ghost not in body, f"synthetic constant {ghost!r} survived the rewire"

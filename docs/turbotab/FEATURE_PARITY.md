@@ -526,6 +526,69 @@ fails when a new one does not, converts "remember to call it" into a red line. W
 impractical, invert the dependency so the invariant cannot be bypassed: the call site asks the
 helper for the number rather than formatting one itself.
 
+**Corollary — the sixth axis: THE ASSERTION'S PASS SET IS BROADER THAN ITS
+CLAIM.** *The first five describe a guard that does not run, or runs on the
+wrong thing. This one runs correctly, on the right thing, and asserts less than
+it appears to.*
+
+The family so far fails across **space** (stated here, violated there),
+**time** (true then, false now), **occasion** (correct always, consulted never),
+**environment** (unrunnable where it matters), and **call site** (stated once,
+applied in one place out of two). Every one is a check that is not doing its
+job. This one is doing its job — on a set of inputs larger than the sentence it
+is named after.
+
+Three shapes, all of which have shipped in this tree:
+
+- **`A or B` satisfied by the wrong half.** `assert "option_values" in page or
+  "q.options" in page` passed for five loops on the second disjunct while the
+  page never read the first. The interview could not start at question 1
+  (`GUIDED-037`).
+- **`in` where `==` was meant.** `"model" in message` survived deleting the
+  entire route sentence, because two other words in the message contained it.
+  `"55" in message` survived deleting the first of two arguments, because the
+  second restated the count.
+- **An absence assertion with no positive control** — and this is the sharpest,
+  because the gap *grows*. `assert ghost not in page` is **monotonically easier
+  to satisfy as the page loses content**: delete the thing being guarded and
+  the guard passes harder. Three tests were green against a page emptied to
+  `<body></body>`, where of course no placeholder appears, because nothing
+  does. *"Nothing else wears the blocker treatment"* is trivially true of a
+  stylesheet with no blocker treatment at all (`GUIDED-045`).
+
+**Why it is invisible.** The other five announce themselves the moment anybody
+looks: a check that never runs has no output, a check in the wrong environment
+skips. This one is green, and green is what correct looks like. Nothing
+distinguishes *"the claim holds"* from *"the claim is unreachable from this
+assertion"* without an experiment.
+
+Three defenses, in order of strength:
+
+- **Mutate what the assertion is about and require it to go red.** Not a
+  hand-aimed edit — a hand-aimed mutation is chosen by somebody who already
+  believes they know what the test checks. Destroy a whole category:
+  `docs/turbotab/tools/pageprobe.py` guts the controller, guts the stylesheets,
+  and guts the page, and the verdict is the third — **a test whose claim is
+  about the page must go red when there is no page.**
+- **Give every absence assertion a positive control.** Assert the thing you are
+  searching within is there, so the deletion that would otherwise satisfy you
+  fails instead. Enforced structurally by
+  `turbotab/test_an_absence_assertion_carries_a_positive_control.py`, which is
+  fast enough to run every suite — the slow sweep is the instrument, this is
+  the trigger.
+- **Prefer `==` over `in`, and a rendered value over a source string.** The
+  first two shapes are the second and third preferences in *assert on
+  STRUCTURE*; this axis is the reason that section exists, generalized past
+  prose.
+
+**And the axis applies to measurements, not only to tests.** The routing value
+check's `covers=q.key if q.key in keys else None` mapped one question to at most
+one requirement — correct, running, on the right object, and unable to express
+*this question settles five*. It moved the numbers at **L18 and again at L24**,
+and both times the reading was adjudicated rather than the matcher fixed. Two
+occurrences, one cause: **the matcher was the defect, not the reading**
+(`GUIDED-046`).
+
 ### Two specific things to watch
 
 - **The pedagogy layer** — `utils/theory_anchors.py` (532 loc) and `utils/theory_demos.py`
