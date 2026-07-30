@@ -235,6 +235,21 @@ _mark("Consider SMOTE or other resampling (with caution)", "resampling",
       "Resample the minority class", "train",
       "Resampling changes what the training rows ARE, so it belongs beside "
       "fitting. Not built in the Guided door yet.")
+# `GUIDED-049`. Two actions that replaced "use class weights" and "consider
+# SMOTE" when the rebalancing advice was routed behind the purpose question.
+# Both are earmarks to Train rather than operations here: neither is something
+# the Data step can do or preview, and the honest rendering is the one the
+# metric and threshold entries below already use.
+_mark("Report calibration alongside discrimination", "calibration_report",
+      "Report calibration beside the discrimination numbers", "train",
+      "A calibration curve is produced where the scores are, and it is the "
+      "property rebalancing damages — which is why it is named here.")
+_mark("Penalize the fit — the problem behind a rare outcome is "
+      "small-sample overfitting, not imbalance", "penalize",
+      "Penalize the fit rather than rebalance the outcome", "train",
+      "Penalization is a model setting, decided where the models are. Named as "
+      "the remedy because the problem behind a rare outcome is small-sample "
+      "overfitting rather than the imbalance itself.")
 _mark("Focus on precision-recall metrics, not accuracy", "pr_metrics",
       "Score on precision and recall rather than accuracy", "train",
       "Which metric answers your question is decided where the scores are "

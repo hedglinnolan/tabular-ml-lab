@@ -413,10 +413,18 @@ def recommend_eda(signals: DatasetSignals) -> List[EDARecommendation]:
                 what_you_learn=[
                     "Class distribution and balance",
                     "Baseline accuracy (majority class)",
-                    "Need for class weighting or resampling"
+                    # `GUIDED-049`: was "Need for class weighting or
+                    # resampling", which presupposes the answer.
+                    "Whether the outcome is rare enough to threaten the fit",
                 ],
                 model_implications=[
-                    "Imbalanced classes → use class_weight or F1/PR-AUC metrics",
+                    # Was "Imbalanced classes → use class_weight or F1/PR-AUC
+                    # metrics". Rebalancing degrades calibration without
+                    # improving discrimination (van den Goorbergh et al., JAMIA
+                    # 2022;29:1525), so the metric half survives and the
+                    # rebalancing half does not.
+                    "Imbalanced classes → report PR-AUC and calibration, and "
+                    "choose the threshold from the costs",
                     "Low baseline → model must significantly outperform random",
                     "Binary vs multiclass affects model choice"
                 ],

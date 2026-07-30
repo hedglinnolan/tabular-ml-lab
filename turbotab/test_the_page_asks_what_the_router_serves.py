@@ -310,6 +310,7 @@ def test_the_quoted_record_is_never_empty(tmp_path):
     # mutually exclusive by construction, so a single drive cannot reach both
     # sentences and a test that tried would be testing a state the app forbids.
     decide(pid, "set_target", {"column": "progressed"})
+    decide(pid, "set_purpose", {"answer": "prediction"})
     decide(pid, "set_lens", {"lens": ["clinical"]})
     decide(pid, "set_grain", {"answer": "people_repeat", "group_col": "subject_id"})
     decide(pid, "set_repeat_kind", {"kind": "repeats"})

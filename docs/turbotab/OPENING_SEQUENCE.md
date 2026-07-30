@@ -30,6 +30,7 @@ a decision taken on their behalf.
 | 1.5 | **Which way round is this table?** | only if 1 includes an assay pack **and** the shape reads feature-major | asked |
 | — | *structural diagnosis, repairs, impossibility pass* | always | findings |
 | 2 | **What are you predicting?** (+ which level is the event) | always | asked |
+| 2.5 | **What is this model for?** | always | asked |
 | 3 | **Can one person appear in more than one row?** | always | asked |
 | 4 | **Are these repeats or different time points?** | only if 3 = repeat | usually **stated**, overturnable |
 | 5 | **When you analyze this, what is one row?** | only if 3 = repeat | asked |
@@ -183,6 +184,40 @@ Unchanged from the built step, with the positive-class question already specifie
 outcome the interesting question is **which level is the event**, never "is this binary." Never
 pre-selected at any confidence — "alive/dead" has no correct default, because whether the event is
 death or survival is the research question.
+
+### 2.5 · What the model is for — prediction or inference
+
+> **What is this model for?**
+> Both are legitimate and they are optimized for different things, so several
+> later answers change depending on which you say. Nothing in the file reveals
+> it — only you know what the paper claims.
+> — **Predicting an outcome for a new person**
+> — **Estimating how strongly something is associated with the outcome**
+
+**The deepest of the seven research convergences** (`DOMAIN_SCIENCE.md` §01.3).
+The same dataset, the same target and the same lens require **opposite** handling
+in at least five places across four domains — missing labs, values below the
+detection limit, repeated recalls, a 30-item instrument, features versus
+compounds. *The advice inverts.* A tool that gives the inference answer to
+somebody building a bedside model is wrong, and so is the reverse.
+
+A **CHOICE** by the routing constitution: always asked, never skippable at any
+confidence, and never defaulted at any confidence — nothing in the data reveals
+it, and a pre-selected purpose would be the app deciding what the user's paper
+is about.
+
+**It earns its place by §00's own test** — *if the answer were wrong, would a
+downstream number be wrong or misleading?* It fires once and changes the default
+on roughly a dozen decisions per pack, which is the best ratio in the sequence.
+
+The first consumer is the missing-data route, and it is the clearest case: a
+was-it-missing indicator carries the clinician's decision to order a test, so it
+is observable at deployment and legitimate for prediction, and a known source of
+bias in an association estimate. Under an inference objective it is blocked with
+both exits — resolve by imputing inside the folds, or attest and carry it as a
+stated limitation. The second is the class-imbalance advice, where the app was
+recommending a step that damages calibration and writing it into the manuscript
+(`GUIDED-049`).
 
 ### 3 · Grain
 

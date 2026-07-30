@@ -2262,6 +2262,7 @@
   var ACK_LABEL = {
     set_lens:                  "Measurements",
     set_orientation:           "Table",
+    set_purpose:               "Built for",
     set_reverse_coding:        "Reverse-coded",
     set_repeat_kind:           "Repeats",
     set_unit_of_analysis:      "One row is",
@@ -3414,6 +3415,15 @@
         : "Records that the table is already one row per sample. Nothing is "
           + "changed, and the shape reading above is recorded as overruled.";
     },
+    set_purpose: function(p){
+      return (p || {}).answer === "inference"
+        ? "Records that the coefficient has to be unbiased. Several handling "
+          + "choices that help a predictor become sources of bias, and each "
+          + "one says so where it is offered."
+        : "Records that the number at the bedside has to be right. Handling "
+          + "that carries information about a patient becomes legitimate, "
+          + "because it is available at deployment too.";
+    },
     set_reverse_coding: function(p){
       var n = ((p || {}).columns || []).length;
       return n ? "Records " + n + " item(s) as reverse-coded, to be flipped before the scale is scored."
@@ -3491,6 +3501,10 @@
        rather than recording a decision about it. Single-select and never
        pre-selected: the app reads the shape and the user says what it is. */
     state_orientation:         { kind: "set_orientation",         field: "answer" },
+    /* Question 2.5. A CHOICE with no default at any confidence — nothing in
+       the data reveals whether a study wants a bedside number or an unbiased
+       coefficient (`GUIDED-048`). */
+    state_purpose:             { kind: "set_purpose",             field: "answer" },
     state_reverse_coding:      { kind: "set_reverse_coding",      field: "columns",  multi: true },
     state_repeat_kind:         { kind: "set_repeat_kind",         field: "kind" },
     state_unit_of_analysis:    { kind: "set_unit_of_analysis",    field: "unit" },

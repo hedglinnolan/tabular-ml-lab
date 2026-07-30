@@ -990,5 +990,21 @@
   "classic": "none — pages/01 applies one import-doctor fix per button, with no diff and no undo",
   "state": "guided-only",
   "reason": "A DEBT, not a native. Classic already runs every one of these repairs; what it lacks is the grouping, the selection and the single receipt, and there is nothing about Classic that prevents them. The register's own line is the test: a reasonable Classic would still be missing something. The grouping rule is engine-side in turbotab/repairs.py and takes findings and nothing else, so it is portable the day pages/01 is converged (and pages/01 is frozen until the import tail closes, which is why this is owed rather than done)."
+ },
+ {
+  "id": "model-purpose",
+  "step": "data-target",
+  "capability": "What is this model for? — prediction or inference, and the handling defaults that read it (opening sequence 2.5)",
+  "classic": "none — Classic assumes prediction and offers no way to say otherwise",
+  "state": "guided-only",
+  "reason": "A DEBT. Classic ships the same missing-indicator route and the same class-imbalance advice, and both are wrong for an inference objective there exactly as they were here; nothing about Classic prevents the question. turbotab/purpose.py and ml/imbalance_advice.py are both headless and take no project, so they are portable the day pages/02 or pages/05 is converged."
+ },
+ {
+  "id": "evidence-badge",
+  "step": "data-target",
+  "capability": "SETTLED / CONVENTION / DISPUTED on every pack advisory, with a source that resolves to a research file and section",
+  "classic": "none — Classic states its advisories at uniform confidence",
+  "state": "guided-native",
+  "reason": "Presupposes the pack layer and the question grammar: the badge is a token rendered beside an advisory the Router served, and Classic has no advisory object to hang it on - its recommendations are page-local prose. The register's line is the test and a reasonable Classic would not be missing something it has no place to put. The primitive itself is portable: turbotab/packs.Evidence takes no project and the gate reads the source tree."
  }
 ]

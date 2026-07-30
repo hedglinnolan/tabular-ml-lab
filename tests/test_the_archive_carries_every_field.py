@@ -67,7 +67,12 @@ PERSISTED = {
     # archive holds the turned-around table. A restored project that lost the
     # record would hold sample-rows with nothing saying they were ever columns —
     # the receipt for an irreversible operation, missing.
-    "lens", "orientation", "repeat_kind", "unit_of_analysis", "aggregation",
+    # `purpose` travels because the DOWNSTREAM DEFAULTS are read from it — a
+    # restored project that lost it would silently revert to the app's old
+    # assumption (prediction) and change what a dozen later questions default
+    # to, with nothing saying so.
+    "lens", "orientation", "purpose", "repeat_kind", "unit_of_analysis",
+    "aggregation",
     "temporal_prediction",
     "task_overridden", "workflow_mode", "pipeline_specs", "grain",
     "eligibility", "obligations", "missingness", "preprocess_settled",
@@ -173,6 +178,10 @@ def _fully_populated() -> AnalysisProject:
     # restored project that lost it could not tell a table that was checked
     # from one nobody looked at.
     p.set_orientation("rows_are_samples")
+    # Question 2.5. `inference` deliberately, because it is the answer that
+    # CHANGES things: a project restored as `prediction` by default would pass
+    # a round trip that never exercised the field.
+    p.set_purpose("inference")
     p.set_grain(G.PEOPLE_REPEAT, "SUBJ")
     # Questions 4 to 7. The unit is the RECORD rather than the person, so the
     # rows survive and the seal below still has 60 of them to draw from — and

@@ -7826,5 +7826,33 @@
   "verified_against": "",
   "test": "turbotab/test_every_pack_claim_says_where_the_field_stands.py::test_every_source_resolves_to_a_real_section_of_a_real_file",
   "verified_ev": "turbotab/packs.py Prior; docs/turbotab/DOMAIN_SCIENCE.md section 01.1"
+ },
+ {
+  "id": "GUIDED-048",
+  "area": "GUIDED",
+  "sev": "critical",
+  "item": "The app assumed prediction throughout and never asked, while the same dataset target and lens require opposite handling in at least five places across four domains",
+  "detail": "",
+  "ev": "docs/turbotab/DOMAIN_SCIENCE.md section 01.3; turbotab/purpose.py",
+  "act": "",
+  "status": "FIXED",
+  "note": "THE DEEPEST OF THE SEVEN CONVERGENCES. Missing labs, values below the detection limit, repeated recalls, a 30-item instrument, features versus compounds: in every one the advice does not shade, it INVERTS. A tool that gives the inference answer to somebody building a bedside model is wrong, and so is the reverse. Question 2.5, immediately after the target because it is about what the target is FOR. A CHOICE by the routing constitution - always asked, never skippable at any confidence, never defaulted at any confidence, because nothing in the data reveals it and a pre-selected purpose would be the app deciding what the user's paper is about. THE WIRING MATTERS MORE THAN THE QUESTION: a question with no consumer changes nothing. The missing-data route is the first and clearest - a was-it-missing indicator carries the clinician's decision to order a test, so it is observable at deployment and legitimate for prediction and a known source of bias in an association estimate. Same fixture, same column, same strategy, and the app answers 200 or 409 depending only on the recorded purpose. BLOCKED WITH BOTH EXITS, never hard-refused: section 09's CONSEQUENCE is resolve-or-attest and a tool that blocks a correct analysis is one people route around. AND UNANSWERED BLOCKS NOTHING - the app does not get to infer a purpose and then hold somebody to it, which is asserted separately because it is the half a careless implementation gets wrong. VALUE CHECK adjudicated at L25: one constitutional question, questions_asked +1 everywhere, irrelevant_net 0, coverage 10/10, findings_driven 0.5556 still clearing the 0.5 floor - and irrelevant_questions now exactly at its ceiling of 3 on two datasets, recorded before it is breached.",
+  "verified_against": "",
+  "test": "turbotab/test_the_purpose_changes_the_answer.py::test_the_same_choice_is_accepted_for_prediction_and_blocked_for_inference",
+  "verified_ev": "docs/turbotab/DOMAIN_SCIENCE.md section 01.3; turbotab/purpose.py"
+ },
+ {
+  "id": "GUIDED-049",
+  "area": "COACH",
+  "sev": "critical",
+  "item": "The app recommended class weights and SMOTE, and wrote them into the generated manuscript, for a step that degrades calibration without improving discrimination",
+  "detail": "",
+  "ev": "ml/dataset_profile.py:429; ml/eda_recommender.py:419; ml/narrative_engine.py:1065",
+  "act": "",
+  "status": "FIXED",
+  "note": "THE ANTI-PATTERN AUDIT'S FIRST INSTANCE, and a defect in shipped code rather than a feature request. van den Goorbergh, van Smeden, Timmerman and Van Calster (JAMIA 2022;29:1525) showed random undersampling, random oversampling and SMOTE all produce strong overestimation of minority-class probability WITHOUT improving discrimination, and that the apparent sensitivity gain is reproducible by simply shifting the threshold; replicated for machine-learning methods by Carriero et al. (Stat Med 2025). Rare outcomes are a real problem but the problem is SMALL-SAMPLE OVERFITTING, NOT IMBALANCE, and the remedy is penalization and adequate sample size. So the app recommended a step that damages the property clinical prediction cares about most and then ASSERTED IT IN THE ARTIFACT THAT IS THE PRODUCT - under the governing rule the serious kind, not silence and not refusal but the app asserting something false in a manuscript. NOT DELETED, ROUTED. ml/imbalance_advice.py holds the citation and the routing in one place and is read by the manuscript chain rather than copied into it. recommended is never True: the two purposes the app can distinguish are the two where rebalancing is contraindicated, for DIFFERENT reasons, and both are stated - for inference the reweighting also moves the intercept of the estimate being reported. The one place it survives is a classifier read at a fixed operating point where no calibrated probability is claimed, and the app cannot tell one from a risk model, so it is offered with the citation and never recommended. THE MANUSCRIPT STILL REPORTS WHAT WAS DONE - a reader has to know - and no longer reports it as a remedy: the sentence carries the limitation and the citation. Removing advice without replacing it would have been its own defect, so three honest alternatives are named: report PR-AUC and calibration, choose the threshold from the costs, penalize the fit. Also filed a test-side instance of GUIDED-045 while closing this: the assertion that the old sentence is gone hit the comment explaining why it went, so it reads the code with comments stripped.",
+  "verified_against": "",
+  "test": "turbotab/test_the_purpose_changes_the_answer.py::test_the_manuscript_reports_what_was_done_and_no_longer_endorses_it",
+  "verified_ev": "ml/dataset_profile.py:429; ml/eda_recommender.py:419; ml/narrative_engine.py:1065"
  }
 ]

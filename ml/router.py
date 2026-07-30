@@ -241,6 +241,7 @@ SEQUENCE: Dict[str, str] = {
     "state_orientation": "1.5",
     "choose_target": "02",
     "confirm_task_type": "02",
+    "state_purpose": "2.5",
     "state_grain": "03",
     "state_repeat_kind": "04",
     "state_unit_of_analysis": "05",
@@ -295,7 +296,13 @@ FACT_KINDS = frozenset({"target", "task_type", "grain", "eligibility",
 # summary of a person's records answers your question is not a property of the
 # table, so no confidence in the engine could make it skippable. It also
 # REWRITES THE TABLE, which is the other half of what makes a choice a choice.
-CHOICE_KINDS = frozenset({"repair", "preparation_mode", "aggregation"})
+# `purpose` is a CHOICE, and it is the clearest case in the set. Nothing in the
+# data reveals whether a study wants a bedside number or an unbiased
+# coefficient, so no confidence in the engine could make it skippable and no
+# default is available at any tier — a pre-selected purpose would be the app
+# deciding what the user's paper is about (`DOMAIN_SCIENCE.md` §01.3).
+CHOICE_KINDS = frozenset({"repair", "preparation_mode", "aggregation",
+                          "purpose"})
 CONSEQUENCE_KINDS = frozenset({"blocker"})
 
 
@@ -537,6 +544,27 @@ def plan(
                 "test set stratified on it. Choosing a different column later "
                 "recomputes all three and marks everything below stale."),
             options=["<column>"]))
+
+    # ── 2.5 · what is this model for, immediately after the target ─────────
+    #
+    # `DOMAIN_SCIENCE.md` §01.3, the deepest of the seven convergences: the same
+    # dataset, target and lens require OPPOSITE handling in at least five places
+    # across four domains depending on this answer, and the app assumed
+    # prediction throughout and never asked.
+    #
+    # Gated on the target because it is about what the target is FOR, and asked
+    # before the grain because the answer changes what several later questions
+    # default to. A CHOICE — never skipped at any confidence, never defaulted.
+    if step == "data" and target and "state_purpose" not in answered:
+        from turbotab import purpose as _purpose
+        spec = _purpose.question()
+        out.append(Question(
+            key=spec["key"], kind="purpose", step="data",
+            clause=spec["clause"], seq=spec["seq"],
+            title=spec["title"], why=spec["why"], consumer=spec["consumer"],
+            options=[o["label"] for o in spec["options"]],
+            option_values=[o["key"] for o in spec["options"]],
+            option_notes=[o["note"] for o in spec["options"]]))
 
     # ── the task type: a question of FACT, so skippable at high confidence ──
     if target and detection and "confirm_task_type" not in answered:

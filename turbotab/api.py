@@ -37,7 +37,7 @@ from turbotab import (
 )
 from turbotab.project import (
     AnalysisProject, GrainContradiction, LensContradiction, ProjectError,
-    ProjectStore,
+    ProjectStore, PurposeContraindication,
 )
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
@@ -683,6 +683,10 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
                 col, mech, strat,
                 uses_columns=decision.payload.get("uses_columns"),
                 acknowledged=bool(decision.payload.get("acknowledge_signal_loss")))
+        except PurposeContraindication as exc:
+            # 409, not 400: the request is well-formed and the recorded purpose
+            # disagrees with it. Both exits travel with the refusal.
+            raise HTTPException(409, exc.detail) from exc
         except ProjectError as exc:
             raise HTTPException(400, str(exc)) from exc
         _recompute(project)
@@ -723,6 +727,14 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
                             str(payload.get("target_step") or ""),
                             str(payload.get("label") or decision.subject),
                             subject=decision.subject)
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return _payload(project)
+
+    if decision.kind == "set_purpose":
+        answer = decision.payload.get("answer") or decision.subject
+        try:
+            project.set_purpose(str(answer))
         except ProjectError as exc:
             raise HTTPException(400, str(exc)) from exc
         return _payload(project)
@@ -1856,6 +1868,8 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
             answered.append("state_lens")
         elif d.kind == "set_orientation":
             answered.append("state_orientation")
+        elif d.kind == "set_purpose":
+            answered.append("state_purpose")
         elif d.kind == "set_reverse_coding":
             answered.append("state_reverse_coding")
         elif d.kind == "set_target":

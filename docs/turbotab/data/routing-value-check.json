@@ -2,7 +2,7 @@
  "schema_version": "1.0",
  "prereg": "VALUE_CHECK_PREREG.md",
  "adjudication": "VALUE_CHECK_ADJUDICATION.md",
- "measured_at": "62157c2",
+ "measured_at": "fa1102c",
  "classic_reference": "routing-baseline-l9c.json",
  "classic_frozen_reference": "routing-baseline.json",
  "rows": [
@@ -32,11 +32,11 @@
    },
    "guided": {
     "required_decisions": 10,
-    "questions_asked": 8,
+    "questions_asked": 9,
     "irrelevant_questions": 0,
-    "constitutional": 2,
+    "constitutional": 3,
     "irrelevant_net": 0,
-    "findings_driven": 0.625,
+    "findings_driven": 0.5556,
     "deferral_closes": 1.0,
     "coverage": 1.0,
     "covered": 10,
@@ -82,9 +82,9 @@
    },
    "guided": {
     "required_decisions": 1,
-    "questions_asked": 3,
-    "irrelevant_questions": 2,
-    "constitutional": 2,
+    "questions_asked": 4,
+    "irrelevant_questions": 3,
+    "constitutional": 3,
     "irrelevant_net": 0,
     "findings_driven": 0.0,
     "deferral_closes": null,
@@ -132,11 +132,11 @@
    },
    "guided": {
     "required_decisions": 2,
-    "questions_asked": 4,
-    "irrelevant_questions": 2,
-    "constitutional": 2,
+    "questions_asked": 5,
+    "irrelevant_questions": 3,
+    "constitutional": 3,
     "irrelevant_net": 0,
-    "findings_driven": 0.25,
+    "findings_driven": 0.2,
     "deferral_closes": null,
     "coverage": 1.0,
     "covered": 2,
@@ -166,5 +166,5 @@
   ],
   "passes_under_literal_reading": false
  },
- "replaced_because": "adjudicated in VALUE_CHECK_ADJUDICATION.md, L24 (DRIVE-002 bulk repairs): N findings that are the same repair became one question with a selectable set. questions_asked 12 -> 8 and irrelevant 2 -> 0 are the improvement; coverage 1.0 -> 0.4 was the harness's exact-key matcher failing to see one question settle several, repaired by reading the Router's own `covers` and back to 10/10; findings_driven 0.75 -> 0.625 is half a defect in the feature (the bulk question cited no finding, now fixed) and half arithmetic (grouping compresses the numerator and leaves the constitutional questions in the denominator). The 0.5 floor still holds. No threshold moved, prereg unedited, routing-baseline.json untouched."
+ "replaced_because": "adjudicated in VALUE_CHECK_ADJUDICATION.md, L25 (GUIDED-048, the purpose question): one constitutional question added at position 2.5. questions_asked +1 on every dataset, constitutional 3 and irrelevant_net 0 everywhere, coverage unchanged at 10/10. findings_driven 0.625 -> 0.5556 is the L24 arithmetic a second time - the denominator grows and the numerator does not - and still clears the 0.5 floor. irrelevant_questions is now exactly at its ceiling of 3 on wide-assay and longitudinal, recorded before it is breached. No threshold moved, prereg unedited, routing-baseline.json untouched."
 }

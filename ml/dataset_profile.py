@@ -425,11 +425,25 @@ def generate_warnings(profile: DatasetProfile) -> List[DataWarning]:
                            f"The minority class has only {profile.target_profile.minority_class_size:,} samples. "
                            "Accuracy can be misleading; use F1, PR-AUC, or balanced accuracy instead.",
             affected_models=["All classification models"],
+            # `GUIDED-049`. This used to open with "Use class weights in
+            # training" and "Consider SMOTE or other resampling". Van den
+            # Goorbergh et al. (JAMIA 2022;29:1525) and Carriero et al. (Stat
+            # Med 2025): rebalancing overestimates minority-class probability
+            # without improving discrimination, and the apparent sensitivity
+            # gain is reproducible by shifting the threshold. The remedy for a
+            # rare outcome is penalization and sample size, because the problem
+            # is small-sample overfitting rather than imbalance.
+            #
+            # The advice is not deleted, it is ROUTED — see
+            # `ml/imbalance_advice.py`, which the Guided door reads with the
+            # recorded purpose. What is removed here is the RECOMMENDATION,
+            # because this list is read as one.
             suggested_actions=[
-                "Use class weights in training",
-                "Consider SMOTE or other resampling (with caution)",
                 "Focus on precision-recall metrics, not accuracy",
-                "Adjust classification threshold based on costs"
+                "Report calibration alongside discrimination",
+                "Adjust classification threshold based on costs",
+                "Penalize the fit — the problem behind a rare outcome is "
+                "small-sample overfitting, not imbalance",
             ]
         ))
     

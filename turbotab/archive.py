@@ -318,6 +318,11 @@ def build_members(project) -> Dict[str, bytes]:
         # nothing saying they were ever columns — the receipt for an
         # irreversible operation, missing.
         "orientation": _json_safe(project.orientation) if project.orientation else None,
+        # The purpose travels because the DEFAULTS downstream are read from it.
+        # A restored project that lost it would silently revert to the app's old
+        # assumption — prediction — and change what a dozen later questions
+        # default to, with nothing saying so.
+        "purpose": _json_safe(project.purpose) if project.purpose else None,
         # Questions 4 to 7. `aggregation` is the sharpest of the four: it is the
         # only one that CHANGED THE TABLE, and the parquet that travels beside
         # this config holds the combined rows. A restored project that lost the
@@ -506,6 +511,7 @@ def from_bytes(raw: bytes):
     lens = config.get("lens")
     project.lens = list(lens) if isinstance(lens, list) else None
     project.orientation = config.get("orientation") or None
+    project.purpose = config.get("purpose") or None
     project.repeat_kind = config.get("repeat_kind") or None
     project.unit_of_analysis = config.get("unit_of_analysis") or None
     project.aggregation = config.get("aggregation") or None

@@ -123,6 +123,21 @@ class _TargetView:
     target_col: Optional[str] = None
 
 
+class PurposeContraindication(Exception):
+    """A handling choice the recorded purpose contraindicates. `GUIDED-048`.
+
+    Its own type rather than a `ProjectError`, and for the same reason
+    `LensContradiction` has one: the request is WELL-FORMED and the state
+    disagrees with it, which is a 409 and not a 400 — and the exits travel with
+    the refusal so an interface cannot render the interruption without also
+    rendering its way out.
+    """
+
+    def __init__(self, message: str, detail: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.detail = detail or {}
+
+
 class ProjectError(Exception):
     """The project was asked for something it cannot honestly provide."""
 
@@ -216,6 +231,15 @@ class AnalysisProject:
     # record, or a table that was checked and a table nobody looked at read the
     # same.
     orientation: Optional[Dict[str, Any]] = None
+    # The answer to "what is this model for?" — question 2.5, immediately after
+    # the target, because it is about what the target is FOR.
+    #
+    # `DOMAIN_SCIENCE.md` §01.3: the same dataset, target and lens require
+    # OPPOSITE handling in at least five places depending on this answer. The
+    # app assumed prediction throughout and never asked. `None` means not yet
+    # asked, and nothing infers it — a pre-selected purpose would be the app
+    # deciding what the user's paper is about.
+    purpose: Optional[Dict[str, Any]] = None
     # The answer to "can one person appear in more than one row?", recorded
     # ONCE and read by both consumers (constitution §02, ASSEMBLY_SPEC §05).
     # `None` means not yet asked, and the seal cannot be drawn on `None` — that
@@ -694,6 +718,35 @@ class AnalysisProject:
                                                         and acknowledged_contradiction),
                      "contradiction": clash if clash else None})
 
+    def set_purpose(self, answer: str) -> Decision:
+        """Question 2.5. Prediction or inference — and it changes the answers.
+
+        A CHOICE by the routing constitution: always asked, never skippable at
+        any confidence, and never defaulted. Nothing in the data reveals it.
+
+        Answering twice replaces the answer on the project and appends a new
+        decision, like every other question here: the record is what happened,
+        the project is what is currently true. It is not refused after the seal
+        — the purpose does not touch a row, and a user who realizes mid-analysis
+        that they are writing an association paper should be able to say so and
+        watch the downstream defaults change rather than start again.
+        """
+        from turbotab import purpose as _purpose
+
+        try:
+            chosen = _purpose.normalize(answer)
+        except _purpose.PurposeError as exc:
+            raise ProjectError(str(exc)) from exc
+        changed = self.purpose is not None and self.purpose.get("answer") != chosen
+        self.purpose = {"answer": chosen}
+        if changed:
+            self._mark_stale("the model's purpose was changed, and several "
+                             "handling defaults are read from it")
+        return self.record(
+            kind="set_purpose", subject=chosen,
+            text=_purpose.methods_sentence(chosen),
+            payload={"answer": chosen, "replaced": changed})
+
     def set_orientation(self, answer: str) -> Decision:
         """Question 1.5. Which way round is the table — and turn it if it is not.
 
@@ -1118,6 +1171,24 @@ class AnalysisProject:
                 f"`{column}` has no missing values, so there is no missingness "
                 f"to route. Asking about a column that is complete would be the "
                 f"interview inventing work.")
+
+        # THE PURPOSE IS THE FIRST CONSUMER (`GUIDED-048`). A was-it-missing
+        # indicator carries the clinician's decision to order a test, which is
+        # observable at deployment and therefore legitimate — often helpful —
+        # for PREDICTION, and a known source of bias in an association
+        # estimate. Same column, same data, opposite answer
+        # (`DOMAIN_SCIENCE.md` §01.3).
+        #
+        # Blocked with both exits rather than refused, because §09's
+        # CONSEQUENCE is resolve-or-attest and the user may have a reason. And
+        # unanswered blocks nothing: the app does not get to infer a purpose
+        # and then hold somebody to it.
+        from turbotab import purpose as _purpose
+        if (_purpose.blocks_indicator((self.purpose or {}).get("answer"), strategy)
+                and not acknowledged):
+            raise PurposeContraindication(
+                _purpose.indicator_blocker(str(column))["message"],
+                detail=_purpose.indicator_blocker(str(column)))
 
         try:
             record = _miss.declare(
@@ -1897,6 +1968,7 @@ class AnalysisProject:
             "stale_downstream": list(self.stale_downstream),
             "lens": list(self.lens) if self.lens is not None else None,
             "orientation": _copy(self.orientation),
+            "purpose": _copy(self.purpose),
             "grain": _copy(self.grain),
             "repeat_kind": _copy(self.repeat_kind),
             "unit_of_analysis": self.unit_of_analysis,

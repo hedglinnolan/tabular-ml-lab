@@ -1060,13 +1060,19 @@ class NarrativeEngine:
                     f"recommendations, with manual adjustments to: {mod_names}."
                 )
 
-        # Class weighting
+        # Class weighting. `GUIDED-049`.
+        #
+        # This said "To address class imbalance, class_weight='balanced' was
+        # applied…" — unconditionally, and approvingly, in the artifact that IS
+        # the product. Van den Goorbergh et al. (JAMIA 2022;29:1525) and
+        # Carriero et al. (Stat Med 2025) show rebalancing overestimates
+        # minority-class probability without improving discrimination.
+        #
+        # What was done is still reported — a reader has to know — but it is no
+        # longer reported as a remedy, and it carries the limitation.
         if self.ctx.get("class_weight_balanced"):
-            parts.append(
-                "To address class imbalance, class_weight='balanced' was applied "
-                "to supported classifiers, weighting each class inversely proportional "
-                "to its frequency in the training data."
-            )
+            from ml.imbalance_advice import manuscript_sentence
+            parts.append(manuscript_sentence(self.ctx.get("model_purpose")))
 
         # Primary model selection
         primary = self.ctx.get("primary_model", "")

@@ -617,3 +617,62 @@ cardinality is a temporal guarantee, and it will fail silently in the direction
 that looks like a regression.* When a change makes one control do the work of
 N, check the harness before believing the number — and prefer a matcher that
 reads what the component declares over one that infers from a key.
+
+---
+
+# L25 · `GUIDED-048` — the purpose question, and a ceiling now touched
+
+## What happened
+
+Question 2.5 landed — *what is this model for?* — and the value check moved on
+all three datasets:
+
+    messy-clinic  questions_asked   8 → 9    findings_driven 0.625 → 0.5556
+    wide-assay    questions_asked   3 → 4    irrelevant       2 → 3
+    longitudinal  questions_asked   4 → 5    irrelevant       2 → 3
+
+**PASSES.** Every pre-registered threshold still holds: 9 ≤ 17 and 4/5 ≤ 10 on
+questions, 0/3/3 ≤ 4/3/3 on irrelevant, coverage 10/10, and `findings_driven`
+0.5556 clears the 0.5 floor. `constitutional` reads 3 on every dataset and
+`irrelevant_net` reads 0 on every dataset, which is the L16 ruling working as
+designed: a constitutional question is **reported** in the literal count and
+**subtracted** in the net one, and neither reading is allowed to become the only
+one quoted.
+
+## Two things that are worth writing down rather than noting as green
+
+**`irrelevant_questions` is now exactly at its ceiling on two datasets.** 3 of a
+permitted 3 on both `wide-assay` and `longitudinal`. The next constitutional
+question breaches the literal reading, and the loop that adds one will meet a
+red gate that is **not** measuring a regression — it will be measuring the
+denominator's growth, which L16 already ruled on when it refused to add a
+`grain::` key to `required_decisions`.
+
+Recorded now, before it happens, because the expensive version of this is
+discovering it mid-loop and being tempted to move the ceiling. **The ceiling
+does not move.** When it is breached, the honest options are: the new question
+is genuinely not constitutional and should not be asked; or the prereg's
+`irrelevant_questions` metric has stopped measuring what it was written to
+measure on a door with four-plus constitutional questions, and that is a
+pre-registration to redo in the open rather than a threshold to nudge.
+
+**`findings_driven`'s margin is thin.** 0.5556 against a 0.5 floor, down from
+0.75 two loops ago. The cause is the same arithmetic recorded at L24 and it has
+now happened twice: the metric is *findings-driven ÷ all*, grouping compresses
+the numerator, and every constitutional question added enlarges the denominator
+alone. Two loops, two falls, same mechanism.
+
+That is now enough occurrences to name the property rather than re-explain it
+each time: **`findings_driven` falls on any change that makes findings cheaper
+to answer or makes the constitution more explicit, and both of those are
+improvements.** It is still not a metric to redefine after seeing a result —
+inventing a per-finding denominator now would be fitting it to the outcome,
+which `test_the_prereg_predates_the_router` exists to prevent. It is a metric
+whose known failure direction is written down, so the loop that finally crosses
+0.5 can tell which of the two it is.
+
+## The ruling
+
+**PASSES.** `routing-value-check.json` re-recorded with `replaced_because`
+naming this section. `routing-baseline.json` untouched. No threshold moved, and
+the prereg is unedited.
