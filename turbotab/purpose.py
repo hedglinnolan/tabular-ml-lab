@@ -48,6 +48,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from turbotab import exits as _exits
+
 PREDICTION = "prediction"
 INFERENCE = "inference"
 PURPOSES = (PREDICTION, INFERENCE)
@@ -152,11 +154,12 @@ INDICATOR_EXITS = (
      "label": "Impute instead, inside the training folds",
      "detail": "The value is filled from the training folds only, and the "
                "estimate is not conditioned on whether it was recorded."},
-    {"id": "attest", "kind": "attest",
-     "label": "Keep the indicator — I know what this absence is",
-     "detail": "Recorded as a stated limitation: the association estimate is "
-               "conditioned on the missingness pattern, and the methods "
-               "section says so."},
+    _exits.attest(
+        "Keep the indicator — I know what this absence is",
+        "Recorded as a stated limitation: the association estimate is "
+        "conditioned on the missingness pattern, and the methods "
+        "section says so.",
+        _exits.ACKNOWLEDGE_SIGNAL_LOSS),
 )
 
 

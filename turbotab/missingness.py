@@ -38,6 +38,8 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import pandas as pd
 
+from turbotab import exits as _exits
+
 # The mechanism answers. `NOT_SURE` is first-class for the same reason it is on
 # the grain question: the app cannot know, and a forced guess is worse than a
 # recorded uncertainty.
@@ -112,10 +114,11 @@ BLOCKER_EXITS = (
      "label": "Keep the blanks as their own category",
      "detail": "A blank becomes a literal `Missing` value, so the model can use "
                "it the way it uses any other level."},
-    {"id": "attest", "kind": "attest",
-     "label": "Fill them anyway — I know what these blanks are",
-     "detail": "Recorded as a stated limitation: the missingness signal is "
-               "removed deliberately, and the methods section says so."},
+    _exits.attest(
+        "Fill them anyway — I know what these blanks are",
+        "Recorded as a stated limitation: the missingness signal is "
+        "removed deliberately, and the methods section says so.",
+        _exits.ACKNOWLEDGE_SIGNAL_LOSS),
 )
 
 # The numeric branch's blocker, which is not a judgment call at all.

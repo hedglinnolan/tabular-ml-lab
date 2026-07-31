@@ -232,6 +232,39 @@ def check() -> int:
     if not n_figures:
         problems.append("no figures found at all; the registry walk is wrong")
 
+    # ── 2b · every CLAIM inside a badge resolves too ────────────────────────
+    #
+    # `GUIDED-064`. A statement that makes two claims the field holds
+    # differently now carries a badge per claim, and each of those is a
+    # citation like any other. A claim source that resolved to nothing would be
+    # the same defect the headline badge was built to remove, one level in.
+    n_claims = 0
+    for figure_id, spec in figures.REGISTRY.items():
+        for claim in getattr(spec, "claims", ()) or ():
+            n_claims += 1
+            bad = _resolve(claim.evidence.source)
+            if bad:
+                problems.append(f"figure/{figure_id}/{claim.key}: {bad}")
+
+    # Claims declared as module constants — the form every pack finding uses,
+    # because a claim tuple built inline in a detector could not be walked.
+    import importlib
+
+    for path in _modules():
+        if "Claim(" not in path.read_text(encoding="utf-8"):
+            continue
+        module = importlib.import_module(f"turbotab.{path.stem}")
+        for name, value in sorted(vars(module).items()):
+            if name.startswith("_") or not isinstance(value, tuple):
+                continue
+            for claim in value:
+                if not isinstance(claim, packs.Claim):
+                    continue
+                n_claims += 1
+                bad = _resolve(claim.evidence.source)
+                if bad:
+                    problems.append(f"{path.name}/{name}/{claim.key}: {bad}")
+
     # ── 3 · every module-level Evidence resolves ────────────────────────────
     #
     # A constant attached to nothing is still a citation, and `GUIDED-059` is
@@ -324,8 +357,9 @@ def check() -> int:
               "refusals and figures alike. The gate resolves the source; it "
               "does not check the claim is faithful to it.")
         return 1
-    print(f"ok — {n_priors} pack priors, {n_figures} figures, {n_constants} "
-          f"module constants and {n_literals} hand-written badges resolve; "
+    print(f"ok — {n_priors} pack priors, {n_figures} figures, {n_claims} "
+          f"claims, {n_constants} module constants and {n_literals} "
+          f"hand-written badges resolve; "
           f"{n_calls} findings/refusals badged at the call site across "
           f"{len(emitters)} emitter(s); {len(unverified)} [verify-at-build] "
           f"number(s) held out of the code")

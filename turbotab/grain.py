@@ -201,13 +201,13 @@ _RESOLVE = {
 }
 
 
-def _attest(what: str) -> Dict[str, str]:
-    return {
-        "id": "attest",
-        "kind": "attest",
-        "label": "My answer is right — the data really is like this",
-        "detail": what,
-    }
+def _attest(what: str) -> Dict[str, Any]:
+    # `GUIDED-072`. The exit carries the key it unlocks and a payload a client
+    # can merge into the request that was refused.
+    from turbotab import exits
+    return exits.attest(
+        "My answer is right — the data really is like this", what,
+        exits.ACKNOWLEDGE_CONTRADICTION)
 
 
 _EXITS_STATED_UNIQUE = [

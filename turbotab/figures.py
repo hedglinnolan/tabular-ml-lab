@@ -126,6 +126,13 @@ class FigureSpec:
     # Where the field stands on this figure's requirements, and where that was
     # read. Same primitive as a pack prior (`GUIDED-047`).
     evidence: Optional[Any] = None
+    # WHERE IT STANDS ON EACH REQUIREMENT SEPARATELY (`GUIDED-064`). A figure's
+    # checklist is a set of claims and the field does not hold them all at one
+    # status: the volcano's q-on-the-y-axis rule is SETTLED and the |log2FC|
+    # cut beside it is a stated convention; the diverging bar is the field
+    # standard and how it treats the neutral midpoint is disputed. One badge
+    # over both is a machine-readable form coarser than the caption.
+    claims: Tuple[Any, ...] = ()
     # WHETHER THIS FIGURE'S CONTENT MAY BECOME MODEL INPUT (`GUIDED-052`).
     # See `promotable` below — the rule is re-executability, not label-blindness.
     promotable: bool = False
@@ -204,7 +211,8 @@ class FigureSpec:
             "promotable_because": self.promotable_because,
         }
         if self.evidence is not None:
-            base.update(self.evidence.to_dict())
+            from turbotab.packs import _badge_payload
+            base.update(_badge_payload(self.evidence, self.claims))
         return base
 
 
@@ -419,7 +427,8 @@ def bundle(rendered: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
                "promotable": spec.promotable,
                "promotable_because": spec.promotable_because}
         if spec.evidence is not None:
-            row.update(spec.evidence.to_dict())
+            from turbotab.packs import _badge_payload
+            row.update(_badge_payload(spec.evidence, spec.claims))
         if ok:
             admitted.append(row)
         else:

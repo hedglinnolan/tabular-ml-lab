@@ -42,7 +42,7 @@ import pandas as pd
 from turbotab.figures import (CONFIRMATORY, EXPLORATORY, Annotation,
                               ChecklistItem, FigureSpec, Pending, register,
                               register_pending)
-from turbotab.packs import (CONVENTION_STATUS, DISPUTED, Evidence,
+from turbotab.packs import (CONVENTION_STATUS, DISPUTED, Claim, Evidence,
                             PackRefusal, SETTLED)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -723,6 +723,20 @@ VOLCANO_EVIDENCE = Evidence(
     status=SETTLED,
     source="research/METABOLOMICS_PACK.md#06.3 · Volcano plot")
 
+# `GUIDED-064`. Two requirements, two statuses, and the caption has always said
+# so while the badge did not.
+VOLCANO_CLAIMS = (
+    Claim("q_on_the_y_axis",
+          "The y-axis carries the FDR-adjusted q, or the cut line is drawn at "
+          "the p corresponding to q = 0.05 and the caption says which.",
+          VOLCANO_EVIDENCE),
+    Claim("fold_change_cut",
+          "The |log2 fold change| cut is drawn at 1.0. The research calls the "
+          "cut arbitrary and says to justify it biologically.",
+          Evidence(status=CONVENTION_STATUS,
+                   source="research/METABOLOMICS_PACK.md#06.3 · Volcano plot")),
+)
+
 
 class FigureRefusal(PackRefusal):
     """A figure the data are not in a state to support.
@@ -997,6 +1011,7 @@ VOLCANO = register(FigureSpec(
     # figure the field admits.
     companions=(),
     evidence=VOLCANO_EVIDENCE,
+    claims=VOLCANO_CLAIMS,
     # NOT PROMOTABLE. The q-values are computed from every row, including the
     # rows a held-out set would contain — this is a description of the whole
     # table, and re-running it inside a fold would be a different figure.
@@ -1323,6 +1338,28 @@ DIVERGING_EVIDENCE = Evidence(
     source=("research/CLINICAL_SURVEY_PACK.md#B5.1 ★ Diverging stacked bar "
             "chart — the field-standard Likert figure"))
 
+# `GUIDED-064`. The figure is the field standard; one clause inside it is not.
+DIVERGING_CLAIMS = (
+    Claim("the_figure",
+          "The diverging stacked bar is the standard graphic for Likert data "
+          "and is what lets a reader compare items at a glance.",
+          DIVERGING_EVIDENCE),
+    Claim("neutral_treatment",
+          "The neutral category is split across the zero line, which preserves "
+          "total bar length and slightly distorts both wings.",
+          Evidence(
+              status=DISPUTED,
+              source=("research/CLINICAL_SURVEY_PACK.md#B5.1 ★ Diverging "
+                      "stacked bar chart — the field-standard Likert figure"),
+              both_sides=(
+                  "Splitting the neutral category across zero preserves total "
+                  "bar length and makes the agree/disagree split visually "
+                  "honest, but slightly distorts the apparent size of both "
+                  "wings. Placing the whole neutral category on one side, or "
+                  "excluding it and reporting it separately, are both "
+                  "defensible; the caption states which was done."))),
+)
+
 # Segments below this share are suppressed rather than overprinted.
 LABEL_THRESHOLD = 0.05
 NEUTRAL_SPLIT = "split_across_zero"
@@ -1489,6 +1526,7 @@ DIVERGING_STACKED_BAR = register(FigureSpec(
            else f"{p['anchors_absent_because']}")),
     companions=(),
     evidence=DIVERGING_EVIDENCE,
+    claims=DIVERGING_CLAIMS,
     promotable=False,
     promotable_because="",
     compute=diverging_bar_payload,

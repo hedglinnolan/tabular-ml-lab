@@ -8246,5 +8246,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "turbotab/packs.py:1951; turbotab/grain.py:206; turbotab/missingness.py:115; turbotab/purpose.py:155; turbotab/api.py:485,532,684,711"
+ },
+ {
+  "id": "GUIDED-073",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "The client technology was never decided, only defaulted: the Guided door is one 3,701-line HTML file with 2,714 lines of hand-written vanilla JS, and the one sentence that reads like a decision against a framework is about information architecture rather than the stack",
+  "detail": "",
+  "ev": "turbotab/web/index.html; turbotab/api.py:2259 StaticFiles mount; PRODUCT_VISION.md:22; PRODUCT_VISION.md section 05",
+  "act": "",
+  "status": "OPEN",
+  "note": "RAISED BY THE PRODUCT OWNER, who expected the dynamic half of a migration off Streamlit to be in something other than Python and found it is not. MEASURED: turbotab/web/index.html is 3,701 lines - 2,714 inline JS, 792 CSS, 195 markup - with one script tag, no external src, no package.json, no build step, no framework, and 76 raw createElement/innerHTML/addEventListener calls. It is mounted by FastAPI at api.py:2259. Against roughly 20,669 lines of Python under turbotab/ alone. THE POINT IS NOT THAT VANILLA IS WRONG - it is that no document chooses it. A repository-wide search of ARCHITECTURE, PRODUCT_VISION, DESIGN_LANGUAGE and ROADMAP finds exactly one sentence that could be read as the decision, PRODUCT_VISION.md:22 - \"Rebuilding the current information architecture in React would produce the same maze, rendered better\" - and that sentence is an argument about COMBINATORIAL PATHWAY EXPLOSION, not about rendering technology. It says a better renderer does not fix the information architecture. It does not say the client is hand-written. PRODUCT_VISION section 05 decides Streamlit to client/server split and names no client. So this is an unmade decision that reads like a made one, which is the exact failure class this repository has already paid for twice - the README that said nothing was implemented, and the audit recorded as lost while committed. WHAT MAKES IT URGENT RATHER THAN ACADEMIC: the stale cascade. PRODUCT_VISION section 04 calls it the single feature Streamlit most fundamentally cannot render and it is the flagship justification for the whole rewrite - change an earlier answer and downstream work goes visibly veiled, tagged and recoverable. That is derived view state over a dependency graph, which is what declarative rendering exists for and what hand-rolled DOM mutation is worst at. It is unbuilt, and L9 has roughly seven more steps to add to the same file. SEPARABLE CONSTRAINTS THE PROJECT HAS BEEN TREATING AS ONE: no-build-step is a real requirement (three deployment targets, one of them a research enclave where npm install may be impossible) and no-framework is not the same requirement - a vendored single-file library satisfies both. AND ONE COMMITMENT THAT MUST SURVIVE ANY ANSWER: api.py:300-304, the disclosure is served rather than composed in the page, because an interface that writes its own disclosure drifts from what the record says. COPY_DECK.md is half generated from source and depends on it. A framework does not break that; it invites breaking it, and whatever is chosen has to keep the client thin. Not for an unsupervised loop - LOOP.md section 08.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/web/index.html; turbotab/api.py:2259 StaticFiles mount; PRODUCT_VISION.md:22; PRODUCT_VISION.md section 05"
  }
 ]

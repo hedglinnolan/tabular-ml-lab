@@ -321,6 +321,76 @@ MARKER_STATUS: Dict[str, Tuple[str, ...]] = {
 }
 
 
+@dataclass(frozen=True)
+class Claim:
+    """One sentence inside a statement, with the status the field holds IT at.
+
+    **`GUIDED-064`, and it took four instances.** A finding carries one badge
+    and can say two things the field holds differently. `counts_p_over_n`
+    asserts that at p ≫ n an unregularized fit is degenerate — SETTLED — and in
+    the same paragraph that CPM, TPM and VST are not interchangeable and no
+    default is asserted, which is DISPUTED. The volcano's q-on-the-y-axis rule
+    is SETTLED and the |log2FC| cut beside it is *[CONVENTION — arbitrary,
+    justify biologically]*. The diverging bar is *[CONVENTION, near-universal]*
+    and its neutral-midpoint treatment is *[DISPUTED]*.
+
+    Nothing false reached a reader, because the finer status was in the prose.
+    **The defect is that the badge a MACHINE reads was systematically coarser
+    than the sentence a HUMAN reads** — which inverts the badge's whole purpose,
+    since the badge exists to be the checkable form of the epistemic position.
+
+    `statement` is the clause this status is about, in the same words the detail
+    uses. `key` is what a consumer addresses it by. The claim set is additive:
+    the headline `evidence` still says where the statement as a whole stands,
+    and `claims` says where each part of it does.
+    """
+    key: str
+    statement: str
+    evidence: Evidence
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.evidence, Evidence):
+            raise EvidenceError(
+                f"claim {self.key!r}: evidence must be an `Evidence`. A claim "
+                f"badged with a dict bypasses the form check, and nothing then "
+                f"resolves its source.")
+        if len(self.statement) <= 20:
+            raise EvidenceError(
+                f"claim {self.key!r}: a claim states what it is a claim ABOUT. "
+                f"A key with a status beside it is a badge on nothing.")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"key": self.key, "statement": self.statement,
+                **self.evidence.to_dict()}
+
+
+def _badge_payload(evidence: Evidence,
+                   claims: Sequence["Claim"] = ()) -> Dict[str, Any]:
+    """The badge a consumer reads, at the granularity the sentence has.
+
+    **`may_preselect` is computed over the whole claim set**, and that is the
+    part that makes this more than a display change. The headline evidence of
+    `counts_p_over_n` is SETTLED, so `may_preselect` read True while one of the
+    two things the finding says is DISPUTED — and *DISPUTED is never defaulted
+    silently* is the badge's own obligation. A machine acting on the headline
+    alone would have pre-selected across a disagreement it could not see.
+
+    `weakest_status` is the one field a client needs to gate on, so acting
+    correctly does not require walking the claims.
+    """
+    payload = dict(evidence.to_dict())
+    if not claims:
+        return payload
+    statuses = [evidence.status] + [c.evidence.status for c in claims]
+    payload["claims"] = [c.to_dict() for c in claims]
+    payload["may_preselect"] = all(s in MAY_PRESELECT for s in statuses)
+    for status in (DISPUTED, CONVENTION_STATUS, SETTLED):
+        if status in statuses:
+            payload["weakest_status"] = status
+            break
+    return payload
+
+
 def _check_badge(what: str, evidence: Optional[Evidence],
                  marker: Optional[str] = None) -> Evidence:
     """The badge obligation, in one place, for everything a pack says.
@@ -399,6 +469,7 @@ class PackRefusal(Exception):
 def _finding(fid: str, severity: str, title: str, detail: str,
              why: str, *, confidence: str, pack: str, marker: str,
              evidence: Optional[Evidence] = None,
+             claims: Sequence["Claim"] = (),
              columns: Sequence[str] = (), params: Optional[Dict] = None,
              fix_label: str = "", fix_kind: str = "none") -> Dict[str, Any]:
     """One pack finding, in the engine's own shape.
@@ -434,7 +505,10 @@ def _finding(fid: str, severity: str, title: str, detail: str,
         "confidence": confidence, "params": dict(params or {}),
         "affected_columns": [str(c) for c in columns],
         "source": "pack", "pack": pack, "marker": marker,
-        "evidence": evidence.to_dict(),
+        # `_badge_payload` rather than `to_dict` — where the statement makes
+        # more than one claim, the badge carries each of them and recomputes
+        # `may_preselect` over the set (`GUIDED-064`).
+        "evidence": _badge_payload(evidence, claims),
     }
 
 
@@ -659,6 +733,21 @@ ENERGY_ADJUSTMENT_EVIDENCE = Evidence(
     source=("research/NUTRITION_PACK.md#04 · Energy adjustment — the "
             "methodological signature"))
 
+ENERGY_ADJUSTMENT_CLAIMS = (
+    Claim("adjustment_is_needed",
+          "Every nutrient association is confounded by total intake, so an "
+          "energy adjustment is needed. That is not in dispute.",
+          ENERGY_ADJUSTMENT_EVIDENCE),
+    Claim("which_model",
+          "The residual method is the default form and nutrient density is "
+          "offered beside it; which one to use is a convention rather than a "
+          "fact.",
+          Evidence(
+              status=CONVENTION_STATUS,
+              source=("research/NUTRITION_PACK.md#04 · Energy adjustment — the "
+                      "methodological signature"))),
+)
+
 
 def _compositional(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
     """Columns that sum to a constant. Parts of a whole.
@@ -784,7 +873,7 @@ def _energy_adjustment(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
          "offered beside it, and that choice is a convention rather than a "
          "fact."),
         confidence="high", pack=DIETARY, marker="derived",
-        evidence=ENERGY_ADJUSTMENT_EVIDENCE,
+        evidence=ENERGY_ADJUSTMENT_EVIDENCE, claims=ENERGY_ADJUSTMENT_CLAIMS,
         columns=[col],
         params={"energy_column": col, "columns": [col],
                 "default_form": "residual",
@@ -950,6 +1039,30 @@ COUNTS_EVIDENCE = Evidence(
     status=SETTLED,
     source="research/GENOMICS_PACK.md#08 · Modeling at p >> n")
 
+# `GUIDED-064` RESOLVED HERE, on the instance that filed it. The finding says
+# two things and the field holds them differently, so the badge says two things
+# too — and `may_preselect` is recomputed over both, which is what stops a
+# machine pre-selecting across a disagreement it could not see.
+COUNTS_CLAIMS = (
+    Claim("model_ranking",
+          "At p much greater than n an unregularized fit is degenerate, so "
+          "regularized models rank first and distance-based ones last.",
+          COUNTS_EVIDENCE),
+    Claim("normalization",
+          "CPM, TPM and VST answer different questions and are not "
+          "interchangeable, so no normalization default is asserted.",
+          Evidence(
+              status=DISPUTED,
+              source=("research/GENOMICS_PACK.md#04 · Normalization — no "
+                      "default asserted"),
+              both_sides=(
+                  "CPM, TPM and VST are not interchangeable and the choice "
+                  "depends on the assay and the question. The research asserts "
+                  "no default and neither does this pack; the disagreement is "
+                  "the finding, and declining is recorded rather than absent."
+              ))),
+)
+
 
 def count_matrix(df: pd.DataFrame, minimum: int = 100) -> Optional[Dict[str, Any]]:
     """A block of non-negative integer columns wide enough to be an assay.
@@ -997,7 +1110,7 @@ def _counts_at_p_over_n(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
          "**No normalization default is asserted here**, and that is the "
          "considered position rather than an omission."),
         confidence="high", pack=GENOMICS, marker="derived",
-        evidence=COUNTS_EVIDENCE,
+        evidence=COUNTS_EVIDENCE, claims=COUNTS_CLAIMS,
         columns=cols[:8],
         params={"n_features": len(cols), "p_over_n": round(block["p_over_n"], 2),
                 "depth_spread": round(spread, 2),
@@ -1947,10 +2060,14 @@ _LENS_RESOLVE = {
 }
 
 
-def _lens_attest(what: str) -> Dict[str, str]:
-    return {"id": "attest", "kind": "attest",
-            "label": "My answer is right — the data really is like this",
-            "detail": what}
+def _lens_attest(what: str) -> Dict[str, Any]:
+    # Built through `exits.attest`, which carries the payload key and a
+    # ready-to-merge retry — `GUIDED-072`: this exit rendered as a way through
+    # and told a client nothing about how to take it.
+    from turbotab import exits
+    return exits.attest(
+        "My answer is right — the data really is like this", what,
+        exits.ACKNOWLEDGE_CONTRADICTION)
 
 
 def contradiction(df: pd.DataFrame, lens: Sequence[str]) -> Optional[Dict[str, Any]]:
