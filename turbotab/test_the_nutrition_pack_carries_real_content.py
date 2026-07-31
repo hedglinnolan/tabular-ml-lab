@@ -288,7 +288,17 @@ def test_it_is_refused_from_single_day_and_from_a_naive_mean(basis):
 
 def test_every_refusal_offers_something_it_can_draw():
     """A refusal that offers nothing is indistinguishable from a missing
-    feature, and the user still has a real question."""
+    feature, and the user still has a real question.
+
+    **This test used to assert the offer strings were non-empty**, which is the
+    shape of the claim and not its resolution — `GUIDED-060`. Two of the four
+    offers named a figure that does not exist, and three truthy strings passed
+    every time. The target is RESOLVED now: registered, or declared pending
+    with what it needs and the row blocking it. An id in neither raises.
+    """
+    from turbotab import figures
+    from turbotab import figure_specs                                 # noqa: F401
+
     cases = [
         ("fiber", N.USUAL_INTAKE, "AI"),
         ("calcium", N.USUAL_INTAKE, "RDA"),
@@ -303,6 +313,16 @@ def test_every_refusal_offers_something_it_can_draw():
         assert offer["draw"] and offer["label"] and offer["caption_note"]
         assert offer["forbidden"], "the refusal does not name what it refused"
         assert len(str(caught.value)) > 120, "the refusal states no reason"
+
+        resolved = figures.resolve(offer["draw"])
+        assert resolved["status"] in (figures.REGISTERED_STATUS,
+                                      figures.PENDING_STATUS)
+        if resolved["status"] == figures.PENDING_STATUS:
+            # A pending target is honest only while it says what is missing.
+            assert len(resolved["needs"]) > 60, offer["draw"]
+            assert resolved["blocked_by"].startswith(("GUIDED-", "DRIVE-")), (
+                f"{offer['draw']} is pending and names no ledger row, so "
+                f"nothing tracks it back into existence")
 
 
 def test_a_nutrient_name_is_matched_exactly_and_never_by_substring():

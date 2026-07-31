@@ -1326,6 +1326,115 @@ async def evidence_correlations(project_id: str) -> Dict[str, Any]:
     return out
 
 
+@app.get("/project/{project_id}/figures")
+async def project_figures(project_id: str,
+                          nutrient: Optional[str] = None) -> Dict[str, Any]:
+    """Every figure this project can carry, drawn — and every one it cannot, named.
+
+    **The figure layer's first consumer** (`GUIDED-058`, `DRIVE-009`).
+    `figures.applicable()` and `figures.bundle()` had no callers anywhere; three
+    figures were specifications with passing tests that no user could reach.
+
+    Beside the `evidence/*` family rather than inside it, because those draw one
+    geometry each ad hoc and this resolves WHICH figures a project supports
+    through the pack mechanism — which is `DRIVE-009`'s own `act` field.
+
+    Four lists, and the last two are the ones that would have been easy to drop:
+    `admitted`, `held` (a confirmatory figure whose companion is absent),
+    `unavailable` (it applies and the numbers are not there, carrying the
+    refusal's own words and badge) and `not_drawn` (it does not apply, with the
+    reason). A figure silently missing is indistinguishable from a figure the
+    app does not have.
+    """
+    from turbotab import figure_bundle
+    return figure_bundle.render(_project(project_id), nutrient=nutrient)
+
+
+@app.get("/project/{project_id}/nutrition/prevalence")
+async def nutrition_prevalence(project_id: str, nutrient: str,
+                               basis: str = "usual_intake",
+                               reference_kind: str = "EAR",
+                               stratum: Optional[str] = None) -> Dict[str, Any]:
+    """A prevalence of inadequacy, or the refusal — with what it CAN draw, drawn.
+
+    **`GUIDED-060`, probed from outside.** `prevalence_of_inadequacy` refuses in
+    four cases and each refusal offers a figure instead, because *a refusal that
+    offers nothing is indistinguishable from a missing feature.* Until now the
+    function was reachable only from its own test, and two of the four offers
+    named a figure that does not exist — so the principle was stated and the
+    path that would have tested it did not run.
+
+    A refusal is **200 with a payload**, not a 4xx. It is an answer: the app
+    knows what you asked, it is telling you the question cannot be answered from
+    these data and by whom, and it is drawing the thing that can. An error code
+    would say the request was malformed, and it was not.
+
+    Every offer's `draw` target is resolved through `figures.resolve`, so it
+    comes back as a registered figure or as a declared pending one with what it
+    needs and the ledger row blocking it — never as a bare string nobody
+    follows. Where the target is registered and this project can draw it, the
+    rendered figure comes back in the same response.
+    """
+    from turbotab import figure_bundle, figures, nutrition
+    from turbotab.packs import DIETARY
+
+    project = _project(project_id)
+    if DIETARY not in (project.lens or []):
+        raise HTTPException(
+            409,
+            "A prevalence of inadequacy is a claim about diet, and this "
+            "project's lens does not say the measurements are dietary intake. "
+            "The app does not infer the field from column names — answer the "
+            "lens question and the nutrition pack's reference logic applies.")
+    if basis not in (nutrition.USUAL_INTAKE, nutrition.SINGLE_DAY,
+                     nutrition.NAIVE_MEAN):
+        raise HTTPException(
+            400,
+            f"'{basis}' is not one of {[nutrition.USUAL_INTAKE, nutrition.SINGLE_DAY, nutrition.NAIVE_MEAN]}. "
+            f"Which of the three the distribution is decides whether a "
+            f"prevalence can be computed from it at all, so it is stated "
+            f"rather than assumed.")
+
+    try:
+        return {"refused": False, "nutrient": nutrient,
+                **nutrition.prevalence_of_inadequacy(
+                    nutrient, basis=basis, reference_kind=reference_kind,
+                    stratum=stratum)}
+    except nutrition.PrevalenceRefusal as refusal:
+        payload = refusal.to_dict()
+        payload["nutrient"] = nutrient
+        try:
+            payload["offer"] = figures.resolve_offer(refusal.offer)
+        except figures.FigureError as exc:
+            # THE FAILURE `GUIDED-060` NAMED, if it ever returns: an offer whose
+            # target resolves to nothing. Surfaced rather than swallowed —
+            # promising a picture nobody can draw is worse than offering
+            # nothing, because it reads as a feature.
+            devchecks.swallowed(
+                "api.nutrition_prevalence::offer", exc,
+                "the refusal offered a figure that is neither registered nor "
+                "declared pending, and the user would have been shown a "
+                "target nothing can draw")
+            payload["offer"] = {**refusal.offer, "unresolvable": str(exc)}
+            return payload
+
+        resolved = payload["offer"]["resolved"]
+        if resolved["status"] != figures.REGISTERED_STATUS:
+            return payload
+        # The figure is built. Draw it, so the refusal arrives with the picture
+        # rather than with the name of one.
+        drawn = figure_bundle.render(project)
+        for row in drawn["admitted"] + drawn["held"]:
+            if row["id"] == resolved["id"]:
+                payload["figure"] = row
+                return payload
+        for row in drawn["unavailable"] + drawn["not_drawn"]:
+            if row["id"] == resolved["id"]:
+                payload["figure_unavailable"] = row
+                return payload
+        return payload                                     # pragma: no cover
+
+
 @app.get("/project/{project_id}/evidence/missingness")
 async def evidence_missingness(project_id: str) -> Dict[str, Any]:
     """Dtype-routed missingness decisions, each naming its own column.

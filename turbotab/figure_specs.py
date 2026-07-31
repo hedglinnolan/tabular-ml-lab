@@ -40,7 +40,8 @@ import numpy as np
 import pandas as pd
 
 from turbotab.figures import (CONFIRMATORY, EXPLORATORY, Annotation,
-                              ChecklistItem, FigureSpec, register)
+                              ChecklistItem, FigureSpec, Pending, register,
+                              register_pending)
 from turbotab.packs import Evidence, SETTLED
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -305,9 +306,15 @@ def pca_scores_payload(df: pd.DataFrame, *, group_col: Optional[str] = None,
                                    else [None] * len(df))
     qc = [bool(v) for v in (qc_mask if qc_mask is not None
                             else [False] * len(df))]
+    # `"ungrouped"` RATHER THAN `"None"`, and it is not cosmetic. The legend
+    # item is *"n per group"*, and `None 600` beside it reads as a group whose
+    # name failed to render. There is no group; saying so is the recorded-
+    # absence rule at the smallest possible scale. Found the first time this
+    # payload reached a user, which was `GUIDED-058`'s whole point.
     counts: Dict[str, int] = {}
     for g in groups:
-        counts[str(g)] = counts.get(str(g), 0) + 1
+        key = "ungrouped" if g is None else str(g)
+        counts[key] = counts.get(key, 0) + 1
 
     return {
         "figure": "pca_scores",
@@ -587,7 +594,14 @@ SHRINKAGE = register(FigureSpec(
           f"why a percentile or a prevalence computed from one day, or from a "
           f"mean of days, is overstated in both tails. The third distribution "
           f"is MODELED and its individual values are not measured usual "
-          f"intakes."),
+          f"intakes."
+        # THE METHOD IS NAMED WHERE IT IS KNOWN. "Modeled" covers the NCI
+        # method, ISU, MSM and SPADE, which are not interchangeable, and a
+        # caption that says only "modeled" lets a reader assume whichever one
+        # they know. `research/NUTRITION_PACK.md` §03's own anti-pattern list
+        # is built out of claims that were true of some method and not of the
+        # one that ran.
+        + (f" The model is {p['method']}." if p.get("method") else "")),
     companions=(),
     evidence=SHRINKAGE_EVIDENCE,
     # PROMOTABLE by the re-executability rule: the variance decomposition is a
@@ -603,3 +617,57 @@ SHRINKAGE = register(FigureSpec(
         "values computed here on the whole table."),
     compute=shrinkage_payload,
 ))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Specified and not built — the catalogue's honest half
+#
+# `GUIDED-060`. The nutrition pack's refusals offer what the app CAN draw
+# instead, and two of the four named a figure that did not exist. The offer was
+# not wrong to name it — `research/NUTRITION_PACK.md` §07 figure E specifies
+# both, and `DOMAIN_SCIENCE.md` §03b lists intake-vs-DRI with the EAR region
+# shaded in the signature set — so the target is planned rather than invented.
+# What was missing is that nothing resolved it.
+#
+# **The instruction was explicitly not to build them**, and building them would
+# not have been possible honestly anyway: every one needs a Dietary Reference
+# Intake table, no DRI table ships anywhere in the repository, and
+# `DOMAIN_SCIENCE.md` §04 says they must ship as data read from NASEM rather
+# than as a dict of remembered numbers. A wrong EAR does not look wrong.
+# `GUIDED-067` carries that.
+# ─────────────────────────────────────────────────────────────────────────────
+
+DISTRIBUTION_AGAINST_AI = register_pending(Pending(
+    id="distribution_against_ai",
+    title="Usual intake against the Adequate Intake",
+    specified_in="research/NUTRITION_PACK.md#07 · EDA and presentation",
+    needs=(
+        "the Adequate Intake for the participant's age band, sex, pregnancy "
+        "and lactation stratum. No Dietary Reference Intake table ships in "
+        "this repository yet, and the AI cannot be inferred from your data — "
+        "it is a published value or it is nothing."),
+    blocked_by="GUIDED-067"))
+
+DISTRIBUTION_AGAINST_EAR_AND_RDA = register_pending(Pending(
+    id="distribution_against_ear_and_rda",
+    title="Usual intake against the EAR and the RDA",
+    specified_in="research/NUTRITION_PACK.md#07 · EDA and presentation",
+    needs=(
+        "the Estimated Average Requirement and the RDA for the participant's "
+        "age band, sex, pregnancy and lactation stratum, which is the same "
+        "missing Dietary Reference Intake table. The shaded area below the EAR "
+        "IS the prevalence of inadequacy, so drawing it against a guessed cut "
+        "point would assert the number this pack refuses to compute."),
+    blocked_by="GUIDED-067"))
+
+PER_NUTRIENT_DISTRIBUTION = register_pending(Pending(
+    id="per_nutrient_distribution",
+    title="The observed distribution of one nutrient",
+    specified_in="research/NUTRITION_PACK.md#07 · EDA and presentation",
+    needs=(
+        "nothing this repository lacks — histogram and density, raw and log₁₀ "
+        "side by side, with a marker saying whether the plotted variable is a "
+        "single day, a mean of days or modeled usual intake. It is figure A of "
+        "§07 and is simply not built, which is a different sentence from the "
+        "two above and is why the record says which."),
+    blocked_by="GUIDED-058"))

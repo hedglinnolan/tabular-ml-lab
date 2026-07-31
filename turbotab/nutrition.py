@@ -425,6 +425,197 @@ def design_findings(df: pd.DataFrame) -> List[Dict[str, Any]]:
     return out
 
 
+# ── §03 · the variance decomposition the shrinkage plot is drawn from ────────
+
+# Named for the decomposition rather than for the figure, and separate from
+# `figure_specs.SHRINKAGE_EVIDENCE` on purpose: that one badges the figure's
+# publication-grade CHECKLIST, this one badges the arithmetic underneath it.
+# Two claims that happen to share a section.
+USUAL_INTAKE_EVIDENCE = Evidence(
+    status=SETTLED,
+    source=("research/NUTRITION_PACK.md#03 · ★ Repeated recalls and "
+            "measurement error"))
+
+# WHAT THIS IS AND WHAT IT IS NOT, in the payload and in the caption, because
+# the difference is a documented failure rather than a nuance.
+#
+# §03 specifies the NCI method — Box–Cox toward normality, a linear mixed model
+# with a person-level random effect and covariates, back-transformed by Monte
+# Carlo integration, implemented in MIXTRAN/DISTRIB — or ISU/ISUF, MSM, SPADE.
+# None of those is here and none of them is claimed. What is here is the
+# one-way random-effects decomposition §03 states in full, with the classical
+# shrinkage that follows from it:
+#
+#     lambda_i = sigma_b^2 / (sigma_b^2 + sigma_w^2 / n_i)
+#     usual_i  = grand_mean + lambda_i * (mean_i - grand_mean)
+#
+# That is enough to show the narrowing, which is what the figure argues, and it
+# is not enough to hand anyone a person's usual intake — §03 is explicit that
+# even the NCI method's individual output must not go into a Table 1 or a
+# per-person deliverable. So the method travels with the numbers.
+SHRINKAGE_METHOD = (
+    "variance-component shrinkage of each person's mean toward the grand mean, "
+    "not the NCI method")
+
+
+@dataclass(frozen=True)
+class VarianceComponents:
+    """σ²_w, σ²_b and what follows from them, for one nutrient.
+
+    `lambda_at(n)` is the attenuation factor for a mean of `n` days — the
+    quantity §03 says a reviewer in this field asks for, and the one that says
+    how much of a diet–outcome slope survives the measurement error.
+    """
+    within: float
+    between: float
+    n_people: int
+    n_rows: int
+    days_median: float
+
+    @property
+    def ratio(self) -> Optional[float]:
+        """σ²_w : σ²_b. `None` where σ²_b is zero — a ratio to nothing."""
+        return None if self.between <= 0 else self.within / self.between
+
+    @property
+    def icc(self) -> Optional[float]:
+        total = self.within + self.between
+        return None if total <= 0 else self.between / total
+
+    def lambda_at(self, n_days: float) -> Optional[float]:
+        if self.between <= 0 or n_days <= 0:
+            return None
+        return float(self.between / (self.between + self.within / n_days))
+
+
+class UsualIntakeRefusal(PackRefusal):
+    """A usual-intake distribution the data cannot support.
+
+    §03, verbatim on the case that matters: *"With one recall you cannot do
+    that separation from your own data at all."* Returning a third density
+    anyway would be the figure making its argument with fabricated evidence —
+    and the argument is the whole figure.
+    """
+
+
+def variance_components(df: pd.DataFrame, *, person_col: str,
+                        value_col: str) -> Optional[VarianceComponents]:
+    """One-way random-effects decomposition of one nutrient across a person's days.
+
+    `None` — never zeros — where the design cannot support it. σ²_w is
+    estimated from the spread WITHIN a person, so a table with one row per
+    person has nothing to estimate it from, and §03 says to report that rather
+    than to substitute an external ratio silently.
+
+    The unbalanced case uses the standard `n0` rather than the mean group size,
+    because NHANES-shaped data has people with one recall beside people with
+    two and treating n0 as the average would bias σ²_b upward.
+    """
+    if person_col not in df.columns or value_col not in df.columns:
+        return None
+    values = pd.to_numeric(df[value_col], errors="coerce")
+    frame = pd.DataFrame({"person": df[person_col], "value": values}).dropna()
+    if frame.empty:
+        return None
+    sizes = frame.groupby("person")["value"].size()
+    k, total = int(len(sizes)), int(len(frame))
+    if k < 2 or total <= k:
+        # Every person has one row: within-person variance is not identifiable.
+        return None
+
+    grand = float(frame["value"].mean())
+    means = frame.groupby("person")["value"].mean()
+    ss_within = float(((frame["value"]
+                        - frame["person"].map(means)) ** 2).sum())
+    ss_between = float((sizes * (means - grand) ** 2).sum())
+    ms_within = ss_within / (total - k)
+    ms_between = ss_between / (k - 1)
+    n0 = (total - float((sizes ** 2).sum()) / total) / (k - 1)
+    if n0 <= 0:                                            # pragma: no cover
+        return None
+    # CLAMPED AT ZERO AND NOT BELOW. A negative method-of-moments estimate of
+    # σ²_b means the between-person signal is smaller than the noise; it does
+    # not mean the variance is negative, and reporting it as such would be a
+    # number nobody can read.
+    between = max((ms_between - ms_within) / n0, 0.0)
+    return VarianceComponents(
+        within=float(ms_within), between=float(between), n_people=k,
+        n_rows=total, days_median=float(sizes.median()))
+
+
+def usual_intake_series(df: pd.DataFrame, *, person_col: str,
+                        value_col: str) -> Dict[str, Any]:
+    """The three densities the shrinkage plot overlays, or a refusal.
+
+    Raises `UsualIntakeRefusal` rather than returning two series or a flat
+    third one: `shrinkage_payload` already refuses a missing series, and a
+    third density that is a spike at the grand mean would satisfy that check
+    while making the figure's argument out of nothing.
+    """
+    components = variance_components(df, person_col=person_col,
+                                     value_col=value_col)
+    if components is None:
+        raise UsualIntakeRefusal(
+            f"Separating day-to-day variation from between-person difference "
+            f"needs at least two days for some of your participants, and "
+            f"`{value_col}` has one row per person. The within-person variance "
+            f"is not identifiable from these data at all — not by this app and "
+            f"not by any method without an external variance ratio, which is "
+            f"an assumption rather than a measurement and would have to be "
+            f"labeled as one.",
+            evidence=USUAL_INTAKE_EVIDENCE,
+            offer={"draw": "per_nutrient_distribution",
+                   "label": f"The observed distribution of {value_col}",
+                   "caption_note": (
+                       "One day per person, labeled as one day. No usual-"
+                       "intake claim is made from it and no percentile of it "
+                       "is a percentile of usual intake."),
+                   "forbidden": "usual_intake_from_one_day"})
+
+    if components.between <= 0:
+        raise UsualIntakeRefusal(
+            f"Across {components.n_people:,} people, the variation between "
+            f"one person's days is as large as the variation between people "
+            f"for `{value_col}`, so the between-person variance estimates to "
+            f"zero. Every modeled usual intake would be the same number, and a "
+            f"density drawn from it would be a spike that says the population "
+            f"is identical rather than that the data cannot see the "
+            f"difference.",
+            evidence=USUAL_INTAKE_EVIDENCE,
+            offer={"draw": "per_nutrient_distribution",
+                   "label": f"The observed distribution of {value_col}",
+                   "caption_note": (
+                       "Drawn from the observed days, with the variance "
+                       "decomposition reported beside it so the reason the "
+                       "third density is absent is visible."),
+                   "forbidden": "usual_intake_with_no_between_variance"})
+
+    values = pd.to_numeric(df[value_col], errors="coerce")
+    frame = pd.DataFrame({"person": df[person_col], "value": values}).dropna()
+    grand = float(frame["value"].mean())
+    means = frame.groupby("person")["value"].mean()
+    sizes = frame.groupby("person")["value"].size()
+
+    # THE FIRST DAY, not a random one. `single_day` has to be reproducible from
+    # the table, or the figure is not the same figure twice.
+    single = frame.groupby("person")["value"].first()
+    shrunk = {}
+    for person, mean in means.items():
+        lam = components.lambda_at(float(sizes[person]))
+        shrunk[person] = grand + (lam or 0.0) * (float(mean) - grand)
+
+    return {
+        "series": {
+            "single_day": [float(v) for v in single.to_numpy()],
+            "mean_of_days": [float(v) for v in means.to_numpy()],
+            "usual_intake": [float(shrunk[p]) for p in means.index],
+        },
+        "components": components,
+        "n_days": float(sizes.median()),
+        "method": SHRINKAGE_METHOD,
+    }
+
+
 # ── §07 figure E · the refusal ───────────────────────────────────────────────
 
 PREVALENCE_EVIDENCE = Evidence(

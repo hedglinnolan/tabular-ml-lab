@@ -225,6 +225,95 @@ def register(spec: FigureSpec) -> FigureSpec:
     return spec
 
 
+@dataclass(frozen=True)
+class Pending:
+    """A figure that is SPECIFIED and not built, in a form something resolves.
+
+    **`GUIDED-060`.** Two of the four prevalence refusals offered a figure that
+    did not exist — `distribution_against_ai` and
+    `distribution_against_ear_and_rda` — and the AI case is the flagship, the
+    reason the nutrition pack was built first. *Every refusal offers what it can
+    draw* is the stated principle, and its reason is that a refusal offering
+    nothing is indistinguishable from a missing feature. **An offer naming an
+    unbuilt figure is that same failure arriving one layer later**, at the worst
+    possible moment, and the test that was supposed to catch it asserted the
+    offer strings were non-empty.
+
+    This project already resolves two kinds of reference — a prior's source
+    through `evidence.py` and a `FIXED` row's test through `ledger.py check`.
+    An offer's draw target is the third, and it is one because a pending figure
+    is a first-class record rather than a string nobody follows:
+
+    * `specified_in` is a research citation in `Evidence`'s own form, so the
+      same resolver checks it.
+    * `needs` is what has to exist first, in one sentence a user can read.
+    * `blocked_by` is the ledger row, so the record and the backlog agree.
+
+    A pending entry is NOT a promise of a date. It is the difference between
+    *"the app will not draw this"* and *"the app cannot draw this yet, here is
+    what is missing"*, and only the second is honest when the second is true.
+    """
+    id: str
+    title: str
+    specified_in: str
+    needs: str
+    blocked_by: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"id": self.id, "title": self.title, "status": PENDING_STATUS,
+                "specified_in": self.specified_in, "needs": self.needs,
+                "blocked_by": self.blocked_by}
+
+
+REGISTERED_STATUS = "registered"
+PENDING_STATUS = "pending"
+
+PENDING: Dict[str, Pending] = {}
+
+
+def register_pending(entry: Pending) -> Pending:
+    if entry.id in REGISTRY:
+        raise FigureError(
+            f"{entry.id} is registered and is not pending. A figure cannot be "
+            f"both built and unbuilt, and the offer that names it would "
+            f"resolve to two different answers.")
+    if entry.id in PENDING:                                # pragma: no cover
+        raise FigureError(f"{entry.id} is already pending.")
+    PENDING[entry.id] = entry
+    return entry
+
+
+def resolve(figure_id: str) -> Dict[str, Any]:
+    """What an offer's `draw` target actually is. Raises where it is neither.
+
+    **The resolution `GUIDED-060` asked for.** An id in neither table is not a
+    pending figure — it is a typo or a figure somebody imagined, and a refusal
+    offering one is worse than a refusal offering nothing, because it reads as
+    a feature.
+    """
+    spec = REGISTRY.get(figure_id)
+    if spec is not None:
+        return {"id": figure_id, "title": spec.title,
+                "status": REGISTERED_STATUS, "tier": spec.tier}
+    entry = PENDING.get(figure_id)
+    if entry is not None:
+        return entry.to_dict()
+    raise FigureError(
+        f"{figure_id!r} is neither a registered figure nor a declared pending "
+        f"one. An offer naming it would promise the user a picture nobody can "
+        f"draw, which is the failure the offer exists to prevent arriving one "
+        f"layer later.")
+
+
+def resolve_offer(offer: Dict[str, Any]) -> Dict[str, Any]:
+    """An offer with its draw target resolved, ready to be rendered or refused."""
+    resolved = resolve(str((offer or {}).get("draw") or ""))
+    out = dict(offer or {})
+    out["resolved"] = resolved
+    out["pending"] = resolved["status"] == PENDING_STATUS
+    return out
+
+
 def applicable(state: Dict[str, Any]) -> List[FigureSpec]:
     """Every figure that has something to say about this project."""
     return [s for s in REGISTRY.values() if _safely(s.when_applicable, state)]
@@ -235,6 +324,71 @@ def _safely(fn: Callable[[Dict[str, Any]], bool], state: Dict[str, Any]) -> bool
         return bool(fn(state))
     except Exception:                                      # pragma: no cover
         return False
+
+
+NOT_ESTIMABLE = "not estimable"
+
+_ABSENT = (
+    "The figure does not carry a value for this. A number is not shown because "
+    "there is not one, rather than because it failed to render.")
+
+
+def _render_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, int):
+        return f"{value:,}"
+    if isinstance(value, float):
+        return f"{value:.3f}"
+    if isinstance(value, dict):
+        return ", ".join(f"{k} {v:,}" if isinstance(v, int) else f"{k} {v}"
+                         for k, v in value.items())
+    if isinstance(value, (list, tuple)):
+        return ", ".join(f"{v:.1%}" if isinstance(v, float) else str(v)
+                         for v in value)
+    return str(value)
+
+
+def annotation_rows(spec: FigureSpec,
+                    payload: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Every annotation the spec requires, rendered — the ABSENCE included.
+
+    **A missing number renders as `not estimable` with its reason, never as a
+    blank cell.** `calibration_render` discovered this and owned it alone: the
+    weak-calibration fit is undefined for one outcome class, constant
+    predictions or complete separation — which is what a very good model on a
+    small sample produces — and a blank beside five real numbers reads as a
+    rendering fault rather than as the app declining to state a quantity it does
+    not have.
+
+    That is the governing rule's *silent* branch made visible, and it belongs to
+    every figure rather than to the one that met it first. A figure that has
+    computed its own rows keeps them: `payload["annotation_box"]` wins, because
+    a figure knows why ITS number is missing better than this does.
+
+    The checklist item still fails when a number is absent, and it should. The
+    figure is not publication-grade without it. Failing the checklist and
+    rendering honestly are different jobs.
+    """
+    computed = {row.get("key"): row
+                for row in (payload.get("annotation_box") or [])}
+    reasons = payload.get("not_estimable_because") or {}
+    rows: List[Dict[str, str]] = []
+    for annotation in spec.annotations:
+        if annotation.key in computed:
+            rows.append(dict(computed[annotation.key]))
+            continue
+        value = payload.get(annotation.key)
+        if value is None or value == [] or value == {}:
+            rows.append({"key": annotation.key, "label": annotation.label,
+                         "value": NOT_ESTIMABLE,
+                         "why": reasons.get(annotation.key) or _ABSENT,
+                         "required": annotation.required})
+        else:
+            rows.append({"key": annotation.key, "label": annotation.label,
+                         "value": _render_value(value), "why": "",
+                         "required": annotation.required})
+    return rows
 
 
 def bundle(rendered: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
@@ -255,9 +409,17 @@ def bundle(rendered: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
         ok, missing = spec.admissible(present)
         row = {"id": figure_id, "title": spec.title, "tier": spec.tier,
                "checklist": spec.score(payload),
+               # THE ANNOTATION BOX TRAVELS WITH THE FIGURE. The research's
+               # whole finding about this layer is that the publication-grade
+               # delta is annotation rather than geometry, so a bundle carrying
+               # the caption and not the numbers would ship the half that is
+               # easy.
+               "annotations": annotation_rows(spec, payload),
                "caption": spec.caption(payload),
                "promotable": spec.promotable,
                "promotable_because": spec.promotable_because}
+        if spec.evidence is not None:
+            row.update(spec.evidence.to_dict())
         if ok:
             admitted.append(row)
         else:

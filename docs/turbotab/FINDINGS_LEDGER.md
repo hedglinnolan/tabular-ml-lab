@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**219 of 630 closed.**
+**220 of 633 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 363 |
+| `OPEN` | 365 |
 | `PARTIAL` | 48 |
-| `FIXED` | 216 |
+| `FIXED` | 217 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 363
+## OPEN — 365
 
 
 ### Application state / lockbox — 66
@@ -417,7 +417,7 @@ Nothing is closed without a regression test named after it.
 | `MODELS-023` | invariant | The NN's best-epoch weights are snapshotted by CLONE, not by reference, so later optimizer steps cannot mutate the saved state. | `models/nn_whuber.py:430 and 529 — `best_model_state = {k: v.detach().clone() for k, v in…` | The invariant holds at both snapshot sites and nothing guards it, so it stays OPEN. state_dict() returns references to live tensors, so a bare copy would let subsequent optimizer… |
 | `MODELS-024` | invariant | Cross-validation is skipped for the neural network because its sklearn shim cannot retrain. | `pages/06:1529 `if use_cv and model_name != 'nn'` with the else-branch at 1565 explaining it to the user…` | Unchanged at HEAD: four separate guards, all keyed on one literal model key. The skip itself is correct and is explained to the user, which is good - the shim cannot retrain, so… |
 
-### Guided-door drive feedback — 13
+### Guided-door drive feedback — 15
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -425,7 +425,8 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-014` | high | DESIGN QUESTION for the product owner: does the exploratory labeling on an undetermined seal read as honest, or as the app giving up? | `docs/turbotab/COPY_DECK.md, 'Data & Target - what the user reads after answering' and 'what the user reads…` | NOT SELF-ASSESSED, deliberately. I wrote this copy at L15; asking the author whether their own prose reads well is the finder-judge problem in a different costume, and this… |
 | `DRIVE-011` | high | The Features selection step has no interface at all - choose_selection is served, set_selection is never called, and the method picker does not exist | `ml/router.py choose_selection at the features step; turbotab/web/index.html had no set_selection` | Filed at L23 rather than fixed, because a method picker with an explainability-cost column is a card and not a wiring change, and this loop's mandate was the invisible-question… |
 | `GUIDED-058` | high | Every surface L27 built is unreachable from the app: turbotab/nutrition.py and turbotab/figure_specs.py are imported only by their own tests, and figures.applicable() has no callers at all | `turbotab/nutrition.py; turbotab/figure_specs.py; turbotab/figures.py:228` | CORRECTED AFTER FILING - the first version of this note said the pack path was closed to nutrition.py in a way that overstated the work. packs.findings(df, lens) IS LIVE, at… |
-| `GUIDED-060` | high | Two of the four prevalence refusals offer a figure that does not exist, and the test that proves every refusal offers what it can draw asserts only that the strings are non-empty | `turbotab/nutrition.py:499,515; turbotab/test_the_nutrition_pack_carries_real_content.py:303` | The registry holds three figure ids - calibration, pca_scores, shrinkage. The refusals name three draw targets - distribution_against_ai, distribution_against_ear_and_rda… |
+| `GUIDED-065` | high | The calibration plot cannot be reached from any project because TurboTab has no training step, so the clinical pack's flagship figure has a renderer and no data path | `turbotab/figure_specs.py CALIBRATION when_applicable; turbotab/figure_bundle.py state(); turbotab/api.py has…` | Found at L28-B while writing the figure state dict. CALIBRATION.when_applicable reads has_predictions, and NOTHING in the project model can ever set it true: AnalysisProject holds… |
+| `GUIDED-067` | high | No Dietary Reference Intake table ships anywhere in the repository, so every figure and every prevalence claim that needs an EAR, an RDA, an AI or a UL is unbuildable | `docs/turbotab/research/NUTRITION_PACK.md section 07 figure E; docs/turbotab/DOMAIN_SCIENCE.md section 04…` | Filed at L28-D as the blocker the two pending figures name. research/NUTRITION_PACK.md section 07 figure E specifies vertical lines at the EAR, RDA or AI and the UL for the… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
@@ -434,6 +435,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-063` | medium | Two advisories assemble the evidence badge as a dict literal instead of an Evidence, so nothing validates their form and one of them is outside every gate | `turbotab/purpose.py:171 indicator_blocker; ml/imbalance_advice.py:62 EVIDENCE` | Found while widening evidence.py at L28-A. purpose.py's indicator_blocker returns evidence_status='SETTLED' and a source string; ml/imbalance_advice.py declares an EVIDENCE dict… |
 | `GUIDED-064` | medium | A finding carries one evidence badge and can make two claims the field holds at different statuses, so the second claim travels under the first's badge | `turbotab/packs.py _counts_at_p_over_n; turbotab/packs.py _energy_adjustment` | Found while badging every _finding call site at L28-A. pack::genomics::counts_p_over_n asserts two things in one detail string. Model ranking at p >> n is SETTLED and is what… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
+| `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 
 ### Verified against main — 11
 
@@ -568,7 +570,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 216
+## FIXED — 217
 
 
 ### Multi-file / JSON import — 69
@@ -645,7 +647,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-136` | medium | coerce_numeric's methods-section description omits how many values it blanked (up to 20% of a column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 36'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 36 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-147` | medium | Duplicated key column name crashes normalize_key and therefore diagnose_join / execute_join / repair_keys (AttributeError), and silently blanks find_key_candidates | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 47'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 47 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 
-### Guided-door drive feedback — 44
+### Guided-door drive feedback — 45
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -685,6 +687,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-050` | high | The irrelevant-question ceiling bound on a metric that had stopped measuring irrelevance and started measuring how much of the constitution is explicit | `docs/turbotab/VALUE_CHECK_PREREG.md Amendment 1; tests/integration/test_routing_value_check.py` | **test:** `tests/integration/test_routing_value_check.py::test_the_amendment_changed_no_verdict` — The prereg defines an irrelevant question as one absent from the decision… |
 | `GUIDED-054` | high | weak_calibration returned its last IRLS iterate when the fit had not converged, which under separation is a divergent coordinate reported as a calibration slope | `ml/calibration.py:121` | **test:** `turbotab/test_the_calibration_fit_reports_no_number_rather_than_a_wrong_one.py::test_separable_data_reports_no_fit_rather_than_a_divergent_iterate` — NOT A SLOW FIT… |
 | `GUIDED-059` | high | The evidence badge reaches pack priors only, so every finding and every refusal the nutrition pack emits ships unbadged, and the gate that is supposed to enforce it cannot see the file they live in | `turbotab/packs.py:209 _finding; docs/turbotab/tools/evidence.py; turbotab/nutrition.py:64,268` | **test:** `test_the_badge_reaches_the_finding_and_the_refusal` — FIXED at L28-A. Object scope: _finding() now takes a required keyword-only evidence=Evidence and refuses without… |
+| `GUIDED-060` | high | Two of the four prevalence refusals offer a figure that does not exist, and the test that proves every refusal offers what it can draw asserts only that the strings are non-empty | `turbotab/nutrition.py:499,515; turbotab/test_the_nutrition_pack_carries_real_content.py:303` | **test:** `test_a_refusal_offers_a_figure_something_can_resolve` — FIXED at L28-D. THE TWO FIGURES WERE NOT BUILT and could not have been honestly: each needs a Dietary Reference… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |

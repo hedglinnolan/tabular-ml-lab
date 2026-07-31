@@ -8003,10 +8003,10 @@
   "detail": "",
   "ev": "turbotab/nutrition.py:499,515; turbotab/test_the_nutrition_pack_carries_real_content.py:303",
   "act": "",
-  "status": "OPEN",
-  "note": "The registry holds three figure ids - calibration, pca_scores, shrinkage. The refusals name three draw targets - distribution_against_ai, distribution_against_ear_and_rda, shrinkage - and ONLY THE LAST RESOLVES. The AI case is the flagship, the reason nutrition went first, and it offers a renderer that does not exist. EVERY REFUSAL OFFERS WHAT IT CAN DRAW is the stated principle and the reason is that a refusal offering nothing is indistinguishable from a missing feature; an offer naming an unbuilt figure is that same failure arriving one layer later, at the worst possible moment. test_every_refusal_offers_something_it_can_draw at line 303 asserts offer['draw'] and offer['label'] and offer['caption_note'] are truthy - the shape of the claim, not its resolution. SAME CLASS AS GUIDED-059: this project resolves prior sources (evidence.py) and test names (ledger.py check), and L27 introduced two new kinds of reference - a finding's evidence and an offer's draw target - and nothing resolves either. THE FIX IS NOT NECESSARILY TO BUILD THE FIGURES: an offer may name a pending target, but then something must record that it is pending. DOMAIN_SCIENCE.md section 03b already lists intake-vs-DRI with the EAR region shaded as a signature figure, so the target is planned rather than invented.",
+  "status": "FIXED",
+  "note": "FIXED at L28-D. THE TWO FIGURES WERE NOT BUILT and could not have been honestly: each needs a Dietary Reference Intake table, none ships in this repository, and DOMAIN_SCIENCE.md section 04 says they must be read from NASEM rather than remembered because a wrong EAR does not look wrong. Filed as GUIDED-067. What was built is the RESOLUTION the finding asked for. turbotab/figures.py gains a Pending record - id, title, specified_in as a research citation in Evidence's own form, needs in one sentence, and blocked_by naming a ledger row - plus resolve() and resolve_offer(), which return a registered figure or a declared pending one and RAISE on an id in neither. figure_specs.py declares three pending entries: distribution_against_ai and distribution_against_ear_and_rda blocked by GUIDED-067, and per_nutrient_distribution which needs nothing this repository lacks and is simply not built, which is a different sentence and is why the record says which. test_every_refusal_offers_something_it_can_draw now RESOLVES the target instead of asserting three strings are truthy, and additionally requires a pending entry to state what it needs and to name a row that exists in findings.json. THE PATH IS PROVED FROM OUTSIDE: GET /project/{id}/nutrition/prevalence returns the refusal as a 200 payload - it is an answer, not a malformed request - carrying its reason, its SETTLED badge, the resolved offer, and where the offer resolves to a registered figure the project can draw, the RENDERED FIGURE. A dietary-lens project asking for a prevalence from a single day's intake gets the refusal and a shrinkage plot with six annotations and a passing checklist. VERIFIED BY REVERT: removing the two pending registrations fails four tests, including the one this finding was filed against.",
   "verified_against": "",
-  "test": "",
+  "test": "test_a_refusal_offers_a_figure_something_can_resolve",
   "verified_ev": "turbotab/nutrition.py:499,515; turbotab/test_the_nutrition_pack_carries_real_content.py:303"
  },
  {
@@ -8078,5 +8078,47 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "turbotab/packs.py _counts_at_p_over_n; turbotab/packs.py _energy_adjustment"
+ },
+ {
+  "id": "GUIDED-065",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The calibration plot cannot be reached from any project because TurboTab has no training step, so the clinical pack's flagship figure has a renderer and no data path",
+  "detail": "",
+  "ev": "turbotab/figure_specs.py CALIBRATION when_applicable; turbotab/figure_bundle.py state(); turbotab/api.py has no train endpoint",
+  "act": "Either record a column of predicted risks as an answer to a question - external validation of a published risk score is a real and common shape - or build the training step. Until one exists, the endpoint names the gap.",
+  "status": "OPEN",
+  "note": "Found at L28-B while writing the figure state dict. CALIBRATION.when_applicable reads has_predictions, and NOTHING in the project model can ever set it true: AnalysisProject holds no fitted model, no predictions and no metrics, api.py has no train or predict endpoint, and the one test that reaches a fitted model - test_a_categorical_table_reaches_a_fitted_model - builds and fits the pipeline inside the test rather than through the app. So has_predictions is hard-coded False in figure_bundle.state with its reason attached, and every bundle names calibration in not_drawn saying it is a gap in the app rather than a property of the user's data. THIS IS THE SAME CLASS AS GUIDED-058 ONE LAYER IN: the figure layer now has a consumer and calibration still has no path to it, so two of three figures are reachable and the one the research calls the single most important figure in a clinical prediction paper is not. TWO HONEST ROUTES and they are different products. Recording a predicted-risk column is external validation of a published score, needs no training step, and needs a question the app does not have. Building the training step is L10-L12. Neither is a figure-layer change, which is why this is filed rather than fixed here.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/figure_specs.py CALIBRATION when_applicable; turbotab/figure_bundle.py state(); turbotab/api.py has no train endpoint"
+ },
+ {
+  "id": "GUIDED-066",
+  "area": "GUIDED",
+  "sev": "low",
+  "item": "The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement",
+  "detail": "",
+  "ev": "turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid",
+  "act": "Scope the item to the pack that asks for it, or let a checklist item report not-applicable as a third state beside pass and fail.",
+  "status": "OPEN",
+  "note": "Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks n_qc > 0. On dietary_recalls.csv the item fails and its because text says the tight central cluster IS part of the result - which is true of a metabolomics run and says nothing about a table of 24-hour recalls. DOMAIN_PACKS section 08 is the frame: a pack changes what is drawn, and a checklist item is part of what is drawn. A publication-grade requirement borrowed from one field and scored against every table is the same overreach as a pack firing on non-matching data, one layer out from guard 2. LOW because the item's failure is visible and its reason is stated, so nothing false is asserted - what is wrong is that a correct figure can never score full marks outside one domain. NOTE THE ENUM PRESSURE: fixing it by adding a not-applicable state to ChecklistItem is a third value on one example, which is GUIDED-056's exact shape and should wait for a second.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid"
+ },
+ {
+  "id": "GUIDED-067",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "No Dietary Reference Intake table ships anywhere in the repository, so every figure and every prevalence claim that needs an EAR, an RDA, an AI or a UL is unbuildable",
+  "detail": "",
+  "ev": "docs/turbotab/research/NUTRITION_PACK.md section 07 figure E; docs/turbotab/DOMAIN_SCIENCE.md section 04; turbotab/figures.py PENDING",
+  "act": "Ship the DRI tables as DATA read from the NASEM source, joined on age band, sex, pregnancy and lactation status - never as prose and never as a hard-coded dict of remembered numbers.",
+  "status": "OPEN",
+  "note": "Filed at L28-D as the blocker the two pending figures name. research/NUTRITION_PACK.md section 07 figure E specifies vertical lines at the EAR, RDA or AI and the UL for the relevant stratum, with the area below the EAR shaded and labeled with the prevalence and its CI. Nothing in the repository holds any of those numbers. THE CONSTRAINT IS THE INTERESTING PART and DOMAIN_SCIENCE.md section 04 states it: the DRI tables must ship as data read from NASEM, not as prose - a table of remembered values is precisely the [verify-at-build] failure the evidence gate exists to prevent, at the largest scale it could occur, because a wrong EAR does not look wrong. Reference intakes join on age band, sex, pregnancy AND lactation status, and pregnancy and lactation have separate DRIs, so the join key is four columns and a table keyed on two would be silently wrong for the strata that matter most. This is D4 on the roadmap. Until it lands, turbotab/figures.py PENDING carries distribution_against_ai and distribution_against_ear_and_rda with this row as blocked_by, so an offer naming them resolves to a record rather than to a string.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "docs/turbotab/research/NUTRITION_PACK.md section 07 figure E; docs/turbotab/DOMAIN_SCIENCE.md section 04; turbotab/figures.py PENDING"
  }
 ]

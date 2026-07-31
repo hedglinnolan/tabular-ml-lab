@@ -1,0 +1,359 @@
+"""The figure layer's first consumer — a project, drawn.
+
+`GUIDED-058` and `DRIVE-009`. Three figures were specified, tested and
+registered, and `figures.applicable()` and `figures.bundle()` had **zero callers
+anywhere in the repository**. A module reachable only from its own tests is a
+specification, and from inside the loop that built it it looks finished.
+
+This is the part that was missing. It answers three questions the spec
+deliberately does not:
+
+1. **What does this project look like?** `state()` — the dict
+   `when_applicable` reads. Every key in it is derived from a RECORDED answer or
+   from the working table, never guessed.
+2. **Where do this figure's numbers come from?** `SOURCES` — one adapter per
+   figure id. The spec says what a figure *is*; the adapter says where this
+   project's version of it comes from. They are different jobs and keeping them
+   apart is what lets a pack change which figure is drawn without touching what
+   the figure means (`DOMAIN_PACKS.md` §08).
+3. **Why is a figure NOT drawn?** `not_drawn` — and this is the half that would
+   have been easy to skip. A figure silently absent is indistinguishable from a
+   figure the app does not have, which is `DESIGN_LANGUAGE.md` §09's
+   recorded-absence rule pointed at the figure layer.
+
+## The pack reaches the figure here, and that is DRIVE-009's own sentence
+
+*"Per-domain figure selection through the pack mechanism."* Two places it is
+literal rather than aspirational:
+
+* The shrinkage plot fires **only** under the dietary lens, because
+  `has_dietary_lens` is in its `when_applicable` and this module is what writes
+  that key.
+* The PCA scores plot overlays pooled QCs **only** when the metabolomics pack's
+  `pooled_qc` detector fired, and takes the QC column and value from that
+  finding's own `params`. The checklist item *"pooled QCs overlaid, never
+  dropped"* then passes or fails on the pack's reading rather than on a
+  renderer's guess.
+
+## What cannot be drawn from a project today, stated rather than omitted
+
+**The calibration plot.** Its `when_applicable` needs `has_predictions`, and
+**TurboTab has no training step** — there is no fitted model, no held-out
+prediction, and no question that records a column of predicted risks. So
+`has_predictions` is `False` for every project that can exist, and the figure the
+clinical pack calls *"the single most important figure in a clinical prediction
+paper"* is reachable from `figure_specs.calibration_render()` and from nowhere a
+user can stand. That is filed rather than papered over: the endpoint names it in
+`not_drawn` with that reason, and `GUIDED-065` carries it.
+"""
+from __future__ import annotations
+
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+
+import numpy as np
+import pandas as pd
+
+from turbotab import figures
+
+# Registers the three specs. Imported for the side effect, which is the same
+# shape `recipes` uses and is why `register()` refuses a duplicate id.
+from turbotab import figure_specs  # noqa: F401
+
+_DIETARY = "dietary"
+_METABOLOMICS = "metabolomics"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The state dict — every key derived from a recorded answer
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _numeric_columns(df: pd.DataFrame) -> List[str]:
+    return [str(c) for c in df.columns
+            if pd.api.types.is_numeric_dtype(df[c])
+            and not pd.api.types.is_bool_dtype(df[c])]
+
+
+def recalls_per_person(project) -> Tuple[int, str]:
+    """`(n, why)` — how many recalls a person has, and how that was decided.
+
+    **The key `GUIDED-058` says is written nowhere**, and the honest derivation
+    turned out to need three recorded answers rather than one:
+
+    * **grain** must say *people repeat*, with a grouping column. Without it the
+      app does not know that two rows are one person, and counting rows would
+      make a 600-row one-row-per-person table look like 600 recalls.
+    * **repeat_kind** must say *repeats* rather than *time points*. A person's
+      rows being twelve months apart is a longitudinal series, and averaging
+      them is a different operation with a different meaning — question 4 exists
+      precisely because *"which of the two it is decides whether averaging a
+      person's rows is correct"*.
+    * **the lens** must say dietary, which `when_applicable` checks separately.
+
+    Returns the MEDIAN rows per person, not the maximum: NHANES-shaped data has
+    people with one recall beside people with two, and the maximum would let one
+    two-day participant turn on a figure about the sample.
+
+    The `why` string is returned even on success, because the endpoint reports
+    it either way. A figure drawn on a basis nobody can see is the same defect
+    as a figure absent for a reason nobody can see.
+    """
+    grain = project.grain or {}
+    if grain.get("answer") != "people_repeat":
+        return 0, (
+            "The grain question has not been answered *people repeat*, so "
+            "nothing in this project says that two rows are one person's two "
+            "days. Rows are not recalls until something records that they are."
+            if grain else
+            "The grain question has not been asked yet, and until it is, the "
+            "number of recalls a person has is not something the app knows.")
+    group_col = grain.get("group_col")
+    if not group_col or group_col not in project.df.columns:
+        return 0, (
+            "The grain answer is *people repeat* and names no grouping column, "
+            "so a person's rows cannot be identified.")
+
+    kind = (project.repeat_kind or {}).get("kind")
+    if kind is None:
+        return 0, (
+            f"A person's rows in `{group_col}` have not been recorded as "
+            f"repeated measurements or as different time points. Averaging "
+            f"them is correct for one and not the other, so the app does not "
+            f"decide it here.")
+    if kind != "repeats":
+        return 0, (
+            f"A person's rows in `{group_col}` were recorded as different time "
+            f"points rather than repeated measurements of the same quantity. "
+            f"A usual-intake distribution is drawn from replicate days; a "
+            f"longitudinal series is a different figure.")
+
+    sizes = project.working_table.groupby(group_col).size()
+    if sizes.empty:                                        # pragma: no cover
+        return 0, "There are no rows to count."
+    n = int(sizes.median())
+    return n, (
+        f"`{group_col}` identifies {len(sizes):,} people with a median of {n} "
+        f"row(s) each, recorded as repeated measurements of the same quantity.")
+
+
+def state(project) -> Dict[str, Any]:
+    """What `when_applicable` reads. Recorded answers and measured shape only."""
+    table = project.working_table
+    numeric = _numeric_columns(table)
+    lens = list(project.lens or [])
+    n_recalls, recalls_why = recalls_per_person(project)
+    return {
+        "task_type": project.task_type,
+        # FALSE FOR EVERY PROJECT, and it is a fact about the app rather than
+        # about this table — see the module docstring and `GUIDED-065`.
+        "has_predictions": False,
+        "has_predictions_because": (
+            "TurboTab has no training step yet, so no project holds a fitted "
+            "model's predictions and none can be supplied. This is a gap in "
+            "the app, not a property of your data."),
+        "n_numeric": len(numeric),
+        "n_rows": int(len(table)),
+        "n_recalls_per_person": n_recalls,
+        "n_recalls_because": recalls_why,
+        "has_dietary_lens": _DIETARY in lens,
+        "lens": lens,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Where each figure's numbers come from
+# ─────────────────────────────────────────────────────────────────────────────
+
+class FigureUnavailable(Exception):
+    """This project cannot supply this figure's numbers, and here is why.
+
+    Distinct from `when_applicable` returning False. That says *"this figure has
+    nothing to say about this project"*; this says *"it does, and the numbers
+    are not there"* — and the two read differently to a user, so they are
+    reported separately.
+    """
+
+
+def _pca_payload(project, **_: Any) -> Dict[str, Any]:
+    """PCA scores, with the metabolomics pack deciding what is overlaid.
+
+    `DOMAIN_PACKS.md` §08 made executable: the QC overlay comes from the pack's
+    own `pooled_qc` finding, so the checklist item about QCs scores against a
+    detector's reading rather than against a renderer's guess.
+    """
+    table = project.working_table
+    columns = [c for c in _numeric_columns(table) if c != project.target]
+    if len(columns) < 2:
+        raise FigureUnavailable(
+            "fewer than two numeric columns remain once the target is set "
+            "aside, and a scores plot needs two components")
+    frame = table[columns].copy()
+
+    qc_mask = None
+    for finding in project.pack_findings():
+        if finding["id"] != "pack::metabolomics::pooled_qc":
+            continue
+        params = finding["params"]
+        column, value = params.get("column"), params.get("qc_value")
+        if column in table.columns:
+            qc_mask = [str(v) == str(value) for v in table[column]]
+        break
+
+    # COLORED BY THE TARGET AND NOT FITTED ON IT. Putting the outcome into the
+    # matrix and then coloring by it is the circular-figure family's own shape
+    # (`DOMAIN_SCIENCE.md` §01.6) — separation you built in. Carried as strings
+    # so `select_dtypes` cannot pull it back into the fit.
+    group_col = None
+    if project.target and project.target in table.columns:
+        if table[project.target].nunique(dropna=True) <= 8:
+            group_col = "__group__"
+            frame[group_col] = [str(v) for v in table[project.target]]
+
+    return figure_specs.pca_scores_payload(
+        frame, group_col=group_col, qc_mask=qc_mask)
+
+
+def _shrinkage_payload(project, *, nutrient: Optional[str] = None,
+                       **_: Any) -> Dict[str, Any]:
+    """The three densities, from this project's own repeated recalls."""
+    from turbotab import nutrition
+
+    table = project.working_table
+    group_col = (project.grain or {}).get("group_col")
+    if not group_col or group_col not in table.columns:    # pragma: no cover
+        raise FigureUnavailable(
+            "the grain answer names no column identifying a person's rows")
+    column = nutrient or _default_nutrient(table, group_col)
+    if column is None:
+        raise FigureUnavailable(
+            "no numeric nutrient column was found to draw this for")
+    if column not in table.columns:
+        raise FigureUnavailable(f"there is no column named '{column}'")
+
+    built = nutrition.usual_intake_series(
+        table, person_col=group_col, value_col=column)
+    components = built["components"]
+    payload = figure_specs.shrinkage_payload(
+        built["series"], nutrient=column, n_days=int(built["n_days"]),
+        modeled=True)
+    # The variance-components table §03 says reviewers in this field ask for,
+    # carried beside the figure rather than recomputed by whoever wants it.
+    payload["method"] = built["method"]
+    payload["variance_components"] = {
+        "within": round(components.within, 4),
+        "between": round(components.between, 4),
+        "ratio": None if components.ratio is None else round(components.ratio, 3),
+        "icc": None if components.icc is None else round(components.icc, 3),
+        "lambda_observed": components.lambda_at(components.days_median),
+        "n_people": components.n_people,
+        "n_rows": components.n_rows,
+    }
+    return payload
+
+
+def _default_nutrient(df: pd.DataFrame, group_col: Optional[str]) -> Optional[str]:
+    """Total energy where the engine's reference matcher recognizes it.
+
+    Through `packs._reference_column`, which goes through
+    `physiology_reference.match_variable_key` — exact against the key or a
+    declared alias, never a substring. Borrowing the vetted matcher is the
+    opposite of adding a fifth name list.
+    """
+    from turbotab import packs
+
+    energy = packs._reference_column(df, "kcal")
+    if energy:
+        return energy
+    for column in _numeric_columns(df):
+        if column != group_col and df[column].nunique(dropna=True) > 10:
+            return column
+    return None
+
+
+def _calibration_payload(project, **_: Any) -> Dict[str, Any]:
+    raise FigureUnavailable(                               # pragma: no cover
+        "this project holds no model predictions to calibrate")
+
+
+SOURCES: Dict[str, Callable[..., Dict[str, Any]]] = {
+    "pca_scores": _pca_payload,
+    "shrinkage": _shrinkage_payload,
+    "calibration": _calibration_payload,
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Why a figure is not drawn — stated, never silently omitted
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _why_not(figure_id: str, project_state: Dict[str, Any]) -> str:
+    if figure_id == "calibration":
+        return project_state["has_predictions_because"]
+    if figure_id == "shrinkage":
+        if not project_state["has_dietary_lens"]:
+            return (
+                "The lens question has not been answered *dietary intake*, and "
+                "a usual-intake distribution is a claim about diet. The app "
+                "does not infer the field from the column names.")
+        return project_state["n_recalls_because"]
+    if figure_id == "pca_scores":
+        return (
+            f"A scores plot needs at least two numeric columns and ten rows; "
+            f"this table has {project_state['n_numeric']} and "
+            f"{project_state['n_rows']}.")
+    return "This figure does not apply to this project."   # pragma: no cover
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The bundle
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render(project, *, nutrient: Optional[str] = None) -> Dict[str, Any]:
+    """Every figure this project can carry, drawn, scored and captioned.
+
+    Three outcomes, and they are kept apart because they mean different things:
+
+    * **admitted / held** — `figures.bundle()`'s own split. A CONFIRMATORY
+      figure whose companion is absent is held, not captioned with a caveat a
+      reader can skip.
+    * **unavailable** — the figure applies and the numbers are not there. The
+      refusal's own words are carried, so *"the within-person variance is not
+      identifiable from these data"* reaches the user instead of an empty panel.
+    * **not_drawn** — the figure does not apply, with the reason.
+    """
+    from turbotab.packs import PackRefusal
+
+    project_state = state(project)
+    applicable = figures.applicable(project_state)
+
+    payloads: Dict[str, Dict[str, Any]] = {}
+    unavailable: List[Dict[str, Any]] = []
+    for spec in applicable:
+        source = SOURCES.get(spec.id)
+        if source is None:                                 # pragma: no cover
+            unavailable.append({
+                "id": spec.id, "title": spec.title,
+                "why": "no source is registered for this figure"})
+            continue
+        try:
+            payloads[spec.id] = source(project, nutrient=nutrient)
+        except PackRefusal as refusal:
+            # A REFUSAL, NOT AN ERROR. It carries a badge and an offer, and
+            # dropping either at this boundary would be `DRIVE-001`'s class:
+            # computed on the server, correct, and unreachable by a reader.
+            unavailable.append({"id": spec.id, "title": spec.title,
+                                "why": str(refusal), **refusal.to_dict()})
+        except (FigureUnavailable, ValueError, KeyError) as exc:
+            unavailable.append({"id": spec.id, "title": spec.title,
+                                "why": str(exc)})
+
+    out = figures.bundle(payloads)
+    for row in out["admitted"] + out["held"]:
+        row["payload"] = payloads[row["id"]]
+    out["unavailable"] = unavailable
+    out["not_drawn"] = [
+        {"id": spec.id, "title": spec.title, "tier": spec.tier,
+         "why": _why_not(spec.id, project_state)}
+        for spec in figures.REGISTRY.values()
+        if spec not in applicable]
+    out["state"] = project_state
+    return out
