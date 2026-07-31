@@ -3,30 +3,66 @@
 `DOMAIN_SCIENCE.md` §01.1. All four research threads independently asked for the
 same primitive: **surface the epistemic status of every claim the app makes.**
 
-This is the check that keeps it true. Three assertions, and one deliberate
-non-assertion.
+This is the check that keeps it true.
 
-## What it checks
+## The scope this gate used to have, and why it was too narrow
 
-1. **Every pack prior carries `evidence`** — a status and a source. A prior with
-   a `marker` and no badge states the app's confidence as if it were the
-   field's, which is the state the research asked to end.
-2. **Every source resolves** — the named file exists under
+It walked `packs.PACKS[*].priors` and scanned exactly one file, `turbotab/
+packs.py`, for `[verify-at-build]` literals. `GUIDED-059` is what that missed:
+
+* **A pack FINDING is a claim too**, and `_finding()` emitted `source="pack"`
+  with no status and no citation, so every finding four detectors produced went
+  out unbadged while the gate printed a green tick.
+* **A REFUSAL is the sharpest claim a pack makes** — *"nobody can compute this,
+  not the app and not you with a spreadsheet"* — and the four
+  `PrevalenceRefusal`s carried a message, an offer, and no badge at all.
+* **The file scan stopped at one file.** `turbotab/nutrition.py` and
+  `turbotab/figure_specs.py` hold domain thresholds and were outside it, and
+  `nutrition.py`'s own docstring named this gate as the guarantor of numbers it
+  had never opened. A claim with no record, in the module whose subject is not
+  making them.
+
+## What it checks now
+
+1. **Every pack prior carries `evidence`** — a status and a source.
+2. **Every registered figure carries `evidence`.** A figure's checklist is a set
+   of claims about what a reviewer expects.
+3. **Every module-level `Evidence` under `turbotab/` resolves.** A constant that
+   is constructed and attached to nothing still asserts a citation.
+4. **Every source resolves** — the named file exists under
    `docs/turbotab/research/`, and the named section is a heading in it.
-3. **No `[verify-at-build]` number ships as a hard-coded constant.** The
-   research threads hit an egress proxy and marked the numbers they could not
-   read from primary text. Shipping one as a literal is the single worst failure
-   mode a pack has, and the packs say so themselves.
+5. **Structurally, a finding and a refusal cannot be made without a badge.**
+   Every `_finding(...)` call site and every `PackRefusal` subclass call site
+   under `turbotab/` passes `evidence=`. This is the static half of a guarantee
+   `packs._finding` and `packs.PackRefusal.__init__` also enforce at runtime:
+   the runtime check covers the paths that run, and this covers the rest.
+6. **A badge assembled as a dict literal resolves too.** `{"evidence_status":
+   …, "source": …}` written by hand bypasses `Evidence`, so nothing validates
+   its form — but the source still has to point somewhere real.
+7. **No `[verify-at-build]` number ships as a hard-coded constant**, in any
+   module that emits pack content rather than only in `packs.py`. The research
+   threads hit an egress proxy and marked the numbers they could not read from
+   primary text.
+
+The scan is scoped to the **emitters** — the modules whose code actually
+produces findings, refusals or figure specs — rather than to every file under
+`turbotab/`. That is not timidity: it is a bare-number scan, and widened to the
+whole package it flags `eligibility.py`'s `unique()[:50]` for sharing a digit
+with a metabolomics threshold. A gate that cries wolf is a gate somebody
+switches off.
 
 ## What it deliberately does not check
 
 **Whether the claim is faithful to the section it names.** A citation that
 resolves to the wrong heading passes here, and that is the same honest limit
 `ledger.py check` has: it enforces that a `FIXED` row *names* a test and cannot
-tell whether the test is any good. Saying so is the difference between a gate
-and a reassurance — and the reviewable form of the missing half is already
-specified in `DOMAIN_PACKS.md` §06: *here are the default choices and the
-methods sentence each produces — which would you object to?*
+tell whether the test is any good.
+
+**Whether a number the research never mentions is sourced at all.**
+`[verify-at-build]` marks numbers the research *tried to read and could not*.
+A threshold the implementation invented — `GUIDED-061`'s `DRIFT_LIMIT` — is
+marked nowhere and is invisible to check 7. Saying so is the difference between
+a gate and a reassurance.
 
 Usage — from the repository root:
 
@@ -34,13 +70,14 @@ Usage — from the repository root:
 """
 from __future__ import annotations
 
+import ast
 import pathlib
 import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 RESEARCH = ROOT / "docs" / "turbotab" / "research"
-PACKS = ROOT / "turbotab" / "packs.py"
+PACKAGE = ROOT / "turbotab"
 
 # A heading in a research file, at any level.
 _HEADING = re.compile(r"^#{1,6}\s+(.*?)\s*$", re.M)
@@ -52,79 +89,246 @@ _VERIFY = re.compile(r"\[verify-at-build:?\s*([^\]]*)\]")
 # A bare number inside a verify-at-build note. `50%`, `0.8`, `40`.
 _NUMBER = re.compile(r"\b(\d+(?:\.\d+)?)\s*%?")
 
+# The helper every pack finding goes through. Named here because the gate's
+# structural half is *where it is called from*, which no runtime check can see.
+_FINDING_FN = "_finding"
+
 
 def _sections(path: pathlib.Path) -> set:
     return {m.group(1).strip() for m in _HEADING.finditer(
         path.read_text(encoding="utf-8"))}
 
 
-def _priors():
-    sys.path.insert(0, str(ROOT))
+def _resolve(source: str) -> str:
+    """`""` when the source points at a real file and a real heading in it."""
+    filename, _, section = (source or "").partition("#")
+    if not filename or not section:
+        return f"{source!r} is not `research/FILE.md#Section heading`"
+    path = ROOT / "docs" / "turbotab" / filename
+    if not path.exists():
+        return f"{filename} does not exist"
+    if section not in _sections(path):
+        return f"{filename} has no section {section!r}"
+    return ""
+
+
+def _modules() -> list:
+    """Every non-test module under `turbotab/`, in a stable order."""
+    return sorted(p for p in PACKAGE.glob("*.py")
+                  if not p.name.startswith("test_") and p.name != "__init__.py")
+
+
+def _tree(path: pathlib.Path) -> ast.Module:
+    return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+
+def _import_package():
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+
+
+def _refusal_names() -> set:
+    """Every exception class that must carry a badge, discovered rather than listed.
+
+    A hard-coded `{"PrevalenceRefusal"}` would go stale the first time a second
+    pack refuses something, and it would go stale *silently* — which is the
+    failure mode this whole file exists to remove.
+    """
+    _import_package()
     from turbotab import packs
-    for key, pack in packs.PACKS.items():
-        for prior in pack.priors:
-            yield key, prior
+
+    found, queue = set(), [packs.PackRefusal]
+    while queue:
+        cls = queue.pop()
+        found.add(cls.__name__)
+        queue.extend(cls.__subclasses__())
+    return found
+
+
+def _keywords(call: ast.Call) -> set:
+    return {kw.arg for kw in call.keywords if kw.arg}
+
+
+def call_sites() -> tuple:
+    """`(problems, emitters, n_calls)` — the structural half, as data.
+
+    Factored out of `check()` so a test can assert on it rather than on the
+    tool's printed output. A gate whose only interface is stdout is a gate a
+    test can only check the description of, which is the class this file's
+    subject keeps producing.
+    """
+    refusals = _refusal_names()
+    problems, emitters, n_calls = [], [], 0
+    for path in _modules():
+        emits = False
+        for node in ast.walk(_tree(path)):
+            if not isinstance(node, ast.Call):
+                continue
+            name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+            if name == _FINDING_FN:
+                emits = True
+                n_calls += 1
+                if "evidence" not in _keywords(node):
+                    problems.append(
+                        f"{path.name}:{node.lineno}: this finding is emitted "
+                        f"with no evidence= badge. A finding states where the "
+                        f"field stands, or the app is uniformly confident.")
+            elif name in refusals:
+                emits = True
+                n_calls += 1
+                if "evidence" not in _keywords(node):
+                    problems.append(
+                        f"{path.name}:{node.lineno}: this refusal is raised "
+                        f"with no evidence= badge. A refusal is the sharpest "
+                        f"claim a pack makes and is the last one that should "
+                        f"go out unbadged.")
+            elif name == "FigureSpec":
+                emits = True
+        if emits:
+            emitters.append(path)
+    return problems, emitters, n_calls
+
+
+def _string(node) -> str:
+    """The literal value of a string node, including implicit concatenation."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):                    # an f-string
+        return ""
+    return ""
 
 
 def check() -> int:
     problems = []
+    _import_package()
+    from turbotab import figures, packs
+    import turbotab.figure_specs                           # noqa: F401 — registers
+    import turbotab.nutrition                              # noqa: F401 — badges
 
-    # 1 + 2 · every prior badged, every source resolvable.
-    seen = 0
-    for pack_key, prior in _priors():
-        seen += 1
-        evidence = prior.evidence
-        if evidence is None:                               # pragma: no cover
-            problems.append(f"{pack_key}/{prior.question}: no evidence badge")
-            continue
-        filename, _, section = evidence.source.partition("#")
-        path = ROOT / "docs" / "turbotab" / filename
-        if not path.exists():
-            problems.append(
-                f"{pack_key}/{prior.question}: {filename} does not exist")
-            continue
-        if section not in _sections(path):
-            problems.append(
-                f"{pack_key}/{prior.question}: {filename} has no section "
-                f"{section!r}")
-    if not seen:
+    # ── 1 · every prior badged, and its source resolves ─────────────────────
+    n_priors = 0
+    for pack_key, pack in packs.PACKS.items():
+        for prior in pack.priors:
+            n_priors += 1
+            if prior.evidence is None:                     # pragma: no cover
+                problems.append(f"{pack_key}/{prior.question}: no evidence badge")
+                continue
+            bad = _resolve(prior.evidence.source)
+            if bad:
+                problems.append(f"{pack_key}/{prior.question}: {bad}")
+    if not n_priors:
         problems.append("no pack priors found at all; the walk is wrong")
 
-    # 3 · no `[verify-at-build]` number as a literal in pack code.
-    source = PACKS.read_text(encoding="utf-8")
-    # Strings and comments are prose, not constants. Only code lines count —
-    # otherwise quoting a number in a `reason` would fail the gate, and the
-    # reasons are exactly where a number SHOULD be discussed.
-    code = "\n".join(
-        line.split("#", 1)[0] for line in source.split("\n")
-        if not line.strip().startswith("#"))
-    code = re.sub(r'"(?:[^"\\]|\\.)*"', '""', code)
-    code = re.sub(r"'(?:[^'\\]|\\.)*'", "''", code)
+    # ── 2 · every registered figure badged ──────────────────────────────────
+    n_figures = 0
+    for figure_id, spec in figures.REGISTRY.items():
+        n_figures += 1
+        if spec.evidence is None:                          # pragma: no cover
+            problems.append(f"figure/{figure_id}: no evidence badge")
+            continue
+        bad = _resolve(spec.evidence.source)
+        if bad:
+            problems.append(f"figure/{figure_id}: {bad}")
+    if not n_figures:
+        problems.append("no figures found at all; the registry walk is wrong")
 
+    # ── 3 · every module-level Evidence resolves ────────────────────────────
+    #
+    # A constant attached to nothing is still a citation, and `GUIDED-059` is
+    # what happens when nobody looks at one: ATWATER_EVIDENCE and
+    # DESIGN_EVIDENCE were well-formed, resolvable, and reached no claim.
+    # Resolving them is necessary and is not sufficient — check 5 is the half
+    # that asks whether they arrive anywhere.
+    import importlib
+
+    n_constants = 0
+    for path in _modules():
+        if "Evidence(" not in path.read_text(encoding="utf-8"):
+            continue
+        module = importlib.import_module(f"turbotab.{path.stem}")
+        for name, value in sorted(vars(module).items()):
+            if not isinstance(value, packs.Evidence) or name.startswith("_"):
+                continue
+            n_constants += 1
+            bad = _resolve(value.source)
+            if bad:
+                problems.append(f"{path.name}/{name}: {bad}")
+
+    # ── 4 · a hand-written badge resolves too ───────────────────────────────
+    n_literals = 0
+    for path in _modules():
+        for node in ast.walk(_tree(path)):
+            if not isinstance(node, ast.Dict):
+                continue
+            keys = {_string(k) for k in node.keys if k is not None}
+            if "evidence_status" not in keys:
+                continue
+            source = ""
+            for key, value in zip(node.keys, node.values):
+                if key is not None and _string(key) == "source":
+                    source = _string(value)
+            if not source:
+                # A `source` assembled from a variable is out of reach here and
+                # is not asserted to be absent. Only a literal is checkable.
+                continue
+            n_literals += 1
+            bad = _resolve(source)
+            if bad:
+                problems.append(
+                    f"{path.name}:{node.lineno}: a hand-written badge — {bad}")
+
+    # ── 5 · a finding and a refusal cannot be made without a badge ──────────
+    #
+    # THE CHECK GUIDED-059 NEEDED. Every other check here asks whether a badge
+    # that exists is well-formed; this one asks whether the claim has one at
+    # all, and it is static because a detector that never fires on the fixtures
+    # is exactly the one whose badge nobody would notice was missing.
+    unbadged, emitters, n_calls = call_sites()
+    problems.extend(unbadged)
+    if not n_calls:
+        problems.append("no findings or refusals found at all; the walk is wrong")
+
+    # ── 6 · no `[verify-at-build]` number as a literal in an emitter ────────
     unverified = set()
     for path in sorted(RESEARCH.glob("*.md")):
         text = path.read_text(encoding="utf-8")
         for m in _VERIFY.finditer(text):
             for n in _NUMBER.findall(m.group(1)):
                 unverified.add((path.name, n))
-    for filename, number in sorted(unverified):
-        # `\b` on both sides so `50` does not match inside `250`.
-        if re.search(rf"(?<![\w.]){re.escape(number)}(?![\w.])", code):
-            problems.append(
-                f"{filename} marks {number} [verify-at-build] and it appears as "
-                f"a literal in turbotab/packs.py. A number nobody has read from "
-                f"primary text may not ship as a constant.")
+
+    for path in emitters:
+        source = path.read_text(encoding="utf-8")
+        # Strings and comments are prose, not constants. Only code lines count —
+        # otherwise quoting a number in a `reason` would fail the gate, and the
+        # reasons are exactly where a number SHOULD be discussed.
+        code = "\n".join(
+            line.split("#", 1)[0] for line in source.split("\n")
+            if not line.strip().startswith("#"))
+        code = re.sub(r'"(?:[^"\\]|\\.)*"', '""', code)
+        code = re.sub(r"'(?:[^'\\]|\\.)*'", "''", code)
+        for filename, number in sorted(unverified):
+            # `\b` on both sides so `50` does not match inside `250`.
+            if re.search(rf"(?<![\w.]){re.escape(number)}(?![\w.])", code):
+                problems.append(
+                    f"{filename} marks {number} [verify-at-build] and it "
+                    f"appears as a literal in turbotab/{path.name}. A number "
+                    f"nobody has read from primary text may not ship as a "
+                    f"constant.")
 
     if problems:
         print("EVIDENCE GATE FAILED")
         for p in problems:
             print(f"  ✗ {p}")
         print("\n  Every pack claim carries `evidence=Evidence(status=…, "
-              "source='research/FILE.md#Section')`.\n  The gate resolves the "
-              "source; it does not check the claim is faithful to it.")
+              "source='research/FILE.md#Section')` — priors, findings,\n  "
+              "refusals and figures alike. The gate resolves the source; it "
+              "does not check the claim is faithful to it.")
         return 1
-    print(f"ok — {seen} pack priors badged, every source resolves, "
-          f"{len(unverified)} [verify-at-build] number(s) held out of the code")
+    print(f"ok — {n_priors} pack priors, {n_figures} figures, {n_constants} "
+          f"module constants and {n_literals} hand-written badges resolve; "
+          f"{n_calls} findings/refusals badged at the call site across "
+          f"{len(emitters)} emitter(s); {len(unverified)} [verify-at-build] "
+          f"number(s) held out of the code")
     return 0
 
 

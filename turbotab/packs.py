@@ -206,8 +206,199 @@ def clinical_reference_columns(df: pd.DataFrame) -> List[str]:
     return out
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# The evidence badge — the epistemic status of every claim a pack makes
+#
+# All four research threads arrived at this independently, and the clinical one
+# states why: *"that single design decision is what would make TurboTab
+# trustworthy to a methodologist, because it makes the tool's epistemic position
+# legible rather than uniformly confident."*
+#
+# It is NOT a card type, so guard #1 holds. It is a token, rendered beside an
+# advisory that already exists (`DESIGN_LANGUAGE.md` §11).
+#
+# **It subsumes and sharpens `derived` / `convention` / `offered`.** Those three
+# describe THE APP'S confidence. These three describe THE FIELD'S — and the
+# second is the honest one, because it is the one a reviewer can check. The
+# mapping is not one-to-one, and the place it is not is the whole point:
+# `offered` splits, because some offered items are genuinely disputed and some
+# are merely expensive, and rendering those two the same way was the app being
+# uniformly confident in a different direction.
+SETTLED = "SETTLED"
+CONVENTION_STATUS = "CONVENTION"
+DISPUTED = "DISPUTED"
+EVIDENCE_STATUSES = (SETTLED, CONVENTION_STATUS, DISPUTED)
+
+# What each status PERMITS. Read by `recipes.register_default` and by the
+# interface, so the obligation is enforced rather than documented.
+MAY_PRESELECT = frozenset({SETTLED, CONVENTION_STATUS})
+
+
+class EvidenceError(Exception):
+    """A claim the app cannot honestly badge."""
+
+
+@dataclass(frozen=True)
+class Evidence:
+    """Where a pack's claim comes from, and how firmly the field holds it.
+
+    `status` is the field's position, not the app's confidence:
+
+    * **SETTLED** — methodological consensus; a tool asserting the opposite
+      would be wrong. May be a pre-selected default with its reason shown.
+    * **CONVENTION** — no strong evidence base, but field expectation.
+      May be pre-selected, and **must be stated as convention, never as fact**.
+    * **DISPUTED** — live disagreement among competent methodologists.
+      **Never defaulted silently.** Both positions stated, and a sensitivity
+      analysis offered.
+
+    `source` names a research file and a section in it, and
+    `docs/turbotab/tools/evidence.py check` resolves both. The honest limit is
+    exactly `ledger.py check`'s: **it verifies that a source is named and
+    resolvable, not that the claim is faithful to it.** A citation that resolves
+    to the wrong section is a defect this cannot see, and saying so is the
+    difference between a gate and a reassurance.
+
+    `both_sides` is required on DISPUTED and forbidden elsewhere. A disputed
+    claim with one position stated is the app picking a side while wearing a
+    badge that says it has not.
+    """
+    status: str
+    source: str
+    both_sides: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.status not in EVIDENCE_STATUSES:
+            raise EvidenceError(
+                f"{self.status!r} is not one of {list(EVIDENCE_STATUSES)}. The "
+                f"badge is what makes the app's epistemic position legible, so "
+                f"a claim it cannot describe is one the app may not make.")
+        if not re.match(r"^research/[A-Z_]+\.md#.+", self.source or ""):
+            raise EvidenceError(
+                f"{self.source!r} is not a resolvable source. The form is "
+                f"`research/FILE.md#Section heading`, and it is checked — a "
+                f"citation nobody can follow is a citation nobody can check.")
+        if self.status == DISPUTED and not (self.both_sides or "").strip():
+            raise EvidenceError(
+                f"{self.source}: a DISPUTED claim must state both positions. "
+                f"One side stated under a DISPUTED badge is the app picking a "
+                f"side while wearing a badge that says it has not.")
+        if self.status != DISPUTED and self.both_sides:
+            raise EvidenceError(
+                f"{self.source}: `both_sides` belongs to DISPUTED only. On a "
+                f"SETTLED or CONVENTION claim it invents a controversy.")
+
+    @property
+    def may_preselect(self) -> bool:
+        return self.status in MAY_PRESELECT
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"evidence_status": self.status, "source": self.source,
+                "both_sides": self.both_sides,
+                "may_preselect": self.may_preselect}
+
+
+# Which evidence status each marker may rest on. The two axes are genuinely
+# different questions — `marker` is **what the app does**, `status` is **where
+# the field stands** — so this is a compatibility table and not a translation.
+#
+# `offered` admits ALL THREE, and the first version of this forbade
+# `SETTLED + offered` and was wrong. `DOMAIN_SCIENCE.md` §01.2 names the class
+# it would have outlawed: *there is a class of thing the app must detect and
+# must not act on.* Pooled QC rows are not participants — that is settled, not a
+# convention — and the app still only OFFERS the exclusion, because acting on a
+# high-confidence detection whose consequences are irreversible if wrong is the
+# thing every pack's `hard_stops` list forbids. Settled science and a withheld
+# hand are compatible, and the combination is one of the most important in the
+# product.
+#
+# What is NOT compatible is the other direction, and it is enforced separately:
+# a DISPUTED claim may never pre-select.
+MARKER_STATUS: Dict[str, Tuple[str, ...]] = {
+    "derived": (SETTLED,),
+    "convention": (CONVENTION_STATUS,),
+    "offered": (SETTLED, CONVENTION_STATUS, DISPUTED),
+}
+
+
+def _check_badge(what: str, evidence: Optional[Evidence],
+                 marker: Optional[str] = None) -> Evidence:
+    """The badge obligation, in one place, for everything a pack says.
+
+    `Prior.__post_init__` wrote this first and owned it alone, which is exactly
+    how `GUIDED-059` happened: priors were guarded and findings and refusals —
+    the two things a user actually reads — were not. One function, three
+    callers, and the rendering obligation asserted before the compatibility
+    table for the reason `Prior` records: written the other way round the
+    specific message about pre-selection is unreachable, because `derived` and
+    `convention` both fail the table first.
+    """
+    if evidence is None:
+        raise PackError(
+            f"{what}: a pack claim states where the field stands and where "
+            f"that was read. A claim with no evidence badge asserts the app's "
+            f"confidence as if it were the field's, which is the state "
+            f"`DOMAIN_SCIENCE.md` §01.1 exists to end.")
+    if not isinstance(evidence, Evidence):
+        raise PackError(
+            f"{what}: evidence must be an `Evidence`, not "
+            f"{type(evidence).__name__}. A badge assembled as a dict bypasses "
+            f"the form check, and nothing then resolves its source.")
+    if marker is None:
+        return evidence
+    if marker not in MARKER_STATUS:
+        raise PackError(
+            f"{what}: marker must be derived, convention or offered. The "
+            f"marker governs the treatment, so a claim without one cannot be "
+            f"rendered honestly.")
+    if evidence.status == DISPUTED and marker != "offered":
+        raise PackError(
+            f"{what}: DISPUTED is never defaulted silently, and marker "
+            f"{marker!r} pre-selects. Both positions are stated and the user "
+            f"chooses.")
+    if evidence.status not in MARKER_STATUS[marker]:
+        raise PackError(
+            f"{what}: marker {marker!r} and evidence {evidence.status!r} "
+            f"disagree. A `derived` claim is the engine being certain and can "
+            f"only rest on SETTLED science; `offered` is the one that splits, "
+            f"into {list(MARKER_STATUS['offered'])}.")
+    return evidence
+
+
+class PackRefusal(Exception):
+    """A statement a pack declines to make, with its badge and its offer.
+
+    **A refusal is the sharpest claim a pack makes** — *"nobody can compute
+    this, not the app and not you with a spreadsheet"* — and until `GUIDED-059`
+    it was the only kind that went out unbadged. The badge is required in the
+    constructor rather than checked by a gate, for the reason the pre-commit
+    hook exists: a rule a tired agent can skip is not a rule.
+
+    `offer` is what the app CAN draw instead, because a refusal that offers
+    nothing is indistinguishable from a missing feature and the user still has
+    a real question.
+    """
+
+    def __init__(self, message: str, *, evidence: Optional[Evidence] = None,
+                 offer: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.evidence = _check_badge(f"refusal {message[:40]!r}", evidence)
+        self.offer = dict(offer or {})
+
+    def to_dict(self) -> Dict[str, Any]:
+        """The refusal as a payload — the reason, the offer, and the badge.
+
+        One serializer, so an interface cannot surface the refusal without the
+        badge that says where the field stands on it. `DRIVE-001`'s class is a
+        status computed on the server and dropped at the boundary.
+        """
+        return {"refused": True, "reason": str(self), "offer": dict(self.offer),
+                **self.evidence.to_dict()}
+
+
 def _finding(fid: str, severity: str, title: str, detail: str,
              why: str, *, confidence: str, pack: str, marker: str,
+             evidence: Optional[Evidence] = None,
              columns: Sequence[str] = (), params: Optional[Dict] = None,
              fix_label: str = "", fix_kind: str = "none") -> Dict[str, Any]:
     """One pack finding, in the engine's own shape.
@@ -221,17 +412,51 @@ def _finding(fid: str, severity: str, title: str, detail: str,
     `convention` or `offered` — and it is carried rather than implied because it
     governs the treatment. A `convention` rendered as a `derived` fact is the
     app speaking in the user's name.
+
+    `evidence` is where the FIELD stands, and it is required. It is keyword-only
+    with a `None` default for one reason and it is not convenience: a positional
+    parameter would be silently satisfiable by argument order, and a default of
+    `None` that raises gives the caller the sentence instead of a `TypeError`
+    that says nothing about badges.
+
+    **The badge is NESTED rather than spread into the finding**, and the
+    collision is the reason. A finding already has a `source` — `structure`,
+    `profile`, `pack` — naming the LAYER that produced it, and `ml.router`
+    routes on it. `Evidence.to_dict()` also emits `source`, meaning the research
+    citation. Two different questions sharing one key, so spreading would have
+    quietly repurposed a field the router reads. `f["evidence"]["source"]` is
+    the citation; `f["source"]` is still the layer.
     """
+    _check_badge(fid, evidence, marker)
     return {
         "id": fid, "severity": severity, "title": title, "detail": detail,
         "why_it_matters": why, "fix_label": fix_label, "fix_kind": fix_kind,
         "confidence": confidence, "params": dict(params or {}),
         "affected_columns": [str(c) for c in columns],
         "source": "pack", "pack": pack, "marker": marker,
+        "evidence": evidence.to_dict(),
     }
 
 
 # ── metabolomics ─────────────────────────────────────────────────────────────
+
+# WHERE THE FIELD STANDS ON EACH DETECTOR'S CLAIM, beside the detector rather
+# than in a table at the bottom of the file. A citation a reader has to go
+# looking for is a citation nobody checks — which is most of what `GUIDED-059`
+# turned out to be.
+LEFT_CENSORED_EVIDENCE = Evidence(
+    status=SETTLED,
+    source="research/METABOLOMICS_PACK.md#03 · Missing data")
+
+RUN_ORDER_EVIDENCE = Evidence(
+    status=SETTLED,
+    source="research/METABOLOMICS_PACK.md#05 · Batch correction and drift")
+
+POOLED_QC_EVIDENCE = Evidence(
+    status=SETTLED,
+    source=("research/METABOLOMICS_PACK.md#Sample-role detection — the thing a "
+            "generic tool cannot do"))
+
 
 def _left_censored(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
     """Missingness ordered by abundance is left censoring, not randomness.
@@ -274,6 +499,7 @@ def _left_censored(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
          "Half the minimum observed is the convention, and it is the one a "
          "reader can check."),
         confidence="high", pack=METABOLOMICS, marker="derived",
+        evidence=LEFT_CENSORED_EVIDENCE,
         columns=list(worst.index[:8]),
         params={"rho": round(float(rho), 3), "n_features": len(usable),
                 "n_with_blanks": len(with_blanks),
@@ -345,6 +571,7 @@ def _acquisition_order(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
          "here: it alters every value in the table, so it is a decision rather "
          "than a default."),
         confidence="high", pack=METABOLOMICS, marker="offered",
+        evidence=RUN_ORDER_EVIDENCE,
         columns=[order_col] + tracked[:6],
         params={"run_order_column": order_col, "n_tracking": len(tracked),
                 "share_tracking": round(share, 3)})
@@ -402,6 +629,7 @@ def _pooled_qc(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
              "perfectly and a held-out set could contain them. They stay in the "
              "table for quality assessment and out of the modeling rows."),
             confidence="high", pack=METABOLOMICS, marker="derived",
+            evidence=POOLED_QC_EVIDENCE,
             columns=[str(c)],
             params={"column": str(c), "qc_value": str(minority),
                     "n_qc": n_minor, "rsd_qc": round(rsd_minor, 3),
@@ -410,6 +638,27 @@ def _pooled_qc(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
 
 
 # ── dietary ──────────────────────────────────────────────────────────────────
+
+COMPOSITIONAL_EVIDENCE = Evidence(
+    status=SETTLED,
+    source=("research/NUTRITION_PACK.md#05 · Compositional structure and "
+            "substitution modeling"))
+
+# CONVENTION, not SETTLED, and the research is the reason rather than caution.
+# §02 lists the fixed-kcal screens as competing conventions — Willett's
+# 500/3,500 for women and 800/4,200 for men, sex-neutral 500–5,000, sex-neutral
+# 500–3,500 — and says outright that *"the conventions genuinely differ across
+# literatures"*. A SETTLED badge over one of four circulating bands would be the
+# app asserting a consensus the field does not have.
+IMPLAUSIBLE_INTAKE_EVIDENCE = Evidence(
+    status=CONVENTION_STATUS,
+    source="research/NUTRITION_PACK.md#02 · Implausible intake exclusions")
+
+ENERGY_ADJUSTMENT_EVIDENCE = Evidence(
+    status=SETTLED,
+    source=("research/NUTRITION_PACK.md#04 · Energy adjustment — the "
+            "methodological signature"))
+
 
 def _compositional(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
     """Columns that sum to a constant. Parts of a whole.
@@ -450,6 +699,7 @@ def _compositional(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
                          "on log-ratios rather than on the parts, and the parts "
                          "are not offered as independent predictors."),
                         confidence="high", pack=DIETARY, marker="derived",
+                        evidence=COMPOSITIONAL_EVIDENCE,
                         columns=list(subset),
                         params={"columns": list(subset), "total": total,
                                 "share_closing": round(float(close.mean()), 3),
@@ -507,6 +757,7 @@ def _implausible_intake(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
          "flow — so it is offered here and never applied. Nothing is filtered "
          "unless you say so."),
         confidence="medium", pack=DIETARY, marker="offered",
+        evidence=IMPLAUSIBLE_INTAKE_EVIDENCE,
         columns=[col],
         params={"column": col, "minimum": low, "maximum": high,
                 "n_flagged": int(len(flagged)),
@@ -533,6 +784,7 @@ def _energy_adjustment(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
          "offered beside it, and that choice is a convention rather than a "
          "fact."),
         confidence="high", pack=DIETARY, marker="derived",
+        evidence=ENERGY_ADJUSTMENT_EVIDENCE,
         columns=[col],
         params={"energy_column": col, "columns": [col],
                 "default_form": "residual",
@@ -540,6 +792,15 @@ def _energy_adjustment(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
 
 
 # ── survey ───────────────────────────────────────────────────────────────────
+
+# THE DETECTION, not the modeling treatment. §B4 — *"Ordinal vs interval — the
+# long-running dispute"* — is DISPUTED and is carried by the `ordinal_encoding`
+# prior, which is where a user meets that choice. What this finding asserts is
+# narrower and is settled: a block of columns sharing one declared response
+# scale is an instrument, and the order comes from the instrument.
+ORDINAL_DECLARED_EVIDENCE = Evidence(
+    status=SETTLED,
+    source="research/CLINICAL_SURVEY_PACK.md#B1.1 Detecting Likert blocks")
 
 # The response sets an instrument declares. A block of columns sharing exactly
 # one of these is a scale; anything else is a set of numbers that happen to be
@@ -634,11 +895,24 @@ def _ordinal_declared(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
          "observed frequencies would be a different object, would have to be "
          "deferred, and would silently change meaning between cohorts."),
         confidence="high", pack=SURVEY, marker="derived",
+        evidence=ORDINAL_DECLARED_EVIDENCE,
         columns=columns[:10],
         params={"scale": scale, "columns": columns, "encoding": "declared"})
 
 
 # ── genomics ─────────────────────────────────────────────────────────────────
+
+# ONE BADGE OVER A FINDING THAT MAKES TWO CLAIMS, and the join is worth naming.
+# The model-ranking half is SETTLED and is what this cites. The normalization
+# half is the pack DECLINING to assert a default, and the field's disagreement
+# there is DISPUTED and is carried by the `normalization` prior at
+# `GENOMICS_PACK.md#04`. A finding carries one badge, so the two statuses cannot
+# both travel on it — filed as `GUIDED-064` rather than resolved by inventing a
+# per-sentence badge on one example.
+COUNTS_EVIDENCE = Evidence(
+    status=SETTLED,
+    source="research/GENOMICS_PACK.md#08 · Modeling at p >> n")
+
 
 def count_matrix(df: pd.DataFrame, minimum: int = 100) -> Optional[Dict[str, Any]]:
     """A block of non-negative integer columns wide enough to be an assay.
@@ -686,6 +960,7 @@ def _counts_at_p_over_n(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
          "**No normalization default is asserted here**, and that is the "
          "considered position rather than an omission."),
         confidence="high", pack=GENOMICS, marker="derived",
+        evidence=COUNTS_EVIDENCE,
         columns=cols[:8],
         params={"n_features": len(cols), "p_over_n": round(block["p_over_n"], 2),
                 "depth_spread": round(spread, 2),
@@ -811,35 +1086,14 @@ class Prior:
                 f"{self.question}: a column-scoped prior must name the "
                 f"detector whose columns it applies to. Without one it applies "
                 f"to every column, which is `GUIDED-027` restated.")
-        if self.evidence is None:
-            raise PackError(
-                f"{self.question}: a prior states where the field stands and "
-                f"where that was read. A prior with a marker and no evidence "
-                f"badge asserts the app's confidence as if it were the "
-                f"field's, which is the state `DOMAIN_SCIENCE.md` §01.1 exists "
-                f"to end.")
-        # THE RENDERING OBLIGATION FIRST, and the order is load-bearing.
-        #
-        # Written second, this branch was UNREACHABLE: `derived` and
-        # `convention` both fail the compatibility table below, so the specific
-        # message about pre-selection never fired and the generic one about
-        # markers spoke instead. A check that cannot be reached is the sixth
-        # axis committed inside the rule that enforces the badge — and the
-        # revert probe's own lesson says it: the most diagnostic assertion has
-        # to be first.
-        if self.evidence.status == DISPUTED and self.marker != "offered":
-            raise PackError(
-                f"{self.question}: DISPUTED is never defaulted silently, and "
-                f"marker {self.marker!r} pre-selects. Both positions are "
-                f"stated and the user chooses.")
-        allowed = MARKER_STATUS[self.marker]
-        if self.evidence.status not in allowed:
-            raise PackError(
-                f"{self.question}: marker {self.marker!r} and evidence "
-                f"{self.evidence.status!r} disagree. A `derived` prior is the "
-                f"engine being certain and can only rest on SETTLED science; "
-                f"`offered` is the one that splits, into "
-                f"{list(MARKER_STATUS['offered'])}.")
+        # THE BADGE OBLIGATION IS SHARED WITH FINDINGS AND REFUSALS, and that is
+        # `GUIDED-059`'s repair rather than a tidy-up. This check lived here and
+        # only here, so priors were guarded and the two things a user actually
+        # reads were not. `_check_badge` carries the rendering-obligation-first
+        # ordering this method discovered: written the other way round, the
+        # specific message about pre-selection is unreachable, because `derived`
+        # and `convention` both fail the compatibility table first.
+        _check_badge(self.question, self.evidence, self.marker)
         if len(self.reason) <= 40:
             raise PackError(
                 f"{self.question}: a prior states its reason. That reason is "
@@ -868,119 +1122,6 @@ class Reframing:
     severity: str = "info"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# The evidence badge — the epistemic status of every claim a pack makes
-#
-# All four research threads arrived at this independently, and the clinical one
-# states why: *"that single design decision is what would make TurboTab
-# trustworthy to a methodologist, because it makes the tool's epistemic position
-# legible rather than uniformly confident."*
-#
-# It is NOT a card type, so guard #1 holds. It is a token, rendered beside an
-# advisory that already exists (`DESIGN_LANGUAGE.md` §11).
-#
-# **It subsumes and sharpens `derived` / `convention` / `offered`.** Those three
-# describe THE APP'S confidence. These three describe THE FIELD'S — and the
-# second is the honest one, because it is the one a reviewer can check. The
-# mapping is not one-to-one, and the place it is not is the whole point:
-# `offered` splits, because some offered items are genuinely disputed and some
-# are merely expensive, and rendering those two the same way was the app being
-# uniformly confident in a different direction.
-SETTLED = "SETTLED"
-CONVENTION_STATUS = "CONVENTION"
-DISPUTED = "DISPUTED"
-EVIDENCE_STATUSES = (SETTLED, CONVENTION_STATUS, DISPUTED)
-
-# What each status PERMITS. Read by `recipes.register_default` and by the
-# interface, so the obligation is enforced rather than documented.
-MAY_PRESELECT = frozenset({SETTLED, CONVENTION_STATUS})
-
-
-class EvidenceError(Exception):
-    """A claim the app cannot honestly badge."""
-
-
-@dataclass(frozen=True)
-class Evidence:
-    """Where a pack's claim comes from, and how firmly the field holds it.
-
-    `status` is the field's position, not the app's confidence:
-
-    * **SETTLED** — methodological consensus; a tool asserting the opposite
-      would be wrong. May be a pre-selected default with its reason shown.
-    * **CONVENTION** — no strong evidence base, but field expectation.
-      May be pre-selected, and **must be stated as convention, never as fact**.
-    * **DISPUTED** — live disagreement among competent methodologists.
-      **Never defaulted silently.** Both positions stated, and a sensitivity
-      analysis offered.
-
-    `source` names a research file and a section in it, and
-    `docs/turbotab/tools/evidence.py check` resolves both. The honest limit is
-    exactly `ledger.py check`'s: **it verifies that a source is named and
-    resolvable, not that the claim is faithful to it.** A citation that resolves
-    to the wrong section is a defect this cannot see, and saying so is the
-    difference between a gate and a reassurance.
-
-    `both_sides` is required on DISPUTED and forbidden elsewhere. A disputed
-    claim with one position stated is the app picking a side while wearing a
-    badge that says it has not.
-    """
-    status: str
-    source: str
-    both_sides: Optional[str] = None
-
-    def __post_init__(self) -> None:
-        if self.status not in EVIDENCE_STATUSES:
-            raise EvidenceError(
-                f"{self.status!r} is not one of {list(EVIDENCE_STATUSES)}. The "
-                f"badge is what makes the app's epistemic position legible, so "
-                f"a claim it cannot describe is one the app may not make.")
-        if not re.match(r"^research/[A-Z_]+\.md#.+", self.source or ""):
-            raise EvidenceError(
-                f"{self.source!r} is not a resolvable source. The form is "
-                f"`research/FILE.md#Section heading`, and it is checked — a "
-                f"citation nobody can follow is a citation nobody can check.")
-        if self.status == DISPUTED and not (self.both_sides or "").strip():
-            raise EvidenceError(
-                f"{self.source}: a DISPUTED claim must state both positions. "
-                f"One side stated under a DISPUTED badge is the app picking a "
-                f"side while wearing a badge that says it has not.")
-        if self.status != DISPUTED and self.both_sides:
-            raise EvidenceError(
-                f"{self.source}: `both_sides` belongs to DISPUTED only. On a "
-                f"SETTLED or CONVENTION claim it invents a controversy.")
-
-    @property
-    def may_preselect(self) -> bool:
-        return self.status in MAY_PRESELECT
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {"evidence_status": self.status, "source": self.source,
-                "both_sides": self.both_sides,
-                "may_preselect": self.may_preselect}
-
-
-# Which evidence status each marker may rest on. The two axes are genuinely
-# different questions — `marker` is **what the app does**, `status` is **where
-# the field stands** — so this is a compatibility table and not a translation.
-#
-# `offered` admits ALL THREE, and the first version of this forbade
-# `SETTLED + offered` and was wrong. `DOMAIN_SCIENCE.md` §01.2 names the class
-# it would have outlawed: *there is a class of thing the app must detect and
-# must not act on.* Pooled QC rows are not participants — that is settled, not a
-# convention — and the app still only OFFERS the exclusion, because acting on a
-# high-confidence detection whose consequences are irreversible if wrong is the
-# thing every pack's `hard_stops` list forbids. Settled science and a withheld
-# hand are compatible, and the combination is one of the most important in the
-# product.
-#
-# What is NOT compatible is the other direction, and it is enforced separately:
-# a DISPUTED claim may never pre-select.
-MARKER_STATUS: Dict[str, Tuple[str, ...]] = {
-    "derived": (SETTLED,),
-    "convention": (CONVENTION_STATUS,),
-    "offered": (SETTLED, CONVENTION_STATUS, DISPUTED),
-}
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,89 @@
+# Blocked
+
+What an unsupervised loop could not do, written down instead of worked around.
+The rule this file exists for is in `LOOP.md` §05: *if you are blocked or
+something looks structurally wrong, stop and write what you found here rather
+than guessing.*
+
+Each entry names the command, what it did, what it should have done, and — the
+part that matters — **what was NOT done to make it pass.**
+
+---
+
+## `make test` still runs zero tests, now for `TEST-038`'s reason
+
+**Found:** L28 setup, 2026-07-30.
+**Rows:** `TEST-039` (this row's own cause, resolved), `TEST-038` (the blocker
+that remains).
+
+The L28 prompt's setup step said to install the dev requirements so `make test`
+runs, and to write here if it still could not.
+
+**What was done.**
+
+```
+venv/bin/python -m pip install -r requirements-dev.txt
+```
+
+installed `pytest-timeout 2.4.0` (with `kaleido`, `choreographer`, `orjson`,
+`platformdirs`, `simplejson`, `logistro`). `TEST-039`'s diagnosis was exactly
+right: `PYTEST_OPTS := --timeout=60 -q` at `Makefile:18` was passing an option
+no installed plugin recognized, every target exited **4** having run zero tests,
+and installing the declared-but-absent plugin fixed that.
+
+**What it does now.**
+
+```
+$ make test
+ERROR tests/test_nn_modernization.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 warning, 1 error in 1.94s
+make: *** [test] Error 2
+```
+
+`tests/test_nn_modernization.py` imports `torch` at module scope, `torch` is not
+installed, and **a missing import at collection aborts the entire run** — so the
+target still runs zero tests. The exit code moved from 4 to 2 and the count did
+not move at all.
+
+That is `TEST-038`, filed at L13 and still open: `models/nn_whuber.py:5` imports
+`torch` unguarded while `utils/seed.py:7-10` wraps the identical import in
+`try/except ImportError` with a comment saying it is optional. One of the two is
+right about whether `torch` is optional and they cannot both be.
+
+**What was NOT done, and why.**
+
+- **`torch` was not installed.** It is ~1.1 GB, and `TEST-038`'s whole argument
+  is that it should not be mandatory to collect the test suite. Installing it
+  would make the symptom disappear while confirming the claim the finding
+  disputes.
+- **The Makefile was not edited** to add `--ignore=tests/test_nn_modernization.py`.
+  That is the working-around this file exists to prevent: it would make the
+  documented command green while leaving a module nobody can collect, and the
+  next person would inherit a `make test` that silently skips a file.
+- **`test_nn_modernization.py` was not guarded.** It is the right fix and it
+  belongs to `TEST-038`, whose `act` field already specifies it — guard the
+  import the way `utils/seed.py` does and raise from the wrapper's constructor,
+  so the model advertises itself as unavailable instead of taking the module
+  down. Doing it here would close another loop's finding inside this one, in a
+  file the prompt did not scope.
+
+**The consequence to carry.** Every test count this project reports still comes
+from a hand-rolled invocation:
+
+```
+venv/bin/python -m pytest tests/ turbotab/ --ignore=tests/integration \
+    --ignore=tests/test_nn_modernization.py -q
+venv/bin/python -m pytest tests/integration -q
+```
+
+Those numbers are real, and they are evidence about a command written down
+nowhere. `LOOP.md` §05 says adjudicating a loop now includes running `make test`
+once; it will keep failing, at collection, until `TEST-038` is closed.
+
+**And the structural gap behind both rows.** Nothing checks that `venv/`
+satisfies `requirements-dev.txt`. `pytest-timeout` was declared at
+`requirements-dev.txt:25` and absent from the interpreter the `Makefile` names,
+and no gate could see the difference. This is the third decay of the same claim
+in the same file — `LOOP.md` §05 records the first two — and the lesson keeps
+failing to catch it because the lesson is prose.

@@ -28,14 +28,29 @@ shrug.
 `prevalence_of_inadequacy` below — it is the part of this module that matters
 most and the reason this pack was built first.
 
-## Every number here is cited, and one is deliberately not shipped
+## Every number here is cited, and one is not
 
 The Atwater coefficients (4/4/9/7 kcal per gram) and the kJ factor (4.184) are
 `SETTLED` and hard-coded. The **acceptance band** for the ratio — the 0.90–1.10
-row — is the research's own table and ships as stated. Where the research marks
-a number `[verify-at-build]`, it ships **offered with the uncertainty stated or
-it does not ship**; none of the numbers in this module is so marked, and
-`docs/turbotab/tools/evidence.py check` is what keeps that true.
+row — is the research's own table and ships as stated.
+
+**What the gate covers, exactly.** The sentence that stood here said
+`docs/turbotab/tools/evidence.py check` kept it true that no `[verify-at-build]`
+number ships from this module as a constant. That was false when it was written:
+the gate set `PACKS = turbotab/packs.py` and scanned that one file, so it had
+never opened this one (`GUIDED-059`). It does now — the scan runs over every
+module that emits a finding, a refusal or a figure spec, and this is one.
+
+**And what the gate still cannot see, which is the more useful half.**
+`[verify-at-build]` marks a number the research *tried to read from primary text
+and could not*. `DRIFT_LIMIT` below is not marked anywhere, because the research
+never states a cut point for the drift row at all — it gives the reading and the
+verdict and no number. So 0.25, and the choice to express drift as the
+10th-to-90th spread over the median, are the implementation's own, and no bare-
+number scan can tell that from a number the research supplied. That is
+`GUIDED-061`, it is open, and the badge above `atwater_finding` reads SETTLED
+over a detector whose gate is invented. The badge now reaches that finding,
+which makes the gap easier to see rather than smaller.
 """
 from __future__ import annotations
 
@@ -48,6 +63,7 @@ import pandas as pd
 
 from ml import name_registry as registry
 from turbotab.packs import (CONVENTION_STATUS, DISPUTED, SETTLED, Evidence,
+                            PackRefusal,
                             _finding)
 
 DIETARY = "dietary"
@@ -253,6 +269,11 @@ def atwater_finding(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
          "error here propagates into every result and is invisible in the "
          "final tables."),
         confidence="high", pack=DIETARY, marker="derived",
+        # ATTACHED, at last. This constant was built at `GUIDED-047` and reached
+        # nothing until `GUIDED-059`: the only reference to it in the repository
+        # was a test asserting the constant was well-formed, which is a guard
+        # testing its own description rather than the app.
+        evidence=ATWATER_EVIDENCE,
         columns=[reading.energy_column] + list(reading.macro_columns.values()),
         params={"ratio": reading.ratio, "drift": reading.drift,
                 "n_used": reading.n_used, "verdict": reading.verdict,
@@ -348,6 +369,7 @@ def design_findings(df: pd.DataFrame) -> List[Dict[str, Any]]:
              "specific race, age and income groups — so an unweighted mean is "
              "not a US-population mean."),
             confidence="high", pack=DIETARY, marker="derived",
+            evidence=DESIGN_EVIDENCE,
             columns=design["dietary_weights"],
             params={"use": design["dietary_weights"],
                     "not": [w for w in (design["exam_weight"],) if w]},
@@ -369,6 +391,7 @@ def design_findings(df: pd.DataFrame) -> List[Dict[str, Any]]:
              "simple-random-sample assumption are generally too low and biased "
              "for NHANES."),
             confidence="high", pack=DIETARY, marker="derived",
+            evidence=DESIGN_EVIDENCE,
             columns=(design["dietary_weights"]
                      or design["generic_weights"]
                      or [w for w in (design["exam_weight"],) if w]),
@@ -395,6 +418,7 @@ def design_findings(df: pd.DataFrame) -> List[Dict[str, Any]]:
             ("A variance estimate that is undefined and silently computed is "
              "the failure this whole product exists to remove."),
             confidence="high", pack=DIETARY, marker="derived",
+            evidence=DESIGN_EVIDENCE,
             columns=[design["strata"], design["psu"]],
             params={"strata": [str(s) for s in lonely], "n": len(lonely)},
             fix_label="", fix_kind="none"))
@@ -440,17 +464,20 @@ SINGLE_DAY = "single_day"
 NAIVE_MEAN = "naive_mean"
 
 
-class PrevalenceRefusal(Exception):
+class PrevalenceRefusal(PackRefusal):
     """A prevalence of inadequacy the app must not compute.
 
     Carries `offer` — what it CAN draw instead — because a refusal that offers
     nothing is indistinguishable from a missing feature, and the user still has
-    a real question.
-    """
+    a real question. And it carries a badge, because *"nobody can compute this,
+    not the app and not you with a spreadsheet"* is the strongest sentence this
+    pack says and was the only one going out with no citation (`GUIDED-059`).
 
-    def __init__(self, message: str, offer: Dict[str, Any]):
-        super().__init__(message)
-        self.offer = offer
+    Everything it does is `PackRefusal`'s. The subclass exists so a caller can
+    catch this refusal specifically, and so the gate that walks refusal call
+    sites finds it by subclassing rather than by a name somebody remembered to
+    add to a list.
+    """
 
 
 def prevalence_of_inadequacy(nutrient: str, *, basis: str,
@@ -495,6 +522,7 @@ def prevalence_of_inadequacy(nutrient: str, *, basis: str,
             f"distribution could not be established, so there is nothing for "
             f"an intake to be below — a prevalence of inadequacy cannot be "
             f"computed from an AI, and neither can anyone else compute one.",
+            evidence=PREVALENCE_EVIDENCE,
             offer={
                 "draw": "distribution_against_ai",
                 "label": f"Usual intake of {nutrient} against the AI",
@@ -511,6 +539,7 @@ def prevalence_of_inadequacy(nutrient: str, *, basis: str,
             f"requirements. Counting everyone below it as inadequate counts "
             f"most of an adequately-nourished population as deficient. "
             f"Prevalence of inadequacy is computed against the EAR.",
+            evidence=PREVALENCE_EVIDENCE,
             offer={
                 "draw": "distribution_against_ear_and_rda",
                 "label": f"Usual intake of {nutrient} against the EAR and RDA",
@@ -530,6 +559,7 @@ def prevalence_of_inadequacy(nutrient: str, *, basis: str,
             f"usual-intake distribution — day-to-day variation is still in it —"
             f" so a tail proportion computed from it is overstated, in both "
             f"tails. Averaging two recalls narrows it and does not remove it.",
+            evidence=PREVALENCE_EVIDENCE,
             offer={
                 "draw": "shrinkage",
                 "label": "What usual-intake modeling would change",
