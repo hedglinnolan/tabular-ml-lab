@@ -231,3 +231,77 @@ class TestVifResolvesTheCollinearityInsight:
         assert resolved
         assert "VIF" in (resolved[0].resolved_by or ""), resolved[0].resolved_by
         assert resolved[0].resolved_on_page == "02_EDA"
+
+
+class TestClusterPlotsAlwaysRender:
+    """The verdict is a sentence, not a gate.
+
+    "No evidence of cluster structure" must never suppress the plots. A user
+    who asked to see the clusters gets to see them and judge for themselves —
+    the honest reading is delivered alongside the picture, not instead of it.
+    """
+
+    # AppTest reports .key as None for charts; the key is the proto.id suffix.
+    @staticmethod
+    def _chart_keys(at):
+        return {
+            str(getattr(getattr(c, "proto", None), "id", "")).rsplit("-", 1)[-1]
+            for c in at.get("plotly_chart")
+        }
+
+    @staticmethod
+    def _structured(n=400, seed=1):
+        rng = np.random.default_rng(seed)
+        centers = np.array([[0, 0, 0], [7, 7, 0], [0, 7, 7]])
+        grp = rng.integers(0, 3, n)
+        X = centers[grp] + rng.normal(0, 1.0, (n, 3))
+        df = pd.DataFrame(X, columns=["ldl", "hdl", "crp"])
+        df["glucose"] = 90 + 12 * grp + rng.normal(0, 4, n)
+        return df
+
+    @staticmethod
+    def _noise(n=400, seed=2):
+        rng = np.random.default_rng(seed)
+        df = pd.DataFrame(rng.uniform(0, 1, (n, 4)), columns=["v1", "v2", "v3", "v4"])
+        df["glucose"] = rng.normal(100, 15, n)
+        return df
+
+    def _run(self, df):
+        at = _run_eda(df, timeout=300)
+        _assert_clean(at, "EDA before clustering")
+        next(b for b in at.button if b.key == "eda_km_run").click().run()
+        _assert_clean(at, "EDA after clustering")
+        return at
+
+    def test_structured_data_reports_structure_and_draws_everything(self):
+        at = self._run(self._structured())
+        keys = self._chart_keys(at)
+        for expected in ("fig_eda_kmeans_sweep", "fig_eda_kmeans_scatter",
+                         "fig_eda_kmeans_knife", "fig_eda_kmeans_profile"):
+            assert expected in keys, f"{expected} did not render"
+        blurb = " ".join(str(s.value) for s in at.success)
+        assert "Strongest structure at k" in blurb
+
+    def test_pure_noise_still_draws_the_projection(self):
+        """The load-bearing case: refused verdict, plots still there."""
+        at = self._run(self._noise())
+        warnings = " ".join(str(w.value) for w in at.warning)
+        assert "No evidence of cluster structure" in warnings, (
+            "uniform noise should not be reported as structure"
+        )
+        keys = self._chart_keys(at)
+        assert "fig_eda_kmeans_scatter" in keys, (
+            "the PCA projection was suppressed when no structure was found — "
+            "the verdict must not gate the plot"
+        )
+        for expected in ("fig_eda_kmeans_sweep", "fig_eda_kmeans_knife",
+                         "fig_eda_kmeans_profile"):
+            assert expected in keys, f"{expected} did not render on noise"
+
+    def test_k_selector_is_usable_even_with_no_recommendation(self):
+        """With no recommended k the selector still offers the full sweep."""
+        at = self._run(self._noise())
+        k_sel = _widget(at, "selectbox", "eda_km_k")
+        assert k_sel is not None
+        assert len(list(k_sel.options)) >= 2
+        assert k_sel.value is not None
