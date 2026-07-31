@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**229 of 653 closed.**
+**230 of 653 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 377 |
+| `OPEN` | 376 |
 | `PARTIAL` | 47 |
-| `FIXED` | 226 |
+| `FIXED` | 227 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 377
+## OPEN — 376
 
 
 ### Application state / lockbox — 66
@@ -455,11 +455,10 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Other — 10
+### Other — 9
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `AUDIT-005` | high | The outcome-in-imputation refusal says there is no configuration in which it is acceptable, and the clinical pack marks the opposite SETTLED for an inference purpose | `turbotab/missingness.py:125 OUTCOME_IN_IMPUTATION_REFUSAL; research/CLINICAL_SURVEY_PACK.md section A2…` | L30-D anti-pattern audit hit 1 of 3, and the sharpest. turbotab/missingness.py:125 reads: The outcome cannot be one of the columns the imputation model reads ... There is no… |
 | `AUDIT-008` | high | The class the anti-pattern audit is actually finding: the core already holds the correct capability and the path that needs it does not read it — four of the last four hits have this shape, and it is… | `AUDIT-001 vs ml/feature_selection.py:186 multipletests; AUDIT-002 vs ml/splits.py; AUDIT-006 vs…` | NAMED BY THE EXECUTION AGENT IN THE L30 REPORT AND LEFT IN PROSE, which is the gap LOOP.md section 06.1 calls the most common one in an otherwise good report. Filing it because a… |
 | `AUDIT-009` | high | The model coach's cross-validated probe uses plain KFold with no group awareness, so its scores are optimistic on any table with repeated measures | `ml/coach_probe.py:189-202 _cv_score; ml/eval.py:145 StratifiedGroupKFold; ml/splits.py:311` | L31-A AUDIT-008 sweep, capability 2 (ml/splits.make_split and the grouped basis). ml/coach_probe._cv_score builds KFold or StratifiedKFold with shuffle=True and no groups… |
 | `AUDIT-010` | high | Table 1 prints a p-value per row by default with no multiplicity correction and no way to request one | `ml/table_one.py:20,48,167,200,219 show_pvalues default True; ml/multiplicity.py…` | L31-A AUDIT-008 sweep, capability 1 (statsmodels multipletests). TableOneConfig.show_pvalues defaults to True and a p is formatted per row, so a twenty-variable baseline table is… |
@@ -586,7 +585,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 226
+## FIXED — 227
 
 
 ### Multi-file / JSON import — 69
@@ -870,12 +869,13 @@ Nothing is closed without a regression test named after it.
 | `MODELS-017` | invariant | ModelCapabilities.requires_scaled_numeric determines each model's preprocessing pipeline; a model that needs scaling must not be trained on an unscaled pipeline. | `pages/05_Preprocess.py:487, 801, 847, 1059 read spec.capabilities.requires_scaled_numeric to build per-model…` | **test:** `tests/workflow/test_per_model_pipelines.py::test_scaled_vs_unscaled_outputs_differ` — The invariant holds on both sides of the migration and has a test that would catch… |
 | `MODELS-022` | invariant | Degenerate bootstrap resamples are DROPPED, never substituted with the point estimate, and a run with too few valid replicates returns a NaN CI rather than a narrow one. | `ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot =…` | **test:** `tests/test_review_fixes.py::TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples` — The invariant is implemented with the reasoning in the… |
 
-### Other — 3
+### Other — 4
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `AUDIT-001` | high | The generated manuscript reports how many tests were significant at raw p < 0.05 and names no correction, so a wide table's uncorrected count is written into the artifact that is the product | `ml/narrative_engine.py:1163-1186 _gen_statistical_validation; research/METABOLOMICS_PACK.md section 10…` | **test:** `tests/test_the_manuscript_does_not_assert_an_uncorrected_count.py::test_a_wide_uncorrected_family_produces_no_count_of_significant_tests` — FIXED at L30-B. TWO… |
 | `AUDIT-002` | high | The quick baseline models split rows at random with no group awareness, so a table with repeated measures has one person's rows in both train and test and the reported performance is optimistic | `ml/eda_actions.py:1222-1226 train_test_split with no groups; ml/splits.py:311 GroupShuffleSplit exists and is…` | **test:** `tests/test_the_quick_baseline_does_not_leak.py::test_no_participant_appears_on_both_sides_of_the_split` — FIXED at L30-C. The split routes through ml/splits.py rather… |
+| `AUDIT-005` | high | The outcome-in-imputation refusal says there is no configuration in which it is acceptable, and the clinical pack marks the opposite SETTLED for an inference purpose | `turbotab/missingness.py:125 OUTCOME_IN_IMPUTATION_REFUSAL; research/CLINICAL_SURVEY_PACK.md section A2…` | **test:** `turbotab/test_the_refusal_reads_the_recorded_purpose.py::test_the_fork_reaches_a_user_through_the_api` — FIXED at L31-D. missingness.outcome_in_scope(target, purpose)… |
 | `AUDIT-004` | medium | The quick baseline drops every row with any missing feature and reports no N cascade, so the number the user reads is about a subset nobody named | `ml/eda_actions.py:1209-1211; research/NUTRITION_PACK.md section 06 anti-patterns` | **test:** `tests/test_the_manuscript_does_not_assert_an_uncorrected_count.py::test_the_quick_baseline_reports_what_it_dropped` — FIXED at L30-B, alongside AUDIT-001 because a… |
 
 ### Features / preprocessing — 2

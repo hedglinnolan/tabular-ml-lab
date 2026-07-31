@@ -121,14 +121,96 @@ BLOCKER_EXITS = (
         _exits.ACKNOWLEDGE_SIGNAL_LOSS),
 )
 
-# The numeric branch's blocker, which is not a judgment call at all.
+# ── the outcome inside an imputation scope · one question, two answers ───────
+#
+# **`AUDIT-005`.** This used to be one sentence ending *"there is no
+# configuration in which this is acceptable, so it is not offered as a choice"*
+# — and `research/CLINICAL_SURVEY_PACK.md` §A2 marks the opposite **[SETTLED]**:
+#
+# > *Imputing with the outcome EXCLUDED from the imputation model. Biases
+# > associations toward the null. The outcome MUST be in the imputation model.*
+#
+# **Both are right, about different purposes**, which is
+# `DOMAIN_SCIENCE.md` §01.3's whole subject: *the advice inverts.* Under
+# prediction, an imputer fitted with the outcome in scope writes the outcome
+# into the features and every number scored afterwards is scored against
+# features that already encode the answer. Under inference, the imputation model
+# is part of the estimation and omitting the outcome makes the imputed
+# covariates conditionally independent of it, which shrinks the association
+# toward the null — the classic Little–Rubin result the pack cites.
+#
+# **The defect was the ABSOLUTE, not the refusal.** The app records the purpose
+# and this module never read it, so it asserted a universal it had the
+# information to qualify. That is the governing rule failing in a refusal, and
+# it is also an `AUDIT-008` instance: a capability the core exposes that the
+# path needing it does not consult.
+#
+# The prediction branch is unchanged and is still a blocker. The inference
+# branch does not become a blocker with a softer message — it stops being one,
+# because under inference the thing being refused is the correct thing to do.
+
 OUTCOME_IN_IMPUTATION_REFUSAL = (
     "The outcome `{target}` cannot be one of the columns the imputation model "
     "reads. An imputer fitted with the outcome in scope writes the outcome's "
     "own information into the feature columns, so every number scored "
     "afterwards is scored against features that already encode the answer. "
-    "There is no configuration in which this is acceptable, so it is not "
-    "offered as a choice.")
+    "You recorded that this model is for PREDICTING an outcome for a new "
+    "person, and at deployment that leak has nowhere to come from — the "
+    "features would carry information the app will not have. So it is not "
+    "offered as a choice here. "
+    "(If you were estimating how strongly something is associated with the "
+    "outcome, the answer would be the opposite one: the outcome belongs in the "
+    "imputation model, and leaving it out biases the association toward the "
+    "null. `research/CLINICAL_SURVEY_PACK.md` §A2.)")
+
+# The same configuration, under the other purpose. Not a refusal — a note, and
+# it is affirmative rather than permissive: the pack marks the inclusion
+# REQUIRED, so an inference analysis that leaves the outcome out is the one
+# making the error.
+OUTCOME_IN_IMPUTATION_UNDER_INFERENCE = (
+    "The outcome `{target}` is inside the imputation scope, and under an "
+    "association objective that is correct rather than a leak. Excluding it "
+    "makes the imputed covariates conditionally independent of the outcome and "
+    "biases the association toward the null, which is why the clinical "
+    "literature treats including it as required rather than as permitted. "
+    "(Were this model for prediction, the same configuration would be refused: "
+    "the imputer would write the outcome into features the app will not have "
+    "at deployment.)")
+
+OUTCOME_IN_IMPUTATION_EVIDENCE = {
+    "prediction": "research/CLINICAL_SURVEY_PACK.md#A2 · ★ Missing data — where TurboTab differentiates itself",
+    "inference": "research/CLINICAL_SURVEY_PACK.md#A2 · ★ Missing data — where TurboTab differentiates itself",
+}
+
+
+def outcome_in_scope(target: Optional[str],
+                     purpose: Optional[str]) -> Dict[str, Any]:
+    """What to say about the outcome sitting inside an imputation scope.
+
+    `refuse` is the only field a caller must honor; the rest is what it says.
+    `None` purpose refuses, and that is deliberate rather than conservative: the
+    purpose question is a CHOICE the constitution says is always asked and never
+    inferred, so an unanswered purpose is not evidence for the inference branch.
+    Refusing there keeps the safe answer AND names the question that would
+    change it, which is the recorded-absence rule rather than a shrug.
+    """
+    from turbotab import purpose as _purpose
+
+    if purpose == _purpose.INFERENCE:
+        return {"refuse": False, "purpose": purpose,
+                "message": OUTCOME_IN_IMPUTATION_UNDER_INFERENCE.format(
+                    target=target),
+                "source": OUTCOME_IN_IMPUTATION_EVIDENCE["inference"],
+                "evidence_status": "SETTLED"}
+    message = OUTCOME_IN_IMPUTATION_REFUSAL.format(target=target)
+    if purpose is None:
+        message += (
+            " The purpose question has not been answered on this project. It "
+            "is the one question that would change this answer, and nothing in "
+            "your data reveals it — so the safe branch stands until you say.")
+    return {"refuse": True, "purpose": purpose, "message": message,
+            "source": OUTCOME_IN_IMPUTATION_EVIDENCE["prediction"],
+            "evidence_status": "SETTLED"}
 
 
 def survey(df: pd.DataFrame, target: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -262,7 +344,8 @@ def declare(column: str, branch: str, mechanism: str, strategy_key: str,
             target: Optional[str] = None,
             uses_columns: Optional[Sequence[str]] = None,
             acknowledged: bool = False,
-            n_missing: int = 0) -> Dict[str, Any]:
+            n_missing: int = 0,
+            purpose: Optional[str] = None) -> Dict[str, Any]:
     """Record how one column's missingness will be handled. Executes nothing.
 
     Refuses three things, each for a different reason:
@@ -281,9 +364,16 @@ def declare(column: str, branch: str, mechanism: str, strategy_key: str,
     spec = strategy(strategy_key)
 
     scope = [str(c) for c in (uses_columns or [])]
+    outcome_note = None
     if strategy_key == IMPUTE_MICE and target and str(target) in scope:
-        raise MissingnessRefusal(
-            OUTCOME_IN_IMPUTATION_REFUSAL.format(target=target))
+        # `AUDIT-005`. The recorded purpose decides which of the two true
+        # sentences applies. Under prediction it is still a hard blocker; under
+        # inference the configuration is the correct one and the note travels
+        # with the record so the methods section can say why.
+        reading = outcome_in_scope(target, purpose)
+        if reading["refuse"]:
+            raise MissingnessRefusal(reading["message"])
+        outcome_note = reading
 
     if blocks(mechanism, strategy_key) and not acknowledged:
         raise MissingnessRefusal(
@@ -298,6 +388,7 @@ def declare(column: str, branch: str, mechanism: str, strategy_key: str,
         "because": spec["because"],
         "defers": spec["defers"],
         "fit_on": ("training folds only" if spec["defers"] else "row-local, applied now"),
+        "outcome_in_scope": outcome_note,
         "uses_columns": scope or None,
         "acknowledged_signal_loss": bool(blocks(mechanism, strategy_key) and acknowledged),
         "sentence": _sentence(column, mechanism, strategy_key, spec),

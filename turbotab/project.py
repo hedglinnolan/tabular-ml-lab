@@ -1194,7 +1194,10 @@ class AnalysisProject:
             record = _miss.declare(
                 column, branch, mechanism, strategy, target=self.target,
                 uses_columns=uses_columns, acknowledged=acknowledged,
-                n_missing=n_missing)
+                n_missing=n_missing,
+                # `AUDIT-005`. The recorded purpose decides whether the outcome
+                # inside a MICE scope is a leak or the correct specification.
+                purpose=(self.purpose or {}).get("answer"))
         except _miss.MissingnessRefusal as exc:
             raise ProjectError(str(exc)) from exc
         record["n_missing"] = n_missing
@@ -1353,7 +1356,8 @@ class AnalysisProject:
                 record = _miss.declare(
                     column, branch, mechanism, strategy, target=self.target,
                     uses_columns=uses_columns, acknowledged=acknowledged,
-                    n_missing=int(self.df[column].isna().sum()))
+                    n_missing=int(self.df[column].isna().sum()),
+                    purpose=(self.purpose or {}).get("answer"))
             except _miss.MissingnessRefusal as exc:
                 raise ProjectError(str(exc)) from exc
             record["n_missing"] = int(self.df[column].isna().sum())
