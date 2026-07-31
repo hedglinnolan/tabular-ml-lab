@@ -368,12 +368,34 @@ class TestNarrativeEngineGeneration:
         assert "feature dropout" in draft.sensitivity_analysis.lower()
 
     def test_statistical_validation(self, full_provenance):
+        """`AUDIT-001`. This test asserted `"1 of 2" in ...` — it was pinning
+        the defect.
+
+        The old sentence was *"1 of 2 tests yielded statistically significant
+        results (p < 0.05)"*: an uncorrected count with no correction named,
+        written into the manuscript. `METABOLOMICS_PACK.md` §06.3 calls the
+        general case an anti-pattern that would be flagged in review. A test
+        asserting the substring was asserting that the app kept doing it.
+        """
         engine = NarrativeEngine(full_provenance)
         draft = engine.generate()
 
         assert "Shapiro-Wilk" in draft.statistical_validation
         assert "Breusch-Pagan" in draft.statistical_validation
-        assert "1 of 2" in draft.statistical_validation  # 1 significant at p<0.05
+        assert "1 of 2" not in draft.statistical_validation
+        assert "No correction for multiple comparisons" in draft.statistical_validation
+        assert "not interpretable as a count" in draft.statistical_validation
+
+    def test_statistical_validation_after_a_correction_is_recorded(
+            self, full_provenance):
+        """The other branch: a corrected count IS a result, and it names the
+        method and the threshold."""
+        summary = full_provenance.apply_multiplicity_correction()
+        assert summary["n_adjusted"] == 2
+        draft = NarrativeEngine(full_provenance).generate()
+        assert "Benjamini-Hochberg FDR" in draft.statistical_validation
+        assert "remained significant at q < 0.05" in draft.statistical_validation
+        assert "not interpretable" not in draft.statistical_validation
 
     def test_data_observations_from_ledger(self, full_provenance, full_ledger):
         engine = NarrativeEngine(full_provenance, full_ledger)

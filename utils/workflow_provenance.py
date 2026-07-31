@@ -507,7 +507,13 @@ class WorkflowProvenance:
         p_value: Optional[float] = None,
         details: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Called by Hypothesis Testing for each test run."""
+        """Called by Hypothesis Testing for each test run.
+
+        A test is recorded UNCORRECTED, because a multiple-comparison
+        correction is a property of the family and the family is not complete
+        until the last test has been run. `apply_multiplicity_correction` is
+        the act that closes it.
+        """
         if self.statistical_validation is None:
             self.statistical_validation = StatisticalValidationProvenance(
                 timestamp=datetime.now().isoformat(),
@@ -519,6 +525,35 @@ class WorkflowProvenance:
             "p_value": p_value,
             **(details or {}),
         })
+
+    def apply_multiplicity_correction(
+        self,
+        method: str = "fdr_bh",
+        alpha: float = 0.05,
+    ) -> Dict[str, Any]:
+        """Correct the recorded family of tests, and record that it happened.
+
+        `AUDIT-001`. The manuscript used to report how many tests reached a raw
+        p < 0.05, which on a wide table is the count the literature names an
+        anti-pattern. The correction itself is `statsmodels.multipletests`
+        through `ml.multiplicity` — the same call `ml/feature_selection.py`
+        already makes, not a second one.
+
+        **It is a recorded ACT rather than something the draft does on the
+        author's way past.** Benjamini-Hochberg over *"every test run in this
+        session"* is a decision about what the family is, and the app does not
+        get to make it silently. Until this is called, the draft says the tests
+        are uncorrected and declines to count them.
+        """
+        from ml import multiplicity
+
+        if self.statistical_validation is None:
+            return {"tests": [], "n_tests": 0, "n_significant": 0,
+                    "method": method, "alpha": float(alpha)}
+        summary = multiplicity.adjust(
+            self.statistical_validation.tests_run, method=method, alpha=alpha)
+        self.statistical_validation.tests_run = summary["tests"]
+        return summary
 
     # --- Reader methods (for consumers) ---
 

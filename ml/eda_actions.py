@@ -1206,27 +1206,57 @@ def quick_probe_baselines(
     # Prepare data
     X = df[features].select_dtypes(include=[np.number])
     y = df[target]
-    
-    # Remove rows with missing target
+
+    # THE N CASCADE, REPORTED (`AUDIT-004`). This mask deletes every row with a
+    # missing value in the target OR in any one of the features, and the
+    # numbers below used to be presented with no statement of what they were
+    # about. `research/NUTRITION_PACK.md` §06 lists *silent listwise deletion
+    # with no N cascade* first among its anti-patterns, and this project
+    # already has the vocabulary: an exclusion that changes N is reported in
+    # participant flow, because a reported n that is not the n the reader
+    # assumes is the same defect as an uncorrected count.
+    #
+    # On a wide table with scattered missingness listwise deletion can remove
+    # most of the rows, and an MAE computed on whoever happened to be complete
+    # is a number about a subset nobody named.
+    n_supplied = int(len(df))
+    n_features_requested = len(features)
+    n_features_numeric = int(X.shape[1])
     valid_mask = ~(y.isnull() | X.isnull().any(axis=1))
+    n_used = int(valid_mask.sum())
+    n_dropped = n_supplied - n_used
     X = X[valid_mask]
     y = y[valid_mask]
-    
+
+    if n_dropped:
+        findings.append(
+            f"Baselines were fitted on {n_used:,} of {n_supplied:,} rows — "
+            f"{n_dropped:,} were removed for a missing value in the target or "
+            f"in one of the {n_features_numeric} features. Every number below "
+            f"is about those {n_used:,} rows."
+        )
+    if n_features_numeric < n_features_requested:
+        findings.append(
+            f"{n_features_numeric} of {n_features_requested} selected features "
+            f"are numeric and were used; the rest were left out of these "
+            f"probes rather than encoded."
+        )
+
     if len(X) < 10:
         return {
-            'findings': ["Insufficient data for baseline models"],
-            'warnings': [],
+            'findings': findings + ["Insufficient data for baseline models"],
+            'warnings': warnings,
             'figures': []
         }
-    
+
     # Simple train/test split (80/20)
     from sklearn.model_selection import train_test_split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
-    
+
     results = []
-    
+
     if signals.task_type_final == 'regression':
         # Constant predictor (mean)
         constant_pred = np.full(len(y_test), y_train.mean())
@@ -1321,7 +1351,7 @@ def quick_probe_baselines(
         figures.append(('table', results_df))
         findings.append(f"Ran {len(results)} baseline models")
         findings.append("These are quick probes only - not saved as trained models")
-    
+
     return {
         'findings': findings,
         'warnings': warnings,

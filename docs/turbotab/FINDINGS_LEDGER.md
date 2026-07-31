@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**224 of 642 closed.**
+**227 of 642 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 371 |
+| `OPEN` | 368 |
 | `PARTIAL` | 47 |
-| `FIXED` | 221 |
+| `FIXED` | 224 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 371
+## OPEN — 368
 
 
 ### Application state / lockbox — 66
@@ -455,21 +455,18 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Other — 4
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `AUDIT-001` | high | The generated manuscript reports how many tests were significant at raw p < 0.05 and names no correction, so a wide table's uncorrected count is written into the artifact that is the product | `ml/narrative_engine.py:1163-1186 _gen_statistical_validation; research/METABOLOMICS_PACK.md section 10…` | L29-D anti-pattern audit hit 1 of 4. _gen_statistical_validation names the tests it ran and then writes N of M tests yielded statistically significant results (p < 0.05) into the… |
-| `AUDIT-002` | high | The quick baseline models split rows at random with no group awareness, so a table with repeated measures has one person's rows in both train and test and the reported performance is optimistic | `ml/eda_actions.py:1222-1226 train_test_split with no groups; ml/splits.py:311 GroupShuffleSplit exists and is…` | L29-D anti-pattern audit hit 2 of 4, and it is the star-marked one. NUTRITION_PACK.md section 03 states it as TurboTab-specific: if a person contributes multiple recalls, rows… |
-| `AUDIT-003` | medium | A log transform is recommended from skewness alone, with no check for data that has already been transformed | `ml/eda_recommender.py:394; research/METABOLOMICS_PACK.md section 10 Structural; DOMAIN_SCIENCE.md section 03b` | L29-D anti-pattern audit hit 3 of 4. eda_recommender.py:394 emits High skew, consider log transform or robust loss (Huber) from the target's skewness and nothing else.… |
-| `AUDIT-004` | medium | The quick baseline drops every row with any missing feature and reports no N cascade, so the number the user reads is about a subset nobody named | `ml/eda_actions.py:1209-1211; research/NUTRITION_PACK.md section 06 anti-patterns` | L29-D anti-pattern audit hit 4 of 4. valid_mask = not (y.isnull() or X.isnull().any(axis=1)) removes every row with a missing value in ANY feature, and the function returns… |
-
 ### DRIVE — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `DRIVE-009` | critical | The domain-specific EDA plot vision is unbuilt, and it is the product's stated centerpiece | `The drive; DESIGN_LANGUAGE.md 07; DOMAIN_PACKS.md 08` | From the product owner's second NHANES drive. Their words are the specification. |
 | `DRIVE-010` | high | After the target is chosen the app does not ask which features to use, or whether to slice by subgroup | `The drive` | From the product owner's second NHANES drive. Their words are the specification. |
+
+### Other — 1
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `AUDIT-003` | medium | A log transform is recommended from skewness alone, with no check for data that has already been transformed | `ml/eda_recommender.py:394; research/METABOLOMICS_PACK.md section 10 Structural; DOMAIN_SCIENCE.md section 03b` | L29-D anti-pattern audit hit 3 of 4. eda_recommender.py:394 emits High skew, consider log transform or robust loss (Huber) from the target's skewness and nothing else.… |
 
 ---
 
@@ -580,7 +577,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 221
+## FIXED — 224
 
 
 ### Multi-file / JSON import — 69
@@ -861,6 +858,14 @@ Nothing is closed without a regression test named after it.
 | `MODELS-005` | landmine | The 'Cancel Training' button is decorative — st.session_state.cancel_training is written and NEVER read anywhere in the codebase. | `pages/06_Train_and_Compare.py:1252-1253 (init), 1263-1264 (set to True). grep for 'cancel_training' across…` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Closed by removal plus an honest replacement, which is the right shape. The decorative… |
 | `MODELS-017` | invariant | ModelCapabilities.requires_scaled_numeric determines each model's preprocessing pipeline; a model that needs scaling must not be trained on an unscaled pipeline. | `pages/05_Preprocess.py:487, 801, 847, 1059 read spec.capabilities.requires_scaled_numeric to build per-model…` | **test:** `tests/workflow/test_per_model_pipelines.py::test_scaled_vs_unscaled_outputs_differ` — The invariant holds on both sides of the migration and has a test that would catch… |
 | `MODELS-022` | invariant | Degenerate bootstrap resamples are DROPPED, never substituted with the point estimate, and a run with too few valid replicates returns a NaN CI rather than a narrow one. | `ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot =…` | **test:** `tests/test_review_fixes.py::TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples` — The invariant is implemented with the reasoning in the… |
+
+### Other — 3
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `AUDIT-001` | high | The generated manuscript reports how many tests were significant at raw p < 0.05 and names no correction, so a wide table's uncorrected count is written into the artifact that is the product | `ml/narrative_engine.py:1163-1186 _gen_statistical_validation; research/METABOLOMICS_PACK.md section 10…` | **test:** `tests/test_the_manuscript_does_not_assert_an_uncorrected_count.py::test_a_wide_uncorrected_family_produces_no_count_of_significant_tests` — FIXED at L30-B. TWO… |
+| `AUDIT-002` | high | The quick baseline models split rows at random with no group awareness, so a table with repeated measures has one person's rows in both train and test and the reported performance is optimistic | `ml/eda_actions.py:1222-1226 train_test_split with no groups; ml/splits.py:311 GroupShuffleSplit exists and is…` | **test:** `tests/test_the_quick_baseline_does_not_leak.py::test_no_participant_appears_on_both_sides_of_the_split` — FIXED at L30-C. The split routes through ml/splits.py rather… |
+| `AUDIT-004` | medium | The quick baseline drops every row with any missing feature and reports no N cascade, so the number the user reads is about a subset nobody named | `ml/eda_actions.py:1209-1211; research/NUTRITION_PACK.md section 06 anti-patterns` | **test:** `tests/test_the_manuscript_does_not_assert_an_uncorrected_count.py::test_the_quick_baseline_reports_what_it_dropped` — FIXED at L30-B, alongside AUDIT-001 because a… |
 
 ### Features / preprocessing — 2
 

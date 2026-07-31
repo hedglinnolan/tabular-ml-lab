@@ -1008,6 +1008,40 @@ if len(_custom_tests) > 1:
         f"or use FDR correction if you have many planned comparisons."
     )
 
+    # AUDIT-001. The warning above has been here all along and the MANUSCRIPT
+    # did not carry it: the draft reported how many tests reached a raw
+    # p < 0.05 with no correction named. The draft now declines to count an
+    # uncorrected family — which is right, and it leaves the author no way to
+    # get a corrected count either. This is that way.
+    #
+    # An ACT rather than a default, because Benjamini-Hochberg over "every test
+    # I ran today" is a decision about what the family IS, and the app does not
+    # get to make it silently. Pressing it records the correction against the
+    # family, and the Methods draft then reports the corrected count naming the
+    # method and the threshold.
+    from utils.workflow_provenance import get_provenance
+    _recorded = getattr(get_provenance().statistical_validation, "tests_run", []) \
+        if get_provenance().statistical_validation else []
+    if _recorded:
+        if st.button("Apply Benjamini–Hochberg FDR correction to these tests",
+                     key="apply_fdr_correction"):
+            _summary = get_provenance().apply_multiplicity_correction(
+                method="fdr_bh", alpha=0.05)
+            st.success(
+                f"Corrected {_summary['n_adjusted']} test(s): "
+                f"**{_summary['n_significant']}** remain significant at "
+                f"q < 0.05. At an uncorrected α = 0.05 about "
+                f"{_summary['expected_by_chance']:.0f} of "
+                f"{_summary['n_adjusted']} would clear the line by chance "
+                f"alone. The Methods draft now reports the corrected count."
+            )
+        st.caption(
+            "Until a correction is applied, the Methods draft states that these "
+            "tests are uncorrected and does not report a count of significant "
+            "ones — an uncorrected count on a wide table is the number a "
+            "reviewer would object to."
+        )
+
 # Export results
 if st.session_state.get('hypothesis_test_results'):
     st.markdown("---")

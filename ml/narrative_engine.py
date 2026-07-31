@@ -1161,27 +1161,75 @@ class NarrativeEngine:
         return " ".join(parts)
 
     def _gen_statistical_validation(self) -> str:
-        """Statistical validation tests."""
+        """Statistical validation tests, and what may be said about how many hit.
+
+        `AUDIT-001`. This paragraph used to end with *"N of M tests yielded
+        statistically significant results (p < 0.05)"* — an uncorrected count,
+        with no correction named and none applied, written into the artifact
+        that is the product. `research/METABOLOMICS_PACK.md` §06.3: *plotting
+        raw p-values with a line at p = 0.05 on a 3,000-feature untargeted
+        dataset is an anti-pattern and would be flagged in review*, and §10
+        lists *asterisks without the test or correction*.
+
+        Two branches now, and the second is the one that matters:
+
+        * **A correction was recorded** — report the corrected count, naming
+          the method and the threshold, because that IS a result.
+        * **No correction was recorded** — report NO count. The number of tests
+          reaching a raw p < 0.05 is the quantity the anti-pattern is made of,
+          and printing it beside the word "significant" is the assertion.
+
+        Silence was the other option offered and it is the weaker one: a
+        paragraph that simply stops is indistinguishable from a family in which
+        nothing was significant, and `DESIGN_LANGUAGE.md` §09's recorded-absence
+        rule is exactly about that confusion. So the absence is stated — the
+        tests are uncorrected, the count is not interpretable, and here is how
+        many would be expected to clear the line with nothing going on. That
+        last number is the pack's own coaching, and it is the sentence that
+        turns an omission into information a reviewer can use.
+        """
+        from ml import multiplicity
+
         tests = self.ctx.get("statistical_tests", [])
         if not tests:
             return ""
 
         parts = []
-        test_names = list(set(t.get("test_name", "") for t in tests if t.get("test_name")))
+        # SORTED, not `list(set(...))`. Set iteration order is not stable
+        # across runs, so the same analysis produced a manuscript whose test
+        # list was in a different order each time it was drafted. A record that
+        # changes when nothing changed is not a record.
+        test_names = sorted({t.get("test_name", "") for t in tests
+                             if t.get("test_name")})
         if test_names:
             parts.append(
                 f"Statistical validation was performed using: {', '.join(test_names)}."
             )
 
-        # Summarize significant findings
-        significant = [
-            t for t in tests
-            if t.get("p_value") is not None and t["p_value"] < 0.05
-        ]
-        if significant:
+        with_p = [t for t in tests
+                  if isinstance(t.get("p_value"), (int, float))
+                  and t.get("p_value") is not None]
+        correction = multiplicity.correction_of(tests)
+
+        if correction and with_p:
+            alpha = next((float(t.get("correction_alpha")) for t in tests
+                          if t.get("correction_alpha") is not None), 0.05)
+            corrected = [t for t in with_p
+                         if t.get("significant_after_correction")]
             parts.append(
-                f"{len(significant)} of {len(tests)} tests yielded statistically "
-                f"significant results (p < 0.05)."
+                f"P-values were adjusted for multiple comparisons using the "
+                f"{multiplicity.method_label(correction)} method across the "
+                f"{len(with_p)} tests reported here; "
+                f"{len(corrected)} remained significant at q < {alpha:g}."
+            )
+        elif with_p:
+            expected = multiplicity.expected_by_chance(len(with_p))
+            parts.append(
+                f"No correction for multiple comparisons was applied across "
+                f"the {len(with_p)} tests reported here, so the number reaching "
+                f"p < 0.05 is not interpretable as a count of findings: at "
+                f"alpha = 0.05 roughly {expected:.0f} of {len(with_p)} would be "
+                f"expected to do so by chance alone."
             )
 
         return " ".join(parts)
