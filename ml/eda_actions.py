@@ -1249,11 +1249,72 @@ def quick_probe_baselines(
             'figures': []
         }
 
-    # Simple train/test split (80/20)
-    from sklearn.model_selection import train_test_split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
+    # THE SPLIT, THROUGH THE VETTED SPLITTER (`AUDIT-002`).
+    #
+    # This was `train_test_split(X, y, test_size=0.2, random_state=42)` — rows
+    # divided at random with no group awareness. On a table with repeated
+    # measures one person's rows land on both sides and the MAE below is
+    # optimistic. `research/NUTRITION_PACK.md` §03 states it as a
+    # TurboTab-specific item: *if a person contributes multiple recalls, rows
+    # from the same person must never be split across train and test folds —
+    # use participant-level splitting.* `METABOLOMICS_PACK.md` §10 lists
+    # *repeated measures treated as independent* under Structural.
+    #
+    # **The answer was already recorded and this path was not reading it.**
+    # `DatasetSignals` carries `cohort_type_final` and `entity_id_final` — the
+    # app asked whether the cohort is longitudinal and what identifies an
+    # entity, and the user answered. `ml/splits.py` has implemented the grouped
+    # basis the whole time, with GroupShuffleSplit and the priority order that
+    # puts grouping first because a subject spanning partitions is the worse
+    # leak. Both existed; this function used neither.
+    #
+    # 0.70/0.10/0.20 through `make_split` and then train ∪ val as the fitting
+    # set, so the 80/20 shape is unchanged and nothing here reimplements a
+    # partition. **Expect these numbers to be WORSE than the leaking ones on a
+    # longitudinal table.** That is the app becoming correct.
+    from ml.splits import SplitError, SplitSpec, make_split
+
+    entity_col = getattr(signals, 'entity_id_final', None)
+    longitudinal = getattr(signals, 'cohort_type_final', None) == 'longitudinal'
+    grouped = bool(longitudinal and entity_col and entity_col in df.columns)
+
+    probe_frame = df.loc[valid_mask, list(X.columns)].copy()
+    probe_frame[target] = y
+    if grouped:
+        probe_frame[entity_col] = df.loc[valid_mask, entity_col]
+
+    spec = SplitSpec(train_size=0.70, val_size=0.10, test_size=0.20,
+                     random_state=42, use_group_split=grouped,
+                     entity_id_col=entity_col if grouped else None)
+    try:
+        split = make_split(probe_frame, list(X.columns), target,
+                           signals.task_type_final or 'regression', spec)
+    except SplitError as exc:
+        return {
+            'findings': findings,
+            'warnings': warnings + [f"Baselines were not run: {exc}"],
+            'figures': []
+        }
+
+    X_train = pd.concat([split.X_train, split.X_val])
+    y_train = pd.Series(np.concatenate([split.y_train, split.y_val]))
+    X_test, y_test = split.X_test, pd.Series(split.y_test)
+
+    if grouped:
+        findings.append(
+            f"Rows were split by `{entity_col}` rather than at random, so no "
+            f"{entity_col} appears in both the fitting and the held-out set. "
+            f"On a table with repeated measures a random split puts one "
+            f"person's rows on both sides and the numbers below come out "
+            f"better than they are."
+        )
+    elif entity_col and entity_col in df.columns:
+        findings.append(
+            f"Rows were split at random. `{entity_col}` identifies entities in "
+            f"this table but the cohort is not recorded as longitudinal, so "
+            f"nothing here says a row repeats — if it does, answer that "
+            f"question and these numbers will change."
+        )
 
     results = []
 
@@ -1352,8 +1413,27 @@ def quick_probe_baselines(
         findings.append(f"Ran {len(results)} baseline models")
         findings.append("These are quick probes only - not saved as trained models")
 
+    # THE BASIS, INSPECTABLE RATHER THAN ASSERTED. `overlap` is the number of
+    # entities with rows on both sides — zero is the guarantee, and it is
+    # counted here rather than promised in a comment, because a promise nobody
+    # can check is what `AUDIT-002` was.
+    split_basis = {
+        'strategy': split.strategy,
+        'entity_column': entity_col if grouped else None,
+        'n_fitted': int(len(X_train)),
+        'n_held_out': int(len(X_test)),
+        'entity_overlap': None,
+    }
+    if entity_col and entity_col in df.columns:
+        entities = df.loc[valid_mask, entity_col]
+        fitted = set(entities.loc[list(split.train_labels)
+                                  + list(split.val_labels)])
+        held = set(entities.loc[list(split.test_labels)])
+        split_basis['entity_overlap'] = int(len(fitted & held))
+
     return {
         'findings': findings,
         'warnings': warnings,
-        'figures': figures
+        'figures': figures,
+        'split_basis': split_basis,
     }
