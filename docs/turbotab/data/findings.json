@@ -8302,5 +8302,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "ml/pipeline.py:213; pages/05_Preprocess.py:1082; research/CLINICAL_SURVEY_PACK.md section A2 anti-pattern 2 and Cross-cutting 11"
+ },
+ {
+  "id": "GUIDED-074",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The preprocessing decision space is fully modeled, resolved per model by a precedence lattice, and measured for divergence — and the client renders it one cell at a time as prose, so the structure a modeler most needs to see is the one thing never drawn",
+  "detail": "",
+  "ev": "turbotab/recipes.py:78 Operation, :116 Default, :128 _SPECIFICITY, :392 Divergence, :493 worth_asking; turbotab/api.py:1716 /recipes n_choices_suppressed; turbotab/web/index.html",
+  "act": "",
+  "status": "OPEN",
+  "note": "RAISED BY THE PRODUCT OWNER, arguing that motion is a comprehension mechanism rather than polish. Checked, and the evidence is stronger than the claim. IT IS NOT FOUR DIMENSIONS, IT IS MORE. recipes.Operation carries key, variants, determinacy, scope, applies_to and origin; recipes.Default carries operation, variant, selector and origin. The axes are model-selector x operation x variant x column-type x provenance, and the selector axis is not flat: _SPECIFICITY at recipes.py:128 orders star=0, group=1, caps=2, model=3 and MOST SPECIFIC WINS, so the value in any cell is the output of a precedence lattice rather than a lookup. A user asking why Ridge gets standard scaling and Random Forest does not is asking about precedence resolution, and today that is answerable only by reading resolve(). THE ENGINE ALREADY COMPUTES THE CONSEQUENCE TOO. recipes.Divergence and worth_asking measure whether two variants would actually differ ON THIS DATA, and api.py:1716 returns n_choices_suppressed - a count of variant questions derived, compared, and found not to change the answer. That number means \"here are N decisions I made for you and here is why they did not matter\", which is exactly options-and-consequences, and it is computed and never rendered. THE CLIENT SHOWS NONE OF IT: the 15 Selector matches in web/index.html are all querySelector, CSS DOM queries. The lattice is spoken one cell at a time, as a question, in prose. THIS CORRECTS MY OWN FRAMING IN GUIDED-073, where I filed motion under polish. DESIGN_LANGUAGE section 05 is titled \"Motion - cause and effect only\" and forbids ambient animation, which means every motion in this app is SEMANTIC BY CONSTRUCTION. A rule permitting motion only where it shows cause and effect is not a decoration budget; it is a commitment that consequence is SHOWN rather than described, and the lattice is the largest unshown consequence in the app. THE INVESTIGATION IS CHEAP AND THE METHOD IS ALREADY PROVEN HERE. prototypes/interview-feed.html is static HTML, no build step, no network, and PRODUCT_VISION section 06 records that proving the interaction model that way BEFORE paying for the rewrite was worth doing. A recipe-lattice prototype commits to no stack, touches no app code, runs in parallel with the frontend test harness rather than competing with it, and doubles as the specification for the L9 preprocess step, which is unbuilt. It also answers GUIDED-073 with evidence instead of argument: if the interaction genuinely needs partial updates and interruptible motion, that is the stack decision made by demonstration. Filing note: DRIVE is not an accepted area in ledger.py add despite 11 DRIVE rows existing, so this landed under GUIDED; the area vocabulary and the data have drifted.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/recipes.py:78 Operation, :116 Default, :128 _SPECIFICITY, :392 Divergence, :493 worth_asking; turbotab/api.py:1716 /recipes n_choices_suppressed; turbotab/web/index.html"
  }
 ]
