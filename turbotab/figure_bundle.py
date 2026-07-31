@@ -61,6 +61,8 @@ from turbotab import figure_specs  # noqa: F401
 
 _DIETARY = "dietary"
 _METABOLOMICS = "metabolomics"
+_GENOMICS = "genomics"
+_SURVEY = "survey"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -135,12 +137,42 @@ def recalls_per_person(project) -> Tuple[int, str]:
         f"row(s) each, recorded as repeated measurements of the same quantity.")
 
 
+def target_levels(project) -> int:
+    """How many levels the recorded target has. `0` where none is recorded.
+
+    A count rather than a boolean, because two different figures want two
+    different readings of it — the volcano needs exactly two, and a scores
+    plot colors by anything up to a legend's worth.
+    """
+    table = project.working_table
+    if not project.target or project.target not in table.columns:
+        return 0
+    return int(table[project.target].nunique(dropna=True))
+
+
+def likert_block(project):
+    """The declared response block, from the pack's own detector.
+
+    Through `packs.likert_block`, which is what the survey pack's
+    `_ordinal_declared` detector reads — so the figure and the finding cannot
+    disagree about what the instrument is.
+    """
+    from turbotab import packs
+
+    try:
+        return packs.likert_block(project.working_table)
+    except Exception:                                      # pragma: no cover
+        return None
+
+
 def state(project) -> Dict[str, Any]:
     """What `when_applicable` reads. Recorded answers and measured shape only."""
     table = project.working_table
     numeric = _numeric_columns(table)
     lens = list(project.lens or [])
     n_recalls, recalls_why = recalls_per_person(project)
+    n_levels = target_levels(project)
+    block = likert_block(project)
     return {
         "task_type": project.task_type,
         # FALSE FOR EVERY PROJECT, and it is a fact about the app rather than
@@ -155,6 +187,16 @@ def state(project) -> Dict[str, Any]:
         "n_recalls_per_person": n_recalls,
         "n_recalls_because": recalls_why,
         "has_dietary_lens": _DIETARY in lens,
+        # THE LENS DECIDES WHICH FIGURES EXIST FOR THIS PROJECT, which is
+        # `DOMAIN_PACKS.md` §08 and `DRIVE-009`'s `act` field. An assay lens is
+        # metabolomics or genomics: both packs specify the volcano, and both
+        # mean the same thing by it.
+        "has_assay_lens": bool({_METABOLOMICS, _GENOMICS} & set(lens)),
+        "has_survey_lens": _SURVEY in lens,
+        "n_target_levels": n_levels,
+        "target_is_binary": n_levels == 2,
+        "has_likert_block": block is not None,
+        "likert_columns": list(block["columns"]) if block else [],
         "lens": lens,
     }
 
@@ -269,6 +311,61 @@ def _default_nutrient(df: pd.DataFrame, group_col: Optional[str]) -> Optional[st
     return None
 
 
+def _volcano_payload(project, **_: Any) -> Dict[str, Any]:
+    """The differential-abundance contrast, over the assay block only.
+
+    The target is the contrast and is set aside from the features, for the
+    reason the scores plot sets it aside from the matrix: a feature that is the
+    outcome would be the most significant point on the panel and would mean
+    nothing.
+    """
+    table = project.working_table
+    features = [c for c in _numeric_columns(table) if c != project.target]
+    if not project.target or project.target not in table.columns:
+        raise FigureUnavailable(
+            "a volcano plot contrasts two groups and no target is recorded, so "
+            "there is nothing to contrast")
+    if len(features) < 2:                                  # pragma: no cover
+        raise FigureUnavailable("fewer than two features to test")
+    return figure_specs.volcano_payload(
+        table, group_col=project.target, feature_columns=features)
+
+
+def _spline_payload(project, *, nutrient: Optional[str] = None,
+                    **_: Any) -> Dict[str, Any]:
+    """The dose–response, on the exposure the pack recognizes."""
+    table = project.working_table
+    if not project.target or project.target not in table.columns:
+        raise FigureUnavailable(
+            "a dose–response needs an outcome and no target is recorded")
+    exposure = nutrient or _default_nutrient(table, project.target)
+    if exposure is None or exposure not in table.columns:
+        raise FigureUnavailable(
+            "no numeric exposure column was found to draw this against")
+    if exposure == project.target:                         # pragma: no cover
+        raise FigureUnavailable(
+            "the exposure and the outcome are the same column")
+    grain = project.grain or {}
+    person_col = (grain.get("group_col")
+                  if grain.get("answer") == "people_repeat" else None)
+    return figure_specs.spline_payload(
+        table, exposure=exposure, outcome=project.target,
+        person_col=person_col)
+
+
+def _diverging_payload(project, **_: Any) -> Dict[str, Any]:
+    """The Likert block, read by the same detector the survey pack uses."""
+    from turbotab import packs
+
+    table = project.working_table
+    block = packs.likert_block(table)
+    if block is None:                                      # pragma: no cover
+        raise FigureUnavailable(
+            "no block of columns sharing one declared response scale was found")
+    return figure_specs.diverging_bar_payload(
+        table, columns=block["columns"], scale=block["scale"])
+
+
 def _calibration_payload(project, **_: Any) -> Dict[str, Any]:
     raise FigureUnavailable(                               # pragma: no cover
         "this project holds no model predictions to calibrate")
@@ -277,6 +374,9 @@ def _calibration_payload(project, **_: Any) -> Dict[str, Any]:
 SOURCES: Dict[str, Callable[..., Dict[str, Any]]] = {
     "pca_scores": _pca_payload,
     "shrinkage": _shrinkage_payload,
+    "volcano": _volcano_payload,
+    "dose_response_spline": _spline_payload,
+    "diverging_stacked_bar": _diverging_payload,
     "calibration": _calibration_payload,
 }
 
@@ -300,6 +400,47 @@ def _why_not(figure_id: str, project_state: Dict[str, Any]) -> str:
             f"A scores plot needs at least two numeric columns and ten rows; "
             f"this table has {project_state['n_numeric']} and "
             f"{project_state['n_rows']}.")
+    if figure_id == "volcano":
+        if not project_state["has_assay_lens"]:
+            return (
+                "The lens question has not been answered metabolomics or "
+                "genomics. A volcano plot is a differential-abundance claim "
+                "over an assay panel, and the app does not infer the assay "
+                "from the column count.")
+        if not project_state["target_is_binary"]:
+            return (
+                f"A volcano contrasts exactly two groups and the recorded "
+                f"target has {project_state['n_target_levels']}. With more "
+                f"than two the fold change on the x-axis has no single "
+                f"meaning, and picking a pair would be the app choosing your "
+                f"contrast.")
+        return (
+            f"A volcano needs an assay panel; this table has "
+            f"{project_state['n_numeric']} numeric columns.")
+    if figure_id == "dose_response_spline":
+        if not project_state["has_dietary_lens"]:
+            return (
+                "The lens question has not been answered dietary intake, and "
+                "a dose–response curve of an outcome on an intake is a claim "
+                "about diet.")
+        if project_state["task_type"] != "regression":
+            return (
+                f"A dose–response curve needs a continuous outcome and this "
+                f"project's task is {project_state['task_type'] or 'not yet '
+                'recorded'}.")
+        return (
+            f"A spline with three knots needs more than "
+            f"{project_state['n_rows']} rows to describe a dose–response "
+            f"rather than a sample.")
+    if figure_id == "diverging_stacked_bar":
+        if not project_state["has_survey_lens"]:
+            return (
+                "The lens question has not been answered survey or "
+                "questionnaire instruments. A block of small integers is a "
+                "scale only where an instrument says it is.")
+        return (
+            "No block of columns sharing one declared response scale was "
+            "found, so there is no instrument to lay across a zero line.")
     return "This figure does not apply to this project."   # pragma: no cover
 
 
