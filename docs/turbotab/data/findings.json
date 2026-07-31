@@ -8400,5 +8400,33 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "pages/05_Preprocess.py:498,835; turbotab/recipes.py resolve() and the caps:requires_scaled_numeric selector"
+ },
+ {
+  "id": "GUIDED-075",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The Guided page never fetches /project/{id}/figures, so five reachable figures reach a user through the API and none through the interface",
+  "detail": "",
+  "ev": "turbotab/web/index.html has zero occurrences of /figures; turbotab/api.py project_figures; turbotab/figure_bundle.py",
+  "act": "Render the bundle where the interview reaches the figure step - admitted, held, unavailable and not_drawn, each with its annotation box and caption.",
+  "status": "OPEN",
+  "note": "Found at L31-C while deciding what a frontend harness should cover. The fifth claim - a figure arrives with its annotation box - could not be written, because there is no surface to write it against: grep for /figures in web/index.html returns zero. L28-B and L29-B closed GUIDED-058 and DRIVE-009's figure half by building the consumer and the endpoint, and both verified reachability THROUGH THE API. That was the right test for what those loops built and it is not the whole claim: DRIVE-009's own words are interactive in-app and exportable, and the in-app half has no page. SAME CLASS AS GUIDED-058 ONE LAYER OUT - built, correct, and unreachable by a reader - which is why it is high rather than medium. The harness test file asserts the absence with a positive control, so the day the page does fetch it the assertion fails and this row is what gets closed.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/web/index.html has zero occurrences of /figures; turbotab/api.py project_figures; turbotab/figure_bundle.py"
+ },
+ {
+  "id": "GUIDED-076",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "The page composes its own blocker exits and never reads the ones the server serves, so GUIDED-072's payload_key and retry are discarded at the boundary",
+  "detail": "",
+  "ev": "turbotab/web/index.html blockerHTML around line 1728; turbotab/exits.py; turbotab/api.py the 409 detail",
+  "act": "Render q.exits - label, detail, and for an attest exit the payload_key it posts - instead of composing two hard-coded controls.",
+  "status": "OPEN",
+  "note": "Found at L31-C by writing the harness claim for it. blockerHTML writes its own claim sentence (X may encode the outcome, if it was recorded after the outcome was known every accuracy number below this point is invalid), its own two button labels (Drop X and Keep it and record why) and its own attestation sentence, and it never touches q.exits. All of that is correct FOR THE LEAKAGE BLOCKER and is wrong for any other: a second consequence with different exits renders as a leakage blocker with the wrong words. AND IT DISCARDS GUIDED-072: the server now serves every attest exit with the payload_key it unlocks and a ready-to-post retry, precisely so a client need not hold an out-of-band map, and this client holds one anyway by construction. THAT IS THE COUPLING api._disclosures ARGUES AGAINST, in its own words, arriving on the surface the argument was about. A test asserts the current state rather than the fixed one, so the day the page reads exits the test fails and this row closes - which is the right way round for a gap nobody is fixing this loop.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/web/index.html blockerHTML around line 1728; turbotab/exits.py; turbotab/api.py the 409 detail"
  }
 ]
