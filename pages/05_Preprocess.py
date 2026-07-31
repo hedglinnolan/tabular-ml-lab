@@ -895,10 +895,40 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                     df, numeric_features, plausibility_bounds, uf_list
                 )
                 st.session_state["filtered_data"] = filtered_df
-                X_sample = filtered_df[all_features]
+                sample_source = filtered_df
             else:
                 st.session_state.pop("filtered_data", None)
-                X_sample = df[all_features]
+                sample_source = df
+            X_sample = sample_source[all_features]
+
+            # Target Encoding is the only step that reads y at fit time, and it
+            # must not read the sealed test rows' outcomes. Every other encoder
+            # ignores y and keeps fitting on the full table exactly as before --
+            # narrowing their fit here would silently move the reported feature
+            # count and the PCA component clamp for everyone.
+            from utils.test_lockbox import train_row_mask as _lb_train_rows
+            _y_sample = sample_source[target_col] if target_col in sample_source.columns else None
+            _fit_rows = _lb_train_rows(X_sample.index).to_numpy()
+            if _y_sample is not None:
+                # NaN in y is a hard error for TargetEncoder, not a skipped row.
+                _fit_rows = _fit_rows & _y_sample.notna().to_numpy()
+
+            def _preview_fit_data(encoding):
+                """The (X, y) this preview pipeline is fitted on."""
+                if encoding != "target" or _y_sample is None:
+                    return X_sample, None
+                # TargetEncoder runs an internal 5-fold cross-fit, so it needs at
+                # least 5 rows. Below that, fall back rather than crash the page.
+                if int(_fit_rows.sum()) < 5:
+                    return X_sample, _y_sample
+                return X_sample.loc[_fit_rows], _y_sample.loc[_fit_rows]
+
+            # Say 'continuous' explicitly for regression: type_of_target() reads
+            # an integer target (age in years, a count, a score) as 'multiclass',
+            # and the encoder then emits one column per distinct value. 'auto' is
+            # left alone for classification, where it resolves binary vs
+            # multiclass correctly and task_type_final cannot.
+            _te_target_type = "continuous" if task_type_final == "regression" else "auto"
             imode = st.session_state.get("interpretability_mode", "balanced")
 
             for model_key in model_keys:
@@ -969,6 +999,7 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                     plausibility_mode=pmode,
                     categorical_imputation=model_config["categorical_imputation"],
                     categorical_encoding=model_config["categorical_encoding"],
+                    categorical_target_type=_te_target_type,
                     use_kmeans_features=model_config["use_kmeans_features"],
                     kmeans_n_clusters=model_config["kmeans_n_clusters"],
                     kmeans_add_distances=model_config["kmeans_add_distances"],
@@ -976,7 +1007,8 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                     use_pca=False,
                     random_state=st.session_state.get("random_seed", 42),
                 )
-                temp_pipeline.fit(X_sample)
+                _X_fit, _y_fit = _preview_fit_data(model_config["categorical_encoding"])
+                temp_pipeline.fit(_X_fit, _y_fit)
                 X_temp = temp_pipeline.transform(X_sample)
                 if hasattr(X_temp, "toarray"):
                     X_temp = X_temp.toarray()
@@ -1021,6 +1053,7 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                     plausibility_mode=pmode,
                     categorical_imputation=model_config["categorical_imputation"],
                     categorical_encoding=model_config["categorical_encoding"],
+                    categorical_target_type=_te_target_type,
                     use_kmeans_features=model_config["use_kmeans_features"],
                     kmeans_n_clusters=model_config["kmeans_n_clusters"],
                     kmeans_add_distances=model_config["kmeans_add_distances"],
@@ -1030,7 +1063,8 @@ if st.button("🔨 Build Pipelines", type="primary", key="preprocess_build_butto
                     pca_whiten=model_config["pca_whiten"],
                     random_state=st.session_state.get("random_seed", 42),
                 )
-                pipeline.fit(X_sample)
+                _X_fit, _y_fit = _preview_fit_data(model_config["categorical_encoding"])
+                pipeline.fit(_X_fit, _y_fit)
                 X_transformed = pipeline.transform(X_sample)
                 if hasattr(X_transformed, "toarray"):
                     X_transformed = X_transformed.toarray()

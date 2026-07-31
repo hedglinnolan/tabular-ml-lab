@@ -207,8 +207,15 @@ def compute_dataset_signals(
     if len(numeric_cols_for_corr) > 1:
         try:
             corr_matrix = df[numeric_cols_for_corr].corr().abs()
-            np.fill_diagonal(corr_matrix.values, 0)  # Remove diagonal
-            max_corr = corr_matrix.max().max()
+            # Zero the diagonal on a copy, never through DataFrame.values.
+            # Under copy-on-write — the default from pandas 3 — .values hands
+            # back a read-only array and np.fill_diagonal raises, which the
+            # except below then swallowed. The whole collinearity analysis
+            # silently disappeared: no correlation clusters in the ledger, no
+            # collinearity coaching, and no sign anything had gone wrong.
+            corr_values = corr_matrix.to_numpy(dtype=float, copy=True)
+            np.fill_diagonal(corr_values, 0.0)
+            max_corr = float(np.nanmax(corr_values)) if corr_values.size else 0.0
             signals.collinearity_summary['max_corr'] = max_corr
             signals.collinearity_summary['high_corr_pairs'] = []
             if max_corr > 0.85:
@@ -533,30 +540,14 @@ def recommend_eda(signals: DatasetSignals) -> List[EDARecommendation]:
                 run_action="outlier_influence"
             ))
     
-    # R10: Quick probe baselines (always)
-    if signals.target_name:
-        recommendations.append(EDARecommendation(
-            id="r10_baselines",
-            title="Quick Baseline Models",
-            priority=6,
-            cost="low",
-            why=[
-                "Establish performance floor before complex modeling",
-                "Fast sanity check on data quality"
-            ],
-            what_you_learn=[
-                "Baseline performance (constant predictor, simple GLM, shallow RF)",
-                "Whether data has predictive signal",
-                "Expected performance range"
-            ],
-            model_implications=[
-                "If baselines perform well → data is easy, simple models may suffice",
-                "If baselines fail → need complex models or feature engineering",
-                "Baseline gap shows potential improvement ceiling"
-            ],
-            run_action="quick_probe_baselines"
-        ))
-    
+    # R10 (Quick Baseline Models) is deliberately absent. Its action split the
+    # full frame with a bare train_test_split and never consulted the test
+    # lockbox, so its "held-out" scores were fit and scored partly on sealed
+    # rows. The evidence probe on the Preprocess page answers the same question
+    # on training rows only, with a permuted-target null and a learning-curve
+    # slope, and the Baselines tab on Train & Compare scores real baselines
+    # through each model's own fitted pipeline with bootstrap intervals.
+
     # Sort by priority
     recommendations.sort(key=lambda x: x.priority)
     

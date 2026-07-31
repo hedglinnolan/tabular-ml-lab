@@ -362,7 +362,11 @@ def build_eda_full_results_context(result: Dict[str, Any], action_id: str) -> st
                         desc = f"{feat}: r={t[1]:.3f}, p={t[2]:.4f} ({t[3]})"
                         break
             if not desc:
-                desc = "scatter" if "scatter" in str(action_id).lower() or "linearity" in action_id else "plot"
+                # Substring matching on "linearity" also matched
+                # "multicollinearity_vif", so a VIF table would have been
+                # described to the model as a scatter plot.
+                _aid = str(action_id).lower()
+                desc = "scatter" if "scatter" in _aid or _aid.startswith("linearity") else "plot"
             parts.append(f"Figure {n}: {desc}.")
 
     return "\n\n".join(parts) if parts else ""
