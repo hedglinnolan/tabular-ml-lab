@@ -83,6 +83,15 @@ where the field stands, which is the only part we can enforce.
               │   D2  nutrition end-to-end          ← IN PROGRESS (L27)
               │       the reference implementation; abstractions discovered
               │       here are the deliverable alongside the pack
+              │       L27 built the content and NONE OF IT IS REACHABLE:
+              │       nutrition.py and figure_specs.py are imported only by
+              │       their own tests, and figures.applicable() has no
+              │       callers. "End-to-end" is not met and D2 does not close
+              │       until an upload reaches a detector, a figure and a
+              │       refusal. See `GUIDED-058` — and note it is a gap in
+              │       this plan, not only in the code: §05 of
+              │       DOMAIN_SCIENCE.md sequences the spec and the figures
+              │       and never says who wires them.
               │   D3  metabolomics · clinical+survey · genomics
               │       mostly content-loading once D2's spine holds
               │   D4  reference data, verified against primary sources

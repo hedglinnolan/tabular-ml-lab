@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**219 of 622 closed.**
+**218 of 627 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 356 |
-| `PARTIAL` | 47 |
-| `FIXED` | 216 |
+| `OPEN` | 361 |
+| `PARTIAL` | 48 |
+| `FIXED` | 215 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 356
+## OPEN — 361
 
 
 ### Application state / lockbox — 66
@@ -416,6 +416,23 @@ Nothing is closed without a regression test named after it.
 | `MODELS-023` | invariant | The NN's best-epoch weights are snapshotted by CLONE, not by reference, so later optimizer steps cannot mutate the saved state. | `models/nn_whuber.py:430 and 529 — `best_model_state = {k: v.detach().clone() for k, v in…` | The invariant holds at both snapshot sites and nothing guards it, so it stays OPEN. state_dict() returns references to live tensors, so a bare copy would let subsequent optimizer… |
 | `MODELS-024` | invariant | Cross-validation is skipped for the neural network because its sklearn shim cannot retrain. | `pages/06:1529 `if use_cv and model_name != 'nn'` with the else-branch at 1565 explaining it to the user…` | Unchanged at HEAD: four separate guards, all keyed on one literal model key. The skip itself is correct and is explained to the user, which is good - the shim cannot retrain, so… |
 
+### Guided-door drive feedback — 12
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `GUIDED-012` | high | Lockbox constitution clause 06 - declaration and execution are separate - has no implementation in either door: nothing applies the row-local vs stateful litmus test | `No module classifies transforms by the litmus test at L14. Classic's pages/03 applies feature engineering to…` | Filed at the start of L14 rather than after building it, deliberately: the check found the clause untracked, and the honest record of an unbuilt clause is an open finding, not a… |
+| `GUIDED-014` | high | DESIGN QUESTION for the product owner: does the exploratory labeling on an undetermined seal read as honest, or as the app giving up? | `docs/turbotab/COPY_DECK.md, 'Data & Target - what the user reads after answering' and 'what the user reads…` | NOT SELF-ASSESSED, deliberately. I wrote this copy at L15; asking the author whether their own prose reads well is the finder-judge problem in a different costume, and this… |
+| `DRIVE-011` | high | The Features selection step has no interface at all - choose_selection is served, set_selection is never called, and the method picker does not exist | `ml/router.py choose_selection at the features step; turbotab/web/index.html had no set_selection` | Filed at L23 rather than fixed, because a method picker with an explainability-cost column is a card and not a wiring change, and this loop's mandate was the invisible-question… |
+| `GUIDED-058` | high | Every surface L27 built is unreachable from the app: turbotab/nutrition.py and turbotab/figure_specs.py are imported only by their own tests, and figures.applicable() has no callers at all | `turbotab/nutrition.py; turbotab/figure_specs.py; turbotab/figures.py:228` | THE REFERENCE IMPLEMENTATION IS NOT YET REACHABLE, and that is a fact about the domain track rather than a fault in L27, which was asked for detectors, a figure and a refusal and… |
+| `GUIDED-059` | high | The evidence badge reaches pack priors only, so every finding and every refusal the nutrition pack emits ships unbadged, and the gate that is supposed to enforce it cannot see the file they live in | `turbotab/packs.py:209 _finding; docs/turbotab/tools/evidence.py; turbotab/nutrition.py:64,268` | TWO SCOPES, BOTH NOW WRONG. Object scope: evidence.py walks packs.PACKS[key].priors, and Prior.__post_init__ at packs.py:814 refuses a prior with no badge. Findings have no such… |
+| `GUIDED-060` | high | Two of the four prevalence refusals offer a figure that does not exist, and the test that proves every refusal offers what it can draw asserts only that the strings are non-empty | `turbotab/nutrition.py:499,515; turbotab/test_the_nutrition_pack_carries_real_content.py:303` | The registry holds three figure ids - calibration, pca_scores, shrinkage. The refusals name three draw targets - distribution_against_ai, distribution_against_ear_and_rda… |
+| `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
+| `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
+| `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
+| `GUIDED-056` | medium | The figure spec's tier enum has no value for a figure that is the argument for a method rather than exploration or confirmation | `turbotab/figure_specs.py SHRINKAGE; DOMAIN_SCIENCE.md section 02` | Found by building the spec's third figure from a domain it was not designed against. The shrinkage plot is EXPLORATORY by the two-tier logic - it sees no group labels and makes no… |
+| `GUIDED-061` | medium | DRIFT_LIMIT = 0.25 gates a critical mixed-units finding marked derived, and the research section it cites carries no number for the drift row | `turbotab/nutrition.py:114; docs/turbotab/research/NUTRITION_PACK.md:39` | NUTRITION_PACK.md:39 reads 'ratio drifts with total energy | Mixed units across rows (multi-source merge) - hard fail'. It states the reading and the verdict and NO CUT POINT.… |
+| `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
+
 ### Verified against main — 11
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -432,18 +449,6 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Guided-door drive feedback — 7
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `GUIDED-012` | high | Lockbox constitution clause 06 - declaration and execution are separate - has no implementation in either door: nothing applies the row-local vs stateful litmus test | `No module classifies transforms by the litmus test at L14. Classic's pages/03 applies feature engineering to…` | Filed at the start of L14 rather than after building it, deliberately: the check found the clause untracked, and the honest record of an unbuilt clause is an open finding, not a… |
-| `GUIDED-014` | high | DESIGN QUESTION for the product owner: does the exploratory labeling on an undetermined seal read as honest, or as the app giving up? | `docs/turbotab/COPY_DECK.md, 'Data & Target - what the user reads after answering' and 'what the user reads…` | NOT SELF-ASSESSED, deliberately. I wrote this copy at L15; asking the author whether their own prose reads well is the finder-judge problem in a different costume, and this… |
-| `DRIVE-011` | high | The Features selection step has no interface at all - choose_selection is served, set_selection is never called, and the method picker does not exist | `ml/router.py choose_selection at the features step; turbotab/web/index.html had no set_selection` | Filed at L23 rather than fixed, because a method picker with an explainability-cost column is a card and not a wiring change, and this loop's mandate was the invisible-question… |
-| `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
-| `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
-| `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
-| `GUIDED-056` | medium | The figure spec's tier enum has no value for a figure that is the argument for a method rather than exploration or confirmation | `turbotab/figure_specs.py SHRINKAGE; DOMAIN_SCIENCE.md section 02` | Found by building the spec's third figure from a domain it was not designed against. The shrinkage plot is EXPLORATORY by the two-tier logic - it sees no group labels and makes no… |
-
 ### DRIVE — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -453,7 +458,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 47
+## PARTIAL — 48
 
 
 ### Application state / lockbox — 10
@@ -496,10 +501,11 @@ Nothing is closed without a regression test named after it.
 | `TEST-026` | medium | scripts/integration_test_apptest.py and scripts/integration_test.py are unreachable from CI and duplicate tests/integration/ | `.github/workflows/ci.yml (only `pytest tests/` and `pytest tests/integration`); Makefile:22-40…` | Half the row's premise is wrong at HEAD and the correction changes the disposition. scripts/integration_test.py is NOT unreachable from CI - ci.yml:90-94 runs it as the E2E smoke… |
 | `TEST-032` | medium | tests/test_page_imports.py and tests/test_insight_id_integrity.py are AST-based over pages/ — they die with pages/ but encode rules worth keeping | `tests/test_page_imports.py:123; tests/test_insight_id_integrity.py:52` | Half the row is closed. test_insight_id_integrity can no longer pass vacuously over an empty or renamed directory - that is SWEEP-014, and it was fixed in exactly the way this row… |
 
-### Guided-door drive feedback — 6
+### Guided-door drive feedback — 7
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
+| `GUIDED-057` | critical | The app had no way to refuse a prevalence of inadequacy, so an AI, an RDA, a single day or a naive two-day mean would all have produced a number | `research/NUTRITION_PACK.md section 07 figure E; turbotab/nutrition.py` | **test:** `turbotab/test_the_nutrition_pack_carries_real_content.py::test_every_refusal_offers_something_it_can_draw` — ADJUDICATOR OVERRIDE OF A FIXED, and the disagreement is… |
 | `GUIDED-044` | high | Seven of the harness's eight guards were tested only against hand-built dicts, so a guard inert on the real path was indistinguishable from a guard that works | `turbotab/devchecks.py check_transition; turbotab/test_the_harness_reports_and_does_not_stop_the_drive.py` | **test:** `turbotab/test_every_guard_is_planted_against_the_real_path.py::test_every_guard_is_classified_as_planted_or_filed` — FOUND BY THE PART D SWEEP, and not where the sweep… |
 | `GUIDED-051` | high | The figure layer had seven geometries and nineteen actions and no way to say what a publication-grade figure requires, which is annotation rather than geometry | `docs/turbotab/DOMAIN_SCIENCE.md section 02; turbotab/figures.py` | **test:** `turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_a_confirmatory_figure_without_its_companion_is_not_admitted` — Eight signature figures across… |
 | `GUIDED-053` | high | A finding whose subject is the cohort rendered an empty chip row inside a full card frame, which reads as a card that failed to load | `turbotab/web/index.html findingCard; ml/import_doctor.py:954` | **test:** `turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_a_real_fixture_already_produces_a_cohort_finding` — NOT HYPOTHETICAL: clinic_visits.csv already… |
@@ -560,7 +566,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 216
+## FIXED — 215
 
 
 ### Multi-file / JSON import — 69
@@ -637,7 +643,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-136` | medium | coerce_numeric's methods-section description omits how many values it blanked (up to 20% of a column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 36'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 36 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-147` | medium | Duplicated key column name crashes normalize_key and therefore diagnose_join / execute_join / repair_keys (AttributeError), and silently blanks find_key_candidates | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 47'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 47 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 
-### Guided-door drive feedback — 44
+### Guided-door drive feedback — 43
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -647,7 +653,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-037` | critical | The generic question channel submits option LABELS where the server requires option KEYS, so question 1 of the pre-seal sequence cannot be answered and the interview cannot start | `turbotab/web/index.html askedCard; ml/router.py Question.option_values` | **test:** `turbotab/test_answering_the_lens_changes_the_recorded_lens.py::test_answering_the_lens_changes_the_recorded_lens` — DRIVE-001 ONE LAYER IN. The Router serves… |
 | `GUIDED-043` | critical | An assay table exported features-in-rows was diagnosed, profiled and offered as a target list across the wrong axis, and nothing in the app could say so | `docs/turbotab/OPENING_SEQUENCE.md section 01; turbotab/orientation.py` | **test:** `turbotab/test_a_transposed_assay_table_is_turned_around_before_diagnosis.py::test_the_diagnosis_the_user_sees_is_computed_on_the_turned_around_table` — THE GAP THE LENS… |
 | `GUIDED-048` | critical | The app assumed prediction throughout and never asked, while the same dataset target and lens require opposite handling in at least five places across four domains | `docs/turbotab/DOMAIN_SCIENCE.md section 01.3; turbotab/purpose.py` | **test:** `turbotab/test_the_purpose_changes_the_answer.py::test_the_same_choice_is_accepted_for_prediction_and_blocked_for_inference` — THE DEEPEST OF THE SEVEN CONVERGENCES.… |
-| `GUIDED-057` | critical | The app had no way to refuse a prevalence of inadequacy, so an AI, an RDA, a single day or a naive two-day mean would all have produced a number | `research/NUTRITION_PACK.md section 07 figure E; turbotab/nutrition.py` | **test:** `turbotab/test_the_nutrition_pack_carries_real_content.py::test_every_refusal_offers_something_it_can_draw` — A PACK THAT CAN ONLY ADD FINDINGS HAS NOT BEEN TESTED, and… |
 | `GUIDED-001` | high | Import doctor proposes numeric coercion for True/False-coded binary columns (meds_hbp, meds_chol) instead of recognizing a binary variable with informative-missingness potential | `ml/import_doctor.py; screenshot meds_chol` | **test:** `turbotab/test_guided_drive.py::test_a_true_false_column_is_read_as_binary_not_coerced_to_numbers` — Fixed, and reproduced first: a True/False column with blanks is read… |
 | `GUIDED-002` | high | High-missingness finding reports a count but never names the features, and its card carries no snippet and no dtype-aware recommendation | `ml/dataset_profile.py; turbotab explore step; screenshots` | **test:** `turbotab/test_guided_drive.py::test_missingness_routes_by_dtype` — Fixed. Cards name their column in the question text and in a mono chip, carry the count, the share… |
 | `GUIDED-004` | high | No impossibility tier: bp_di values near 1e-15 are at best 'outliers' - the profile does not distinguish medically impossible from medically improbable | `ml/clinical_units.py; ml/physiology_reference.py; ml/dataset_profile.py; screenshot physiologic_check` | **test:** `turbotab/test_guided_drive.py::test_a_diastolic_of_zero_is_impossible_and_a_high_one_is_improbable` — Fixed. The bundled NHANES reference now carries floor/ceiling… |

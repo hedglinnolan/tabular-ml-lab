@@ -105,7 +105,7 @@ findings themselves; this is the index that makes them findable.
 | L24 | Bulk repairs (`DRIVE-002`) — nine cards, one decision | Value check penalized the improvement twice; recorded, no threshold moved |
 | L25 | Purpose question (`GUIDED-048`), evidence badge (`047`), sixth axis (`045`), SMOTE defect (`049`) | The spine primitives everything downstream needs, plus the first anti-pattern audit hit |
 | L26 | Prereg Amendment 1 (`050`), figure spec + two figures (`051`), promotability (`052`), study-scoped finding (`053`) | The figure spine, tested by two deliberately different figures |
-| L27 | Nutrition pack — Atwater, NHANES design, shrinkage plot, the EAR/AI **refusal** | The reference implementation. A pack that can only add findings has not been tested |
+| L27 | Nutrition pack — Atwater, NHANES design, shrinkage plot, the EAR/AI **refusal** | The reference implementation. A pack that can only add findings has not been tested. **Accepted; all four parts correct and tested, and none of it is reachable from an upload** (`GUIDED-058`). The calibration fix is the part that ships — `weak_calibration` is live in Classic via `pages/06` |
 
 **Adding a row is part of adjudicating a loop.** Two lines, written when the report is accepted.
 This log decayed once because it lived only in chat; that is the failure this project has already

@@ -231,6 +231,18 @@ figure:
 plot's companion is its permutation plot, and a confirmatory figure with a missing companion is not
 rendered into the results bundle.
 
+**`tier` has two values and the third figure needed a third.** The shrinkage plot (L27) is the first
+figure built from a domain the spec was not designed against, and it is the **argument for a method** —
+it sees no group labels and makes no group claim, so it is EXPLORATORY by the two-tier logic, and that
+is not what it is. The enum was deliberately *not* extended: a distinction generalized on one example
+becomes a taxonomy nobody can apply, and the second figure that wants a third tier is what would
+justify it. Recorded as `GUIDED-056`, with a test asserting the enum still has two values so the next
+loop that meets this meets a row rather than a surprise. The same loop found `annotations` bent the
+same way — three series carrying the same annotation, resolved by keying per series (`p05_single_day`)
+rather than adding an axis to `Annotation` — and `checklist` held, because `check(payload)` takes the
+whole payload rather than one series. **That signature is the spec's one genuinely load-bearing
+choice**, and it is worth protecting on purpose now that it is known.
+
 **And two cross-cutting rules the packs agree on, which belong in the design language rather than in
 any pack:** consistent group colors and shapes across *every* figure in a session, colorblind-safe; and
 n stated in every legend.
