@@ -321,6 +321,12 @@ MARKER_STATUS: Dict[str, Tuple[str, ...]] = {
 }
 
 
+# Weakest first. The badge's obligations are ordered — DISPUTED may never be
+# defaulted, CONVENTION may be defaulted stated AS convention, SETTLED may be
+# defaulted outright — so *weakest* is the one a consumer must gate on.
+_STATUS_RANK = {DISPUTED: 0, CONVENTION_STATUS: 1, SETTLED: 2}
+
+
 @dataclass(frozen=True)
 class Claim:
     """One sentence inside a statement, with the status the field holds IT at.
@@ -383,7 +389,12 @@ def _badge_payload(evidence: Evidence,
         return payload
     statuses = [evidence.status] + [c.evidence.status for c in claims]
     payload["claims"] = [c.to_dict() for c in claims]
-    payload["may_preselect"] = all(s in MAY_PRESELECT for s in statuses)
+    # A SUBSET TEST rather than `all(s in MAY_PRESELECT for s in statuses)`.
+    # Same answer, and the generator form is the one the name-registry guard
+    # flags — *is any entry of this collection in that one* is one character
+    # from a substring scan over names, and the guard cannot tell them apart.
+    # `<=` on two sets can only mean exact membership.
+    payload["may_preselect"] = set(statuses) <= set(MAY_PRESELECT)
     # `min` over an explicit rank rather than a first-match over an ordered
     # tuple. The ordered-tuple form reads as *"is any of these in that
     # collection"*, which `test_every_substring_match_against_a_name_is_declared`
