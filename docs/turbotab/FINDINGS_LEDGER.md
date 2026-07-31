@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**223 of 636 closed.**
+**224 of 641 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 366 |
+| `OPEN` | 370 |
 | `PARTIAL` | 47 |
-| `FIXED` | 220 |
+| `FIXED` | 221 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 366
+## OPEN — 370
 
 
 ### Application state / lockbox — 66
@@ -424,6 +424,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-012` | high | Lockbox constitution clause 06 - declaration and execution are separate - has no implementation in either door: nothing applies the row-local vs stateful litmus test | `No module classifies transforms by the litmus test at L14. Classic's pages/03 applies feature engineering to…` | Filed at the start of L14 rather than after building it, deliberately: the check found the clause untracked, and the honest record of an unbuilt clause is an open finding, not a… |
 | `GUIDED-014` | high | DESIGN QUESTION for the product owner: does the exploratory labeling on an undetermined seal read as honest, or as the app giving up? | `docs/turbotab/COPY_DECK.md, 'Data & Target - what the user reads after answering' and 'what the user reads…` | NOT SELF-ASSESSED, deliberately. I wrote this copy at L15; asking the author whether their own prose reads well is the finder-judge problem in a different costume, and this… |
 | `DRIVE-011` | high | The Features selection step has no interface at all - choose_selection is served, set_selection is never called, and the method picker does not exist | `ml/router.py choose_selection at the features step; turbotab/web/index.html had no set_selection` | Filed at L23 rather than fixed, because a method picker with an explainability-cost column is a card and not a wiring change, and this loop's mandate was the invisible-question… |
+| `GUIDED-064` | high | A finding carries one evidence badge and can make two claims the field holds at different statuses, so the second claim travels under the first's badge | `turbotab/packs.py _counts_at_p_over_n; turbotab/packs.py _energy_adjustment` | Found while badging every _finding call site at L28-A. pack::genomics::counts_p_over_n asserts two things in one detail string. Model ranking at p >> n is SETTLED and is what… |
 | `GUIDED-065` | high | The calibration plot cannot be reached from any project because TurboTab has no training step, so the clinical pack's flagship figure has a renderer and no data path | `turbotab/figure_specs.py CALIBRATION when_applicable; turbotab/figure_bundle.py state(); turbotab/api.py has…` | Found at L28-B while writing the figure state dict. CALIBRATION.when_applicable reads has_predictions, and NOTHING in the project model can ever set it true: AnalysisProject holds… |
 | `GUIDED-067` | high | No Dietary Reference Intake table ships anywhere in the repository, so every figure and every prevalence claim that needs an EAR, an RDA, an AI or a UL is unbuildable | `docs/turbotab/research/NUTRITION_PACK.md section 07 figure E; docs/turbotab/DOMAIN_SCIENCE.md section 04…` | Filed at L28-D as the blocker the two pending figures name. research/NUTRITION_PACK.md section 07 figure E specifies vertical lines at the EAR, RDA or AI and the UL for the… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
@@ -432,9 +433,8 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-056` | medium | The figure spec's tier enum has no value for a figure that is the argument for a method rather than exploration or confirmation | `turbotab/figure_specs.py SHRINKAGE; DOMAIN_SCIENCE.md section 02` | Found by building the spec's third figure from a domain it was not designed against. The shrinkage plot is EXPLORATORY by the two-tier logic - it sees no group labels and makes no… |
 | `GUIDED-061` | medium | DRIFT_LIMIT = 0.25 gates a critical mixed-units finding marked derived, and the research section it cites carries no number for the drift row | `turbotab/nutrition.py:114; docs/turbotab/research/NUTRITION_PACK.md:39` | NUTRITION_PACK.md:39 reads 'ratio drifts with total energy | Mixed units across rows (multi-source merge) - hard fail'. It states the reading and the verdict and NO CUT POINT.… |
 | `GUIDED-063` | medium | Two advisories assemble the evidence badge as a dict literal instead of an Evidence, so nothing validates their form and one of them is outside every gate | `turbotab/purpose.py:171 indicator_blocker; ml/imbalance_advice.py:62 EVIDENCE` | Found while widening evidence.py at L28-A. purpose.py's indicator_blocker returns evidence_status='SETTLED' and a source string; ml/imbalance_advice.py declares an EVIDENCE dict… |
-| `GUIDED-064` | medium | A finding carries one evidence badge and can make two claims the field holds at different statuses, so the second claim travels under the first's badge | `turbotab/packs.py _counts_at_p_over_n; turbotab/packs.py _energy_adjustment` | Found while badging every _finding call site at L28-A. pack::genomics::counts_p_over_n asserts two things in one detail string. Model ranking at p >> n is SETTLED and is what… |
-| `GUIDED-068` | medium | The Atwater column matcher takes the FIRST numeric column matching each role, so a table carrying both percent-of-energy and gram columns is read as percentages and the grams are never seen | `turbotab/nutrition.py _match; turbotab/sample_data/dietary_recalls.csv` | Found at L28-C the moment atwater_finding was wired to an upload. dietary_recalls.csv carries protein_pct_kcal AND protein_g, fat_pct_kcal AND fat_g, carbohydrate_pct_kcal AND… |
 | `GUIDED-069` | medium | The research's generic name patterns are flagging heuristics and the pack applies several of them as findings with no second signal, so a strata or cluster column means whatever it is called | `turbotab/nutrition.py survey_design strata|stratum and psu|cluster fullmatch` | The generalization of the defect L28-C fixed. NUTRITION_PACK.md section 01 says to flag generic weight|wt|pweight|strata|psu|cluster|fpc, and that list is a FLAGGING heuristic in… |
+| `GUIDED-071` | medium | FigureSpec has no field for a precondition on upstream data state, so a figure that must refuse on the shape of the values can only do it inside its payload builder | `turbotab/figures.py FigureSpec.when_applicable; turbotab/figure_specs.py volcano_payload…` | Found at L29-B by building the volcano first, hardest-first, which is what LOOP.md section 02 now asks for. METABOLOMICS_PACK.md section 06.3: the fold change must be computed… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 
@@ -453,6 +453,15 @@ Nothing is closed without a regression test named after it.
 | `T0-PAGES-001` | medium | Duplicate-row detection has no engine home — it is inline in pages/01 | `pages/01_Upload_and_Audit.py (inline)` | Extract to the engine when pages/01 unfreezes; register the capability meanwhile. |
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
+
+### Other — 4
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `AUDIT-001` | high | The generated manuscript reports how many tests were significant at raw p < 0.05 and names no correction, so a wide table's uncorrected count is written into the artifact that is the product | `ml/narrative_engine.py:1163-1186 _gen_statistical_validation; research/METABOLOMICS_PACK.md section 10…` | L29-D anti-pattern audit hit 1 of 4. _gen_statistical_validation names the tests it ran and then writes N of M tests yielded statistically significant results (p < 0.05) into the… |
+| `AUDIT-002` | high | The quick baseline models split rows at random with no group awareness, so a table with repeated measures has one person's rows in both train and test and the reported performance is optimistic | `ml/eda_actions.py:1222-1226 train_test_split with no groups; ml/splits.py:311 GroupShuffleSplit exists and is…` | L29-D anti-pattern audit hit 2 of 4, and it is the star-marked one. NUTRITION_PACK.md section 03 states it as TurboTab-specific: if a person contributes multiple recalls, rows… |
+| `AUDIT-003` | medium | A log transform is recommended from skewness alone, with no check for data that has already been transformed | `ml/eda_recommender.py:394; research/METABOLOMICS_PACK.md section 10 Structural; DOMAIN_SCIENCE.md section 03b` | L29-D anti-pattern audit hit 3 of 4. eda_recommender.py:394 emits High skew, consider log transform or robust loss (Huber) from the target's skewness and nothing else.… |
+| `AUDIT-004` | medium | The quick baseline drops every row with any missing feature and reports no N cascade, so the number the user reads is about a subset nobody named | `ml/eda_actions.py:1209-1211; research/NUTRITION_PACK.md section 06 anti-patterns` | L29-D anti-pattern audit hit 4 of 4. valid_mask = not (y.isnull() or X.isnull().any(axis=1)) removes every row with a missing value in ANY feature, and the function returns… |
 
 ### DRIVE — 2
 
@@ -570,7 +579,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 220
+## FIXED — 221
 
 
 ### Multi-file / JSON import — 69
@@ -647,7 +656,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-136` | medium | coerce_numeric's methods-section description omits how many values it blanked (up to 20% of a column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 36'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 36 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-147` | medium | Duplicated key column name crashes normalize_key and therefore diagnose_join / execute_join / repair_keys (AttributeError), and silently blanks find_key_candidates | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 47'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 47 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 
-### Guided-door drive feedback — 48
+### Guided-door drive feedback — 49
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -698,6 +707,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-019` | medium | The routing value check's drift detector fired correctly and nothing ran it for two loops, so a metric regression I introduced at L13 shipped through L13 and L14 unnoticed | `tests/integration/test_routing_value_check.py::test_routing_value_check; the bisect at L15 (e7910ef green…` | **test:** `tests/integration/test_routing_value_check.py::test_routing_value_check` — FIXED at L16, as a PRE-PUSH HOOK, per the ruling. A LOOP.md obligation was explicitly ruled… |
 | `GUIDED-023` | medium | The preparation-mode question was classified as a FACT in FACT_KINDS; it is a CHOICE | `ml/router.py FACT_KINDS` | **test:** `test_it_is_a_choice_and_therefore_never_skippable` — The routing constitution's own test: a FACT is skippable at high confidence because the engine is certain and the… |
 | `GUIDED-032` | medium | The reverse lens contradiction asserts 'too few to be a panel' at 10 numeric columns, which is false for targeted metabolomics and over-fires on weak evidence | `turbotab/packs.py contradiction(); L21 report, the ! cells` | **test:** `turbotab/test_a_pack_does_not_fire_on_the_wrong_data.py::test_a_targeted_panel_is_not_contradicted_for_being_narrow` — FIXED at L22 by REMOVING the false claim rather… |
+| `GUIDED-068` | medium | The Atwater column matcher takes the FIRST numeric column matching each role, so a table carrying both percent-of-energy and gram columns is read as percentages and the grams are never seen | `turbotab/nutrition.py _match; turbotab/sample_data/dietary_recalls.csv` | **test:** `turbotab/test_the_reconstruction_reads_the_grams.py::test_a_table_carrying_grams_and_percentages_reconstructs_from_the_grams` — FIXED at L29-C. THREE SIGNALS, which is… |
 | `GUIDED-070` | medium | The weight-column fix accepted a real capability loss and recorded it only in a code comment: a genuine survey weight named "weight" is now missed even when SDMVSTRA and SDMVPSU are both present | `turbotab/nutrition.py survey_design; turbotab/sample_data/nhanes_dietary.csv` | **test:** `turbotab/test_the_nutrition_detectors_reach_an_upload.py::test_a_generic_weight_beside_recognized_design_variables_counts_again` — FIXED at L29-A, and the loss is… |
 
 ### Application state / lockbox — 34
