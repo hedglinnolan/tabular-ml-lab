@@ -261,6 +261,67 @@ def test_the_prereg_predates_the_router():
         "could have been fitted to the result")
 
 
+def test_the_amendment_changed_no_verdict():
+    """Prereg Amendment 1 (L26), and the only evidence that makes it honest.
+
+    The ceiling moved from `irrelevant_questions` to `irrelevant_net`. That is
+    a substitution a reader has every reason to be suspicious of, because it is
+    **indistinguishable in the diff** from choosing the metric that makes a
+    failing run pass.
+
+    What distinguishes it is the timing, and the timing is checkable: on the
+    run that lands the amendment, every dataset passes under **both** readings.
+    An amendment that changes no verdict is an amendment nobody made to change
+    a verdict.
+
+    This test is therefore not a regression guard. It is the amendment's
+    receipt, and the day it goes red the amendment has started doing work — at
+    which point the honest move is to say so out loud in
+    `VALUE_CHECK_ADJUDICATION.md`, not to delete this.
+    """
+    thresholds = _prereg_thresholds()
+    both = {}
+    for name, path, target in DATASETS:
+        gm = _run_guided(name, path, target).to_dict()["metrics"]
+        ceiling = thresholds[name]["max_irrelevant"]
+        both[name] = {
+            "literal": gm["irrelevant_questions"],
+            "net": gm["irrelevant_net"],
+            "constitutional": gm["constitutional"],
+            "ceiling": ceiling,
+        }
+    failed_old = [n for n, r in both.items() if r["literal"] > r["ceiling"]]
+    failed_new = [n for n, r in both.items() if r["net"] > r["ceiling"]]
+    assert not failed_old, (
+        f"the amendment was made on a run that FAILS the old reading on "
+        f"{failed_old} — which is the case it was written to be "
+        f"distinguishable from. Record it in VALUE_CHECK_ADJUDICATION.md as a "
+        f"gate that moved under pressure, or revert the amendment.\n{both}")
+    assert not failed_new, both
+    # And the constitutional count is what accounts for the gap, rather than
+    # the two metrics happening to agree for some other reason.
+    assert any(r["constitutional"] > 0 for r in both.values()), (
+        "no dataset has a constitutional question, so the two readings agree "
+        "for a reason that has nothing to do with the amendment")
+
+
+def test_the_literal_count_is_still_reported_everywhere():
+    """A substitution nobody can see is a substitution nobody can audit.
+
+    `irrelevant_questions` is demoted from *gated* to *reported*, and reported
+    means it appears in every row of the result file — not that it survives in
+    a docstring.
+    """
+    if not RESULT.exists():
+        pytest.skip("no recorded result yet")
+    recorded = json.loads(RESULT.read_text(encoding="utf-8"))
+    for row in recorded["rows"]:
+        guided = row["guided"]
+        assert "irrelevant_questions" in guided, row["dataset"]
+        assert "irrelevant_net" in guided, row["dataset"]
+        assert "constitutional" in guided, row["dataset"]
+
+
 def test_routing_value_check():
     """The verdict. Reports the full table, then asserts every threshold."""
     thresholds = _prereg_thresholds()
@@ -323,17 +384,29 @@ def test_routing_value_check():
             _check(failures, name, "coverage", gm["coverage"], ">=", t["coverage"])
         _check(failures, name, "questions asked",
                gm["questions_asked"], "<=", t["max_questions"])
-        # ON THE LITERAL COUNT, DELIBERATELY. The prereg defines an irrelevant
-        # question as one absent from the decision inventory and citing no
-        # finding; both conjuncts hold for a constitutional question, so the
-        # recorded numbers are correct and the ceiling binds on them. The
-        # `constitutional` and `irrelevant_net` readings are published beside
-        # this line and nothing is checked against them — a threshold moved onto
-        # a metric invented after the result is a threshold fitted to it.
-        # See VALUE_CHECK_ADJUDICATION.md, "The grain question scores as noise",
-        # and its L16 ruling.
-        _check(failures, name, "irrelevant questions",
-               gm["irrelevant_questions"], "<=", t["max_irrelevant"])
+        # ON `irrelevant_net`, SINCE PREREG AMENDMENT 1 (L26). The ceiling value
+        # is unchanged — ≤ 4 on messy-clinic, ≤ 3 on each guard, read out of the
+        # same table as before. What moved is which metric it is applied to.
+        #
+        # The prereg defines an irrelevant question as one absent from the
+        # decision inventory and citing no finding, and both conjuncts hold for
+        # a CONSTITUTIONAL question by construction. With two of those the
+        # literal count was a fair proxy; with four it had stopped measuring
+        # "questions the dataset did not call for" and started measuring "how
+        # much of the constitution is explicit" — every increment came from the
+        # app being MORE honest about what it must ask.
+        #
+        # THE TIMING IS THE JUSTIFICATION, and it is asserted below rather than
+        # asserted here: this was amended on a run that passes under BOTH
+        # readings, which is the only thing separating it from choosing the
+        # metric that makes a failing run pass. See VALUE_CHECK_PREREG.md
+        # "Amendment 1" and `test_the_amendment_changed_no_verdict`.
+        _check(failures, name, "irrelevant questions (net of constitutional)",
+               gm["irrelevant_net"], "<=", t["max_irrelevant"])
+        # REPORTED, NEVER INSTEAD OF. The literal count stays in every row of
+        # the result file and in the printed table, so the substitution is
+        # visible in the output rather than buried in this function. A
+        # substitution nobody can see is a substitution nobody can audit.
 
         # ── deferral closure, and the one ambiguity in the prereg ──────────
         #

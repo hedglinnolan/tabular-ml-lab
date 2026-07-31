@@ -7854,5 +7854,19 @@
   "verified_against": "",
   "test": "turbotab/test_the_purpose_changes_the_answer.py::test_the_manuscript_reports_what_was_done_and_no_longer_endorses_it",
   "verified_ev": "ml/dataset_profile.py:429; ml/eda_recommender.py:419; ml/narrative_engine.py:1065"
+ },
+ {
+  "id": "GUIDED-050",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The irrelevant-question ceiling bound on a metric that had stopped measuring irrelevance and started measuring how much of the constitution is explicit",
+  "detail": "",
+  "ev": "docs/turbotab/VALUE_CHECK_PREREG.md Amendment 1; tests/integration/test_routing_value_check.py",
+  "act": "",
+  "status": "FIXED",
+  "note": "The prereg defines an irrelevant question as one absent from the decision inventory AND citing no finding, and both conjuncts hold for a CONSTITUTIONAL question by construction. With two of those the literal count was a fair proxy. There are now four - lens, purpose, grain, eligibility - and each added since has moved the count by +1 with nothing to offset it, so at L25 it read exactly 3 of a permitted 3 on both regression guards. Every increment came from the app being MORE honest about what it must ask, which is the opposite of what the ceiling was written to catch. THE CEILING VALUES ARE UNCHANGED; only the metric they are applied to moved, to irrelevant_net, which has read 0 on all three datasets since it was defined. THE TIMING IS THE ENTIRE JUSTIFICATION AND IT IS CHECKABLE. Amended after a breach this is indistinguishable from choosing the metric that makes a failing run pass, and no reader could tell. Amended before one, on a run that passes under BOTH readings, it buys nothing a failing run would have needed - so test_the_amendment_changed_no_verdict asserts exactly that and is written as the amendment's RECEIPT rather than as a regression guard: the day it goes red the amendment has started doing work, and the honest move is to say so in the adjudication rather than delete the test. The literal count stays reported in every row of the result file and in the printed table, asserted separately, because a substitution nobody can see is a substitution nobody can audit. ONE METRIC AT A TIME: findings_driven's known downward drift under the same cause is recorded at L25 and deliberately NOT amended here.",
+  "verified_against": "",
+  "test": "tests/integration/test_routing_value_check.py::test_the_amendment_changed_no_verdict",
+  "verified_ev": "docs/turbotab/VALUE_CHECK_PREREG.md Amendment 1; tests/integration/test_routing_value_check.py"
  }
 ]
