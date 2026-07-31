@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**229 of 648 closed.**
+**229 of 653 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 372 |
+| `OPEN` | 377 |
 | `PARTIAL` | 47 |
 | `FIXED` | 226 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 372
+## OPEN — 377
 
 
 ### Application state / lockbox — 66
@@ -455,15 +455,20 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Other — 5
+### Other — 10
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `AUDIT-005` | high | The outcome-in-imputation refusal says there is no configuration in which it is acceptable, and the clinical pack marks the opposite SETTLED for an inference purpose | `turbotab/missingness.py:125 OUTCOME_IN_IMPUTATION_REFUSAL; research/CLINICAL_SURVEY_PACK.md section A2…` | L30-D anti-pattern audit hit 1 of 3, and the sharpest. turbotab/missingness.py:125 reads: The outcome cannot be one of the columns the imputation model reads ... There is no… |
 | `AUDIT-008` | high | The class the anti-pattern audit is actually finding: the core already holds the correct capability and the path that needs it does not read it — four of the last four hits have this shape, and it is… | `AUDIT-001 vs ml/feature_selection.py:186 multipletests; AUDIT-002 vs ml/splits.py; AUDIT-006 vs…` | NAMED BY THE EXECUTION AGENT IN THE L30 REPORT AND LEFT IN PROSE, which is the gap LOOP.md section 06.1 calls the most common one in an otherwise good report. Filing it because a… |
+| `AUDIT-009` | high | The model coach's cross-validated probe uses plain KFold with no group awareness, so its scores are optimistic on any table with repeated measures | `ml/coach_probe.py:189-202 _cv_score; ml/eval.py:145 StratifiedGroupKFold; ml/splits.py:311` | L31-A AUDIT-008 sweep, capability 2 (ml/splits.make_split and the grouped basis). ml/coach_probe._cv_score builds KFold or StratifiedKFold with shuffle=True and no groups… |
+| `AUDIT-010` | high | Table 1 prints a p-value per row by default with no multiplicity correction and no way to request one | `ml/table_one.py:20,48,167,200,219 show_pvalues default True; ml/multiplicity.py…` | L31-A AUDIT-008 sweep, capability 1 (statsmodels multipletests). TableOneConfig.show_pvalues defaults to True and a p is formatted per row, so a twenty-variable baseline table is… |
+| `AUDIT-011` | high | The Streamlit side has no record of the prediction/inference purpose at all, so none of the five decisions DOMAIN_SCIENCE section 01.3 says invert can read it | `utils/session_state.py has no purpose field; turbotab/purpose.py; DOMAIN_SCIENCE.md section 01.3…` | L31-A AUDIT-008 sweep, capability 4 (the recorded purpose), and it is STRUCTURAL rather than a missed call site. turbotab/purpose.py asks the question and records the answer… |
 | `AUDIT-003` | medium | A log transform is recommended from skewness alone, with no check for data that has already been transformed | `ml/eda_recommender.py:394; research/METABOLOMICS_PACK.md section 10 Structural; DOMAIN_SCIENCE.md section 03b` | L29-D anti-pattern audit hit 3 of 4. eda_recommender.py:394 emits High skew, consider log transform or robust loss (Huber) from the target's skewness and nothing else.… |
 | `AUDIT-006` | medium | The PCA biplot sets no aspect constraint, so PC2 is stretched to fill the panel and separation is visually exaggerated | `ml/macro_shape.py plot_pca_biplot; research/GENOMICS_PACK.md section 11; research/METABOLOMICS_PACK.md…` | L30-D anti-pattern audit hit 2 of 3. GENOMICS_PACK.md section 11 lists Unlabeled PCA axes, unequal aspect ratio as a SETTLED presentation error whose consequence is… |
 | `AUDIT-007` | medium | Median imputation is the silent default and nothing states what it costs, which the clinical pack marks SETTLED as bad | `ml/pipeline.py:213; pages/05_Preprocess.py:1082; research/CLINICAL_SURVEY_PACK.md section A2 anti-pattern 2…` | L30-D anti-pattern audit hit 3 of 3, and the softest. CLINICAL_SURVEY_PACK.md section A2 anti-pattern 2: Mean/median imputation. Understates variance, destroys the distribution… |
+| `AUDIT-012` | medium | Outlier advice is driven by a generic IQR rate that cannot tell physiologically impossible from abnormal-but-real, while the impossibility bands sit beside it unused | `ml/outliers.py:44 IQR fences; ml/eda_actions.py:412-420; ml/dataset_profile.py:214…` | L31-A AUDIT-008 sweep, capability 6 (the impossibility bands). ml/outliers.detect_outliers is q1 - 1.5 IQR to q3 + 1.5 IQR, or a z-score, with no reference to physiology… |
+| `AUDIT-013` | medium | The Preprocess page reads capabilities.requires_scaled_numeric directly instead of resolving through the recipe table, so a pack's override cannot reach it | `pages/05_Preprocess.py:498,835; turbotab/recipes.py resolve() and the caps:requires_scaled_numeric selector` | L31-A AUDIT-008 sweep, capability 8 (the recipe table's resolve). pages/05 twice reads spec.capabilities.requires_scaled_numeric to decide whether a model needs scaling.… |
 
 ### DRIVE — 2
 
