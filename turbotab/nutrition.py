@@ -302,24 +302,53 @@ DIETARY_WEIGHTS = ("WTDRD1", "WTDR2D")
 EXAM_WEIGHT = "WTMEC2YR"
 INTERVIEW_WEIGHT = "WTINT2YR"
 STRATA, PSU = "SDMVSTRA", "SDMVPSU"
+# The survey cycle. §01 lists it beside the weights and the design variables and
+# nothing else reads it — it is here as CORROBORATION only, because a column
+# literally called `SDDSRVYR` is an NHANES file saying so in its own vocabulary.
+SURVEY_CYCLE = "SDDSRVYR"
+
+# Every design variable the pack recognizes by its EXACT name. Deliberately not
+# the generic `strata|stratum` and `psu|cluster` fallbacks below: those are
+# `GUIDED-069`'s unfixed half, and letting a weak signal corroborate another
+# weak signal would launder both. A table with columns `weight` and `cluster`
+# must not become a survey design.
+EXACT_DESIGN_NAMES = DIETARY_WEIGHTS + (EXAM_WEIGHT, INTERVIEW_WEIGHT,
+                                        STRATA, PSU, SURVEY_CYCLE)
 
 
-def _is_body_measurement(df: pd.DataFrame, column: str) -> bool:
-    """The engine's own reference matcher recognizes this as a body measurement.
+def _body_measurement(df: pd.DataFrame, column: str) -> Optional[Tuple[str, bool]]:
+    """`(variable, plausible)` where the engine recognizes this as physiology.
 
     Through `physiology_reference.match_variable_key`, which is exact against
     the key or a declared alias after case and separators are stripped — never
     by substring. Borrowing the vetted matcher is the opposite of adding
     another name list, and it is the same call `clinical_reference_columns` and
     `_reference_column` already make.
+
+    `plausible` is the second half and it is what makes the reading a reading
+    rather than a name lookup: a column called `weight` holding 34,000 is not a
+    body weight, whatever it is called — 34,000 kg is outside the impossibility
+    band `physiology_reference` publishes (0.4–650), and NHANES sampling weights
+    live in the tens of thousands. The band is the engine's, not this module's.
     """
     try:
-        from ml.physiology_reference import (load_reference_bundle,
+        from ml.physiology_reference import (get_impossibility_band,
+                                             load_reference_bundle,
                                              match_variable_key)
         reference = load_reference_bundle()["nhanes"]
     except Exception:                                      # pragma: no cover
-        return False
-    return bool(match_variable_key(str(column), reference))
+        return None
+    variable = match_variable_key(str(column), reference)
+    if not variable:
+        return None
+    band = get_impossibility_band(reference, variable)
+    if not band:                                           # pragma: no cover
+        return variable, True
+    floor, ceiling = float(band[0]), float(band[1])
+    values = pd.to_numeric(df[column], errors="coerce").dropna()
+    if values.empty:                                       # pragma: no cover
+        return variable, True
+    return variable, bool(floor <= float(values.median()) <= ceiling)
 
 
 def survey_design(df: pd.DataFrame) -> Dict[str, Any]:
@@ -340,19 +369,42 @@ def survey_design(df: pd.DataFrame) -> Dict[str, Any]:
     guard #2 forbids. It was invisible until the detectors were wired to an
     upload (`GUIDED-058`); the module's own tests used the NHANES names.
 
-    Two corroborating signals, both cheap and both about the column rather than
-    its name — which is the *match on three signals jointly* instruction §01
-    opens with, applied where it had not been:
+    ## The cost, and how much of it was recoverable (`GUIDED-070`)
 
-    1. **A survey weight is numeric.** `107 kg` is a measurement a person typed.
-    2. **The engine's reference matcher does not recognize it as physiology.**
-       `weight` resolves to the body-weight reference; `pweight` does not.
+    The first repair rejected a generic weight name unless the column was
+    numeric and unrecognized by the engine's physiology reference. That killed
+    the false assertion and took a real capability with it — **a genuine
+    sampling weight called `weight` was missed even in a table carrying
+    `SDMVSTRA` and `SDMVPSU`** — and that loss lived in a report and a comment
+    and in no ledger row, which is `LOOP.md` §06.1's most common gap.
 
-    The cost is stated rather than hidden: a genuine sampling weight in a column
-    literally called `weight` is now missed, and the app says nothing about that
-    table's design. Silence over a false assertion is the governing rule's own
-    ordering, and the rejected columns are recorded so the reason is inspectable
-    rather than absent.
+    Most of it was recoverable, because *the corroboration a generic weight
+    name lacks is sitting in the columns beside it*: **nobody names a column
+    `SDMVSTRA` by accident.** Three signals, jointly, which is §01's own
+    instruction applied where it had not been:
+
+    1. **The table says it is a complex survey**, in NHANES's own vocabulary —
+       at least one of `EXACT_DESIGN_NAMES`. Absent that, a generic weight name
+       is the only evidence there is, and it is not enough.
+    2. **A survey weight is numeric.** `107 kg` is a measurement a person typed.
+    3. **Its values are not a plausible body measurement.** The engine
+       recognizes `weight` and `wt` as physiology and publishes an
+       impossibility band for each; a column called `weight` whose median is
+       34,000 is not a body weight in any unit, and NHANES sampling weights
+       live in the tens of thousands. This is the signal signal 2 of the first
+       repair stood in for, and it is a reading rather than a name lookup.
+
+    **The corroboration is exact names only**, never the generic
+    `strata|stratum` and `psu|cluster` fallbacks below. Those are `GUIDED-069`'s
+    unfixed half, and letting one weak signal corroborate another would launder
+    both — a table with columns `weight` and `cluster` would become a survey
+    design, which is the original defect arriving through the back door.
+
+    What is still lost, and it is smaller and stated: a survey weight named
+    generically in a table with **no** exactly-named design variable. The app
+    says nothing about that table's design, and silence over a false assertion
+    is the governing rule's own ordering. Every rejection records its reason, so
+    the absence is inspectable rather than absent.
     """
     present = {str(c).upper(): str(c) for c in df.columns}
     found = {
@@ -369,16 +421,28 @@ def survey_design(df: pd.DataFrame) -> Dict[str, Any]:
         found["psu"] = next((str(c) for c in df.columns
                              if re.fullmatch(r"psu|cluster", str(c), re.I)), None)
 
+    # The exactly-named design variables this table carries. Computed before the
+    # generic pass because it is what licenses it.
+    found["recognized_design"] = [present[name] for name in EXACT_DESIGN_NAMES
+                                  if name in present]
+
     named = [str(c) for c in df.columns
              if re.fullmatch(r"weight|wt|pweight", str(c), re.I)]
     generic, rejected = [], []
     for column in named:
+        reading = _body_measurement(df, column)
         if not pd.api.types.is_numeric_dtype(df[column]):
             rejected.append((column, "it is not numeric"))
-        elif _is_body_measurement(df, column):
+        elif not found["recognized_design"]:
             rejected.append(
-                (column, "the engine's physiology reference recognizes it as a "
-                         "body measurement"))
+                (column, "the table carries no design variable this pack "
+                         "recognizes by its exact name, so a generic weight "
+                         "name is the only evidence there is"))
+        elif reading and reading[1]:
+            rejected.append(
+                (column, f"the engine's physiology reference recognizes it as "
+                         f"{reading[0]} and its values are plausible for that "
+                         f"measurement"))
         else:
             generic.append(column)
     found["generic_weights"] = generic

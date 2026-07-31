@@ -37,6 +37,7 @@ import os
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -148,36 +149,115 @@ def test_a_body_weight_is_not_a_sampling_weight():
     design = N.survey_design(df)
     assert design["any_weight"] is False
     assert design["generic_weights"] == []
-    rejected = dict(design["rejected_weights"])
-    assert "weight" in rejected
-    assert "not numeric" in rejected["weight"] or \
-        "body measurement" in rejected["weight"]
+    assert "weight" in dict(design["rejected_weights"])
     assert N.partial_design_finding(df) is None
 
 
-def test_a_numeric_body_weight_is_rejected_too_and_the_reason_says_which():
-    """The string `107 kg` is the easy half. A numeric `weight` column is the
-    case the engine's own reference matcher has to settle, and it does."""
-    df = pd.DataFrame({"weight": [72.0, 88.5, 61.2] * 10,
-                       "glucose": [90, 105, 99] * 10})
-    design = N.survey_design(df)
+# ── GUIDED-070 · the recoverable half of that fix's cost ────────────────────
+#
+# The fix was right and it took a real capability with it: a genuine sampling
+# weight called `weight` was missed even in a table carrying `SDMVSTRA` and
+# `SDMVPSU`. That loss lived in a report and a comment and in no ledger row.
+# Most of it is recoverable, because the corroboration the name lacks is in the
+# columns beside it — nobody names a column `SDMVSTRA` by accident.
+
+
+def _survey_frame(n: int = 60, seed: int = 3, weight_name: str = "weight",
+                  **columns) -> pd.DataFrame:
+    """A generically-named sampling weight beside real design variables."""
+    rng = np.random.default_rng(seed)
+    frame = pd.DataFrame({
+        weight_name: rng.gamma(4, 6000, n),
+        "DR1TKCAL": rng.normal(2000, 300, n),
+        "SDMVSTRA": rng.integers(100, 105, n),
+        "SDMVPSU": rng.integers(1, 3, n),
+    })
+    for key, value in columns.items():
+        frame[key] = value
+    return frame
+
+
+def test_a_generic_weight_beside_recognized_design_variables_counts_again():
+    """`GUIDED-070`. The recovered case, asserted end to end: the design
+    finding this table supports comes back."""
+    frame = _survey_frame()
+    frame.loc[frame.index[:6], "SDMVSTRA"] = 999
+    frame.loc[frame.index[:6], "SDMVPSU"] = 1      # a stratum with one PSU
+
+    design = N.survey_design(frame)
+    assert design["generic_weights"] == ["weight"]
+    assert design["any_weight"] is True
+    assert design["rejected_weights"] == []
+    assert set(design["recognized_design"]) == {"SDMVSTRA", "SDMVPSU"}
+
+    ids = {f["id"] for f in N.design_findings(frame)}
+    assert "pack::dietary::lonely_psu" in ids, sorted(ids)
+
+
+def test_the_same_weight_with_a_strata_column_and_no_psu_is_partial_again():
+    frame = _survey_frame().drop(columns=["SDMVPSU"])
+    finding = N.partial_design_finding(frame)
+    assert finding is not None
+    assert finding["params"]["missing"] == ["PSU"]
+    assert finding["affected_columns"] == ["weight"]
+
+
+def test_the_corroboration_is_exact_names_and_never_the_generic_fallbacks():
+    """`GUIDED-069`'s unfixed half must not become this one's second signal.
+
+    A table with `weight` and `cluster` would otherwise be a survey design
+    assembled from two guesses — the original defect arriving through the back
+    door, with one more step in it.
+    """
+    frame = _survey_frame().drop(columns=["SDMVSTRA", "SDMVPSU"])
+    frame["strata"] = 1
+    frame["cluster"] = 2
+    design = N.survey_design(frame)
+    assert design["recognized_design"] == []
+    assert design["generic_weights"] == []
     assert design["any_weight"] is False
-    assert dict(design["rejected_weights"])["weight"].endswith(
-        "recognizes it as a body measurement")
+    assert N.design_findings(frame) == []
 
 
-def test_an_unambiguous_sampling_weight_still_reads_as_one():
-    """The cost of the two signals is stated rather than hidden — a genuine
-    sampling weight called `weight` is now missed. `pweight` is not ambiguous
-    vocabulary and still counts, so the fix narrowed the reading rather than
-    removing it."""
+def test_a_body_weight_beside_real_design_variables_is_still_rejected():
+    """The third signal, and the reason it is a reading rather than a lookup.
+
+    An NHANES-derived analysis file can carry `SDMVSTRA` and a body-mass column
+    somebody renamed `weight`. Design variables say the TABLE is a complex
+    survey; they say nothing about which column is the weight. The values do.
+    """
+    rng = np.random.default_rng(11)
+    frame = _survey_frame()
+    frame["weight"] = rng.normal(78, 12, len(frame))       # kilograms
+    design = N.survey_design(frame)
+    assert design["generic_weights"] == []
+    assert design["any_weight"] is False
+    reason = dict(design["rejected_weights"])["weight"]
+    assert "recognizes it as weight" in reason
+    assert "plausible for that measurement" in reason
+
+
+def test_what_is_still_lost_is_smaller_and_is_stated():
+    """A generically-named weight in a table with no exactly-named design
+    variable. The app says nothing, and the rejection records why — silence
+    over a false assertion, with the absence inspectable rather than absent."""
     df = pd.DataFrame({"pweight": [1000.0, 2500.0, 1800.0] * 10,
                        "DR1TKCAL": [2000, 2200, 1900] * 10})
     design = N.survey_design(df)
-    assert design["generic_weights"] == ["pweight"]
-    finding = N.partial_design_finding(df)
-    assert finding is not None
-    assert set(finding["params"]["missing"]) == {"strata", "PSU"}
+    assert design["generic_weights"] == []
+    assert design["any_weight"] is False
+    assert N.design_findings(df) == []
+    assert "no design variable this pack recognizes by its exact name" in \
+        dict(design["rejected_weights"])["pweight"]
+
+
+def test_the_exact_names_are_the_ones_the_research_lists():
+    """§01: *"Flag `WTINT2YR`, `WTMEC2YR`, `WTDRD1`, `WTDR2D`, `SDMVPSU`,
+    `SDMVSTRA`, `SDDSRVYR`."* The corroboration set is that list and not a
+    convenience subset of it."""
+    assert set(N.EXACT_DESIGN_NAMES) == {
+        "WTDRD1", "WTDR2D", "WTMEC2YR", "WTINT2YR", "SDMVSTRA", "SDMVPSU",
+        "SDDSRVYR"}
 
 
 def test_every_generic_fixture_gains_no_question_from_the_dietary_pack():
