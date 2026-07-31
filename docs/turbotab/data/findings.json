@@ -8036,5 +8036,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "turbotab/figure_specs.py:568"
+ },
+ {
+  "id": "TEST-039",
+  "area": "TEST",
+  "sev": "high",
+  "item": "Every Makefile test target exits 4 without running a single test: PYTEST_OPTS passes --timeout=60 and pytest-timeout is not installed in venv/, so the documented command and the CI target are both dead",
+  "detail": "",
+  "ev": "Makefile:18,24,44; requirements-dev.txt:25",
+  "act": "",
+  "status": "OPEN",
+  "note": "Makefile:18 sets PYTEST_OPTS := --timeout=60 -q and every target interpolates it, so 'make test' produces 'error: unrecognized arguments: --timeout=60' and 'make: *** [test] Error 4'. Zero tests run. Makefile:44 makes 'verify' - called THE CI TARGET at Makefile:13 - a descendant of the same variable, so it is dead by the same line. pytest-timeout>=2.1 IS declared at requirements-dev.txt:25 and is simply absent from venv/, so the venv was built from requirements.txt alone or predates the pin; the fix is probably installing the dev requirements rather than editing the Makefile. THE SECOND DECAY OF THE SAME CLAIM IN THE SAME FILE. LOOP.md section 05 records the first - the Makefile named ./venv/bin/python when nothing had created it, and the spelling gate's skip list said .venv - and draws the lesson verbatim: 'A setup path is a claim like any other and decays the same way: silently, while the people with working environments keep working.' It decayed again, at a different line, and the lesson did not catch it because the lesson was written as prose rather than as a check. WHAT IT COSTS: every 'N passed' this project reports comes from a hand-rolled pytest invocation rather than the documented command, so the counts are real evidence about an ad-hoc command and no evidence about the target CI runs. Verified independently at ea89ea0: 2562 passed via 'pytest tests/ turbotab/ --ignore=tests/integration --ignore=tests/test_nn_modernization.py' plus 'pytest tests/integration', which is not a command written down anywhere. NOT A DUPLICATE of TEST-038 (torch unguarded at module scope) or TEST-034 (SHAP has no live coverage): those name absent optional dependencies that make tests fail or fail to collect, and this one makes the runner refuse to start before any of that is reached. Fixing all three is what makes a fresh clone able to run its own gate.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "Makefile:18,24,44; requirements-dev.txt:25"
  }
 ]

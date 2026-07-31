@@ -188,6 +188,14 @@ discipline. Bypass with `--no-verify`, and say why.
 the instructions. A setup path is a claim like any other and decays the same way: silently, while
 the people with working environments keep working.
 
+**It decayed again, in the same file, and this paragraph did not catch it.** Found while adjudicating
+L27 (`TEST-039`): `PYTEST_OPTS` passes `--timeout=60`, `pytest-timeout` is absent from `venv/`, and so
+`make test` — and `make verify`, which line 13 of the `Makefile` calls the CI target — exits 4 having
+run **zero** tests. Every count this project has reported came from a hand-rolled `pytest` invocation
+instead: the numbers are real, and they are evidence about a command written down nowhere. The rule
+above failed because it is prose. **Adjudicating a loop now includes running `make test` once** — the
+only form of this rule that can actually fire.
+
 **The freeze** and the three gates that lift it are stated **once**, in `TRANSITION_PLAN.md` §05. Do
 not restate them; this file once said "never modify" while §05 said "engine-move-only", and a reader
 following the stricter one could not do the work §05 permits.
@@ -206,7 +214,12 @@ one thing the rest depends on. Pull the branch first; the agent's commits will n
 git fetch -q origin TurboTab && git rebase origin/TurboTab
 python docs/turbotab/tools/ledger.py stats          # do the counts match the report?
 grep -c '"GUIDED-0NN"' docs/turbotab/data/findings.json   # was it actually filed?
+make test                                           # does the documented gate still run? (§05)
 ```
+
+**And one grep that is not about the report at all:** does anything outside a test file import what
+the loop just built? A module reachable only from its own tests is a specification, and the report
+will not say so, because from inside the loop it looks finished. This is how `GUIDED-058` was found.
 
 **What to look for, in order of how often it has mattered:**
 
