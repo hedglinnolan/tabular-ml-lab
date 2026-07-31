@@ -75,6 +75,19 @@ which is why the parts are ordered by what would hurt most to lose.
 - **Two, never three, when testing an abstraction.** The figure spec shipped with exactly two
   figures on instruction, and the second exposed two seams the first did not. A third before the
   spec survived both would have hardened the wrong shape.
+- **And stop metering once it has stopped bending.** The rule above is about *discovery*, and read
+  as a general cap it is expensive. The packs specify **eight** signature figures (`DOMAIN_SCIENCE.md`
+  §02), **ten** import detectors (§03b) and ~150 anti-patterns, all written down to the annotation
+  and the threshold. Releasing those two per loop is a schedule invented by the prompt rather than
+  by the work. **The test for which phase you are in is not a count — it is whether the last example
+  bent the abstraction.** L27's third figure did (`annotations` bent, `tier` did not fit), so figures
+  were still in discovery at three; the next one of a *shape already seen* is fill-out, and a
+  fill-out part should carry as many instances as the agent can hold. Product owner's framing:
+  *"why stop at 2 plots when you know they could make all n plots that work well for a given card."*
+- **Order a batch hardest-first.** The corollary that keeps a widened part honest. Five instances
+  built easiest-first are five castings of a shape nobody stress-tested; built hardest-first, the
+  seam shows while four are still unwritten. Judge "hardest" by what is most likely to break the
+  abstraction, not by effort.
 - **Say what not to build.** Every loop since `L25` has carried an explicit *deliberately unbuilt*
   clause. Agents finish things; the instruction to stop is load-bearing.
 - **Scope note at the end.** When one part is allowed to run long, say which and what may be traded

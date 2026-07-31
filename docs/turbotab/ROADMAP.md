@@ -127,6 +127,15 @@ D is the long pole and the original eleven-step estimate was made before the dom
 **12–15 loops remain**, most of them D2–D5. L10–L12 are weeks. The open-findings count is not the
 driver — findings close in bulk, and several turn out to be one cause wearing many hats.
 
+**That estimate assumes a cadence the work does not require, and is probably too long.** It was
+priced at two or three items per loop, which is the right rate while an abstraction is still being
+discovered and the wrong one afterward — see `LOOP.md` §02, *stop metering once it has stopped
+bending*. Most of D3–D5 is fill-out against specifications that are already written: five remaining
+signature figures, eight remaining import detectors, ~150 anti-patterns that are simultaneously pack
+content and a conformance suite. Those are agent-shaped in bulk. **The loops that cannot be widened
+are the ones that discover a shape** — the wiring in L28, the checklist engine's first instance, the
+sensitivity fork — and those are the real remaining count.
+
 ---
 
 ## Decision gates
