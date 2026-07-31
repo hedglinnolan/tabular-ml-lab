@@ -791,6 +791,43 @@ def _energy_adjustment(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
                 "alternative": "nutrient_density"})
 
 
+# ── dietary · the nutrition module's detectors, reaching the live path ───────
+#
+# `GUIDED-058`. `packs.findings(df, lens)` is wired — `engine.py:710` and
+# `project.py:815` both call it — and `turbotab/nutrition.py` was imported by
+# its own tests and by nothing else. Four detectors and a refusal, unreachable.
+#
+# **The import is deferred, and it has to be.** `nutrition.py` imports
+# `_finding`, `Evidence` and `PackRefusal` from here, so naming it at module
+# scope would be a cycle. Same shape and same reason as `Pack.recipes`, which
+# is a callable for the neighboring reason: importing this module must not have
+# side effects on what it imports.
+#
+# Thin wrappers rather than a lazy registry, because a wrapper is inspectable —
+# `test_a_pack_names_what_it_will_look_for` runs `PACKS[key].detectors` against
+# the pack's fixture and needs a callable, not a promise of one.
+
+
+def _nutrition_atwater(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    from turbotab import nutrition
+    return nutrition.atwater_finding(df)
+
+
+def _nutrition_survey_weights(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    from turbotab import nutrition
+    return nutrition.survey_weights_finding(df)
+
+
+def _nutrition_partial_design(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    from turbotab import nutrition
+    return nutrition.partial_design_finding(df)
+
+
+def _nutrition_lonely_psu(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    from turbotab import nutrition
+    return nutrition.lonely_psu_finding(df)
+
+
 # ── survey ───────────────────────────────────────────────────────────────────
 
 # THE DETECTION, not the modeling treatment. §B4 — *"Ordinal vs interval — the
@@ -1410,7 +1447,9 @@ PACKS: Dict[str, Pack] = {
         )),
     DIETARY: Pack(
         key=DIETARY, label=LENS_LABELS[DIETARY],
-        detectors=(_compositional, _implausible_intake, _energy_adjustment),
+        detectors=(_compositional, _implausible_intake, _energy_adjustment,
+                   _nutrition_atwater, _nutrition_survey_weights,
+                   _nutrition_partial_design, _nutrition_lonely_psu),
         looks_for=(
             LooksFor("pack::dietary::compositional",
                      "columns that sum to a constant, whose correlations with "
@@ -1421,6 +1460,19 @@ PACKS: Dict[str, Pack] = {
             LooksFor("pack::dietary::energy_adjustment",
                      "a total-energy column, without which every nutrient "
                      "association is confounded by total intake"),
+            LooksFor("pack::dietary::atwater",
+                     "declared energy that does not reconstruct from the "
+                     "macronutrients, which is the only way to infer an energy "
+                     "unit"),
+            LooksFor("pack::dietary::survey_weights",
+                     "the survey weights, and which of them a dietary analysis "
+                     "takes"),
+            LooksFor("pack::dietary::partial_design",
+                     "a survey weight with no strata or PSU beside it, which "
+                     "leaves the standard errors too narrow"),
+            LooksFor("pack::dietary::lonely_psu",
+                     "a stratum holding one primary sampling unit, which makes "
+                     "its variance contribution undefined rather than small"),
         ),
         priors=(
             # THE ONE IMPLEMENTATION of the averaging rule (`GUIDED-026`).

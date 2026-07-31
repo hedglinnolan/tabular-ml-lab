@@ -262,7 +262,14 @@ def atwater_finding(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
         "unexplained": "Declared energy does not reconstruct from the macronutrients",
     }
     return _finding(
-        f"pack::dietary::atwater_{reading.verdict}", severity,
+        # ONE ID PER DETECTOR, and the verdict is a parameter — which it already
+        # was. The id used to be `atwater_{verdict}`, and a varying id cannot be
+        # bound to anything: `LooksFor` names an id, `prior_columns` looks a
+        # detector up by `f["id"] == detector`, and both would have had to know
+        # five spellings of one finding. The title is where the verdict belongs,
+        # because that is what a reader sees. Found by wiring the detector into
+        # the pack (`GUIDED-058`); nothing had needed to refer to it before.
+        "pack::dietary::atwater", severity,
         titles[reading.verdict], reading.sentence,
         ("Total energy is the denominator of every energy adjustment, every "
          "nutrient density and every implausible-intake screen, so a unit "
@@ -297,12 +304,55 @@ INTERVIEW_WEIGHT = "WTINT2YR"
 STRATA, PSU = "SDMVSTRA", "SDMVPSU"
 
 
+def _is_body_measurement(df: pd.DataFrame, column: str) -> bool:
+    """The engine's own reference matcher recognizes this as a body measurement.
+
+    Through `physiology_reference.match_variable_key`, which is exact against
+    the key or a declared alias after case and separators are stripped — never
+    by substring. Borrowing the vetted matcher is the opposite of adding
+    another name list, and it is the same call `clinical_reference_columns` and
+    `_reference_column` already make.
+    """
+    try:
+        from ml.physiology_reference import (load_reference_bundle,
+                                             match_variable_key)
+        reference = load_reference_bundle()["nhanes"]
+    except Exception:                                      # pragma: no cover
+        return False
+    return bool(match_variable_key(str(column), reference))
+
+
 def survey_design(df: pd.DataFrame) -> Dict[str, Any]:
     """Which design variables this table carries, and what is missing.
 
     Exact names first, then the generic patterns §01 lists, because a column
     literally called `SDMVPSU` is a different quality of evidence from one
     called `psu` and the finding says which.
+
+    ## A generic weight needs a second signal, and guard #2 is why
+
+    §01 says to flag generic `weight|wt|pweight`, and taking that as sufficient
+    fired `partial_design` on `clinic_visits.csv` — *"There is a survey weight
+    in this table and no strata or PSU column"* — about a column holding
+    `107 kg`. **A body weight called a sampling weight is the dietary pack
+    asserting something false on a clinical table, authoritatively**, which is
+    the exact failure `DOMAIN_PACKS.md` §05 says would embarrass us and §03's
+    guard #2 forbids. It was invisible until the detectors were wired to an
+    upload (`GUIDED-058`); the module's own tests used the NHANES names.
+
+    Two corroborating signals, both cheap and both about the column rather than
+    its name — which is the *match on three signals jointly* instruction §01
+    opens with, applied where it had not been:
+
+    1. **A survey weight is numeric.** `107 kg` is a measurement a person typed.
+    2. **The engine's reference matcher does not recognize it as physiology.**
+       `weight` resolves to the body-weight reference; `pweight` does not.
+
+    The cost is stated rather than hidden: a genuine sampling weight in a column
+    literally called `weight` is now missed, and the app says nothing about that
+    table's design. Silence over a false assertion is the governing rule's own
+    ordering, and the rejected columns are recorded so the reason is inspectable
+    rather than absent.
     """
     present = {str(c).upper(): str(c) for c in df.columns}
     found = {
@@ -318,9 +368,21 @@ def survey_design(df: pd.DataFrame) -> Dict[str, Any]:
     if not found["psu"]:
         found["psu"] = next((str(c) for c in df.columns
                              if re.fullmatch(r"psu|cluster", str(c), re.I)), None)
-    generic = [str(c) for c in df.columns
-               if re.fullmatch(r"weight|wt|pweight", str(c), re.I)]
+
+    named = [str(c) for c in df.columns
+             if re.fullmatch(r"weight|wt|pweight", str(c), re.I)]
+    generic, rejected = [], []
+    for column in named:
+        if not pd.api.types.is_numeric_dtype(df[column]):
+            rejected.append((column, "it is not numeric"))
+        elif _is_body_measurement(df, column):
+            rejected.append(
+                (column, "the engine's physiology reference recognizes it as a "
+                         "body measurement"))
+        else:
+            generic.append(column)
     found["generic_weights"] = generic
+    found["rejected_weights"] = rejected
     found["any_weight"] = bool(found["dietary_weights"] or found["exam_weight"]
                                or found["interview_weight"] or generic)
     return found
@@ -340,89 +402,141 @@ def lonely_psu(df: pd.DataFrame, design: Dict[str, Any]) -> List[Any]:
     return [k for k, v in counts.items() if int(v) == 1]
 
 
-def design_findings(df: pd.DataFrame) -> List[Dict[str, Any]]:
-    """Every reading the design variables support. Findings, never repairs."""
+# ── the three design readings, as three detectors ────────────────────────────
+#
+# SPLIT RATHER THAN WIDENED, and the choice is a deliverable (`GUIDED-058`).
+# `Pack.detectors` is a tuple of `Callable[[pd.DataFrame], Optional[Dict]]`.
+# `atwater_finding` matched it as written; `design_findings` returned a `List`
+# and did not, so the pack path was open to one of the two and closed to the
+# other. Two ways out:
+#
+# **Widen the contract** so a detector may return a list. One line in `packs.
+# findings`, and it costs the type its meaning: every caller then has to handle
+# both shapes, `prior_columns`'s `f["id"] == detector` lookup gets ambiguous,
+# and the widening would rest on ONE example — which is the same mistake
+# `GUIDED-056` refused to make with the figure `tier` enum, one layer down.
+#
+# **Split.** Three findings that were already independent become three
+# detectors. What it cost: the early `return out` after the partial-design
+# reading, which suppressed the lonely-PSU check, had to become a precondition
+# — and it turned out to be one already, since `lonely_psu` needs BOTH strata
+# and PSU and the partial case is exactly their absence. So the control flow
+# was expressible as guards on each detector rather than as an order between
+# them, which is the evidence that these were three things sharing a function
+# rather than one thing with three outputs. `design_findings` stays as the
+# composed reading, because it is a better unit to test and to read.
+#
+# The honest cost of splitting: `survey_design(df)` now runs three times per
+# table instead of once. It is a column-name scan over a dict, so the cost is
+# real and negligible, and paying it buys a contract that stayed narrow.
+
+
+def survey_weights_finding(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """The weight to use, and the one not to. Findings, never repairs."""
     design = survey_design(df)
-    out: List[Dict[str, Any]] = []
-    if not design["any_weight"]:
-        return out
+    if not design["any_weight"] or not design["dietary_weights"]:
+        return None
+    names = ", ".join(f"`{w}`" for w in design["dietary_weights"])
+    detail = (
+        f"This table carries {names}"
+        + (f" and `{design['exam_weight']}`." if design["exam_weight"] else ".")
+        + " Dietary analyses take the dietary weights: `WTDRD1` for day-1 "
+          "analyses and `WTDR2D` for anything using both days. They add "
+          "adjustments for recall non-response and for the deliberate "
+          "weekday/weekend allocation of recall days that the examination "
+          "weight does not carry.")
+    if design["exam_weight"]:
+        detail += (f" `{design['exam_weight']}` is the examination weight "
+                   f"and is not the right one here.")
+    return _finding(
+        "pack::dietary::survey_weights", "warning",
+        "Use the dietary weights, not the examination weight", detail,
+        ("Unweighted or wrongly-weighted estimates are biased toward the "
+         "oversampled groups, because NHANES deliberately oversamples "
+         "specific race, age and income groups — so an unweighted mean is "
+         "not a US-population mean."),
+        confidence="high", pack=DIETARY, marker="derived",
+        evidence=DESIGN_EVIDENCE,
+        columns=design["dietary_weights"],
+        params={"use": design["dietary_weights"],
+                "not": [w for w in (design["exam_weight"],) if w]},
+        fix_label="", fix_kind="none")
 
-    # 1 · the weight to use, and the one not to.
-    if design["dietary_weights"]:
-        names = ", ".join(f"`{w}`" for w in design["dietary_weights"])
-        detail = (
-            f"This table carries {names}"
-            + (f" and `{design['exam_weight']}`." if design["exam_weight"] else ".")
-            + " Dietary analyses take the dietary weights: `WTDRD1` for day-1 "
-              "analyses and `WTDR2D` for anything using both days. They add "
-              "adjustments for recall non-response and for the deliberate "
-              "weekday/weekend allocation of recall days that the examination "
-              "weight does not carry.")
-        if design["exam_weight"]:
-            detail += (f" `{design['exam_weight']}` is the examination weight "
-                       f"and is not the right one here.")
-        out.append(_finding(
-            "pack::dietary::survey_weights", "warning",
-            "Use the dietary weights, not the examination weight", detail,
-            ("Unweighted or wrongly-weighted estimates are biased toward the "
-             "oversampled groups, because NHANES deliberately oversamples "
-             "specific race, age and income groups — so an unweighted mean is "
-             "not a US-population mean."),
-            confidence="high", pack=DIETARY, marker="derived",
-            evidence=DESIGN_EVIDENCE,
-            columns=design["dietary_weights"],
-            params={"use": design["dietary_weights"],
-                    "not": [w for w in (design["exam_weight"],) if w]},
-            fix_label="", fix_kind="none"))
 
-    # 2 · a weight with no strata or PSU — a partially specified design.
-    if not (design["strata"] and design["psu"]):
-        missing = [name for name, key in (("strata", "strata"), ("PSU", "psu"))
-                   if not design[key]]
-        out.append(_finding(
-            "pack::dietary::partial_design", "warning",
-            "The survey design is only partially specified",
-            (f"There is a survey weight in this table and no "
-             f"{' or '.join(missing)} column. Weights alone correct the point "
-             f"estimates toward the population; the strata and PSU are what "
-             f"make the standard errors right. Without them the intervals are "
-             f"too narrow, and nothing on screen shows it."),
-            ("NCHS states that variance estimates computed under a "
-             "simple-random-sample assumption are generally too low and biased "
-             "for NHANES."),
-            confidence="high", pack=DIETARY, marker="derived",
-            evidence=DESIGN_EVIDENCE,
-            columns=(design["dietary_weights"]
-                     or design["generic_weights"]
-                     or [w for w in (design["exam_weight"],) if w]),
-            params={"missing": missing},
-            fix_label="", fix_kind="none"))
-        return out
+def partial_design_finding(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """A weight with no strata or PSU. Weights fix the estimate, not the interval."""
+    design = survey_design(df)
+    if not design["any_weight"] or (design["strata"] and design["psu"]):
+        return None
+    missing = [name for name, key in (("strata", "strata"), ("PSU", "psu"))
+               if not design[key]]
+    return _finding(
+        "pack::dietary::partial_design", "warning",
+        "The survey design is only partially specified",
+        (f"There is a survey weight in this table and no "
+         f"{' or '.join(missing)} column. Weights alone correct the point "
+         f"estimates toward the population; the strata and PSU are what "
+         f"make the standard errors right. Without them the intervals are "
+         f"too narrow, and nothing on screen shows it."),
+        ("NCHS states that variance estimates computed under a "
+         "simple-random-sample assumption are generally too low and biased "
+         "for NHANES."),
+        confidence="high", pack=DIETARY, marker="derived",
+        evidence=DESIGN_EVIDENCE,
+        columns=(design["dietary_weights"]
+                 or design["generic_weights"]
+                 or [w for w in (design["exam_weight"],) if w]),
+        params={"missing": missing},
+        fix_label="", fix_kind="none")
 
-    # 3 · a stratum with one PSU.
+
+def lonely_psu_finding(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """A stratum with one PSU. The estimator does not degrade, it breaks.
+
+    Its precondition — strata AND PSU both present — is the exact negation of
+    `partial_design_finding`'s, which is why the composed reading's early
+    `return` was expressible as a guard rather than as an order.
+    """
+    design = survey_design(df)
+    if not design["any_weight"] or not (design["strata"] and design["psu"]):
+        return None
     lonely = lonely_psu(df, design)
-    if lonely:
-        shown = ", ".join(str(s) for s in lonely[:5])
-        out.append(_finding(
-            "pack::dietary::lonely_psu", "critical",
-            f"{len(lonely):,} stratum/strata contain a single PSU",
-            (f"Strata {shown}{'…' if len(lonely) > 5 else ''} each contain one "
-             f"primary sampling unit. Taylor-series linearization estimates a "
-             f"stratum's variance from the spread between its PSUs, so a "
-             f"stratum with one PSU contributes an undefined variance rather "
-             f"than a small one — the estimator does not degrade, it breaks. "
-             f"The standard remedies are to collapse the stratum with a "
-             f"neighbor, to centre the lonely PSU at the population mean, or "
-             f"to certainty-adjust it; which one is a decision about your "
-             f"design, not about your data."),
-            ("A variance estimate that is undefined and silently computed is "
-             "the failure this whole product exists to remove."),
-            confidence="high", pack=DIETARY, marker="derived",
-            evidence=DESIGN_EVIDENCE,
-            columns=[design["strata"], design["psu"]],
-            params={"strata": [str(s) for s in lonely], "n": len(lonely)},
-            fix_label="", fix_kind="none"))
-    return out
+    if not lonely:
+        return None
+    shown = ", ".join(str(s) for s in lonely[:5])
+    return _finding(
+        "pack::dietary::lonely_psu", "critical",
+        f"{len(lonely):,} stratum/strata contain a single PSU",
+        (f"Strata {shown}{'…' if len(lonely) > 5 else ''} each contain one "
+         f"primary sampling unit. Taylor-series linearization estimates a "
+         f"stratum's variance from the spread between its PSUs, so a "
+         f"stratum with one PSU contributes an undefined variance rather "
+         f"than a small one — the estimator does not degrade, it breaks. "
+         f"The standard remedies are to collapse the stratum with a "
+         f"neighbor, to centre the lonely PSU at the population mean, or "
+         f"to certainty-adjust it; which one is a decision about your "
+         f"design, not about your data."),
+        ("A variance estimate that is undefined and silently computed is "
+         "the failure this whole product exists to remove."),
+        confidence="high", pack=DIETARY, marker="derived",
+        evidence=DESIGN_EVIDENCE,
+        columns=[design["strata"], design["psu"]],
+        params={"strata": [str(s) for s in lonely], "n": len(lonely)},
+        fix_label="", fix_kind="none")
+
+
+DESIGN_DETECTORS = (survey_weights_finding, partial_design_finding,
+                    lonely_psu_finding)
+
+
+def design_findings(df: pd.DataFrame) -> List[Dict[str, Any]]:
+    """Every reading the design variables support, composed from the three.
+
+    Kept because it is the better unit to read and to test, and because the
+    ORDER is part of the reading: which weight, then whether the design is
+    complete, then whether a complete one is estimable.
+    """
+    return [f for f in (detector(df) for detector in DESIGN_DETECTORS) if f]
 
 
 # ── §03 · the variance decomposition the shrinkage plot is drawn from ────────

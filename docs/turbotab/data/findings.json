@@ -7975,10 +7975,10 @@
   "detail": "",
   "ev": "turbotab/nutrition.py; turbotab/figure_specs.py; turbotab/figures.py:228",
   "act": "",
-  "status": "OPEN",
-  "note": "CORRECTED AFTER FILING - the first version of this note said the pack path was closed to nutrition.py in a way that overstated the work. packs.findings(df, lens) IS LIVE, at turbotab/engine.py:710 and turbotab/project.py:815, and Pack.detectors at packs.py:1025 takes exactly Callable[[df], Optional[Dict]]. So the detectors are a REGISTRATION away, not a build: atwater_finding matches that signature as written, and PACKS[DIETARY] already exists at packs.py:1270 with 3 priors and 3 detectors. design_findings does NOT match - it returns a List - so wiring it is a real contract decision (split into three detectors, or widen the tuple's type) rather than a line. THE FIGURE LAYER IS THE PART THAT IS GENUINELY UNWIRED, and it is worse than the pack half rather than better: figures.applicable() and figures.bundle() have ZERO callers repo-wide, so all three figures - including the two from L26 - are specifications with tests and no consumer, and turbotab/figure_specs.py is imported by three test files and nothing else. SHRINKAGE could not fire even if applicable() were called: its when_applicable reads n_recalls_per_person and has_dietary_lens and neither key is written anywhere outside that lambda. THE REFUSAL has no caller and no surface at all - prevalence_of_inadequacy is reached only from its test - and note the thing it refuses to compute does not exist either, since no DRI table ships anywhere in the repository (that is D4, unbuilt). WHY THIS OUTRANKS ITS SEVERITY: DRIVE-009 is critical, OPEN, and its act field already specifies the route - 'per-domain figure selection through the pack mechanism' - so the figure layer's consumer is designed and unbuilt rather than undesigned. D3 loads three more packs onto the same pattern. HOW IT WAS MISSED BY THE REPORT AND NEARLY BY THIS ROW: from inside a loop a module with passing tests looks finished, and a grep scoped to api.py and ml/ says 'unwired' about a path that engine.py calls.",
+  "status": "FIXED",
+  "note": "FIXED at L28-B, C and D. All three claims are now false. FIGURES: figures.applicable() and figures.bundle() have a caller - turbotab/figure_bundle.py, served at GET /project/{id}/figures - and figure_specs is imported by it rather than by tests alone. SHRINKAGE FIRES: n_recalls_per_person and has_dietary_lens are written by figure_bundle.state, and the honest derivation needed three recorded answers rather than one - the grain saying people repeat with a grouping column, question 4 saying those rows are repeats rather than time points, and the lens saying dietary. Rows are not recalls until something records that they are. DETECTORS: atwater_finding and the three design detectors are registered on PACKS[DIETARY] through deferred wrappers, because nutrition.py imports from packs.py and a module-scope import would be a cycle. design_findings was SPLIT into three detectors rather than widening Callable[[df], Optional[Dict]] to admit a list - the early return that suppressed the lonely-PSU check turned out to be expressible as a guard, since lonely_psu needs both strata and PSU and the partial case is exactly their absence, which is the evidence the three were independent. The atwater finding id was stabilized from atwater_{verdict} to atwater, because a varying id cannot be bound by LooksFor or looked up by prior_columns. THE REFUSAL: prevalence_of_inadequacy is served at GET /project/{id}/nutrition/prevalence and returns the refusal as a 200 payload with its badge, its resolved offer and the offered figure drawn. WHAT THE WIRE FOUND, and no unit test could: design_findings fired partial_design on clinic_visits.csv about a column holding 107 kg - a body weight called a sampling weight, which is guard 2 broken and the dietary pack asserting something false on a clinical table. Fixed by requiring two signals the research's name list does not carry. RESIDUAL, filed rather than folded in: the calibration plot is reachable from no project because TurboTab has no training step (GUIDED-065), so two of three figures reach a user and the clinical pack's flagship does not. Also filed: GUIDED-066, GUIDED-067, GUIDED-068, GUIDED-069.",
   "verified_against": "",
-  "test": "",
+  "test": "test_an_upload_reaches_a_drawn_figure; test_the_nutrition_detectors_reach_an_upload; test_a_refusal_offers_a_figure_something_can_resolve",
   "verified_ev": "turbotab/nutrition.py; turbotab/figure_specs.py; turbotab/figures.py:228,240; turbotab/packs.py:1025,1270"
  },
  {
@@ -8120,5 +8120,33 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "docs/turbotab/research/NUTRITION_PACK.md section 07 figure E; docs/turbotab/DOMAIN_SCIENCE.md section 04; turbotab/figures.py PENDING"
+ },
+ {
+  "id": "GUIDED-068",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "The Atwater column matcher takes the FIRST numeric column matching each role, so a table carrying both percent-of-energy and gram columns is read as percentages and the grams are never seen",
+  "detail": "",
+  "ev": "turbotab/nutrition.py _match; turbotab/sample_data/dietary_recalls.csv",
+  "act": "Prefer the columns whose units the reconstruction can actually use - or run the reconstruction on every candidate set and report which one is consistent, which is the three-signals-jointly instruction the module already cites.",
+  "status": "OPEN",
+  "note": "Found at L28-C the moment atwater_finding was wired to an upload. dietary_recalls.csv carries protein_pct_kcal AND protein_g, fat_pct_kcal AND fat_g, carbohydrate_pct_kcal AND carbohydrate_g. _match compiles one regex per role and returns the first numeric column that matches, and the pct columns come first, so the detector reads the percentages, finds they sum to 100 and emits The macronutrient columns look like percentages at warning. NOT FALSE about the columns it named - they are percentages - and misleading about the table, because the gram columns it needs are sitting beside them unread and every downstream step it warns about could have used them. THE CLASS: a name-first matcher that stops at the first hit cannot see that a table carries the same quantity twice in two units, which is a common shape in derived nutrition files and the exact case the research section 01 says to handle by matching on three signals jointly rather than on names. Low blast radius - fix_kind is none throughout, so the cost is a misleading card rather than a corrupted table - and the fix is not a threshold, which is why it is filed rather than done in the loop that found it.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/nutrition.py _match; turbotab/sample_data/dietary_recalls.csv"
+ },
+ {
+  "id": "GUIDED-069",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "The research's generic name patterns are flagging heuristics and the pack applies several of them as findings with no second signal, so a strata or cluster column means whatever it is called",
+  "detail": "",
+  "ev": "turbotab/nutrition.py survey_design strata|stratum and psu|cluster fullmatch",
+  "act": "Give each generic pattern the same corroboration the weight pattern now has - a property of the column rather than of its name - or demote the finding to a question.",
+  "status": "OPEN",
+  "note": "The generalization of the defect L28-C fixed. NUTRITION_PACK.md section 01 says to flag generic weight|wt|pweight|strata|psu|cluster|fpc, and that list is a FLAGGING heuristic in a research file rather than a detection rule. Taking the weight half as sufficient fired partial_design on clinic_visits.csv about a column holding 107 kg, which is guard 2 broken and the app asserting something false authoritatively; that half is fixed by requiring the column to be numeric and to be unrecognized by the engine's physiology reference. THE OTHER PATTERNS ARE UNFIXED and have the same shape: a column called cluster is a k-means label at least as often as it is a primary sampling unit, and a column called strata could be anything. They are less dangerous today only because they gate rather than assert - lonely_psu needs both to be present and then groups by them - so a wrong reading produces a nonsense grouping rather than a sentence. That is a difference in blast radius, not in kind. Note the corroboration used for weights is not available for these: physiology_reference knows body measurements and knows nothing about sampling units.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/nutrition.py survey_design strata|stratum and psu|cluster fullmatch"
  }
 ]

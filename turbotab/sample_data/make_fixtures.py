@@ -412,12 +412,88 @@ def genomics() -> pd.DataFrame:
     return pd.DataFrame(frame)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 6 · nhanes_dietary / nhanes_partial_design — the survey-design pair
+#
+# `GUIDED-058`. The three survey-design detectors were wired to the dietary
+# pack, and `test_a_pack_names_what_it_will_look_for` binds each `LooksFor` to a
+# finding id **by running the detectors against the fixture the pack was built
+# for**. `dietary_recalls.csv` carries no design variables, so three real
+# capabilities could not be promised: the registry cannot name a detector its
+# fixture never triggers.
+#
+# **Two files, and they have to be two.** `partial_design` fires when a weight
+# has no strata or PSU; `lonely_psu` fires when both are present and a stratum
+# holds one. The preconditions are exact negations, so no single table can
+# exercise both — which is why the key-match test now takes a TUPLE of fixtures
+# per pack rather than one.
+#
+# Small on purpose (120 rows). They exist to trigger detectors, not to be
+# analyzed, and the companion `.md` files say so.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _nhanes_core(n: int, seed: int) -> dict:
+    """SEQN and the DR1T nutrients, in grams, reconstructing cleanly.
+
+    Units are internally consistent so `atwater_finding` stays SILENT here: its
+    promise is already kept by `dietary_recalls.csv`, and a second fixture
+    firing it would test nothing new while making these files about two things.
+    """
+    rng = np.random.default_rng(seed)
+    protein = rng.gamma(9, 9, n)
+    carb = rng.gamma(9, 28, n)
+    fat = rng.gamma(7, 11, n)
+    alcohol = rng.gamma(1, 4, n)
+    return {
+        "SEQN": np.arange(1, n + 1),
+        "DR1TKCAL": 4 * protein + 4 * carb + 9 * fat + 7 * alcohol,
+        "DR1TPROT": protein,
+        "DR1TCARB": carb,
+        "DR1TTFAT": fat,
+        "DR1TALCO": alcohol,
+        "WTDRD1": rng.gamma(4, 6000, n),
+        "WTMEC2YR": rng.gamma(4, 6000, n),
+    }
+
+
+def nhanes_dietary(n: int = 120) -> pd.DataFrame:
+    """A complete design with one lonely stratum.
+
+    Must surface: `pack::dietary::survey_weights` (the dietary weight beside the
+    examination weight) and `pack::dietary::lonely_psu` — stratum 999 holds a
+    single PSU, so its variance contribution is undefined rather than small.
+    Must NOT surface: `pack::dietary::partial_design`, because the design is
+    complete.
+    """
+    rng = np.random.default_rng(7)
+    frame = _nhanes_core(n, seed=7)
+    strata = rng.integers(100, 108, n)
+    psu = rng.integers(1, 3, n)
+    strata[:9] = 999                       # one stratum...
+    psu[:9] = 1                            # ...with one PSU in it
+    frame["SDMVSTRA"] = strata
+    frame["SDMVPSU"] = psu
+    return pd.DataFrame(frame)
+
+
+def nhanes_partial_design(n: int = 120) -> pd.DataFrame:
+    """The same weights with no strata and no PSU.
+
+    Must surface: `pack::dietary::survey_weights` and
+    `pack::dietary::partial_design`. Must NOT surface:
+    `pack::dietary::lonely_psu`, which needs both columns to mean anything.
+    """
+    return pd.DataFrame(_nhanes_core(n, seed=8))
+
+
 FIXTURES = {
     "metabolomics_untargeted": metabolomics,
     "dietary_recalls": dietary,
     "clinical_longitudinal": clinical,
     "survey_instrument": survey,
     "genomics_expression": genomics,
+    "nhanes_dietary": nhanes_dietary,
+    "nhanes_partial_design": nhanes_partial_design,
 }
 
 

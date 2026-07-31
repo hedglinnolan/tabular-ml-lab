@@ -45,6 +45,12 @@ FIXTURES = {
     "survey_instrument": ("sought_support", {P.SURVEY}),
     "genomics_expression": ("condition", {P.GENOMICS}),
     "clinic_visits": ("outcome", {P.CLINICAL}),
+    # The survey-design pair, added with the nutrition module's detectors
+    # (`GUIDED-058`). They are in the matrix for the same reason every other
+    # fixture is: a table the dietary pack DOES match is where the other four
+    # packs get their chance to fire on something they do not.
+    "nhanes_dietary": ("DR1TKCAL", {P.DIETARY}),
+    "nhanes_partial_design": ("DR1TKCAL", {P.DIETARY}),
 }
 
 REAL_PACKS = [P.METABOLOMICS, P.GENOMICS, P.DIETARY, P.CLINICAL, P.SURVEY]

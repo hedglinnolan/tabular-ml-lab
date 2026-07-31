@@ -52,25 +52,40 @@ from turbotab import packs as P                                       # noqa: E4
 
 DATA = Path(__file__).resolve().parent / "sample_data"
 
-# The fixture each pack was built against — `OPENING_SEQUENCE.md` §04's table.
+# The fixtures each pack was built against — `OPENING_SEQUENCE.md` §04's table.
 # `other` has no pack and no fixture, which is the point of it.
+#
+# **A TUPLE, and the dietary pack is why** (`GUIDED-058`). It was one name per
+# pack until the nutrition module's four detectors were wired in, and two of
+# them have preconditions that are exact negations of each other:
+# `partial_design` needs a weight with no strata or PSU, `lonely_psu` needs both
+# present and a stratum holding one. **No single table can exercise both**, so a
+# one-fixture registry could not promise both, and a promise the registry cannot
+# make is a capability the user cannot know they are buying — which is the half
+# of the key match this file calls the worse one.
 FIXTURE = {
-    P.METABOLOMICS: "metabolomics_untargeted",
-    P.GENOMICS: "genomics_expression",
-    P.DIETARY: "dietary_recalls",
-    P.SURVEY: "survey_instrument",
-    P.CLINICAL: "clinic_visits",
+    P.METABOLOMICS: ("metabolomics_untargeted",),
+    P.GENOMICS: ("genomics_expression",),
+    P.DIETARY: ("dietary_recalls", "nhanes_dietary", "nhanes_partial_design"),
+    P.SURVEY: ("survey_instrument",),
+    P.CLINICAL: ("clinic_visits",),
 }
 
 
 def _emitted(pack_key: str) -> set:
-    """The finding ids this pack's detectors actually produce, run for real."""
-    df = pd.read_csv(DATA / f"{FIXTURE[pack_key]}.csv")
+    """The finding ids this pack's detectors actually produce, run for real.
+
+    Unioned across the pack's fixtures. A detector still has to fire on one of
+    them — the union is what lets mutually exclusive preconditions both be
+    promised, not a way to promise something nothing triggers.
+    """
     out = set()
-    for detector in P.PACKS[pack_key].detectors:
-        found = detector(df)
-        if found:
-            out.add(found["id"])
+    for name in FIXTURE[pack_key]:
+        df = pd.read_csv(DATA / f"{name}.csv")
+        for detector in P.PACKS[pack_key].detectors:
+            found = detector(df)
+            if found:
+                out.add(found["id"])
     return out
 
 
@@ -85,7 +100,7 @@ def test_every_promise_a_pack_makes_is_one_a_detector_keeps(key):
     orphans = sorted(promised - emitted)
     assert not orphans, (
         f"the {key} pack's hover promises these and no detector emits them on "
-        f"{FIXTURE[key]}.csv: {orphans}\n  emitted: {sorted(emitted)}")
+        f"any of {list(FIXTURE[key])}: {orphans}\n  emitted: {sorted(emitted)}")
 
 
 @pytest.mark.parametrize("key", sorted(FIXTURE))
@@ -115,7 +130,7 @@ def test_the_key_match_is_not_passing_on_an_empty_set(key):
     if P.PACKS[key].detectors:
         assert emitted, (
             f"the {key} pack declares {len(P.PACKS[key].detectors)} detector(s) "
-            f"and none fires on {FIXTURE[key]}.csv, so both key-match "
+            f"and none fires on any of {list(FIXTURE[key])}, so both key-match "
             f"assertions above are comparing against nothing")
     else:
         assert key == P.CLINICAL and not emitted, (
