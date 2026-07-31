@@ -85,13 +85,18 @@ where the field stands, which is the only part we can enforce.
               │       here are the deliverable alongside the pack
               │       L27 built the content and NONE OF IT IS REACHABLE:
               │       nutrition.py and figure_specs.py are imported only by
-              │       their own tests, and figures.applicable() has no
-              │       callers. "End-to-end" is not met and D2 does not close
-              │       until an upload reaches a detector, a figure and a
-              │       refusal. See `GUIDED-058` — and note it is a gap in
-              │       this plan, not only in the code: §05 of
-              │       DOMAIN_SCIENCE.md sequences the spec and the figures
-              │       and never says who wires them.
+              │       their own tests. "End-to-end" is not met and D2 does
+              │       not close until an upload reaches a detector, a figure
+              │       and a refusal (`GUIDED-058`). The two halves are not
+              │       the same size: `packs.findings()` is live from
+              │       engine.py, so the detectors are a registration away —
+              │       but `figures.applicable()` has ZERO callers repo-wide,
+              │       so all three figures, L26's included, are specs with
+              │       no consumer. That is a gap in this plan and not only
+              │       in the code: DOMAIN_SCIENCE.md §05 sequences the spec
+              │       and the figures and never says who renders them.
+              │       DRIVE-009 already specifies the route — per-domain
+              │       figure selection through the pack mechanism.
               │   D3  metabolomics · clinical+survey · genomics
               │       mostly content-loading once D2's spine holds
               │   D4  reference data, verified against primary sources
