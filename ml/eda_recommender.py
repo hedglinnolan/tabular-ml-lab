@@ -207,8 +207,15 @@ def compute_dataset_signals(
     if len(numeric_cols_for_corr) > 1:
         try:
             corr_matrix = df[numeric_cols_for_corr].corr().abs()
-            np.fill_diagonal(corr_matrix.values, 0)  # Remove diagonal
-            max_corr = corr_matrix.max().max()
+            # Zero the diagonal on a copy, never through DataFrame.values.
+            # Under copy-on-write — the default from pandas 3 — .values hands
+            # back a read-only array and np.fill_diagonal raises, which the
+            # except below then swallowed. The whole collinearity analysis
+            # silently disappeared: no correlation clusters in the ledger, no
+            # collinearity coaching, and no sign anything had gone wrong.
+            corr_values = corr_matrix.to_numpy(dtype=float, copy=True)
+            np.fill_diagonal(corr_values, 0.0)
+            max_corr = float(np.nanmax(corr_values)) if corr_values.size else 0.0
             signals.collinearity_summary['max_corr'] = max_corr
             signals.collinearity_summary['high_corr_pairs'] = []
             if max_corr > 0.85:
