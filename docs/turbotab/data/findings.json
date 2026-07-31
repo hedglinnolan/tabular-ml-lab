@@ -7961,10 +7961,10 @@
   "detail": "",
   "ev": "research/NUTRITION_PACK.md section 07 figure E; turbotab/nutrition.py",
   "act": "",
-  "status": "PARTIAL",
-  "note": "ADJUDICATOR OVERRIDE OF A FIXED, and the disagreement is worth stating rather than silently applying. The refusal logic is complete, correct and well tested - four refusals with distinct reasons, each carrying an offer, iron routing to the probability approach instead of refusing, and a real name registry after the 'iron' in 'environment' hazard. Reverting it fails tests, so FIXED is defensible on the project's own revert-probe definition. It is still wrong here, because NOTHING IN THE APP CAN REACH prevalence_of_inadequacy: turbotab/nutrition.py is imported by its own test file and by nothing else (GUIDED-058). Read as FIXED, the row records 'the app refuses a prevalence of inadequacy from an AI' as done, and stats counts it toward closed, while no user can reach the path. That is the failure this project has already paid for more than once - a record that reads better than the state - and it is the specific reason ROADMAP D2 must not go green off this loop. WHAT REMAINS: reachability, and the two refusals whose offered figure does not exist (GUIDED-060). Returns to FIXED when an upload with a dietary lens can trigger a refusal end to end.",
+  "status": "FIXED",
+  "note": "CLOSED AT L28 against the exact condition the PARTIAL named: an upload with a dietary lens can now trigger a refusal end to end. Verified independently by the adjudicator through the API rather than through the loop own tests - upload dietary_recalls.csv, answer lens/target/grain/repeat-kind, GET /project/{id}/nutrition/prevalence. All four refusals return 200 with a payload rather than a 4xx, which is right: the request was well formed and the app is saying the question cannot be answered from these data, which is a different statement from malformed. Each carries evidence_status=SETTLED and a resolving source. calcium+single_day refuses and the shrinkage figure ARRIVES DRAWN with six annotations and a passing checklist; fiber+EAR refuses against the AI and resolves to a declared Pending record; calcium+RDA refuses and resolves to Pending; calcium+usual_intake+EAR returns method=cut_point. The two pending offers are the honest form of what was previously a dangling string - GUIDED-060 built the record type and GUIDED-067 tracks the figures themselves.",
   "verified_against": "",
-  "test": "turbotab/test_the_nutrition_pack_carries_real_content.py::test_every_refusal_offers_something_it_can_draw",
+  "test": "turbotab/test_a_refusal_offers_a_figure_something_can_resolve.py::test_a_single_days_intake_is_refused_and_the_shrinkage_plot_arrives_drawn",
   "verified_ev": "research/NUTRITION_PACK.md section 07 figure E; turbotab/nutrition.py"
  },
  {
@@ -8148,5 +8148,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "turbotab/nutrition.py survey_design strata|stratum and psu|cluster fullmatch"
+ },
+ {
+  "id": "GUIDED-070",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "The weight-column fix accepted a real capability loss and recorded it only in a code comment: a genuine survey weight named \"weight\" is now missed even when SDMVSTRA and SDMVPSU are both present",
+  "detail": "",
+  "ev": "turbotab/nutrition.py survey_design; turbotab/sample_data/nhanes_dietary.csv",
+  "act": "",
+  "status": "OPEN",
+  "note": "THE FIX IS RIGHT AND ITS COST HAS NO ROW. L28-C stopped the dietary pack asserting a partially-specified survey design about a column holding 107 kg on clinic_visits.csv, by requiring a generic weight|wt|pweight name to be numeric AND unrecognized by the engine physiology reference. Correct under the governing rule: silence beats a false assertion. The loop disclosed the cost plainly in its report and in the module - a genuine sampling weight called weight is now missed - and that sentence lives ONLY in prose, which is the class LOOP.md section 06.1 names as the most common gap in an otherwise good report. GUIDED-069 generalizes the DEFECT to strata/psu/cluster and does not carry this. VERIFIED BY THE ADJUDICATOR: a frame with a numeric weight column of plausible sampling weights and REAL SDMVSTRA and SDMVPSU columns produces zero design findings. THAT IS THE RECOVERABLE CASE AND IT IS THE INTERESTING PART. The corroboration the fix says is unavailable for weights is available in exactly this configuration: recognized NHANES design variables sitting beside a generic weight column are a second signal about the weight, and a strong one - nobody names a column SDMVSTRA by accident. So the rule can be tightened rather than left as a flat loss: reject a generic weight name by default, and accept it when the table carries design variables the pack recognizes by their exact names. NOTE THE SHELF RULE APPLIES - judgment renders as ranking, never absence - and a capability that was present and is now silently gone is the shape that rule exists to prevent, even where the silence is the safe direction. Small, contained, and it should not wait for the strata half of GUIDED-069, which has no equivalent corroboration.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/nutrition.py survey_design; turbotab/sample_data/nhanes_dietary.csv"
  }
 ]
