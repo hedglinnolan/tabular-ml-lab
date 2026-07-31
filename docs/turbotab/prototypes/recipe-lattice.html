@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TurboTab — the recipe lattice</title>
+<!--
+  GUIDED-074 / DRIVE-009. The preprocessing space is model-selector × operation ×
+  variant × column-type × provenance, the selector axis is a precedence lattice,
+  and every cell is a RESOLUTION the engine already computes. Today the only way
+  to answer "why did logreg get pareto scaling when random forest got none" is
+  to read `resolve()`.
+
+  EVERY NUMBER IN THIS PAGE IS REAL. `recipe-lattice-data.js` holds three actual
+  `/recipes` responses plus, per cell, every default row that matched with the
+  specificity rank the engine gave it — computed by `capture_recipes.py` calling
+  `recipes._matches` and `recipes._SPECIFICITY`. Nothing here re-derives a
+  resolution in JavaScript. A prototype that faked it would teach the wrong
+  thing twice: wrong about what the app does, and wrong about whether drawing it
+  is worth building.
+
+  No build step, no network, opens from disk.
+-->
+<style>
+  :root {
+    --ground: #F7F8F6; --surface: #FFFFFF; --surface-2: #EFF3F1;
+    --ink: #1C2B29; --muted: #5B6B68; --faint: #8A9997; --line: #DCE3E0;
+    --accent: #0E7368; --accent-ink: #0A5A51; --accent-tint: #E9F2F0;
+    --ok: #2F7D46; --ok-tint: #E9F2EB;
+    --warn: #9A6B0F; --warn-tint: #FBF3DE; --warn-line: #EAD9AC;
+    --shadow: 0 1px 2px rgba(28,43,41,.05), 0 4px 14px rgba(28,43,41,.06);
+    --serif: "Charter", "Iowan Old Style", "Source Serif Pro", Georgia, serif;
+    --sans: "Seravek", "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "Consolas", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #111917; --surface: #19231F; --surface-2: #202C28;
+      --ink: #E7EEEB; --muted: #9BABA7; --faint: #6E807C; --line: #2A3733;
+      --accent: #45BFAF; --accent-ink: #6FD4C6; --accent-tint: #1B2E2A;
+      --ok: #5CB877; --ok-tint: #1C2E22;
+      --warn: #E0B45C; --warn-tint: #2B2415; --warn-line: #4A3D1C;
+      --shadow: 0 1px 2px rgba(0,0,0,.25), 0 4px 14px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme="light"] {
+    --ground:#F7F8F6; --surface:#FFF; --surface-2:#EFF3F1; --ink:#1C2B29;
+    --muted:#5B6B68; --faint:#8A9997; --line:#DCE3E0; --accent:#0E7368;
+    --accent-ink:#0A5A51; --accent-tint:#E9F2F0; --ok:#2F7D46; --ok-tint:#E9F2EB;
+    --warn:#9A6B0F; --warn-tint:#FBF3DE; --warn-line:#EAD9AC;
+  }
+  :root[data-theme="dark"] {
+    --ground:#111917; --surface:#19231F; --surface-2:#202C28; --ink:#E7EEEB;
+    --muted:#9BABA7; --faint:#6E807C; --line:#2A3733; --accent:#45BFAF;
+    --accent-ink:#6FD4C6; --accent-tint:#1B2E2A; --ok:#5CB877; --ok-tint:#1C2E22;
+    --warn:#E0B45C; --warn-tint:#2B2415; --warn-line:#4A3D1C;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--sans); font-size: 15px; line-height: 1.55;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-family: var(--serif); font-size: 30px; font-weight: 600; margin: 0 0 6px; letter-spacing: -.01em; }
+  .lede { font-family: var(--serif); color: var(--muted); max-width: 62ch; margin: 0 0 4px; }
+  .meta { color: var(--faint); font-size: 13px; margin: 0 0 24px; }
+  h2 { font-family: var(--serif); font-size: 19px; font-weight: 600; margin: 34px 0 10px; }
+  p { max-width: 70ch; }
+  code, .mono { font-family: var(--mono); font-size: .88em; }
+
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    padding: 14px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; box-shadow: var(--shadow); margin-bottom: 18px;
+  }
+  .controls .label { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); margin-right: 2px; }
+  button {
+    font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 7px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button[aria-pressed="true"] { background: var(--accent-tint); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .spacer { flex: 1 1 auto; }
+
+  /* ── the lattice ───────────────────────────────────────────────────── */
+  .grid { display: grid; gap: 8px; margin-bottom: 8px; }
+  .colhead, .rowhead { font-size: 12px; color: var(--faint); text-transform: uppercase; letter-spacing: .06em; align-self: end; padding-bottom: 4px; }
+  .rowhead { text-transform: none; letter-spacing: 0; font-family: var(--mono); font-size: 13px; color: var(--muted); align-self: center; text-align: right; padding-right: 8px; }
+
+  .cell {
+    position: relative; text-align: left; padding: 10px 11px; min-height: 74px;
+    border: 1px solid var(--line); border-radius: 9px; background: var(--surface);
+    display: block; width: 100%; cursor: pointer;
+    /* The transition the repaint experiment destroys. 250ms, matching
+       DESIGN_LANGUAGE §05's settle. */
+    transition: background-color 250ms ease-out, border-color 250ms ease-out,
+                transform 250ms ease-out;
+  }
+  .cell:hover { border-color: var(--accent); }
+  .cell[aria-selected="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
+  .cell.changed { background: var(--accent-tint); border-color: var(--accent); transform: translateY(-2px); }
+  .cell .variant { font-family: var(--mono); font-size: 14px; font-weight: 600; display: block; }
+  .cell .sel { font-family: var(--mono); font-size: 11px; color: var(--faint); display: block; margin-top: 2px; }
+  .cell .state { font-size: 11px; margin-top: 6px; display: inline-block; padding: 1px 6px; border-radius: 999px; }
+  .state.fact { background: var(--ok-tint); color: var(--ok); }
+  .state.choice { background: var(--accent-tint); color: var(--accent-ink); }
+  .state.raised { background: var(--warn-tint); color: var(--warn); border: 1px solid var(--warn-line); }
+  .cell .pack { position: absolute; top: 8px; right: 9px; font-size: 10px; font-family: var(--mono); color: var(--warn); }
+  @media (prefers-reduced-motion: reduce) { .cell { transition: none; } }
+
+  /* ── the inspector ─────────────────────────────────────────────────── */
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; box-shadow: var(--shadow); }
+  .stack { list-style: none; margin: 10px 0 0; padding: 0; }
+  .stack li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .stack li:first-child { border-top: 0; }
+  .stack .rank { font-family: var(--mono); font-size: 12px; color: var(--faint); }
+  .stack li.wins .rank { color: var(--ok); font-weight: 700; }
+  .stack li.wins .who { color: var(--ok); font-weight: 600; }
+  .stack .who { font-family: var(--mono); font-size: 12.5px; }
+  .stack .why { color: var(--muted); font-size: 13px; }
+  .beaten { opacity: .55; }
+
+  .suppressed { border-left: 3px solid var(--warn); background: var(--warn-tint); padding: 12px 14px; border-radius: 0 9px 9px 0; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
+  .metric { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; }
+  .metric .n { font-family: var(--mono); font-size: 20px; font-weight: 600; display: block; }
+  .metric .k { font-size: 11.5px; color: var(--muted); }
+  .verdict { border-left: 3px solid var(--accent); padding-left: 14px; margin-top: 14px; }
+  .verdict b { color: var(--accent-ink); }
+  footer { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--faint); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>The recipe lattice</h1>
+<p class="lede">Model&nbsp;× operation × variant, resolved by a precedence lattice the
+engine already computes and has never drawn. Every value on this page is a real
+<code>/recipes</code> response.</p>
+<p class="meta"><code>GUIDED-074</code> · <code>DRIVE-009</code> · prototype, no build step, no network</p>
+
+<div class="controls">
+  <span class="label">Table</span>
+  <button data-capture="no_pack" aria-pressed="true">assay · no lens</button>
+  <button data-capture="metabolomics" aria-pressed="false">assay · metabolomics lens</button>
+  <button data-capture="dietary" aria-pressed="false">recalls · dietary lens</button>
+  <span class="spacer"></span>
+  <span class="label">Render</span>
+  <button data-mode="partial" aria-pressed="true">partial update</button>
+  <button data-mode="repaint" aria-pressed="false">wholesale repaint</button>
+</div>
+
+<div id="grid" class="grid"></div>
+<p class="meta" id="legend"></p>
+
+<h2>Why this cell</h2>
+<div class="panel" id="inspector"></div>
+
+<h2>What it decided for you, and why it did not matter</h2>
+<div class="suppressed" id="suppressed"></div>
+
+<h2>Does the motion need partial updates?</h2>
+<p>The question <code>GUIDED-073</code> asks. Switch between the two assay
+captures a few times in each render mode — fast enough that a switch lands
+inside the previous 250&nbsp;ms settle — then read the counters. Tab into a cell
+first to test focus.</p>
+<p><b>The premise is measured and does not need a browser:</b> that switch
+changes <b>6 of 16</b> cells — <code>power</code> on all four models and
+<code>scale</code> on the two with <code>requires_scaled_numeric</code>. A
+wholesale repaint rebuilds all 24 nodes to move 6. <b>The consequence does need
+one</b>, which is what the counters below are for: a destroyed node cannot
+finish an animation and cannot hold a focus ring, and
+<code>transitioncancel</code> does not fire on removal — so the repaint mode
+cannot even report what it broke, and the count is derived by subtraction.</p>
+<div class="panel">
+  <div class="metrics" id="metrics"></div>
+  <div class="verdict" id="verdict"></div>
+  <p style="margin-bottom:0"><button id="reset">Reset counters</button></p>
+</div>
+
+<footer>
+Data: <code>recipe-lattice-data.js</code>, generated by
+<code>capture_recipes.py</code>. Colors and motion are
+<code>DESIGN_LANGUAGE.md</code> §02 and §05; nothing here invents a palette.
+</footer>
+
+</div>
+
+<script src="recipe-lattice-data.js"></script>
+<script>
+(function () {
+  "use strict";
+  var CAPTURES = window.__RECIPE_CAPTURES || {};
+  var state = { capture: "no_pack", mode: "partial", selected: null };
+  var prev = null;                       // last rendered cell map, for the delta
+  var counters = { started: 0, completed: 0, cancelled: 0,
+                   focusKept: 0, focusLost: 0, switches: 0, ms: 0 };
+
+  var grid = document.getElementById("grid");
+  var inspector = document.getElementById("inspector");
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+  function data() { return CAPTURES[state.capture] || { models: {}, operations: [] }; }
+  function key(model, op) { return model + "::" + op; }
+
+  /* The cell map: model::operation -> the resolved row. Straight off the
+     capture; nothing is computed here. */
+  function cells() {
+    var out = {}, d = data();
+    Object.keys(d.models).forEach(function (m) {
+      d.models[m].forEach(function (row) { out[key(m, row.operation)] = row; });
+    });
+    return out;
+  }
+
+  function cellHTML(row) {
+    var st = row.ask ? '<span class="state choice">asked</span>'
+                     : '<span class="state fact">pre-selected</span>';
+    if (row.variant_worth_raising) {
+      st += ' <span class="state raised">variant raised</span>';
+    }
+    var pack = row.origin !== "core"
+      ? '<span class="pack">' + esc(row.origin) + "</span>" : "";
+    return pack
+      + '<span class="variant">' + esc(row.variant) + "</span>"
+      + '<span class="sel">' + esc(row.selector) + "</span>"
+      + st;
+  }
+
+  function buildGrid() {
+    var d = data(), models = Object.keys(d.models).sort();
+    var ops = d.operations.map(function (o) { return o.key; });
+    grid.style.gridTemplateColumns = "110px repeat(" + ops.length + ", 1fr)";
+    var html = '<div class="colhead"></div>';
+    ops.forEach(function (op) { html += '<div class="colhead">' + esc(op) + "</div>"; });
+    models.forEach(function (m) {
+      html += '<div class="rowhead">' + esc(m) + "</div>";
+      ops.forEach(function (op) {
+        html += '<button class="cell" role="gridcell" data-key="' + esc(key(m, op)) + '">'
+              + cellHTML(cells()[key(m, op)]) + "</button>";
+      });
+    });
+    grid.innerHTML = html;
+  }
+
+  /* PARTIAL: touch only the cells whose resolution actually changed. */
+  function patchGrid(changed) {
+    var map = cells();
+    Object.keys(map).forEach(function (k) {
+      var node = grid.querySelector('[data-key="' + k + '"]');
+      if (!node) { return; }
+      if (changed.indexOf(k) === -1) { return; }
+      node.innerHTML = cellHTML(map[k]);
+      counters.started++;
+      node.classList.add("changed");
+      window.setTimeout(function () { node.classList.remove("changed"); }, 260);
+    });
+  }
+
+  function render(isSwitch) {
+    var t0 = performance.now();
+    var before = prev, after = cells();
+    var changed = Object.keys(after).filter(function (k) {
+      return !before || !before[k] || before[k].variant !== after[k].variant
+          || before[k].selector !== after[k].selector
+          || before[k].variant_worth_raising !== after[k].variant_worth_raising;
+    });
+
+    var focused = document.activeElement;
+    var focusedKey = focused && focused.dataset ? focused.dataset.key : null;
+
+    var sameShape = before && Object.keys(before).length === Object.keys(after).length
+      && Object.keys(after).every(function (k) { return before[k]; });
+
+    if (state.mode === "repaint" || !sameShape) {
+      buildGrid();
+      if (isSwitch && state.mode === "repaint") {
+        /* DERIVED, NOT OBSERVED, and the distinction is the finding.
+           `transitioncancel` does not fire when the element is removed — the
+           transition ends with its target and there is nothing left to dispatch
+           on. So a repaint cannot report its own cancellations, and the only
+           way to count them is to subtract: everything started that never
+           completed died here. That a repaint is UNABLE to observe what it
+           broke is itself the argument. */
+        counters.cancelled += counters.started - counters.completed;
+        counters.started = counters.completed;
+      }
+    } else {
+      patchGrid(changed);
+    }
+
+    if (focusedKey) {
+      var again = grid.querySelector('[data-key="' + focusedKey + '"]');
+      if (again && document.activeElement === again) { counters.focusKept++; }
+      else { counters.focusLost++; if (again) { again.focus(); } }
+    }
+    if (state.selected) { markSelected(); }
+    prev = after;
+    counters.ms += performance.now() - t0;
+    if (isSwitch) { counters.switches++; }
+    paintLegend(); paintSuppressed(); paintInspector(); paintMetrics();
+  }
+
+  function markSelected() {
+    Array.prototype.forEach.call(grid.querySelectorAll(".cell"), function (n) {
+      n.setAttribute("aria-selected", n.dataset.key === state.selected ? "true" : "false");
+    });
+  }
+
+  function paintLegend() {
+    var d = data();
+    document.getElementById("legend").innerHTML =
+      esc(d._fixture) + " · lens <code>" + esc((d._lens || []).join(", ")) + "</code> · "
+      + Object.keys(d.models).length + " models × " + d.operations.length
+      + " operations · " + Object.keys(cells()).length + " resolutions";
+  }
+
+  function paintInspector() {
+    var k = state.selected;
+    if (!k) {
+      inspector.innerHTML = "<p style='margin:0;color:var(--muted)'>Pick a cell. "
+        + "The stack below is every default row that matched it, ranked by "
+        + "selector specificity exactly as <code>resolve()</code> ranks them — "
+        + "<code>*</code> &lt; group &lt; capability &lt; exact model, ties to "
+        + "the later registration.</p>";
+      return;
+    }
+    var d = data(), row = cells()[k], rows = (d.candidates || {})[k] || [];
+    var html = "<p style='margin-top:0'><b>" + esc(k.replace("::", " · "))
+      + "</b> resolved to <code>" + esc(row.variant) + "</code> from <code>"
+      + esc(row.selector) + "</code> (" + esc(row.origin) + ").</p><ul class='stack'>";
+    rows.forEach(function (r) {
+      html += '<li class="' + (r.wins ? "wins" : "beaten") + '">'
+        + '<span class="rank">' + r.rank + "</span><span>"
+        + '<span class="who">' + esc(r.selector) + " → " + esc(r.variant)
+        + (r.origin !== "core" ? "  (" + esc(r.origin) + ")" : "") + "</span><br>"
+        + '<span class="why">' + esc(r.reason) + "</span></span></li>";
+    });
+    html += "</ul>";
+    if (row.divergence) {
+      var dv = row.divergence;
+      html += "<p style='margin-bottom:0'><b>Would the alternative differ?</b> "
+        + "<code>" + esc(dv.a) + "</code> vs <code>" + esc(dv.b) + "</code> — statistic "
+        + esc(dv.statistic) + " against a threshold of " + esc(dv.threshold) + ". "
+        + esc(dv.evidence) + "</p>";
+    }
+    inspector.innerHTML = html;
+  }
+
+  function paintSuppressed() {
+    var d = data(), n = d.n_choices_suppressed || 0;
+    var reasons = [];
+    Object.keys(d.models).forEach(function (m) {
+      d.models[m].forEach(function (r) {
+        if (r.variant_skipped_because) {
+          reasons.push(m + " · " + r.operation + " — " + r.variant_skipped_because);
+        }
+      });
+    });
+    document.getElementById("suppressed").innerHTML = n
+      ? "<p style='margin-top:0'><b>" + n + " variant question" + (n === 1 ? "" : "s")
+        + " derived, compared, and found not to change the answer.</b></p><ul style='margin-bottom:0'>"
+        + reasons.map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + "</ul>"
+      : "<p style='margin:0'>Nothing was suppressed on this table: every pushed "
+        + "alternative here would materially change the fit, so every one is asked. "
+        + "The recalls capture suppresses three.</p>";
+  }
+
+  function paintMetrics() {
+    var m = document.getElementById("metrics");
+    m.innerHTML = [
+      ["switches", counters.switches, "capture switches"],
+      ["started", counters.started, "cell transitions started"],
+      ["completed", counters.completed, "ran to completion"],
+      ["cancelled", counters.cancelled, "killed mid-flight by a repaint"],
+      ["focus", counters.focusKept + " / " + (counters.focusKept + counters.focusLost),
+       "keyboard focus kept"],
+      ["ms", counters.ms.toFixed(1), "total render time"]
+    ].map(function (row) {
+      return '<div class="metric"><span class="n">' + esc(row[1])
+        + '</span><span class="k">' + esc(row[2]) + "</span></div>";
+    }).join("");
+
+    var v = document.getElementById("verdict");
+    if (!counters.switches) {
+      v.innerHTML = "<p style='margin:0'>Switch captures to measure.</p>";
+    } else if (counters.cancelled > 0 || counters.focusLost > 0) {
+      v.innerHTML = "<p style='margin:0'><b>Partial updates are required.</b> "
+        + counters.cancelled + " transition(s) were destroyed mid-flight and "
+        + counters.focusLost + " focus move(s) were lost, both because a "
+        + "wholesale repaint replaces the node the animation and the focus ring "
+        + "live on. The settle in §05 is a receipt that a choice was recorded; "
+        + "a receipt that jumps is not one.</p>";
+    } else {
+      v.innerHTML = "<p style='margin:0'><b>No evidence for partial updates yet.</b> "
+        + "Nothing has been cancelled and no focus has been lost, so on this "
+        + "evidence a full repaint would do.</p>";
+    }
+  }
+
+  grid.addEventListener("click", function (e) {
+    var cell = e.target.closest(".cell");
+    if (!cell) { return; }
+    state.selected = cell.dataset.key;
+    markSelected(); paintInspector();
+  });
+  grid.addEventListener("transitionend", function () { counters.completed++; });
+  grid.addEventListener("transitioncancel", function () { counters.cancelled++; });
+
+  document.querySelector(".controls").addEventListener("click", function (e) {
+    var b = e.target.closest("button");
+    if (!b) { return; }
+    if (b.dataset.capture) {
+      state.capture = b.dataset.capture;
+      Array.prototype.forEach.call(
+        document.querySelectorAll("[data-capture]"), function (n) {
+          n.setAttribute("aria-pressed", String(n === b));
+        });
+      state.selected = null;
+      render(true);
+    } else if (b.dataset.mode) {
+      state.mode = b.dataset.mode;
+      Array.prototype.forEach.call(
+        document.querySelectorAll("[data-mode]"), function (n) {
+          n.setAttribute("aria-pressed", String(n === b));
+        });
+      paintMetrics();
+    }
+  });
+  document.getElementById("reset").addEventListener("click", function () {
+    counters = { started: 0, completed: 0, cancelled: 0, focusKept: 0,
+                 focusLost: 0, switches: 0, ms: 0 };
+    paintMetrics();
+  });
+
+  buildGrid();
+  prev = cells();
+  paintLegend(); paintSuppressed(); paintInspector(); paintMetrics();
+})();
+</script>
+</body>
+</html>
