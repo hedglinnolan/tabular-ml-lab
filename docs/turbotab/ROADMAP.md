@@ -1,6 +1,6 @@
 # The road to done
 
-`LOOP.md` covers the first three loops. This file covers all of them, and says what "done"
+`LOOP.md` is the operator's manual and carries the loop log. This file covers the whole road, and says what "done"
 means so the finish line is a thing you can test rather than a feeling.
 
 The organising idea: **loops are separated by decision gates.** Most of this work is loopable.
@@ -27,8 +27,19 @@ TurboTab is finished when all four are true:
    broken. The lockbox in particular: sealed before exploration, sealed once, opened once.
 5. **The ledger is closed.** Every finding is `FIXED` (with a named test), `NOT-A-DEFECT`, or
    `WONTFIX` (with a reason). Zero `UNVERIFIED`, zero `OPEN`.
+6. **The app is field-aware without being confidently wrong.** Every pack advisory carries an
+   `evidence_status` and a `source` that resolves, enforced by the pre-commit gate; no
+   `[verify-at-build]` number ships as a hard-coded constant; and each installed pack passes the
+   three guards in `DOMAIN_PACKS.md` §03 — no new card types, no firing on non-matching data, every
+   pre-selected default states its reason.
 
-Anything short of all five is a milestone, not a finish.
+Anything short of all six is a milestone, not a finish.
+
+**Condition 6 was added after the domain research.** Without it the definition permits shipping with
+zero packs and calling it done, which the first five conditions cannot see — they measure whether the
+app is *consistent*, not whether it knows anything. Note what it deliberately does not require: a
+number of packs, or a domain reviewer's sign-off. It requires that whatever ships is honest about
+where the field stands, which is the only part we can enforce.
 
 ---
 
@@ -54,12 +65,36 @@ Anything short of all five is a milestone, not a finish.
               │    (one edge ambiguity adjudicated in
               │     VALUE_CHECK_ADJUDICATION.md; prereg unedited)
               │
-  L9  feed frontend, one step per loop  ← NEXT — the long one.
-              │    The routing harness becomes a STANDING rail: re-run at
-              │    every L9 step. When the pull palette lands, the harness
-              │    must distinguish pushed questions (thresholds bind) from
-              │    pull affordances (offered, not asked, not counted).
+  L9  feed frontend, one step per loop  ← IN PROGRESS — the long one.
+              │    Loops L13–L27 all sit inside this phase. See LOOP.md §03
+              │    for the log and §01 for why two numbering systems coexist.
+              │    The routing harness is a STANDING rail: re-run every loop.
+              │    When the pull palette lands, the harness must distinguish
+              │    pushed questions (thresholds bind) from pull affordances
+              │    (offered, not asked, not counted).
+              │
+              ├─────── D · THE DOMAIN TRACK ← runs THROUGH L9 and L10,
+              │        not after them. See DOMAIN_SCIENCE.md.
+              │
+              │   D1  the seven primitives         ← badge ✓  purpose ✓
+              │       orientation ✓  figure spec ✓ · hard stops, sensitivity
+              │       fork, checklist engine, generalized leakage detector
+              │       remain
+              │   D2  nutrition end-to-end          ← IN PROGRESS (L27)
+              │       the reference implementation; abstractions discovered
+              │       here are the deliverable alongside the pack
+              │   D3  metabolomics · clinical+survey · genomics
+              │       mostly content-loading once D2's spine holds
+              │   D4  reference data, verified against primary sources
+              │       every [verify-at-build] number; DRI tables ship as data
+              │   D5  the anti-pattern audit — ~150 checkable behaviors that
+              │       are simultaneously pack content and a conformance suite
+              │       against the engine. Runs AHEAD of the pack it belongs to.
+              │
   L10 parity harness + manuscript chain
+              │    absorbs D's checklist engine: TRIPOD+AI, STROBE-nut,
+              │    COSMIN, MSI/mQACC are one artifact with two column types —
+              │    what the app knows, and what it must ask.
                      │
               ◆ DECISION C — ANSWERED: never delete
                      │
@@ -67,9 +102,16 @@ Anything short of all five is a milestone, not a finish.
   L12 packaging
 ```
 
-**Rough scale.** L1–L3 are days. L4–L7 are weeks. L9 is the long pole — eleven steps of
-interaction, each its own loop. L10–L12 are weeks. Treat this as a months-long project with
-usable milestones throughout, not a sprint.
+**Why D is a track and not a phase.** It was written as a phase first and that was wrong. The badge,
+the purpose question and the figure spine all landed *inside* L9 loops, interleaved with interaction
+work, because a pack has nowhere to render until the interaction layer can carry it and no reason to
+exist until the manuscript chain consumes it. Loops mix both tracks; the parts shape in `LOOP.md`
+§02 is what makes that legible in a single prompt.
+
+**Rough scale, re-estimated after the domain research.** L1–L3 were days. L4–L7 were weeks. L9 plus
+D is the long pole and the original eleven-step estimate was made before the domain layer existed:
+**12–15 loops remain**, most of them D2–D5. L10–L12 are weeks. The open-findings count is not the
+driver — findings close in bulk, and several turn out to be one cause wearing many hats.
 
 ---
 

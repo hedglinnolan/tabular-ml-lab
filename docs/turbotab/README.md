@@ -4,12 +4,17 @@ An experimental rebuild of Tabular ML Lab as a single scrolling interview — th
 asks one question at a time, the answers accumulate into a document, and that document
 *is* the manuscript in embryo. TurboTax for tabular research data.
 
-This folder is the design and transition record. **Nothing here has been implemented.**
-No application code has been written, moved, or deleted. Every file is analysis,
-specification, or a clickable prototype driven by synthetic data.
+This folder is the design and transition record. **The app is running.** A driver goes upload →
+lens → orientation → target → purpose → grain → eligibility → seal against real fixtures without
+touching code. The interaction spine is real; the back half — figures, the manuscript chain, the
+domain packs — is in progress. See [`ROADMAP.md`](ROADMAP.md) §"The map" for where the line is.
 
-To get from here to something runnable, see [`LOOP.md`](LOOP.md) §"Loop 3 — the walking
-skeleton". The ledger loops verify and fix; only Loop 3 builds.
+*(This paragraph read "Nothing here has been implemented" for far longer than it was true. A README
+is a claim like any other and decays the same way — silently, while the people who already know the
+state keep working. If you are picking this up and it looks wrong again, it is.)*
+
+**New here?** Read `PRODUCT_VISION.md`, `ROADMAP.md`, then [`LOOP.md`](LOOP.md) §02 (how a loop is
+shaped), §06 (how to judge the report) and §03 (what has already run).
 
 **Streamlit is never deleted.** Existing users depend on it, so this is not a replacement
 project — it is an *extraction* project. The goal is one shared core with two front doors, and
@@ -26,11 +31,12 @@ Baseline for all analysis: `origin/main` @ `24c3446` (PR #145 merged).
 |---|---|
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | What survives the rebuild, what dies, what must be built. The census of the existing codebase and the six-component target architecture. |
 | [`TRANSITION_PLAN.md`](TRANSITION_PLAN.md) | The delicate parts, named. Live bugs, structural facts, landmine classes, and a gated sequence. |
-| [`FINDINGS_LEDGER.md`](FINDINGS_LEDGER.md) | All 385 findings, tracked to completion. Nothing closes without a regression test named after it. |
+| [`FINDINGS_LEDGER.md`](FINDINGS_LEDGER.md) | Every finding, tracked to completion (618 at last count — `tools/ledger.py stats` is authoritative). Nothing closes without a regression test named after it. |
 | [`prototypes/interview-feed.html`](prototypes/interview-feed.html) | Open in a browser. The interaction model, working, with synthetic data. |
-| [`LOOP.md`](LOOP.md) | **How to run this as an unsupervised agent loop.** Three loops: verify the ledger, fix the live bugs, or build the walking skeleton — the last is the one that produces a running app. |
+| [`LOOP.md`](LOOP.md) | **The operator's manual.** How a loop is shaped (four parts), the log of what has run, the guardrails, how domain research is cited, and **how to adjudicate a report** — the half of the job that was unwritten longest. |
 | [`FEATURE_PARITY.md`](FEATURE_PARITY.md) | **Do the intelligent features carry over?** Capability vs orchestration vs exposure, and the register that stops a feature going missing quietly. |
-| [`ROADMAP.md`](ROADMAP.md) | **All twelve loops, the three decision gates, and what "done" means.** Read this to see the whole road, not just the next step. Contains both constitutions: routing (what the app asks) and lockbox (what it may know, and when). |
+| [`DOMAIN_SCIENCE.md`](DOMAIN_SCIENCE.md) | **What the domain research means for the product.** Four literatures converged on seven structural facts; those are the primitives. §03b routes every finding to the app surface it lands on. The four authoritative research files are in [`research/`](research/) and are cited by section from every pack-building loop. |
+| [`ROADMAP.md`](ROADMAP.md) | **The twelve phases, the domain track that runs through them, the three decision gates, and what "done" means.** Read this to see the whole road, not just the next step. Contains both constitutions: routing (what the app asks) and lockbox (what it may know, and when). |
 | [`ASSEMBLY_SPEC.md`](ASSEMBLY_SPEC.md) | **Multi-file assembly.** The research, the interaction, and the seven acceptance criteria the audit produced. The grain question it specifies is the same one the lockbox seal needs. |
 | [`COPY_DECK.md`](COPY_DECK.md) | **Every user-facing string in the Guided door, by step and by state, with the condition that triggers it.** So copy can be reviewed without running the app. Half generated from source, half hand-assembled and probe-checked — `tools/copydeck.py regen` after changing a string. |
 | [`OPENING_SEQUENCE.md`](OPENING_SEQUENCE.md) | **Everything before the seal** — upload to drawn lockbox, in one place because the order is load-bearing. Nine questions, four to six firing, with copy, conditions and fixtures. |
@@ -82,21 +88,30 @@ Static HTML, no build step, no network. Open directly in a browser.
 - The coach can **order** questions but cannot **gate** them. Promoting it to Router is new
   construction, not a refactor.
 
+**Settled since — these read as open for months after they closed.**
+
+- **Row identity.** Decision A is answered and reframed: the question was not *labels or
+  positions* but that four repair kinds renumber rows mid-analysis. The identity barrier is the
+  ruling; `AnalysisProject` shipped at L5. See `ROADMAP.md` §"Decision A".
+- **The three live bugs** are `FIXED` with named tests, folded into L7.
+- **The lost audit was never lost.** Both runs wrote to `docs/audit/` and were committed the whole
+  time this file said otherwise. That error cost a loop of rediscovery and is the origin of the
+  rule that a record pointing at ephemeral storage will eventually lie — and lie toward *"the work
+  is gone."* The freeze on `ml/import_doctor.py`, `ml/join_doctor.py`, `utils/combine*.py` and
+  `pages/01` still holds, for the untriaged defect tail rather than for missing evidence; its one
+  definition and the three gates that lift it are in `TRANSITION_PLAN.md` §05.
+
 **Open, and blocking.**
 
-- Row identity uses two incompatible conventions (lockbox seals index *labels*; splits store
-  *positions*). Highest silent-corruption risk in the migration. Pick one before writing
-  `AnalysisProject`.
-- Three live bugs are shipping on `main` today — see `TRANSITION_PLAN.md` §01. They are
-  independent of the rebuild.
-- The safety net is thinner than the coverage number: no test calls the production
-  `reset_downstream_results()`, `tests/integration/conftest.py` injects a bare `Ridge` where
-  the app stores wrapper objects, and `tests/test_insight_id_integrity.py` will pass
-  vacuously after a rename.
-- `docs/FINDINGS_LEDGER.md` (the *existing* app ledger, not this one) has an open tail on
-  the multi-file/JSON import path from two audit runs whose results were lost. Treat
-  `ml/import_doctor.py`, `ml/join_doctor.py`, `utils/combine*.py` and `pages/01` as
-  engine-move-only until that closes.
+- **The back half.** Figures beyond the first two, the manuscript chain, and three of four domain
+  packs. `ROADMAP.md` §"The map" is authoritative.
+- **Verification debt in the research.** Every numeric threshold in `research/` is search-surfaced
+  rather than read from primary text; items marked `[verify-at-build]` may not ship as constants.
+  The DRI tables in particular must ship as data read from NASEM, not as prose.
+- **The safety net is thinner than the coverage number**, and the shape of the thinness keeps
+  changing. Six times a guard has turned out to be testing its own description rather than the
+  app — most recently three frontend tests that passed against a page emptied to `<body></body>`.
+  The six axes are in `FEATURE_PARITY.md`; the practical answer is the revert probe.
 
 ---
 
@@ -117,7 +132,7 @@ The ledger has two tiers:
   the time. **Loop 1 re-verified all 370 against HEAD (2026-07-27):** 289 OPEN, 31 PARTIAL,
   50 FIXED with named tests, 0 NOT-A-DEFECT. The ledger is now a real backlog, not research.
   Four stale Tier-0 rows the verifier flagged were closed by the adjudicator against their
-  named tests; see `LOOP.md` §"Loop 1" for the full result.
+  named tests; see `LOOP.md` §03 for the full result.
 
 Work `data/findings.json` through `tools/ledger.py`; `FINDINGS_LEDGER.md` is generated.
 
@@ -127,17 +142,14 @@ python docs/turbotab/tools/ledger.py next --n 15
 python docs/turbotab/tools/ledger.py check     # schema guard; run before every commit
 ```
 
-The full route to a finished app — twelve loops and three decision gates — is in
-[`ROADMAP.md`](ROADMAP.md). The short version, from `TRANSITION_PLAN.md` §06:
+The full route — twelve phases, the domain track that runs through them, and three decision gates —
+is in [`ROADMAP.md`](ROADMAP.md). **Phases L1–L8 are done and all three decisions are answered.**
+What remains is L9 (the interaction layer, in progress, one step per loop), the domain track D1–D5
+running alongside it, then L10–L12.
 
-1. Fix the three live bugs on the current app (independent of the rebuild).
-2. Write characterization tests **before** moving any code.
-3. Settle row identity, then design `AnalysisProject`.
-4. Extract the split block (`pages/06:380-760`) and the step state machine (`utils/theme.py:685`).
-5. Cut the record singletons, add the job queue.
-6. Build the Router against EDA only.
-7. Port the frontend one step at a time.
+Each phase carries an exit gate — a thing that must be demonstrably true before the next begins.
+Don't skip the gates; they are where a delicate migration proves it hasn't silently broken
+something.
 
-Each step in the plan carries an exit gate — a thing that must be demonstrably true before
-the next begins. Don't skip the gates; they are where a delicate migration proves it hasn't
-silently broken something.
+**How the work actually happens** is `LOOP.md`: one prompt of four parts, run unattended, reporting
+once, adjudicated against the code before it is accepted.
