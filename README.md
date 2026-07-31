@@ -16,15 +16,15 @@
     <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
   </p>
   <p align="center">
-    <a href="https://github.com/hedglinnolan/tabular-ml-lab/tree/university-docker">
-      <img src="https://img.shields.io/badge/🎓_University_Deployment-Docker_+_OIDC_Auth-0066cc?style=for-the-badge" alt="University Deployment">
+    <a href="UNIVERSITY_DEPLOYMENT.md">
+      <img src="https://img.shields.io/badge/🎓_Also_runs_on-your_university's_server-0066cc?style=for-the-badge" alt="University deployment">
     </a>
   </p>
 </p>
 
 ---
 
-> 🎓 **University IT Administrators:** Looking to deploy for your institution? Check out the [**university-docker branch**](https://github.com/hedglinnolan/tabular-ml-lab/tree/university-docker) for Docker deployment with KeyCloak OIDC authentication and institutional LLM integration. Complete setup guide included.
+> **Two ways to run this.** On **your own laptop**, download it and double-click — nothing to configure, no accounts, and your data never leaves your machine. On **your university's server**, run it as a Docker container behind your institution's existing login (Shibboleth, CAS, Azure AD, Keycloak), so your colleagues sign in the way they already do for everything else. See [UNIVERSITY_DEPLOYMENT.md](UNIVERSITY_DEPLOYMENT.md).
 
 ---
 
@@ -281,32 +281,35 @@ tabular-ml-lab/
 
 ---
 
-## 🎓 Institutional Deployment
+## 🎓 Running it on a university server
 
-**University IT Administrators:** Deploy Tabular ML Lab on your institutional infrastructure with Docker, KeyCloak OIDC authentication, and LLM integration.
+Everything above describes running the app on one person's computer. You can also
+run it once, on a server, so a whole lab or class shares it:
 
-👉 **[university-docker branch](https://github.com/hedglinnolan/tabular-ml-lab/tree/university-docker)**
+```bash
+git clone https://github.com/hedglinnolan/tabular-ml-lab.git
+cd tabular-ml-lab
+cp .env.example .env
+docker compose up --build
+```
 
-**What's included:**
-- 🐋 **Docker/Kubernetes configs** — Production-ready deployment
-- 🔐 **KeyCloak OIDC SSO** — Standards-based authentication
-- 🤖 **Institutional LLM** — Connect to your Ollama/vLLM infrastructure
-- ⚡ **Compute profiles** — Optimize for your hardware
-- 📚 **Complete docs** — UNIVERSITY_DEPLOYMENT.md, DOCKER_DEPLOYMENT.md, COMPUTE_PROFILES.md
+That's the whole deployment. The `Dockerfile` and `docker-compose.yml` live here on
+`main` alongside the app, so there is no separate branch to keep in sync.
 
-**Perfect for:**
-- 📖 Statistics courses — Students analyze data without coding
-- 🔬 PhD research — Publication-ready outputs with TRIPOD checklists
-- 🎯 Capstone projects — Guided ML workflow ensures quality
-- 👨‍🏫 Faculty research — Bootstrap CIs, SHAP, calibration analysis
+**About logins.** The app has none of its own — anyone who can reach it can use it.
+That is fine on a lab network or VPN, where the network is the access control. To
+open it wider, put it behind the single sign-on your institution already runs
+(Shibboleth, CAS, Azure AD, Keycloak) and let that decide who gets through. Your
+colleagues then sign in exactly as they do for everything else, and there is
+nothing to configure inside the app. [UNIVERSITY_DEPLOYMENT.md](UNIVERSITY_DEPLOYMENT.md)
+has worked examples for nginx, Apache and OAuth2 Proxy.
 
-**Security:**
-- ✅ On-premises deployment (no external APIs required)
-- ✅ Session-isolated (no persistent data between users)
-- ✅ Non-root containers
-- ✅ Health check endpoints
-
-See [UNIVERSITY_DEPLOYMENT.md](https://github.com/hedglinnolan/tabular-ml-lab/blob/university-docker/UNIVERSITY_DEPLOYMENT.md) for complete setup guide.
+**Also worth knowing:**
+- The container runs as a non-root user and exposes a health check endpoint.
+- Nothing is written to disk between sessions — each person's data lives only in
+  their browser session.
+- An optional Ollama sidecar (`docker compose --profile ollama up`) runs the AI
+  interpretation features on your own hardware, so no data leaves your network.
 
 ---
 
