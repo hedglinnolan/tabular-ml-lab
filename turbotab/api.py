@@ -277,6 +277,11 @@ def _recompute(project: AnalysisProject) -> None:
             "file presents as one the profiler had nothing to say about")
         prof = None
 
+    # EVERY FINDING STATES ITS SUBJECT (`GUIDED-053`). Computed here, once, so
+    # the page has one question to ask and no rule of its own — including for a
+    # finding whose subject is the cohort, where an empty chip row would read as
+    # a card that failed to load.
+    #
     # THE LENS IS A PARAMETER OF THE DIAGNOSIS, not something applied to it
     # afterwards here. `rank_findings` is the one function that produces the
     # finding list the app presents, and nothing reaches a user except through

@@ -760,6 +760,14 @@
   .snip .mini{margin-top:7px}
   .snip-blank{background:var(--warn-tint)}
 
+  /* ——— a finding whose subject is the study (GUIDED-053) ———
+     Sans rather than mono, because it is a STATEMENT and not a name — §03's
+     three-voice rule doing the work of telling the reader that this row is not
+     a list of columns with the columns missing. */
+  .chip.scope{font-family:var(--sans);font-style:italic;letter-spacing:0;
+              text-transform:none;color:var(--muted);
+              background:var(--surface-2);border-color:var(--line-soft)}
+
   /* ——— the evidence badge (§11) ———
      A TOKEN, not a component: no silhouette, no mood, no verb, and no new hue.
      Mono because it is data ABOUT the claim rather than the app's voice (§03).
@@ -1202,9 +1210,24 @@
     var cls = "find no-thumb" + (st.deferred ? " deferred" : "") + (st.dismissed ? " gone" : "");
     var chips = '<span class="chip">' + esc(f.severity) + '</span>';
     if (f.confidence) chips += '<span class="chip">confidence: ' + esc(f.confidence) + '</span>';
-    (f.affected_columns || []).slice(0, 5).forEach(function(c){
-      chips += '<span class="chip">' + esc(c) + '</span>';
-    });
+    /* THE SUBJECT, AND NEVER AN EMPTY SPACE WHERE ONE BELONGS (`GUIDED-053`).
+       Every card answers "what is this about?" with a row of mono column chips.
+       A finding whose subject is the COHORT has none, and an empty chip row
+       inside a full card frame reads as a card that failed to load — an absence
+       is read as a missing name, never as "there is no name".
+
+       So a subjectless finding states its scope instead. The server computes
+       which: a page deciding for itself which findings have subjects would hold
+       a second copy of the rule. */
+    var shape = f.shape || {};
+    if (shape.has_chips === false){
+      chips += '<span class="chip scope">' + esc(shape.subject_line ||
+               "About this study as a whole") + "</span>";
+    } else {
+      (f.affected_columns || []).slice(0, 5).forEach(function(c){
+        chips += '<span class="chip">' + esc(c) + '</span>';
+      });
+    }
 
     var h = '<article class="' + cls + '" id="find-' + esc(f.id) + '"><div>';
     h += '<p class="f-title">' + esc(f.title) + '</p>';

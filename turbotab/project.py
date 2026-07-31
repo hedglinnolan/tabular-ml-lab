@@ -1910,7 +1910,17 @@ class AnalysisProject:
 
     def set_findings(self, findings: List[Dict[str, Any]],
                      profile: Optional[Dict[str, Any]] = None) -> None:
-        """Install a freshly computed finding set. Clears the stale mark."""
+        """Install a freshly computed finding set. Clears the stale mark.
+
+        **Every finding gains its subject shape here** (`GUIDED-053`), at the
+        one door every finding list passes through. Computed rather than stored
+        on the producers: two of them are frozen modules that know nothing about
+        scopes, and a finding whose scope was never set would default to
+        `columns` and render the empty chip row the shape exists to prevent.
+        """
+        from turbotab import cohort_findings as _cf
+
+        findings = [dict(f, shape=_cf.render_shape(f)) for f in findings]
         self.findings = list(findings)
         if profile is not None:
             self.profile = profile

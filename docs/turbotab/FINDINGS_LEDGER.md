@@ -20,13 +20,13 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**217 of 615 closed.**
+**217 of 618 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 355 |
-| `PARTIAL` | 43 |
+| `PARTIAL` | 46 |
 | `FIXED` | 214 |
 | `NOT-A-DEFECT` | 3 |
 
@@ -452,7 +452,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 43
+## PARTIAL — 46
 
 
 ### Application state / lockbox — 10
@@ -494,6 +494,16 @@ Nothing is closed without a regression test named after it.
 | `TEST-022` | high | perform_cross_validation's leakage semantics are documented in prose but only partially tested — and CV strategy is a cleared-but-unasserted key | `ml/eval.py:97-171; silent downgrade at :143-149; cv_strategy/cv_groups_train absent from all three test…` | The staleness half is closed; the fold-membership half is not. cv_strategy and cv_groups_train are no longer unasserted-on-clear - they are registered in the cascade and pinned by… |
 | `TEST-026` | medium | scripts/integration_test_apptest.py and scripts/integration_test.py are unreachable from CI and duplicate tests/integration/ | `.github/workflows/ci.yml (only `pytest tests/` and `pytest tests/integration`); Makefile:22-40…` | Half the row's premise is wrong at HEAD and the correction changes the disposition. scripts/integration_test.py is NOT unreachable from CI - ci.yml:90-94 runs it as the E2E smoke… |
 | `TEST-032` | medium | tests/test_page_imports.py and tests/test_insight_id_integrity.py are AST-based over pages/ — they die with pages/ but encode rules worth keeping | `tests/test_page_imports.py:123; tests/test_insight_id_integrity.py:52` | Half the row is closed. test_insight_id_integrity can no longer pass vacuously over an empty or renamed directory - that is SWEEP-014, and it was fixed in exactly the way this row… |
+
+### Guided-door drive feedback — 5
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `GUIDED-044` | high | Seven of the harness's eight guards were tested only against hand-built dicts, so a guard inert on the real path was indistinguishable from a guard that works | `turbotab/devchecks.py check_transition; turbotab/test_the_harness_reports_and_does_not_stop_the_drive.py` | **test:** `turbotab/test_every_guard_is_planted_against_the_real_path.py::test_every_guard_is_classified_as_planted_or_filed` — FOUND BY THE PART D SWEEP, and not where the sweep… |
+| `GUIDED-051` | high | The figure layer had seven geometries and nineteen actions and no way to say what a publication-grade figure requires, which is annotation rather than geometry | `docs/turbotab/DOMAIN_SCIENCE.md section 02; turbotab/figures.py` | **test:** `turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_a_confirmatory_figure_without_its_companion_is_not_admitted` — Eight signature figures across… |
+| `GUIDED-053` | high | A finding whose subject is the cohort rendered an empty chip row inside a full card frame, which reads as a card that failed to load | `turbotab/web/index.html findingCard; ml/import_doctor.py:954` | **test:** `turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_a_real_fixture_already_produces_a_cohort_finding` — NOT HYPOTHETICAL: clinic_visits.csv already… |
+| `GUIDED-030` | medium | Four pack priors still have no consumer - GUIDED-024's defect surviving for a subset, now declared and counted rather than noticed | `turbotab/packs.py PACKS priors; test_every_prior_has_a_consumer_or_is_declared_unconsumed lists the four with…` | Four priors had no consumer at L21 and three still do. THE ONE REAL DEFECT IS FIXED as GUIDED-033: qc_rows_excluded stated at derived confidence that pooled QC rows are not… |
+| `GUIDED-052` | medium | No artifact stated whether its content may become model input, so promotion had no field to read and label-blindness was standing in for the rule | `docs/turbotab/PRODUCT_VISION.md artifact promotion; turbotab/figures.py FigureSpec` | **test:** `turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_pca_is_promotable_and_calibration_is_not` — THE RULE IS RE-EXECUTABILITY, NOT LABEL-BLINDNESS… |
 
 ### Verified against main — 3
 
@@ -539,13 +549,6 @@ Nothing is closed without a regression test named after it.
 |---|---|---|---|---|
 | `IMPORT-243` | high | HUNT dtype-mismatch-blocked-but-executed: the screen still shows a red 'will not work' blocker and then combines successfully, though the withheld row count and the recurrence on later legs are both… | `ml/join_doctor.py diagnose_join (a dtype mismatch is still classified blocking, can_proceed False, while…` | PARTIAL, measured at HEAD. A genuine text-vs-numeric key pair still gives dtype_mismatch True, can_proceed False and a red blocking message - and combine_ui overrides the block… |
 | `IMPORT-240` | medium | HUNT stack-empty-file-turns-every-numeric-column-to-text: the dtype corruption is gone, but a header-only cycle now produces a FALSE type-conflict warning and is still never named as contributing… | `utils/combine.py plan_stack (total_rows as a plain sum, no zero-row check) and execute_stack's pd.concat…` | PARTIAL, measured at HEAD. Three cycles with glucose float64 in two of them and an empty header-only frame between: the stacked glucose column comes back float64 with 4 rows - the… |
-
-### Guided-door drive feedback — 2
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `GUIDED-044` | high | Seven of the harness's eight guards were tested only against hand-built dicts, so a guard inert on the real path was indistinguishable from a guard that works | `turbotab/devchecks.py check_transition; turbotab/test_the_harness_reports_and_does_not_stop_the_drive.py` | **test:** `turbotab/test_every_guard_is_planted_against_the_real_path.py::test_every_guard_is_classified_as_planted_or_filed` — FOUND BY THE PART D SWEEP, and not where the sweep… |
-| `GUIDED-030` | medium | Four pack priors still have no consumer - GUIDED-024's defect surviving for a subset, now declared and counted rather than noticed | `turbotab/packs.py PACKS priors; test_every_prior_has_a_consumer_or_is_declared_unconsumed lists the four with…` | Four priors had no consumer at L21 and three still do. THE ONE REAL DEFECT IS FIXED as GUIDED-033: qc_rows_excluded stated at derived confidence that pooled QC rows are not… |
 
 ### DRIVE — 1
 

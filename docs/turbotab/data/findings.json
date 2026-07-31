@@ -7868,5 +7868,47 @@
   "verified_against": "",
   "test": "tests/integration/test_routing_value_check.py::test_the_amendment_changed_no_verdict",
   "verified_ev": "docs/turbotab/VALUE_CHECK_PREREG.md Amendment 1; tests/integration/test_routing_value_check.py"
+ },
+ {
+  "id": "GUIDED-051",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The figure layer had seven geometries and nineteen actions and no way to say what a publication-grade figure requires, which is annotation rather than geometry",
+  "detail": "",
+  "ev": "docs/turbotab/DOMAIN_SCIENCE.md section 02; turbotab/figures.py",
+  "act": "",
+  "status": "PARTIAL",
+  "note": "Eight signature figures across four packs and the publication-grade delta is almost never the shape - it is the percent variance in the axis label, the risk histogram under the curve, the numbers-at-risk table, the log-scale x-axis, the rug showing the upturn is eleven people. So the spec is a caption-and-annotation engine wrapped around a plotting library, and it computes no geometry it can borrow: ml/calibration.py and ml/macro_shape.py hold the mathematics and a second implementation would be the two-engines failure inside the figure layer. COMPANIONS IS THE FIELD WITH NO ANALOGUE AND IT IS LOAD-BEARING: a confirmatory figure whose companion is absent is not admitted to the results bundle - not warned about, not caption-caveated, both of which a reader skips, and the circular-figure family survives precisely by being skippable. bundle() separates admitted from held and says why, because a figure dropped silently would be the app quiet about the thing the rule exists to make loud. TWO FIGURES, DELIBERATELY, chosen to be maximally different - confirmatory vs exploratory, needs-a-fitted-model vs needs-a-numeric-block, do-not-truncate vs aspect-proportional-to-variance, has-a-companion vs makes-no-claim, not-promotable vs promotable. THE CHECKLIST FOUND A REAL GAP ON ITS FIRST RUN: annotation_box requires the calibration intercept and slope and ml/calibration.py computed neither - it had Van Calster's first and third rungs and not the second, which the clinical pack calls mandatory and which is the most useful number on the figure. Added to the ENGINE as weak_calibration plus c_statistic, by IRLS in numpy so a two-parameter fit does not add a dependency, and returning (None, None) rather than (0.0, 1.0) where undefined because those are the values of PERFECT calibration and reporting them for 'could not compute' would be the governing rule's failure in two floats. PARTIAL because six of the eight signature figures are unbuilt by design - a third is not built until the spec has survived these two.",
+  "verified_against": "",
+  "test": "turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_a_confirmatory_figure_without_its_companion_is_not_admitted",
+  "verified_ev": "docs/turbotab/DOMAIN_SCIENCE.md section 02; turbotab/figures.py"
+ },
+ {
+  "id": "GUIDED-052",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "No artifact stated whether its content may become model input, so promotion had no field to read and label-blindness was standing in for the rule",
+  "detail": "",
+  "ev": "docs/turbotab/PRODUCT_VISION.md artifact promotion; turbotab/figures.py FigureSpec",
+  "act": "",
+  "status": "PARTIAL",
+  "note": "THE RULE IS RE-EXECUTABILITY, NOT LABEL-BLINDNESS, and the correction matters because the two disagree on real cases. An artifact is promotable when the app can re-run its computation inside every fold. PCA qualifies - a fit is a deterministic function of the rows it sees, so refitting per fold lets nothing cross the split, and what is promoted is the RECIPE (centre, scale, project onto k) and never the component values computed on the whole table. A volcano plot qualifies too, because refitting a per-feature test per fold is tractable. A hand-curated selection does not. Calibration does NOT qualify and the reason is the rule rather than the subject: a calibration curve is a property of a model already fitted to these rows, so re-running it inside a fold would need the fold's own model, which is the thing being evaluated. promotable=True is refused without promotable_because, because True with no argument is the claim without the evidence. PARTIAL: the field and its rendering are built and promotion itself is deliberately not.",
+  "verified_against": "",
+  "test": "turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_pca_is_promotable_and_calibration_is_not",
+  "verified_ev": "docs/turbotab/PRODUCT_VISION.md artifact promotion; turbotab/figures.py FigureSpec"
+ },
+ {
+  "id": "GUIDED-053",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "A finding whose subject is the cohort rendered an empty chip row inside a full card frame, which reads as a card that failed to load",
+  "detail": "",
+  "ev": "turbotab/web/index.html findingCard; ml/import_doctor.py:954",
+  "act": "",
+  "status": "PARTIAL",
+  "note": "NOT HYPOTHETICAL: clinic_visits.csv already produces profile_sample_size_0, whose subject is the study, and it was rendering an empty subject row today. Every card answers 'what is this about?' with mono column chips; an absence there is read as a MISSING NAME, never as 'there is no name'. So the recorded-absence rule applied to a finding's subject - a finding states its subject, and where the subject is not a column it says what it is instead. Three scopes: columns, rows, cohort. THE SCOPE IS DERIVED AND NOT A FIELD A PRODUCER MUST SET, because two of the producers are frozen modules that know nothing about scopes and a finding whose scope was never set would default to columns and render the very empty row this prevents. Rendered sans and italic rather than mono, because it is a STATEMENT and not a name - section 03's three-voice rule doing the work of telling the reader this is not a list of columns with the columns missing. WE HAD ALREADY SOLVED HALF OF THIS: the no-ACTION half is test_a_finding_with_no_repair_still_offers_something's precedent, and it is reused rather than re-solved. THE FROZEN PATH: ml/import_doctor.py:954 filters a finding's columns against the frame and an empty intersection drops nothing and reports having dropped nothing - a repair that silently succeeds at doing nothing. That module is frozen, so the Guided door does the reading BEFORE offering the repair and withdraws it with a sentence naming which columns are gone. SCOPED TO THE SHAPE: the resolution statement is marked specified-unbuilt in PRODUCT_VISION and stays that way.",
+  "verified_against": "",
+  "test": "turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_a_real_fixture_already_produces_a_cohort_finding",
+  "verified_ev": "turbotab/web/index.html findingCard; ml/import_doctor.py:954"
  }
 ]
