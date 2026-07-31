@@ -384,10 +384,14 @@ def _badge_payload(evidence: Evidence,
     statuses = [evidence.status] + [c.evidence.status for c in claims]
     payload["claims"] = [c.to_dict() for c in claims]
     payload["may_preselect"] = all(s in MAY_PRESELECT for s in statuses)
-    for status in (DISPUTED, CONVENTION_STATUS, SETTLED):
-        if status in statuses:
-            payload["weakest_status"] = status
-            break
+    # `min` over an explicit rank rather than a first-match over an ordered
+    # tuple. The ordered-tuple form reads as *"is any of these in that
+    # collection"*, which `test_every_substring_match_against_a_name_is_declared`
+    # flags on sight — and it was right to: the shape is one character away
+    # from a substring scan over names, which is the hazard that guard exists
+    # for. Writing the ordering down is also better than encoding it in the
+    # order of a tuple somebody could reorder.
+    payload["weakest_status"] = min(statuses, key=lambda s: _STATUS_RANK[s])
     return payload
 
 

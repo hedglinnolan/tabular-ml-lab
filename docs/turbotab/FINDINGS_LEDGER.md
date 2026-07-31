@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**227 of 643 closed.**
+**227 of 646 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 369 |
+| `OPEN` | 372 |
 | `PARTIAL` | 47 |
 | `FIXED` | 224 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 369
+## OPEN — 372
 
 
 ### Application state / lockbox — 66
@@ -456,18 +456,21 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
+### Other — 4
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `AUDIT-005` | high | The outcome-in-imputation refusal says there is no configuration in which it is acceptable, and the clinical pack marks the opposite SETTLED for an inference purpose | `turbotab/missingness.py:125 OUTCOME_IN_IMPUTATION_REFUSAL; research/CLINICAL_SURVEY_PACK.md section A2…` | L30-D anti-pattern audit hit 1 of 3, and the sharpest. turbotab/missingness.py:125 reads: The outcome cannot be one of the columns the imputation model reads ... There is no… |
+| `AUDIT-003` | medium | A log transform is recommended from skewness alone, with no check for data that has already been transformed | `ml/eda_recommender.py:394; research/METABOLOMICS_PACK.md section 10 Structural; DOMAIN_SCIENCE.md section 03b` | L29-D anti-pattern audit hit 3 of 4. eda_recommender.py:394 emits High skew, consider log transform or robust loss (Huber) from the target's skewness and nothing else.… |
+| `AUDIT-006` | medium | The PCA biplot sets no aspect constraint, so PC2 is stretched to fill the panel and separation is visually exaggerated | `ml/macro_shape.py plot_pca_biplot; research/GENOMICS_PACK.md section 11; research/METABOLOMICS_PACK.md…` | L30-D anti-pattern audit hit 2 of 3. GENOMICS_PACK.md section 11 lists Unlabeled PCA axes, unequal aspect ratio as a SETTLED presentation error whose consequence is… |
+| `AUDIT-007` | medium | Median imputation is the silent default and nothing states what it costs, which the clinical pack marks SETTLED as bad | `ml/pipeline.py:213; pages/05_Preprocess.py:1082; research/CLINICAL_SURVEY_PACK.md section A2 anti-pattern 2…` | L30-D anti-pattern audit hit 3 of 3, and the softest. CLINICAL_SURVEY_PACK.md section A2 anti-pattern 2: Mean/median imputation. Understates variance, destroys the distribution… |
+
 ### DRIVE — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `DRIVE-009` | critical | The domain-specific EDA plot vision is unbuilt, and it is the product's stated centerpiece | `The drive; DESIGN_LANGUAGE.md 07; DOMAIN_PACKS.md 08` | From the product owner's second NHANES drive. Their words are the specification. |
 | `DRIVE-010` | high | After the target is chosen the app does not ask which features to use, or whether to slice by subgroup | `The drive` | From the product owner's second NHANES drive. Their words are the specification. |
-
-### Other — 1
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `AUDIT-003` | medium | A log transform is recommended from skewness alone, with no check for data that has already been transformed | `ml/eda_recommender.py:394; research/METABOLOMICS_PACK.md section 10 Structural; DOMAIN_SCIENCE.md section 03b` | L29-D anti-pattern audit hit 3 of 4. eda_recommender.py:394 emits High skew, consider log transform or robust loss (Huber) from the target's skewness and nothing else.… |
 
 ---
 
