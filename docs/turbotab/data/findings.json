@@ -8232,5 +8232,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "ml/eda_actions.py:1209-1211; research/NUTRITION_PACK.md section 06 anti-patterns"
+ },
+ {
+  "id": "GUIDED-072",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "Every attest exit advertises a way out of a 409 and none of them names the payload key a client must send, and the four exits map to at least three different keys",
+  "detail": "",
+  "ev": "turbotab/packs.py:1951; turbotab/grain.py:206; turbotab/missingness.py:115; turbotab/purpose.py:155; turbotab/api.py:485,532,684,711",
+  "act": "",
+  "status": "OPEN",
+  "note": "FOUND BY THE ADJUDICATOR HITTING IT. Driving an autoscaled assay table to the volcano refusal, the lens decision returned 409 carrying exits=[revise, attest] with attest labeled \"My answer is right - the data really is like this\". I read the payload, sent what it described, and got a second 409 - because the key is acknowledge_contradiction and the exit object never says so. Every exit is the same four fields: id, kind, label, detail. THE KEYS ARE NOT EVEN UNIFORM: the lens and grain contradictions read acknowledge_contradiction, the missingness and purpose paths read acknowledge_signal_loss, and acknowledge_blocker and acknowledged exist besides. So a client receiving kind=attest cannot construct the retry from the payload; it has to hold an out-of-band map from which endpoint refused to which key unlocks it. THAT IS THE COUPLING api.py:300-304 ARGUES AGAINST IN ITS OWN WORDS - the disclosure is served rather than composed in the page precisely because an interface that writes its own disclosure drifts from what the record says. An exit whose mechanism lives only in the interface is that drift with the direction reversed. AND IT MAKES A STATED INVARIANT UNTRUE IN PRACTICE: api.py:539 says a CONSEQUENCE resolves or is attested, never a dead end, and the comment above the 409 says the exits travel WITH the refusal so an interface cannot render the interruption without also rendering its way out. Both hold for a human reader and neither holds for a client. SAME CLASS AS GUIDED-060 - a record naming an affordance that nothing can resolve - and the fix is the same shape: the exit carries the key, or carries a ready-to-post payload. Not urgent and not a false assertion; it is a documented door with no handle, in the one place the design language promises there is always a way through.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/packs.py:1951; turbotab/grain.py:206; turbotab/missingness.py:115; turbotab/purpose.py:155; turbotab/api.py:485,532,684,711"
  }
 ]

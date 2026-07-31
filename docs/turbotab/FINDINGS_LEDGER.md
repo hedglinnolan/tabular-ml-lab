@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**224 of 641 closed.**
+**224 of 642 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 370 |
+| `OPEN` | 371 |
 | `PARTIAL` | 47 |
 | `FIXED` | 221 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 370
+## OPEN — 371
 
 
 ### Application state / lockbox — 66
@@ -417,7 +417,7 @@ Nothing is closed without a regression test named after it.
 | `MODELS-023` | invariant | The NN's best-epoch weights are snapshotted by CLONE, not by reference, so later optimizer steps cannot mutate the saved state. | `models/nn_whuber.py:430 and 529 — `best_model_state = {k: v.detach().clone() for k, v in…` | The invariant holds at both snapshot sites and nothing guards it, so it stays OPEN. state_dict() returns references to live tensors, so a bare copy would let subsequent optimizer… |
 | `MODELS-024` | invariant | Cross-validation is skipped for the neural network because its sklearn shim cannot retrain. | `pages/06:1529 `if use_cv and model_name != 'nn'` with the else-branch at 1565 explaining it to the user…` | Unchanged at HEAD: four separate guards, all keyed on one literal model key. The skip itself is correct and is explained to the user, which is good - the shim cannot retrain, so… |
 
-### Guided-door drive feedback — 16
+### Guided-door drive feedback — 17
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -435,6 +435,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-063` | medium | Two advisories assemble the evidence badge as a dict literal instead of an Evidence, so nothing validates their form and one of them is outside every gate | `turbotab/purpose.py:171 indicator_blocker; ml/imbalance_advice.py:62 EVIDENCE` | Found while widening evidence.py at L28-A. purpose.py's indicator_blocker returns evidence_status='SETTLED' and a source string; ml/imbalance_advice.py declares an EVIDENCE dict… |
 | `GUIDED-069` | medium | The research's generic name patterns are flagging heuristics and the pack applies several of them as findings with no second signal, so a strata or cluster column means whatever it is called | `turbotab/nutrition.py survey_design strata|stratum and psu|cluster fullmatch` | The generalization of the defect L28-C fixed. NUTRITION_PACK.md section 01 says to flag generic weight|wt|pweight|strata|psu|cluster|fpc, and that list is a FLAGGING heuristic in… |
 | `GUIDED-071` | medium | FigureSpec has no field for a precondition on upstream data state, so a figure that must refuse on the shape of the values can only do it inside its payload builder | `turbotab/figures.py FigureSpec.when_applicable; turbotab/figure_specs.py volcano_payload…` | Found at L29-B by building the volcano first, hardest-first, which is what LOOP.md section 02 now asks for. METABOLOMICS_PACK.md section 06.3: the fold change must be computed… |
+| `GUIDED-072` | medium | Every attest exit advertises a way out of a 409 and none of them names the payload key a client must send, and the four exits map to at least three different keys | `turbotab/packs.py:1951; turbotab/grain.py:206; turbotab/missingness.py:115; turbotab/purpose.py:155…` | FOUND BY THE ADJUDICATOR HITTING IT. Driving an autoscaled assay table to the volcano refusal, the lens decision returned 409 carrying exits=[revise, attest] with attest labeled… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 
