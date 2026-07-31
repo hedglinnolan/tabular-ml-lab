@@ -185,6 +185,17 @@ their generated markdown). A docs-only commit from another session may land mid-
 touches none of those files and its commit message says so; the loop agent rebases over it. Anything
 touching the data files waits. That is the artifact this project has already lost once.
 
+**The adjudicator never runs `git add -A`, and the rule is written here because it was broken here.**
+Two commits during `L30` — `9ebf95d` and `7dd6aa6` — carry `docs(turbotab):` subjects about the
+frontend stack and contain `turbotab/exits.py`, `turbotab/packs.py` and five other source files that
+were the loop agent's uncommitted Part A at that moment. Nothing was lost and every gate stayed
+green, but the subject line of a commit is a claim about its contents, and those two assert something
+false about themselves — the governing rule failing in the record layer rather than in the app.
+**Stage explicit paths, and run `git status` first, every time.** The failure was not carelessness
+about the rule; it was not noticing that a conversation about architecture is a moment when a loop
+may be running. The docs-only exemption above is what makes an adjudicator's commit safe mid-loop,
+and `git add -A` silently converts a docs-only commit into a mixed one.
+
 **Verification loops run in a fresh session, not the builder's.** A builder verifying their own work
 reads intent where the job is to read code — the same reason a review pattern never lets the finder
 be the judge. And both write the same data files.

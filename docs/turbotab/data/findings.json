@@ -8316,5 +8316,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "turbotab/recipes.py:78 Operation, :116 Default, :128 _SPECIFICITY, :392 Divergence, :493 worth_asking; turbotab/api.py:1716 /recipes n_choices_suppressed; turbotab/web/index.html"
+ },
+ {
+  "id": "AUDIT-008",
+  "area": "MISC",
+  "sev": "high",
+  "item": "The class the anti-pattern audit is actually finding: the core already holds the correct capability and the path that needs it does not read it — four of the last four hits have this shape, and it is not the shape the registries were written to detect",
+  "detail": "",
+  "ev": "AUDIT-001 vs ml/feature_selection.py:186 multipletests; AUDIT-002 vs ml/splits.py; AUDIT-006 vs turbotab/figure_specs.py PCA_SCORES aspect; AUDIT-005 vs the recorded purpose answer",
+  "act": "",
+  "status": "OPEN",
+  "note": "NAMED BY THE EXECUTION AGENT IN THE L30 REPORT AND LEFT IN PROSE, which is the gap LOOP.md section 06.1 calls the most common one in an otherwise good report. Filing it because a class that lives only in a report is a class that gets rediscovered. THE OBSERVATION: 153 registry items checked across L29 and L30, 7 hits, and the last four share one shape that the registries themselves do not describe. AUDIT-001 - the manuscript reported an uncorrected count while ml/feature_selection.py:186 already called multipletests. AUDIT-002 - the quick baseline split at random while ml/splits.py already implemented the grouped basis AND the grain answer was already recorded. AUDIT-006 - the PCA biplot sets no aspect constraint while PCA_SCORES in the domain layer already computes the proportional aspect and scores it. AUDIT-005 - the outcome-in-imputation refusal states an absolute while the app already records the purpose that would qualify it. WHY THIS MATTERS MORE THAN ITS INSTANCES: the registries were commissioned to find the app doing something the literature names as wrong, and what they keep finding is the app owning the right thing and not reaching for it. That is a different defect with a different economics - no new science is required, the fix is a call rather than an implementation, and each one is a place where two parts of the codebase already disagree with each other. It is also the same shape as GUIDED-058, where figure_specs.py was correct and unreachable, which suggests the class is not confined to the audit. IT IS CHEAPLY SWEEPABLE AND THE SWEEP IS NOT A REGISTRY READ. For each capability the core exposes - multipletests, make_split, the recorded grain, the recorded purpose, the proportional aspect, the impossibility bands, the physiology reference - enumerate the call sites that should read it and the paths that reimplement or ignore it. That is an import-and-call-graph question answerable mechanically, and it runs against the whole codebase rather than one pack at a time. Note the two-front-doors rule this serves: ROADMAP \"One core, no forks\" says neither UI may hold a private copy of a rule, a default, or a computation. A path that ignores a core capability is that failure in its quietest form - not a second copy, just an unused first one.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "AUDIT-001 vs ml/feature_selection.py:186 multipletests; AUDIT-002 vs ml/splits.py; AUDIT-006 vs turbotab/figure_specs.py PCA_SCORES aspect; AUDIT-005 vs the recorded purpose answer"
  }
 ]
