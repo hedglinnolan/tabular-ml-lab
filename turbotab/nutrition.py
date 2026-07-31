@@ -90,21 +90,124 @@ _NAME_PATTERNS = {
 }
 
 
-def _match(df: pd.DataFrame, role: str) -> Optional[str]:
-    """The first numeric column whose name matches this role's pattern.
+# §01 signal 3, which the first version of this module never read: **unit
+# suffixes.** `_g`, `_mg`, `_mcg`, `_ug`, `_iu`, `_kcal`, `_kj`,
+# `_per1000kcal`, `_pct_energy`. A derived nutrition file routinely carries the
+# same nutrient TWICE — `protein_g` beside `protein_pct_kcal` — and the suffix
+# is the table telling you which is which.
+GRAMS, BARE, DENSITY, OTHER_UNIT = "grams", "unmarked", "density", "other"
 
-    Name matching alone is explicitly *not* how the pack recognizes a nutrient —
-    §01 says match on three signals jointly. This is the name signal only, and
-    it is used to find the columns the reconstruction then **tests**: the
-    Atwater check is itself the second signal, so using names to assemble it and
-    arithmetic to judge it is the two-signal structure rather than a shortcut
-    past it.
+_UNIT_PATTERNS = (
+    (DENSITY, r".*(_pct_energy|_pct_kcal|_percent_energy|_per1000kcal|"
+              r"_per_1000_kcal|_density)$"),
+    (GRAMS, r".*(_g|_gram|_grams)$"),
+    (OTHER_UNIT, r".*(_mg|_mcg|_ug|_iu|_kj|_kcal)$"),
+)
+
+# Which unit class the reconstruction wants, best first. Grams is what
+# `E_hat = 4·protein_g + 4·carbohydrate_g + 9·fat_g + 7·alcohol_g` is written
+# in; an unmarked column may be grams and says nothing; a density is explicitly
+# not grams and is tried last rather than never, because a table that carries
+# ONLY densities is the `macros_not_grams` case and must still be recognized.
+_MACRO_UNIT_ORDER = (GRAMS, BARE, DENSITY, OTHER_UNIT)
+
+
+def _unit_class(column: str) -> str:
+    """Which unit family this column name declares. `unmarked` when it declares none."""
+    name = str(column).lower()
+    for label, pattern in _UNIT_PATTERNS:
+        if re.fullmatch(pattern, name):
+            return label
+    return BARE
+
+
+def _candidates(df: pd.DataFrame, role: str) -> Dict[str, str]:
+    """Every numeric column matching this role, keyed by the unit it declares.
+
+    Keyed rather than listed, because the reading that matters is *"does this
+    table carry this nutrient in more than one unit"* and a list answers a
+    different question. First column wins within a class, which is the old
+    behavior kept where it is harmless.
     """
     pattern = re.compile(_NAME_PATTERNS[role], re.I)
+    out: Dict[str, str] = {}
     for column in df.columns:
-        if pd.api.types.is_numeric_dtype(df[column]) and pattern.search(str(column)):
-            return str(column)
-    return None
+        if not pd.api.types.is_numeric_dtype(df[column]):
+            continue
+        if not pattern.search(str(column)):
+            continue
+        out.setdefault(_unit_class(column), str(column))
+    return out
+
+
+MACRO_ROLES = ("protein", "carbohydrate", "fat", "alcohol")
+
+
+def _energy_column(df: pd.DataFrame) -> Optional[str]:
+    """The declared TOTAL energy column, which is not a macronutrient's share.
+
+    A second collision the first-match order was hiding: `protein_pct_kcal`
+    matches the energy name pattern (`kcal`) as well as the protein one, and it
+    only escaped notice because `energy_kcal` happened to come first in the
+    file. Ranking by unit suffix without this exclusion promoted the protein
+    share to the energy column, which would have made the reconstruction a
+    ratio between two quantities that are both protein.
+
+    A column that matches a macronutrient role is that macronutrient. Energy is
+    the total.
+    """
+    macro_patterns = [re.compile(_NAME_PATTERNS[role], re.I)
+                      for role in MACRO_ROLES]
+    candidates = _candidates(df, "energy")
+    filtered = {unit: col for unit, col in candidates.items()
+                if not any(p.search(col) for p in macro_patterns)}
+    for unit in (OTHER_UNIT, BARE, GRAMS, DENSITY):
+        if unit in filtered:
+            return filtered[unit]
+    return next(iter(filtered.values()), None)
+
+
+def _macro_sets(df: pd.DataFrame) -> List[Tuple[str, Dict[str, str]]]:
+    """The macronutrient column sets this table offers, best-ranked unit first.
+
+    **`GUIDED-068`.** `_match` took the FIRST match per role and nothing else,
+    so `dietary_recalls.csv` — which carries `protein_pct_kcal` and
+    `protein_g`, in that order — was read as percentages and the gram columns
+    beside them were never seen. Not false about the columns it named, and
+    misleading about the table: the finding warned that every downstream step
+    would be computing on the wrong quantity while the right quantity sat one
+    column over.
+
+    A SET PER UNIT FAMILY rather than a cartesian product, because that is the
+    shape the defect has: a derived nutrition file carries the same nutrient
+    twice, in grams and as a share of energy, and the question is which of the
+    two families to reconstruct from — never whether to mix them.
+    """
+    by_role = {role: _candidates(df, role) for role in MACRO_ROLES}
+    out = []
+    for unit in _MACRO_UNIT_ORDER:
+        columns = {role: found[unit] for role, found in by_role.items()
+                   if unit in found}
+        if len(columns) >= 2:
+            out.append((unit, columns))
+    return out
+
+
+def _match(df: pd.DataFrame, role: str) -> Optional[str]:
+    """The best-ranked numeric column for this role, by unit and then position.
+
+    §01 opens with *match on three signals jointly, never names alone* and lists
+    the unit suffixes as signal 3. This is signal 1 ranked by signal 3;
+    `atwater` supplies signal 2, which is the arithmetic — and where two
+    families are present it is the arithmetic that chooses between them.
+    """
+    if role == "energy":
+        return _energy_column(df)
+    candidates = _candidates(df, role)
+    for unit in _MACRO_UNIT_ORDER:
+        if unit in candidates:
+            return candidates[unit]
+    return next(iter(candidates.values()), None)
 
 
 @dataclass(frozen=True)
@@ -117,6 +220,12 @@ class AtwaterReading:
     macro_columns: Dict[str, str]
     n_used: int
     sentence: str
+    # Which unit family the macros were read in, and what was set aside to read
+    # them that way. A table carrying the same nutrient twice gets ONE
+    # reconstruction and the other columns are a fact about the table the
+    # finding has to be able to state (`GUIDED-068`).
+    unit_class: str = BARE
+    set_aside: Tuple[str, ...] = ()
 
 
 # The ratio table, verbatim from §01. Ordered, because the drift row is tested
@@ -130,21 +239,16 @@ KJ_RATIO, INVERSE_RATIO = 4.184, 1.0 / 4.184
 DRIFT_LIMIT = 0.25
 
 
-def atwater(df: pd.DataFrame) -> Optional[AtwaterReading]:
-    """`E_hat = 4P + 4C + 9F + 7A` against the declared energy column.
+def _reconstruct(df: pd.DataFrame, energy_col: str,
+                 macros: Dict[str, str], unit_class: str,
+                 set_aside: Sequence[str] = ()) -> Optional[AtwaterReading]:
+    """The ratio table, run against ONE candidate set of columns.
 
-    Returns `None` where the table does not carry what the check needs — no
-    energy column, or fewer than two macronutrients, in which case the
-    reconstruction would rest on so little that a passing ratio would mean
-    nothing.
+    Split out of `atwater` at `GUIDED-068` so the reconstruction can be run
+    against each unit family a table offers. The verdict logic below is
+    unchanged; what changed is that it is now a function of the columns rather
+    than of whichever ones came first.
     """
-    energy_col = _match(df, "energy")
-    macros = {role: _match(df, role) for role in
-              ("protein", "carbohydrate", "fat", "alcohol")}
-    macros = {k: v for k, v in macros.items() if v}
-    if not energy_col or len(macros) < 2:
-        return None
-
     declared = pd.to_numeric(df[energy_col], errors="coerce")
     reconstructed = sum(
         pd.to_numeric(df[col], errors="coerce").fillna(0.0) * ATWATER[role]
@@ -176,6 +280,7 @@ def atwater(df: pd.DataFrame) -> Optional[AtwaterReading]:
         return AtwaterReading(
             verdict="macros_not_grams", ratio=median, drift=None,
             energy_column=energy_col, macro_columns=macros,
+            unit_class=unit_class, set_aside=tuple(str(c) for c in set_aside),
             n_used=int(usable.sum()),
             sentence=(
                 f"The macronutrient columns sum to about "
@@ -198,6 +303,7 @@ def atwater(df: pd.DataFrame) -> Optional[AtwaterReading]:
         return AtwaterReading(
             verdict="mixed_units", ratio=median, drift=spread,
             energy_column=energy_col, macro_columns=macros,
+            unit_class=unit_class, set_aside=tuple(str(c) for c in set_aside),
             n_used=int(usable.sum()),
             sentence=(
                 f"The ratio of declared to reconstructed energy is not one "
@@ -245,7 +351,48 @@ def atwater(df: pd.DataFrame) -> Optional[AtwaterReading]:
 
     return AtwaterReading(verdict=verdict, ratio=median, drift=spread,
                           energy_column=energy_col, macro_columns=macros,
-                          n_used=int(usable.sum()), sentence=sentence)
+                          n_used=int(usable.sum()), sentence=sentence,
+                          unit_class=unit_class,
+                          set_aside=tuple(str(c) for c in set_aside))
+
+
+def atwater(df: pd.DataFrame) -> Optional[AtwaterReading]:
+    """`E_hat = 4P + 4C + 9F + 7A`, against the columns the table actually means.
+
+    **The arithmetic is what chooses between unit families** (`GUIDED-068`).
+    §01's instruction is *match on three signals jointly*: the name finds the
+    candidates, the unit suffix ranks them, and the reconstruction — which is
+    itself signal 2 — settles which family the declared energy is consistent
+    with. A set is preferred when it PASSES, because passing is the definition
+    of *these are the grams*; where none passes, the best-ranked set's reading
+    stands and the columns it set aside travel with it.
+
+    That is not hunting for a verdict the app likes. There is a fact here —
+    which columns are grams — and the check identifies it; the alternative is
+    reading whichever column the file happened to list first, which is what
+    this repairs.
+
+    Returns `None` where the table does not carry what the check needs — no
+    energy column, or fewer than two macronutrients in any one unit family, in
+    which case the reconstruction would rest on so little that a passing ratio
+    would mean nothing.
+    """
+    energy_col = _energy_column(df)
+    sets = _macro_sets(df)
+    if not energy_col or not sets:
+        return None
+
+    every_column = [col for _, columns in sets for col in columns.values()]
+    readings = []
+    for unit, columns in sets:
+        aside = [c for c in every_column if c not in columns.values()]
+        reading = _reconstruct(df, energy_col, columns, unit, aside)
+        if reading is None:
+            continue
+        readings.append(reading)
+        if reading.verdict == "pass":
+            return reading
+    return readings[0] if readings else None
 
 
 def atwater_finding(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
@@ -261,6 +408,15 @@ def atwater_finding(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
         "macros_not_grams": "The macronutrient columns look like percentages",
         "unexplained": "Declared energy does not reconstruct from the macronutrients",
     }
+    detail = reading.sentence
+    if reading.set_aside:
+        detail += (
+            f" This table also carries "
+            f"`{'`, `'.join(reading.set_aside)}`, which are the same "
+            f"nutrients in another unit; the reconstruction was run on "
+            f"`{'`, `'.join(reading.macro_columns.values())}` because those "
+            f"are the ones it is written in, and the reading above is about "
+            f"them.")
     return _finding(
         # ONE ID PER DETECTOR, and the verdict is a parameter — which it already
         # was. The id used to be `atwater_{verdict}`, and a varying id cannot be
@@ -270,7 +426,7 @@ def atwater_finding(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
         # because that is what a reader sees. Found by wiring the detector into
         # the pack (`GUIDED-058`); nothing had needed to refer to it before.
         "pack::dietary::atwater", severity,
-        titles[reading.verdict], reading.sentence,
+        titles[reading.verdict], detail,
         ("Total energy is the denominator of every energy adjustment, every "
          "nutrient density and every implausible-intake screen, so a unit "
          "error here propagates into every result and is invisible in the "
@@ -284,7 +440,13 @@ def atwater_finding(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
         columns=[reading.energy_column] + list(reading.macro_columns.values()),
         params={"ratio": reading.ratio, "drift": reading.drift,
                 "n_used": reading.n_used, "verdict": reading.verdict,
-                "energy_column": reading.energy_column},
+                "energy_column": reading.energy_column,
+                # WHICH UNIT FAMILY WAS READ, AND WHAT WAS NOT (`GUIDED-068`).
+                # A table carrying the same nutrient twice gets one
+                # reconstruction, and the columns it did not use are a fact
+                # about the table rather than an implementation detail.
+                "unit_class": reading.unit_class,
+                "set_aside": list(reading.set_aside)},
         # NO FIX ON THE MIXED CASE. `fix_kind="none"` is the engine refusing to
         # guess, and it is the right refusal: there is no single factor, so any
         # repair would corrupt the rows it did not describe.

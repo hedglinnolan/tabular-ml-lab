@@ -57,7 +57,7 @@ def load(name: str) -> pd.DataFrame:
 
 def test_the_detectors_are_on_the_live_path_and_not_only_importable():
     """Through `packs.findings`, which `engine` and `project` already call."""
-    ids = {f["id"] for f in P.findings(load("dietary_recalls"), [P.DIETARY])}
+    ids = {f["id"] for f in P.findings(load("nhanes_kilojoules"), [P.DIETARY])}
     assert "pack::dietary::atwater" in ids
 
     ids = {f["id"] for f in P.findings(load("nhanes_dietary"), [P.DIETARY])}
@@ -88,7 +88,7 @@ def test_the_atwater_finding_has_one_id_rather_than_one_per_verdict():
     `prior_columns` looks a detector up by it. The verdict is a parameter,
     which it already was, and the title is where a reader meets it."""
     seen = set()
-    for name in ("dietary_recalls", "nhanes_dietary"):
+    for name in ("nhanes_kilojoules", "nhanes_dietary"):
         finding = N.atwater_finding(load(name))
         if finding:
             seen.add(finding["id"])
@@ -106,7 +106,8 @@ def test_a_reporting_pack_still_cannot_add_a_question(monkeypatch):
     from ml import router
 
     produced = []
-    for name in ("dietary_recalls", "nhanes_dietary", "nhanes_partial_design"):
+    for name in ("dietary_recalls", "nhanes_dietary", "nhanes_partial_design",
+                 "nhanes_kilojoules"):
         produced += P.findings(load(name), [P.DIETARY])
     assert len(produced) >= 5, "the fixtures stopped producing findings"
     for finding in produced:
@@ -292,7 +293,8 @@ def test_every_finding_the_pack_now_emits_states_its_reason_and_its_badge():
     treatment — `derived` is pre-selected with its reason shown — so a finding
     without a reason raises confidence without earning it."""
     produced = []
-    for name in ("dietary_recalls", "nhanes_dietary", "nhanes_partial_design"):
+    for name in ("dietary_recalls", "nhanes_dietary", "nhanes_partial_design",
+                 "nhanes_kilojoules"):
         produced += P.findings(load(name), [P.DIETARY])
     for finding in produced:
         assert finding["marker"] in ("derived", "convention", "offered")

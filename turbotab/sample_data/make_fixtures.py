@@ -476,6 +476,29 @@ def nhanes_dietary(n: int = 120) -> pd.DataFrame:
     return pd.DataFrame(frame)
 
 
+def nhanes_kilojoules(n: int = 120) -> pd.DataFrame:
+    """The same table with its energy column in kilojoules.
+
+    `GUIDED-068` is why this exists. Once the Atwater check learned to prefer
+    the gram columns over the percent-of-energy columns beside them,
+    `dietary_recalls.csv` PASSED — which is correct and left
+    `pack::dietary::atwater` promised by the dietary pack's hover and emitted
+    by no fixture. A promise nobody keeps is the app announcing it will look
+    for something it will not, so the promise needed a table with a real unit
+    error in it.
+
+    Must surface: `pack::dietary::atwater` at verdict `energy_in_kj`, ratio
+    ≈ 4.184. Must NOT surface: any design finding — the weights and the strata
+    are here so the table is NHANES-shaped, and they are complete.
+    """
+    frame = _nhanes_core(n, seed=9)
+    frame["DR1TKCAL"] = frame["DR1TKCAL"] * 4.184
+    rng = np.random.default_rng(9)
+    frame["SDMVSTRA"] = rng.integers(100, 108, n)
+    frame["SDMVPSU"] = rng.integers(1, 3, n)
+    return pd.DataFrame(frame)
+
+
 def nhanes_partial_design(n: int = 120) -> pd.DataFrame:
     """The same weights with no strata and no PSU.
 
@@ -494,6 +517,7 @@ FIXTURES = {
     "genomics_expression": genomics,
     "nhanes_dietary": nhanes_dietary,
     "nhanes_partial_design": nhanes_partial_design,
+    "nhanes_kilojoules": nhanes_kilojoules,
 }
 
 

@@ -66,7 +66,8 @@ DATA = Path(__file__).resolve().parent / "sample_data"
 FIXTURE = {
     P.METABOLOMICS: ("metabolomics_untargeted",),
     P.GENOMICS: ("genomics_expression",),
-    P.DIETARY: ("dietary_recalls", "nhanes_dietary", "nhanes_partial_design"),
+    P.DIETARY: ("dietary_recalls", "nhanes_dietary", "nhanes_partial_design",
+                "nhanes_kilojoules"),
     P.SURVEY: ("survey_instrument",),
     P.CLINICAL: ("clinic_visits",),
 }

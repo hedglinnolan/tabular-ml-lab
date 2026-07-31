@@ -51,6 +51,7 @@ FIXTURES = {
     # packs get their chance to fire on something they do not.
     "nhanes_dietary": ("DR1TKCAL", {P.DIETARY}),
     "nhanes_partial_design": ("DR1TKCAL", {P.DIETARY}),
+    "nhanes_kilojoules": ("DR1TKCAL", {P.DIETARY}),
 }
 
 REAL_PACKS = [P.METABOLOMICS, P.GENOMICS, P.DIETARY, P.CLINICAL, P.SURVEY]
