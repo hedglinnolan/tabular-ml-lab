@@ -127,8 +127,58 @@ def calibration_payload(y_true, y_proba, *, n_bins: int = 10,
     }
 
 
+def calibration_render(y_true, y_proba, **kw) -> Dict[str, Any]:
+    """The payload with its annotation box already rendered.
+
+    One entry point, so a caller cannot get the numbers without the rows that
+    say what to do when one is missing.
+    """
+    payload = calibration_payload(y_true, y_proba, **kw)
+    payload["annotation_box"] = annotation_box(payload)
+    return payload
+
+
 def _has(payload: Dict[str, Any], *keys: str) -> bool:
     return all(payload.get(k) is not None for k in keys)
+
+
+def annotation_box(payload: Dict[str, Any]) -> List[Dict[str, str]]:
+    """The six numbers a reviewer wants, as rendered rows.
+
+    **A missing number renders the ABSENCE, not a blank.** `weak_calibration`
+    returns `(None, None)` where the fit is undefined — one outcome class,
+    constant predictions, or separation, which is what a very good model on a
+    small sample produces — and a blank cell beside five real numbers reads as a
+    rendering fault. It is not: it is the app declining to state a quantity it
+    does not have, and the box says which and why.
+
+    That is the governing rule's *silent* branch made visible rather than left
+    silent. The `annotation_box` checklist item still FAILS when a number is
+    missing, and it should: the figure is not publication-grade without them.
+    Failing the checklist and rendering honestly are different jobs.
+    """
+    rows: List[Dict[str, str]] = []
+    for key, label in (("calibration_intercept", "Calibration intercept"),
+                       ("calibration_slope", "Calibration slope"),
+                       ("c_statistic", "C-statistic"),
+                       ("e_avg", "E:avg"),
+                       ("e_max", "E:max"),
+                       ("n", "n"),
+                       ("events", "events")):
+        value = payload.get(key)
+        if value is None:
+            rows.append({
+                "key": key, "label": label, "value": "not estimable",
+                "why": ("The calibration fit is not defined for these "
+                        "predictions — one outcome class, no variation in the "
+                        "predicted risks, or complete separation. A number is "
+                        "not shown because there is not one, rather than "
+                        "because it failed to render.")})
+        else:
+            rows.append({"key": key, "label": label,
+                         "value": (f"{value:,}" if isinstance(value, int)
+                                   else f"{value:.3f}"), "why": ""})
+    return rows
 
 
 CALIBRATION = register(FigureSpec(
@@ -215,7 +265,7 @@ CALIBRATION = register(FigureSpec(
 
 
 def _fmt(value: Optional[float]) -> str:
-    return "not computed" if value is None else f"{value:.3f}"
+    return "not estimable" if value is None else f"{value:.3f}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -372,4 +422,184 @@ PCA_SCORES = register(FigureSpec(
         "the recipe — centre, scale, project onto k components — and never the "
         "component values computed here on the whole table."),
     compute=pca_scores_payload,
+))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3 · The shrinkage plot — EXPLORATORY
+#
+# `research/NUTRITION_PACK.md` §03. Three overlaid densities of ONE nutrient:
+# single-day intake, the mean of available days, and modeled usual intake, with
+# the 5th and 95th percentiles of each annotated. **The visible narrowing from
+# the first to the third is the entire argument for usual-intake modeling, in
+# one image.**
+#
+# ## WHAT IT COST THE ABSTRACTION — the deliverable, as much as the figure
+#
+# This is the spec's first figure from a domain it was not designed against,
+# and its first where the payload is **three versions of the same quantity**
+# rather than one. Three things gave, and only one needed a change to the spec:
+#
+# **1 · `layers` was already right, and that was luck.** It is a tuple of
+# strings and carries no cardinality, so "three densities" needed nothing. Had
+# it been the typed geometry an earlier draft nearly made it, three-of-a-kind
+# would have needed a new layer type.
+#
+# **2 · `annotations` bent, and the bend is real.** Every annotation until now
+# named ONE number — a slope, an n, a percentage. Here the same annotation (the
+# 5th percentile) exists three times, once per series, and `Annotation.key`
+# cannot address that. It is resolved by keying per series rather than by
+# generalizing `Annotation` — `p05_single_day` and not `p05[series]` — and that
+# is a deliberate refusal to add an axis on one example. **A second figure with
+# per-series annotations is what would justify the generalization, and there is
+# not one yet.**
+#
+# **3 · `checklist` needed a comparison ACROSS series, which no item had done.**
+# "The narrowing is visible" is not a property of any one density; it is a
+# relation between three. The item reads them all from the payload, which the
+# `check(payload) -> bool` signature already allowed — so the spec held, and it
+# held because the callable takes the whole payload rather than a series.
+#
+# **What genuinely did not fit: `tier`.** The shrinkage plot is EXPLORATORY by
+# the two-tier logic — it sees no group labels and makes no group claim. But it
+# is the *argument for a method*, which is neither exploration nor
+# confirmation, and the enum has no third value. Recorded rather than resolved:
+# adding a tier on one example is how a two-value distinction becomes a
+# taxonomy nobody can apply. It is filed on `GUIDED-056`.
+# ─────────────────────────────────────────────────────────────────────────────
+
+SHRINKAGE_EVIDENCE = Evidence(
+    status=SETTLED,
+    source=("research/NUTRITION_PACK.md#03 · ★ Repeated recalls and "
+            "measurement error"))
+
+SERIES = ("single_day", "mean_of_days", "usual_intake")
+SERIES_LABEL = {
+    "single_day": "One day",
+    "mean_of_days": "Mean of available days",
+    "usual_intake": "Modeled usual intake",
+}
+
+
+def shrinkage_payload(series: Dict[str, Sequence[float]], *, nutrient: str,
+                      unit: str = "", n_days: Optional[int] = None,
+                      modeled: bool = True) -> Dict[str, Any]:
+    """Three versions of one quantity, with the percentiles that carry the claim.
+
+    `series` maps each of `SERIES` to that version's values. A missing series is
+    REFUSED rather than drawn with two: the narrowing is a relation between
+    three, and two of them is a different figure making a weaker claim while
+    wearing this one's caption.
+    """
+    missing = [s for s in SERIES if s not in series]
+    if missing:
+        raise ValueError(
+            f"the shrinkage plot needs all three series and is missing "
+            f"{missing}. Two densities is a different figure — the claim this "
+            f"one makes is the narrowing ACROSS the three, and drawing it with "
+            f"two would be that claim without its evidence.")
+
+    densities, annotations = {}, {}
+    for key in SERIES:
+        values = np.asarray([v for v in series[key]], dtype=float)
+        values = values[np.isfinite(values)]
+        if len(values) < 10:
+            raise ValueError(
+                f"{key} has {len(values)} usable values; a density drawn from "
+                f"fewer would be a claim about a shape nobody can see.")
+        p05, p95 = float(np.percentile(values, 5)), float(np.percentile(values, 95))
+        densities[key] = {"n": int(len(values)), "median": float(np.median(values))}
+        # KEYED PER SERIES rather than by generalizing `Annotation` — see the
+        # note above. Six keys, not one key with an axis.
+        annotations[f"p05_{key}"] = p05
+        annotations[f"p95_{key}"] = p95
+        annotations[f"spread_{key}"] = p95 - p05
+
+    return {
+        "figure": "shrinkage",
+        "nutrient": nutrient,
+        "unit": unit,
+        "n_days": n_days,
+        "modeled": modeled,
+        "series": list(SERIES),
+        "series_labels": [SERIES_LABEL[s] for s in SERIES],
+        "densities": densities,
+        **annotations,
+        "n": densities[SERIES[0]]["n"],
+    }
+
+
+SHRINKAGE = register(FigureSpec(
+    id="shrinkage",
+    title="What usual-intake modeling changes",
+    tier=EXPLORATORY,
+    when_applicable=lambda s: (int(s.get("n_recalls_per_person") or 0) >= 2
+                               and bool(s.get("has_dietary_lens"))),
+    layers=("density_single_day", "density_mean_of_days",
+            "density_usual_intake", "percentile_markers"),
+    annotations=tuple(
+        Annotation(f"{stat}_{key}",
+                   f"{stat.upper()} of {SERIES_LABEL[key].lower()}",
+                   "turbotab.figure_specs")
+        for key in SERIES for stat in ("p05", "p95")),
+    checklist=(
+        ChecklistItem(
+            "three_series",
+            "All three densities are drawn: one day, mean of days, modeled usual intake",
+            "The claim is the narrowing ACROSS the three. Two of them is a "
+            "different figure making a weaker claim in this one's caption.",
+            lambda p: list(p.get("series", [])) == list(SERIES)
+            and all(f"p05_{k}" in p for k in SERIES)),
+        ChecklistItem(
+            "percentiles_annotated",
+            "The 5th and 95th percentile of each density is annotated",
+            "The narrowing is the argument, and an unlabeled narrowing is an "
+            "impression rather than a measurement a reader can check.",
+            lambda p: all(p.get(f"p05_{k}") is not None
+                          and p.get(f"p95_{k}") is not None for k in SERIES)),
+        ChecklistItem(
+            "narrowing_is_visible",
+            "The modeled distribution is narrower than the observed ones",
+            "If it is not, the figure does not make the argument it is drawn "
+            "to make — and saying so is more useful than drawing it anyway.",
+            lambda p: (p.get("spread_usual_intake") is not None
+                       and p["spread_usual_intake"] <= p["spread_single_day"])),
+        ChecklistItem(
+            "modeling_is_declared",
+            "The caption says the third density is modeled, not measured",
+            "Reporting modeled individual predictions as measured usual "
+            "intakes is a named failure in this field.",
+            lambda p: p.get("modeled") is not None),
+    ),
+    caption=lambda p: (
+        f"Distribution of {p['nutrient']}"
+        + (f" ({p['unit']})" if p.get("unit") else "")
+        + f" for {p.get('n', 0):,} participants, shown three ways. One day "
+          f"spans {_fmt(p.get('p05_single_day'))} to "
+          f"{_fmt(p.get('p95_single_day'))} between the 5th and 95th "
+          f"percentiles; the mean of "
+        + (f"{p['n_days']} days" if p.get("n_days") else "the available days")
+        + f" spans {_fmt(p.get('p05_mean_of_days'))} to "
+          f"{_fmt(p.get('p95_mean_of_days'))}; modeled usual intake spans "
+          f"{_fmt(p.get('p05_usual_intake'))} to "
+          f"{_fmt(p.get('p95_usual_intake'))}. The narrowing is day-to-day "
+          f"variation being separated from between-person difference — it is "
+          f"why a percentile or a prevalence computed from one day, or from a "
+          f"mean of days, is overstated in both tails. The third distribution "
+          f"is MODELED and its individual values are not measured usual "
+          f"intakes."),
+    companions=(),
+    evidence=SHRINKAGE_EVIDENCE,
+    # PROMOTABLE by the re-executability rule: the variance decomposition is a
+    # deterministic function of the rows it is fitted on, so it refits per fold
+    # like any other pipeline step. What is promoted is the recipe.
+    promotable=True,
+    promotable_because=(
+        "The variance decomposition behind a usual-intake distribution is a "
+        "deterministic function of the rows it is fitted on, so it can be "
+        "refitted inside every training fold and applied to the held-out rows. "
+        "What is promoted is the recipe — decompose within and between "
+        "variance, shrink each person toward the mean — and never the modeled "
+        "values computed here on the whole table."),
+    compute=shrinkage_payload,
 ))

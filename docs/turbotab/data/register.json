@@ -1014,5 +1014,13 @@
   "classic": "pages/02 renders seven geometries with no checklist, no caption generation and no companion rule",
   "state": "guided-only",
   "reason": "A DEBT. Classic draws the same figures from the same engine and ships them into the same manuscript chain with none of the annotation the packs call publication-grade - so a Classic user exports a calibration plot with no risk histogram and no intercept, which is the defect the spec exists to fix rather than a difference of design model. turbotab/figures.py takes no project and no frame; the specs are data. Owed back at L11 convergence of pages/02."
+ },
+ {
+  "id": "nutrition-pack-content",
+  "step": "data-target",
+  "capability": "The nutrition pack's first real content: the Atwater energy-unit reconstruction, NHANES survey-design reading, and the prevalence-of-inadequacy refusal",
+  "classic": "none — Classic reads an energy column as a number and has no survey-design or DRI vocabulary",
+  "state": "guided-native",
+  "reason": "Presupposes the lens and the pack layer: every one of these fires only under a dietary lens, and Classic has no lens to gate them on - asking Classic for them is asking Classic to be Guided. The register's line is the test and a reasonable Classic would not be missing something it has no mechanism to hold. turbotab/nutrition.py takes a frame and nothing else, so the detectors are portable the day a door wants them; what is not portable is the gate."
  }
 ]

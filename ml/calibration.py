@@ -148,6 +148,7 @@ def weak_calibration(y_true: np.ndarray, y_proba: np.ndarray,
 
     X = np.column_stack([np.ones_like(x), x])
     beta = np.zeros(2)
+    converged = False
     for _ in range(max_iter):
         eta = X @ beta
         mu = 1.0 / (1.0 + np.exp(-eta))
@@ -157,14 +158,31 @@ def weak_calibration(y_true: np.ndarray, y_proba: np.ndarray,
         XtW = X.T * w
         try:
             step = np.linalg.solve(XtW @ X, XtW @ z)
-        except np.linalg.LinAlgError:                      # pragma: no cover
+        except np.linalg.LinAlgError:
             return None, None
-        if not np.isfinite(step).all():                    # pragma: no cover
+        if not np.isfinite(step).all():
             return None, None
-        if np.max(np.abs(step - beta)) < 1e-9:
-            beta = step
-            break
+        moved = np.max(np.abs(step - beta))
         beta = step
+        if moved < 1e-9:
+            converged = True
+            break
+    # NON-CONVERGENCE IS AN UNDEFINED FIT, NOT A SLOW ONE.
+    #
+    # This used to fall out of the loop and return whatever `beta` happened to
+    # hold, with no signal. Under complete or quasi-complete separation — which
+    # is exactly what a very good model on a small sample produces — IRLS does
+    # not converge, it DIVERGES: the coefficients run off toward infinity and
+    # the last iterate is an arbitrary point on that path. It has the type of a
+    # measurement and the meaning of a coordinate in an optimizer's history,
+    # and it would have been printed in the annotation box beside numbers that
+    # are real.
+    #
+    # Returning `(None, None)` puts it with every other undefined case here,
+    # for the reason the `(0.0, 1.0)` comment already gives one line up: the
+    # honest report of "no fit" is silence, and the figure renders the absence.
+    if not converged:
+        return None, None
     return float(beta[0]), float(beta[1])
 
 

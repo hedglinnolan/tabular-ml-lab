@@ -7910,5 +7910,61 @@
   "verified_against": "",
   "test": "turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_a_real_fixture_already_produces_a_cohort_finding",
   "verified_ev": "turbotab/web/index.html findingCard; ml/import_doctor.py:954"
+ },
+ {
+  "id": "GUIDED-054",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "weak_calibration returned its last IRLS iterate when the fit had not converged, which under separation is a divergent coordinate reported as a calibration slope",
+  "detail": "",
+  "ev": "ml/calibration.py:121",
+  "act": "",
+  "status": "FIXED",
+  "note": "NOT A SLOW FIT REPORTED EARLY. Under complete or quasi-complete separation IRLS does not converge slowly, it DIVERGES - the coefficients run off toward infinity and the last iterate is an arbitrary point on that path. It has the type of a measurement and the meaning of a coordinate in an optimizer's history, and it would have been printed in the annotation box beside numbers that are real. AND SEPARATION IS NOT EXOTIC HERE: it is what a very good model on a small sample produces, which is exactly the situation a calibration plot is drawn for, so the failure was concentrated on the runs where the figure matters most. The fix is the argument the file already made one line above - (0.0, 1.0) must not be returned for 'could not compute' because those are the values of PERFECT calibration, and a divergent iterate is the same error with more decimals. TWO JOBS KEPT APART: the annotation_box checklist item still FAILS when a number is missing, because the figure is not publication-grade without the intercept and slope; what changed is that the box RENDERS the absence - 'not estimable', with the reason - rather than a blank cell beside five real numbers, because a blank reads as a rendering fault and declining to state a quantity is a different claim. Five cases tested and each revert-probed. One probe came back GREEN and is recorded rather than removed: the one-outcome-class case is guarded twice, explicitly and by convergence, and both are kept.",
+  "verified_against": "",
+  "test": "turbotab/test_the_calibration_fit_reports_no_number_rather_than_a_wrong_one.py::test_separable_data_reports_no_fit_rather_than_a_divergent_iterate",
+  "verified_ev": "ml/calibration.py:121"
+ },
+ {
+  "id": "GUIDED-055",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The nutrition pack had structure and no content: nothing in the app could infer an energy unit or read an NHANES survey design",
+  "detail": "",
+  "ev": "research/NUTRITION_PACK.md section 01; turbotab/nutrition.py",
+  "act": "",
+  "status": "PARTIAL",
+  "note": "THE ATWATER RECONSTRUCTION: E_hat = 4P + 4C + 9F + 7A against declared energy, with the full ratio table. Nothing else in the app can infer an energy unit - the impossibility bands know physiology, not arithmetic. THE ORDER OF THE READINGS IS ITSELF THE FINDING: a table with mixed units also has a median ratio and it will often sit near a clean factor, so reading the median first is exactly how a multi-source merge gets 'converted' by a factor describing some of its rows. The spread is the gate and no factor is proposed until it passes, and the test uses a fixture whose mixed factors AVERAGE into the PASS band so the ordering is exercised rather than asserted. A GENUINE OVERLAP IN THE RESEARCH'S OWN TABLE, found by building a fixture for each row: true percent-of-energy data has a ratio PROPORTIONAL to total energy, so it drifts perfectly and the drift gate would call it a merge. The research resolves it in the percent row itself - check whether the four sum to about 100 - and using the table's own tiebreaker beat inventing a correlation test that would need tuning. NHANES DESIGN: the dietary weights and not WTMEC2YR; a weight with no strata or PSU as a partially specified design; and a stratum with one PSU, which does not degrade Taylor-series variance estimation but BREAKS it, since one PSU has no between-PSU spread and the contribution is undefined rather than small. All four findings carry fix_kind none - section 01.2's detect-but-do-not-act class.",
+  "verified_against": "",
+  "test": "turbotab/test_the_nutrition_pack_carries_real_content.py::test_the_drift_gate_runs_before_any_factor_is_proposed",
+  "verified_ev": "research/NUTRITION_PACK.md section 01; turbotab/nutrition.py"
+ },
+ {
+  "id": "GUIDED-056",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "The figure spec's tier enum has no value for a figure that is the argument for a method rather than exploration or confirmation",
+  "detail": "",
+  "ev": "turbotab/figure_specs.py SHRINKAGE; DOMAIN_SCIENCE.md section 02",
+  "act": "",
+  "status": "OPEN",
+  "note": "Found by building the spec's third figure from a domain it was not designed against. The shrinkage plot is EXPLORATORY by the two-tier logic - it sees no group labels and makes no group claim - but it is the ARGUMENT FOR A METHOD, which is neither exploration nor confirmation. Recorded rather than resolved: adding a tier on one example is how a two-value distinction becomes a taxonomy nobody can apply, and test_the_third_figure_did_not_need_a_third_tier asserts the enum still has two values so a later loop meets this row rather than a surprise. WHAT ELSE THE THIRD FIGURE COST, all recorded in the module: layers was already right and that was luck, since it carries no cardinality and three densities needed nothing; annotations BENT, because every annotation until now named ONE number and here the same annotation exists three times, resolved by keying per series rather than by adding an axis to Annotation - a generalization on one example being the thing to avoid; and checklist needed a comparison ACROSS series, which the check(payload) signature already allowed because it takes the whole payload rather than a series. So one field bent, one held for a reason worth knowing, and one gap is filed.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/figure_specs.py SHRINKAGE; DOMAIN_SCIENCE.md section 02"
+ },
+ {
+  "id": "GUIDED-057",
+  "area": "GUIDED",
+  "sev": "critical",
+  "item": "The app had no way to refuse a prevalence of inadequacy, so an AI, an RDA, a single day or a naive two-day mean would all have produced a number",
+  "detail": "",
+  "ev": "research/NUTRITION_PACK.md section 07 figure E; turbotab/nutrition.py",
+  "act": "",
+  "status": "FIXED",
+  "note": "A PACK THAT CAN ONLY ADD FINDINGS HAS NOT BEEN TESTED, and this is the path that says whether the architecture holds when the correct answer is no. Four refusals, each for a different reason. Against an AI: fiber and potassium have an Adequate Intake set precisely BECAUSE a requirement distribution could not be established, so there is nothing for an intake to be below and nobody can compute this - not the app and not the user with a spreadsheet. Against the RDA: an individual-level target covering 97-98 percent of requirements, so using it as a group cut-point counts most of an adequately-nourished population as inadequate. From single-day or from a naive mean: the observed distribution is wider than the usual-intake distribution, so a tail proportion is overstated in BOTH tails, and 'we averaged the two recalls to obtain usual intake' followed by a prevalence claim is a documented failure rather than a simplification. EVERY REFUSAL OFFERS WHAT IT CAN DRAW, because a refusal that offers nothing is indistinguishable from a missing feature and the user still has a real question - the AI case offers the distribution against the AI with a caption saying the area below is NOT a prevalence, and the single-day case offers the shrinkage plot, which is the size of the error the refused number would have carried. ONE ROUTING RATHER THAN A REFUSAL: iron in menstruating women has a skewed requirement distribution, so the probability approach applies instead of the cut-point. AN EXISTING GUARD CAUGHT A REAL HAZARD: the first version matched nutrient names by substring, and 'iron' in 'environment' is True - a refusal firing on an unrelated column in the one code path whose whole job is to refuse correctly. Now a real name registry, exact key or declared alias, unknown yields silence.",
+  "verified_against": "",
+  "test": "turbotab/test_the_nutrition_pack_carries_real_content.py::test_every_refusal_offers_something_it_can_draw",
+  "verified_ev": "research/NUTRITION_PACK.md section 07 figure E; turbotab/nutrition.py"
  }
 ]
