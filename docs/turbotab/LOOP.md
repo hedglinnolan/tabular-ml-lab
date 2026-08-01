@@ -251,6 +251,19 @@ make test                                           # does the documented gate s
 the loop just built? A module reachable only from its own tests is a specification, and the report
 will not say so, because from inside the loop it looks finished. This is how `GUIDED-058` was found.
 
+**Then stop grepping and run it.** The adjudicator has now been wrong three times in the same way,
+each time by searching for the shape expected rather than the shape written: `packs.findings` was
+called from `engine.py` while the grep covered `api.py` and `ml/`; `AUDIT-001`'s sentence spanned two
+f-string lines and a one-line pattern returned nothing; and `runPull` composes `"/evidence/" +
+endpoint`, so a literal path search reported two surfaces unread that are fetched on every drive. A
+grep answers *does this text appear*, and the question is almost always *does this run*.
+
+The instrument already exists. `turbotab/pageharness.py` runs the page's real controller in node
+against captured API responses, and `__harness.calls()` returns exactly which routes it fetched —
+no pattern, no ambiguity. Feeding it live responses from a `TestClient` drive takes about thirty
+lines and answers reachability questions that no search can. **Where a claim is about behavior,
+drive it; reserve grep for claims that are genuinely about the file.**
+
 **What to look for, in order of how often it has mattered:**
 
 1. **Was a named defect *class* filed, or only its instance?** The highest-value finding of `L26`
