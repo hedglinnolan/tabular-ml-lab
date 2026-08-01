@@ -8451,10 +8451,10 @@
   "detail": "",
   "ev": "turbotab/web/index.html has zero occurrences of disclosures; turbotab/api.py _disclosures; COPY_DECK.md three sections, about 12 rows",
   "act": "Render project.disclosures where each answer is recorded - the grain sentence at the grain card, the eligibility sentence at eligibility, the seal disclosure at the seal.",
-  "status": "OPEN",
-  "note": "Found at L32-D by walking COPY_DECK.md against the page. api._disclosures exists FOR THIS REASON and says so in its own docstring: served rather than composed in the page, because an interface that writes its own disclosure can drift from what the record says. The page then does not read it. The seal disclosure is the sharpest of the three - it is the sentence that tells a user what their split guarantees, chosen by grain answer, and a user who never sees it cannot know whether the holdout is grouped or by row. SAME CLASS AS GUIDED-075 AND GUIDED-076, which is now three: the server composes a user-facing string correctly and the interface does not render it. Not claimable by the harness for the same reason GUIDED-075 was not - there is nothing to assert against - so it is filed rather than covered.",
+  "status": "FIXED",
+  "note": "L33-B. The disclosure band renders five served sentences - grain, the attestation, eligibility, the seal and the preprocessing receipt - each labelled, in the order the constitution fixes, and every one of them is the SERVER'S string. api._disclosures says why in its own docstring: an interface that writes its own disclosure can drift from what the record says. THE SEAL ROW IS THE ONE THAT MATTERS and it is why this was closer to a governing-rule failure than to a missing feature: it tells a user whether their holdout was drawn by person or by row, and a row-drawn holdout on repeated measures scores better than the model is by an amount nothing on screen could show. ROADMAP lockbox constitution section 03 requires the bases to stay different sentences with undetermined first-class and never rendered as a clean lock; the server keeps them different strings and the page now keeps them different objects - is-sealed and is-exploratory are two components rather than one with a modifier, because a shared base with a color swap is how they drift back together. The exploratory flag is the SERVER'S, computed over four bases plus two extra conditions, and the page never recomputes it. The attested case proves that: a user who answers one row per person against repeated-measures data and attests gets basis cross_sectional, which a page deriving the rule itself would print as clean, and the server marks it exploratory because the split rests on a recorded disagreement. Three seal claims cover it; revert probes verified - dropping renderDisclosures reddens with the seal sentence not reaching the page, and collapsing the class branch to is-sealed reddens with section 03's forbidden case named.",
   "verified_against": "",
-  "test": "",
+  "test": "turbotab/test_the_page_says_what_the_record_says.py::test_claim[the seal says which split it drew]",
   "verified_ev": "turbotab/web/index.html has zero occurrences of disclosures; turbotab/api.py _disclosures; COPY_DECK.md three sections, about 12 rows"
  },
  {
@@ -8484,5 +8484,19 @@
   "verified_against": "",
   "test": "turbotab/test_the_page_says_what_the_record_says.py::test_claim[a refusal reaches a person]",
   "verified_ev": "turbotab/api.py endpoints vs turbotab/web/index.html; GUIDED-075 (fixed), GUIDED-078, GUIDED-079"
+ },
+ {
+  "id": "GUIDED-081",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The page harness silently dropped every className assignment, so any assertion about how a node is styled came back vacuously true",
+  "detail": "",
+  "ev": "turbotab/pageharness.py El had no className property; turbotab/web/index.html renderFigures and renderDisclosures both assign node.className; DESIGN_LANGUAGE.md section 05",
+  "act": "",
+  "status": "FIXED",
+  "note": "FOUND AT L33-B WHILE WRITING THE FIRST CLAIM THAT NEEDED TO ASSERT A CLASS. El defined _classes and a classList that reads it, and className was never wired to either - so node.className = 'disc-row is-exploratory' created a plain property nothing else consulted. The consequence is the worst kind: not a failing test but a PASSING one. An assertion that an exploratory seal does not carry the sealed class would have passed against a page that gave it the sealed class, because no class was observable at all. DESIGN_LANGUAGE section 05 requires mutate-in-place rendering and every such renderer sets its class by assignment, so the hole grew with each one - the figure surface at L32-B was already assigning className into the void. THE RULE THE FIX RESTORES: this shim is allowed to be ignorant of pixels and is not allowed to accept a write and then deny it happened, because that reports the page as honest about styling exactly where the page has stopped being honest. className is now a property over _classes in both directions, so it, classList and the deep serializer are three views of one set. NOT GUIDED-077, which is the getElementById auto-create duality and stays open.",
+  "verified_against": "assigning className set an ordinary JS field: classList.contains returned false and __deep printed no class attribute",
+  "test": "turbotab/test_the_page_says_what_the_record_says.py::test_the_shim_reports_a_class_it_was_assigned_rather_than_swallowing_it",
+  "verified_ev": "turbotab/pageharness.py El had no className property; turbotab/web/index.html renderFigures and renderDisclosures both assign node.className; DESIGN_LANGUAGE.md section 05"
  }
 ]

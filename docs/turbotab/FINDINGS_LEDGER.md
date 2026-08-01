@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**234 of 659 closed.**
+**236 of 660 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 378 |
+| `OPEN` | 377 |
 | `PARTIAL` | 47 |
-| `FIXED` | 231 |
+| `FIXED` | 233 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 378
+## OPEN — 377
 
 
 ### Application state / lockbox — 66
@@ -394,7 +394,7 @@ Nothing is closed without a regression test named after it.
 | `COACH-031` | invariant | Coaching voice must never reach the manuscript verbatim. | `utils/insight_ledger.py:1188 — `text = (i.manuscript_text or '').strip() or…` | The invariant is stated correctly and is broken in exactly the way this row predicts, unchanged at HEAD. The register separation works - manuscript_text is preferred and the regex… |
 | `COACH-032` | invariant | 'high' confidence is the only tier the UI pre-selects, so 'high' means the app is asserting (docs/FINDINGS_LEDGER.md, Governing rule, lines 20-27). | `PARTIALLY, and only in the import/join domain: ml/join_doctor.py:922 `if include_low or c.confidence !=…` | All three weakenings confirmed at HEAD. (1) is COACH-015: a medium-confidence join key IS pre-selected. (2) is exact - final returns detected with no tier check, so a… |
 
-### Guided-door drive feedback — 21
+### Guided-door drive feedback — 20
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -404,7 +404,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-065` | high | The calibration plot cannot be reached from any project because TurboTab has no training step, so the clinical pack's flagship figure has a renderer and no data path | `turbotab/figure_specs.py CALIBRATION when_applicable; turbotab/figure_bundle.py state(); turbotab/api.py has…` | Found at L28-B while writing the figure state dict. CALIBRATION.when_applicable reads has_predictions, and NOTHING in the project model can ever set it true: AnalysisProject holds… |
 | `GUIDED-067` | high | No Dietary Reference Intake table ships anywhere in the repository, so every figure and every prevalence claim that needs an EAR, an RDA, an AI or a UL is unbuildable | `docs/turbotab/research/NUTRITION_PACK.md section 07 figure E; docs/turbotab/DOMAIN_SCIENCE.md section 04…` | Filed at L28-D as the blocker the two pending figures name. research/NUTRITION_PACK.md section 07 figure E specifies vertical lines at the EAR, RDA or AI and the UL for the… |
 | `GUIDED-074` | high | The preprocessing decision space is fully modeled, resolved per model by a precedence lattice, and measured for divergence — and the client renders it one cell at a time as prose, so the structure a… | `turbotab/recipes.py:78 Operation, :116 Default, :128 _SPECIFICITY, :392 Divergence, :493 worth_asking…` | RAISED BY THE PRODUCT OWNER, arguing that motion is a comprehension mechanism rather than polish. Checked, and the evidence is stronger than the claim. IT IS NOT FOUR DIMENSIONS… |
-| `GUIDED-078` | high | The page never reads the served disclosures, so the grain, eligibility and seal sentences the server composes reach no reader | `turbotab/web/index.html has zero occurrences of disclosures; turbotab/api.py _disclosures; COPY_DECK.md three…` | Found at L32-D by walking COPY_DECK.md against the page. api._disclosures exists FOR THIS REASON and says so in its own docstring: served rather than composed in the page, because… |
 | `GUIDED-079` | high | The Features step has no page surface, so the 20-row transform catalogue and the 5-row selection-method table promise copy nothing renders | `turbotab/web/index.html has zero occurrences of /features or selection/evidence; turbotab/api.py has both…` | Found at L32-D by walking COPY_DECK.md against the page. 25 of the deck's 130 promise rows - nineteen percent - belong to a step the interface does not have: GET… |
 | `GUIDED-080` | high | Measured extent of the dominant Guided defect class: six server surfaces the page never mentions, and the sharpest is nutrition/prevalence — the entire refusal apparatus the nutrition pack was built… | `turbotab/api.py endpoints vs turbotab/web/index.html; GUIDED-075 (fixed), GUIDED-078, GUIDED-079` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim[a refusal reaches a person]` — L33-A CLOSED THE SHARPEST OF THE SIX. /project/{id}/nutrition/prevalence… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
@@ -587,7 +586,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 231
+## FIXED — 233
 
 
 ### Multi-file / JSON import — 69
@@ -664,7 +663,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-136` | medium | coerce_numeric's methods-section description omits how many values it blanked (up to 20% of a column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 36'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 36 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-147` | medium | Duplicated key column name crashes normalize_key and therefore diagnose_join / execute_join / repair_keys (AttributeError), and silently blanks find_key_candidates | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 47'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 47 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 
-### Guided-door drive feedback — 53
+### Guided-door drive feedback — 55
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -709,6 +708,8 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-060` | high | Two of the four prevalence refusals offer a figure that does not exist, and the test that proves every refusal offers what it can draw asserts only that the strings are non-empty | `turbotab/nutrition.py:499,515; turbotab/test_the_nutrition_pack_carries_real_content.py:303` | **test:** `test_a_refusal_offers_a_figure_something_can_resolve` — FIXED at L28-D. THE TWO FIGURES WERE NOT BUILT and could not have been honestly: each needs a Dietary Reference… |
 | `GUIDED-064` | high | A finding carries one evidence badge and can make two claims the field holds at different statuses, so the second claim travels under the first's badge | `turbotab/packs.py _counts_at_p_over_n; turbotab/packs.py _energy_adjustment` | **test:** `turbotab/test_a_client_holding_the_payload_can_act.py::test_the_headline_may_preselect_goes_false_when_a_claim_is_disputed` — FIXED at L30-A, on the fourth instance.… |
 | `GUIDED-075` | high | The Guided page never fetches /project/{id}/figures, so five reachable figures reach a user through the API and none through the interface | `turbotab/web/index.html has zero occurrences of /figures; turbotab/api.py project_figures…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim[a figure arrives with its annotation box]` — FIXED at L32-B. web/index.html fetches… |
+| `GUIDED-078` | high | The page never reads the served disclosures, so the grain, eligibility and seal sentences the server composes reach no reader | `turbotab/web/index.html has zero occurrences of disclosures; turbotab/api.py _disclosures; COPY_DECK.md three…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim[the seal says which split it drew]` — L33-B. The disclosure band renders five served sentences - grain… |
+| `GUIDED-081` | high | The page harness silently dropped every className assignment, so any assertion about how a node is styled came back vacuously true | `turbotab/pageharness.py El had no className property; turbotab/web/index.html renderFigures and…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_the_shim_reports_a_class_it_was_assigned_rather_than_swallowing_it` — FOUND AT L33-B WHILE WRITING THE FIRST… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |

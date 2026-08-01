@@ -46,6 +46,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -483,6 +485,163 @@ def claim_a_refusal_reaches_a_person(client, project):
         "the pending offer rendered a control, and there is nothing behind it")
 
 
+def _sealed(client, rows_per_person: int, n_people: int, answer: str,
+            group_col=None):
+    """A project driven to a drawn seal, so the basis is whatever the record
+    produced rather than whatever the test wanted."""
+    rng = np.random.default_rng(0)
+    n = n_people * rows_per_person
+    frame = pd.DataFrame({"pid": np.repeat(np.arange(n_people), rows_per_person),
+                          "x": rng.normal(0, 1, n),
+                          "y": rng.normal(0, 1, n)})
+    pid = client.post("/project", files={
+        "file": ("s.csv", frame.to_csv(index=False).encode(),
+                 "text/csv")}).json()["id"]
+    steps = [("set_target", {"column": "y"}),
+             ("set_grain", {"answer": answer,
+                            **({"group_col": group_col} if group_col else {})})]
+    if group_col:
+        steps += [("set_repeat_kind", {"kind": "repeats"}),
+                  ("set_unit_of_analysis", {"unit": "record"})]
+    steps += [("set_eligibility", {"answer": "everyone"}), ("seal", {})]
+    for what, payload in steps:
+        r = client.post(f"/project/{pid}/decision",
+                        json={"kind": what, "payload": payload})
+        assert r.status_code == 200, (what, r.text[:200])
+    return pid, client.get(f"/project/{pid}").json()
+
+
+def claim_the_seal_says_which_split_it_drew(client, project):
+    """**`GUIDED-078`, and it is the closest of the unread surfaces to a
+    governing-rule failure.** `disclosures` appeared zero times in the page, so
+    the sentence telling a user whether their holdout was drawn by person or by
+    row reached nobody — and a holdout drawn by row on repeated measures scores
+    better than the model is, by an amount nothing on screen could show.
+
+    ROADMAP's lockbox constitution §03 requires the bases to stay different
+    sentences and `undetermined` to be first-class, **never rendered as a clean
+    lock**. The server keeps them different strings. This asserts the page
+    keeps them different objects: three projects, three bases, three sentences,
+    and the two exploratory ones carry neither the sealed class nor the sealed
+    word.
+    """
+    cases = {}
+    for name, kwargs in [
+            ("grouped", dict(rows_per_person=4, n_people=40,
+                             answer="people_repeat", group_col="pid")),
+            ("abandoned", dict(rows_per_person=4, n_people=4,
+                               answer="people_repeat", group_col="pid")),
+            ("undetermined", dict(rows_per_person=4, n_people=40,
+                                  answer="not_sure"))]:
+        pid, seen = _sealed(client, **kwargs)
+        out = _drive(
+            """
+            var p = Promise.resolve();
+            for (var i = 0; i < 14; i++) { p = p.then(function(){}); }
+            p.then(function(){
+              __harness.drainRaf();
+              __emit(__harness.render('disclosuresBox'));
+            });
+            """,
+            _routes(client, seen, **{
+                f"/project/{pid}/figures":
+                    client.get(f"/project/{pid}/figures").json()}),
+            pid)
+        cases[name] = {"basis": seen["lockbox"]["seal_basis"],
+                       "said": seen["disclosures"], "html": out}
+
+    assert {c["basis"] for c in cases.values()} == {
+        "grouped", "repetition_found_grouping_abandoned", "undetermined"}, (
+        "the three bases collapsed to fewer than three, so this claim is no "
+        "longer about what it says it is")
+
+    for name, case in cases.items():
+        assert case["said"]["seal"] in case["html"], (
+            f"{name}: the seal sentence the server composed did not reach the "
+            "page")
+        for key in ("grain", "eligibility"):
+            assert case["said"][key] in case["html"], (
+                f"{name}: the {key} disclosure was served and not rendered")
+
+    # §03's rule, asserted as the thing it protects rather than as a string.
+    assert "is-sealed" in cases["grouped"]["html"]
+    assert "sealed" in cases["grouped"]["html"]
+    for name in ("undetermined", "abandoned"):
+        assert "is-sealed" not in cases[name]["html"], (
+            f"{name}: an exploratory seal carries the sealed treatment, which "
+            "is §03's forbidden case — a split drawn BY ROW reading as a clean "
+            "lock")
+        assert "not a verified clean split" in cases[name]["html"], (
+            f"{name}: the seal rendered without saying it is not clean")
+
+    assert (cases["undetermined"]["said"]["seal"]
+            != cases["abandoned"]["said"]["seal"]), (
+        "two of the four bases render the same sentence, so a user cannot tell "
+        "'the shape is unknown' from 'the shape is known and too small'")
+
+
+def claim_an_attested_answer_does_not_render_as_a_clean_split(client, project):
+    """The case that proves the page is not deriving §03's rule for itself.
+
+    The user answered *one row per person* against a table whose shape says
+    repeated measures, and attested. The recorded basis is `cross_sectional` —
+    honest, because it is what they said — so a page computing "clean means
+    grouped or cross-sectional" would print a clean lock. The server marks it
+    `exploratory` anyway, because the split rests on a disagreement that is on
+    the record, and the page renders THAT rather than recomputing it.
+    """
+    rng = np.random.default_rng(0)
+    frame = pd.DataFrame({"pid": np.repeat(np.arange(40), 4),
+                          "x": rng.normal(0, 1, 160),
+                          "y": rng.normal(0, 1, 160)})
+    pid = client.post("/project", files={
+        "file": ("s.csv", frame.to_csv(index=False).encode(),
+                 "text/csv")}).json()["id"]
+    client.post(f"/project/{pid}/decision",
+                json={"kind": "set_target", "payload": {"column": "y"}})
+    clash = client.post(f"/project/{pid}/decision", json={
+        "kind": "set_grain", "payload": {"answer": "one_row_per_person"}})
+    assert clash.status_code == 409, (
+        "the contradiction did not fire, so there is nothing to attest to")
+    for what, payload in [
+            ("set_grain", {"answer": "one_row_per_person",
+                           "acknowledge_contradiction": True}),
+            ("set_eligibility", {"answer": "everyone"}),
+            ("seal", {})]:
+        r = client.post(f"/project/{pid}/decision",
+                        json={"kind": what, "payload": payload})
+        assert r.status_code == 200, (what, r.text[:200])
+    seen = client.get(f"/project/{pid}").json()
+
+    assert seen["lockbox"]["seal_basis"] == "cross_sectional", (
+        "the basis moved, and this claim is specifically about the basis that "
+        "looks clean")
+    assert seen["disclosures"]["exploratory"] is True
+
+    out = _drive(
+        """
+        var p = Promise.resolve();
+        for (var i = 0; i < 14; i++) { p = p.then(function(){}); }
+        p.then(function(){
+          __harness.drainRaf();
+          __emit(__harness.render('disclosuresBox'));
+        });
+        """,
+        _routes(client, seen, **{
+            f"/project/{pid}/figures":
+                client.get(f"/project/{pid}/figures").json()}),
+        pid)
+
+    assert "is-sealed" not in out, (
+        "a split resting on an attested disagreement rendered as a clean lock")
+    assert "not a verified clean split" in out
+    assert seen["disclosures"]["attested"] in out, (
+        "the attestation was served as its own sentence and rendered nowhere, "
+        "so what the user confirmed is only on the server")
+    assert "belongs in the methods section" in out, (
+        "the note the server appends to the seal sentence was dropped")
+
+
 CLAIMS = [
     ("questions render", claim_questions_render),
     ("a decision re-paints", claim_a_decision_repaints),
@@ -495,6 +654,10 @@ CLAIMS = [
      claim_a_figure_arrives_with_its_annotation_box),
     ("the record reads back", claim_the_record_reads_back),
     ("a refusal reaches a person", claim_a_refusal_reaches_a_person),
+    ("the seal says which split it drew",
+     claim_the_seal_says_which_split_it_drew),
+    ("an attested answer does not render as a clean split",
+     claim_an_attested_answer_does_not_render_as_a_clean_split),
 ]
 
 
@@ -622,3 +785,42 @@ def test_the_page_now_fetches_the_figure_layer():
     assert len(page) > 20_000 and "renderAll" in page      # positive control
     assert "/figures" in page, "the page still does not fetch the figure layer"
     assert "figuresBox" in page and "renderFigureSurface" in page
+
+
+def test_the_shim_reports_a_class_it_was_assigned_rather_than_swallowing_it():
+    """`GUIDED-081`, and it is the reason the seal claims mean anything.
+
+    `El` had no `className` property, so `node.className = "x"` set an ordinary
+    JS field nothing else read: `classList.contains` said no, `__deep` printed
+    no class attribute, and **any assertion about how a node is styled came
+    back vacuously true**. Every mutate-in-place renderer §05 requires sets its
+    class exactly that way, so the hole grew with each one.
+
+    A shim is allowed to be ignorant of pixels. It is not allowed to accept a
+    write and then deny it happened — that reports the page as honest about
+    styling precisely where the page has stopped being honest.
+    """
+    out = H.run(
+        """
+        var n = document.createElement('div');
+        n.id = 'probe';
+        n.classList.add('arriving');
+        n.className = 'disc-row is-exploratory';
+        document.getElementById('askedQuestions').appendChild(n);
+        __emit({read: n.className,
+                contains: n.classList.contains('is-exploratory'),
+                stale: n.classList.contains('arriving'),
+                deep: __harness.render('askedQuestions')});
+        """,
+        routes={}, search="")
+    assert out["read"] == "disc-row is-exploratory", (
+        "the shim took a className write and read back something else")
+    assert out["contains"] is True, (
+        "`className` and `classList` are two views of one set, and they "
+        "disagree")
+    assert out["stale"] is False, (
+        "assigning className kept an earlier class, so a node can carry a "
+        "state it was told to drop")
+    assert 'class="disc-row is-exploratory"' in out["deep"], (
+        "the class does not survive serialization, so a claim about styling "
+        "cannot be written at all")

@@ -558,6 +558,27 @@
   .refused-card .r-pending{ font-size:12.5px; margin:6px 0 0; }
   .answered-card{ border-left:3px solid var(--ok); background:var(--ok-tint);
                   border-radius:0 9px 9px 0; padding:11px 13px; font-size:13.5px; }
+  /* GUIDED-078. The disclosure band. `.is-sealed` and `.is-exploratory` are
+     two components, not one component with a modifier, because §03's whole
+     requirement is that they cannot be mistaken for one another — a shared
+     base with a color swap is how they drift back together. */
+  .disc{ display:flex; flex-direction:column; gap:9px; margin-top:18px; }
+  .disc:empty{ display:none; }
+  .disc-head{ font-size:11.5px; text-transform:uppercase; letter-spacing:.07em;
+              color:var(--faint); }
+  .disc-row{ border-left:3px solid var(--line); padding:2px 0 2px 11px; }
+  .disc-k{ display:block; font-size:11px; text-transform:uppercase;
+           letter-spacing:.06em; color:var(--faint); margin-bottom:3px; }
+  .disc-v{ margin:0; font-size:13.5px; line-height:1.6; max-width:74ch; }
+  .disc-row.is-sealed{ border-left-color:var(--ok); }
+  .disc-row.is-sealed .disc-k{ color:var(--ok); }
+  .disc-row.is-exploratory{ border-left-color:var(--warn);
+                            background:var(--warn-tint);
+                            border-radius:0 9px 9px 0; padding:9px 12px; }
+  .disc-row.is-exploratory .disc-k{ color:var(--warn); }
+  .disc-mark{ display:inline-block; font-family:var(--mono); font-size:10px;
+              letter-spacing:.06em; text-transform:uppercase; margin-left:8px; }
+  .disc-row.is-attested{ border-left-color:var(--warn); }
   .uperr{margin:12px 0 0;font-size:12.5px;color:var(--del);background:var(--del-tint);
          border:1px solid var(--del);border-radius:8px;padding:9px 12px;line-height:1.5}
   .uperr:empty{display:none}
@@ -1018,6 +1039,22 @@
              fact, and only if the skip is visible and reversible — so it is
              rendered, not omitted. -->
         <div class="dnote" id="skipNote"></div>
+
+        <!-- GUIDED-078. `disclosures` appeared zero times in this file, so
+             every sentence `api._disclosures` composes — grain, eligibility,
+             the seal, the preprocessing receipt and the attestation — reached
+             no reader. Twelve rows of COPY_DECK.md, served and unread.
+
+             THE SEAL ROW IS THE ONE THAT MATTERS. It tells a user whether
+             their holdout was drawn by person or by row, and ROADMAP's lockbox
+             constitution §03 requires the bases to stay different sentences,
+             with `undetermined` first-class and NEVER rendered as a clean
+             lock. The server keeps them different strings; this keeps them
+             different objects, so an exploratory seal cannot pick up the
+             sealed treatment by accident — the marker and the class are
+             derived from `disclosures.exploratory`, which the server computes,
+             and the page never decides it. -->
+        <div class="disc" id="disclosuresBox"></div>
       </div>
     </section>
 
@@ -2056,6 +2093,7 @@
     renderInterview();
     renderFigureSurface();
     renderPrevalence();
+    renderDisclosures();
   }
 
   function renderData(){
@@ -2441,6 +2479,100 @@
                                          unavailable: [], not_drawn: [] });
       })
       .catch(function(e){ setErr(e.message); });
+  }
+
+  /* ═════════ GUIDED-078 · THE DISCLOSURES ═════════
+     Every sentence here is the server's. `api._disclosures` says why in its own
+     docstring — *an interface that writes its own disclosure can drift from
+     what the record says, and the disclosure is the record's claim about
+     itself* — and that is exactly the failure this band exists to make
+     impossible, so the page renders and never composes. */
+  var DISC_NODES = {}, DISC_STATE = {};
+
+  /* The labels, in the order the constitution fixes: grain, then eligibility,
+     then the seal, and the preprocessing receipt after. `attested` sits with
+     the grain answer it is about — it is a SEPARATE served sentence, not the
+     note the server already appends to the seal, and both are rendered because
+     they say different things to different readers: one is what you confirmed,
+     the other is what the confirmation does to the held-out number. */
+  var DISC_ROWS = [
+    ["grain", "What one row is"],
+    ["attested", "What you confirmed"],
+    ["eligibility", "Who the study is about"],
+    ["seal", "The held-out set"],
+    ["preprocess", "The preprocessing plan"]
+  ];
+
+  function discClass(key, body){
+    if (key === "attested") return "disc-row is-attested";
+    if (key !== "seal") return "disc-row";
+    /* THE ONE RULE THIS BAND EXISTS FOR (ROADMAP lockbox constitution §03).
+       `exploratory` is computed by the server from the recorded basis, over
+       four bases and two extra conditions, and the page does not recompute it —
+       a second derivation is a second thing to drift. An exploratory seal gets
+       a different component, not a tinted version of the sealed one. */
+    return body.exploratory ? "disc-row is-exploratory" : "disc-row is-sealed";
+  }
+
+  function discMark(key, body){
+    if (key !== "seal") return "";
+    return body.exploratory
+      ? '<span class="disc-mark">not a verified clean split</span>'
+      : '<span class="disc-mark">sealed</span>';
+  }
+
+  function renderDisclosures(){
+    var box = $("disclosuresBox");
+    if (!box) return;
+    var body = (P && P.disclosures) || {};
+
+    if (!box.firstChild){
+      box.innerHTML = '<div class="disc-head">On the record</div>';
+    }
+
+    var seen = {};
+    DISC_ROWS.forEach(function(pair){
+      var key = pair[0], sentence = body[key];
+      /* A disclosure the server did not compose is a question not yet
+         answered, and an empty labelled row would read as an answer of
+         nothing. Absent, not blank. */
+      if (!sentence) return;
+      seen[key] = true;
+      var html = '<span class="disc-k">' + esc(pair[1]) +
+                 discMark(key, body) + "</span>" +
+                 '<p class="disc-v">' + esc(sentence) + "</p>";
+      var cls = discClass(key, body);
+      /* The renderer owns its nodes for the same reason the figure surface
+         does: the harness's `getElementById` auto-creates, so asking the DOM
+         *is there an element with this id* cannot answer *is this my node*
+         (`GUIDED-077`). */
+      var node = DISC_NODES[key];
+      if (!node){
+        node = document.createElement("div");
+        node.id = "disc-" + key;
+        node.className = cls + " arriving";
+        node.setAttribute("data-disc", key);
+        node.innerHTML = html;
+        box.appendChild(node);
+        DISC_NODES[key] = node;
+        requestAnimationFrame(function(){ node.classList.remove("arriving"); });
+      } else if (DISC_STATE[key] !== html + "|" + cls){
+        /* MUTATE, never repaint (DESIGN_LANGUAGE §05): the node survives, so a
+           seal sentence that changes basis transitions rather than being
+           replaced by a different element that looks like it. */
+        node.innerHTML = html;
+        node.className = cls;
+      }
+      DISC_STATE[key] = html + "|" + cls;
+    });
+
+    Object.keys(DISC_STATE).forEach(function(key){
+      if (seen[key]) return;
+      var gone = DISC_NODES[key];
+      delete DISC_STATE[key];
+      delete DISC_NODES[key];
+      if (gone && gone.parentNode) gone.parentNode.removeChild(gone);
+    });
   }
 
   function renderEda(){

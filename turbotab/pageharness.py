@@ -142,6 +142,24 @@ function El(tag, id){
     }
   });
 }
+// `className` IS `_classes`, in both directions.
+//
+// Without this it was an ordinary JS property: assigning it set something no
+// other method here read, so `classList.contains` said no, `__deep` printed no
+// class, and every assertion about how a node is styled came back vacuously
+// true. A shim that accepts a write and then denies it happened is the one
+// thing this file is not allowed to be — it would report the page as honest
+// about styling precisely where the page had stopped being honest. Filed as
+// `GUIDED-081`; the mutate-in-place renderers §05 requires all set class this
+// way, so the gap grew with every one of them.
+Object.defineProperty(El.prototype, "className", {
+  get: function(){ return Object.keys(this._classes).join(" "); },
+  set: function(v){
+    this._classes = Object.create(null);
+    String(v).split(/\s+/).forEach(function(c){ if (c) this._classes[c] = true; },
+                                   this);
+  }
+});
 El.prototype.setAttribute = function(k, v){ this._attr[k] = String(v); };
 El.prototype.getAttribute = function(k){ return k in this._attr ? this._attr[k] : null; };
 El.prototype.hasAttribute = function(k){ return k in this._attr; };
