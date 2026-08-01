@@ -421,9 +421,6 @@ window.__RECIPE_CAPTURES = {
     ]
    }
   ],
-  "n_choices_suppressed": 0,
-  "pack_defaults": [],
-  "normalization": [],
   "candidates": {
    "logreg::encode": [
     {
@@ -638,6 +635,9 @@ window.__RECIPE_CAPTURES = {
     }
    ]
   },
+  "n_choices_suppressed": 0,
+  "pack_defaults": [],
+  "normalization": [],
   "_fixture": "metabolomics_untargeted.csv",
   "_lens": [
    "other"
@@ -1071,24 +1071,6 @@ window.__RECIPE_CAPTURES = {
     ]
    }
   ],
-  "n_choices_suppressed": 0,
-  "pack_defaults": [
-   {
-    "operation": "scale",
-    "variant": "pareto",
-    "selector": "caps:requires_scaled_numeric",
-    "origin": "metabolomics_pack",
-    "reason": "The field convention here is Pareto scaling. Auto-scaling gives every feature equal weight including noise-dominated low-abundance ones; dividing by the square root of the standard deviation retains some magnitude information. A defensible compromise, not a fact — auto-scaling is offered beside it."
-   },
-   {
-    "operation": "power",
-    "variant": "log1p",
-    "selector": "*",
-    "origin": "metabolomics_pack",
-    "reason": "Concentrations are bounded below by zero and combine multiplicatively, so the resulting distribution is log-normal by construction rather than by convention. This is the one transform here that is derived rather than chosen."
-   }
-  ],
-  "normalization": [],
   "candidates": {
    "logreg::encode": [
     {
@@ -1357,6 +1339,24 @@ window.__RECIPE_CAPTURES = {
     }
    ]
   },
+  "n_choices_suppressed": 0,
+  "pack_defaults": [
+   {
+    "operation": "scale",
+    "variant": "pareto",
+    "selector": "caps:requires_scaled_numeric",
+    "origin": "metabolomics_pack",
+    "reason": "The field convention here is Pareto scaling. Auto-scaling gives every feature equal weight including noise-dominated low-abundance ones; dividing by the square root of the standard deviation retains some magnitude information. A defensible compromise, not a fact — auto-scaling is offered beside it."
+   },
+   {
+    "operation": "power",
+    "variant": "log1p",
+    "selector": "*",
+    "origin": "metabolomics_pack",
+    "reason": "Concentrations are bounded below by zero and combine multiplicatively, so the resulting distribution is log-normal by construction rather than by convention. This is the one transform here that is derived rather than chosen."
+   }
+  ],
+  "normalization": [],
   "_fixture": "metabolomics_untargeted.csv",
   "_lens": [
    "metabolomics"
@@ -1872,9 +1872,6 @@ window.__RECIPE_CAPTURES = {
     ]
    }
   ],
-  "n_choices_suppressed": 3,
-  "pack_defaults": [],
-  "normalization": [],
   "candidates": {
    "histgb_reg::encode": [
     {
@@ -2142,6 +2139,9 @@ window.__RECIPE_CAPTURES = {
     }
    ]
   },
+  "n_choices_suppressed": 3,
+  "pack_defaults": [],
+  "normalization": [],
   "_fixture": "dietary_recalls.csv",
   "_lens": [
    "dietary"

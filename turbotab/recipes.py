@@ -377,6 +377,48 @@ def resolve(model_key: str, operation_key: str,
                     variants=op.variants)
 
 
+def candidates(model_key: str, operation_key: str,
+               registry: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Every default row that MATCHED this cell, ranked as `resolve` ranks them,
+    with the winner marked.
+
+    `resolve` returns the answer and discards the reasoning. `GUIDED-074` is
+    that discard: the precedence lattice is the app's model of the decision
+    space, and a cell rendered as one sentence says *this is what happens*
+    where the structure says *four rows matched, this one is the most specific,
+    and here is what the others would have done*.
+
+    Computed HERE rather than in the consumer, because the ranking rule and the
+    tie-break are `resolve`'s and a second implementation of them is a second
+    thing to drift — the prototype's capture script reached into `_matches`
+    and `_SPECIFICITY` to do exactly this, which is what made this the right
+    place to put it.
+    """
+    if registry is None:
+        from ml.model_registry import get_registry
+        registry = get_registry()
+    if model_key not in registry:
+        raise RecipeError(f"no model {model_key!r} in the registry.")
+    spec = registry[model_key]
+
+    rows: List[Dict[str, Any]] = []
+    for d in _DEFAULTS:
+        if d.operation != operation_key or not _matches(d.selector, model_key, spec):
+            continue
+        kind = _selector_kind(d.selector)
+        rows.append({"selector": d.selector, "kind": kind,
+                     "rank": _SPECIFICITY[kind], "variant": d.variant,
+                     "reason": d.reason, "origin": d.origin, "wins": False})
+    if rows:
+        # `resolve` scans in registration order and takes `rank >= best`, so the
+        # winner is the LAST row of maximal rank. Marked, never recomputed by a
+        # consumer.
+        best = max(r["rank"] for r in rows)
+        winner = max(i for i, r in enumerate(rows) if r["rank"] == best)
+        rows[winner]["wins"] = True
+    return rows
+
+
 def recipe(model_key: str, registry: Optional[Dict[str, Any]] = None,
            operations_: Optional[Sequence[str]] = None) -> List[Resolved]:
     """Every operation resolved for one model, in a stable order."""

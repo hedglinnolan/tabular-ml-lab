@@ -31,10 +31,15 @@ lattice is identical to the core one. That is legitimate and it is also why the
 pack delta is demonstrated on metabolomics.
 
 Each capture also carries `candidates`: for every (model, operation) cell, every
-default row that matched, with the specificity rank the engine gave it. That is
-computed here by calling `recipes._matches` and `recipes._SPECIFICITY` — the
-engine's own reasoning, serialized — so the page displays a resolution rather
-than re-deriving one in JavaScript.
+default row that matched, with the specificity rank the engine gave it, so the
+page displays a resolution rather than re-deriving one in JavaScript.
+
+**That used to be computed here**, by reaching into `recipes._matches` and
+`recipes._SPECIFICITY`. `GUIDED-074`'s port moved it to `recipes.candidates`
+and `/recipes` serves it, so this script now captures the field like every
+other one. Two implementations of a precedence rule drift into two plausible
+answers and nothing on screen distinguishes them — the reason the ranking
+belongs beside `resolve`, which is the function whose rule it is.
 """
 from __future__ import annotations
 
@@ -47,39 +52,6 @@ sys.path.insert(0, str(ROOT))
 
 HERE = pathlib.Path(__file__).resolve().parent
 FIXTURES = ROOT / "turbotab" / "sample_data"
-
-
-def _candidates(models, operations):
-    """Every default that matched each cell, ranked as `resolve` ranks them."""
-    from ml.model_registry import get_registry
-    from turbotab import recipes as rec
-
-    registry = get_registry()
-    out = {}
-    for model_key in models:
-        spec = registry[model_key]
-        for op_key in operations:
-            rows = []
-            for d in rec._DEFAULTS:
-                if d.operation != op_key:
-                    continue
-                if not rec._matches(d.selector, model_key, spec):
-                    continue
-                kind = rec._selector_kind(d.selector)
-                rows.append({"selector": d.selector, "kind": kind,
-                             "rank": rec._SPECIFICITY[kind],
-                             "variant": d.variant, "reason": d.reason,
-                             "origin": d.origin})
-            # `resolve` scans in registration order and takes `rank >= best`, so
-            # the winner is the LAST row of maximal rank. Marked here rather
-            # than recomputed in the page.
-            if rows:
-                best = max(r["rank"] for r in rows)
-                winner = max(i for i, r in enumerate(rows) if r["rank"] == best)
-                for i, r in enumerate(rows):
-                    r["wins"] = (i == winner)
-            out[f"{model_key}::{op_key}"] = rows
-    return out
 
 
 def capture(fixture: str, target: str, lens, steps, picks) -> dict:
@@ -119,8 +91,6 @@ def capture(fixture: str, target: str, lens, steps, picks) -> dict:
         decide("set_preparation_mode", mode="per_model")
 
         payload = client.get(f"/project/{pid}/recipes").json()
-        payload["candidates"] = _candidates(
-            list(payload["models"]), [o["key"] for o in payload["operations"]])
         payload["_fixture"] = fixture
         payload["_lens"] = lens
         return payload

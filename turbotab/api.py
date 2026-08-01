@@ -1778,6 +1778,15 @@ async def get_recipes(project_id: str) -> Dict[str, Any]:
                         "pushed_alternatives": [list(p)
                                                 for p in o.pushed_alternatives]}
                        for o in _rec.operations()],
+        # GUIDED-074. The reasoning `resolve` discards: every default that
+        # matched each cell, ranked, with the winner marked. Served rather than
+        # re-derived in the interface — the ranking rule and the tie-break are
+        # `resolve`'s, and a second implementation of them in JavaScript is a
+        # second thing to drift.
+        "candidates": {
+            f"{model_key}::{row['operation']}":
+                _rec.candidates(model_key, row["operation"])
+            for model_key, rows in resolved.items() for row in rows},
         "n_choices_suppressed": suppressed,
         # Read back out of the recipe table rather than mirrored from the pack,
         # because a second copy of what a pack registered is the drift

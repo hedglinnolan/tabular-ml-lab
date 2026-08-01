@@ -807,6 +807,128 @@ def claim_the_features_step_reaches_its_end(client, project):
 
 
 
+
+def claim_the_lattice_shows_which_rows_matched(client, project):
+    """**`GUIDED-074`, ported from the L31 prototype.**
+
+    `/recipes` appeared zero times in the page. The engine models the whole
+    preprocessing decision space, resolves it per model by a precedence rule,
+    and measures it for divergence — and a cell rendered as one sentence says
+    *this is what happens* where the structure says *these rows matched, this
+    one is the most specific, and here is what the others would have done*.
+
+    Driven on the capture script's dietary case, because it is the one that
+    suppresses variant questions: three of them, derived and compared and found
+    not to change the answer. `n_choices_suppressed` is a first-class statement
+    here, not a number in a payload — a question that silently disappears is
+    indistinguishable from one nobody thought of.
+    """
+    with open(DATA / "dietary_recalls.csv", "rb") as fh:
+        pid = client.post("/project", files={
+            "file": ("d.csv", fh, "text/csv")}).json()["id"]
+
+    def decide(what, **payload):
+        r = client.post(f"/project/{pid}/decision",
+                        json={"kind": what, "payload": payload})
+        assert r.status_code == 200, (what, r.text[:200])
+
+    decide("set_lens", lens=["dietary"])
+    decide("set_target", column="hba1c")
+    decide("set_grain", answer="people_repeat", group_col="participant_id")
+    decide("set_repeat_kind", kind="repeats")
+    decide("set_unit_of_analysis", unit="person")
+    decide("set_aggregation", method="mean")
+    decide("set_eligibility", answer="everyone")
+    decide("seal")
+    shelf = client.get(f"/project/{pid}/models").json()
+    available = {m["key"] for g in shelf.get("groups", []) for m in g["models"]}
+    picks = [k for k in ("ridge", "rf", "knn_reg", "histgb_reg", "nn")
+             if k in available]
+    decide("select_models", models=picks)
+    decide("set_preparation_mode", mode="per_model")
+
+    lattice = client.get(f"/project/{pid}/recipes").json()
+    assert lattice["n_choices_suppressed"] == 3, (
+        "the dietary case stopped suppressing three variant questions, so this "
+        "claim no longer covers the statement it is about")
+    assert lattice["candidates"], (
+        "the endpoint serves no candidates, so there is no reasoning to render")
+    seen = client.get(f"/project/{pid}").json()
+
+    routes = _routes(client, seen, **{
+        f"/project/{pid}/figures": client.get(f"/project/{pid}/figures").json(),
+        f"/project/{pid}/features": client.get(f"/project/{pid}/features").json(),
+        f"/project/{pid}/interview?step=features":
+            client.get(f"/project/{pid}/interview?step=features").json(),
+        f"/project/{pid}/recipes": lattice,
+    })
+
+    out = _drive(
+        """
+        function settle(n){
+          var p = Promise.resolve();
+          for (var i = 0; i < n; i++) { p = p.then(function(){}); }
+          return p;
+        }
+        var seen = {};
+        settle(18).then(function(){
+          __harness.drainRaf();
+          seen.grid = __harness.render('latGrid');
+          seen.supp = __harness.render('latSupp');
+          // Open the cell whose stack has more than one row in it.
+          var keys = [], rx = /data-lat-cell="([^"]+)"/g, m;
+          while ((m = rx.exec(seen.grid)) !== null) { keys.push(m[1]); }
+          seen.keys = keys;
+          __harness.dispatch('click',
+            __harness.target({'data-lat-cell': keys[0]}, []));
+          return settle(6);
+        }).then(function(){
+          seen.why = __harness.render('latWhy');
+          __emit(seen);
+        });
+        """,
+        routes, pid)
+
+    models = sorted(lattice["models"])
+    ops = [o["key"] for o in lattice["operations"]]
+    assert len(out["keys"]) == len(models) * len(ops), (
+        f"{len(out['keys'])} cells rendered for {len(models)} models and "
+        f"{len(ops)} operations — the grid is not the lattice")
+    for model in models:
+        assert model in out["grid"], f"{model} has no row in the grid"
+    for op in ops:
+        assert op in out["grid"], f"{op} has no column in the grid"
+
+    # Every cell says what the table resolved AND which selector won it. The
+    # selector is the part a sentence drops, and it is the whole lattice.
+    for model, rows in lattice["models"].items():
+        for row in rows:
+            assert row["selector"] in out["grid"], (
+                f"{model}/{row['operation']} rendered without the selector "
+                "that decided it")
+
+    # THE STACK. Every matched row, ranked, with the winner marked — and the
+    # ranking is the server's.
+    stack = lattice["candidates"][out["keys"][0]]
+    assert stack, "the first cell matched nothing, which resolve() cannot do"
+    for row in stack:
+        assert row["selector"] in out["why"], (
+            f"{row['selector']} matched this cell and the stack did not show it")
+        assert row["reason"][:40] in out["why"], (
+            "a matched row rendered without the reason it would have given")
+    assert sum(1 for r in stack if r["wins"]) == 1
+    winner = [r for r in stack if r["wins"]][0]
+    assert "wins" in out["why"], (
+        "the stack shows every row that matched and does not mark which one "
+        "the engine took, which is the one thing the stack is for")
+    assert winner["variant"] in out["why"]
+
+    # `n_choices_suppressed` as a statement rather than a count in a payload.
+    assert "3 questions were derived, compared and not asked" in out["supp"], (
+        "three variant questions were suppressed and the page does not say so")
+
+
+
 CLAIMS = [
     ("questions render", claim_questions_render),
     ("a decision re-paints", claim_a_decision_repaints),
@@ -824,6 +946,8 @@ CLAIMS = [
     ("an attested answer does not render as a clean split",
      claim_an_attested_answer_does_not_render_as_a_clean_split),
     ("the features step reaches its end", claim_the_features_step_reaches_its_end),
+    ("the lattice shows which rows matched",
+     claim_the_lattice_shows_which_rows_matched),
 ]
 
 
@@ -990,3 +1114,35 @@ def test_the_shim_reports_a_class_it_was_assigned_rather_than_swallowing_it():
     assert 'class="disc-row is-exploratory"' in out["deep"], (
         "the class does not survive serialization, so a claim about styling "
         "cannot be written at all")
+
+
+def test_the_lattice_mutates_cells_rather_than_rebuilding_the_grid():
+    """`GUIDED-074`, and the prototype's finding is the requirement.
+
+    The L31 prototype measured what a repaint costs and found something worse
+    than the cost: **a repaint cannot report what it interrupted**, because
+    `transitioncancel` does not fire when the element is removed — the
+    transition ends with its target and there is nothing left to dispatch on.
+    `DESIGN_LANGUAGE.md` §05 is that finding written as a rule, and this is the
+    surface the finding came from, so it is the surface where breaking it would
+    be least excusable.
+
+    Asserted structurally, for the same reason the figure surface's version is:
+    the mechanism is what the requirement is about.
+    """
+    page = (Path(__file__).resolve().parent / "web" / "index.html").read_text(
+        encoding="utf-8")
+    body = page[page.index("function renderLattice"):]
+    body = body[:body.index("\n  function ", 1)]
+    assert "LAT_NODES[k]" in body                              # positive control
+    assert "grid.appendChild(cell)" in body, (
+        "the grid no longer builds per-cell nodes, so there is nothing to keep")
+    assert "node.innerHTML = html" in body and "LAT_STATE[k] === html" in body, (
+        "cells are not compared and mutated, so every render touches every one")
+    assert "grid.innerHTML = html" not in body, "the grid is rebuilt wholesale"
+    # The one wholesale write is the column header row, before any cell exists.
+    assert body.count("grid.innerHTML") == 1, (
+        "the grid container is assigned more than once, which is a rebuild "
+        "wearing a different name")
+    assert 'classList.add("changed")' in body, (
+        "nothing marks a cell as changed, so §05's settle has nothing to run on")

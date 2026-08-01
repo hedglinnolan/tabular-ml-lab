@@ -595,6 +595,52 @@
                  padding:8px 0 4px 11px; }
   .feat-sent{ font-size:13px; margin:0 0 5px; }
   .feat-note{ font-size:12px; color:var(--muted); margin:5px 0 0; max-width:74ch; }
+  /* GUIDED-074. The lattice, carried from the L31 prototype's stylesheet with
+     this page's tokens. `.changed` is the mutate signal §05 requires: the cell
+     survives, so the settle it is running finishes. */
+  .lat{ margin-top:18px; }
+  .lat:empty{ display:none; }
+  .lat-head{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;
+             margin-bottom:9px; }
+  .lat-lab{ font-size:11.5px; text-transform:uppercase; letter-spacing:.07em;
+            color:var(--faint); }
+  .lat-note{ font-size:12px; color:var(--muted); }
+  .lat-grid{ display:grid; gap:6px; align-items:stretch; overflow-x:auto; }
+  .lat-colhead,.lat-rowhead{ font-family:var(--mono); font-size:11px;
+                             color:var(--faint); align-self:center; }
+  .lat-cell{ position:relative; text-align:left; border:1px solid var(--line);
+             border-radius:9px; background:var(--surface); padding:9px 10px;
+             cursor:pointer; font:inherit; color:var(--ink);
+             transition:background .25s ease, border-color .25s ease,
+                        transform .25s ease; }
+  .lat-cell.changed{ background:var(--accent-tint); border-color:var(--accent);
+                     transform:translateY(-2px); }
+  @media (prefers-reduced-motion: reduce){ .lat-cell{ transition:none; } }
+  .lat-var{ display:block; font-family:var(--mono); font-size:13.5px; font-weight:600; }
+  .lat-sel{ display:block; font-family:var(--mono); font-size:10.5px;
+            color:var(--faint); margin-top:2px; }
+  .lat-state{ display:inline-block; font-size:10.5px; margin-top:6px;
+              padding:1px 6px; border-radius:999px; }
+  .lat-state.s-fact{ color:var(--ok); background:var(--ok-tint); }
+  .lat-state.s-ask{ color:var(--accent); background:var(--accent-tint); }
+  .lat-state.s-raised{ color:var(--warn); background:var(--warn-tint); }
+  .lat-pack{ position:absolute; top:7px; right:9px; font-family:var(--mono);
+             font-size:9.5px; color:var(--warn); }
+  .lat-why:empty{ display:none; }
+  .lat-why{ margin-top:12px; }
+  .lat-stack{ list-style:none; margin:0; padding:0; }
+  .lat-stack li{ display:grid; grid-template-columns:24px 1fr; gap:10px;
+                 padding:8px 0; border-top:1px solid var(--line); }
+  .lat-stack li:first-child{ border-top:0; }
+  .lat-rank{ font-family:var(--mono); font-size:12px; color:var(--faint); }
+  .lat-stack li.wins .lat-rank,.lat-stack li.wins .lat-who{ color:var(--ok);
+                                                            font-weight:600; }
+  .lat-who{ font-family:var(--mono); font-size:12.5px; }
+  .lat-why .lat-stack .lat-why{ display:block; }
+  .lat-stack .lat-why{ grid-column:2; color:var(--muted); font-size:12.5px; }
+  .lat-supp{ margin-top:12px; border-left:3px solid var(--warn);
+             background:var(--warn-tint); border-radius:0 9px 9px 0;
+             padding:10px 13px; font-size:12.5px; line-height:1.6; }
   .uperr{margin:12px 0 0;font-size:12.5px;color:var(--del);background:var(--del-tint);
          border:1px solid var(--del);border-radius:8px;padding:9px 12px;line-height:1.5}
   .uperr:empty{display:none}
@@ -1184,6 +1230,29 @@
             <div id="selEvidence"></div>
           </div>
         </div>
+
+        <!-- GUIDED-074. The precedence lattice, in the app.
+
+             `/recipes` appeared zero times in this file. The engine models the
+             whole preprocessing decision space, resolves it per model by a
+             precedence rule, and measures it for divergence — and none of that
+             structure reached anybody, because a cell rendered as one sentence
+             says *this is what happens* where the structure says *these rows
+             matched, this one is the most specific, and here is what the
+             others would have done*.
+
+             The L31 prototype proved a person can read it and measured the
+             rendering cost: a repaint cancels transitions it CANNOT REPORT,
+             because `transitioncancel` does not fire when the element is
+             removed. `DESIGN_LANGUAGE.md` §05 is that finding as a
+             requirement, so this mutates cells in place and never rebuilds the
+             grid.
+
+             It sits at the end of Features because that is where the columns
+             it operates on stop changing, and it says so — the Preprocess step
+             is not in this build, and a lattice presented as that step would
+             be claiming one exists. -->
+        <div class="lat" id="latticeBox"></div>
 
         <div class="decision is-hidden" id="d-features">
           <p class="prose" id="d-features-text"></p>
@@ -2875,15 +2944,173 @@
     }
   }
 
+  /* ═════════ GUIDED-074 · THE PRECEDENCE LATTICE ═════════
+     Ported from the L31 prototype, whose measurement is now DESIGN_LANGUAGE §05:
+     cells MUTATE and the grid is never rebuilt, because a repaint cancels
+     transitions it cannot report — `transitioncancel` does not fire when the
+     element is removed, so the repaint is unable to observe what it broke. */
+  var LAT = null;                 /* the last /recipes payload */
+  var LAT_NODES = {}, LAT_STATE = {};
+
+  function latKey(model, op){ return model + "::" + op; }
+
+  function latCellHTML(row){
+    var h = "";
+    if (row.origin && row.origin !== "core"){
+      h += '<span class="lat-pack">' + esc(row.origin) + "</span>";
+    }
+    h += '<span class="lat-var">' + esc(row.variant) + "</span>";
+    h += '<span class="lat-sel">' + esc(row.selector) + "</span>";
+    h += row.ask ? '<span class="lat-state s-ask">asked</span>'
+                 : '<span class="lat-state s-fact">pre-selected</span>';
+    if (row.variant_worth_raising){
+      h += ' <span class="lat-state s-raised">variant raised</span>';
+    }
+    return h;
+  }
+
+  function latStackHTML(key, row){
+    /* THE CELL STACK. Every default that matched, ranked `*` < group <
+       capability < exact model, with the winner marked — and the ranking is the
+       SERVER's, computed by `recipes.candidates` from the same `_matches` and
+       `_SPECIFICITY` that `resolve` uses. A second implementation of the
+       precedence rule in JavaScript would be a second thing to drift, and the
+       drift would be invisible: it resolves to a plausible answer either way. */
+    var rows = (LAT.candidates || {})[key] || [];
+    if (!rows.length) return "";
+    var h = '<ol class="lat-stack">';
+    rows.forEach(function(r){
+      h += '<li class="' + (r.wins ? "wins" : "") + '">' +
+           '<span class="lat-rank">' + esc(r.rank) + "</span>" +
+           '<span class="lat-who">' + esc(r.selector) + " → " +
+           esc(r.variant) + (r.wins ? " · wins" : "") + "</span>" +
+           '<span class="lat-why">' + esc(r.reason) + "</span></li>";
+    });
+    h += "</ol>";
+    if (row && row.divergence){
+      h += '<p class="feat-note">' + esc(row.divergence.evidence || "") + "</p>";
+    }
+    return h;
+  }
+
+  function latSuppressedHTML(){
+    var n = LAT.n_choices_suppressed;
+    if (!n){
+      /* ZERO IS A STATEMENT, not an empty state. "No variant question was
+         suppressed" and "the app does not check" are different claims, and only
+         one of them is true here. */
+      return '<p class="feat-note">No variant question was suppressed: every ' +
+             "operation with an alternative worth comparing either had no " +
+             "alternative pushed against it, or the comparison mattered and " +
+             "the question was raised.</p>";
+    }
+    return '<div class="lat-supp"><b>' + num(n, 0) + " question" +
+           (n === 1 ? " was" : "s were") + " derived, compared and not asked" +
+           ".</b> Each one is a variant the table pushed an alternative " +
+           "against — the two were put on this data and they would not have " +
+           "changed the relative footing of your columns, so the question was " +
+           "not raised. It is counted rather than dropped, because a question " +
+           "that silently disappears is indistinguishable from one nobody " +
+           "thought of.</div>";
+  }
+
+  function renderLattice(){
+    var box = $("latticeBox");
+    if (!box || !LAT) return;
+    var models = Object.keys(LAT.models || {}).sort();
+    var ops = (LAT.operations || []).map(function(o){ return o.key; });
+
+    if (!models.length){
+      /* WHAT IT NEEDS, not a blank. The lattice resolves per selected model and
+         models are chosen after the seal, so an empty grid here is a step that
+         has not happened rather than a table with nothing in it. */
+      box.innerHTML =
+        '<div class="lat-head"><span class="lat-lab">Preprocessing, per model' +
+        "</span></div>" +
+        '<p class="feat-note">The table below resolves once models are ' +
+        "chosen, and models are chosen after the held-out set is sealed. " +
+        "Nothing is missing — the step that fills it has not happened.</p>";
+      LAT_NODES = {}; LAT_STATE = {};
+      return;
+    }
+
+    if (!$("latGrid")){
+      box.innerHTML =
+        '<div class="lat-head"><span class="lat-lab">Preprocessing, per model' +
+        '</span><span class="lat-note">Every cell is a resolution. Open one to ' +
+        "see which rows matched.</span></div>" +
+        '<div class="lat-grid" id="latGrid" role="grid"></div>' +
+        '<div class="lat-why" id="latWhy"></div>' +
+        '<div id="latSupp"></div>';
+      LAT_NODES = {}; LAT_STATE = {};
+    }
+    var grid = $("latGrid");
+    grid.style.gridTemplateColumns = "112px repeat(" + ops.length + ", 1fr)";
+
+    var map = {};
+    models.forEach(function(m){
+      (LAT.models[m] || []).forEach(function(row){
+        map[latKey(m, row.operation)] = row;
+      });
+    });
+
+    /* THE HEADS are written once. Rewriting them would replace every cell node
+       under them, which is the rebuild §05 forbids. */
+    if (!LAT_NODES.__heads){
+      var head = '<div class="lat-colhead"></div>';
+      ops.forEach(function(op){
+        head += '<div class="lat-colhead">' + esc(op) + "</div>";
+      });
+      grid.innerHTML = head;
+      models.forEach(function(m){
+        var rh = document.createElement("div");
+        rh.className = "lat-rowhead";
+        rh.innerHTML = esc(m);
+        grid.appendChild(rh);
+        ops.forEach(function(op){
+          var k = latKey(m, op);
+          var cell = document.createElement("button");
+          cell.className = "lat-cell";
+          cell.setAttribute("type", "button");
+          cell.setAttribute("role", "gridcell");
+          cell.setAttribute("data-lat-cell", k);
+          cell.innerHTML = map[k] ? latCellHTML(map[k]) : "";
+          grid.appendChild(cell);
+          LAT_NODES[k] = cell;
+          LAT_STATE[k] = cell.innerHTML;
+        });
+      });
+      LAT_NODES.__heads = true;
+    } else {
+      /* PARTIAL. Only the cells whose resolution changed are touched, so a
+         settle already running on a cell that did not change finishes. */
+      Object.keys(map).forEach(function(k){
+        var node = LAT_NODES[k];
+        if (!node) return;
+        var html = latCellHTML(map[k]);
+        if (LAT_STATE[k] === html) return;
+        node.innerHTML = html;
+        LAT_STATE[k] = html;
+        node.classList.add("changed");
+        window.setTimeout(function(){ node.classList.remove("changed"); }, 260);
+      });
+    }
+
+    $("latSupp").innerHTML = latSuppressedHTML();
+  }
+
   function renderFeatureStep(){
     if (!P || !P.target) return;
     Promise.all([
       api("/project/" + P.id + "/features"),
-      api("/project/" + P.id + "/interview?step=features")
-    ]).then(function(both){
-      FEAT = both[0];
-      (both[1].questions || []).forEach(function(q){ FEAT_Q[q.key] = q; });
+      api("/project/" + P.id + "/interview?step=features"),
+      api("/project/" + P.id + "/recipes")
+    ]).then(function(all){
+      FEAT = all[0];
+      (all[1].questions || []).forEach(function(q){ FEAT_Q[q.key] = q; });
+      LAT = all[2];
       renderFeatures();
+      renderLattice();
     }).catch(function(){ /* the step is a surface, not a gate on Explore */ });
   }
 
@@ -3861,6 +4088,7 @@
       "[data-event-for]," +
       "[data-look],[data-unskip],[data-exit-for],[data-att-send],[data-refusal-i],[data-prev-ask]," +
       "[data-feat-preview],[data-feat-add],[data-feat-remove],[data-feat-settle]," +
+      "[data-lat-cell]," +
       "[data-sel-rank],[data-sel-set]," +
       "[data-impossible],[data-keep-impossible],[data-miss-choose],[data-miss-preview]," +
       "[data-hist-page],[data-pg-step],[data-copy-rows]," +
@@ -4019,6 +4247,20 @@
 
     /* ── the prevalence question ── */
     if (t.hasAttribute("data-prev-ask")){ askPrevalence(); return; }
+
+    /* ── a lattice cell: show which rows matched it ── */
+    if (t.hasAttribute("data-lat-cell")){
+      var lk = t.getAttribute("data-lat-cell");
+      var lrow = null;
+      Object.keys(LAT.models || {}).forEach(function(m){
+        (LAT.models[m] || []).forEach(function(r){
+          if (latKey(m, r.operation) === lk) lrow = r;
+        });
+      });
+      var why = $("latWhy");
+      if (why) why.innerHTML = latStackHTML(lk, lrow);
+      return;
+    }
 
     /* ── the Features step ── */
     if (t.hasAttribute("data-feat-preview")){
