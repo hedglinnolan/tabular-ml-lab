@@ -682,7 +682,16 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
             n_missing = 0
         if (_miss.blocks(mech, strat)
                 and not decision.payload.get("acknowledge_signal_loss")):
-            raise HTTPException(409, _miss.blocker(col, mech, strat, n_missing))
+            # The branch travels with the blocker, because the way through
+            # depends on it: `explicit_category` keeps the signal in a
+            # categorical column and turns a numeric one into text.
+            branch = "categorical"
+            if col in project.df.columns:
+                branch = ("numeric"
+                          if pd.api.types.is_numeric_dtype(project.df[col])
+                          else "categorical")
+            raise HTTPException(
+                409, _miss.blocker(col, mech, strat, n_missing, branch=branch))
         try:
             project.route_missingness(
                 col, mech, strat,

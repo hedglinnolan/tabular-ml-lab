@@ -641,6 +641,22 @@
   .lat-supp{ margin-top:12px; border-left:3px solid var(--warn);
              background:var(--warn-tint); border-radius:0 9px 9px 0;
              padding:10px 13px; font-size:12.5px; line-height:1.6; }
+  /* GUIDED-085. The Preprocess step. */
+  .prep-col{ border-top:1px solid var(--line); padding:13px 0; }
+  .prep-col:first-child{ border-top:0; }
+  .prep-head{ display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;
+              margin-bottom:9px; }
+  .prep-q{ font-size:14px; margin:0 0 6px; }
+  .prep-prior{ font-size:12.5px; color:var(--muted); margin:0 0 7px; max-width:74ch; }
+  .prep-opts{ display:flex; flex-wrap:wrap; gap:7px; }
+  .prep-strats{ margin-top:11px; display:flex; flex-direction:column; gap:9px; }
+  .prep-strat{ border-left:3px solid var(--line); padding:6px 0 6px 11px; }
+  .prep-shead{ display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; }
+  .prep-slab{ font-size:13.5px; font-weight:600; }
+  .prep-when{ font-family:var(--mono); font-size:10px; text-transform:uppercase;
+              letter-spacing:.05em; color:var(--faint); }
+  .prep-because{ font-size:12.5px; color:var(--muted); margin:4px 0 7px; max-width:74ch; }
+  .prep-done{ margin:0 0 5px; font-size:13.5px; }
   .uperr{margin:12px 0 0;font-size:12.5px;color:var(--del);background:var(--del-tint);
          border:1px solid var(--del);border-radius:8px;padding:9px 12px;line-height:1.5}
   .uperr:empty{display:none}
@@ -956,9 +972,10 @@
           <button class="map-step" data-map="target" type="button"><span class="md"></span>Target</button>
           <button class="map-step" data-map="eda" type="button"><span class="md"></span>Explore</button>
           <button class="map-step" data-map="features" type="button"><span class="md"></span>Features</button>
+          <button class="map-step" data-map="preprocess" type="button"><span class="md"></span>Preprocess</button>
         </nav>
-        <div class="dock-empty" style="margin-top:9px;">Preprocessing, training, results and
-          report are not in this build. The skeleton stops where the record does.</div>
+        <div class="dock-empty" style="margin-top:9px;">Training, results and report are not in
+          this build. The skeleton stops where the record does.</div>
       </div>
       <div class="jobchip" id="jobChip"><span class="spin" aria-hidden="true"></span><span id="jobText">Working…</span></div>
       <div class="dock dock-ledger">
@@ -1259,6 +1276,40 @@
         </div>
       </div>
     </section>
+
+    <!-- ═══ PREPROCESS ═══
+         GUIDED-085. `/preprocess` was composed, complete and fetched by
+         nothing: every strategy already carried `because` — clause §06's
+         litmus answer in words — and `defers`, so an interface could say WHY a
+         choice changes nothing on screen instead of leaving a user to conclude
+         the app did nothing.
+
+         §07's fork is the shape of the step: the MECHANISM is asked before the
+         strategy, because whether a blank means something decides which
+         strategies are even legitimate. Asking them the other way round is how
+         a column that carried information gets a median written over it by a
+         well-meaning default — and choosing to do that anyway is a blocker
+         with a typed acknowledgment, not a warning. -->
+    <section class="sect is-hidden" id="sec-preprocess" data-map="preprocess">
+      <div class="sect-head"><span class="sect-kicker">Preprocess</span><span class="sect-state">open</span></div>
+      <span class="stale-tag">stale — an earlier answer changed</span>
+      <div class="sect-body">
+        <div class="stepcard" id="card-preprocess">
+          <div class="sub">
+            <div class="subhead"><span class="sub-num">01</span></div>
+            <h2><span class="fact-mark" aria-hidden="true"></span>What do the blanks in your table mean?</h2>
+            <p class="why" id="prepWhy"></p>
+            <details class="whyask"><summary>Why we ask</summary>
+              <p class="ans" id="prepConsumer"></p></details>
+            <div id="prepCols"></div>
+          </div>
+        </div>
+        <div id="prepReceipt"></div>
+        <div class="decision is-hidden" id="d-preprocess">
+          <p class="prose" id="d-preprocess-text"></p>
+        </div>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -1292,7 +1343,7 @@
      only source of truth, and everything on screen is a fold over it. */
   var P = null;
   var SEC = { data:"sec-data", target:"sec-target", eda:"sec-eda",
-              features:"sec-features" };
+              features:"sec-features", preprocess:"sec-preprocess" };
   /* The last Explore plan the Router returned. Held so the attestation can
      rebuild the exact sentence it is checking against, rather than the page
      inventing one. */
@@ -1442,8 +1493,14 @@
     var h = '<p class="r-why">' + esc(detail.message || detail.reason || "") + "</p>";
     h += '<div class="r-acts">';
     exits.forEach(function(x, i){
-      var take = x.kind === "attest" && (x.retry || {}).payload;
-      h += '<button class="answer' + (take ? " primary" : "") +
+      /* AN EXIT IS LIVE IF IT CARRIES A WAY TO TAKE IT, whatever kind it is.
+         This used to enable attestations only, because the one resolve exit in
+         the app was hand-written with no `retry` — so the safe way out of a
+         blocker rendered greyed out beside a live "do it anyway", which is the
+         opposite of the choice §09 intends. The condition now reads the
+         payload rather than the kind, and the RESOLVE is the primary. */
+      var take = (x.retry || {}).payload;
+      h += '<button class="answer' + (take && x.kind === "resolve" ? " primary" : "") +
            '" type="button" data-refusal-i="' + i + '"' +
            (take ? "" : " disabled") + ">" + esc(x.label || x.id) + "</button>";
     });
@@ -2234,6 +2291,7 @@
     renderPrevalence();
     renderDisclosures();
     renderFeatureStep();
+    renderPreprocessStep();
   }
 
   function renderData(){
@@ -3138,6 +3196,154 @@
     }
 
     $("latSupp").innerHTML = latSuppressedHTML();
+  }
+
+  /* ═════════ GUIDED-085 · THE PREPROCESS STEP ═════════
+     Every sentence is the server's. `/preprocess` composes the mechanism
+     question with its `why` and its `consumer`, and every strategy with the
+     litmus answer in words and whether it defers — so this renders and never
+     explains. */
+  var PREP = null;
+  var PREP_MECH = {};                    /* column -> the mechanism answered */
+
+  function prepStrategy(branch, key){
+    var list = ((PREP.strategies || {})[branch] || []);
+    for (var i = 0; i < list.length; i++){ if (list[i].key === key) return list[i]; }
+    return null;
+  }
+
+  function prepMechHTML(col){
+    var q = PREP.mechanism_question || {};
+    var chosen = PREP_MECH[col.column] || col.mechanism || "";
+    var values = ["informative", "not_informative", "not_sure"];
+    var h = '<div class="prep-ask"><p class="prep-q">Does a blank in <span class="v">' +
+            esc(col.column) + "</span> mean something?</p>";
+    /* The PRIOR, where the pack has one. Offered beside the options and never
+       as the answer: nothing in the data reveals what a blank meant to the
+       person who did not write it down. */
+    var prior = (q.priors || {})[col.column];
+    if (prior) h += '<p class="prep-prior">' + esc(prior) + "</p>";
+    h += '<div class="prep-opts">';
+    (q.options || []).forEach(function(label, i){
+      h += '<button class="pill" type="button" data-prep-mech="' + esc(col.column) +
+           '" data-prep-mech-value="' + esc(values[i]) + '" aria-pressed="' +
+           (chosen === values[i] ? "true" : "false") + '">' + esc(label) +
+           "</button>";
+    });
+    return h + "</div></div>";
+  }
+
+  function prepStrategyHTML(col){
+    var mech = PREP_MECH[col.column] || col.mechanism || "";
+    if (!mech){
+      /* §07's ORDER, enforced by the surface and not only by the server: the
+         strategies are not shown until the mechanism is answered, because a
+         list of fills beside an unanswered question is an invitation to pick
+         one without answering it. */
+      return '<p class="feat-note">The strategies appear once that is ' +
+             "answered. Which fills are legitimate depends on the answer, so " +
+             "the app will not show them beside the question.</p>";
+    }
+    var h = '<div class="prep-strats">';
+    (col.strategies || []).forEach(function(key){
+      var st = prepStrategy(col.branch, key);
+      if (!st) return;
+      h += '<div class="prep-strat"><div class="prep-shead">' +
+           '<span class="prep-slab">' + esc(st.label) + "</span>" +
+           '<span class="prep-when">' +
+           (st.defers ? "fitted inside each training fold"
+                      : "applied now, to the working table") + "</span></div>" +
+           '<p class="prep-because">' + esc(st.because) + "</p>" +
+           '<button class="answer primary" type="button" data-prep-route="' +
+           esc(col.column) + '" data-prep-strategy="' + esc(key) + '">' +
+           (st.defers ? "Record this" : "Apply this now") + "</button></div>";
+    });
+    return h + "</div>";
+  }
+
+  function prepColHTML(col){
+    var done = (PREP.declared || []).filter(function(d){
+      return d.column === col.column; })[0];
+    if (done){
+      /* THE RECEIPT, THE SCHEDULE AND THE MANUSCRIPT LINE ARE ONE SENTENCE.
+         The server composes it once and it is what the record keeps, so what
+         the user reads here is what the methods section will say. */
+      return '<div class="answered-card"><p class="prep-done">' +
+             esc(done.sentence) + "</p>" +
+             '<p class="feat-note">Fitted on: ' + esc(done.fit_on) +
+             (done.acknowledged_signal_loss
+                ? " · recorded as a stated limitation" : "") + "</p></div>";
+    }
+    return prepMechHTML(col) + prepStrategyHTML(col);
+  }
+
+  function prepReceiptHTML(){
+    var r = PREP.receipt || {};
+    var h = '<div class="lat-supp"><b>' + esc(r.headline || "") + "</b>";
+    if (r.outstanding) h += "<p>" + esc(r.outstanding) + "</p>";
+    if (r.why_nothing_changed) h += "<p>" + esc(r.why_nothing_changed) + "</p>";
+    (r.assumptions || []).forEach(function(a){
+      h += '<p class="feat-note">' + esc(typeof a === "string" ? a : a.text || "") +
+           "</p>";
+    });
+    return h + "</div>";
+  }
+
+  function renderPreprocess(){
+    if (!P || !P.target || !PREP) return;
+    reveal("preprocess");
+    var q = PREP.mechanism_question || {};
+    $("prepWhy").innerHTML = esc(q.why || "");
+    $("prepConsumer").innerHTML = esc(q.consumer || "");
+
+    var box = $("prepCols");
+    var cols = PREP.columns || [];
+    if (!cols.length){
+      var none = ownChild(box, "prepNone", "");
+      none.innerHTML =
+        '<p class="feat-note">No column in your table has a missing value, so ' +
+        "there is nothing to route. That is an answer, not a skipped step.</p>";
+    } else {
+      cols.forEach(function(col){
+        var node = ownChild(box, "prepcol-" + col.column, "prep-col");
+        node.setAttribute("data-prep-col", col.column);
+        var html = '<div class="prep-head"><span class="v">' + esc(col.column) +
+                   '</span><span class="route">' + esc(col.branch) + "</span>" +
+                   '<span class="chip">' + num(col.n_missing, 0) + " of " +
+                   num(col.n_rows, 0) + " missing</span>" +
+                   '<span class="chip">' + pct(col.fraction) + "</span></div>" +
+                   prepColHTML(col);
+        if (node.innerHTML !== html) node.innerHTML = html;
+      });
+    }
+
+    $("prepReceipt").innerHTML = prepReceiptHTML();
+
+    var terminal = ownChild(box, "prepTerminal", "");
+    if (PREP.settled){
+      var said = P.decisions.filter(function(d){
+        return d.kind === "settle_preprocess"; });
+      record("d-preprocess", esc(said.length
+        ? said[said.length - 1].text : "Preprocessing is settled."));
+      sectState("preprocess", "recorded", "recorded");
+      setMap("preprocess", "done");
+      terminal.innerHTML =
+        '<p class="feat-note">This step is settled. Everything recorded here ' +
+        "is fitted inside the training folds when the models are trained.</p>";
+    } else {
+      sectState("preprocess", "live", "open");
+      terminal.innerHTML =
+        '<div class="feat-ctl" style="margin-top:14px;">' +
+        '<button class="answer" type="button" data-prep-settle="1">' +
+        "Settle preprocessing</button></div>";
+    }
+  }
+
+  function renderPreprocessStep(){
+    if (!P || !P.target) return;
+    api("/project/" + P.id + "/preprocess")
+      .then(function(body){ PREP = body; renderPreprocess(); })
+      .catch(function(){ /* the step is a surface, not a gate on Features */ });
   }
 
   function renderFeatureStep(){
@@ -4129,7 +4335,7 @@
       "[data-event-for]," +
       "[data-look],[data-unskip],[data-exit-for],[data-att-send],[data-refusal-i],[data-prev-ask]," +
       "[data-feat-preview],[data-feat-add],[data-feat-remove],[data-feat-settle]," +
-      "[data-lat-cell]," +
+      "[data-lat-cell],[data-prep-mech],[data-prep-route],[data-prep-settle]," +
       "[data-sel-rank],[data-sel-set]," +
       "[data-impossible],[data-keep-impossible],[data-miss-choose],[data-miss-preview]," +
       "[data-hist-page],[data-pg-step],[data-copy-rows]," +
@@ -4288,6 +4494,31 @@
 
     /* ── the prevalence question ── */
     if (t.hasAttribute("data-prev-ask")){ askPrevalence(); return; }
+
+    /* ── the Preprocess step ── */
+    if (t.hasAttribute("data-prep-mech")){
+      /* Held, not posted. The mechanism travels WITH the strategy on one
+         request, because they are one decision — routing a column is the pair,
+         and a mechanism recorded alone would be an answer with no consequence
+         attached to it. */
+      PREP_MECH[t.getAttribute("data-prep-mech")] =
+        t.getAttribute("data-prep-mech-value");
+      renderPreprocess();
+      return;
+    }
+    if (t.hasAttribute("data-prep-route")){
+      var pcol = t.getAttribute("data-prep-route");
+      decide("route_missingness", pcol,
+             { column: pcol, mechanism: PREP_MECH[pcol] || "not_sure",
+               strategy: t.getAttribute("data-prep-strategy") },
+             "Recording that…");
+      return;
+    }
+    if (t.hasAttribute("data-prep-settle")){
+      decide("settle_preprocess", "", { skipped: false },
+             "Settling preprocessing…");
+      return;
+    }
 
     /* ── a lattice cell: show which rows matched it ── */
     if (t.hasAttribute("data-lat-cell")){

@@ -109,17 +109,54 @@ INFORMATIVE_IMPUTATION_BLOCKER = (
     "limitation. If it is not, an explicit `Missing` category keeps the blank "
     "as its own answer and costs nothing.")
 
-BLOCKER_EXITS = (
-    {"id": "explicit_category", "kind": "resolve",
-     "label": "Keep the blanks as their own category",
-     "detail": "A blank becomes a literal `Missing` value, so the model can use "
-               "it the way it uses any other level."},
-    _exits.attest(
+# THE WAY THROUGH DEPENDS ON THE BRANCH, and it used to not.
+#
+# One hand-written resolve exit offered `explicit_category` for every column,
+# including numeric ones, where it is not an available strategy at all — so the
+# blocker's own way out was a route the record refuses. It also carried no
+# `retry`, unlike the attest exit beside it, so a client holding only the
+# payload could read the offer and not take it: `GUIDED-072`'s unifying test,
+# failed by the one exit that is supposed to be the easy answer.
+#
+# Both exits now carry a retry payload, and the resolve exit names a strategy
+# that KEEPS THE SIGNAL on the branch it is offered for — which is the thing
+# the blocker exists to protect.
+_RESOLVE_BY_BRANCH = {
+    "categorical": {
+        "id": EXPLICIT_CATEGORY,
+        "label": "Keep the blanks as their own category",
+        "detail": "A blank becomes a literal `Missing` value, so the model can "
+                  "use it the way it uses any other level."},
+    "numeric": {
+        "id": INDICATOR,
+        "label": "Add a was-it-missing column and leave the value blank",
+        "detail": "The fact that the value was absent becomes a column of its "
+                  "own, so the model can use it — and the number itself is not "
+                  "invented. Writing a category into a numeric column would "
+                  "stop it being numeric."},
+}
+
+
+def blocker_exits(branch: str) -> tuple:
+    resolve = _RESOLVE_BY_BRANCH.get(branch)
+    exits = []
+    if resolve is not None:
+        exits.append({
+            "id": resolve["id"], "kind": "resolve", "label": resolve["label"],
+            "detail": resolve["detail"],
+            "retry": {"payload": {"strategy": resolve["id"]},
+                      "how": "Sent again with this strategy in place of the "
+                             "one that would erase the blanks.",
+                      "typed": None}})
+    exits.append(_exits.attest(
         "Fill them anyway — I know what these blanks are",
         "Recorded as a stated limitation: the missingness signal is "
         "removed deliberately, and the methods section says so.",
-        _exits.ACKNOWLEDGE_SIGNAL_LOSS),
-)
+        _exits.ACKNOWLEDGE_SIGNAL_LOSS))
+    return tuple(exits)
+
+
+BLOCKER_EXITS = blocker_exits("categorical")
 
 # ── the outcome inside an imputation scope · one question, two answers ───────
 #
@@ -248,6 +285,10 @@ def survey(df: pd.DataFrame, target: Optional[str] = None) -> List[Dict[str, Any
 
 CATEGORICAL_STRATEGIES = (EXPLICIT_CATEGORY, INDICATOR, IMPUTE_MODE, LEAVE)
 NUMERIC_STRATEGIES = (INDICATOR, IMPUTE_MEDIAN, IMPUTE_MEAN, IMPUTE_MICE, LEAVE)
+# One table, so the offer and the check read the same thing. Two lists that
+# happen to agree are two lists.
+STRATEGIES_BY_BRANCH = {"numeric": NUMERIC_STRATEGIES,
+                        "categorical": CATEGORICAL_STRATEGIES}
 # Every strategy this module can declare, from the two branches rather than from
 # a third list — a third list is the one that goes stale.
 STRATEGIES_ALL = frozenset(CATEGORICAL_STRATEGIES) | frozenset(NUMERIC_STRATEGIES)
@@ -319,7 +360,7 @@ def blocks(mechanism: Optional[str], strategy_key: str) -> bool:
 
 
 def blocker(column: str, mechanism: Optional[str], strategy_key: str,
-            n_missing: int) -> Optional[Dict[str, Any]]:
+            n_missing: int, branch: str = "categorical") -> Optional[Dict[str, Any]]:
     """The interruption, with both terminal exits attached.
 
     `DESIGN_LANGUAGE.md` §09: a CONSEQUENCE resolves or is attested, never a
@@ -335,7 +376,7 @@ def blocker(column: str, mechanism: Optional[str], strategy_key: str,
         "message": INFORMATIVE_IMPUTATION_BLOCKER.format(
             column=column, strategy=_LABELS[strategy_key].lower(),
             n_missing=int(n_missing), filler=_FILLERS[strategy_key]),
-        "exits": [dict(e) for e in BLOCKER_EXITS],
+        "exits": [dict(e) for e in blocker_exits(branch)],
         "acknowledgment_kind": "typed",
     }
 
@@ -361,6 +402,21 @@ def declare(column: str, branch: str, mechanism: str, strategy_key: str,
         raise MissingnessRefusal(
             f"{mechanism!r} is not one of {list(MECHANISMS)}. The mechanism is "
             f"asked, never inferred — `not_sure` is a real answer.")
+    # THE STRATEGY HAS TO BELONG TO THE BRANCH, and this was not checked.
+    # `explicit_category` on a numeric column was accepted, wrote the literal
+    # string `Missing` into it, and turned a column of numbers into a column of
+    # text — silently, while the recorded sentence said only that the blanks
+    # were kept as their own category. Everything downstream then read the
+    # column differently: the profile, the numeric candidate lists, the recipe
+    # lattice. A strategy list per branch that nothing enforces is a comment.
+    allowed = STRATEGIES_BY_BRANCH.get(branch)
+    if allowed is not None and strategy_key not in allowed:
+        raise MissingnessRefusal(
+            f"{strategy_key!r} is not offered for a {branch} column. "
+            f"{_LABELS.get(strategy_key, strategy_key)} would change what the "
+            f"column IS — a {branch} column filled this way stops being one, "
+            f"and nothing downstream would say so. Available here: "
+            f"{', '.join(allowed)}.")
     spec = strategy(strategy_key)
 
     scope = [str(c) for c in (uses_columns or [])]

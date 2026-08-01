@@ -8522,9 +8522,37 @@
   "ev": "turbotab/api.py get_models three groups always returned including empty ones; get_preprocess strategies carry because and defers; index.html fetches neither",
   "act": "",
   "status": "OPEN",
-  "note": "FILED AT L33-E as the honest remainder of the GUIDED-080 class, and they are DIFFERENT from the six surfaces that loop closed. Those were built things nobody could reach. These two are steps the build deliberately stops before - the rail says so in its own words - and the endpoints are what a step would read when it exists. What makes them worth a row rather than a shrug: both already carry the part that is hard. /models returns three groups ALWAYS, including empty ones, because nothing is recommended for this data is a real state and a renderer that drops the group asserts it was never considered. /preprocess carries because and defers per strategy so an interface can say WHY a choice changes nothing on screen instead of leaving the user to conclude the app did nothing. That reasoning is the expensive half and it is already written. Named in NOT_READ_BY_THE_DOOR so the standing check stays green for a stated reason rather than by omission.",
+  "note": "L34-B CLOSED THE PREPROCESS HALF. The step has a surface and an end: ROADMAP L9's criterion is met for it - a person uploads a file, picks a target, and reaches the end of Preprocess without leaving the Guided door. Clause section 07's fork is the SHAPE of the step and is asserted as a property rather than described in a comment: the mechanism is asked first and NO STRATEGY IS ON SCREEN until it is answered, because which fills are legitimate depends on the answer, and a list of fills beside an unanswered question is an invitation to pick one without answering it. Every strategy renders the engine's own because - clause section 06's litmus in words - and its timing, so the page says why a choice changes nothing on screen instead of leaving the user to conclude the app did nothing. THE SENTENCE IS ONE OBJECT, asserted as identity rather than as agreement: the transcript line, the step's receipt and the methods prose are the same string composed once by the server, and the claim compares declared[sentence] to the recorded decision text. Two strings that merely agree today are two strings. Verified by replay - the clicks are driven in the harness and the requests the page composed are replayed against the record, which must end preprocess_settled. Two defects found by driving it rather than reading it: GUIDED-086 and GUIDED-087. THE ROW STAYS OPEN for the models shelf, which is Part C.",
   "verified_against": "",
-  "test": "turbotab/test_the_page_says_what_the_record_says.py::test_every_server_surface_names_its_reader",
+  "test": "turbotab/test_the_page_says_what_the_record_says.py::test_claim[preprocess reaches its end]",
   "verified_ev": "turbotab/api.py get_models three groups always returned including empty ones; get_preprocess strategies carry because and defers; index.html fetches neither"
+ },
+ {
+  "id": "GUIDED-086",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "route_missingness accepted any strategy for any column, so a categorical fill on a numeric column silently rewrote it to text",
+  "detail": "",
+  "ev": "turbotab/missingness.py declare() checked the mechanism and not the branch; NUMERIC_STRATEGIES and CATEGORICAL_STRATEGIES existed and nothing consulted them; turbotab/api.py route_missingness",
+  "act": "",
+  "status": "FIXED",
+  "note": "FOUND AT L34-B BY DRIVING THE BLOCKER'S OWN WAY THROUGH, which is the part worth keeping: the defect was not reachable by reading the strategy list, it was reachable by taking the exit the app recommends. explicit_category on a numeric column was accepted, wrote the literal string Missing into it, and turned a column of numbers into a column of text. Measured: float64 before, object after. The recorded sentence said only that the blanks were kept as their own category - true, and not the part that mattered. Everything downstream then read the column differently: the profile re-typed it, and every numeric candidate list in the app quietly lost a column - the feature catalogue, the selection ranking, and the recipe lattice's numeric_columns. THE STRATEGY LISTS PER BRANCH ALREADY EXISTED and nothing enforced them, which is AUDIT-008's shape again - the capability is in the module and the path that needs it does not consult it. Fixed with one table, STRATEGIES_BY_BRANCH, that both the offer and the check read, because two lists that happen to agree are two lists. The refusal states the consequence rather than the rule: a numeric column filled this way stops being one, and nothing downstream would say so. SECOND DEFECT IN THE SAME PLACE, fixed with it: blocker() offered a hand-written explicit_category resolve exit for EVERY column, so on a numeric column the app's recommended escape from the blocker was the route that corrupts it. blocker_exits(branch) now picks the exit that keeps the signal on the branch it is offered for - indicator for numeric, which preserves the fact of absence without inventing a number.",
+  "verified_against": "float64 column Unnamed: 0 became object after routing explicit_category; refusal absent, sentence said only that blanks were kept as their own category",
+  "test": "turbotab/test_a_strategy_belongs_to_its_branch.py::test_a_categorical_strategy_is_refused_on_a_numeric_column",
+  "verified_ev": "turbotab/missingness.py declare() checked the mechanism and not the branch; NUMERIC_STRATEGIES and CATEGORICAL_STRATEGIES existed and nothing consulted them; turbotab/api.py route_missingness"
+ },
+ {
+  "id": "GUIDED-087",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "The blocker's resolve exit carried no retry payload, so the page rendered the safe way through disabled beside a live 'do it anyway'",
+  "detail": "",
+  "ev": "turbotab/missingness.py BLOCKER_EXITS: the resolve entry was a hand-written dict with id, kind, label and detail; the attest entry beside it came from exits.attest() which builds a retry; turbotab/web/index.html showRefusal enabled kind === 'attest' only",
+  "act": "",
+  "status": "FIXED",
+  "note": "L34-B. GUIDED-072's unifying test is that a client holding only the payload can act correctly, and the one exit that is supposed to be the EASY answer failed it. DESIGN_LANGUAGE section 09 says a consequence resolves or is attested; what the app actually offered was an attestation and a description. The page compounded it: showRefusal enabled kind === attest only, which was a reasonable read of the only exits that existed, so the safe route rendered greyed out next to a live Fill them anyway. That is the opposite of the choice section 09 intends. Both halves fixed: the resolve exit carries a retry payload, and the page's enable condition reads the payload rather than the kind - an exit is live if it carries a way to take it, whatever kind it is - with the RESOLVE as the primary. Found while writing the section 07 blocker claim for Part B; the claim now asserts no exit renders disabled, which is what caught it.",
+  "verified_against": "the exit rendered with the disabled attribute; the claim's assertion that no exit is disabled fails against the previous page",
+  "test": "turbotab/test_the_page_says_what_the_record_says.py::test_claim[imputing an informative blank is a blocker with a way through]",
+  "verified_ev": "turbotab/missingness.py BLOCKER_EXITS: the resolve entry was a hand-written dict with id, kind, label and detail; the attest entry beside it came from exits.attest() which builds a retry; turbotab/web/index.html showRefusal enabled kind === 'attest' only"
  }
 ]

@@ -96,6 +96,10 @@ def _routes(client, project, **extra):
     return routes
 
 
+def json_dumps(value):
+    return json.dumps(value)
+
+
 def _drive(body, routes, pid):
     return H.run(body, routes=routes, search=f"?project={pid}")
 
@@ -951,6 +955,268 @@ def claim_the_lattice_shows_which_rows_matched(client, project):
 
 
 
+
+def claim_preprocess_reaches_its_end(client, project):
+    """**`GUIDED-085`, and ROADMAP L9's criterion unchanged:** a person uploads
+    a file and reaches the END of Preprocess without leaving the Guided door.
+
+    `/preprocess` was composed, complete and fetched by nothing. Every strategy
+    already carried `because` — clause §06's litmus in words — and `defers`, so
+    an interface could say WHY a choice changes nothing on screen instead of
+    leaving the user to conclude the app did nothing.
+
+    §07's fork is the shape of the step and is asserted as such: the mechanism
+    is asked first, and the strategies are not on screen until it is answered,
+    because which fills are legitimate depends on the answer.
+
+    Driven as clicks and REPLAYED against the record, for the same reason the
+    Features claim is: a page can render controls that compose requests the
+    server refuses, and a claim that only watched the DOM would call that
+    success.
+    """
+    with open(DATA / "clinic_visits.csv", "rb") as fh:
+        pid = client.post("/project", files={
+            "file": ("s.csv", fh, "text/csv")}).json()["id"]
+    for what, payload in [("set_target", {"column": "hba1c"}),
+                          ("set_purpose", {"answer": "prediction"})]:
+        r = client.post(f"/project/{pid}/decision",
+                        json={"kind": what, "payload": payload})
+        assert r.status_code == 200, (what, r.text[:200])
+    seen = client.get(f"/project/{pid}").json()
+    served = client.get(f"/project/{pid}/preprocess").json()
+    assert served["columns"], (
+        "this fixture has no column with blanks, so the claim has nothing to "
+        "be about — check the fixture, not the page")
+    first = served["columns"][0]["column"]
+
+    routes = _routes(client, seen, **{
+        f"/project/{pid}/figures": client.get(f"/project/{pid}/figures").json(),
+        f"/project/{pid}/features": client.get(f"/project/{pid}/features").json(),
+        f"/project/{pid}/interview?step=features":
+            client.get(f"/project/{pid}/interview?step=features").json(),
+        f"/project/{pid}/recipes": client.get(f"/project/{pid}/recipes").json(),
+        f"/project/{pid}/preprocess": served,
+        f"POST /project/{pid}/decision": seen,
+    })
+
+    out = _drive(
+        """
+        function settle(n){
+          var p = Promise.resolve();
+          for (var i = 0; i < n; i++) { p = p.then(function(){}); }
+          return p;
+        }
+        var seen = {};
+        settle(20).then(function(){
+          __harness.drainRaf();
+          seen.before = __harness.html('prepCols');
+          seen.why = __harness.html('prepWhy') + __harness.html('prepConsumer');
+          __harness.dispatch('click', __harness.target(
+            {'data-prep-mech': COLUMN, 'data-prep-mech-value': 'not_informative'},
+            ['pill']));
+          return settle(6);
+        }).then(function(){
+          seen.after = __harness.html('prepCols');
+          seen.receipt = __harness.html('prepReceipt');
+          var m = /data-prep-strategy="([^"]+)"/.exec(seen.after);
+          seen.strategy = m && m[1];
+          __harness.dispatch('click', __harness.target(
+            {'data-prep-route': COLUMN, 'data-prep-strategy': seen.strategy},
+            ['answer', 'primary']));
+          return settle(10);
+        }).then(function(){
+          __harness.dispatch('click',
+            __harness.target({'data-prep-settle': '1'}, ['answer']));
+          return settle(10);
+        }).then(function(){
+          seen.posts = __harness.posts();
+          seen.err = __harness.el('upErr').textContent;
+          __emit(seen);
+        });
+        """.replace("COLUMN", repr(first).replace("'", '"')),
+        routes, pid)
+
+    assert not out["err"], f"the walk raised: {out['err']}"
+
+    # The mechanism question is the server's, with its consumer (§09).
+    question = served["mechanism_question"]
+    assert question["why"][:50] in out["why"]
+    assert question["consumer"][:50] in out["why"], (
+        "the step asks what a blank means and does not say who consumes the "
+        "answer")
+
+    # §07's ORDER, as the property rather than as a comment: no strategy is on
+    # screen before the mechanism is answered, and they arrive when it is.
+    assert "data-prep-strategy" not in out["before"], (
+        "the fills were offered beside the question that decides which of them "
+        "are legitimate, which is how a column that carried information gets a "
+        "median written over it")
+    assert "data-prep-strategy" in out["after"], (
+        "answering the mechanism produced no strategies, so the question leads "
+        "nowhere")
+
+    # Every strategy carries the engine's litmus answer and its timing.
+    branch = served["columns"][0]["branch"]
+    for st in served["strategies"][branch]:
+        if st["key"] not in served["columns"][0]["strategies"]:
+            continue
+        assert st["label"] in out["after"]
+        assert st["because"][:40] in out["after"], (
+            f"{st['key']} rendered without the reason it defers or does not")
+
+    assert served["receipt"]["headline"] in out["receipt"], (
+        "the receipt the server composed did not reach the page")
+
+    # THE GATE. Every request the page composed, replayed against the record.
+    posted = [p["body"] if isinstance(p["body"], dict) else json.loads(p["body"])
+              for p in out["posts"]]
+    assert [b["kind"] for b in posted] == ["route_missingness",
+                                           "settle_preprocess"], posted
+    for body in posted:
+        again = client.post(f"/project/{pid}/decision", json=body)
+        assert again.status_code == 200, (body["kind"], again.text[:250])
+
+    ended = client.get(f"/project/{pid}").json()
+    assert ended["preprocess_settled"] is True, (
+        "the walk ran to the end of the step and the record does not say the "
+        "step is over")
+    routed = [d for d in ended["decisions"] if d["kind"] == "route_missingness"]
+    assert routed, "nothing was routed"
+
+    # ONE SENTENCE, not three. The transcript line, the step's own receipt and
+    # the methods prose are the same string composed once by the server — which
+    # is the whole reason the timing rides in the sentence rather than beside
+    # it. Asserted as identity, because two strings that merely agree today are
+    # two strings.
+    after = client.get(f"/project/{pid}/preprocess").json()
+    declared = [d for d in after["declared"] if d["column"] == first]
+    assert declared, f"{first} was routed and the step does not list it"
+    assert declared[0]["sentence"] == routed[0]["text"], (
+        "the step's receipt and the transcript carry different sentences for "
+        "one decision, so one of them is a paraphrase")
+    assert declared[0]["fit_on"], (
+        "the declaration does not say what the strategy is fitted on, which is "
+        "the half of §06 that decides whether it can leak")
+
+
+
+
+def claim_imputing_an_informative_blank_is_a_blocker_with_a_way_through(
+        client, project):
+    """**§07's fork, where it bites.** A blank that means something and a fill
+    that erases it is not a warning — it is a blocker with a typed
+    acknowledgment, because the information is gone from the data afterward and
+    no model can recover it.
+
+    The exits are the SERVER's (`GUIDED-076`), so this asserts the page renders
+    the interruption it was handed and that the resolve exit's retry is a
+    request the record accepts — a blocker whose way through does not work is a
+    dead end with extra words.
+    """
+    with open(DATA / "clinic_visits.csv", "rb") as fh:
+        pid = client.post("/project", files={
+            "file": ("s.csv", fh, "text/csv")}).json()["id"]
+    for what, payload in [("set_target", {"column": "hba1c"}),
+                          ("set_purpose", {"answer": "prediction"})]:
+        client.post(f"/project/{pid}/decision",
+                    json={"kind": what, "payload": payload})
+    seen = client.get(f"/project/{pid}").json()
+    served = client.get(f"/project/{pid}/preprocess").json()
+
+    fills = [c for c in served["columns"]
+             if any(k.startswith("impute") for k in c["strategies"])]
+    assert fills, "no column offers a fill, so there is no blocker to reach"
+    col = fills[0]
+    strategy = [k for k in col["strategies"] if k.startswith("impute")][0]
+
+    refused = client.post(f"/project/{pid}/decision", json={
+        "kind": "route_missingness",
+        "payload": {"column": col["column"], "mechanism": "informative",
+                    "strategy": strategy}})
+    assert refused.status_code == 409, (
+        "filling an informative blank was not blocked", refused.status_code)
+    blocker = refused.json()["detail"]
+
+    routes = _routes(client, seen, **{
+        f"/project/{pid}/figures": client.get(f"/project/{pid}/figures").json(),
+        f"/project/{pid}/features": client.get(f"/project/{pid}/features").json(),
+        f"/project/{pid}/interview?step=features":
+            client.get(f"/project/{pid}/interview?step=features").json(),
+        f"/project/{pid}/recipes": client.get(f"/project/{pid}/recipes").json(),
+        f"/project/{pid}/preprocess": served,
+        # Shaped as FastAPI shapes it — the refusal rides in `detail`, which is
+        # the field `api()` reads and the reason `GUIDED-076` was about the
+        # throw rather than the response.
+        f"POST /project/{pid}/decision": {"__status": 409,
+                                          "body": {"detail": blocker}},
+    })
+
+    out = _drive(
+        """
+        function settle(n){
+          var p = Promise.resolve();
+          for (var i = 0; i < n; i++) { p = p.then(function(){}); }
+          return p;
+        }
+        settle(20).then(function(){
+          __harness.drainRaf();
+          __harness.dispatch('click', __harness.target(
+            {'data-prep-mech': COLUMN, 'data-prep-mech-value': 'informative'},
+            ['pill']));
+          return settle(6);
+        }).then(function(){
+          __harness.dispatch('click', __harness.target(
+            {'data-prep-route': COLUMN, 'data-prep-strategy': STRATEGY},
+            ['answer', 'primary']));
+          return settle(12);
+        }).then(function(){
+          __emit({band: __harness.html('refusal'),
+                  posts: __harness.posts()});
+        });
+        """.replace("COLUMN", json_dumps(col["column"]))
+           .replace("STRATEGY", json_dumps(strategy)),
+        routes, pid)
+
+    assert blocker["message"][:60] in out["band"], (
+        "the blocker reached the page without the sentence that explains it")
+    for exit_ in blocker["exits"]:
+        assert exit_["label"] in out["band"], (
+            f"the exit {exit_['id']!r} was served and rendered nowhere, so the "
+            "interruption is a dead end")
+        assert exit_["detail"][:40] in out["band"]
+
+    # The resolve exit is a REQUEST, and it has to be one the record takes.
+    # `GUIDED-072`'s unifying test: a client holding only the payload can act.
+    # It used to fail here — the resolve exit carried a label and a detail and
+    # no `retry`, so the page rendered it DISABLED and the only live way out of
+    # the blocker was the attestation. A way through that cannot be taken is a
+    # dead end with extra words.
+    resolve = [e for e in blocker["exits"] if e["kind"] == "resolve"]
+    assert resolve, "the blocker offers no way through that is not an attestation"
+    assert resolve[0].get("retry", {}).get("payload"), (
+        "the resolve exit says what to do and carries nothing to do it with")
+    assert "disabled" not in out["band"], (
+        "an exit rendered disabled, so the page describes a way through it "
+        "cannot take")
+    posted = [p["body"] if isinstance(p["body"], dict) else json.loads(p["body"])
+              for p in out["posts"]]
+    assert posted and posted[-1]["payload"]["mechanism"] == "informative", (
+        "the page posted a mechanism the user did not choose")
+
+    followed = dict(posted[-1])
+    followed["payload"] = dict(followed["payload"],
+                               **resolve[0]["retry"]["payload"])
+    accepted = client.post(f"/project/{pid}/decision", json=followed)
+    assert accepted.status_code == 200, (
+        "the way through the blocker is refused by the record",
+        accepted.text[:250])
+    kept = [d for d in accepted.json()["missingness"]
+            if d["column"] == col["column"]]
+    assert kept and kept[0]["strategy"] != strategy, (
+        "taking the exit left the erasing strategy in place")
+
+
+
 CLAIMS = [
     ("questions render", claim_questions_render),
     ("a decision re-paints", claim_a_decision_repaints),
@@ -970,6 +1236,9 @@ CLAIMS = [
     ("the features step reaches its end", claim_the_features_step_reaches_its_end),
     ("the lattice shows which rows matched",
      claim_the_lattice_shows_which_rows_matched),
+    ("preprocess reaches its end", claim_preprocess_reaches_its_end),
+    ("imputing an informative blank is a blocker with a way through",
+     claim_imputing_an_informative_blank_is_a_blocker_with_a_way_through),
 ]
 
 
@@ -1215,10 +1484,6 @@ NOT_READ_BY_THE_DOOR = {
         "UNREAD, and tracked by `GUIDED-085`. The models step is not in this "
         "build and the rail says so, but the shelf is composed, ordered and "
         "reasoned about — three groups always returned, including empty ones.",
-    "/project/{project_id}/preprocess":
-        "UNREAD, and tracked by `GUIDED-085`. Same shape as the models shelf: "
-        "the step is not in this build and every strategy already carries its "
-        "`because` and its `defers`.",
 }
 
 PROJECT_PREFIX = "/project/{project_id}"

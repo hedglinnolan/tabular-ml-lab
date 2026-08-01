@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**239 of 662 closed.**
+**241 of 664 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 376 |
 | `PARTIAL` | 47 |
-| `FIXED` | 236 |
+| `FIXED` | 238 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
@@ -414,7 +414,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-071` | medium | FigureSpec has no field for a precondition on upstream data state, so a figure that must refuse on the shape of the values can only do it inside its payload builder | `turbotab/figures.py FigureSpec.when_applicable; turbotab/figure_specs.py volcano_payload…` | Found at L29-B by building the volcano first, hardest-first, which is what LOOP.md section 02 now asks for. METABOLOMICS_PACK.md section 06.3: the fold change must be computed… |
 | `GUIDED-073` | medium | The client technology was never decided, only defaulted: the Guided door is one 3,701-line HTML file with 2,714 lines of hand-written vanilla JS, and the one sentence that reads like a decision… | `turbotab/web/index.html; turbotab/api.py:2259 StaticFiles mount; PRODUCT_VISION.md:22; PRODUCT_VISION.md…` | RAISED BY THE PRODUCT OWNER, who expected the dynamic half of a migration off Streamlit to be in something other than Python and found it is not. MEASURED: turbotab/web/index.html… |
 | `GUIDED-084` | medium | /capabilities is served so the interface cannot claim an affordance the server does not have, and the page never fetches it — it composes its own built verdicts and its own not-built reasons | `turbotab/api.py:1922 get_capabilities and PULL_CAPABILITIES; turbotab/web/index.html paletteExtras() computes…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_the_capability_table_is_read_rather_than_reimplemented` — ADJUDICATOR RULING, and it is not a new decision… |
-| `GUIDED-085` | medium | Two composed steps the Guided door has no surface for: the models shelf and the Preprocess step, both fully reasoned server-side | `turbotab/api.py get_models three groups always returned including empty ones; get_preprocess strategies carry…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_every_server_surface_names_its_reader` — FILED AT L33-E as the honest remainder of the GUIDED-080 class, and… |
+| `GUIDED-085` | medium | Two composed steps the Guided door has no surface for: the models shelf and the Preprocess step, both fully reasoned server-side | `turbotab/api.py get_models three groups always returned including empty ones; get_preprocess strategies carry…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim[preprocess reaches its end]` — L34-B CLOSED THE PREPROCESS HALF. The step has a surface and an end… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 
@@ -585,7 +585,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 236
+## FIXED — 238
 
 
 ### Multi-file / JSON import — 69
@@ -662,7 +662,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-136` | medium | coerce_numeric's methods-section description omits how many values it blanked (up to 20% of a column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 36'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 36 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-147` | medium | Duplicated key column name crashes normalize_key and therefore diagnose_join / execute_join / repair_keys (AttributeError), and silently blanks find_key_candidates | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 47'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 47 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 
-### Guided-door drive feedback — 58
+### Guided-door drive feedback — 60
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -711,6 +711,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-078` | high | The page never reads the served disclosures, so the grain, eligibility and seal sentences the server composes reach no reader | `turbotab/web/index.html has zero occurrences of disclosures; turbotab/api.py _disclosures; COPY_DECK.md three…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim[the seal says which split it drew]` — L33-B. The disclosure band renders five served sentences - grain… |
 | `GUIDED-079` | high | The Features step has no page surface, so the 20-row transform catalogue and the 5-row selection-method table promise copy nothing renders | `turbotab/web/index.html has zero occurrences of /features or selection/evidence; turbotab/api.py has both…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim[the features step reaches its end]` — L33-C. The Features step has a surface. ROADMAP L9's criterion is… |
 | `GUIDED-081` | high | The page harness silently dropped every className assignment, so any assertion about how a node is styled came back vacuously true | `turbotab/pageharness.py El had no className property; turbotab/web/index.html renderFigures and…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_the_shim_reports_a_class_it_was_assigned_rather_than_swallowing_it` — FOUND AT L33-B WHILE WRITING THE FIRST… |
+| `GUIDED-086` | high | route_missingness accepted any strategy for any column, so a categorical fill on a numeric column silently rewrote it to text | `turbotab/missingness.py declare() checked the mechanism and not the branch; NUMERIC_STRATEGIES and…` | **test:** `turbotab/test_a_strategy_belongs_to_its_branch.py::test_a_categorical_strategy_is_refused_on_a_numeric_column` — FOUND AT L34-B BY DRIVING THE BLOCKER'S OWN WAY… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |
@@ -724,6 +725,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-072` | medium | Every attest exit advertises a way out of a 409 and none of them names the payload key a client must send, and the four exits map to at least three different keys | `turbotab/packs.py:1951; turbotab/grain.py:206; turbotab/missingness.py:115; turbotab/purpose.py:155…` | **test:** `turbotab/test_a_client_holding_the_payload_can_act.py::test_a_client_with_only_the_409_can_construct_the_retry` — FIXED at L30-A. Every attest exit is built by… |
 | `GUIDED-076` | medium | The page composes its own blocker exits and never reads the ones the server serves, so GUIDED-072's payload_key and retry are discarded at the boundary | `turbotab/web/index.html blockerHTML around line 1728; turbotab/exits.py; turbotab/api.py the 409 detail` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim[a consequence renders the server's words]` — FIXED at L32-A, both halves. THE BLOCKER BAND… |
 | `GUIDED-077` | medium | The page harness auto-creates elements on getElementById and reports innerHTML as what was assigned, so a mutate-in-place renderer is invisible to it | `turbotab/pageharness.py document.getElementById; El.prototype.appendChild; DESIGN_LANGUAGE.md section 05` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_the_shim_says_no_to_an_id_that_does_not_exist` — L34-A. BOTH HOLES CLOSED AT THE SOURCE, and the sweep found… |
+| `GUIDED-087` | medium | The blocker's resolve exit carried no retry payload, so the page rendered the safe way through disabled beside a live 'do it anyway' | `turbotab/missingness.py BLOCKER_EXITS: the resolve entry was a hand-written dict with id, kind, label and…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim[imputing an informative blank is a blocker with a way through]` — L34-B. GUIDED-072's unifying test is… |
 
 ### Application state / lockbox — 34
 
