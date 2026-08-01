@@ -373,6 +373,116 @@ def claim_the_record_reads_back(client, project):
         "is a claim the interface does not keep")
 
 
+def claim_a_refusal_reaches_a_person(client, project):
+    """**`GUIDED-080`, and it is the point of the pack.** `LOOP.md` §04 says
+    nutrition went first BECAUSE it is the one pack that forces refusals, and
+    `/project/{id}/nutrition/prevalence` appeared zero times in the page: four
+    refusals built, verified through the API twice, and reachable by nobody.
+
+    A dietary project asks for a prevalence of inadequacy from a single day's
+    intake, is refused in the app, reads why, and is shown the shrinkage plot
+    the refusal offers — the figure that IS the size of the error the refusal
+    prevented. Then it asks something the research specifies and this app
+    cannot draw, and gets a record of what is missing rather than a control
+    with nothing behind it.
+    """
+    with open(DATA / "dietary_recalls.csv", "rb") as fh:
+        pid = client.post("/project", files={
+            "file": ("d.csv", fh, "text/csv")}).json()["id"]
+    for what, payload in [("set_lens", {"lens": ["dietary"]}),
+                          ("set_target", {"column": "hba1c"}),
+                          ("set_grain", {"answer": "people_repeat",
+                                         "group_col": "participant_id"}),
+                          ("set_repeat_kind", {"kind": "repeats"})]:
+        r = client.post(f"/project/{pid}/decision",
+                        json={"kind": what, "payload": payload})
+        assert r.status_code == 200, (what, r.text[:200])
+    project = client.get(f"/project/{pid}").json()
+
+    query = "?nutrient=energy_kcal&basis=single_day&reference_kind=EAR"
+    asked = client.get(f"/project/{pid}/nutrition/prevalence{query}").json()
+    assert asked["refused"] is True and asked.get("figure"), (
+        "the endpoint stopped refusing or stopped offering a drawable figure")
+
+    # The second ask is the PENDING branch: an offer the research specifies and
+    # this app cannot draw, because it needs the DRI table (`GUIDED-067`).
+    pending_query = "?nutrient=energy_kcal&basis=usual_intake&reference_kind=RDA"
+    pending = client.get(
+        f"/project/{pid}/nutrition/prevalence{pending_query}").json()
+    assert pending["offer"]["pending"] is True, (
+        "the pending offer resolved, so this claim no longer covers it")
+
+    routes = _routes(client, project, **{
+        f"/project/{pid}/figures": client.get(f"/project/{pid}/figures").json()})
+    routes[f"/project/{pid}/nutrition/prevalence{query}"] = asked
+    routes[f"/project/{pid}/nutrition/prevalence{pending_query}"] = pending
+
+    out = _drive(
+        """
+        function settle(n){
+          var p = Promise.resolve();
+          for (var i = 0; i < n; i++) { p = p.then(function(){}); }
+          return p;
+        }
+        function pick(name, value){
+          var sel = __harness.target({'data-prev': name}, []);
+          sel.value = value;
+          __harness.dispatch('change', sel);
+        }
+        function ask(){
+          __harness.dispatch('click',
+            __harness.target({'data-prev-ask': '1'}, ['answer', 'primary']));
+        }
+        var seen = {};
+        settle(12).then(function(){
+          seen.controls = __harness.render('prevalenceBox');
+          // The person makes each choice through a control and only then asks.
+          // Seeding the state directly would test the renderer against itself.
+          pick('nutrient', 'energy_kcal');
+          pick('basis', 'single_day');
+          pick('kind', 'EAR');
+          ask();
+          return settle(14);
+        }).then(function(){
+          __harness.drainRaf();
+          // Read `prevOut`, not its parent: the shim's deep walk cannot see a
+          // node that arrived inside an assigned innerHTML string
+          // (`GUIDED-077`). The node the page wrote to is the honest read.
+          seen.out = __harness.render('prevOut');
+          seen.figures = __harness.render('figuresBox');
+          pick('basis', 'usual_intake');
+          pick('kind', 'RDA');
+          ask();
+          return settle(14);
+        }).then(function(){
+          seen.pending = __harness.render('prevOut');
+          __emit(seen);
+        });
+        """,
+        routes, pid)
+
+    assert "data-prev-ask" in out["controls"], (
+        "the dietary lens is recorded and there is no way to ask the question")
+    assert asked["reason"][:50] in out["out"], (
+        "the refusal reached the page without the reason it refused")
+    assert "SETTLED" in out["out"], (
+        "the refusal rendered without its badge, so the one thing a reader "
+        "cannot check is its epistemic position")
+    assert asked["offer"]["label"] in out["out"], (
+        "the refusal offered nothing, which is indistinguishable from a "
+        "missing feature")
+    assert asked["figure"]["title"] in out["figures"], (
+        "the offered figure was named and not drawn")
+
+    assert pending["offer"]["resolved"]["needs"][:60] in out["pending"], (
+        "a pending offer rendered without saying what it needs, which makes it "
+        "indistinguishable from a control that does nothing")
+    assert pending["offer"]["resolved"]["blocked_by"] in out["pending"], (
+        "the pending offer did not name the row that blocks it")
+    assert "<button" not in out["pending"], (
+        "the pending offer rendered a control, and there is nothing behind it")
+
+
 CLAIMS = [
     ("questions render", claim_questions_render),
     ("a decision re-paints", claim_a_decision_repaints),
@@ -384,6 +494,7 @@ CLAIMS = [
     ("a figure arrives with its annotation box",
      claim_a_figure_arrives_with_its_annotation_box),
     ("the record reads back", claim_the_record_reads_back),
+    ("a refusal reaches a person", claim_a_refusal_reaches_a_person),
 ]
 
 

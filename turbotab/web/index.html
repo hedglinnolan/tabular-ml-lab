@@ -542,6 +542,22 @@
   .fig.absent{ background:var(--surface-2); }
   .fig-why{ font-size:12.5px; color:var(--muted); margin:5px 0 0; }
   @media (prefers-reduced-motion: reduce){ .fig{ transition:none; } }
+  /* ── the prevalence question and its refusal (GUIDED-080) ─────────── */
+  .prev{ border:1px solid var(--line); border-radius:9px; background:var(--surface); padding:12px 14px; }
+  .prev-head{ display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; margin-bottom:8px; }
+  .prev-lab{ font-size:11.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); }
+  .prev-why{ font-size:12.5px; color:var(--muted); margin:0 0 10px; max-width:70ch; }
+  .prev-ctl{ display:flex; flex-wrap:wrap; gap:7px; align-items:center; margin-bottom:4px; }
+  .prev-ctl select{ font:inherit; font-size:13px; padding:5px 8px; border-radius:7px;
+                    border:1px solid var(--line); background:var(--surface); color:var(--ink); }
+  .prev-out{ margin-top:11px; }
+  .refused-card{ border-left:3px solid var(--warn); background:var(--warn-tint);
+                 border-radius:0 9px 9px 0; padding:11px 13px; }
+  .refused-card .r-reason{ font-size:13.5px; line-height:1.6; margin:0 0 8px; }
+  .refused-card .r-offer{ font-size:12.5px; color:var(--muted); margin:0; }
+  .refused-card .r-pending{ font-size:12.5px; margin:6px 0 0; }
+  .answered-card{ border-left:3px solid var(--ok); background:var(--ok-tint);
+                  border-radius:0 9px 9px 0; padding:11px 13px; font-size:13.5px; }
   .uperr{margin:12px 0 0;font-size:12.5px;color:var(--del);background:var(--del-tint);
          border:1px solid var(--del);border-radius:8px;padding:9px 12px;line-height:1.5}
   .uperr:empty{display:none}
@@ -1049,6 +1065,21 @@
                  binds: figures arrive and leave as the lens and the target
                  change, and the transition IS the receipt. -->
             <div class="figs" id="figuresBox" style="margin-top:16px;"></div>
+
+            <!-- GUIDED-080. `/project/{id}/nutrition/prevalence` appeared zero
+                 times in this file. That endpoint IS the four refusals — against
+                 an AI, against the RDA, from a single day, from a naive mean —
+                 plus the iron routing to the probability approach, and
+                 `LOOP.md` §04 says nutrition went first BECAUSE it is the one
+                 pack that forces a refusal. It was built, verified through the
+                 API twice, and no person could reach it.
+
+                 A refusal renders its reason, its badge and its offer. A
+                 PENDING offer says what it needs and why rather than rendering
+                 a dead control — an offer naming an unbuilt figure is the same
+                 failure the offer exists to prevent, arriving one layer later
+                 (`GUIDED-060`). -->
+            <div class="prev" id="prevalenceBox" style="margin-top:16px;display:none;"></div>
           </div>
         </div>
       </div>
@@ -2024,6 +2055,7 @@
     renderDocks();
     renderInterview();
     renderFigureSurface();
+    renderPrevalence();
   }
 
   function renderData(){
@@ -2285,6 +2317,130 @@
     api("/project/" + P.id + "/figures")
       .then(renderFigures)
       .catch(function(){ /* the surface is an overlay on Explore, not a gate */ });
+  }
+
+
+  /* ═════════ THE PREVALENCE QUESTION, AND ITS REFUSAL ═════════
+     `GUIDED-080`. The one pack path that forces a refusal, and until now the
+     only way to reach it was `curl`. `research/NUTRITION_PACK.md` §07 figure E
+     is the source: a prevalence of inadequacy is computed against the EAR from
+     a USUAL-INTAKE distribution, and against anything else it is refused — by
+     the app and by anyone, which is what makes the AI case the flagship.
+
+     Offered under the dietary lens only. A pack changes what is drawn
+     (`DOMAIN_PACKS.md` §08) and this is a dietary question; on any other table
+     the control is not there rather than there and broken. */
+
+  var PREV_STATE = { nutrient: "", basis: "usual_intake", kind: "EAR" };
+
+  function prevalenceColumns(){
+    var cols = [];
+    (P && P.columns ? P.columns : []).forEach(function(c){
+      if (c.dtype && /int|float/.test(c.dtype) && c.name !== P.target) cols.push(c.name);
+    });
+    return cols;
+  }
+
+  function prevalenceControls(cols){
+    function sel(id, options, current){
+      var h = '<select data-prev="' + id + '">';
+      options.forEach(function(o){
+        var v = typeof o === "string" ? o : o[0];
+        var lab = typeof o === "string" ? o : o[1];
+        h += '<option value="' + esc(v) + '"' + (v === current ? " selected" : "") +
+             ">" + esc(lab) + "</option>";
+      });
+      return h + "</select>";
+    }
+    return '<div class="prev-ctl">' +
+      sel("nutrient", cols, PREV_STATE.nutrient) +
+      sel("basis", [["usual_intake", "modeled usual intake"],
+                    ["single_day", "a single day's intake"],
+                    ["naive_mean", "a naive mean of the days"]], PREV_STATE.basis) +
+      sel("kind", [["EAR", "against the EAR"], ["RDA", "against the RDA"],
+                   ["AI", "against the AI"]], PREV_STATE.kind) +
+      '<button class="answer primary" type="button" data-prev-ask="1">Ask</button>' +
+      "</div>";
+  }
+
+  function prevalenceResultHTML(body){
+    if (!body.refused){
+      return '<div class="answered-card">' +
+        "Prevalence of inadequacy for <b>" + esc(body.nutrient) + "</b> is computed " +
+        "by the <b>" + esc(body.method === "probability_approach"
+          ? "probability approach" : "EAR cut-point method") + "</b>." +
+        (body.note ? " " + esc(body.note) : "") +
+        evidenceBadge({ evidence_status: body.evidence_status,
+                        evidence_source: body.source }) + "</div>";
+    }
+    var h = '<div class="refused-card">';
+    h += '<p class="r-reason">' + esc(body.reason) +
+         evidenceBadge({ evidence_status: body.evidence_status,
+                         evidence_source: body.source }) + "</p>";
+    var offer = body.offer || {};
+    var resolved = offer.resolved || {};
+    if (offer.pending){
+      /* A PENDING OFFER IS A RECORD, NOT A CONTROL. It says what is missing and
+         which row is blocking it, because "the app cannot draw this yet, here
+         is what is needed" and "the app will not draw this" are different
+         sentences and only one of them is true. */
+      h += '<p class="r-offer">Instead: <b>' + esc(resolved.title || offer.label) +
+           "</b> — specified, and this app cannot draw it for you yet.</p>";
+      h += '<p class="r-pending">It needs ' + esc(resolved.needs || "") +
+           (resolved.blocked_by
+              ? ", which is open as " + esc(resolved.blocked_by) : "") +
+           ".</p>";
+    } else if (offer.label){
+      h += '<p class="r-offer">Instead: <b>' + esc(offer.label) + "</b>. " +
+           esc(offer.caption_note || "") + "</p>";
+    }
+    h += "</div>";
+    return h;
+  }
+
+  function renderPrevalence(){
+    var box = $("prevalenceBox");
+    if (!box || !P) return;
+    var lens = P.lens || [];
+    if (lens.indexOf("dietary") === -1){ box.style.display = "none"; return; }
+    var cols = prevalenceColumns();
+    if (!cols.length){ box.style.display = "none"; return; }
+    if (!PREV_STATE.nutrient || cols.indexOf(PREV_STATE.nutrient) === -1){
+      PREV_STATE.nutrient = cols[0];
+    }
+    box.style.display = "";
+    /* The controls are rewritten and the OUTPUT is not, so a refusal already on
+       screen survives a control change until a new answer replaces it — §05:
+       nothing moves that the user did not cause. */
+    var out = $("prevOut");
+    var carried = out ? out.innerHTML : "";
+    box.innerHTML =
+      '<div class="prev-head"><span class="prev-lab">Prevalence of inadequacy</span>' +
+      "</div>" +
+      '<p class="prev-why">Computed against the EAR, from a usual-intake ' +
+      "distribution. Ask it of anything else and the app will say why it " +
+      "cannot — a refusal here is an answer, not a missing feature.</p>" +
+      prevalenceControls(cols) +
+      '<div class="prev-out" id="prevOut">' + carried + "</div>";
+  }
+
+  function askPrevalence(){
+    if (!P) return;
+    var q = "?nutrient=" + encodeURIComponent(PREV_STATE.nutrient) +
+            "&basis=" + encodeURIComponent(PREV_STATE.basis) +
+            "&reference_kind=" + encodeURIComponent(PREV_STATE.kind);
+    job("Asking whether that can be computed…",
+        api("/project/" + P.id + "/nutrition/prevalence" + q))
+      .then(function(body){
+        var out = $("prevOut");
+        if (out) out.innerHTML = prevalenceResultHTML(body);
+        /* THE OFFER REACHES THE FIGURE. A refusal that offers a drawable figure
+           and does not draw it is the offer failing in the way it exists to
+           prevent, so the surface built at `GUIDED-075` is asked to draw it. */
+        if (body.figure) renderFigures({ admitted: [body.figure], held: [],
+                                         unavailable: [], not_drawn: [] });
+      })
+      .catch(function(e){ setErr(e.message); });
   }
 
   function renderEda(){
@@ -3136,6 +3292,12 @@
   /* The attestation. Object-specific, because a generic PROCEED habituates;
      paste is allowed, because blocking it harms accessibility and adds nothing;
      the comparison is on the sentence, not on the user's typing speed. */
+  document.addEventListener("change", function(e){
+    var t = e.target;
+    if (!t || !t.hasAttribute || !t.hasAttribute("data-prev")) return;
+    PREV_STATE[t.getAttribute("data-prev")] = t.value;
+  });
+
   document.addEventListener("input", function(e){
     var t = e.target;
     if (!t || !t.hasAttribute || !t.hasAttribute("data-att-for")) return;
@@ -3236,7 +3398,7 @@
       "[data-target-col],[data-panel],[data-pv-close],[data-defer],[data-dismiss]," +
       "[data-undismiss],[data-flag],[data-apply],[data-revert],[data-task]," +
       "[data-event-for]," +
-      "[data-look],[data-unskip],[data-exit-for],[data-att-send],[data-refusal-i]," +
+      "[data-look],[data-unskip],[data-exit-for],[data-att-send],[data-refusal-i],[data-prev-ask]," +
       "[data-impossible],[data-keep-impossible],[data-miss-choose],[data-miss-preview]," +
       "[data-hist-page],[data-pg-step],[data-copy-rows]," +
       "[data-rg-show],[data-rg-defer],[data-rg-pick],[data-rg-apply]," +
@@ -3391,6 +3553,9 @@
              "Putting that question back…");
       return;
     }
+
+    /* ── the prevalence question ── */
+    if (t.hasAttribute("data-prev-ask")){ askPrevalence(); return; }
 
     /* ── a refusal's exit: retry the SAME request with the exit's payload ── */
     if (t.hasAttribute("data-refusal-i")){
