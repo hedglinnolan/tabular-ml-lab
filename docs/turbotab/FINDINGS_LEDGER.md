@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**234 of 658 closed.**
+**234 of 659 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 377 |
+| `OPEN` | 378 |
 | `PARTIAL` | 47 |
 | `FIXED` | 231 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 377
+## OPEN — 378
 
 
 ### Application state / lockbox — 66
@@ -394,7 +394,7 @@ Nothing is closed without a regression test named after it.
 | `COACH-031` | invariant | Coaching voice must never reach the manuscript verbatim. | `utils/insight_ledger.py:1188 — `text = (i.manuscript_text or '').strip() or…` | The invariant is stated correctly and is broken in exactly the way this row predicts, unchanged at HEAD. The register separation works - manuscript_text is preferred and the regex… |
 | `COACH-032` | invariant | 'high' confidence is the only tier the UI pre-selects, so 'high' means the app is asserting (docs/FINDINGS_LEDGER.md, Governing rule, lines 20-27). | `PARTIALLY, and only in the import/join domain: ml/join_doctor.py:922 `if include_low or c.confidence !=…` | All three weakenings confirmed at HEAD. (1) is COACH-015: a medium-confidence join key IS pre-selected. (2) is exact - final returns detected with no tier check, so a… |
 
-### Guided-door drive feedback — 20
+### Guided-door drive feedback — 21
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -406,6 +406,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-074` | high | The preprocessing decision space is fully modeled, resolved per model by a precedence lattice, and measured for divergence — and the client renders it one cell at a time as prose, so the structure a… | `turbotab/recipes.py:78 Operation, :116 Default, :128 _SPECIFICITY, :392 Divergence, :493 worth_asking…` | RAISED BY THE PRODUCT OWNER, arguing that motion is a comprehension mechanism rather than polish. Checked, and the evidence is stronger than the claim. IT IS NOT FOUR DIMENSIONS… |
 | `GUIDED-078` | high | The page never reads the served disclosures, so the grain, eligibility and seal sentences the server composes reach no reader | `turbotab/web/index.html has zero occurrences of disclosures; turbotab/api.py _disclosures; COPY_DECK.md three…` | Found at L32-D by walking COPY_DECK.md against the page. api._disclosures exists FOR THIS REASON and says so in its own docstring: served rather than composed in the page, because… |
 | `GUIDED-079` | high | The Features step has no page surface, so the 20-row transform catalogue and the 5-row selection-method table promise copy nothing renders | `turbotab/web/index.html has zero occurrences of /features or selection/evidence; turbotab/api.py has both…` | Found at L32-D by walking COPY_DECK.md against the page. 25 of the deck's 130 promise rows - nineteen percent - belong to a step the interface does not have: GET… |
+| `GUIDED-080` | high | Measured extent of the dominant Guided defect class: six server surfaces the page never mentions, and the sharpest is nutrition/prevalence — the entire refusal apparatus the nutrition pack was built… | `turbotab/api.py endpoints vs turbotab/web/index.html; GUIDED-075 (fixed), GUIDED-078, GUIDED-079` | THE EXECUTION AGENT NAMED THIS CLASS FROM THREE INSTANCES AND ASKED THAT IT BE TREATED AS THE DOMINANT ONE ON THIS DOOR. It is, and it is larger than three. Measured by the… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |

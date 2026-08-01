@@ -8470,5 +8470,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "turbotab/web/index.html has zero occurrences of /features or selection/evidence; turbotab/api.py has both endpoints; COPY_DECK.md two sections, 25 rows"
+ },
+ {
+  "id": "GUIDED-080",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "Measured extent of the dominant Guided defect class: six server surfaces the page never mentions, and the sharpest is nutrition/prevalence — the entire refusal apparatus the nutrition pack was built first to prove",
+  "detail": "",
+  "ev": "turbotab/api.py endpoints vs turbotab/web/index.html; GUIDED-075 (fixed), GUIDED-078, GUIDED-079",
+  "act": "",
+  "status": "OPEN",
+  "note": "THE EXECUTION AGENT NAMED THIS CLASS FROM THREE INSTANCES AND ASKED THAT IT BE TREATED AS THE DOMINANT ONE ON THIS DOOR. It is, and it is larger than three. Measured by the adjudicator: of 27 server surfaces under /project/{id}, SIX are never mentioned in index.html - evidence/correlations, evidence/histograms, feature/preview, nutrition/prevalence, recipes, selection/evidence - plus the disclosures payload field (GUIDED-078) and the features step (GUIDED-079), neither of which is a bare endpoint. NUTRITION/PREVALENCE IS THE ONE THAT MATTERS MOST AND IT WAS NOT IN THE AGENT LIST. That endpoint is the four refusals: against an AI, against the RDA, from a single day, from a naive mean, plus the iron routing. LOOP.md section 04 says nutrition went first BECAUSE it is the one pack that forces a refusal, and the L27 commit message says a pack that can only add findings has not been tested. The refusal was built, verified through the API by me twice, and no user can reach it. The justification for the whole domain-track ordering is currently unreachable from the app. RECIPES IS THE SECOND. GUIDED-074 established that the preprocessing lattice is computed, resolved by a precedence rule and measured for divergence, and that n_choices_suppressed means \"here are N decisions I made for you and why they did not matter\". The L31 prototype proved a person can read it. The endpoint exists. The page does not call it. HOW THIS RESOLVES THE DEPTH-VERSUS-BREADTH QUESTION THE PRODUCT OWNER RAISED: it dissolves it. The largest available gain is neither more pack content nor more packs - it is connecting the content that already exists to a reader. Reaching nutrition/prevalence and recipes IS nutrition depth, delivered, and it costs no new science. THE PATTERN IS OLD AND HAS A NAME NOW: same shape as GUIDED-058 (pack and figures unreachable), GUIDED-075 (figures never fetched) and AUDIT-008 (core capability the path does not consult), which is four scales of one defect - a function nothing calls, an endpoint nothing fetches, a payload field nothing renders, a capability nothing reads. Worth a standing check rather than a finding each time: for every surface the server composes, name the reader.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/api.py endpoints vs turbotab/web/index.html; GUIDED-075 (fixed), GUIDED-078, GUIDED-079"
  }
 ]
