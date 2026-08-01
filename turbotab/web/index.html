@@ -2452,9 +2452,10 @@
       seen[id] = true;
       /* The renderer keeps its own node map rather than asking the DOM.
          `getElementById` is the wrong question here — it answers *is there an
-         element with this id*, and what this needs is *is this MY node*. It
-         also makes the arrive branch observable under the harness, whose
-         `getElementById` auto-creates (filed as `GUIDED-077`). */
+         element with this id*, and what this needs is *is this MY node*, which
+         is a different question even against a DOM that answers the first one
+         honestly. (It was also the workaround for `GUIDED-077`; the harness
+         tells the truth now, and this is still the right map to keep.) */
       var node = FIG_NODES[id];
       var html = figBodyHTML(entry.row, entry.kind);
       if (!node){
@@ -2587,19 +2588,25 @@
       PREV_STATE.nutrient = cols[0];
     }
     box.style.display = "";
-    /* The controls are rewritten and the OUTPUT is not, so a refusal already on
-       screen survives a control change until a new answer replaces it — §05:
-       nothing moves that the user did not cause. */
-    var out = $("prevOut");
-    var carried = out ? out.innerHTML : "";
-    box.innerHTML =
+    /* The controls are rewritten and the OUTPUT IS A NODE THIS RENDERER OWNS, so
+       a refusal already on screen survives a control change until a new answer
+       replaces it — §05: nothing moves that the user did not cause.
+
+       The first version carried the output forward as a STRING through a
+       rewrite of the whole box, which is a repaint wearing a mutation's
+       clothes: the node was destroyed and rebuilt every render, and any settle
+       running on it died without being able to say so. It read as correct
+       because the harness auto-created `prevOut` on lookup no matter what had
+       happened to it (`GUIDED-077`). */
+    var ctl = ownChild(box, "prevCtl", "prev-ctlbox");
+    ctl.innerHTML =
       '<div class="prev-head"><span class="prev-lab">Prevalence of inadequacy</span>' +
       "</div>" +
       '<p class="prev-why">Computed against the EAR, from a usual-intake ' +
       "distribution. Ask it of anything else and the app will say why it " +
       "cannot — a refusal here is an answer, not a missing feature.</p>" +
-      prevalenceControls(cols) +
-      '<div class="prev-out" id="prevOut">' + carried + "</div>";
+      prevalenceControls(cols);
+    ownChild(box, "prevOut", "prev-out");
   }
 
   function askPrevalence(){
@@ -2683,9 +2690,8 @@
                  '<p class="disc-v">' + esc(sentence) + "</p>";
       var cls = discClass(key, body);
       /* The renderer owns its nodes for the same reason the figure surface
-         does: the harness's `getElementById` auto-creates, so asking the DOM
-         *is there an element with this id* cannot answer *is this my node*
-         (`GUIDED-077`). */
+         does: *is there an element with this id* is not *is this my node*, and
+         only the second question keeps a settle alive across a re-render. */
       var node = DISC_NODES[key];
       if (!node){
         node = document.createElement("div");
@@ -2739,6 +2745,7 @@
      stop being true. */
   var FEAT_Q = {};
   var FEAT_PICK = {};                    /* transform key -> chosen columns */
+  var FEAT_STATE = {};                   /* transform key -> last rendered body */
   var SEL_PICK = { method: "", n_features: 10 };
 
   function featColumnsFor(row){
@@ -2769,8 +2776,7 @@
   function featRowHTML(row, kind){
     var ready = (FEAT_PICK[row.key] || []).filter(function(c){ return !!c; })
                   .length === (row.n_inputs || 1);
-    var h = '<div class="feat" data-feat="' + esc(row.key) + '">';
-    h += '<div class="feat-head"><span class="feat-lab">' + esc(row.label) + "</span>" +
+    var h = '<div class="feat-head"><span class="feat-lab">' + esc(row.label) + "</span>" +
          '<span class="feat-cost" data-tip="How much this costs you when the ' +
          'model has to be explained">' + esc(row.explainability_cost) +
          " explainability cost</span></div>";
@@ -2786,8 +2792,6 @@
            esc(row.key) + '" data-feat-kind="' + esc(kind) + '">' +
            (kind === "deferred" ? "Record it" : "Add it") + "</button>";
     }
-    h += "</div>";
-    h += '<div class="feat-prev" id="featprev-' + esc(row.key) + '"></div>';
     h += "</div>";
     return h;
   }
@@ -2913,10 +2917,29 @@
     fillQuestion("choose_features", "featTitle", "featWhy", "featConsumer");
     fillQuestion("choose_selection", "selTitle", "selWhy", "selConsumer");
 
-    var h = "";
-    (FEAT.row_local || []).forEach(function(r){ h += featRowHTML(r, "row_local"); });
-    (FEAT.deferred || []).forEach(function(r){ h += featRowHTML(r, "deferred"); });
-    $("featBuild").innerHTML = h;
+    /* EVERY ROW IS A NODE THIS RENDERER OWNS. The first version assigned the
+       whole catalogue as one string on every pick, which repainted eighteen
+       rows to change one — and put the preview box inside assigned markup,
+       where it was destroyed and rebuilt under the user each time they chose a
+       column. Both were invisible while the harness auto-created on lookup
+       (`GUIDED-077`). */
+    var build = $("featBuild");
+    [["row_local", FEAT.row_local], ["deferred", FEAT.deferred]]
+      .forEach(function(pair){
+        (pair[1] || []).forEach(function(r){
+          var node = ownChild(build, "featrow-" + r.key, "feat");
+          node.setAttribute("data-feat", r.key);
+          var body = ownChild(node, "featbody-" + r.key, "");
+          var html = featRowHTML(r, pair[0]);
+          if (FEAT_STATE[r.key] !== html){
+            body.innerHTML = html;
+            FEAT_STATE[r.key] = html;
+          }
+          /* Created after the body and never rewritten by it, so a preview the
+             user asked for survives the next pick. */
+          ownChild(node, "featprev-" + r.key, "feat-prev");
+        });
+      });
     $("featDecided").innerHTML = featDecidedHTML();
     $("selBuild").innerHTML = selBuildHTML();
 
@@ -2924,6 +2947,7 @@
        so the step has an end, and settling with nothing added is a recorded
        answer rather than a skip — the same rule eligibility's "everyone" and
        selection's "every column" follow. */
+    var terminal = ownChild(build, "featTerminal", "");
     if (FEAT.settled){
       var settled = P.decisions.filter(function(d){
         return d.kind === "settle_features"; });
@@ -2932,12 +2956,12 @@
         : "The features step is settled."));
       sectState("features", "recorded", "recorded");
       setMap("features", "done");
-      $("featBuild").innerHTML +=
+      terminal.innerHTML =
         '<p class="feat-note">This step is settled. Adding a feature now would ' +
         "make everything downstream stale.</p>";
     } else {
       sectState("features", "live", "open");
-      $("featBuild").innerHTML +=
+      terminal.innerHTML =
         '<div class="feat-ctl" style="margin-top:12px;">' +
         '<button class="answer" type="button" data-feat-settle="1">' +
         "Nothing else — settle this step</button></div>";
@@ -2953,6 +2977,23 @@
   var LAT_NODES = {}, LAT_STATE = {};
 
   function latKey(model, op){ return model + "::" + op; }
+
+  /* A CHILD THE RENDERER OWNS, created once and returned every time after.
+     `GUIDED-077` is why this exists as a function rather than as three copies of
+     the same four lines: writing a container's markup with an `id` inside it and
+     then looking that id up is a REPAINT — the child is destroyed and rebuilt on
+     every render, which is what §05 forbids and what the harness could not see
+     while `getElementById` auto-created. */
+  function ownChild(parent, id, cls, tag){
+    var node = document.getElementById(id);
+    if (node && node._ownedBy === parent) return node;
+    node = document.createElement(tag || "div");
+    node.id = id;
+    if (cls) node.className = cls;
+    node._ownedBy = parent;
+    parent.appendChild(node);
+    return node;
+  }
 
   function latCellHTML(row){
     var h = "";
@@ -3034,17 +3075,17 @@
       return;
     }
 
-    if (!$("latGrid")){
-      box.innerHTML =
-        '<div class="lat-head"><span class="lat-lab">Preprocessing, per model' +
-        '</span><span class="lat-note">Every cell is a resolution. Open one to ' +
-        "see which rows matched.</span></div>" +
-        '<div class="lat-grid" id="latGrid" role="grid"></div>' +
-        '<div class="lat-why" id="latWhy"></div>' +
-        '<div id="latSupp"></div>';
-      LAT_NODES = {}; LAT_STATE = {};
+    var head = ownChild(box, "latHead", "lat-head");
+    if (!head.innerHTML){
+      head.innerHTML =
+        '<span class="lat-lab">Preprocessing, per model</span>' +
+        '<span class="lat-note">Every cell is a resolution. Open one to see ' +
+        "which rows matched.</span>";
     }
-    var grid = $("latGrid");
+    var grid = ownChild(box, "latGrid", "lat-grid");
+    grid.setAttribute("role", "grid");
+    ownChild(box, "latWhy", "lat-why");
+    ownChild(box, "latSupp", "");
     grid.style.gridTemplateColumns = "112px repeat(" + ops.length + ", 1fr)";
 
     var map = {};

@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**238 of 662 closed.**
+**239 of 662 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 377 |
+| `OPEN` | 376 |
 | `PARTIAL` | 47 |
-| `FIXED` | 235 |
+| `FIXED` | 236 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 377
+## OPEN — 376
 
 
 ### Application state / lockbox — 66
@@ -394,7 +394,7 @@ Nothing is closed without a regression test named after it.
 | `COACH-031` | invariant | Coaching voice must never reach the manuscript verbatim. | `utils/insight_ledger.py:1188 — `text = (i.manuscript_text or '').strip() or…` | The invariant is stated correctly and is broken in exactly the way this row predicts, unchanged at HEAD. The register separation works - manuscript_text is preferred and the regex… |
 | `COACH-032` | invariant | 'high' confidence is the only tier the UI pre-selects, so 'high' means the app is asserting (docs/FINDINGS_LEDGER.md, Governing rule, lines 20-27). | `PARTIALLY, and only in the import/join domain: ml/join_doctor.py:922 `if include_low or c.confidence !=…` | All three weakenings confirmed at HEAD. (1) is COACH-015: a medium-confidence join key IS pre-selected. (2) is exact - final returns detected with no tier check, so a… |
 
-### Guided-door drive feedback — 20
+### Guided-door drive feedback — 19
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -413,7 +413,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-069` | medium | The research's generic name patterns are flagging heuristics and the pack applies several of them as findings with no second signal, so a strata or cluster column means whatever it is called | `turbotab/nutrition.py survey_design strata|stratum and psu|cluster fullmatch` | The generalization of the defect L28-C fixed. NUTRITION_PACK.md section 01 says to flag generic weight|wt|pweight|strata|psu|cluster|fpc, and that list is a FLAGGING heuristic in… |
 | `GUIDED-071` | medium | FigureSpec has no field for a precondition on upstream data state, so a figure that must refuse on the shape of the values can only do it inside its payload builder | `turbotab/figures.py FigureSpec.when_applicable; turbotab/figure_specs.py volcano_payload…` | Found at L29-B by building the volcano first, hardest-first, which is what LOOP.md section 02 now asks for. METABOLOMICS_PACK.md section 06.3: the fold change must be computed… |
 | `GUIDED-073` | medium | The client technology was never decided, only defaulted: the Guided door is one 3,701-line HTML file with 2,714 lines of hand-written vanilla JS, and the one sentence that reads like a decision… | `turbotab/web/index.html; turbotab/api.py:2259 StaticFiles mount; PRODUCT_VISION.md:22; PRODUCT_VISION.md…` | RAISED BY THE PRODUCT OWNER, who expected the dynamic half of a migration off Streamlit to be in something other than Python and found it is not. MEASURED: turbotab/web/index.html… |
-| `GUIDED-077` | medium | The page harness auto-creates elements on getElementById and reports innerHTML as what was assigned, so a mutate-in-place renderer is invisible to it | `turbotab/pageharness.py document.getElementById; El.prototype.appendChild; DESIGN_LANGUAGE.md section 05` | Found at L32-B by building the first surface DESIGN_LANGUAGE section 05's mutate-in-place requirement binds on. TWO SEPARATE SHIM BEHAVIORS, both benign until now. getElementById… |
 | `GUIDED-084` | medium | /capabilities is served so the interface cannot claim an affordance the server does not have, and the page never fetches it — it composes its own built verdicts and its own not-built reasons | `turbotab/api.py:1922 get_capabilities and PULL_CAPABILITIES; turbotab/web/index.html paletteExtras() computes…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_the_capability_table_is_read_rather_than_reimplemented` — ADJUDICATOR RULING, and it is not a new decision… |
 | `GUIDED-085` | medium | Two composed steps the Guided door has no surface for: the models shelf and the Preprocess step, both fully reasoned server-side | `turbotab/api.py get_models three groups always returned including empty ones; get_preprocess strategies carry…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_every_server_surface_names_its_reader` — FILED AT L33-E as the honest remainder of the GUIDED-080 class, and… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
@@ -586,7 +585,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 235
+## FIXED — 236
 
 
 ### Multi-file / JSON import — 69
@@ -663,7 +662,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-136` | medium | coerce_numeric's methods-section description omits how many values it blanked (up to 20% of a column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 36'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 36 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-147` | medium | Duplicated key column name crashes normalize_key and therefore diagnose_join / execute_join / repair_keys (AttributeError), and silently blanks find_key_candidates | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 47'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 47 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 
-### Guided-door drive feedback — 57
+### Guided-door drive feedback — 58
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -724,6 +723,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-070` | medium | The weight-column fix accepted a real capability loss and recorded it only in a code comment: a genuine survey weight named "weight" is now missed even when SDMVSTRA and SDMVPSU are both present | `turbotab/nutrition.py survey_design; turbotab/sample_data/nhanes_dietary.csv` | **test:** `turbotab/test_the_nutrition_detectors_reach_an_upload.py::test_a_generic_weight_beside_recognized_design_variables_counts_again` — FIXED at L29-A, and the loss is… |
 | `GUIDED-072` | medium | Every attest exit advertises a way out of a 409 and none of them names the payload key a client must send, and the four exits map to at least three different keys | `turbotab/packs.py:1951; turbotab/grain.py:206; turbotab/missingness.py:115; turbotab/purpose.py:155…` | **test:** `turbotab/test_a_client_holding_the_payload_can_act.py::test_a_client_with_only_the_409_can_construct_the_retry` — FIXED at L30-A. Every attest exit is built by… |
 | `GUIDED-076` | medium | The page composes its own blocker exits and never reads the ones the server serves, so GUIDED-072's payload_key and retry are discarded at the boundary | `turbotab/web/index.html blockerHTML around line 1728; turbotab/exits.py; turbotab/api.py the 409 detail` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim[a consequence renders the server's words]` — FIXED at L32-A, both halves. THE BLOCKER BAND… |
+| `GUIDED-077` | medium | The page harness auto-creates elements on getElementById and reports innerHTML as what was assigned, so a mutate-in-place renderer is invisible to it | `turbotab/pageharness.py document.getElementById; El.prototype.appendChild; DESIGN_LANGUAGE.md section 05` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_the_shim_says_no_to_an_id_that_does_not_exist` — L34-A. BOTH HOLES CLOSED AT THE SOURCE, and the sweep found… |
 
 ### Application state / lockbox — 34
 

@@ -45,6 +45,40 @@ enough for a controller which writes `innerHTML` and reads attributes, and it
 fails loudly rather than silently: an uncaught throw exits node non-zero and the
 test reports the stack. A shim that guessed would be a second implementation of
 the DOM to keep in sync, which is the two-engines failure one level down.
+
+## Dumb is allowed. Lying is not — `GUIDED-077`
+
+Being ignorant of pixels is a stated limit a reader can work with. **Answering a
+question wrongly is not**, because the answer is what a test then asserts, and a
+test that asserts a lie reports the page as honest exactly where it has stopped
+being honest. This module got that wrong three times, in the same shape each
+time: it accepted a write, or invented a value, and no other method agreed.
+
+* `className` was an ordinary property nothing else read, so every assertion
+  about how a node is styled came back **passing** (`GUIDED-081`).
+* `getElementById` AUTO-CREATED, so it never returned null and `if (!node)` was
+  false for every id in the universe. The lattice paid for it: its
+  `if (!$("latGrid"))` guard could never be true, the container was never
+  written, the grid was built and never attached — `latticeBox` held 0
+  characters while `latGrid` held 179 — and the claim about it passed.
+* `innerHTML` returned only what had been ASSIGNED, so a surface built by
+  `appendChild` probed as an empty container. The workaround was a second
+  reader, `__harness.render`, and two readers of one property is two answers to
+  one question.
+
+All three are closed. `render` is now an alias for `html` rather than a
+different question, and `test_the_shim_says_no_to_an_id_that_does_not_exist`
+and its sibling assert the properties rather than the absences.
+
+**The one place it still approximates, stated here rather than found later.**
+An id that arrives inside assigned markup — `parent.innerHTML = '<div id="x">'` —
+becomes findable, because a browser would make it so and the page relies on it.
+The shim does not parse HTML, so content written into such a node does not
+appear in the PARENT's serialization: read the id itself and you see it; read
+its parent and you see the markup as assigned. Reassigning the parent
+un-declares it, so a repaint is still observable. A claim that needs to know a
+surface is attached to the page should read the parent — which is exactly the
+distinction the lattice claim could not draw before.
 """
 from __future__ import annotations
 
@@ -115,8 +149,10 @@ function El(tag, id){
   this._listeners = Object.create(null);
   this.style = new Proxy({}, {get: function(t,k){ return t[k] === undefined ? "" : t[k]; },
                              set: function(t,k,v){ t[k] = v; return true; }});
-  this.textContent = "";
-  this.innerHTML = "";
+  // The markup this element was ASSIGNED, kept separate from the children it
+  // was APPENDED. `innerHTML` is the two together — see the accessor below.
+  this._html = "";
+  this._markupIds = [];
   this.value = "";
   this.title = "";
   this.disabled = false;
@@ -142,6 +178,53 @@ function El(tag, id){
     }
   });
 }
+// `innerHTML` IS THE ASSIGNED MARKUP PLUS THE APPENDED CHILDREN.
+//
+// `GUIDED-077`, second half. It used to return only what was assigned, so a
+// surface built by `appendChild` — which is every mutate-in-place renderer §05
+// requires — probed as an EMPTY CONTAINER. The workaround was a second reader,
+// `__harness.render`, that walked the children; two readers of one property is
+// two answers to one question, and a claim written against the wrong one
+// asserts nothing.
+//
+// Setting it replaces the children, as it does in a browser. That is what makes
+// a rebuild observable: the nodes are gone, and a renderer that rebuilds can no
+// longer pass a test written for one that mutates.
+Object.defineProperty(El.prototype, "innerHTML", {
+  get: function(){
+    var out = this._html;
+    for (var i = 0; i < this._children.length; i++) out += this._children[i].__deep();
+    return out;
+  },
+  set: function(v){
+    this._html = v === null || v === undefined ? "" : String(v);
+    // The children are GONE, so their ids are gone with them. Leaving them
+    // findable would make a repaint look like a mutation, which is the exact
+    // distinction §05 turns on.
+    for (var i = 0; i < this._children.length; i++) __unregister(this._children[i]);
+    this._children = [];
+    for (var j = 0; j < this._markupIds.length; j++){
+      var was = __byId[this._markupIds[j]];
+      if (was && was._fromMarkup === this) delete __byId[this._markupIds[j]];
+    }
+    this._markupIds = __declareMarkupIds(this, this._html);
+  }
+});
+
+// `textContent`, same contract one level down: assigning it replaces the
+// content with text, reading it returns the text with the tags taken out. The
+// old version was a plain field, so `node.textContent = "x"` was invisible to
+// every other reader — the same defect as `className` before `GUIDED-081`.
+Object.defineProperty(El.prototype, "textContent", {
+  get: function(){
+    return this.innerHTML.replace(/<[^>]*>/g, "");
+  },
+  set: function(v){
+    this.innerHTML = String(v === null || v === undefined ? "" : v)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+});
+
 // `className` IS `_classes`, in both directions.
 //
 // Without this it was an ordinary JS property: assigning it set something no
@@ -160,11 +243,68 @@ Object.defineProperty(El.prototype, "className", {
                                    this);
   }
 });
+// `firstChild` was undefined, so `if (!box.firstChild)` — the guard the figure
+// surface uses to write its header once — was TRUE on every render, and the
+// header was rewritten every time. That was invisible while assigning
+// `innerHTML` did not destroy children; now it destroys them, so the guard has
+// to be able to answer.
+Object.defineProperty(El.prototype, "firstChild", {
+  get: function(){
+    if (this._children.length) return this._children[0];
+    return this._html ? this._html : null;
+  }
+});
 El.prototype.setAttribute = function(k, v){ this._attr[k] = String(v); };
 El.prototype.getAttribute = function(k){ return k in this._attr ? this._attr[k] : null; };
 El.prototype.hasAttribute = function(k){ return k in this._attr; };
 El.prototype.removeAttribute = function(k){ delete this._attr[k]; };
-El.prototype.appendChild = function(c){ this._children.push(c); c._parent = this; return c; };
+// APPENDING REGISTERS IDS, which is what makes `getElementById` able to say no.
+// A node created with an id and put into the tree is findable in a browser; one
+// that was never created is not. The shim could not tell those apart while it
+// auto-created on lookup, so it answered *is there an element with this id* the
+// same way for both.
+// AN ID THAT ARRIVES INSIDE ASSIGNED MARKUP.
+//
+// In a browser `parent.innerHTML = '<div id="x"></div>'` creates a real node
+// that `getElementById` finds. This shim does not parse HTML — the module
+// docstring says why, and a second DOM implementation to keep in sync is the
+// two-engines failure one level down — so it does the smallest true thing: it
+// notes which ids the markup declares and answers for them.
+//
+// THE LIMIT, stated rather than discovered later: content written into such a
+// node does NOT appear in the parent's serialization, because the shim does not
+// know where in the string it belongs. `__harness.html('<that id>')` reads it;
+// `__harness.html('<its parent>')` shows the markup as assigned. Reassigning
+// the parent's markup un-declares them, so a repaint stays observable — which
+// is the property `GUIDED-077` was really about.
+var __MARKUP_ID = /\bid="([^"]+)"/g;
+function __declareMarkupIds(parent, html){
+  var ids = [], m;
+  __MARKUP_ID.lastIndex = 0;
+  while ((m = __MARKUP_ID.exec(html)) !== null){
+    var id = m[1];
+    ids.push(id);
+    if (__byId[id]) continue;
+    var el = new El("div", id);
+    (__seed[id] || []).forEach(function(c){ el.classList.add(c); });
+    el._fromMarkup = parent;
+    __byId[id] = el;
+  }
+  return ids;
+}
+
+function __unregister(el){
+  el._parent = null;
+  if (el.id && __byId[el.id] === el) delete __byId[el.id];
+  for (var i = 0; i < el._children.length; i++) __unregister(el._children[i]);
+}
+function __register(el){
+  if (el.id && !__byId[el.id]) __byId[el.id] = el;
+  for (var i = 0; i < el._children.length; i++) __register(el._children[i]);
+}
+El.prototype.appendChild = function(c){
+  this._children.push(c); c._parent = this; __register(c); return c;
+};
 // A RENDERER THAT MUTATES IN PLACE APPENDS NODES, and `innerHTML` here is what
 // was ASSIGNED rather than a serialization of children — so a surface built by
 // `appendChild` was invisible to `__harness.html()` and probed as an empty
@@ -182,13 +322,18 @@ El.prototype.__deep = function(){
   var cls = Object.keys(this._classes).join(" ");
   if (cls) attrs += ' class="' + cls + '"';
   if (this.id) attrs = ' id="' + this.id + '"' + attrs;
-  var inner = this.innerHTML || "";
-  for (var i = 0; i < this._children.length; i++) inner += this._children[i].__deep();
-  return "<" + this.tagName.toLowerCase() + attrs + ">" + inner +
+  return "<" + this.tagName.toLowerCase() + attrs + ">" + this.innerHTML +
          "</" + this.tagName.toLowerCase() + ">";
 };
 El.prototype.removeChild = function(c){
-  var i = this._children.indexOf(c); if (i !== -1) this._children.splice(i, 1); return c;
+  var i = this._children.indexOf(c);
+  if (i !== -1){
+    this._children.splice(i, 1);
+    // Out of the tree is out of `getElementById`, or a removed node stays
+    // findable and "did this leave?" is unobservable in the other direction.
+    __unregister(c);
+  }
+  return c;
 };
 El.prototype.addEventListener = function(t, fn){ (this._listeners[t] = this._listeners[t] || []).push(fn); };
 El.prototype.removeEventListener = function(){};
@@ -265,13 +410,22 @@ var __seed = __SEED__;
 var document = {
   documentElement: new El("html"),
   body: new El("body"),
+  // `GUIDED-077`, first half. This used to AUTO-CREATE, so it never returned
+  // null and `if (!node)` was false for every id in the universe — every branch
+  // keyed on *does this node exist yet* was unobservable, and a renderer that
+  // asked the DOM whether its own node existed got yes on the first render.
+  //
+  // The seed table is what makes saying no possible: it holds every id declared
+  // in `index.html`'s markup, so an id that is neither declared there nor
+  // appended by the page under test is an id that does not exist. Returning an
+  // element for it is the harness inventing the thing it was asked about.
   getElementById: function(id){
-    if (!__byId[id]){
-      var el = new El("div", id);
-      (__seed[id] || []).forEach(function(c){ el.classList.add(c); });
-      __byId[id] = el;
-    }
-    return __byId[id];
+    if (__byId[id]) return __byId[id];
+    if (!(id in __seed)) return null;
+    var el = new El("div", id);
+    __seed[id].forEach(function(c){ el.classList.add(c); });
+    __byId[id] = el;
+    return el;
   },
   createElement: function(t){ return new El(t); },
   querySelector: function(sel){ return null; },
@@ -351,14 +505,20 @@ function drainRaf(){
 
 globalThis.__harness = {
   el: function(id){ return document.getElementById(id); },
-  html: function(id){ return document.getElementById(id).innerHTML; },
-  // The deep read, for a surface built by appending rather than by assigning.
+  html: function(id){
+    var el = document.getElementById(id);
+    return el ? el.innerHTML : null;
+  },
+  // `render` and `html` ARE THE SAME READ NOW, and that is the point of the
+  // `GUIDED-077` fix. `render` existed because `innerHTML` returned only the
+  // assigned markup, so a surface built by appending needed a second reader
+  // that walked the children — and having two made it possible to write a
+  // claim against the one that could not see the thing it was about. It is
+  // kept as an alias so the existing claims keep reading, and it no longer
+  // answers a different question from `html`.
   render: function(id){
     var el = document.getElementById(id);
-    if (!el) return "";
-    var out = el.innerHTML || "";
-    for (var i = 0; i < el.children.length; i++) out += el.children[i].__deep();
-    return out;
+    return el ? el.innerHTML : "";
   },
   target: target,
   dispatch: dispatch,

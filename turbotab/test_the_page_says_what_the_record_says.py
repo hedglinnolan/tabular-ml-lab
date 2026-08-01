@@ -447,10 +447,13 @@ def claim_a_refusal_reaches_a_person(client, project):
           return settle(14);
         }).then(function(){
           __harness.drainRaf();
-          // Read `prevOut`, not its parent: the shim's deep walk cannot see a
-          // node that arrived inside an assigned innerHTML string
-          // (`GUIDED-077`). The node the page wrote to is the honest read.
-          seen.out = __harness.render('prevOut');
+          // THE PARENT, not just the node written to. This used to read
+          // `prevOut` alone, with a comment explaining that the shim could not
+          // see a node arriving inside assigned markup — which meant the claim
+          // could not tell a surface attached to the page from one built beside
+          // it. `GUIDED-077` closed that, so it reads where a user would look.
+          seen.out = __harness.html('prevOut');
+          seen.box = __harness.html('prevalenceBox');
           seen.figures = __harness.render('figuresBox');
           pick('basis', 'usual_intake');
           pick('kind', 'RDA');
@@ -467,6 +470,9 @@ def claim_a_refusal_reaches_a_person(client, project):
         "the dietary lens is recorded and there is no way to ask the question")
     assert asked["reason"][:50] in out["out"], (
         "the refusal reached the page without the reason it refused")
+    assert asked["reason"][:50] in out["box"], (
+        "the refusal is in a node the page never attached, so nobody scrolling "
+        "the transcript would find it")
     assert "SETTLED" in out["out"], (
         "the refusal rendered without its badge, so the one thing a reader "
         "cannot check is its epistemic position")
@@ -710,6 +716,7 @@ def claim_the_features_step_reaches_its_end(client, project):
           return settle(10);
         }).then(function(){
           seen.preview = __harness.html('featprev-log');
+          seen.build = __harness.html('featBuild');
           press({'data-feat-add': 'log', 'data-feat-kind': 'row_local'});
           return settle(10);
         }).then(function(){
@@ -777,6 +784,9 @@ def claim_the_features_step_reaches_its_end(client, project):
         "the preview did not name the column it would create")
     assert "Nothing in your table has changed" in out["preview"], (
         "a preview that does not say it is a preview is an applied transform")
+    assert shown["sentence"] in out["build"], (
+        "the preview sits in a node the catalogue never attached, so it is not "
+        "beside the transform it is about")
     assert "data-feat-preview" not in out["catalogue"], (
         "a preview was offered before a column was picked, so pressing it "
         "would ask the server to transform nothing")
@@ -873,8 +883,9 @@ def claim_the_lattice_shows_which_rows_matched(client, project):
         var seen = {};
         settle(18).then(function(){
           __harness.drainRaf();
-          seen.grid = __harness.render('latGrid');
-          seen.supp = __harness.render('latSupp');
+          seen.grid = __harness.html('latGrid');
+          seen.box = __harness.html('latticeBox');
+          seen.supp = __harness.html('latSupp');
           // Open the cell whose stack has more than one row in it.
           var keys = [], rx = /data-lat-cell="([^"]+)"/g, m;
           while ((m = rx.exec(seen.grid)) !== null) { keys.push(m[1]); }
@@ -883,11 +894,22 @@ def claim_the_lattice_shows_which_rows_matched(client, project):
             __harness.target({'data-lat-cell': keys[0]}, []));
           return settle(6);
         }).then(function(){
-          seen.why = __harness.render('latWhy');
+          seen.why = __harness.html('latWhy');
           __emit(seen);
         });
         """,
         routes, pid)
+
+    # THE ORPHAN CHECK, and it is why this claim was rewritten. Before
+    # `GUIDED-077`, `latticeBox` was EMPTY — 0 characters — while `latGrid`
+    # carried 179, because `if (!$("latGrid"))` could never be true against a
+    # `getElementById` that auto-created, so the header was never written and
+    # the grid was never attached. The claim read the orphan and passed. A
+    # renderer's output is not a page.
+    assert len(out["box"]) > len(out["grid"]), (
+        "the grid is not inside the lattice container, so it was built and "
+        "never attached — which is what this claim used to be measuring")
+    assert 'id="latGrid"' in out["box"]
 
     models = sorted(lattice["models"])
     ops = [o["key"] for o in lattice["operations"]]
@@ -1305,3 +1327,84 @@ def test_the_capability_table_is_read_rather_than_reimplemented():
     assert "not_built_reason:" in page, (
         "the page stopped composing its own not-built reasons, which is half "
         "of GUIDED-084 closing")
+
+
+def test_the_shim_says_no_to_an_id_that_does_not_exist():
+    """`GUIDED-077`, first half, asserted as the property it restores.
+
+    `getElementById` used to AUTO-CREATE, so it never returned null and
+    `if (!node)` was false for every id in the universe. Every branch keyed on
+    *does this node exist yet* was unobservable — and the lattice proved what
+    that costs: `if (!$("latGrid"))` could never be true, so the container was
+    never written and the grid was built and never attached. `latticeBox` held
+    0 characters while `latGrid` held 179, and the claim about it passed.
+    """
+    out = H.run(
+        """
+        __emit({
+          missing: document.getElementById('no_such_id_anywhere') === null,
+          declared: document.getElementById('askedQuestions') !== null,
+          appended: (function(){
+            var n = document.createElement('div');
+            n.id = 'made_at_runtime';
+            document.getElementById('askedQuestions').appendChild(n);
+            return document.getElementById('made_at_runtime') === n;
+          })(),
+          removed: (function(){
+            var host = document.getElementById('askedQuestions');
+            host.removeChild(document.getElementById('made_at_runtime'));
+            return document.getElementById('made_at_runtime') === null;
+          })()
+        });
+        """,
+        routes={}, search="")
+    assert out["missing"] is True, (
+        "the shim invented an element for an id nothing declares, so every "
+        "`if (!node)` branch in the page is unobservable")
+    assert out["declared"] is True, "an id in the markup stopped resolving"
+    assert out["appended"] is True, (
+        "a node created and appended is not findable, which is not how a "
+        "browser behaves either")
+    assert out["removed"] is True, (
+        "a removed node stays findable, so 'did this leave?' cannot be asked")
+
+
+def test_the_shim_serializes_what_was_appended_not_only_what_was_assigned():
+    """`GUIDED-077`, second half. `innerHTML` returned only assigned markup, so
+    a surface built by `appendChild` — every mutate-in-place renderer §05
+    requires — probed as an empty container, and the workaround was a SECOND
+    reader that walked the children. Two readers of one property is two answers
+    to one question, and a claim written against the wrong one asserts nothing.
+
+    Assigning replaces the children, as a browser does. That is what makes a
+    rebuild observable: after it, the old nodes are gone from the tree and from
+    `getElementById`, so a renderer that rebuilds can no longer pass a test
+    written for one that mutates.
+    """
+    out = H.run(
+        """
+        var host = document.getElementById('askedQuestions');
+        host.innerHTML = '<p>assigned</p>';
+        var kid = document.createElement('span');
+        kid.id = 'kid';
+        kid.innerHTML = 'appended';
+        host.appendChild(kid);
+        var both = host.innerHTML;
+        var viaRender = __harness.render('askedQuestions');
+        host.innerHTML = 'repainted';
+        __emit({both: both,
+                same_as_render: both === viaRender,
+                after_repaint: host.innerHTML,
+                kid_survives: document.getElementById('kid') !== null});
+        """,
+        routes={}, search="")
+    assert "assigned" in out["both"] and "appended" in out["both"], (
+        "innerHTML reports one of the two ways content gets into an element")
+    assert out["same_as_render"] is True, (
+        "`html` and `render` answer different questions again, which is the "
+        "hole this closed")
+    assert out["after_repaint"] == "repainted", (
+        "assigning innerHTML left the old children behind")
+    assert out["kid_survives"] is False, (
+        "a repainted-away node is still findable, so a rebuild can still pass "
+        "for a mutation")
