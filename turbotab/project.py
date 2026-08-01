@@ -1416,6 +1416,20 @@ class AnalysisProject:
 
     PREPARATION_MODES = ("per_model", "uniform")
 
+    def model_shelf_ranked(self) -> Tuple[List[Any], Any]:
+        """The shelf AND the profile it was ranked on.
+
+        Exists so a caller can report *how many rows this order was computed
+        from* out of the computation rather than by re-deriving the mask beside
+        it. `GUIDED-092` is what a re-derived count costs: revert the mask in
+        `model_shelf` and a separately-computed `n_rows_seen` keeps reporting
+        the training count while the shelf ranks on everything — a served
+        number that is true about a computation nobody performed.
+        """
+        from turbotab import engine, models as _models
+        prof = engine.profile(self.training_rows, self.target, self.task_type)
+        return _models.shelf(prof, self.task_type or "regression"), prof
+
     def model_shelf(self) -> List[Any]:
         """Every model this task can use, ordered by fit and never filtered.
 
@@ -1430,14 +1444,12 @@ class AnalysisProject:
         `api.selection_evidence` already does this, masking to the training
         rows whenever a lockbox exists. Two paths in one app, one consulting
         the seal and one not, is `AUDIT-008` exactly.
+
+        The mask itself is `training_rows` now rather than three lines here,
+        because three inline copies of one rule is the same shape one level
+        down (`GUIDED-092`).
         """
-        from turbotab import engine, models as _models
-        frame = self.df
-        if self.lockbox and self.lockbox.get("labels"):
-            sealed = set(self.lockbox["labels"])
-            frame = self.df.loc[[i not in sealed for i in self.df.index]]
-        prof = engine.profile(frame, self.target, self.task_type)
-        return _models.shelf(prof, self.task_type or "regression")
+        return self.model_shelf_ranked()[0]
 
     def select_models(self, keys: Sequence[str]) -> Decision:
         """Record which models the user intends to train.
@@ -1801,6 +1813,33 @@ class AnalysisProject:
         if self.cohort and self.cohort.get("labels"):
             return self.df.loc[[l for l in self.cohort["labels"] if l in self.df.index]]
         return self.df
+
+    # ── the rows a DECISION may be computed from ────────────────────────────
+
+    @property
+    def training_mask(self) -> pd.Series:
+        """True for every row a decision is entitled to be informed by.
+
+        `GUIDED-088` established that a ranking is a parameter estimated from
+        data: the order a user picks a model from is a decision, and a decision
+        informed by the held-out rows is exactly what the seal prevents. Three
+        paths had worked that out separately — `model_shelf` masked inline,
+        `api.selection_evidence` masked inline, and `/recipes` did not mask at
+        all — which is three copies of one rule and one of them wrong.
+
+        This is the one place that decides. Before the seal every row is a
+        training row, so this is all-`True` and a caller needs no branch.
+        """
+        if self.lockbox and self.lockbox.get("labels"):
+            sealed = set(self.lockbox["labels"])
+            return pd.Series([_label(i) not in sealed for i in self.df.index],
+                             index=self.df.index)
+        return pd.Series(True, index=self.df.index)
+
+    @property
+    def training_rows(self) -> pd.DataFrame:
+        """The frame a ranking may be computed on. See `training_mask`."""
+        return self.df.loc[self.training_mask]
 
     # ── invalidation ────────────────────────────────────────────────────────
 

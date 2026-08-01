@@ -1752,7 +1752,25 @@ def _is_fetched(path: str, page: str) -> bool:
         return False
     # The leaf arrives either as a quoted argument (`"correlations"`) or
     # concatenated onto the path (`+ "/cancel"`).
-    return f'"{leaf}"' in page or f'"/{leaf}"' in page
+    if f'"{leaf}"' in page or f'"/{leaf}"' in page:
+        return True
+    # OR IT NEVER APPEARS IN THE FILE AT ALL. `runPull` composes
+    # `"/evidence/" + endpoint`, and since `GUIDED-084` the endpoint arrives
+    # from the SERVER's capability table rather than from a page-local list —
+    # so `"correlations"` is not a string in `index.html` and the page fetches
+    # it on every press. This is `GUIDED-083`'s correction one step further on:
+    # a literal search answers *does this text appear* and the question is
+    # *does this run*. Recognized from the server's own declaration, so a leaf
+    # nobody declares still reads as unread.
+    return leaf in _server_supplied_leaves() and "data-endpoint" in page
+
+
+def _server_supplied_leaves() -> set:
+    """The evidence leaves the capability table hands the page at runtime."""
+    from turbotab import api as api_mod
+
+    return {str(cap.get("endpoint")) for cap in api_mod.PULL_CAPABILITIES.values()
+            if cap.get("endpoint")}
 
 
 def test_every_server_surface_names_its_reader():
@@ -1802,27 +1820,85 @@ def test_the_capability_table_is_read_rather_than_reimplemented():
     """`/capabilities` exists so the interface cannot claim a capability the
     server does not have. That only holds if the page reads it.
 
-    Asserted as the DEFECT it currently is (`GUIDED-084`): the page composes
-    its own `built` verdicts and its own `not_built_reason` strings, which is
-    the second implementation the endpoint was built to prevent. When the
-    endpoint is wired this test flips, and the flip is the fix — a test that
-    asserts a defect is a placeholder with a deadline.
+    **This test asserted the defect until L35-A**, which made it a placeholder
+    with a deadline; this is the deadline. `GUIDED-084`'s ruling was that the
+    gate was never the page's argument — `GUIDED-005` put
+    `MAX_FEATURES_FOR_GALLERY` in the engine *precisely so the page and the
+    server cannot disagree about it* — so the fix is a fetch and a delete
+    rather than a design.
+
+    Driven rather than grepped for the half that is about behavior: the page's
+    real controller runs, and `__harness.calls()` reports whether it asked. A
+    literal search over `index.html` answers *does this text appear*, and the
+    question is *does this run* (`LOOP.md` §06).
     """
     from turbotab import api as api_mod
 
     page = (Path(__file__).resolve().parent / "web" / "index.html").read_text(
         encoding="utf-8")
     assert api_mod.PULL_CAPABILITIES                                # control
-    assert "paletteExtras" in page                                  # control
 
-    fetches = "/capabilities" in page.replace(
-        "/capabilities is served rather", "")
-    assert not fetches, (
-        "the page now reads /capabilities — delete this test and assert the "
-        "capability table instead of the defect")
-    assert "not_built_reason:" in page, (
-        "the page stopped composing its own not-built reasons, which is half "
-        "of GUIDED-084 closing")
+    # THE SECOND IMPLEMENTATION IS GONE, not renamed. Asserted on the
+    # SENTENCES rather than on a function name, because a sentence a user reads
+    # that no server composed is the half `COPY_DECK.md` cannot review — and
+    # that is a property of the strings, not of what the function was called.
+    for composed in ("A per-feature gallery is offered up to",
+                     "needs at least two numeric features",
+                     "wall of plots",
+                     "cannot be read is a claim that it can"):
+        assert composed not in page, (
+            f"the page still composes {composed!r}, so a user reads a sentence "
+            "that no server wrote")
+    assert "paletteExtras" not in page, (
+        "the page still computes its own capability verdicts")
+
+    # AND THE SERVER'S ANSWER IS PER PROJECT. A build-wide `built` cannot say
+    # that a correlation matrix is unavailable on THIS table.
+    client = _client()
+    wide = _project(client, "metabolomics_untargeted.csv")
+    narrow = _project(client, "clinic_visits.csv")
+    caps_wide = client.get(f"/project/{wide['id']}/capabilities").json()
+    caps_narrow = client.get(f"/project/{narrow['id']}/capabilities").json()
+    assert caps_narrow["pulls"]["look::r8_collinearity"]["built"] is True
+    assert caps_wide["pulls"]["look::r8_collinearity"]["built"] is False, (
+        "a 396-column table is offered a live correlation-matrix chip, which "
+        "is the affordance /capabilities exists to prevent")
+    reason = caps_wide["pulls"]["look::r8_collinearity"]["not_built_reason"]
+    assert reason and str(caps_wide["n_numeric"]) in reason, (
+        "the reason does not name this table's feature count, so it is a "
+        "build-wide sentence wearing a per-project costume")
+    assert str(api_mod.get_capabilities.__module__)                  # control
+
+    # THE PAGE ASKS. Driven, because a page that mentions a path and a page
+    # that fetches it are different pages. The palette lives past the target
+    # question, so the drive answers it first — an undriven palette would make
+    # this assertion about a surface the controller never reached.
+    pid = wide["id"]
+    client.post(f"/project/{pid}/decision",
+                json={"kind": "set_target", "payload": {"column": "responder"}})
+    seen = client.get(f"/project/{pid}").json()
+    out = _drive(
+        """
+        var p = Promise.resolve();
+        for (var i = 0; i < 24; i++) { p = p.then(function(){}); }
+        p.then(function(){
+          __harness.drainRaf();
+          __emit({calls: __harness.calls().map(function(c){ return c.path; }),
+                  bar: __harness.html('palette')});
+        });
+        """,
+        _routes(client, seen, **{
+            f"/project/{pid}/capabilities": caps_wide,
+            f"/project/{pid}/interview?step=explore":
+                client.get(f"/project/{pid}/interview?step=explore").json(),
+        }),
+        pid)
+    assert f"/project/{pid}/capabilities" in out["calls"], (
+        "the page never fetched the capability table, so whatever it renders "
+        "on those chips it decided by itself")
+    assert reason[:40] in out["bar"], (
+        "the server's not-built reason was fetched and rendered nowhere, "
+        "which is GUIDED-080's class rather than GUIDED-084's fix")
 
 
 def test_the_shim_says_no_to_an_id_that_does_not_exist():

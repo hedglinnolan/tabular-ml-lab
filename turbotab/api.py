@@ -1202,18 +1202,26 @@ PULL_CAPABILITIES: Dict[str, Dict[str, Any]] = {
     "look::r1_plausibility": {
         "built": True, "endpoint": "plausibility",
         "label": "Physiologic plausibility",
+        "title": "Physiologic plausibility",
+        "why": "Entries outside what a living person can produce, named.",
     },
     "look::r2_missingness": {
         "built": True, "endpoint": "missingness",
         "label": "Missingness by feature",
+        "title": "Missingness by feature",
+        "why": "Which columns are blank, how often, and in which rows.",
     },
     "look::r8_collinearity": {
         "built": True, "endpoint": "correlations",
         "label": "Correlation matrix",
+        "title": "Correlation matrix",
+        "why": "Pairwise correlations across your numeric features.",
     },
     "histogram_pager": {
         "built": True, "endpoint": "histograms",
         "label": "Distribution of each feature",
+        "title": "Distribution of each feature",
+        "why": "One page of histograms at a time, drawn from your table.",
     },
 }
 
@@ -1706,7 +1714,7 @@ async def get_models(project_id: str) -> Dict[str, Any]:
             400, "The shelf is ordered by the shape of your data, so it is "
                  "offered after the seal — the shape it reads must be the "
                  "shape the models will be fitted on.")
-    entries = project.model_shelf()
+    entries, ranked_on = project.model_shelf_ranked()
     from turbotab import packs as _packs
     return {
         "disclosure": _models.SHELF_DISCLOSURE,
@@ -1718,6 +1726,13 @@ async def get_models(project_id: str) -> Dict[str, Any]:
         "groups": _models.grouped(entries),
         "selected": project.selected_models,
         "n_available": len(entries),
+        # `GUIDED-088`/`GUIDED-092`: the rows the ORDER was computed on, taken
+        # OUT OF THE PROFILE THE SHELF RANKED ON rather than re-derived beside
+        # it. A count computed separately would keep saying "training rows"
+        # after somebody reverted the mask — which is a served number that is
+        # true about a computation nobody performed.
+        "n_rows_seen": int(ranked_on.n_rows),
+        "n_rows_withheld": int(len(project.df) - int(ranked_on.n_rows)),
         "concern_note": _models.selection_note(entries, project.selected_models),
     }
 
@@ -1751,12 +1766,20 @@ async def get_recipes(project_id: str) -> Dict[str, Any]:
     numeric = [str(c) for c in project.df.columns
                if pd.api.types.is_numeric_dtype(project.df[c])
                and str(c) != (project.target or "")]
+    # `GUIDED-092`. The divergence measure decides whether a variant question is
+    # PUT to the user, and it decides it by measuring how the columns would be
+    # rescaled relative to one another in the fit. `select_models` states the
+    # requirement in its own refusal — *the shape it reads must be the shape the
+    # models will actually be fitted on* — and this read the whole table,
+    # sealed rows included, so a question a user answers was raised or
+    # suppressed partly by rows the models will never see.
+    ranking_frame = project.training_rows
     resolved = project.resolved_recipes()
     suppressed = 0
     for rows in resolved.values():
         for row in rows:
             r = _rec.resolve(row["model"], row["operation"])
-            raise_variant, div = _rec.worth_asking(project.df, numeric, r)
+            raise_variant, div = _rec.worth_asking(ranking_frame, numeric, r)
             row["divergence"] = div.to_dict() if div else None
 
             if row["may_be_preselected"]:
@@ -1779,6 +1802,11 @@ async def get_recipes(project_id: str) -> Dict[str, Any]:
             row["variant_worth_raising"] = bool(raise_variant)
     return {
         "mode": project.preparation_mode,
+        # The row count the variant questions were measured on, served so a
+        # reader — and `test_every_ranking_is_computed_on_the_training_rows` —
+        # can check it rather than take it on trust.
+        "n_rows_seen": int(len(ranking_frame)),
+        "n_rows_withheld": int(len(project.df) - len(ranking_frame)),
         "models": resolved,
         "operations": [{"key": o.key, "label": o.label,
                         "determinacy": o.determinacy, "scope": o.scope,
@@ -1910,13 +1938,9 @@ async def selection_evidence(project_id: str) -> Dict[str, Any]:
     candidates = [str(c) for c in project.df.columns
                   if str(c) != project.target
                   and pd.api.types.is_numeric_dtype(project.df[c])]
-    mask = None
-    if project.lockbox and project.lockbox.get("labels"):
-        sealed = set(project.lockbox["labels"])
-        mask = pd.Series([i not in sealed for i in project.df.index],
-                         index=project.df.index)
     try:
-        return sel_mod.evidence(project.df, project.target, candidates, mask)
+        return sel_mod.evidence(project.df, project.target, candidates,
+                                project.training_mask)
     except sel_mod.SelectionRefusal as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -2023,9 +2047,78 @@ async def get_capabilities() -> Dict[str, Any]:
     """Which pull affordances are wired, and what the unwired ones say.
 
     Served rather than hard-coded in the page so the interface cannot claim a
-    capability the server does not have.
+    capability the server does not have. **Dataset-independent** — whether the
+    Guided door has been wired to an analysis at all. Whether it can run on
+    THIS table is `/project/{id}/capabilities`.
     """
     return {"pulls": PULL_CAPABILITIES, "not_built_reason": NOT_BUILT_REASON}
+
+
+#: Pull affordances whose availability is a property of THIS table rather than
+#: of the build. Keyed to the gate in `ml.card_evidence`, which is where
+#: `GUIDED-005` put `MAX_FEATURES_FOR_GALLERY` so the page and the server could
+#: not disagree about it.
+_PER_PROJECT_GATES = {
+    "histogram_pager": "gallery_availability",
+    "look::r8_collinearity": "matrix_availability",
+}
+
+
+@app.get("/project/{project_id}/capabilities")
+async def get_project_capabilities(project_id: str) -> Dict[str, Any]:
+    """Which pull affordances run **on this table**, and why not where not.
+
+    `GUIDED-084`, and the ruling is worth restating because it is not a new
+    decision. `/capabilities` exists so the interface cannot claim a capability
+    the server does not have; the page then computed `built` itself from
+    `P.profile.n_numeric` and wrote its own not-built sentences beside it. The
+    gate was never the page's argument — `GUIDED-005` put the constant in the
+    engine *precisely so the page and the server cannot disagree about it* —
+    so there is nothing here for the server to learn. It held the constant and
+    simply was not applying it per project.
+
+    Two reasons this matters, and the second is the one that is easy to miss.
+    A page-composed verdict can drift from the endpoint that serves the
+    analysis, so a live-looking chip can open onto a refusal. And **a sentence
+    a user reads that no server composed cannot be reviewed in
+    `COPY_DECK.md`**, which is how copy gets reviewed without running the app.
+    """
+    return _project_capabilities(_project(project_id))
+
+
+def _project_capabilities(project: AnalysisProject) -> Dict[str, Any]:
+    """The per-project capability table. One composer, two readers.
+
+    Read by `/project/{id}/capabilities` and by the interview's pull loop, so
+    a chip the Router offers and the same chip in the capability table cannot
+    give different answers — which is the failure this whole row is about, one
+    surface along.
+    """
+    frame = project.working_table
+    n_numeric = int(sum(1 for c in frame.columns
+                        if pd.api.types.is_numeric_dtype(frame[c])
+                        and str(c) != (project.target or "")))
+    from ml import card_evidence as _card_evidence
+    gates = {"gallery_availability": _card_evidence.gallery_availability,
+             "matrix_availability": _card_evidence.matrix_availability}
+
+    pulls: Dict[str, Any] = {}
+    for key, cap in PULL_CAPABILITIES.items():
+        entry = dict(cap)
+        gate_name = _PER_PROJECT_GATES.get(key)
+        if gate_name and entry.get("built"):
+            gate = gates[gate_name](n_numeric)
+            entry["built"] = bool(gate["available"])
+            entry["not_built_reason"] = gate["reason"]
+            entry["limit"] = gate["limit"]
+            entry["n_features"] = gate["n_features"]
+        elif not entry.get("built"):
+            entry["not_built_reason"] = NOT_BUILT_REASON
+        else:
+            entry["not_built_reason"] = None
+        pulls[key] = entry
+    return {"pulls": pulls, "not_built_reason": NOT_BUILT_REASON,
+            "n_numeric": n_numeric}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2267,14 +2360,20 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
     # the exact "assert something false" the governing rule forbids — so the
     # server, which knows, tells the page rather than the page guessing
     # (GUIDED-006).
+    # PER PROJECT, not per build (`GUIDED-084`). A correlation chip on a
+    # 400-column table is not built *for this table*, and the reason belongs on
+    # the chip before it is pressed rather than inside the refusal it opens.
+    capabilities = _project_capabilities(project)["pulls"]
     rendered = []
     for q in questions:
         d = q.to_dict()
         if d["mode"] == "pull":
-            cap = PULL_CAPABILITIES.get(d["key"])
+            cap = capabilities.get(d["key"])
             d["built"] = bool(cap and cap.get("built"))
             d["endpoint"] = (cap or {}).get("endpoint")
-            d["not_built_reason"] = None if d["built"] else NOT_BUILT_REASON
+            d["not_built_reason"] = (
+                None if d["built"]
+                else (cap or {}).get("not_built_reason") or NOT_BUILT_REASON)
             # A gated figure says so ON THE CHIP, before it is opened. A caveat
             # discovered after looking is a caveat applied to a reading the user
             # has already taken.

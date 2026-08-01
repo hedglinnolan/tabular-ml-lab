@@ -44,6 +44,66 @@ from ml.physiology_reference import (
 # small feature spaces, and the number is the design ruling, not a guess.
 MAX_FEATURES_FOR_GALLERY = 50
 
+
+def gallery_availability(n_numeric: int) -> Dict[str, Any]:
+    """May a per-feature gallery be drawn over this many numeric columns?
+
+    **The gate and its sentence in ONE place.** `GUIDED-005` put
+    `MAX_FEATURES_FOR_GALLERY` in the engine precisely so the page and the
+    server could not disagree about it, and the page then wrote its own copy of
+    the arithmetic AND its own copy of the reason (`GUIDED-084`). Two
+    implementations of a threshold is the drift the constant was meant to end;
+    two implementations of the *sentence* is worse, because a sentence a user
+    reads that no server composed cannot be reviewed in `COPY_DECK.md`.
+
+    Returns `available` and, when it is `False`, the reason a chip shows.
+    """
+    n = int(n_numeric)
+    if n > MAX_FEATURES_FOR_GALLERY:
+        return {
+            "available": False, "n_features": n,
+            "limit": MAX_FEATURES_FOR_GALLERY,
+            "reason": (f"{n} numeric features. A per-feature gallery is "
+                       f"offered up to {MAX_FEATURES_FOR_GALLERY}; beyond that "
+                       "it is a wall of plots rather than a way to see "
+                       "anything."),
+        }
+    if n < 1:
+        return {
+            "available": False, "n_features": n,
+            "limit": MAX_FEATURES_FOR_GALLERY,
+            "reason": "No numeric features to draw a distribution of.",
+        }
+    return {"available": True, "n_features": n,
+            "limit": MAX_FEATURES_FOR_GALLERY, "reason": None}
+
+
+def matrix_availability(n_numeric: int) -> Dict[str, Any]:
+    """May a correlation matrix be drawn? Same gate, one column more.
+
+    Two numeric columns rather than one, because a matrix of one column is a
+    picture of the number 1.
+    """
+    n = int(n_numeric)
+    if n > MAX_FEATURES_FOR_GALLERY:
+        return {
+            "available": False, "n_features": n,
+            "limit": MAX_FEATURES_FOR_GALLERY,
+            "reason": (f"{n} numeric features. A correlation matrix is offered "
+                       f"up to {MAX_FEATURES_FOR_GALLERY}; a grid that large "
+                       "cannot be read, and a picture that cannot be read is a "
+                       "claim that it can."),
+        }
+    if n < 2:
+        return {
+            "available": False, "n_features": n,
+            "limit": MAX_FEATURES_FOR_GALLERY,
+            "reason": "A correlation matrix needs at least two numeric features.",
+        }
+    return {"available": True, "n_features": n,
+            "limit": MAX_FEATURES_FOR_GALLERY, "reason": None}
+
+
 # How many flagged entries travel with a card. The count is always exact; the
 # list is capped, and says so, because a card is not a data export.
 MAX_ENTRIES = 12
@@ -485,16 +545,9 @@ def histogram_gallery(df: pd.DataFrame,
     """
     numeric = [c for c in (columns if columns is not None else df.columns)
                if c in df.columns and pd.api.types.is_numeric_dtype(df[c])]
-    if len(numeric) > MAX_FEATURES_FOR_GALLERY:
-        return {
-            "available": False,
-            "n_features": len(numeric),
-            "limit": MAX_FEATURES_FOR_GALLERY,
-            "reason": (f"{len(numeric)} numeric features. A per-feature gallery is "
-                       f"offered up to {MAX_FEATURES_FOR_GALLERY}; beyond that it is "
-                       "a wall of plots rather than a way to see anything."),
-            "plots": [],
-        }
+    gate = gallery_availability(len(numeric))
+    if not gate["available"] and len(numeric) > MAX_FEATURES_FOR_GALLERY:
+        return {**gate, "plots": []}
     page = max(0, int(page))
     per_page = max(1, int(per_page))
     window = numeric[page * per_page:(page + 1) * per_page]
@@ -523,25 +576,9 @@ def correlation_matrix(df: pd.DataFrame,
     """
     numeric = [c for c in (columns if columns is not None else df.columns)
                if c in df.columns and pd.api.types.is_numeric_dtype(df[c])]
-    if len(numeric) > MAX_FEATURES_FOR_GALLERY:
-        return {
-            "available": False,
-            "n_features": len(numeric),
-            "limit": MAX_FEATURES_FOR_GALLERY,
-            "reason": (f"{len(numeric)} numeric features. A correlation matrix is "
-                       f"offered up to {MAX_FEATURES_FOR_GALLERY}; a grid that large "
-                       "cannot be read, and a picture that cannot be read is a claim "
-                       "that it can."),
-            "columns": [], "matrix": [],
-        }
-    if len(numeric) < 2:
-        return {
-            "available": False,
-            "n_features": len(numeric),
-            "limit": MAX_FEATURES_FOR_GALLERY,
-            "reason": "A correlation matrix needs at least two numeric features.",
-            "columns": [], "matrix": [],
-        }
+    gate = matrix_availability(len(numeric))
+    if not gate["available"]:
+        return {**gate, "columns": [], "matrix": []}
     corr = df[numeric].corr(method=method)
     matrix = [[_finite(corr.iat[i, j]) for j in range(len(numeric))]
               for i in range(len(numeric))]

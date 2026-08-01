@@ -486,13 +486,15 @@ HAND: List[Dict[str, Any]] = [
               "is performed inside the training folds at modeling time; a set chosen "
               "now would have been chosen using the held-out rows.",
          source="turbotab/project.py", probe="already-chosen feature set"),
-    dict(step="Features", state="selection evidence · no training mask supplied",
-         trigger="`selection.evidence` called without `train_mask`",
-         copy="No training mask was supplied, so this ranking saw every row. Treat "
-              "it as exploratory.",
-         source="turbotab/selection.py", probe="so this ranking saw every row"),
+    dict(step="Features",
+         state="selection evidence · nothing was withheld from the ranking",
+         trigger="`selection.evidence` where the mask excludes no row — before the "
+                 "seal, or with no mask at all",
+         copy="Nothing was withheld from this ranking, so it saw every row in the "
+              "table. Treat it as exploratory.",
+         source="turbotab/selection.py", probe="Nothing was withheld from this ranking"),
     dict(step="Features", state="selection evidence · the normal case",
-         trigger="`selection.evidence` with a training mask",
+         trigger="`selection.evidence` where the seal withheld rows from it",
          copy="Ranked on training rows only, and not applied. What is actually "
               "selected is refitted inside each training fold, so this ordering is "
               "indicative rather than the answer.",

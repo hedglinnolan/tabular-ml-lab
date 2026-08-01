@@ -4058,9 +4058,33 @@
      asserts a capability that does not exist (GUIDED-006). The server says
      which is which; the page does not guess. */
   function renderPalette(plan){
+    /* GUIDED-084. The page used to compose `built` from P.profile.n_numeric and
+       write its own not-built sentences beside it. The gate was never the
+       page's argument: GUIDED-005 put MAX_FEATURES_FOR_GALLERY in the engine
+       precisely so the page and the server cannot disagree about it. So this
+       FETCHES and RENDERS and computes neither — and a sentence a user reads
+       is a sentence some server composed, which is what makes it reviewable in
+       COPY_DECK.md without running the app. */
+    api("/project/" + P.id + "/capabilities")
+      .then(function(caps){ paintPalette(plan, caps); })
+      .catch(function(){ paintPalette(plan, {pulls: {}}); });
+  }
+
+  function paintPalette(plan, caps){
     var pulls = plan.questions.filter(function(q){ return q.mode === "pull"; });
     var bar = $("palette");
-    var extra = paletteExtras();
+    var seen = {};
+    pulls.forEach(function(q){ seen[q.key] = true; });
+    /* Passed through, not re-keyed. Every field a chip renders — built, the
+       endpoint, the title, the reason it is dark — arrives composed. */
+    var extra = Object.keys(caps.pulls || {})
+      .filter(function(k){ return !seen[k]; })
+      .map(function(k){
+        var c = caps.pulls[k];
+        c.key = k;
+        if (!c.title) c.title = c.label;
+        return c;
+      });
     if (!pulls.length && !extra.length){ bar.style.display = "none"; return; }
     bar.style.display = "flex";
     while (bar.children.length > 1) bar.removeChild(bar.lastChild);
@@ -4086,30 +4110,12 @@
     });
   }
 
-  /* Two affordances the recommender does not emit, gated on feature count: a
-     per-feature histogram pager and a correlation matrix. Above the engine's
-     own limit they are offered as not-built rather than as controls that would
-     produce an unreadable picture (GUIDED-005). */
-  function paletteExtras(){
-    var pr = P.profile || {};
-    var n = pr.n_numeric;
-    if (n === undefined || n === null) return [];
-    var ok = n <= 50 && n >= 1;
-    return [
-      { key: "histogram_pager", title: "Distribution of each feature",
-        why: "One page of histograms at a time, drawn from your table.",
-        built: ok, endpoint: "histograms",
-        not_built_reason: n > 50
-          ? n + " numeric features. A per-feature gallery is offered up to 50; beyond that it is a wall of plots."
-          : "No numeric features to draw." },
-      { key: "look::r8_collinearity", title: "Correlation matrix",
-        why: "Pairwise correlations across your numeric features.",
-        built: ok && n >= 2, endpoint: "correlations",
-        not_built_reason: n > 50
-          ? n + " numeric features. A grid that large cannot be read, and a picture that cannot be read is a claim that it can."
-          : "A correlation matrix needs at least two numeric features." }
-    ];
-  }
+  /* A second, page-local copy of the engine's feature-count gate used to live
+     here: it recomputed the threshold in JavaScript and wrote its own
+     not-built sentences beside it. Deleted at L35-A, not moved —
+     /project/{id}/capabilities serves both, computed from the engine's own
+     constant against this project's numeric column count. The chips that are
+     not in the Router's palette come from there now (GUIDED-084). */
 
   /* ═════════ MISSINGNESS, NAMED AND ROUTED ═════════
      "2 features with high missingness" does not say which two. These cards

@@ -168,6 +168,13 @@ def evidence(df: pd.DataFrame, target: str, candidates: Sequence[str],
 
     frame = df if train_mask is None else df.loc[train_mask.reindex(df.index, fill_value=False)]
     n_seen = int(len(frame))
+    # THE CLAIM IS ABOUT THE ROWS, NOT ABOUT THE ARGUMENT. `scope` used to read
+    # `train_rows` whenever a mask object was passed, so a mask that excludes
+    # nothing — which is what `project.training_mask` correctly returns before
+    # the seal — would have made this sentence say *ranked on training rows
+    # only* about a ranking that saw every row. A scope derived from what was
+    # actually withheld cannot say that.
+    n_held_out = int(len(df)) - n_seen
     y = frame[target]
     scored: List[Dict[str, Any]] = []
     for c in cols:
@@ -188,12 +195,13 @@ def evidence(df: pd.DataFrame, target: str, candidates: Sequence[str],
     return {
         "preview_not_applied": True,
         "n_rows_seen": n_seen,
-        "scope": TRAIN_ROWS if train_mask is not None else "all rows",
+        "n_rows_withheld": n_held_out,
+        "scope": TRAIN_ROWS if n_held_out else "all rows",
         "ranked": scored[:top],
         "note": ("Ranked on training rows only, and not applied. What is "
                  "actually selected is refitted inside each training fold, so "
                  "this ordering is indicative rather than the answer."
-                 if train_mask is not None else
-                 "No training mask was supplied, so this ranking saw every "
-                 "row. Treat it as exploratory."),
+                 if n_held_out else
+                 "Nothing was withheld from this ranking, so it saw every row "
+                 "in the table. Treat it as exploratory."),
     }

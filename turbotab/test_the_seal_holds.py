@@ -464,11 +464,22 @@ def test_the_model_shelf_ranks_on_the_training_rows(client):
 
 
 def test_the_seal_is_consulted_wherever_a_choice_is_ranked(client):
-    """The class rather than the instance. Every ranking a user picks from is
-    a decision, so every ranking has to be computed on the rows the decision
-    will be acted on with — and a new one added without doing that is this
-    finding again."""
-    from turbotab import engine
+    """The class, and this test used to be the reason `GUIDED-092` exists.
+
+    It said in its own docstring that it was the class rather than the
+    instance, and every assertion in it was about `/selection/evidence` — the
+    path that was **already correct**. Its only reference to the shelf was
+    `assert served` as a non-empty control. So it PASSED against the reverted
+    shelf, and it enumerated nothing, so a third ranking added next loop was
+    not covered either. A class guarded by one example is guarded by nothing.
+
+    What it asserts now is that the enumeration exists and is not a subset of
+    the two surfaces that were already right. The probes themselves live in
+    `turbotab/test_every_ranking_is_computed_on_the_training_rows.py`, which
+    iterates the registry — this is the seal file's pointer to them, kept here
+    because §5 of this file is where a reader looks for the class.
+    """
+    from turbotab import rankings
 
     frame = _flat_frame(n=120)
     pid, project = _sealed_project(client, frame, "y", fraction=0.3)
@@ -479,15 +490,19 @@ def test_the_seal_is_consulted_wherever_a_choice_is_ranked(client):
         "chosen with the held-out rows in view")
     assert "train" in evidence["scope"].lower(), evidence["scope"]
 
-    served = project.model_shelf()
-    profiled = engine.profile(
-        project.df.loc[[i not in set(project.lockbox["labels"])
-                        for i in project.df.index]],
-        project.target, project.task_type)
-    assert profiled.n_rows == evidence["n_rows_seen"], (
-        "the two rankings a user picks from disagree about how many rows they "
-        "are entitled to see")
-    assert served                                                    # control
+    # THE PART THAT WAS MISSING. The enumeration has to reach past the two
+    # surfaces that were already masked, or it is this test's old shape wearing
+    # a registry.
+    keys = set(rankings.keys())
+    assert {"model_shelf", "selection_evidence"} < keys, (
+        "the ranking registry covers only the surfaces that were already "
+        "correct, which is exactly what this test used to do")
+    for surface in rankings.training_scoped():
+        assert surface.computes, f"{surface.key} names no primitive"
+    assert rankings.exemptions(), (
+        "every surface claims to be masked, and two of them measurably are "
+        "not — an enumeration that cannot say so is an enumeration nobody "
+        "checked against the code")
 
 
 def test_the_run_records_what_it_did_not_use(client):

@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**243 of 672 closed.**
+**245 of 673 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 382 |
+| `OPEN` | 381 |
 | `PARTIAL` | 47 |
-| `FIXED` | 240 |
+| `FIXED` | 242 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 382
+## OPEN — 381
 
 
 ### Application state / lockbox — 66
@@ -394,7 +394,7 @@ Nothing is closed without a regression test named after it.
 | `COACH-031` | invariant | Coaching voice must never reach the manuscript verbatim. | `utils/insight_ledger.py:1188 — `text = (i.manuscript_text or '').strip() or…` | The invariant is stated correctly and is broken in exactly the way this row predicts, unchanged at HEAD. The register separation works - manuscript_text is preferred and the regex… |
 | `COACH-032` | invariant | 'high' confidence is the only tier the UI pre-selects, so 'high' means the app is asserting (docs/FINDINGS_LEDGER.md, Governing rule, lines 20-27). | `PARTIALLY, and only in the import/join domain: ml/join_doctor.py:922 `if include_low or c.confidence !=…` | All three weakenings confirmed at HEAD. (1) is COACH-015: a medium-confidence join key IS pre-selected. (2) is exact - final returns detected with no tier check, so a… |
 
-### Guided-door drive feedback — 25
+### Guided-door drive feedback — 24
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -409,6 +409,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-090` | high | The Explore missingness card offers a shorter shelf than Preprocess for the same column: 'Leave it missing' is on the numeric branch's strategy list and the card never renders it | `ml/missingness_plan.py _numeric_options emits four options and no 'leave'; _binary_options emits it at line…` | ADJUDICATOR FINDING, L34, found by driving both doors against the same column rather than by reading either. MEASURED on clinic_visits.csv, numeric column 'Unnamed: 0': the… |
 | `GUIDED-091` | high | The Explore missingness card never asks the mechanism, so every column routed from that door is recorded 'not_sure' and clause 07's blocker is unreachable from it | `engine.missingness cards carry no mechanism key (measured: keys are because, column, dtype_route, id…` | ADJUDICATOR FINDING, L34, and it is the other half of the question the execution agent raised. It asked whether two surfaces for one question is the right split. It is worse than… |
 | `GUIDED-094` | high | A fitted run never goes stale: the project records stale_downstream when an upstream answer changes and the page has no reader for it, so a held-out number stands unchanged over a table that moved… | `turbotab/project.py:662 appends to stale_downstream; archive.py and devchecks.py read it…` | ADJUDICATOR FINDING, L34, and it is the standing risk ROADMAP names, tested for the first time. The L5 invalidation DAG has never been exercised by a real recompute because until… |
+| `GUIDED-096` | high | Post-seal Explore reads the held-out rows: every noticing, count, histogram and correlation a user routes on is computed over the whole table, and the one line that would resolve it is already… | `turbotab/rankings.py SURFACES ranked_findings and missingness_survey are WHOLE_TABLE exemptions…` | FILED AT L35-A BY THE ENUMERATION GUIDED-092 ASKED FOR, and it is the class the enumeration found rather than the instance it was pointed at. MEASURED with a poison probe on… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
@@ -418,9 +419,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-069` | medium | The research's generic name patterns are flagging heuristics and the pack applies several of them as findings with no second signal, so a strata or cluster column means whatever it is called | `turbotab/nutrition.py survey_design strata|stratum and psu|cluster fullmatch` | The generalization of the defect L28-C fixed. NUTRITION_PACK.md section 01 says to flag generic weight|wt|pweight|strata|psu|cluster|fpc, and that list is a FLAGGING heuristic in… |
 | `GUIDED-071` | medium | FigureSpec has no field for a precondition on upstream data state, so a figure that must refuse on the shape of the values can only do it inside its payload builder | `turbotab/figures.py FigureSpec.when_applicable; turbotab/figure_specs.py volcano_payload…` | Found at L29-B by building the volcano first, hardest-first, which is what LOOP.md section 02 now asks for. METABOLOMICS_PACK.md section 06.3: the fold change must be computed… |
 | `GUIDED-073` | medium | The client technology was never decided, only defaulted: the Guided door is one 3,701-line HTML file with 2,714 lines of hand-written vanilla JS, and the one sentence that reads like a decision… | `turbotab/web/index.html; turbotab/api.py:2259 StaticFiles mount; PRODUCT_VISION.md:22; PRODUCT_VISION.md…` | RAISED BY THE PRODUCT OWNER, who expected the dynamic half of a migration off Streamlit to be in something other than Python and found it is not. MEASURED: turbotab/web/index.html… |
-| `GUIDED-084` | medium | /capabilities is served so the interface cannot claim an affordance the server does not have, and the page never fetches it — it composes its own built verdicts and its own not-built reasons | `turbotab/api.py:1922 get_capabilities and PULL_CAPABILITIES; turbotab/web/index.html paletteExtras() computes…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_the_capability_table_is_read_rather_than_reimplemented` — ADJUDICATOR RULING, and it is not a new decision… |
 | `GUIDED-085` | medium | Two composed steps the Guided door has no surface for: the models shelf and the Preprocess step, both fully reasoned server-side | `turbotab/api.py get_models three groups always returned including empty ones; get_preprocess strategies carry…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim[preprocess reaches its end]` — L34-B CLOSED THE PREPROCESS HALF. The step has a surface and an end… |
-| `GUIDED-092` | medium | The test named for GUIDED-088's class asserts only the instance that was already correct: it passes against the reverted shelf and enumerates no rankings | `turbotab/test_the_seal_holds.py::test_the_seal_is_consulted_wherever_a_choice_is_ranked asserts on…` | ADJUDICATOR FINDING, L34, found by running the revert probe and reading what stayed green. THE PROBE IS SOUND AND THE INSTANCE TEST IS SOUND: reverting the mask in… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 
@@ -591,7 +590,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 240
+## FIXED — 242
 
 
 ### Multi-file / JSON import — 69
@@ -668,7 +667,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-136` | medium | coerce_numeric's methods-section description omits how many values it blanked (up to 20% of a column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 36'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 36 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-147` | medium | Duplicated key column name crashes normalize_key and therefore diagnose_join / execute_join / repair_keys (AttributeError), and silently blanks find_key_candidates | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 47'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 47 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 
-### Guided-door drive feedback — 62
+### Guided-door drive feedback — 64
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -733,7 +732,9 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-072` | medium | Every attest exit advertises a way out of a 409 and none of them names the payload key a client must send, and the four exits map to at least three different keys | `turbotab/packs.py:1951; turbotab/grain.py:206; turbotab/missingness.py:115; turbotab/purpose.py:155…` | **test:** `turbotab/test_a_client_holding_the_payload_can_act.py::test_a_client_with_only_the_409_can_construct_the_retry` — FIXED at L30-A. Every attest exit is built by… |
 | `GUIDED-076` | medium | The page composes its own blocker exits and never reads the ones the server serves, so GUIDED-072's payload_key and retry are discarded at the boundary | `turbotab/web/index.html blockerHTML around line 1728; turbotab/exits.py; turbotab/api.py the 409 detail` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim[a consequence renders the server's words]` — FIXED at L32-A, both halves. THE BLOCKER BAND… |
 | `GUIDED-077` | medium | The page harness auto-creates elements on getElementById and reports innerHTML as what was assigned, so a mutate-in-place renderer is invisible to it | `turbotab/pageharness.py document.getElementById; El.prototype.appendChild; DESIGN_LANGUAGE.md section 05` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_the_shim_says_no_to_an_id_that_does_not_exist` — L34-A. BOTH HOLES CLOSED AT THE SOURCE, and the sweep found… |
+| `GUIDED-084` | medium | /capabilities is served so the interface cannot claim an affordance the server does not have, and the page never fetches it — it composes its own built verdicts and its own not-built reasons | `turbotab/api.py:1922 get_capabilities and PULL_CAPABILITIES; turbotab/web/index.html paletteExtras() computes…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_the_capability_table_is_read_rather_than_reimplemented` — FIXED AT L35-A, as the ruling specified: a fetch and… |
 | `GUIDED-087` | medium | The blocker's resolve exit carried no retry payload, so the page rendered the safe way through disabled beside a live 'do it anyway' | `turbotab/missingness.py BLOCKER_EXITS: the resolve entry was a hand-written dict with id, kind, label and…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim[imputing an informative blank is a blocker with a way through]` — L34-B. GUIDED-072's unifying test is… |
+| `GUIDED-092` | medium | The test named for GUIDED-088's class asserts only the instance that was already correct: it passes against the reverted shelf and enumerates no rankings | `turbotab/test_the_seal_holds.py::test_the_seal_is_consulted_wherever_a_choice_is_ranked asserts on…` | **test:** `turbotab/test_every_ranking_is_computed_on_the_training_rows.py::test_the_served_row_count_excludes_the_lockbox` — FIXED AT L35-A BY ENUMERATION, which is what the row… |
 
 ### Application state / lockbox — 34
 
