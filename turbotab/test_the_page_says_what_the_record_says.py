@@ -28,20 +28,15 @@ see:
 
 ## Two gaps the harness found on its first run
 
-**The page composes its own exits and never reads the server's.**
-`blockerHTML` hard-codes the leakage claim sentence, both button labels and the
-attestation text, and never touches `q.exits` — so `GUIDED-072`'s `payload_key`
-and `retry`, served with every refusal, reach the page and are discarded. That
-is the drift `api._disclosures` argues against, in the direction the finding
-named. Asserted below as the gap it is, and filed as `GUIDED-076`.
+**`GUIDED-076` was found here and is fixed** — the band reads `q.exits` now,
+and the test that asserted the defect asserts the fix. A test that asserts a
+defect is a placeholder with a deadline.
 
-## The fifth claim is absent and that is the other finding
+## The fifth claim exists now, and it is why this file was worth writing
 
-*A figure arrives with its annotation box* is not here, because **the page never
-fetches `/figures`** — zero occurrences in `web/index.html`. Five of six
-registered figures reach a user through the API and none reaches one through
-the Guided page. Writing a test that passed anyway would be this file's own
-subject. Filed as `GUIDED-075`.
+*A figure arrives with its annotation box* could not be written last loop
+because the page never fetched `/figures` — zero occurrences. `GUIDED-075` was
+that finding, and the claim is the sixth entry in `CLAIMS` now.
 """
 from __future__ import annotations
 
@@ -172,32 +167,31 @@ def claim_a_question_shows_its_consequence(client, project):
         f"did not render it")
 
 
-def claim_a_blocker_renders_a_way_through(client, project):
-    """A question of consequence reaches the band with a terminal way out.
+def claim_a_consequence_renders_the_servers_words(client, project):
+    """`GUIDED-076`. The band renders `q.exits` — labels, details and the
+    payload each one posts — rather than composing two controls for the one
+    blocker that existed.
 
-    `api.py`'s own invariant: a CONSEQUENCE resolves or is attested, never a
-    dead end. This asserts the band, the claim sentence and both terminal
-    controls — the half the page actually implements. What it does NOT assert
-    is that the exits the SERVER declared reached it; see
-    `test_the_page_composes_its_own_exits_instead_of_rendering_the_servers`.
+    Driven with a consequence that is NOT the leakage blocker, because that is
+    the case the composed version got wrong: it would have rendered any second
+    consequence as a leakage blocker with the wrong words.
     """
     pid = project["id"]
     blocker = {
-        "key": "blocker::leakage::glucose", "kind": "blocker",
-        "title": "Was glucose recorded after the outcome was known?",
+        "key": "blocker::cohort::site", "kind": "blocker",
+        "title": "Was `site` recorded before enrollment?",
         "status": "asked", "mode": "push", "severity": "blocker",
-        "why": "Every accuracy number below this point depends on the answer.",
+        "why": "Every subgroup estimate below depends on the answer.",
         "exits": [
-            {"id": "revise", "kind": "resolve", "label": "Drop it",
-             "detail": "The column leaves the analysis."},
-            X.attest("Keep it and record why", "Recorded as a stated limitation.",
-                     X.ACKNOWLEDGE_BLOCKER),
+            {"id": "resolve_blocker", "kind": X.RESOLVE,
+             "label": "Drop site", "detail": "It leaves the analysis.",
+             "retry": {"payload": {"column": "site"}}},
+            X.attest("Keep it and record why",
+                     "The manuscript carries what you type as a limitation.",
+                     X.ACKNOWLEDGE_BLOCKER,
+                     typed="I am keeping site although it may be post-baseline."),
         ],
     }
-    # The band renders off the EXPLORE plan and only once a target is set —
-    # `renderInterview` returns early otherwise. Seeding the data plan showed
-    # an empty band, which is the harness being truthful about a path that did
-    # not run rather than a page that did not render.
     client.post(f"/project/{pid}/decision", json={
         "kind": "set_target", "payload": {"column": "responder"}})
     project = client.get(f"/project/{pid}").json()
@@ -205,18 +199,162 @@ def claim_a_blocker_renders_a_way_through(client, project):
         f"/project/{pid}/interview?step=explore": {
             "questions": [blocker], "steps": []}})
     out = _drive("__emit(__harness.html('blockerBand'));", routes, pid)
+
     assert 'class="blocker"' in out, "the blocker band rendered nothing"
-    assert "glucose" in out, "the band did not name what it is about"
-    assert "data-blk-resolve" in out and "data-blk-attest" in out, (
-        "a question of consequence rendered without both terminal controls, "
-        "which is the dead end `api.py` says cannot exist")
+    assert "Drop site" in out and "Keep it and record why" in out, (
+        "the band did not render the labels the server served")
+    assert "It leaves the analysis." in out, "an exit rendered without its detail"
+    assert "may encode the outcome" not in out, (
+        "the page composed the LEAKAGE claim for a consequence that is not "
+        "about leakage — `GUIDED-076` exactly")
+    assert "although it may be post-baseline" in out, (
+        "the typed sentence came from the page rather than from the exit")
+    assert "acknowledge_blocker" in out, (
+        "the attest exit rendered without the key its retry posts, so "
+        "`GUIDED-072` is discarded at this boundary again")
+
+
+def claim_a_refusal_renders_its_exits_and_the_retry_works(client, project):
+    """**The other half of `GUIDED-076`.** A 409 arrives with `exits`, each
+    carrying the payload its retry posts. `api()` threw `new Error(detail)` on
+    an object detail — which stringifies to `[object Object]` — so the refusal
+    that travels WITH its way out rendered as nothing a reader could act on.
+
+    Driven on the lens contradiction: a clinical lens over a 396-column assay
+    panel. The retry is the ORIGINAL request with the exit's payload merged in,
+    and the page contributes nothing to it.
+    """
+    pid = project["id"]
+    # The REAL 409, from the live API, so the page is driven against what the
+    # server actually says rather than against a fixture written here.
+    refusal = client.post(f"/project/{pid}/decision", json={
+        "kind": "set_lens", "payload": {"lens": ["clinical"]}})
+    assert refusal.status_code == 409, refusal.text[:200]
+    routes = _routes(client, project, **{
+        f"POST /project/{pid}/decision": {
+            "__status": 409, "body": refusal.json()}})
+    out = _drive(
+        """
+        var rx = /<button([^>]*data-answer-key="state_lens"[^>]*)>/g, m, opts = [];
+        var html = __harness.html('askedQuestions');
+        while ((m = rx.exec(html)) !== null){
+          var a = {};
+          m[1].replace(/([a-zA-Z-]+)="([^"]*)"/g,
+                       function(_, k, v){ a[k] = v; return ""; });
+          opts.push(a);
+        }
+        var clinical = null;
+        opts.forEach(function(o){
+          if (o['data-answer-value'] === 'clinical') clinical = o;
+        });
+        if (!clinical) { throw new Error('no clinical option rendered'); }
+        __harness.dispatch('click', __harness.target(clinical, ['answer', 'multi']));
+        __harness.dispatch('click', __harness.target(
+          {'data-answer-commit': 'state_lens'}, ['answer', 'primary']));
+
+        /* The refusal arrives on a promise, so the microtask queue has to
+           drain before the band is readable. The harness drains once before
+           this body runs; this is the second drain, after the click. */
+        function settle(n){
+          var p = Promise.resolve();
+          for (var i = 0; i < n; i++) { p = p.then(function(){}); }
+          return p;
+        }
+        settle(12).then(function(){
+          var refused = __harness.html('refusal');
+          var m2 = /data-refusal-i="(\\d+)"/g, hit, last = null;
+          while ((hit = m2.exec(refused)) !== null) { last = hit[1]; }
+          if (last !== null) {
+            __harness.dispatch('click', __harness.target(
+              {'data-refusal-i': last}, ['answer', 'primary']));
+          }
+          return settle(12).then(function(){
+            __emit({refused: refused, posts: __harness.posts()});
+          });
+        });
+        """,
+        routes, pid)
+
+    assert "[object Object]" not in out["refused"], (
+        "the structured refusal stringified, which is what losing the detail "
+        "at the throw looks like")
+    assert "data-refusal-i" in out["refused"], (
+        "the 409 rendered no exit, so the way out travelled with the refusal "
+        "and stopped at the page")
+
+    posts = [c for c in out["posts"] if "/decision" in c.get("path", "")]
+    assert len(posts) >= 2, (
+        f"expected a refused post and a retry, saw {len(posts)}")
+    # The shim records the parsed body, so this is the object the page posted.
+    retry = posts[-1]["body"]
+    assert retry["payload"].get("acknowledge_contradiction") is True, (
+        "the retry did not carry the key the exit declared, so the page is "
+        "still holding an out-of-band map")
+
+
+def claim_a_figure_arrives_with_its_annotation_box(client, project):
+    """**The claim I could not write last loop** (`GUIDED-075`). The page never
+    fetched `/figures`; five drawable figures reached a user through the API and
+    none through the interface, which is exactly what API testing cannot see.
+
+    Asserts the drawn figure AND the two honesty lists, because those are the
+    ones that would be easy to drop: a figure silently missing is
+    indistinguishable from a figure the app does not have.
+    """
+    pid = project["id"]
+    client.post(f"/project/{pid}/decision", json={
+        "kind": "set_lens", "payload": {"lens": ["metabolomics"]}})
+    client.post(f"/project/{pid}/decision", json={
+        "kind": "set_target", "payload": {"column": "responder"}})
+    project = client.get(f"/project/{pid}").json()
+    figures = client.get(f"/project/{pid}/figures").json()
+    assert figures["admitted"], "the endpoint drew nothing to render"
+
+    routes = _routes(client, project,
+                     **{f"/project/{pid}/figures": figures})
+    out = _drive(
+        """
+        function settle(n){
+          var p = Promise.resolve();
+          for (var i = 0; i < n; i++) { p = p.then(function(){}); }
+          return p;
+        }
+        settle(12).then(function(){
+          __harness.drainRaf();
+          __emit(__harness.render('figuresBox'));
+        });
+        """,
+        routes, pid)
+
+    drawn = figures["admitted"][0]
+    assert drawn["title"] in out, "the drawn figure did not reach the page"
+    assert drawn["caption"][:40] in out, "the figure rendered without its caption"
+    labels = [a["label"] for a in drawn["annotations"]]
+    assert labels, "the endpoint served no annotations to render"
+    assert all(lab in out for lab in labels), (
+        "the annotation box did not reach the page — which is the whole of "
+        "what makes this figure layer more than a plotting library")
+    assert "PASS" in out or "FAIL" in out, (
+        "the checklist did not render, so nothing scores this render")
+
+    # The honesty lists, which are the ones that would be easy to drop.
+    for row in figures["not_drawn"]:
+        assert row["title"] in out, (
+            f"{row['id']} is not drawn and the page said nothing about it")
+        assert row["why"][:40] in out, (
+            f"{row['id']} rendered without the reason it does not apply")
 
 
 CLAIMS = [
     ("questions render", claim_questions_render),
     ("a decision re-paints", claim_a_decision_repaints),
     ("a question shows its consequence", claim_a_question_shows_its_consequence),
-    ("a blocker renders a way through", claim_a_blocker_renders_a_way_through),
+    ("a consequence renders the server's words",
+     claim_a_consequence_renders_the_servers_words),
+    ("a refusal renders its exits and the retry works",
+     claim_a_refusal_renders_its_exits_and_the_retry_works),
+    ("a figure arrives with its annotation box",
+     claim_a_figure_arrives_with_its_annotation_box),
 ]
 
 
@@ -277,43 +415,70 @@ def test_the_gate_is_not_passing_because_every_claim_is_broken():
         claim(client, project)
 
 
-def test_the_page_composes_its_own_exits_instead_of_rendering_the_servers():
-    """`GUIDED-076`, found by writing this harness.
+def test_the_page_renders_the_servers_exits_rather_than_composing_them():
+    """`GUIDED-076`, flipped. This asserted the defect last loop — that
+    `blockerHTML` never touched `q.exits` — and asserts the fix now.
 
-    The server serves `exits` with every refusal, and `GUIDED-072` gave each
-    attest exit a `payload_key` and a ready-to-post `retry` so a client could
-    act on it. `blockerHTML` reads neither: it writes its own claim sentence,
-    its own two labels and its own attestation text, all specific to the
-    leakage blocker. A second consequence with different exits would render as
-    a leakage blocker with the wrong words.
-
-    Asserted as the current state rather than fixed here, because fixing it is
-    a page change and this loop's C part is the harness. When it is fixed this
-    test fails, which is the right way round.
+    A test that asserts a defect is a placeholder with a deadline, and this is
+    the deadline arriving.
     """
     page = (Path(__file__).resolve().parent / "web" / "index.html").read_text(
         encoding="utf-8")
     body = page[page.index("function blockerHTML"):]
     body = body[:body.index("\n  function ", 1)]
     assert "q.title" in body                                # positive control
-    assert "exits" not in body, (
-        "the page now reads the server's exits — good; delete this test and "
-        "close GUIDED-076")
-    assert "may encode the outcome" in body, (
-        "the hard-coded leakage sentence moved; re-check what this asserts")
+    assert "q.exits" in body, "the band still does not read the server's exits"
+    assert "may encode the outcome" not in body, (
+        "the hard-coded leakage claim sentence is still composed here")
+    assert "data-blk-resolve" not in page and "data-blk-attest" not in page, (
+        "the two hard-coded exit controls are still in the page")
 
 
-def test_the_figure_layer_has_no_page_surface_to_guard():
-    """The fifth claim, absent and recorded rather than faked (`GUIDED-075`).
+def test_a_consequence_with_no_exits_says_so_rather_than_inventing_one():
+    """The band will not compose a way through the server did not describe.
+    That is the same rule the fix is about, applied to its own failure case."""
+    page = (Path(__file__).resolve().parent / "web" / "index.html").read_text(
+        encoding="utf-8")
+    body = page[page.index("function blockerHTML"):]
+    body = body[:body.index("\n  function ", 1)]
+    assert "should not happen" in body and "Nothing here can resolve it" in body
 
-    Five of six registered figures reach a user through `/project/{id}/figures`
-    and the Guided page never fetches it. A harness test asserting a figure
-    arrives with its annotation box would have to build the surface it claims
-    to guard, which is this file's own subject wearing a different hat.
+
+def test_the_figure_surface_mutates_rather_than_rebuilding():
+    """`DESIGN_LANGUAGE.md` §05's rendering requirement, and this is the
+    surface where it first binds.
+
+    Figures arrive and leave as the lens and target change — §05's *Arrive* and
+    *Propagate* — and the settle IS the receipt. A renderer that rebuilds the
+    list destroys every node on every change, and a transition cannot run to
+    completion on a node that no longer exists.
+
+    Asserted structurally rather than by timing, because the mechanism is what
+    the requirement is about: the list is keyed per figure, updated in place,
+    and never assigned wholesale.
     """
     page = (Path(__file__).resolve().parent / "web" / "index.html").read_text(
         encoding="utf-8")
+    body = page[page.index("function renderFigures"):]
+    body = body[:body.index("\n  function ", 1)]
+    assert "FIG_NODES[id]" in body                             # positive control
+    assert "appendChild" in body and "node.innerHTML = html" in body, (
+        "the surface no longer adds or mutates per-figure nodes")
+    assert "box.innerHTML = rows" not in body, "the list is rebuilt wholesale"
+    # The one `innerHTML` on the container is the header, written once.
+    assert body.count("box.innerHTML") == 1, (
+        "the container is assigned more than once, which is a rebuild wearing "
+        "a different name")
+    assert "arriving" in body and "leaving" in body, (
+        "nothing marks a figure as arriving or leaving, so §05's settle has "
+        "nothing to run on")
+
+
+def test_the_page_now_fetches_the_figure_layer():
+    """`GUIDED-075`, flipped. This asserted the absence last loop — zero
+    occurrences of `/figures` — and asserts the surface now."""
+    page = (Path(__file__).resolve().parent / "web" / "index.html").read_text(
+        encoding="utf-8")
     assert len(page) > 20_000 and "renderAll" in page      # positive control
-    assert "/figures" not in page, (
-        "the page now fetches the figure layer — add the annotation-box claim "
-        "to CLAIMS above and close GUIDED-075")
+    assert "/figures" in page, "the page still does not fetch the figure layer"
+    assert "figuresBox" in page and "renderFigureSurface" in page
