@@ -1146,3 +1146,162 @@ def test_the_lattice_mutates_cells_rather_than_rebuilding_the_grid():
         "wearing a different name")
     assert 'classList.add("changed")' in body, (
         "nothing marks a cell as changed, so §05's settle has nothing to run on")
+
+
+# ── the standing check: every server surface names its reader ───────────────
+#
+# `GUIDED-080` named the class from three instances and the adjudicator
+# measured it at eight. Four scales of one defect: a function nothing calls
+# (`GUIDED-058`), an endpoint nothing fetches (`GUIDED-075`, `-079`, `-080`), a
+# payload field nothing renders (`GUIDED-078`), a capability nothing consults
+# (`AUDIT-008`). Every instance was found by somebody going looking.
+#
+# So it stops being a finding and becomes a gate. A route is either fetched by
+# the Guided door, or it is listed below WITH THE READER NAMED. There is no
+# third option, and adding a route without doing one of the two fails this
+# test — which is the only version of "watch for this class" that survives the
+# loop that stops watching.
+#
+# THE PROBE HAD TO BE BUILT TWICE, and the first version is why this comment is
+# long. A literal grep for the path reported `evidence/correlations` and
+# `evidence/histograms` as unread. They are not: `runPull` builds
+# `"/evidence/" + endpoint` from the palette chip's `data-endpoint`, so the
+# full path never appears anywhere in the file. A check that cries wolf twice
+# on its first run is a check the next person deletes, so the probe recognizes
+# the composed form — a literal parent prefix plus a quoted leaf — and the
+# unread count fell from nine to seven.
+NOT_READ_BY_THE_DOOR = {
+    "/project/{project_id}/findings":
+        "Read by the Streamlit door. The Guided door gets the same findings "
+        "inside the project payload, which is one fetch rather than two views "
+        "of one list that can disagree.",
+    "/project/{project_id}/grain":
+        "Read by the Guided door through `/interview`, which serves the same "
+        "question with its `why` and its `consumer` attached. This endpoint is "
+        "the question's material without the plan around it.",
+    "/project/{project_id}/lens":
+        "Same as `/grain`: the Guided door reads the lens question from the "
+        "interview plan, which is where the reason to ask it lives.",
+    "/project/{project_id}/repeats":
+        "Same as `/grain`. Questions 4 to 7 reach the Guided door through the "
+        "interview plan, and `applies:false` is the ordinary answer.",
+    "/project/{project_id}/gaps":
+        "The `[AUTHOR REQUIRED]` gaps reach the Guided door inside `/draft`, "
+        "which counts them beside the sentences they interrupt. This endpoint "
+        "serves them alone, and is read by the export path.",
+    "/project/{project_id}/models":
+        "UNREAD, and tracked by `GUIDED-085`. The models step is not in this "
+        "build and the rail says so, but the shelf is composed, ordered and "
+        "reasoned about — three groups always returned, including empty ones.",
+    "/project/{project_id}/preprocess":
+        "UNREAD, and tracked by `GUIDED-085`. Same shape as the models shelf: "
+        "the step is not in this build and every strategy already carries its "
+        "`because` and its `defers`.",
+}
+
+PROJECT_PREFIX = "/project/{project_id}"
+
+# What counts as a reader. Named explicitly, because "somebody probably uses
+# it" is the sentence this whole check exists to stop — a reason that does not
+# name one of these or a ledger row is not a reason.
+READERS = ("Streamlit door", "interview plan", "`/interview`", "`/draft`",
+           "export path", "project payload")
+
+
+def _routes_of(api_source: str):
+    import re
+
+    return re.findall(r'@app\.(?:get|post|delete|put)\("([^"]+)"\)', api_source)
+
+
+def _is_fetched(path: str, page: str) -> bool:
+    """Whether the Guided door reaches this route.
+
+    Two forms, because the controller uses two. Most calls are a literal tail
+    concatenated onto `"/project/" + P.id`. The pull affordances build theirs
+    from the palette entry's `endpoint` field, so the path exists only at
+    runtime — recognized here as a literal parent prefix plus a quoted leaf.
+    """
+    if not path.startswith(PROJECT_PREFIX):
+        return path in page
+    tail = path[len(PROJECT_PREFIX):]
+    if not tail:
+        return '"/project/"' in page
+    cut = tail.find("{")
+    literal = tail if cut == -1 else tail[:cut]
+    if literal.rstrip("/") and literal in page:
+        return True
+    parent, _, leaf = tail.rstrip("/").rpartition("/")
+    # Only for NESTED paths: a one-segment tail matched this way would count
+    # any quoted occurrence of the word, and `"grain"` is a question kind.
+    return bool(parent) and (parent + "/") in page and f'"{leaf}"' in page
+
+
+def test_every_server_surface_names_its_reader():
+    root = Path(__file__).resolve().parent
+    api_source = (root / "api.py").read_text(encoding="utf-8")
+    page = (root / "web" / "index.html").read_text(encoding="utf-8")
+
+    routes = _routes_of(api_source)
+    assert len(routes) > 20, "the route scan found almost nothing"   # control
+    assert len(page) > 20_000 and "renderAll" in page               # control
+    # The probe itself, controlled: a route the page demonstrably fetches must
+    # read as fetched, in both forms.
+    assert _is_fetched(f"{PROJECT_PREFIX}/figures", page)           # literal
+    assert _is_fetched(f"{PROJECT_PREFIX}/evidence/correlations", page)  # composed
+
+    unread = [p for p in routes if not _is_fetched(p, page)]
+    undeclared = [p for p in unread if p not in NOT_READ_BY_THE_DOOR]
+    assert not undeclared, (
+        "these routes are composed by the server and fetched by nothing in the "
+        "Guided door, and no reader is named for them:\n  "
+        + "\n  ".join(undeclared)
+        + "\n\nEither wire the surface or add it to NOT_READ_BY_THE_DOOR with "
+          "the reader named. A surface nobody reads is a promise nobody keeps.")
+    # The gate has to be able to fail. A route the page cannot possibly fetch
+    # must come out undeclared, or the check passes because it finds nothing.
+    invented = "/project/{project_id}/a_surface_nobody_wrote"
+    assert not _is_fetched(invented, page), (
+        "the probe reports an endpoint that does not exist as fetched, so it "
+        "would report a real one that way too")
+
+    # The declaration must stay true: a route listed as unread that the page
+    # HAS since started fetching is a stale excuse, and stale excuses are how a
+    # list like this stops meaning anything.
+    stale = [p for p in NOT_READ_BY_THE_DOOR if p not in unread]
+    assert not stale, (
+        "these are declared as not read by the door and the page fetches them "
+        f"now: {stale}")
+
+    for path, reason in NOT_READ_BY_THE_DOOR.items():
+        assert len(reason) > 60, f"{path}: the reason is a shrug"
+        assert "GUIDED-" in reason or any(r in reason for r in READERS), (
+            f"{path}: the reason names neither a reader from {READERS} nor a "
+            "ledger row tracking it as unread")
+
+
+def test_the_capability_table_is_read_rather_than_reimplemented():
+    """`/capabilities` exists so the interface cannot claim a capability the
+    server does not have. That only holds if the page reads it.
+
+    Asserted as the DEFECT it currently is (`GUIDED-084`): the page composes
+    its own `built` verdicts and its own `not_built_reason` strings, which is
+    the second implementation the endpoint was built to prevent. When the
+    endpoint is wired this test flips, and the flip is the fix — a test that
+    asserts a defect is a placeholder with a deadline.
+    """
+    from turbotab import api as api_mod
+
+    page = (Path(__file__).resolve().parent / "web" / "index.html").read_text(
+        encoding="utf-8")
+    assert api_mod.PULL_CAPABILITIES                                # control
+    assert "paletteExtras" in page                                  # control
+
+    fetches = "/capabilities" in page.replace(
+        "/capabilities is served rather", "")
+    assert not fetches, (
+        "the page now reads /capabilities — delete this test and assert the "
+        "capability table instead of the defect")
+    assert "not_built_reason:" in page, (
+        "the page stopped composing its own not-built reasons, which is half "
+        "of GUIDED-084 closing")

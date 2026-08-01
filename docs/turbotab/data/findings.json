@@ -8498,5 +8498,33 @@
   "verified_against": "assigning className set an ordinary JS field: classList.contains returned false and __deep printed no class attribute",
   "test": "turbotab/test_the_page_says_what_the_record_says.py::test_the_shim_reports_a_class_it_was_assigned_rather_than_swallowing_it",
   "verified_ev": "turbotab/pageharness.py El had no className property; turbotab/web/index.html renderFigures and renderDisclosures both assign node.className; DESIGN_LANGUAGE.md section 05"
+ },
+ {
+  "id": "GUIDED-084",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "/capabilities is served so the interface cannot claim an affordance the server does not have, and the page never fetches it — it composes its own built verdicts and its own not-built reasons",
+  "detail": "",
+  "ev": "turbotab/api.py:1922 get_capabilities and PULL_CAPABILITIES; turbotab/web/index.html paletteExtras() computes built from P.profile.n_numeric; index.html has zero fetches of /capabilities",
+  "act": "",
+  "status": "OPEN",
+  "note": "FOUND AT L33-E BY THE STANDING CHECK, on its first run. The endpoint's own docstring states the contract: served rather than hard-coded in the page SO THE INTERFACE CANNOT CLAIM A CAPABILITY THE SERVER DOES NOT HAVE. The page hard-codes it anyway. paletteExtras() returns histogram_pager and look::r8_collinearity with built computed in JavaScript from n_numeric (at most 50, at least 1 or 2) and with not_built_reason strings written in the page - two sentences a user reads that no server composed, which is also the one place COPY_DECK.md's walk found page-composed copy. THE TWO VERSIONS ALREADY DISAGREE: PULL_CAPABILITIES marks all four built unconditionally, the page gates two of them on the numeric-feature count. Neither is wrong on its own and there is no way to tell from the app which one is in force. NOT FIXED HERE, and the reason is that the fix is not a wiring change: the server would have to learn the n_numeric gates the page currently applies, which is a real design question about where a data-dependent capability verdict belongs - GUIDED-005 is why the gates exist and it is the page's argument, not the server's. The test asserts the DEFECT and says in its docstring that flipping it is the fix.",
+  "verified_against": "",
+  "test": "turbotab/test_the_page_says_what_the_record_says.py::test_the_capability_table_is_read_rather_than_reimplemented",
+  "verified_ev": "turbotab/api.py:1922 get_capabilities and PULL_CAPABILITIES; turbotab/web/index.html paletteExtras() computes built from P.profile.n_numeric; index.html has zero fetches of /capabilities"
+ },
+ {
+  "id": "GUIDED-085",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "Two composed steps the Guided door has no surface for: the models shelf and the Preprocess step, both fully reasoned server-side",
+  "detail": "",
+  "ev": "turbotab/api.py get_models three groups always returned including empty ones; get_preprocess strategies carry because and defers; index.html fetches neither",
+  "act": "",
+  "status": "OPEN",
+  "note": "FILED AT L33-E as the honest remainder of the GUIDED-080 class, and they are DIFFERENT from the six surfaces that loop closed. Those were built things nobody could reach. These two are steps the build deliberately stops before - the rail says so in its own words - and the endpoints are what a step would read when it exists. What makes them worth a row rather than a shrug: both already carry the part that is hard. /models returns three groups ALWAYS, including empty ones, because nothing is recommended for this data is a real state and a renderer that drops the group asserts it was never considered. /preprocess carries because and defers per strategy so an interface can say WHY a choice changes nothing on screen instead of leaving the user to conclude the app did nothing. That reasoning is the expensive half and it is already written. Named in NOT_READ_BY_THE_DOOR so the standing check stays green for a stated reason rather than by omission.",
+  "verified_against": "",
+  "test": "turbotab/test_the_page_says_what_the_record_says.py::test_every_server_surface_names_its_reader",
+  "verified_ev": "turbotab/api.py get_models three groups always returned including empty ones; get_preprocess strategies carry because and defers; index.html fetches neither"
  }
 ]
