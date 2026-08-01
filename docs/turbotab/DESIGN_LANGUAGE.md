@@ -186,6 +186,91 @@ Refusals are acknowledgments too, and they carry the reason: *"The test set is a
 person's rows cannot be combined now."* An action that declines and says nothing is
 indistinguishable from one that broke.
 
+### 05.2 · Identity continuity — what the motion is *for*, and why none of it runs today
+
+§05 states three motions and never says what they are **for**. That omission is why the section
+reads as polish, and it is not polish. Recorded here because it is a design principle the product
+owner named as load-bearing, and because it existed only in a conversation until this paragraph.
+
+> **Motion's job is to preserve identity across a state change**, so the user never loses track of
+> what became what.
+
+That is the whole of it. Settle is not "a nice collapse" — it is the user watching *their question*
+**become** *their decision sentence*, which is what makes the sentence feel earned rather than
+issued. Arrive is the new section visibly caused by the answer above it. Propagate is the edit's
+blast radius drawing itself across objects that persist while their meaning changes. In every case
+the same object survives the transition wearing a new state, and the user's model of the document
+survives with it. An object that is destroyed and replaced teaches nothing, however smoothly it
+fades.
+
+**None of the three can currently execute, and the reason is mechanical rather than aesthetic.**
+Measured on `turbotab/web/index.html` at `58bab10`:
+
+| | |
+|---|---|
+| `innerHTML =` assignments | **92** |
+| node-owning writes (`ownChild` / `appendChild`) | **22** |
+| `startViewTransition` | **0** |
+| `getBoundingClientRect` (FLIP) | **0** |
+| `.animate()` (Web Animations) | **0** |
+| `transitionend` listeners | **0** |
+| CSS `transition:` / `@keyframes` | 15 / 3 |
+
+So the app has hover-and-state motion and **no mechanism at all for animating a change of
+content.** Settle needs the answered question's node to survive its own collapse; a repaint destroys
+it. Arrive needs the section to exist before it animates; a repaint creates it already-final.
+Propagate needs downstream sections to persist while their appearance changes; `stale_downstream`
+has no reader at all (`GUIDED-094`). The app today is a well-typeset document that redraws.
+
+**And there is a browser primitive built for exactly this, which the codebase uses zero times.**
+`document.startViewTransition()` snapshots the DOM before and after a change and morphs elements
+matched by `view-transition-name`. The identity continuity comes from the browser rather than from
+the renderer — which means **the wholesale repaint can stay.** That matters, because the repaint is
+a defended architecture and not an accident: the server owns the record, so a full re-render cannot
+desynchronize from it. If this holds, the choice `GUIDED-073` frames as *repaint vs mutate vs
+framework* is really *repaint + View Transitions*, and no stack decision is required.
+
+`[verify-at-build]` — **support has not been measured against our three deployment targets.** Chromium
+111+ and Safari 18+ are the figures I hold and they are recollected, not read. A Tauri/WebView2
+desktop build is almost certainly fine; a research enclave running an older browser may not be, and
+that is the target that decides it. Feature-detect with an instant fallback either way. Measure
+before building on it.
+
+**Be judicious. This is the rule that keeps the principle from eating the app.** Identity
+continuity is expensive attention — it tells the user *this thing is the same thing* — and an app
+that says that about everything has said it about nothing. §05 rule 5 already forbids ambient
+animation; this subsection must not be read as license to revisit that. Spend the continuity only
+where **identity would otherwise be lost**, which is a short and closed list:
+
+1. **Settle** — the question becoming its decision sentence.
+2. **Arrive** — the section caused by the answer directly above it.
+3. **Propagate** — staleness crossing objects that remain on screen.
+4. **The working table under a reshape** — join, merge, split. `PRODUCT_VISION.md` §04b makes this
+   the argument for why Guided must own multi-file assembly at all: *the user is empowered to decide
+   correctly only when they can watch their working data morph.*
+
+Everything else changes state instantly. A fourth item added to that list is a design decision, not
+an implementation detail, and belongs in a loop prompt rather than in a renderer.
+
+**One thing this section cannot yet source, stated rather than papered over.** Item 4 is the single
+load-bearing design assertion in `PRODUCT_VISION.md` that resolves to no evidence — an empirical
+claim about whether animating a transformation improves a viewer's ability to follow it, asserted
+because it is intuitive. This project does not let a vitamin conversion factor ship on intuition and
+should not make an exception here. The literature exists (animated transitions in statistical
+graphics; Heer & Robertson, InfoVis 2007, is the anchor I would start from and have not read in
+primary). **Proposed and unscheduled: `research/INTERACTION_PACK.md`**, built under the same
+discipline as the four science packs — sourced claims, SETTLED / CONVENTION / DISPUTED,
+`[verify-at-build]` on anything not read from primary text. It is D-track work, and it has nothing
+to attach to until the journey has an end, so it sits behind Explain and Report.
+
+**On Apple's HIG specifically**, since it was asked and the answer should not be re-derived: perhaps
+a fifth of it transfers to a research tool in a browser, and this document has already derived most
+of that fifth independently — deference and content-over-chrome as *one accent moment per viewport*
+(§03), progressive disclosure as the interview, direct manipulation as preview-before-apply. The one
+idea genuinely worth taking is the one above: Apple's transitions preserve object identity across
+state changes, and that is the vocabulary this section was missing. Take the principle; do not
+import the platform conventions, which are about navigation idioms this app does not have.
+
 ---
 
 ## 06 · Voice — how the app talks

@@ -231,6 +231,47 @@ only form of this rule that can actually fire.
 not restate them; this file once said "never modify" while §05 said "engine-move-only", and a reader
 following the stricter one could not do the work §05 permits.
 
+### A capability ships with its consumer, or with a failing test that names the one it lacks
+
+**The measurement that produced this rule.** Searching the ledger for findings whose text describes
+a capability that exists beside a path that never reaches it returns **37 of 672** — four critical,
+many high, several landmines. The count is not the finding. **The distribution is**, because it
+spans all three eras of this codebase:
+
+- `MODELS-005`, inherited Streamlit — the Cancel Training button is decorative; `cancel_training`
+  is written and never read.
+- `GUIDED-058`, `L27` — every surface the nutrition loop built was imported only by its own tests.
+- `GUIDED-075`, `L31` — the page never fetches `/figures`.
+- `GUIDED-094` / `GUIDED-095`, found adjudicating `L34` — `stale_downstream` written and never read;
+  36 decision kinds recorded and 6 consumed by the thing that fits the model.
+
+Same defect, three codebases, years apart. This is not migration debt and it is not one bad loop.
+**It is how this codebase has always been built**, and `AUDIT-008` named the shape without noticing
+it was describing a habit rather than a cluster.
+
+**The cause is an incentive gradient, and naming it is most of the fix.** A capability is gratifying
+to build and *fully verifiable in isolation* — a green test can prove `figure_specs.py` correct
+forever without anything ever calling it. Wiring requires the consumer to exist, and the consumer is
+usually the next loop's work. So the pressure points at capabilities every single time, and the
+suite stays green while the app cannot reach what was built.
+
+**The rule.** A part that adds a capability ships **either** with the path that consumes it, **or**
+with a test that names the missing consumer and **fails.** The second clause is the load-bearing
+one: sometimes the consumer genuinely cannot exist yet — the calibration plot had no training step
+for eight loops, and that was a correct sequencing call. The honest form of that is a red test with
+a deadline, not a green suite over an unreachable module.
+
+**The model already exists in this repository**, from `L34`:
+`test_the_seal_holds.py::test_the_run_records_what_it_did_not_use` asserts the *limit* of the Train
+slice, so the limit cannot be forgotten and closing `GUIDED-089` must change the test. That is the
+pattern. It needs to be mandatory rather than admirable — which is the same move §06 made when
+"adjudicate the report" stopped being a habit and became a written check.
+
+**And the corollary for adjudication:** the §06 grep — *does anything outside a test file import
+what the loop just built?* — is the detector for this class, and it only catches the import-shaped
+instances. `stale_downstream` has importers; nothing renders it. Where the question is whether a
+recorded thing reaches a consumer, **flip it and see if anything downstream moves.**
+
 ---
 
 ## 06 · Adjudicating the report
