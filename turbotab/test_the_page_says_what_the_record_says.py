@@ -642,6 +642,171 @@ def claim_an_attested_answer_does_not_render_as_a_clean_split(client, project):
         "the note the server appends to the seal sentence was dropped")
 
 
+
+def claim_the_features_step_reaches_its_end(client, project):
+    """**`GUIDED-079` / `DRIVE-010`, and ROADMAP L9's criterion is the gate:**
+    a person uploads a file and reaches the END of this step without leaving
+    the Guided door.
+
+    `/features` and `/selection/evidence` appeared zero times in the page, so
+    25 of the copy deck's 130 promise rows — nineteen percent — described a
+    step with no surface at all.
+
+    The walk is driven as clicks and then REPLAYED against the live API, in
+    order. That is the honest version of "reaches the end": a page can render
+    controls that compose requests the server refuses, and a claim that only
+    watched the DOM would call that success. Every request the page composed
+    has to be one the record accepts, and the record has to end settled.
+    """
+    with open(DATA / "clinic_visits.csv", "rb") as fh:
+        pid = client.post("/project", files={
+            "file": ("s.csv", fh, "text/csv")}).json()["id"]
+    r = client.post(f"/project/{pid}/decision",
+                    json={"kind": "set_target", "payload": {"column": "hba1c"}})
+    assert r.status_code == 200, r.text[:200]
+    seen = client.get(f"/project/{pid}").json()
+
+    routes = _routes(client, seen, **{
+        f"/project/{pid}/figures": client.get(f"/project/{pid}/figures").json(),
+        f"/project/{pid}/features": client.get(f"/project/{pid}/features").json(),
+        f"/project/{pid}/selection/evidence":
+            client.get(f"/project/{pid}/selection/evidence").json(),
+        f"/project/{pid}/interview?step=features":
+            client.get(f"/project/{pid}/interview?step=features").json(),
+        f"/project/{pid}/feature/preview?transform=log&columns=glucose":
+            client.get(f"/project/{pid}/feature/preview"
+                       f"?transform=log&columns=glucose").json(),
+        f"POST /project/{pid}/decision": seen,
+    })
+
+    out = _drive(
+        """
+        function settle(n){
+          var p = Promise.resolve();
+          for (var i = 0; i < n; i++) { p = p.then(function(){}); }
+          return p;
+        }
+        function change(attrs, value){
+          var el = __harness.target(attrs, []);
+          el.value = value;
+          __harness.dispatch('change', el);
+        }
+        function press(attrs){
+          __harness.dispatch('click', __harness.target(attrs, ['answer']));
+        }
+        var seen = {};
+        settle(16).then(function(){
+          __harness.drainRaf();
+          seen.catalogue = __harness.html('featBuild');
+          seen.headings = __harness.html('featTitle') + __harness.html('featWhy') +
+            __harness.html('featConsumer') + __harness.html('selTitle') +
+            __harness.html('selWhy') + __harness.html('selConsumer');
+          // Pick a column, look at what the transform would do, then add it.
+          change({'data-feat-col': 'log', 'data-feat-slot': '0'}, 'glucose');
+          return settle(4);
+        }).then(function(){
+          seen.ready = __harness.html('featBuild');
+          press({'data-feat-preview': 'log'});
+          return settle(10);
+        }).then(function(){
+          seen.preview = __harness.html('featprev-log');
+          press({'data-feat-add': 'log', 'data-feat-kind': 'row_local'});
+          return settle(10);
+        }).then(function(){
+          // The selection question, its ranking, and the answer.
+          press({'data-sel-rank': '1'});
+          return settle(10);
+        }).then(function(){
+          seen.ranking = __harness.html('selEvidence');
+          press({'data-sel-set': '1'});
+          return settle(10);
+        }).then(function(){
+          press({'data-feat-settle': '1'});
+          return settle(10);
+        }).then(function(){
+          seen.posts = __harness.posts();
+          seen.err = __harness.el('upErr').textContent;
+          __emit(seen);
+        });
+        """,
+        routes, pid)
+
+    assert not out["err"], f"the walk raised: {out['err']}"
+
+    # Both questions are the ROUTER's, asked in its words. The first version of
+    # this step wrote its own headings, and one of them asked a different
+    # question from the one the record asks.
+    plan = routes[f"/project/{pid}/interview?step=features"]
+    asked = {q["key"]: q for q in plan["questions"]}
+    assert {"choose_features", "choose_selection"} <= set(asked), (
+        "the Router stopped serving the Features questions, so this claim is "
+        "no longer about the step it names")
+    # Only the two this step owns: the plan also carries questions from earlier
+    # steps that are still unanswered, and those have their own surfaces.
+    for key in ("choose_features", "choose_selection"):
+        q = asked[key]
+        assert q["title"] in out["headings"], (
+            f"the page asks {key!r} in words the Router did not compose")
+        assert q["why"][:40] in out["headings"]
+        assert q["consumer"][:40] in out["headings"], (
+            f"{key} rendered without saying who consumes the answer (§09)")
+
+    # The catalogue is the ENGINE's, not a list written here.
+    served = routes[f"/project/{pid}/features"]
+    for row in served["row_local"] + served["deferred"]:
+        assert row["label"] in out["catalogue"], (
+            f"{row['key']} is in the catalogue the server serves and not on "
+            "the page, so the page has its own shorter list")
+        assert row["because"][:40] in out["catalogue"], (
+            f"{row['key']} rendered without the engine's reason, so the page "
+            "asserts the row-local/deferred split instead of showing it")
+
+    # A CHOICE gets a preview (§09), and the preview is the REAL computation.
+    shown = routes[f"/project/{pid}/feature/preview?transform=log"
+                   f"&columns=glucose"]
+    assert shown["sentence"] in out["preview"], (
+        "the preview rendered without the sentence the engine composed for it")
+    # The BEFORE values, which are the table's own and are rendered exactly.
+    # Not the after values: the page formats those for reading, and asserting
+    # a formatted number would pin the formatter rather than the computation.
+    for row in shown["rows"][:3]:
+        assert str(row["before"]) in out["preview"], (
+            "the preview rendered no values from the table, so it describes "
+            "the transform rather than running it")
+    assert shown["new_column"] in out["preview"], (
+        "the preview did not name the column it would create")
+    assert "Nothing in your table has changed" in out["preview"], (
+        "a preview that does not say it is a preview is an applied transform")
+    assert "data-feat-preview" not in out["catalogue"], (
+        "a preview was offered before a column was picked, so pressing it "
+        "would ask the server to transform nothing")
+
+    ranked = routes[f"/project/{pid}/selection/evidence"]["ranked"]
+    assert ranked[0]["feature"] in out["ranking"], (
+        "the ranking did not render the column it ranked first")
+    assert ranked[0]["measure"] in out["ranking"], (
+        "the ranking rendered scores without saying what they measure")
+    assert "ranks and does not choose" in out["ranking"], (
+        "a ranking a user reads as a decision is a decision nobody made")
+
+    # THE GATE. Every request the page composed, replayed against the record.
+    posted = [p["body"] if isinstance(p["body"], dict) else json.loads(p["body"])
+              for p in out["posts"]]
+    kinds = [b["kind"] for b in posted]
+    assert kinds == ["add_feature", "set_selection", "settle_features"], kinds
+    for body in posted:
+        again = client.post(f"/project/{pid}/decision", json=body)
+        assert again.status_code == 200, (body["kind"], again.text[:250])
+
+    ended = client.get(f"/project/{pid}").json()
+    assert ended["features_settled"] is True, (
+        "the walk ran to the end of the step and the record does not say the "
+        "step is over")
+    assert any(e["column"] == "log_glucose" for e in ended["engineered"]), (
+        "the added feature is not in the working table")
+
+
+
 CLAIMS = [
     ("questions render", claim_questions_render),
     ("a decision re-paints", claim_a_decision_repaints),
@@ -658,6 +823,7 @@ CLAIMS = [
      claim_the_seal_says_which_split_it_drew),
     ("an attested answer does not render as a clean split",
      claim_an_attested_answer_does_not_render_as_a_clean_split),
+    ("the features step reaches its end", claim_the_features_step_reaches_its_end),
 ]
 
 

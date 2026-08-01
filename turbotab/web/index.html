@@ -579,6 +579,22 @@
   .disc-mark{ display:inline-block; font-family:var(--mono); font-size:10px;
               letter-spacing:.06em; text-transform:uppercase; margin-left:8px; }
   .disc-row.is-attested{ border-left-color:var(--warn); }
+  /* GUIDED-079. The Features step. */
+  .feat{ border-top:1px solid var(--line); padding:12px 0 4px; }
+  .feat:first-child{ border-top:0; }
+  .feat-head{ display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; }
+  .feat-lab{ font-size:14px; font-weight:600; }
+  .feat-cost{ font-family:var(--mono); font-size:10px; letter-spacing:.05em;
+              text-transform:uppercase; color:var(--faint); }
+  .feat-why{ font-size:12.5px; color:var(--muted); margin:5px 0 8px; max-width:74ch; }
+  .feat-ctl{ display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
+  .feat-ctl select{ font:inherit; font-size:13px; padding:5px 8px; border-radius:7px;
+                    border:1px solid var(--line); background:var(--surface); color:var(--ink); }
+  .feat-prev:empty{ display:none; }
+  .feat-prevbox{ margin-top:10px; border-left:3px solid var(--line);
+                 padding:8px 0 4px 11px; }
+  .feat-sent{ font-size:13px; margin:0 0 5px; }
+  .feat-note{ font-size:12px; color:var(--muted); margin:5px 0 0; max-width:74ch; }
   .uperr{margin:12px 0 0;font-size:12.5px;color:var(--del);background:var(--del-tint);
          border:1px solid var(--del);border-radius:8px;padding:9px 12px;line-height:1.5}
   .uperr:empty{display:none}
@@ -893,8 +909,9 @@
           <button class="map-step now" data-map="data" type="button"><span class="md"></span>Data</button>
           <button class="map-step" data-map="target" type="button"><span class="md"></span>Target</button>
           <button class="map-step" data-map="eda" type="button"><span class="md"></span>Explore</button>
+          <button class="map-step" data-map="features" type="button"><span class="md"></span>Features</button>
         </nav>
-        <div class="dock-empty" style="margin-top:9px;">Features, preprocessing, training, results and
+        <div class="dock-empty" style="margin-top:9px;">Preprocessing, training, results and
           report are not in this build. The skeleton stops where the record does.</div>
       </div>
       <div class="jobchip" id="jobChip"><span class="spin" aria-hidden="true"></span><span id="jobText">Working…</span></div>
@@ -1121,6 +1138,58 @@
         </div>
       </div>
     </section>
+
+    <!-- ═══ FEATURES ═══
+         GUIDED-079 / DRIVE-010. `/features` and `/selection/evidence` appeared
+         zero times in this file, and 25 of COPY_DECK.md's 130 promise rows —
+         nineteen percent — belong to a step with no surface. The transform
+         catalogue, the row-local/deferred split clause §06 turns on, the
+         preview that makes a CHOICE a choice, and the five selection methods
+         were all built, all served, and reachable only by curl.
+
+         ROADMAP L9's criterion is the gate: a person uploads a file and
+         reaches the END of this step without leaving the Guided door. So the
+         step has a terminal — `settle_features` — and settling with nothing
+         added is a recorded answer rather than a skip. -->
+    <section class="sect is-hidden" id="sec-features" data-map="features">
+      <div class="sect-head"><span class="sect-kicker">Features</span><span class="sect-state">open</span></div>
+      <span class="stale-tag">stale — an earlier answer changed</span>
+      <div class="sect-body">
+        <div class="stepcard" id="card-features">
+          <div class="sub">
+            <div class="subhead"><span class="sub-num">01</span></div>
+            <h2><span class="fact-mark" aria-hidden="true"></span><span id="featTitle"></span></h2>
+            <p class="why" id="featWhy"></p>
+            <!-- §09: every FACT names who consumes the answer, and the text is
+                 the Router's. -->
+            <details class="whyask"><summary>Why we ask</summary>
+              <p class="ans" id="featConsumer"></p></details>
+            <div id="featBuild"></div>
+          </div>
+        </div>
+
+        <!-- What has been decided. Two lists, because clause §06's split is the
+             whole point: one has already changed the table, the other has not
+             and will not until it is inside a training fold. -->
+        <div id="featDecided"></div>
+
+        <div class="stepcard calm" id="card-selection">
+          <div class="sub">
+            <div class="subhead"><span class="sub-num">02</span></div>
+            <h2><span class="fact-mark" aria-hidden="true"></span><span id="selTitle"></span></h2>
+            <p class="why" id="selWhy"></p>
+            <details class="whyask"><summary>Why we ask</summary>
+              <p class="ans" id="selConsumer"></p></details>
+            <div id="selBuild"></div>
+            <div id="selEvidence"></div>
+          </div>
+        </div>
+
+        <div class="decision is-hidden" id="d-features">
+          <p class="prose" id="d-features-text"></p>
+        </div>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -1153,7 +1222,8 @@
      copy of the analysis state in the browser — the record on the server is the
      only source of truth, and everything on screen is a fold over it. */
   var P = null;
-  var SEC = { data:"sec-data", target:"sec-target", eda:"sec-eda" };
+  var SEC = { data:"sec-data", target:"sec-target", eda:"sec-eda",
+              features:"sec-features" };
   /* The last Explore plan the Router returned. Held so the attestation can
      rebuild the exact sentence it is checking against, rather than the page
      inventing one. */
@@ -2094,6 +2164,7 @@
     renderFigureSurface();
     renderPrevalence();
     renderDisclosures();
+    renderFeatureStep();
   }
 
   function renderData(){
@@ -2573,6 +2644,247 @@
       delete DISC_NODES[key];
       if (gone && gone.parentNode) gone.parentNode.removeChild(gone);
     });
+  }
+
+  /* ═════════ GUIDED-079 / DRIVE-010 · THE FEATURES STEP ═════════
+
+     Everything below renders `/features`, which serves the catalogue as DATA —
+     `features.CATALOGUE` is the same object COPY_DECK.md generates its twenty
+     transform rows from, so this page cannot describe a transform the engine
+     does not have, and a transform added there appears here the same day.
+
+     THE SPLIT IS THE STEP. Clause §06 divides the catalogue by one question —
+     does computing this value for a row need any other row? — and the two
+     halves do different things: `row_local` runs now and changes the working
+     table, `stateful` is RECORDED now and fitted inside each training fold,
+     never over the held-out rows. Both carry `because`, the litmus answer in
+     the engine's words, so the page shows the reasoning rather than asserting
+     the classification. */
+  var FEAT = null;                       /* the last /features payload */
+  /* The Router serves both Features questions with their title, their reason
+     and their consumer — `choose_features` and `choose_selection`, clause §06's
+     two objects. The first version of this step wrote its own headings and its
+     own "why", and one of them asked a DIFFERENT QUESTION from the one the
+     record asks. Held per key rather than replaced, because the Router stops
+     serving a question once it is answered and the reason it was asked does not
+     stop being true. */
+  var FEAT_Q = {};
+  var FEAT_PICK = {};                    /* transform key -> chosen columns */
+  var SEL_PICK = { method: "", n_features: 10 };
+
+  function featColumnsFor(row){
+    /* A transform's inputs are numeric unless the catalogue says otherwise.
+       `needs` is the engine's own statement of what a transform requires, so
+       an offer the data cannot satisfy is not made. */
+    var cols = (FEAT && FEAT.numeric_columns) || [];
+    return cols;
+  }
+
+  function featPickerHTML(row){
+    var cols = featColumnsFor(row);
+    var chosen = FEAT_PICK[row.key] || [];
+    var h = "";
+    for (var i = 0; i < (row.n_inputs || 1); i++){
+      h += '<select data-feat-col="' + esc(row.key) + '" data-feat-slot="' + i + '">';
+      h += '<option value="">' + (row.n_inputs > 1 ? "column " + (i + 1) : "column") +
+           "…</option>";
+      cols.forEach(function(c){
+        h += '<option value="' + esc(c) + '"' +
+             (chosen[i] === c ? " selected" : "") + ">" + esc(c) + "</option>";
+      });
+      h += "</select>";
+    }
+    return h;
+  }
+
+  function featRowHTML(row, kind){
+    var ready = (FEAT_PICK[row.key] || []).filter(function(c){ return !!c; })
+                  .length === (row.n_inputs || 1);
+    var h = '<div class="feat" data-feat="' + esc(row.key) + '">';
+    h += '<div class="feat-head"><span class="feat-lab">' + esc(row.label) + "</span>" +
+         '<span class="feat-cost" data-tip="How much this costs you when the ' +
+         'model has to be explained">' + esc(row.explainability_cost) +
+         " explainability cost</span></div>";
+    /* `because` is the engine's sentence, never a paraphrase. It is the
+       difference between "this one is deferred" and a reader who can check
+       whether the classification is right. */
+    h += '<p class="feat-why">' + esc(row.because) + "</p>";
+    h += '<div class="feat-ctl">' + featPickerHTML(row);
+    if (ready){
+      h += '<button class="pill" type="button" data-feat-preview="' + esc(row.key) +
+           '">Show me what it does</button>';
+      h += '<button class="answer primary" type="button" data-feat-add="' +
+           esc(row.key) + '" data-feat-kind="' + esc(kind) + '">' +
+           (kind === "deferred" ? "Record it" : "Add it") + "</button>";
+    }
+    h += "</div>";
+    h += '<div class="feat-prev" id="featprev-' + esc(row.key) + '"></div>';
+    h += "</div>";
+    return h;
+  }
+
+  function featPreviewHTML(body){
+    /* THE PREVIEW IS THE REAL COMPUTATION (§09), and `applied:false` is the
+       part that has to be legible: the rows below happened, and nothing in the
+       working table changed. */
+    var h = '<div class="feat-prevbox">';
+    h += '<p class="feat-sent">' + esc(body.sentence) + "</p>";
+    h += '<p class="feat-note">This ran on a copy. Nothing in your table has ' +
+         "changed — the column below does not exist until you add it.</p>";
+    if (body.rows && body.rows.length){
+      h += '<table class="data"><tr><th>row</th><th>before</th><th>' +
+           esc(body.new_column || "after") + "</th></tr>";
+      body.rows.slice(0, 5).forEach(function(r){
+        h += "<tr><td>" + esc(r.label) + "</td><td>" + num(r.before, 4) +
+             "</td><td>" + num(r.after, 4) + "</td></tr>";
+      });
+      h += "</table>";
+    }
+    if (body.n_undefined){
+      h += '<p class="feat-note">' + num(body.n_undefined, 0) + " of " +
+           num(body.n_rows, 0) + " rows are undefined under this transform and " +
+           "become missing.</p>";
+    }
+    h += "</div>";
+    return h;
+  }
+
+  function featDecidedHTML(){
+    var eng = (FEAT && FEAT.engineered) || [];
+    var def = (FEAT && FEAT.deferred_transforms) || [];
+    if (!eng.length && !def.length) return "";
+    var h = '<div class="disc" style="margin-top:4px;">';
+    if (eng.length){
+      h += '<div class="disc-row is-sealed"><span class="disc-k">In the table now</span>';
+      eng.forEach(function(e){
+        h += '<p class="disc-v">' + esc(e.sentence || e.column) +
+             ' <button class="chg" type="button" data-feat-remove="' +
+             esc(e.column) + '">remove</button></p>';
+      });
+      h += "</div>";
+    }
+    if (def.length){
+      /* NOT the same list. A deferred transform has changed nothing yet, and a
+         reader who cannot tell the two apart cannot tell what their table
+         currently contains. */
+      h += '<div class="disc-row is-attested"><span class="disc-k">Recorded, and ' +
+           'fitted inside each training fold</span>';
+      def.forEach(function(d){
+        h += '<p class="disc-v">' + esc(d.sentence || d.key) + "</p>";
+      });
+      h += "</div>";
+    }
+    h += "</div>";
+    return h;
+  }
+
+  function selBuildHTML(){
+    var methods = (FEAT && FEAT.selection_methods) || [];
+    var spec = FEAT && FEAT.selection;
+    if (spec){
+      return '<div class="answered-card">' + esc(spec.sentence || spec.method) +
+             "</div>";
+    }
+    var h = '<div class="feat-ctl"><select data-sel="method">';
+    h += '<option value="">use every column</option>';
+    methods.forEach(function(m){
+      h += '<option value="' + esc(m.key) + '"' +
+           (SEL_PICK.method === m.key ? " selected" : "") + ">" +
+           esc(m.label) + " · " + esc(m.explainability_cost) +
+           " explainability cost</option>";
+    });
+    h += "</select>";
+    if (SEL_PICK.method){
+      h += '<select data-sel="n_features">';
+      [5, 10, 20, 30].forEach(function(n){
+        h += '<option value="' + n + '"' +
+             (Number(SEL_PICK.n_features) === n ? " selected" : "") + ">" +
+             "keep " + n + "</option>";
+      });
+      h += "</select>";
+    }
+    h += '<button class="pill" type="button" data-sel-rank="1">Rank them for me</button>';
+    h += '<button class="answer primary" type="button" data-sel-set="1">' +
+         (SEL_PICK.method ? "Record this method" : "Use every column") + "</button>";
+    h += "</div>";
+    return h;
+  }
+
+  function selEvidenceHTML(body){
+    var h = '<div class="feat-prevbox">';
+    /* `preview_not_applied` is a field on the response and it is rendered as a
+       sentence, because a ranking a user reads as a decision is a decision the
+       app made without asking. */
+    h += '<p class="feat-note">This ranks and does not choose. Nothing here is ' +
+         "recorded, and the app has not narrowed anything.</p>";
+    h += '<p class="feat-note">' + esc(body.note || "") + "</p>";
+    h += '<table class="data"><tr><th>column</th><th>' +
+         esc((body.ranked[0] || {}).measure || "score") + "</th></tr>";
+    body.ranked.forEach(function(r){
+      h += "<tr><td>" + esc(r.feature) + "</td><td>" +
+           (r.score === null || r.score === undefined
+              ? "not computable" : num(r.score, 4)) + "</td></tr>";
+    });
+    h += "</table></div>";
+    return h;
+  }
+
+  function fillQuestion(key, titleId, whyId, consumerId){
+    var q = FEAT_Q[key];
+    if (!q) return;
+    $(titleId).innerHTML = esc(q.title || "");
+    $(whyId).innerHTML = esc(q.why || "");
+    $(consumerId).innerHTML = esc(q.consumer || "");
+  }
+
+  function renderFeatures(){
+    if (!P || !P.target || !FEAT) return;
+    reveal("features");
+
+    fillQuestion("choose_features", "featTitle", "featWhy", "featConsumer");
+    fillQuestion("choose_selection", "selTitle", "selWhy", "selConsumer");
+
+    var h = "";
+    (FEAT.row_local || []).forEach(function(r){ h += featRowHTML(r, "row_local"); });
+    (FEAT.deferred || []).forEach(function(r){ h += featRowHTML(r, "deferred"); });
+    $("featBuild").innerHTML = h;
+    $("featDecided").innerHTML = featDecidedHTML();
+    $("selBuild").innerHTML = selBuildHTML();
+
+    /* THE TERMINAL. ROADMAP L9's criterion is reaching the END of this step,
+       so the step has an end, and settling with nothing added is a recorded
+       answer rather than a skip — the same rule eligibility's "everyone" and
+       selection's "every column" follow. */
+    if (FEAT.settled){
+      var settled = P.decisions.filter(function(d){
+        return d.kind === "settle_features"; });
+      record("d-features", esc(settled.length
+        ? settled[settled.length - 1].text
+        : "The features step is settled."));
+      sectState("features", "recorded", "recorded");
+      setMap("features", "done");
+      $("featBuild").innerHTML +=
+        '<p class="feat-note">This step is settled. Adding a feature now would ' +
+        "make everything downstream stale.</p>";
+    } else {
+      sectState("features", "live", "open");
+      $("featBuild").innerHTML +=
+        '<div class="feat-ctl" style="margin-top:12px;">' +
+        '<button class="answer" type="button" data-feat-settle="1">' +
+        "Nothing else — settle this step</button></div>";
+    }
+  }
+
+  function renderFeatureStep(){
+    if (!P || !P.target) return;
+    Promise.all([
+      api("/project/" + P.id + "/features"),
+      api("/project/" + P.id + "/interview?step=features")
+    ]).then(function(both){
+      FEAT = both[0];
+      (both[1].questions || []).forEach(function(q){ FEAT_Q[q.key] = q; });
+      renderFeatures();
+    }).catch(function(){ /* the step is a surface, not a gate on Explore */ });
   }
 
   function renderEda(){
@@ -3426,8 +3738,25 @@
      the comparison is on the sentence, not on the user's typing speed. */
   document.addEventListener("change", function(e){
     var t = e.target;
-    if (!t || !t.hasAttribute || !t.hasAttribute("data-prev")) return;
-    PREV_STATE[t.getAttribute("data-prev")] = t.value;
+    if (!t || !t.hasAttribute) return;
+    if (t.hasAttribute("data-prev")){
+      PREV_STATE[t.getAttribute("data-prev")] = t.value;
+      return;
+    }
+    if (t.hasAttribute("data-feat-col")){
+      /* A pick is held here and posted nowhere. The transform does not run
+         until it is asked for by name — the same rule the preview keeps. */
+      var key = t.getAttribute("data-feat-col");
+      var slot = Number(t.getAttribute("data-feat-slot") || 0);
+      FEAT_PICK[key] = FEAT_PICK[key] || [];
+      FEAT_PICK[key][slot] = t.value;
+      renderFeatures();
+      return;
+    }
+    if (t.hasAttribute("data-sel")){
+      SEL_PICK[t.getAttribute("data-sel")] = t.value;
+      renderFeatures();
+    }
   });
 
   document.addEventListener("input", function(e){
@@ -3531,6 +3860,8 @@
       "[data-undismiss],[data-flag],[data-apply],[data-revert],[data-task]," +
       "[data-event-for]," +
       "[data-look],[data-unskip],[data-exit-for],[data-att-send],[data-refusal-i],[data-prev-ask]," +
+      "[data-feat-preview],[data-feat-add],[data-feat-remove],[data-feat-settle]," +
+      "[data-sel-rank],[data-sel-set]," +
       "[data-impossible],[data-keep-impossible],[data-miss-choose],[data-miss-preview]," +
       "[data-hist-page],[data-pg-step],[data-copy-rows]," +
       "[data-rg-show],[data-rg-defer],[data-rg-pick],[data-rg-apply]," +
@@ -3688,6 +4019,59 @@
 
     /* ── the prevalence question ── */
     if (t.hasAttribute("data-prev-ask")){ askPrevalence(); return; }
+
+    /* ── the Features step ── */
+    if (t.hasAttribute("data-feat-preview")){
+      var pk = t.getAttribute("data-feat-preview");
+      var pcols = (FEAT_PICK[pk] || []).filter(function(c){ return !!c; });
+      api("/project/" + P.id + "/feature/preview?transform=" +
+          encodeURIComponent(pk) + "&columns=" + encodeURIComponent(pcols.join(",")))
+        .then(function(body){
+          var box = $("featprev-" + pk);
+          if (box) box.innerHTML = featPreviewHTML(body);
+        })
+        .catch(function(err){ setErr(err.message); });
+      return;
+    }
+    if (t.hasAttribute("data-feat-add")){
+      var ak = t.getAttribute("data-feat-add");
+      var acols = (FEAT_PICK[ak] || []).filter(function(c){ return !!c; });
+      /* TWO DIFFERENT DECISIONS, and the page does not choose between them —
+         the catalogue's `scope` did, and clause §06 is why. `add_feature`
+         changes the working table; `defer_feature` changes nothing until a
+         training fold exists. */
+      decide(t.getAttribute("data-feat-kind") === "deferred"
+               ? "defer_feature" : "add_feature",
+             ak, { transform: ak, columns: acols, params: {} },
+             "Recording that…");
+      return;
+    }
+    if (t.hasAttribute("data-feat-remove")){
+      decide("remove_feature", t.getAttribute("data-feat-remove"),
+             { column: t.getAttribute("data-feat-remove") }, "Removing that…");
+      return;
+    }
+    if (t.hasAttribute("data-feat-settle")){
+      decide("settle_features", "features", { skipped: false },
+             "Settling the features step…");
+      return;
+    }
+    if (t.hasAttribute("data-sel-rank")){
+      api("/project/" + P.id + "/selection/evidence")
+        .then(function(body){ $("selEvidence").innerHTML = selEvidenceHTML(body); })
+        .catch(function(err){ setErr(err.message); });
+      return;
+    }
+    if (t.hasAttribute("data-sel-set")){
+      var spec = { method: SEL_PICK.method || "" };
+      if (SEL_PICK.method){
+        spec.n_features = Number(SEL_PICK.n_features) || 10;
+        spec.candidates = (FEAT && FEAT.numeric_columns) || [];
+      }
+      decide("set_selection", SEL_PICK.method || "every_column", spec,
+             "Recording that…");
+      return;
+    }
 
     /* ── a refusal's exit: retry the SAME request with the exit's payload ── */
     if (t.hasAttribute("data-refusal-i")){
