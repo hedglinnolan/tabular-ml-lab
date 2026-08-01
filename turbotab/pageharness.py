@@ -530,7 +530,17 @@ globalThis.__harness = {
 };
 
 var __emitted = null;
-globalThis.__emit = function(v){ __emitted = v; };
+// `__emit` ENDS THE RUN, and it has to.
+//
+// Node exits when its event loop drains, and a page that owns a repeating
+// timer never drains one — which is every page that watches a job, so this
+// became load-bearing the moment `PRODUCT_VISION.md` §04's progress-and-cancel
+// requirement got a surface. Before this, driving the training step hung until
+// the 90-second timeout and reported nothing at all.
+globalThis.__emit = function(v){
+  __emitted = v;
+  process.exit(0);
+};
 process.on("exit", function(){
   process.stdout.write("\n__SENTINEL__" + JSON.stringify(__emitted === undefined ? null : __emitted) + "\n");
 });

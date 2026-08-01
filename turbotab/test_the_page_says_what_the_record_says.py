@@ -1217,6 +1217,227 @@ def claim_imputing_an_informative_blank_is_a_blocker_with_a_way_through(
 
 
 
+
+def claim_an_upload_reaches_a_held_out_number(client, project):
+    """**The first number this door COMPUTES rather than reads**, and the two
+    rules that are not optional around it.
+
+    `PRODUCT_VISION.md` §04: anything over about a second is an observable job
+    with a name in plain language, progress and a cancel — never a bare
+    spinner. Training is the reason that rule exists, and `turbotab/jobs.py`
+    was built at L7 with a consumer in Classic and none here.
+
+    And the shelf is never shortened: three groups are always rendered,
+    including empty ones, because *nothing is recommended for this data* is a
+    real state and a renderer that drops the group asserts it was never
+    considered. Ranking carries the judgment; absence never does.
+    """
+    with open(DATA / "leaky_sepsis.csv", "rb") as fh:
+        pid = client.post("/project", files={
+            "file": ("s.csv", fh, "text/csv")}).json()["id"]
+    for what, payload in [("set_target", {"column": "sepsis"}),
+                          ("set_grain", {"answer": "one_row_per_person"}),
+                          ("set_eligibility", {"answer": "everyone"}),
+                          ("seal", {})]:
+        r = client.post(f"/project/{pid}/decision",
+                        json={"kind": what, "payload": payload})
+        assert r.status_code == 200, (what, r.text[:200])
+    shelf = client.get(f"/project/{pid}/models").json()
+    keys = [m["key"] for g in shelf["groups"] for m in g["models"]][:2]
+    assert keys, "the shelf offered nothing, so there is nothing to fit"
+    seen = client.get(f"/project/{pid}").json()
+
+    routes = _routes(client, seen, **{
+        f"/project/{pid}/figures": client.get(f"/project/{pid}/figures").json(),
+        f"/project/{pid}/features": client.get(f"/project/{pid}/features").json(),
+        f"/project/{pid}/interview?step=features":
+            client.get(f"/project/{pid}/interview?step=features").json(),
+        f"/project/{pid}/recipes": client.get(f"/project/{pid}/recipes").json(),
+        f"/project/{pid}/preprocess":
+            client.get(f"/project/{pid}/preprocess").json(),
+        f"/project/{pid}/models": shelf,
+        f"/project/{pid}/training": {"run": None, "blocked_by": None},
+        # The job as it is MID-RUN, so the claim sees what a user sees while
+        # waiting rather than only the finished state.
+        f"POST /project/{pid}/train": {
+            "id": "job1", "name": "Training 2 model(s) on the held-out split",
+            "status": "running", "progress": 0.5, "message": "Fitting",
+            "error": None, "seed": 42, "elapsed": 0.2, "terminal": False},
+        # The poll's next answer. Terminal, so the page stops asking — a
+        # non-terminal reply here would leave the controller polling forever,
+        # which is worth knowing is the behavior: it stops when the job stops.
+        "/job/job1": {"id": "job1", "name": "Training", "status": "done",
+                      "progress": 1.0, "message": "2 model(s) scored",
+                      "error": None, "seed": 42, "elapsed": 1.0,
+                      "terminal": True, "result": None},
+    })
+
+    out = _drive(
+        """
+        function settle(n){
+          var p = Promise.resolve();
+          for (var i = 0; i < n; i++) { p = p.then(function(){}); }
+          return p;
+        }
+        var seen = {};
+        settle(22).then(function(){
+          __harness.drainRaf();
+          seen.shelf = __harness.html('shelfBox');
+          __harness.dispatch('click',
+            __harness.target({'data-pick-model': PICK}, ['pill']));
+          return settle(6);
+        }).then(function(){
+          seen.picked = __harness.html('shelfBox');
+          __harness.dispatch('click',
+            __harness.target({'data-train-start': '1'}, ['answer', 'primary']));
+          return settle(12);
+        }).then(function(){
+          // Read BEFORE the poll's first tick, which is what a user sees for
+          // the whole of a real fit.
+          seen.running = __harness.html('trainRun');
+          seen.calls = __harness.calls().map(function(x){ return x.path; });
+          seen.posts = __harness.posts();
+          seen.err = __harness.el('upErr').textContent;
+          __emit(seen);
+        });
+        """.replace("PICK", json.dumps(keys[0])),
+        routes, pid)
+
+    assert not out["err"], f"the walk raised: {out['err']}"
+
+    # THE SHELF, WHOLE. Every group the server returned, including empty ones.
+    for group in shelf["groups"]:
+        assert group["label"] in out["shelf"], (
+            f"the group {group['label']!r} was returned and rendered nowhere, "
+            "so a model this coach ranked is invisible")
+        for model in group["models"]:
+            assert model["name"] in out["shelf"], (
+                f"{model['key']} is on the shelf and not on the page")
+    empty = [g for g in shelf["groups"] if not g["models"]]
+    for group in empty:
+        assert "considered, not skipped" in out["shelf"], (
+            "an empty group rendered as nothing, which reads as never "
+            "considered rather than as considered and empty")
+
+    assert 'aria-pressed="true"' in out["picked"], (
+        "picking a model changed nothing on screen")
+
+    # §04: a name, progress, and a control that stops it.
+    assert "Training" in out["running"], "the job has no name a person can read"
+    assert "data-train-cancel" in out["running"], (
+        "the job runs with no way to stop it, which is the Classic cancel "
+        "button that sets a flag nothing reads")
+    assert 'style="width:50%"' in out["running"], (
+        "the job reports no progress, so a slow fit and a hung one look alike")
+
+    posted = [p["body"] if isinstance(p["body"], dict) else json.loads(p["body"])
+              for p in out["posts"]]
+    assert posted and posted[-1]["models"] == [keys[0]], (
+        "the page submitted a different set of models than the user picked")
+
+    # THE GATE, through the record: the request the page composed produces a
+    # held-out number, and the run says what it was scored on.
+    started = client.post(f"/project/{pid}/train", json=posted[-1])
+    assert started.status_code == 200, started.text[:250]
+    job = started.json()
+    for _ in range(200):
+        job = client.get(f"/job/{job['id']}").json()
+        if job["terminal"]:
+            break
+    assert job["status"] == "done", (job["status"], job.get("error"))
+    run = client.get(f"/project/{pid}/training").json()["run"]
+    assert run and run["n_test"] > 0
+    scored = [r for r in run["results"] if r["metrics"]]
+    assert scored, "no model produced a metric"
+    # A model that would not fit keeps its row and says why — the shelf is not
+    # shortened by a failure any more than by a ranking.
+    for result in run["results"]:
+        assert result["metrics"] or result["error"], (
+            f"{result['key']} produced neither a score nor a reason")
+
+
+def claim_the_calibration_figure_is_drawn_for_the_first_time(client, project):
+    """`GUIDED-065`. The calibration plot has had a renderer, a checklist, an
+    annotation box and no data path since L26 — `has_predictions` was `False`
+    for every project that could exist, and the figure said so in a sentence
+    about the APP rather than about the table.
+
+    There is a training step now. The curve is drawn from the held-out
+    predictions and nowhere else: a calibration curve on training predictions
+    is a model grading its own homework, and it looks better the more the model
+    overfits.
+    """
+    with open(DATA / "leaky_sepsis.csv", "rb") as fh:
+        pid = client.post("/project", files={
+            "file": ("s.csv", fh, "text/csv")}).json()["id"]
+    for what, payload in [("set_target", {"column": "sepsis"}),
+                          ("set_grain", {"answer": "one_row_per_person"}),
+                          ("set_eligibility", {"answer": "everyone"}),
+                          ("seal", {})]:
+        client.post(f"/project/{pid}/decision",
+                    json={"kind": what, "payload": payload})
+
+    before = client.get(f"/project/{pid}/figures").json()
+    absent = [f for f in before["not_drawn"] + before.get("unavailable", [])
+              if f["id"] == "calibration"]
+    assert absent, "the calibration figure is not accounted for at all"
+    assert "No model has been fitted yet" in absent[0]["why"], (
+        "the reason is not about this project's state, so it cannot stop "
+        "being true")
+
+    shelf = client.get(f"/project/{pid}/models").json()
+    keys = [m["key"] for g in shelf["groups"] for m in g["models"]][:3]
+    job = client.post(f"/project/{pid}/train", json={"models": keys}).json()
+    for _ in range(200):
+        job = client.get(f"/job/{job['id']}").json()
+        if job["terminal"]:
+            break
+    assert job["status"] == "done", (job["status"], job.get("error"))
+
+    after = client.get(f"/project/{pid}/figures").json()
+    drawn = [f for f in after["admitted"] + after["held"]
+             if f["id"] == "calibration"]
+    assert drawn, (
+        "the models are fitted and the calibration plot is still not drawn")
+    figure = drawn[0]
+    assert figure["payload"]["scored_on"] == "held-out rows only", (
+        "the curve does not say which rows it was computed on, which is the "
+        "one thing that decides whether it means anything")
+
+    # The annotation box renders the ABSENCE of a number rather than a blank,
+    # which is the behavior `calibration_render` was built with and which no
+    # project could reach until now.
+    labels = {a["label"]: a["value"] for a in figure["annotations"]}
+    assert "C-statistic" in labels
+    for value in labels.values():
+        assert value not in ("", None), (
+            "an annotation rendered blank; a missing number is stated, not "
+            "left empty")
+
+    seen = client.get(f"/project/{pid}").json()
+    out = _drive(
+        """
+        var p = Promise.resolve();
+        for (var i = 0; i < 20; i++) { p = p.then(function(){}); }
+        p.then(function(){
+          __harness.drainRaf();
+          __emit(__harness.html('figuresBox'));
+        });
+        """,
+        _routes(client, seen, **{
+            f"/project/{pid}/figures": after,
+            f"/project/{pid}/features":
+                client.get(f"/project/{pid}/features").json(),
+            f"/project/{pid}/models": shelf,
+            f"/project/{pid}/training":
+                client.get(f"/project/{pid}/training").json(),
+        }),
+        pid)
+    assert figure["title"] in out, (
+        "the figure is drawn by the server and does not reach the page")
+
+
+
 CLAIMS = [
     ("questions render", claim_questions_render),
     ("a decision re-paints", claim_a_decision_repaints),
@@ -1237,6 +1458,10 @@ CLAIMS = [
     ("the lattice shows which rows matched",
      claim_the_lattice_shows_which_rows_matched),
     ("preprocess reaches its end", claim_preprocess_reaches_its_end),
+    ("an upload reaches a held-out number",
+     claim_an_upload_reaches_a_held_out_number),
+    ("the calibration figure is drawn for the first time",
+     claim_the_calibration_figure_is_drawn_for_the_first_time),
     ("imputing an informative blank is a blocker with a way through",
      claim_imputing_an_informative_blank_is_a_blocker_with_a_way_through),
 ]
@@ -1480,10 +1705,6 @@ NOT_READ_BY_THE_DOOR = {
         "The `[AUTHOR REQUIRED]` gaps reach the Guided door inside `/draft`, "
         "which counts them beside the sentences they interrupt. This endpoint "
         "serves them alone, and is read by the export path.",
-    "/project/{project_id}/models":
-        "UNREAD, and tracked by `GUIDED-085`. The models step is not in this "
-        "build and the rail says so, but the shelf is composed, ordered and "
-        "reasoned about — three groups always returned, including empty ones.",
 }
 
 PROJECT_PREFIX = "/project/{project_id}"
@@ -1509,9 +1730,13 @@ def _is_fetched(path: str, page: str) -> bool:
     from the palette entry's `endpoint` field, so the path exists only at
     runtime — recognized here as a literal parent prefix plus a quoted leaf.
     """
-    if not path.startswith(PROJECT_PREFIX):
-        return path in page
-    tail = path[len(PROJECT_PREFIX):]
+    # A server-level route (`/capabilities`, `/job/{id}`) is probed the same
+    # way as a project one, minus the prefix — the controller builds both by
+    # concatenation, and only the prefix differs.
+    tail = (path[len(PROJECT_PREFIX):] if path.startswith(PROJECT_PREFIX)
+            else path)
+    if tail == "/":
+        return True                    # the page itself; it IS the reader
     if not tail:
         return '"/project/"' in page
     cut = tail.find("{")
@@ -1521,7 +1746,13 @@ def _is_fetched(path: str, page: str) -> bool:
     parent, _, leaf = tail.rstrip("/").rpartition("/")
     # Only for NESTED paths: a one-segment tail matched this way would count
     # any quoted occurrence of the word, and `"grain"` is a question kind.
-    return bool(parent) and (parent + "/") in page and f'"{leaf}"' in page
+    if not parent:
+        return False
+    if (parent + "/") not in page:
+        return False
+    # The leaf arrives either as a quoted argument (`"correlations"`) or
+    # concatenated onto the path (`+ "/cancel"`).
+    return f'"{leaf}"' in page or f'"/{leaf}"' in page
 
 
 def test_every_server_surface_names_its_reader():

@@ -657,6 +657,26 @@
               letter-spacing:.05em; color:var(--faint); }
   .prep-because{ font-size:12.5px; color:var(--muted); margin:4px 0 7px; max-width:74ch; }
   .prep-done{ margin:0 0 5px; font-size:13.5px; }
+  /* The Train step. */
+  .shelf-group{ margin-bottom:13px; }
+  .shelf-lab{ font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+              color:var(--faint); margin-bottom:6px; }
+  .shelf-row{ display:flex; align-items:baseline; gap:9px; flex-wrap:wrap;
+              padding:3px 0; }
+  .shelf-why{ font-size:12px; color:var(--muted); }
+  .job{ border:1px solid var(--line); border-radius:9px; padding:11px 13px;
+        margin-top:14px; background:var(--surface); }
+  .job-head{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;
+             margin-bottom:7px; }
+  .job-name{ font-size:13.5px; font-weight:600; }
+  .job-msg{ font-size:12px; color:var(--muted); }
+  .run{ margin-top:16px; }
+  .run-head{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;
+             margin-bottom:8px; }
+  .run-lab{ font-size:11.5px; text-transform:uppercase; letter-spacing:.07em;
+            color:var(--faint); }
+  .run-note{ font-size:12px; color:var(--muted); }
+  .run-err{ color:var(--warn); font-size:12px; }
   .uperr{margin:12px 0 0;font-size:12.5px;color:var(--del);background:var(--del-tint);
          border:1px solid var(--del);border-radius:8px;padding:9px 12px;line-height:1.5}
   .uperr:empty{display:none}
@@ -973,9 +993,10 @@
           <button class="map-step" data-map="eda" type="button"><span class="md"></span>Explore</button>
           <button class="map-step" data-map="features" type="button"><span class="md"></span>Features</button>
           <button class="map-step" data-map="preprocess" type="button"><span class="md"></span>Preprocess</button>
+          <button class="map-step" data-map="train" type="button"><span class="md"></span>Train</button>
         </nav>
-        <div class="dock-empty" style="margin-top:9px;">Training, results and report are not in
-          this build. The skeleton stops where the record does.</div>
+        <div class="dock-empty" style="margin-top:9px;">Explain and report are not in this build.
+          The skeleton stops where the record does.</div>
       </div>
       <div class="jobchip" id="jobChip"><span class="spin" aria-hidden="true"></span><span id="jobText">Working…</span></div>
       <div class="dock dock-ledger">
@@ -1310,6 +1331,31 @@
         </div>
       </div>
     </section>
+
+    <!-- ═══ TRAIN ═══
+         The first number this door COMPUTES rather than reads off the table.
+
+         Two rules that are not optional here. PRODUCT_VISION §04: anything over
+         about a second is an observable job with a name in plain language,
+         progress and a cancel — never a bare spinner. Training is the reason
+         that rule exists. And the shelf is NEVER SHORTENED: a model the coach
+         ranks last is still selectable with its concern stated, because
+         ranking carries the judgment and absence never does. -->
+    <section class="sect is-hidden" id="sec-train" data-map="train">
+      <div class="sect-head"><span class="sect-kicker">Train</span><span class="sect-state">open</span></div>
+      <span class="stale-tag">stale — an earlier answer changed</span>
+      <div class="sect-body">
+        <div class="stepcard" id="card-train">
+          <div class="sub">
+            <div class="subhead"><span class="sub-num">01</span></div>
+            <h2><span class="fact-mark" aria-hidden="true"></span>Which models should be fitted?</h2>
+            <p class="why" id="shelfWhy"></p>
+            <div id="shelfBox"></div>
+          </div>
+        </div>
+        <div id="trainRun"></div>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -1343,7 +1389,8 @@
      only source of truth, and everything on screen is a fold over it. */
   var P = null;
   var SEC = { data:"sec-data", target:"sec-target", eda:"sec-eda",
-              features:"sec-features", preprocess:"sec-preprocess" };
+              features:"sec-features", preprocess:"sec-preprocess",
+              train:"sec-train" };
   /* The last Explore plan the Router returned. Held so the attestation can
      rebuild the exact sentence it is checking against, rather than the page
      inventing one. */
@@ -2292,6 +2339,7 @@
     renderDisclosures();
     renderFeatureStep();
     renderPreprocessStep();
+    renderTrainStep();
   }
 
   function renderData(){
@@ -3339,6 +3387,143 @@
     }
   }
 
+  /* ═════════ TRAIN · THE FIRST COMPUTED NUMBER ═════════ */
+  var SHELF = null, TRAIN = null, TRAIN_JOB = null, TRAIN_POLL = null;
+  var PICKED = {};                       /* model key -> selected */
+
+  function shelfHTML(){
+    var h = "";
+    (SHELF.groups || []).forEach(function(g){
+      /* THREE GROUPS ALWAYS, INCLUDING EMPTY ONES. "Nothing is recommended for
+         this data" is a real state, and a renderer that drops the group
+         asserts it was never considered. */
+      h += '<div class="shelf-group"><div class="shelf-lab">' + esc(g.label) +
+           "</div>";
+      if (!(g.models || []).length){
+        h += '<p class="feat-note">Nothing here for this table. That was ' +
+             "considered, not skipped.</p></div>";
+        return;
+      }
+      (g.models || []).forEach(function(m){
+        h += '<div class="shelf-row"><button class="pill" type="button" ' +
+             'data-pick-model="' + esc(m.key) + '" aria-pressed="' +
+             (PICKED[m.key] ? "true" : "false") + '">' + esc(m.name) +
+             "</button>" +
+             '<span class="shelf-why">' + esc(m.concern || "") + "</span></div>";
+      });
+      h += "</div>";
+    });
+    return h;
+  }
+
+  function trainRunHTML(){
+    if (TRAIN_JOB && !TRAIN_JOB.terminal){
+      /* §04: a name in plain language, progress, and a cancel that stops it.
+         Never a bare spinner — "did it break?" is the most common complaint
+         about the app this one replaces, and it is a direct consequence of
+         nothing owning long work. */
+      return '<div class="job"><div class="job-head"><span class="job-name">' +
+             esc(TRAIN_JOB.name) + '</span><span class="job-msg">' +
+             esc(TRAIN_JOB.message || "") + "</span></div>" +
+             '<div class="bar"><i style="width:' +
+             Math.round((TRAIN_JOB.progress || 0) * 100) + '%"></i></div>' +
+             '<button class="f-act" type="button" data-train-cancel="' +
+             esc(TRAIN_JOB.id) + '">Stop this</button></div>';
+    }
+    if (TRAIN && TRAIN.blocked_by){
+      return '<div class="refused-card"><p class="r-reason">' +
+             esc(TRAIN.blocked_by) + "</p></div>";
+    }
+    var run = TRAIN && TRAIN.run;
+    if (!run) return "";
+    var h = '<div class="run"><div class="run-head"><span class="run-lab">' +
+            "Held-out performance</span>" +
+            '<span class="run-note">' + num(run.n_test, 0) + " rows held out · " +
+            num(run.n_train, 0) + " trained on · " + esc(run.task_type) +
+            "</span></div>";
+    (run.notes || []).forEach(function(n){
+      h += '<p class="feat-note">' + esc(n) + "</p>";
+    });
+    h += '<table class="data"><tr><th>model</th><th>held-out</th>' +
+         "<th>what the shelf said</th></tr>";
+    (run.results || []).forEach(function(r){
+      var cell;
+      if (r.error){
+        /* A MODEL THAT WOULD NOT FIT IS A RESULT. The shelf is never
+           shortened, so it keeps its row and the row says why. */
+        cell = '<span class="run-err">did not fit — ' + esc(r.error) + "</span>";
+      } else {
+        cell = Object.keys(r.metrics || {}).map(function(k){
+          return esc(k) + " " + num(r.metrics[k], 3);
+        }).join(" · ");
+      }
+      h += "<tr><td>" + esc(r.name) + "</td><td>" + cell + "</td><td>" +
+           esc(r.concern || "") + "</td></tr>";
+    });
+    return h + "</table></div>";
+  }
+
+  function renderTrain(){
+    if (!P || !SHELF) return;
+    reveal("train");
+    $("shelfWhy").innerHTML = esc(SHELF.disclosure || "");
+    var box = $("shelfBox");
+    var list = ownChild(box, "shelfList", "");
+    var html = shelfHTML();
+    if (list.innerHTML !== html) list.innerHTML = html;
+
+    var act = ownChild(box, "shelfAct", "feat-ctl");
+    var picked = Object.keys(PICKED).filter(function(k){ return PICKED[k]; });
+    act.innerHTML =
+      '<button class="answer primary" type="button" data-train-start="1"' +
+      (picked.length ? "" : " disabled") + ">Fit " +
+      (picked.length ? picked.length + " model(s)" : "the models you pick") +
+      " on the held-out split</button>";
+
+    $("trainRun").innerHTML = trainRunHTML();
+    sectState("train", TRAIN && TRAIN.run ? "recorded" : "live",
+              TRAIN && TRAIN.run ? "recorded" : "open");
+    if (TRAIN && TRAIN.run) setMap("train", "done");
+  }
+
+  function pollJob(id){
+    if (TRAIN_POLL) window.clearTimeout(TRAIN_POLL);
+    api("/job/" + encodeURIComponent(id))
+      .then(function(j){
+        TRAIN_JOB = j;
+        if (!j.terminal){
+          renderTrain();
+          TRAIN_POLL = window.setTimeout(function(){ pollJob(id); }, 400);
+          return;
+        }
+        TRAIN_JOB = null;
+        /* The record is re-read rather than the job's result trusted, so what
+           is on screen is what the server holds. */
+        renderTrainState();
+        renderFigureSurface();
+      })
+      .catch(function(err){ TRAIN_JOB = null; setErr(err.message); });
+  }
+
+  function renderTrainState(){
+    if (!P || !P.target) return;
+    api("/project/" + P.id + "/training")
+      .then(function(body){ TRAIN = body; renderTrain(); })
+      .catch(function(){});
+  }
+
+  function renderTrainStep(){
+    if (!P || !P.target || !P.barrier_raised) return;
+    api("/project/" + P.id + "/models")
+      .then(function(body){
+        SHELF = body;
+        (P.selected_models || []).forEach(function(k){ PICKED[k] = true; });
+        renderTrain();
+        renderTrainState();
+      })
+      .catch(function(){});
+  }
+
   function renderPreprocessStep(){
     if (!P || !P.target) return;
     api("/project/" + P.id + "/preprocess")
@@ -4336,6 +4521,7 @@
       "[data-look],[data-unskip],[data-exit-for],[data-att-send],[data-refusal-i],[data-prev-ask]," +
       "[data-feat-preview],[data-feat-add],[data-feat-remove],[data-feat-settle]," +
       "[data-lat-cell],[data-prep-mech],[data-prep-route],[data-prep-settle]," +
+      "[data-pick-model],[data-train-start],[data-train-cancel]," +
       "[data-sel-rank],[data-sel-set]," +
       "[data-impossible],[data-keep-impossible],[data-miss-choose],[data-miss-preview]," +
       "[data-hist-page],[data-pg-step],[data-copy-rows]," +
@@ -4494,6 +4680,41 @@
 
     /* ── the prevalence question ── */
     if (t.hasAttribute("data-prev-ask")){ askPrevalence(); return; }
+
+    /* ── the Train step ── */
+    if (t.hasAttribute("data-pick-model")){
+      var mk = t.getAttribute("data-pick-model");
+      PICKED[mk] = !PICKED[mk];
+      renderTrain();
+      return;
+    }
+    if (t.hasAttribute("data-train-start")){
+      var chosen = Object.keys(PICKED).filter(function(k){ return PICKED[k]; });
+      api("/project/" + P.id + "/train", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ models: chosen })
+      }).then(function(j){
+        TRAIN_JOB = j;
+        renderTrain();
+        /* The first poll is SCHEDULED rather than fired: the job has just been
+           submitted, so asking immediately asks a question whose answer cannot
+           have changed, and the running state is what the user is meant to see
+           in the meantime. */
+        window.setTimeout(function(){ pollJob(j.id); }, 400);
+      })
+        .catch(function(err){
+          setErr(err.message);
+          if (err.detail) showRefusal(err.detail, { models: chosen });
+        });
+      return;
+    }
+    if (t.hasAttribute("data-train-cancel")){
+      api("/job/" + encodeURIComponent(t.getAttribute("data-train-cancel")) +
+          "/cancel", { method: "POST" })
+        .then(function(j){ TRAIN_JOB = j; renderTrain(); })
+        .catch(function(err){ setErr(err.message); });
+      return;
+    }
 
     /* ── the Preprocess step ── */
     if (t.hasAttribute("data-prep-mech")){

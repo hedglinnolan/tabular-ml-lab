@@ -175,13 +175,11 @@ def state(project) -> Dict[str, Any]:
     block = likert_block(project)
     return {
         "task_type": project.task_type,
-        # FALSE FOR EVERY PROJECT, and it is a fact about the app rather than
-        # about this table — see the module docstring and `GUIDED-065`.
-        "has_predictions": False,
-        "has_predictions_because": (
-            "TurboTab has no training step yet, so no project holds a fitted "
-            "model's predictions and none can be supplied. This is a gap in "
-            "the app, not a property of your data."),
+        # NO LONGER FALSE FOR EVERY PROJECT (`GUIDED-065`). It is a fact about
+        # this project now: whether a classification run has been fitted and
+        # scored on the held-out rows.
+        "has_predictions": predictions_for(project) is not None,
+        "has_predictions_because": _no_predictions_because(project),
         "n_numeric": len(numeric),
         "n_rows": int(len(table)),
         "n_recalls_per_person": n_recalls,
@@ -367,8 +365,49 @@ def _diverging_payload(project, **_: Any) -> Dict[str, Any]:
 
 
 def _calibration_payload(project, **_: Any) -> Dict[str, Any]:
-    raise FigureUnavailable(                               # pragma: no cover
-        "this project holds no model predictions to calibrate")
+    """`GUIDED-065`, closed. This used to be unconditionally unavailable, and
+    the reason it gave was a fact about the APP rather than about the table:
+    there was no training step, so no project could hold predictions.
+
+    There is one now. The predictions come from the held-out rows and nowhere
+    else — a calibration curve drawn on training predictions is a picture of a
+    model grading its own homework, and it looks better the more it overfits.
+    """
+    from turbotab import figure_specs as _specs, training as _training
+
+    run = predictions_for(project)
+    if run is None:
+        raise FigureUnavailable(
+            "this project holds no model predictions to calibrate")
+    y_true, y_proba, model_name = run
+    payload = _specs.calibration_render(y_true, y_proba)
+    payload["model"] = model_name
+    payload["scored_on"] = "held-out rows only"
+    return payload
+
+
+#: Set by the training layer, read here. A function rather than an import so
+#: the figure layer does not depend on where the run is stored — it asks the
+#: project, and a project with no run answers `None` rather than raising.
+def predictions_for(project):
+    """`(y_true, y_proba, model_name)` for the best-calibratable held-out run.
+
+    `None` where there is nothing to calibrate — which is a different sentence
+    from a failure, and the caller renders it as one.
+    """
+    run = getattr(project, "training_run", None)
+    if run is None or getattr(run, "task_type", None) != "classification":
+        return None
+    from turbotab import training as _training
+
+    scored = [r for r in run.results if r.probabilities]
+    if not scored:
+        return None
+    y_true = _training.y_true_for(project)
+    best = scored[0]
+    if len(y_true) != len(best.probabilities):
+        return None
+    return y_true, best.probabilities, best.name
 
 
 SOURCES: Dict[str, Callable[..., Dict[str, Any]]] = {
@@ -384,6 +423,32 @@ SOURCES: Dict[str, Callable[..., Dict[str, Any]]] = {
 # ─────────────────────────────────────────────────────────────────────────────
 # Why a figure is not drawn — stated, never silently omitted
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _no_predictions_because(project) -> str:
+    """WHICH of the reasons applies, rather than one sentence for all of them.
+
+    A user whose regression project cannot draw a calibration plot and a user
+    who simply has not trained yet are owed different sentences, and the second
+    one is an instruction.
+    """
+    run = getattr(project, "training_run", None)
+    if run is None:
+        if not (project.lockbox and project.lockbox.get("labels")):
+            return ("No model has been fitted yet, and none can be until the "
+                    "held-out set is sealed — a calibration curve drawn on "
+                    "rows the model was fitted on is a model grading its own "
+                    "homework.")
+        return ("No model has been fitted yet. Choose models in Train and the "
+                "curve is drawn from the held-out predictions.")
+    if getattr(run, "task_type", None) != "classification":
+        return (f"Calibration is a claim about predicted PROBABILITIES, and "
+                f"this is a {run.task_type} task — there are no probabilities "
+                f"to compare against observed frequencies.")
+    if not any(r.probabilities for r in run.results):
+        return ("The models that were fitted do not produce probabilities, so "
+                "there is nothing to calibrate.")
+    return "There are predictions and the curve should be drawn."
+
 
 def _why_not(figure_id: str, project_state: Dict[str, Any]) -> str:
     if figure_id == "calibration":

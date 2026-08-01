@@ -33,7 +33,7 @@ from pydantic import BaseModel, Field
 
 from turbotab import (
     devchecks, draft, engine, features as feat_mod, grain as grain_mod,
-    selection as sel_mod,
+    jobs as jobs_mod, selection as sel_mod,
 )
 from turbotab.project import (
     AnalysisProject, GrainContradiction, LensContradiction, ProjectError,
@@ -1919,6 +1919,103 @@ async def selection_evidence(project_id: str) -> Dict[str, Any]:
         return sel_mod.evidence(project.df, project.target, candidates, mask)
     except sel_mod.SelectionRefusal as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Training — the first number this door computes rather than reads
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# `PRODUCT_VISION.md` §05: nothing owning long work is the absence that caused
+# the migration, and §04 requires anything over about a second to be an
+# OBSERVABLE JOB — a name in plain language, progress, and a cancel that stops
+# it. `turbotab/jobs.py` was built at L7 for exactly this and had a consumer in
+# Classic and none here.
+_QUEUE = jobs_mod.JobQueue(max_workers=2)
+_RUNS: Dict[str, Dict[str, Any]] = {}
+
+
+def _train_worker(ctx, project_id: str, model_keys: List[str]):
+    from turbotab import training as _training
+
+    project = STORE.get(project_id)
+    run = _training.train(project, model_keys, ctx=ctx,
+                          seed=int(ctx.rng.integers(0, 2**31 - 1)))
+    _RUNS[project_id] = {"run": run}
+    # Held ON THE PROJECT as well, because the figure layer asks the project
+    # rather than the API: a figure that had to know where the web layer keeps
+    # its runs would be a second place to look.
+    project.training_run = run
+    return run.to_dict()
+
+
+@app.post("/project/{project_id}/train")
+async def start_training(project_id: str,
+                         body: Dict[str, Any]) -> Dict[str, Any]:
+    """Submit a training run. Returns the JOB, not the answer.
+
+    A `POST` that blocked until the models were fitted would be the spinner
+    §04 forbids wearing an HTTP costume: the user could not see progress, could
+    not cancel, and could not tell a slow fit from a hung one.
+    """
+    from turbotab import training as _training
+
+    project = _project(project_id)
+    keys = [str(k) for k in (body.get("models") or [])] or list(
+        project.selected_models or [])
+    try:
+        # Refused HERE rather than inside the worker, so a request that cannot
+        # produce a number fails as a refusal the caller can read instead of as
+        # a job that goes away and comes back empty.
+        _training.check(project, keys)
+    except _training.TrainingRefusal as exc:
+        raise HTTPException(400, str(exc)) from exc
+    handle = _QUEUE.submit(
+        f"Training {len(keys)} model(s) on the held-out split",
+        _train_worker, project_id, keys)
+    return handle.to_dict()
+
+
+@app.get("/job/{job_id}")
+async def get_job(job_id: str) -> Dict[str, Any]:
+    try:
+        handle = _QUEUE.get(job_id)
+    except KeyError as exc:
+        raise HTTPException(404, f"no job {job_id!r}") from exc
+    out = handle.to_dict()
+    out["result"] = handle.result if handle.status is jobs_mod.JobStatus.DONE \
+        else None
+    return out
+
+
+@app.post("/job/{job_id}/cancel")
+async def cancel_job(job_id: str) -> Dict[str, Any]:
+    """`T0-LIVE-002`: the Classic cancel sets a flag nothing reads. This one
+    sets the token the worker checks between models, and the queue reports a
+    job that ignored it as `finished` rather than claiming a stop it did not
+    make."""
+    try:
+        return _QUEUE.cancel(job_id).to_dict()
+    except KeyError as exc:
+        raise HTTPException(404, f"no job {job_id!r}") from exc
+
+
+@app.get("/project/{project_id}/training")
+async def get_training(project_id: str) -> Dict[str, Any]:
+    """The last run, or what is missing before there can be one."""
+    project = _project(project_id)
+    from turbotab import training as _training
+
+    held = _RUNS.get(project_id)
+    if held:
+        return {"run": held["run"].to_dict(), "blocked_by": None}
+    try:
+        _training.check(project, list(project.selected_models or []))
+    except _training.TrainingRefusal as exc:
+        # WHAT IT NEEDS, not an empty object. The same rule the prevalence
+        # surface follows: a step that has not happened and a step that
+        # produced nothing are different sentences.
+        return {"run": None, "blocked_by": str(exc)}
+    return {"run": None, "blocked_by": None}
 
 
 @app.get("/capabilities")

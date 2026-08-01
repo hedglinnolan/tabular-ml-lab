@@ -236,15 +236,31 @@ def test_a_figure_that_cannot_be_drawn_says_why_rather_than_vanishing(
         "a registered figure is neither drawn nor accounted for")
 
 
-def test_the_calibration_plot_names_the_app_gap_and_not_the_users_data(
+def test_the_calibration_plot_says_which_reason_applies_to_this_project(
         client, dietary):
-    """TurboTab has no training step, so no project holds predictions and the
-    clinical pack's flagship figure is unreachable from an upload. That is a
-    gap in the app; saying so is different from implying the table is wrong."""
+    """FLIPPED AT L34-C, and the flip is the fix (`GUIDED-065`).
+
+    This used to assert *TurboTab has no training step, so no project holds
+    predictions* — true when it was written, and a sentence about the APP that
+    every project got regardless of its own state. There is a training step
+    now, so the reason has to be about THIS project: not sealed yet, sealed and
+    nothing fitted, fitted but a regression task, or fitted with no
+    probabilities. A user owed an instruction and a user owed an explanation
+    are different users.
+
+    A test that asserts a gap is a placeholder with a deadline; this is the
+    deadline.
+    """
     body = client.get(f"/project/{dietary}/figures").json()
     row = next(r for r in body["not_drawn"] if r["id"] == "calibration")
-    assert "no training step" in row["why"]
-    assert "gap in the app, not a property of your data" in row["why"]
+    assert "no training step" not in row["why"], (
+        "the figure still explains itself by naming an app gap that is closed")
+    assert "gap in the app" not in row["why"]
+    # This project is unsealed, so the reason is the one that names the seal —
+    # and it says why the order matters rather than only that it is the order.
+    assert "held-out set is sealed" in row["why"]
+    assert "grading its own homework" in row["why"], (
+        "the reason states a rule and not the consequence of breaking it")
 
 
 def test_one_recall_per_person_refuses_with_the_reason_rather_than_two_densities(
