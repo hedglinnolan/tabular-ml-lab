@@ -501,6 +501,51 @@ It was rejected, on two grounds:
 the app, upload their own file, and reach the end of the newly built step without leaving the
 Guided door. A step that needs a script, a fixture, or an explanation to exercise is not done.
 
+**And when he cannot, the adjudicator drives it.** Nine loops passed between `L23` and `L32`
+without a drive, and the cost was `GUIDED-075`: two loops accepted on *"an upload reaches a
+rendered figure"*, verified through the API, while the page fetched `/figures` zero times.
+`turbotab/pageharness.py` runs the page's real controller in node against responses captured from
+a `TestClient` drive, and `__harness.calls()` reports exactly which routes it fetched. Thirty
+lines. **A drive belongs in every adjudication**, and `LOOP.md` §06 carries the rule.
+
+### Why the front of the journey is where the depth belongs — the product owner's ruling
+
+Recorded here because it is a sequencing decision with evidence behind it, and it was made in
+conversation rather than in a document. In his words:
+
+> *"The original product vision, the one that is fully fleshed out in the Streamlit app, is still
+> an immature product because it is so agnostic to the domains it caters — researchers come to the
+> modeling process with all sorts of weirdly shaped data and weirdly formed research questions. We
+> are rightfully correcting that immaturity… Auditing, Exploration and preprocessing are the
+> hardest parts of predictive modeling. Once the data is ready, you simply pick the off-the-shelf
+> architectures that exist and tune the hyperparameters… It's a less bespoke series of steps than
+> the first ones."*
+
+**The research agrees, and it was measured rather than assumed.** §03b's routing inventory sorts
+its content by app surface: the import doctor gets 345 words and ten named detectors, coaching 211,
+EDA and figures 76 — and **preprocessing and modeling gets 68**. Roughly 9:1 toward the front. The
+anti-pattern audit landed the same way: of twelve substantive hits, nine were in audit, EDA or
+preprocessing.
+
+So depth at the front is not a delay in reaching the end; it is the product. **Counting how many
+L9 steps a loop advanced is the wrong metric** — six loops advanced zero steps while making the
+first four domain-aware, and that was correct.
+
+**Two qualifications, both small and both real.** *Calibration is not off-the-shelf here* — the
+research ranks it above AUC, which no package defaults to, and the flagship SMOTE finding is a
+calibration finding. And *the manuscript is the thesis, not a final step*: `AUDIT-001` found the
+generated manuscript asserting an uncorrected multiplicity claim, so the back half is thinner in
+decisions and not thinner in consequence. Of the twelve audit hits, the two back-half ones are both
+`high`.
+
+**The standing risk the ruling creates**, worth re-reading whenever the front half is extended
+again: several front-half designs are currently *unfalsifiable* because nothing downstream consumes
+them. `promotable` and `promotable_because` sit on every figure spec with no promotion mechanism.
+The lockbox's whole purpose is that held-out numbers are honest, and until `L34` the Guided door had
+never computed one. The `L5` invalidation DAG has never been exercised by a real recompute. Those
+are not reasons to reorder — they are the rework the first Train loop will surface, and it will
+surface in the front half, which is the expensive place.
+
 ### Correctness is scoped to the step, not to the ledger
 
 Correctness work is not optional here — the app makes claims that end up in manuscripts, and a
