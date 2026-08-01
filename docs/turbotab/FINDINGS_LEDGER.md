@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**243 of 671 closed.**
+**243 of 672 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 381 |
+| `OPEN` | 382 |
 | `PARTIAL` | 47 |
 | `FIXED` | 240 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 381
+## OPEN — 382
 
 
 ### Application state / lockbox — 66
@@ -394,12 +394,13 @@ Nothing is closed without a regression test named after it.
 | `COACH-031` | invariant | Coaching voice must never reach the manuscript verbatim. | `utils/insight_ledger.py:1188 — `text = (i.manuscript_text or '').strip() or…` | The invariant is stated correctly and is broken in exactly the way this row predicts, unchanged at HEAD. The register separation works - manuscript_text is preferred and the regex… |
 | `COACH-032` | invariant | 'high' confidence is the only tier the UI pre-selects, so 'high' means the app is asserting (docs/FINDINGS_LEDGER.md, Governing rule, lines 20-27). | `PARTIALLY, and only in the import/join domain: ml/join_doctor.py:922 `if include_low or c.confidence !=…` | All three weakenings confirmed at HEAD. (1) is COACH-015: a medium-confidence join key IS pre-selected. (2) is exact - final returns detected with no tier check, so a… |
 
-### Guided-door drive feedback — 24
+### Guided-door drive feedback — 25
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `GUIDED-089` | critical | Training contradicts the preprocessing plan the user recorded: the plan is half-applied, and the half the recorded methods sentence is about is the half the fit overturns | `turbotab/training.py _pipeline builds median impute plus standard scale; turbotab/missingness declarations…` | FILED AT L34-C AS THE STATED LIMIT OF THE SLICE, not discovered later. The Preprocess step records a mechanism and a strategy per column and composes the sentence that IS the… |
 | `GUIDED-093` | critical | A classification target with string labels makes every model report 'did not fit' while carrying a real held-out metric, and makes the calibration figure blame the user's models for a serialization… | `turbotab/training.py:294 result.predictions = [float(v) for v in y_pred] raises on string class labels AFTER…` | ADJUDICATOR FINDING, L34, found by driving the app's own clinical fixture. THE FIT SUCCEEDS AND THE APP SAYS IT FAILED. Measured on sample_data/clinic_visits.csv, target 'outcome'… |
+| `GUIDED-095` | critical | The deferred half of constitution clause 06 has no executor: every decision recorded to be fitted inside the training fold is read by nothing that fits, so only decisions that execute immediately… | `turbotab/training.py touches exactly six project attributes - grain, lockbox, model_shelf, target, task_type…` | ADJUDICATOR CENSUS, L34, run after the product owner asked how far the damage extends. GUIDED-089 is one instance and this is the class. MEASURED STATICALLY AND CONFIRMED BY… |
 | `GUIDED-012` | high | Lockbox constitution clause 06 - declaration and execution are separate - has no implementation in either door: nothing applies the row-local vs stateful litmus test | `No module classifies transforms by the litmus test at L14. Classic's pages/03 applies feature engineering to…` | Filed at the start of L14 rather than after building it, deliberately: the check found the clause untracked, and the honest record of an unbuilt clause is an open finding, not a… |
 | `GUIDED-014` | high | DESIGN QUESTION for the product owner: does the exploratory labeling on an undetermined seal read as honest, or as the app giving up? | `docs/turbotab/COPY_DECK.md, 'Data & Target - what the user reads after answering' and 'what the user reads…` | NOT SELF-ASSESSED, deliberately. I wrote this copy at L15; asking the author whether their own prose reads well is the finder-judge problem in a different costume, and this… |
 | `DRIVE-011` | high | The Features selection step has no interface at all - choose_selection is served, set_selection is never called, and the method picker does not exist | `ml/router.py choose_selection at the features step; turbotab/web/index.html had no set_selection` | Filed at L23 rather than fixed, because a method picker with an explainability-cost column is a card and not a wiring change, and this loop's mandate was the invisible-question… |
