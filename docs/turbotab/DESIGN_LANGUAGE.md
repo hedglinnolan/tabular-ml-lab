@@ -118,6 +118,20 @@ disclosure.
 **Scroll: the page never moves the viewport.** Cards build downward and the user's scroll follows
 them. There is no condition under which the interface scrolls on the user's behalf.
 
+**This section implies a rendering requirement, and it was measured rather than asserted.** Rule 1
+says the settle *is* the receipt that a choice was recorded. A renderer that rebuilds the page
+wholesale on every change cannot honor it, and the reason is mechanical: **`transitioncancel` does
+not fire when an element is removed** — the transition ends with its target and there is nothing
+left to dispatch on. So a repaint cannot even *report* what it interrupted; it has to infer the
+count by subtraction. A receipt that restarts from scratch mid-flight is not a receipt, and the
+focus ring is lost the same way, because the focused node is gone and focus falls to `<body>`.
+
+**So whatever renders this app must mutate in place, not repaint.** Measured in
+`prototypes/recipe-lattice.html` (`L31`), on a case where moving the lens changes 6 of 16 cells and
+a repaint rebuilds all 24 nodes to move those 6. **This is a requirement, not a stack choice** —
+vanilla JS mutates in place perfectly well, and `GUIDED-073` remains open on whether a framework
+earns its cost.
+
 This is the third position on one rule, and the history is the argument (`DRIVE-006`). The original
 rule was *never auto-scroll*. Building the prototype appeared to disprove it, and it was revised to
 *new content is nudged into view only when it sits below the viewport — never yank a user who has
