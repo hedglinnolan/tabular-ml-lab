@@ -161,9 +161,19 @@ def test_the_concern_arrives_whole_rather_than_summarized():
     correct, so the assertion compares `ShelfEntry.concern` to what
     `model_coach.model_viability` returned — not to a substring, and not to a
     length threshold, either of which a truncating renderer would survive.
+
+    **Profiled on the TRAINING rows**, changed at L34-D. This built its
+    expectation from the whole table, which is what `model_shelf` used to read;
+    the clause cites `p/n`, so the two disagreed the moment the shelf started
+    ranking on the rows the models are actually fitted on (0.67 against 0.77).
+    The test was pinning the leak, not the paraphrase it is about.
     """
     p = _sealed()
-    prof = engine.profile(p.df, p.target, p.task_type)
+    sealed = set((p.lockbox or {}).get("labels") or [])
+    train = p.df.loc[[i not in sealed for i in p.df.index]]
+    assert len(train) < len(p.df), (
+        "nothing is held out, so this is not testing the training profile")
+    prof = engine.profile(train, p.target, p.task_type)
     verdicts = model_coach.model_viability(prof, None)
     assert verdicts, "the coach produced no verdicts; the check would be vacuous"
 

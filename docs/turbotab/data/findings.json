@@ -8087,10 +8087,10 @@
   "detail": "",
   "ev": "turbotab/figure_specs.py CALIBRATION when_applicable; turbotab/figure_bundle.py state(); turbotab/api.py has no train endpoint",
   "act": "Either record a column of predicted risks as an answer to a question - external validation of a published risk score is a real and common shape - or build the training step. Until one exists, the endpoint names the gap.",
-  "status": "OPEN",
-  "note": "Found at L28-B while writing the figure state dict. CALIBRATION.when_applicable reads has_predictions, and NOTHING in the project model can ever set it true: AnalysisProject holds no fitted model, no predictions and no metrics, api.py has no train or predict endpoint, and the one test that reaches a fitted model - test_a_categorical_table_reaches_a_fitted_model - builds and fits the pipeline inside the test rather than through the app. So has_predictions is hard-coded False in figure_bundle.state with its reason attached, and every bundle names calibration in not_drawn saying it is a gap in the app rather than a property of the user's data. THIS IS THE SAME CLASS AS GUIDED-058 ONE LAYER IN: the figure layer now has a consumer and calibration still has no path to it, so two of three figures are reachable and the one the research calls the single most important figure in a clinical prediction paper is not. TWO HONEST ROUTES and they are different products. Recording a predicted-risk column is external validation of a published score, needs no training step, and needs a question the app does not have. Building the training step is L10-L12. Neither is a figure-layer change, which is why this is filed rather than fixed here.",
+  "status": "FIXED",
+  "note": "L34-C. The calibration plot is drawn, for the first time since it was specified at L26. It had a renderer, a checklist, an annotation box and no data path: has_predictions was False for EVERY project that could exist, and the figure explained itself with a sentence about the app rather than about the table. There is a training step now, so the reason is about this project's state and says WHICH of four applies - not sealed yet, sealed and nothing fitted, fitted but a regression task, fitted with no probabilities - because a user owed an instruction and a user owed an explanation are different users. THE CURVE IS DRAWN FROM THE HELD-OUT PREDICTIONS AND NOWHERE ELSE, and the payload says so in scored_on: a calibration curve on training predictions is a model grading its own homework and it looks better the more the model overfits. The annotation box's not-estimable path became reachable at the same time and immediately fired on the first real project - separation on a leaky fixture makes the weak-calibration fit undefined, and the box states which number is missing and why rather than rendering a blank beside five real ones. test_the_calibration_plot_names_the_app_gap_and_not_the_users_data was flipped in place: it asserted the gap, which made it a placeholder with a deadline, and this is the deadline.",
   "verified_against": "",
-  "test": "",
+  "test": "turbotab/test_the_page_says_what_the_record_says.py::test_claim[the calibration figure is drawn for the first time]",
   "verified_ev": "turbotab/figure_specs.py CALIBRATION when_applicable; turbotab/figure_bundle.py state(); turbotab/api.py has no train endpoint"
  },
  {
@@ -8554,5 +8554,33 @@
   "verified_against": "the exit rendered with the disabled attribute; the claim's assertion that no exit is disabled fails against the previous page",
   "test": "turbotab/test_the_page_says_what_the_record_says.py::test_claim[imputing an informative blank is a blocker with a way through]",
   "verified_ev": "turbotab/missingness.py BLOCKER_EXITS: the resolve entry was a hand-written dict with id, kind, label and detail; the attest entry beside it came from exits.attest() which builds a retry; turbotab/web/index.html showRefusal enabled kind === 'attest' only"
+ },
+ {
+  "id": "GUIDED-088",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The model shelf ranked on the whole table, so the order a user picks a model from was computed with the held-out rows in view",
+  "detail": "",
+  "ev": "turbotab/project.py model_shelf profiled self.df; select_models refusal states the shape it reads must be the shape the models will actually be fitted on; api.selection_evidence already masks to training rows whenever a lockbox exists",
+  "act": "",
+  "status": "FIXED",
+  "note": "FOUND AT L34-D BY THE SEAL PROBE, and the shape of the finding is the part worth keeping: THE PROBE AIMED AT THE FIT AND THE LEAK WAS BESIDE IT. Seventeen probes; every parameter estimated inside the fit was clean, asserted as bitwise equality after replacing the held-out rows with values no training row could produce. What was not clean was a DECISION - the ranking the user picks a model from. Choosing a model is a decision, a decision informed by the held-out rows is exactly what the seal exists to prevent, and nobody had thought of a ranking as a parameter estimated from data. It is one. select_models states the requirement in its own refusal and the code did not meet it. api.selection_evidence had it right already, masking to the training rows whenever a lockbox exists - so this is AUDIT-008 once more: two paths in one app, one consulting the seal and one not. Asserted on the CITED NUMBER rather than on the order, because an order can agree by luck on any particular table and p/n cannot. One test was pinning the old behavior and is flipped in place: it built its expectation from a whole-table profile, so it was pinning the leak rather than the paraphrase it is about.",
+  "verified_against": "the shelf's cited p/n was 0.67 on the whole table and 0.77 on the training rows; reverting the mask reorders the shelf at index 3",
+  "test": "turbotab/test_the_seal_holds.py::test_the_model_shelf_ranks_on_the_training_rows",
+  "verified_ev": "turbotab/project.py model_shelf profiled self.df; select_models refusal states the shape it reads must be the shape the models will actually be fitted on; api.selection_evidence already masks to training rows whenever a lockbox exists"
+ },
+ {
+  "id": "GUIDED-089",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "Training fits a default pipeline rather than the preprocessing plan the user recorded, so the recorded plan and the fitted one are two different things",
+  "detail": "",
+  "ev": "turbotab/training.py _pipeline builds median impute plus standard scale; turbotab/missingness declarations and recipes.resolve variants are read by neither",
+  "act": "",
+  "status": "OPEN",
+  "note": "FILED AT L34-C AS THE STATED LIMIT OF THE SLICE, not discovered later. The Preprocess step records a mechanism and a strategy per column and composes the sentence that IS the methods line; the recipe lattice resolves a variant per model per operation. The trainer reads neither - it fits median imputation and standardizes where the model requires it. The numbers are honest about the SEAL, which is what Part D probed, and they are not the numbers the recorded plan would produce. THE RULE THAT MUST HOLD UNTIL THIS CLOSES: the run says so in its own notes, on every run, so a reader cannot assume the recorded plan was applied. That is the governing rule's silent branch made visible rather than left silent. Closing it means the pipeline is BUILT from the declarations - which is also what makes the deferred half of clause section 06 real, since a strategy recorded as fitted inside each training fold is currently recorded and not fitted at all.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/training.py _pipeline builds median impute plus standard scale; turbotab/missingness declarations and recipes.resolve variants are read by neither"
  }
 ]

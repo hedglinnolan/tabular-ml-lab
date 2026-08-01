@@ -1417,9 +1417,26 @@ class AnalysisProject:
     PREPARATION_MODES = ("per_model", "uniform")
 
     def model_shelf(self) -> List[Any]:
-        """Every model this task can use, ordered by fit and never filtered."""
+        """Every model this task can use, ordered by fit and never filtered.
+
+        **Ranked on the TRAINING rows once the seal is drawn**, and this used to
+        read the whole table. `select_models` states the requirement in its own
+        refusal — *the shape it reads must be the shape the models will
+        actually be fitted on* — and the shape being read included the rows the
+        models will never see. It is a mild leak and it is still one: the order
+        a user picks from is a decision, and a decision informed by the
+        held-out rows is the thing the seal exists to prevent.
+
+        `api.selection_evidence` already does this, masking to the training
+        rows whenever a lockbox exists. Two paths in one app, one consulting
+        the seal and one not, is `AUDIT-008` exactly.
+        """
         from turbotab import engine, models as _models
-        prof = engine.profile(self.df, self.target, self.task_type)
+        frame = self.df
+        if self.lockbox and self.lockbox.get("labels"):
+            sealed = set(self.lockbox["labels"])
+            frame = self.df.loc[[i not in sealed for i in self.df.index]]
+        prof = engine.profile(frame, self.target, self.task_type)
         return _models.shelf(prof, self.task_type or "regression")
 
     def select_models(self, keys: Sequence[str]) -> Decision:
