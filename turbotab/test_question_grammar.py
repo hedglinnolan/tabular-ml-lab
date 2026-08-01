@@ -166,8 +166,25 @@ def test_the_grammar_survives_color_removal():
 
 
 def test_the_grammar_survives_typography_removal():
-    """Silhouette plus grammar. The verbs differ per type."""
+    """Silhouette plus grammar. The verbs differ per type.
+
+    The two CONSEQUENCE verbs moved to the server at `GUIDED-076` — the page
+    composed them for the one blocker that existed, so a second consequence
+    would have rendered with the wrong words. The grammar rule is unchanged and
+    the place it is asserted is: the exits the router serves.
+    """
+    from ml import router
+
     assert "Keep as is" in BODY                      # CHOICE: decide
     assert "Ask me anyway" in BODY                   # FACT: answer
-    assert "Keep it and record why" in BODY          # CONSEQUENCE: attest
-    assert "Drop " in BODY                           # CONSEQUENCE: resolve
+
+    class _Signals:
+        leakage_candidate_cols = ["glucose"]
+        leakage_flags = []
+
+    exits = router.blockers(_Signals(), step="explore")[0].to_dict()["exits"]
+    labels = [x["label"] for x in exits]
+    assert any(l.startswith("Drop ") for l in labels), (
+        "CONSEQUENCE/resolve lost its verb")
+    assert "Keep it and record why" in labels, (
+        "CONSEQUENCE/attest lost its verb")

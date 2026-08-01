@@ -146,7 +146,29 @@ El.prototype.setAttribute = function(k, v){ this._attr[k] = String(v); };
 El.prototype.getAttribute = function(k){ return k in this._attr ? this._attr[k] : null; };
 El.prototype.hasAttribute = function(k){ return k in this._attr; };
 El.prototype.removeAttribute = function(k){ delete this._attr[k]; };
-El.prototype.appendChild = function(c){ this._children.push(c); return c; };
+El.prototype.appendChild = function(c){ this._children.push(c); c._parent = this; return c; };
+// A RENDERER THAT MUTATES IN PLACE APPENDS NODES, and `innerHTML` here is what
+// was ASSIGNED rather than a serialization of children — so a surface built by
+// `appendChild` was invisible to `__harness.html()` and probed as an empty
+// container. `DESIGN_LANGUAGE.md` §05 now REQUIRES mutate-in-place, so the
+// harness has to be able to see one. Deliberately shallow: tag, id, class and
+// the assigned innerHTML, recursively. It is not an HTML serializer and does
+// not try to be one — it reports what the element was told, which is the same
+// contract every other method here keeps.
+El.prototype.__deep = function(){
+  var attrs = "";
+  var self = this;
+  Object.keys(this._attr).forEach(function(k){
+    attrs += " " + k + '="' + String(self._attr[k]) + '"';
+  });
+  var cls = Object.keys(this._classes).join(" ");
+  if (cls) attrs += ' class="' + cls + '"';
+  if (this.id) attrs = ' id="' + this.id + '"' + attrs;
+  var inner = this.innerHTML || "";
+  for (var i = 0; i < this._children.length; i++) inner += this._children[i].__deep();
+  return "<" + this.tagName.toLowerCase() + attrs + ">" + inner +
+         "</" + this.tagName.toLowerCase() + ">";
+};
 El.prototype.removeChild = function(c){
   var i = this._children.indexOf(c); if (i !== -1) this._children.splice(i, 1); return c;
 };
@@ -271,9 +293,19 @@ globalThis.fetch = function(path, opts){
   var key = method + " " + path;
   var payload = Object.prototype.hasOwnProperty.call(__routes, key) ? __routes[key]
               : (Object.prototype.hasOwnProperty.call(__routes, path) ? __routes[path] : null);
+  // A ROUTE MAY REFUSE. Until `L32` every route answered 200, so the harness
+  // could drive every path the page has EXCEPT the one where the server says
+  // no — which is the surface `GUIDED-076` is about, and the one an interface
+  // is most likely to get wrong. A route declaring `__status` answers with it.
+  var status = 200;
+  if (payload && typeof payload === "object" && payload.__status){
+    status = payload.__status;
+    payload = payload.body === undefined ? payload : payload.body;
+  }
   var text = JSON.stringify(payload === null ? {} : payload);
   return Promise.resolve({
-    ok: true, status: 200, statusText: "OK",
+    ok: status < 400, status: status,
+    statusText: status === 200 ? "OK" : "Refused",
     text: function(){ return Promise.resolve(text); },
     json: function(){ return Promise.resolve(JSON.parse(text)); }
   });
@@ -302,6 +334,14 @@ function drainRaf(){
 globalThis.__harness = {
   el: function(id){ return document.getElementById(id); },
   html: function(id){ return document.getElementById(id).innerHTML; },
+  // The deep read, for a surface built by appending rather than by assigning.
+  render: function(id){
+    var el = document.getElementById(id);
+    if (!el) return "";
+    var out = el.innerHTML || "";
+    for (var i = 0; i < el.children.length; i++) out += el.children[i].__deep();
+    return out;
+  },
   target: target,
   dispatch: dispatch,
   calls: function(){ return __calls; },
@@ -323,7 +363,10 @@ def run(body: str, *, routes: Optional[Dict[str, Any]] = None,
         search: str = "", timeout: int = 90) -> Any:
     """Load the page's controller, run `body`, and return whatever it emits.
 
-    `routes` answers `fetch` — keyed by ``"POST /path"`` or by bare path.
+    `routes` answers `fetch` — keyed by ``"POST /path"`` or by bare path. A
+    route may REFUSE: give it ``{"__status": 409, "body": {...}}`` and the shim
+    answers with that status and `ok: false`, which is how the page's error path
+    gets driven at all.
     `search` is `window.location.search`, which is how the page bootstraps a
     project without a test seam: `?project=<id>` is a path the controller already
     has, so the harness uses the page's own code rather than reaching inside it.

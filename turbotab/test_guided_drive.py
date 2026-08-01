@@ -605,9 +605,30 @@ def test_a_blocker_reaches_a_terminal_state_by_resolution(client, raw):
 
 
 def test_the_attestation_is_object_specific(client, project):
-    """A generic PROCEED habituates. The sentence names the column."""
-    assert "although it may leak the outcome" in BODY
-    assert "blockerSubject" in BODY
+    """A generic PROCEED habituates. The sentence names the column.
+
+    **It is composed by the SERVER now** (`GUIDED-076`). This asserted the
+    sentence appeared in `index.html`, which was true and was the defect: the
+    page wrote a leakage sentence for every consequence, so a second one would
+    have asked the user to type a sentence about leakage. The page renders
+    `exit.typed`; the router builds it.
+    """
+    from ml import router
+
+    class _Signals:
+        leakage_candidate_cols = ["glucose"]
+        leakage_flags = []
+
+    served = router.blockers(_Signals(), step="explore")[0].to_dict()
+    typed = [x.get("typed") for x in served["exits"] if x.get("typed")]
+    assert typed and "although it may leak the outcome" in typed[0], (
+        "the server no longer composes an object-specific attestation")
+    assert "glucose" in typed[0], "the sentence does not name the column"
+
+    # And the page renders what it was given rather than writing its own.
+    assert "exitTyped" in BODY and "q.exits" in BODY
+    assert "although it may leak the outcome" not in BODY, (
+        "the page composes the leakage sentence again")
     assert "Pasting is fine" in BODY, (
         "blocking paste harms accessibility and adds nothing")
 

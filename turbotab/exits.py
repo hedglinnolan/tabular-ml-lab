@@ -41,7 +41,7 @@ along.
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 # The keys the decision handlers actually read, named once. A key not in this
 # table is a key nothing unlocks, and `attest` refuses to build an exit around
@@ -61,7 +61,8 @@ class ExitError(Exception):
     """An exit that would not open."""
 
 
-def attest(label: str, detail: str, payload_key: str) -> Dict[str, Any]:
+def attest(label: str, detail: str, payload_key: str,
+           typed: Optional[str] = None) -> Dict[str, Any]:
     """One attest exit, carrying the key and a payload a client can post.
 
     `payload_key` is validated against `PAYLOAD_KEYS` rather than accepted as
@@ -74,7 +75,7 @@ def attest(label: str, detail: str, payload_key: str) -> Dict[str, Any]:
             f"{payload_key!r} is not a key any decision handler reads "
             f"({list(PAYLOAD_KEYS)}). An exit built around one would render as "
             f"a way through and open nothing, which is `GUIDED-072` exactly.")
-    return {
+    out = {
         "id": ATTEST,
         "kind": ATTEST,
         "label": label,
@@ -85,6 +86,15 @@ def attest(label: str, detail: str, payload_key: str) -> Dict[str, Any]:
                   "how": (f"Send the same request again with "
                           f"`{payload_key}: true` added to its payload.")},
     }
+    if typed:
+        # THE SENTENCE A TYPED ACKNOWLEDGMENT REQUIRES, served rather than
+        # composed. `web/index.html` wrote its own — *I am keeping X although
+        # it may leak the outcome* — which is correct for the leakage blocker
+        # and wrong for every other consequence, so a second one would have
+        # asked the user to type a sentence about leakage (`GUIDED-076`).
+        out["typed"] = typed
+        out["retry"]["typed"] = typed
+    return out
 
 
 def is_actionable(exit_row: Dict[str, Any]) -> bool:

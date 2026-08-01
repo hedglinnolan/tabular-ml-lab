@@ -101,6 +101,14 @@ class Question:
     triggering_finding: Optional[str] = None
     confidence: Optional[str] = None
     severity: Optional[str] = None
+    # THE WAYS OUT, when this question is one of consequence (`GUIDED-076`).
+    # A blocker's exits used to be composed by the page, which meant they were
+    # composed for the ONE blocker that existed: `blockerHTML` hard-coded the
+    # leakage claim sentence, both labels and the attestation text, so a second
+    # consequence would have rendered as a leakage blocker with the wrong
+    # words. They are served here for the same reason `api._disclosures` serves
+    # the disclosure — an interface that writes its own drifts from the record.
+    exits: List[Dict[str, Any]] = field(default_factory=list)
     options: List[str] = field(default_factory=list)
     # The VALUE each option submits, parallel to `options`. Empty means the
     # label is the value, which is true of every question written before the
@@ -207,6 +215,7 @@ class Question:
             "confidence": self.confidence, "severity": self.severity,
             "status": self.status, "skip_reason": self.skip_reason,
             "defer_target": self.defer_target, "deferred_from": self.deferred_from,
+            "exits": [dict(e) for e in self.exits],
             "options": list(self.options),
             "option_values": list(self.option_values or self.options),
             "option_notes": list(self.option_notes),
@@ -404,6 +413,11 @@ def blockers(signals: Any, step: str = "explore") -> List[Question]:
 
     Pushed, one per column, each citing the column that raised it.
     """
+    # Deferred: `turbotab` imports `ml.router`, so a module-scope import here
+    # would be a cycle. Same shape and same reason as the pack detectors'
+    # wrappers in `turbotab/packs.py`.
+    from turbotab import exits as _exits
+
     out: List[Question] = []
     cols = list(getattr(signals, "leakage_candidate_cols", None) or [])
     flags = list(getattr(signals, "leakage_flags", None) or [])
@@ -419,6 +433,25 @@ def blockers(signals: Any, step: str = "explore") -> List[Question]:
                  "measurement, say so and it will be carried as a stated "
                  "limitation. " + " ".join(flags)),
             triggering_finding=f"eda_leakage_{col}",
+            # The two terminal ways out, in the server's words rather than the
+            # page's. The attest exit carries the key its retry posts, which is
+            # `GUIDED-072`'s whole point and was being discarded one layer up.
+            exits=[
+                {"id": "resolve_blocker", "kind": _exits.RESOLVE,
+                 "label": f"Drop {col}",
+                 "detail": (f"`{col}` leaves the analysis and the table is "
+                            f"re-checked without it."),
+                 "retry": {"payload": {"column": col},
+                           "how": (f"Post a `resolve_blocker` decision naming "
+                                   f"`{col}`.")}},
+                _exits.attest(
+                    "Keep it and record why",
+                    (f"`{col}` stays, and the manuscript carries what you type "
+                     f"as a stated limitation."),
+                    _exits.ACKNOWLEDGE_BLOCKER,
+                    typed=(f"I am keeping {col} although it may leak the "
+                           f"outcome.")),
+            ],
             options=["drop it", "it is legitimate — record why", "show me the correlation"]))
     return out
 
