@@ -345,6 +345,34 @@ def claim_a_figure_arrives_with_its_annotation_box(client, project):
             f"{row['id']} rendered without the reason it does not apply")
 
 
+def claim_the_record_reads_back(client, project):
+    """The transcript. `PRODUCT_VISION.md`'s whole thesis is that what the user
+    scrolls and what they export are one object at two levels of formality, so
+    a decision whose sentence does not read back is that thesis failing at the
+    first level.
+
+    Every sentence is the SERVER's — `COPY_DECK.md`'s walk found all 130
+    user-facing promises are composed server-side and none in the page — so
+    this asserts the page renders what it was handed rather than a paraphrase.
+    """
+    pid = project["id"]
+    client.post(f"/project/{pid}/decision", json={
+        "kind": "set_target", "payload": {"column": "responder"}})
+    project = client.get(f"/project/{pid}").json()
+    said = [d["text"] for d in project["decisions"] if d.get("text")]
+    assert said, "the record carried no sentence to read back"
+
+    # `record(id, html)` writes into `<id>-text`, which is where a decision
+    # sentence lands on the page. Reading the container it is written INTO is
+    # the difference between asserting the render and asserting the payload.
+    out = _drive("__emit(__harness.html('d-data-text') + "
+                 "__harness.html('d-target-text'));",
+                 _routes(client, project), pid)
+    assert any(t[:45] in out for t in said), (
+        "not one recorded decision read back onto the page, so the transcript "
+        "is a claim the interface does not keep")
+
+
 CLAIMS = [
     ("questions render", claim_questions_render),
     ("a decision re-paints", claim_a_decision_repaints),
@@ -355,6 +383,7 @@ CLAIMS = [
      claim_a_refusal_renders_its_exits_and_the_retry_works),
     ("a figure arrives with its annotation box",
      claim_a_figure_arrives_with_its_annotation_box),
+    ("the record reads back", claim_the_record_reads_back),
 ]
 
 

@@ -8339,10 +8339,10 @@
   "detail": "",
   "ev": "ml/coach_probe.py:189-202 _cv_score; ml/eval.py:145 StratifiedGroupKFold; ml/splits.py:311",
   "act": "Route the probe's CV through the grouped scheme ml/eval.perform_cross_validation already selects, or refuse to score where the cohort is longitudinal and no groups were passed.",
-  "status": "OPEN",
-  "note": "L31-A AUDIT-008 sweep, capability 2 (ml/splits.make_split and the grouped basis). ml/coach_probe._cv_score builds KFold or StratifiedKFold with shuffle=True and no groups argument, and the mean score it returns is what the Model Coach ranks its picks on. THE SAME SHAPE AS AUDIT-002 AND THE ENGINE ALREADY KNOWS TWICE OVER: ml/eval.perform_cross_validation:113-146 documents the exact hazard - random KFold would put the same entity on both sides of a fold - and selects StratifiedGroupKFold when the split was grouped, and ml/splits.py implements the whole priority order. The coach probe reads neither, and it has no entity parameter to read one with, so the fix is a signature change rather than a call swap. WHAT IT COSTS: a recommendation, not a reported metric, which is why this is high rather than critical - the user sees a ranked shortlist rather than a number they would put in a paper. But the ranking is what they act on, and a model that memorizes participants ranks above one that generalizes.",
+  "status": "FIXED",
+  "note": "FIXED at L32-C. coach_probe._cv_score takes groups and builds GroupKFold or StratifiedGroupKFold when one is passed; _prepare carries the grouping through every mask and subsample the rows go through, because a grouping that stops matching its rows puts a fold boundary somewhere nobody chose. pages/05 reads cohort_structure_detection - which has held entity_id_final and the longitudinal answer since upload - and passes it. THE SIGNATURE CHANGE IS WHY THIS SURVIVED TWO AUDITS: ml/eval.py:113 documents the exact hazard and selects StratifiedGroupKFold, and ml/splits.py implements the priority order, and neither was reachable from a function with no groups parameter. SAID WHERE THE READER IS: ProbeResult carries a grouped flag and run_probe appends a note either way - folds grouped by the recorded entity, N of them, so no entity spans a split; or folds are ungrouped, so if a row can repeat within a subject these numbers are optimistic. A score that drops when a leak closes reads as a regression to anyone not told otherwise. THE GATE IS ASSERTED ON THE SPLITTER rather than on a metric comparison, because a metric comparison would be a claim about one fixture and the no-entity-spans-a-fold property is a claim about every table.",
   "verified_against": "",
-  "test": "",
+  "test": "tests/test_the_arithmetic_reaches_for_what_exists.py::test_no_entity_spans_a_fold_when_groups_are_passed",
   "verified_ev": "ml/coach_probe.py:189-202 _cv_score; ml/eval.py:145 StratifiedGroupKFold; ml/splits.py:311"
  },
  {
@@ -8353,10 +8353,10 @@
   "detail": "",
   "ev": "ml/table_one.py:20,48,167,200,219 show_pvalues default True; ml/multiplicity.py; research/CLINICAL_SURVEY_PACK.md section A3",
   "act": "Either correct the family and say so, or drop the column - the clinical literature discourages p-values in a baseline table for a reason that is not multiplicity.",
-  "status": "OPEN",
-  "note": "L31-A AUDIT-008 sweep, capability 1 (statsmodels multipletests). TableOneConfig.show_pvalues defaults to True and a p is formatted per row, so a twenty-variable baseline table is twenty tests presented as twenty results. Nothing in that path corrects, and ml/multiplicity.py - added at L30 for exactly this class - is not imported there. TWO SEPARATE OBJECTIONS AND THE SECOND IS THE STRONGER: multiplicity is the AUDIT-008 half, and the clinical literature's own position is that a baseline table should not carry p-values at all, because in a randomized study a baseline difference is chance by construction and in an observational one it answers a question nobody asked. AUDIT-001 fixed the manuscript's significance count and did not reach this surface, which is the sweep's point - the same capability gap appears on a second surface that the first fix had no reason to touch.",
+  "status": "FIXED",
+  "note": "FIXED at L32-C, with AUDIT-009, per section 02's widening rule - two instances of one class fixed together. Table1Config gains pvalue_correction defaulting to fdr_bh. Every p the table computes is COLLECTED rather than formatted, because the correction is a property of the family and the family is not complete until the last row is built; once it is, ml/multiplicity.adjust runs over the whole set and the cells are written as q-values under a column that NAMES THE METHOD. Continuous and categorical rows are one family: correcting them separately would be two families nobody declared, and a test asserts the count spans both. WHERE NO CORRECTION IS CONFIGURED THE COLUMN IS NOT SHOWN AT ALL, which is exactly what the manuscript now does at AUDIT-001 - an uncorrected p per row IS the quantity the anti-pattern is made of - and the reason is recorded in metadata rather than the column being silently absent. The raw p-values are kept beside the corrected ones, so nothing is lost. NO SECOND ENGINE: a test asserts multipletests appears nowhere in table_one.py's code, only ml/multiplicity. A TEST WAS PINNING THE DEFECT: tests/test_table_one.py asserted P-value in table.columns, which is the uncorrected column; flipped.",
   "verified_against": "",
-  "test": "",
+  "test": "tests/test_the_arithmetic_reaches_for_what_exists.py::test_a_baseline_table_corrects_its_family_and_names_the_method",
   "verified_ev": "ml/table_one.py:20,48,167,200,219 show_pvalues default True; ml/multiplicity.py; research/CLINICAL_SURVEY_PACK.md section A3"
  },
  {
@@ -8442,5 +8442,33 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "turbotab/pageharness.py document.getElementById; El.prototype.appendChild; DESIGN_LANGUAGE.md section 05"
+ },
+ {
+  "id": "GUIDED-078",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The page never reads the served disclosures, so the grain, eligibility and seal sentences the server composes reach no reader",
+  "detail": "",
+  "ev": "turbotab/web/index.html has zero occurrences of disclosures; turbotab/api.py _disclosures; COPY_DECK.md three sections, about 12 rows",
+  "act": "Render project.disclosures where each answer is recorded - the grain sentence at the grain card, the eligibility sentence at eligibility, the seal disclosure at the seal.",
+  "status": "OPEN",
+  "note": "Found at L32-D by walking COPY_DECK.md against the page. api._disclosures exists FOR THIS REASON and says so in its own docstring: served rather than composed in the page, because an interface that writes its own disclosure can drift from what the record says. The page then does not read it. The seal disclosure is the sharpest of the three - it is the sentence that tells a user what their split guarantees, chosen by grain answer, and a user who never sees it cannot know whether the holdout is grouped or by row. SAME CLASS AS GUIDED-075 AND GUIDED-076, which is now three: the server composes a user-facing string correctly and the interface does not render it. Not claimable by the harness for the same reason GUIDED-075 was not - there is nothing to assert against - so it is filed rather than covered.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/web/index.html has zero occurrences of disclosures; turbotab/api.py _disclosures; COPY_DECK.md three sections, about 12 rows"
+ },
+ {
+  "id": "GUIDED-079",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The Features step has no page surface, so the 20-row transform catalogue and the 5-row selection-method table promise copy nothing renders",
+  "detail": "",
+  "ev": "turbotab/web/index.html has zero occurrences of /features or selection/evidence; turbotab/api.py has both endpoints; COPY_DECK.md two sections, 25 rows",
+  "act": "Build the Features surface, or record in COPY_DECK.md that those two sections describe an endpoint rather than a step a user reaches.",
+  "status": "OPEN",
+  "note": "Found at L32-D by walking COPY_DECK.md against the page. 25 of the deck's 130 promise rows - nineteen percent - belong to a step the interface does not have: GET /project/{id}/features and /selection/evidence both exist and are fetched by nobody. COPY_DECK.md's own header says it is the register of every user-facing string BY STEP AND BY STATE so copy can be reviewed without running the app, which makes an unrendered section indistinguishable from a rendered one to the reviewer it exists for. SAME CLASS AS GUIDED-075: built, correct, unreachable. Filed rather than built because a surface is a part and this loop's part for surfaces was the figure layer.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/web/index.html has zero occurrences of /features or selection/evidence; turbotab/api.py has both endpoints; COPY_DECK.md two sections, 25 rows"
  }
 ]
