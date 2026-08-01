@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 from typing import Optional, List, Dict, Tuple, Any
 from scipy import stats
+
+from ml import multiplicity
 from dataclasses import dataclass, field
 
 
@@ -18,6 +20,12 @@ class Table1Config:
     continuous_vars: List[str] = field(default_factory=list)
     categorical_vars: List[str] = field(default_factory=list)
     show_pvalues: bool = True
+    # HOW THE FAMILY IS CORRECTED (`AUDIT-010`). A twenty-row baseline table is
+    # twenty tests, and printing a raw p beside each is the number a reviewer
+    # objects to. `""`/`None` means no correction — and then the column is not
+    # shown at all, because an uncorrected p per row IS the anti-pattern, which
+    # is the same rule `narrative_engine` applies to the manuscript's count.
+    pvalue_correction: str = "fdr_bh"
     show_smd: bool = False
     show_missing: bool = True
     normal_test_alpha: float = 0.05
@@ -146,6 +154,10 @@ def generate_table1(
         and metadata contains test info and raw statistics
     """
     metadata = {"tests_used": {}, "normality": {}, "raw_stats": {}}
+    # `AUDIT-010`. Every p the table computes, collected and corrected across
+    # the family once every row exists — `ml/multiplicity.py`, the same
+    # `statsmodels.multipletests` `ml/feature_selection.py` already calls.
+    raw_p: List[Dict[str, Any]] = []
 
     if config.grouping_var and config.grouping_var in df.columns:
         groups = df[config.grouping_var].dropna().unique()
@@ -159,13 +171,23 @@ def generate_table1(
 
     # Build column headers
     n_total = len(df)
+    withhold_p = bool(config.show_pvalues and not config.pvalue_correction)
     if groups is not None:
         col_headers = [f"Overall (N={n_total})"]
         for g in groups:
             n_g = (df[config.grouping_var] == g).sum()
             col_headers.append(f"{g} (n={n_g})")
-        if config.show_pvalues:
-            col_headers.append("P-value")
+        if config.show_pvalues and config.pvalue_correction:
+            col_headers.append(
+                "Q-value (" + multiplicity.method_label(config.pvalue_correction) + ")")
+        elif config.show_pvalues:
+            # No correction, so no column. The reason is recorded rather than
+            # the column being silently absent.
+            metadata["pvalues_withheld"] = (
+                "No multiple-comparison correction was configured, so the "
+                "per-row p-values are not shown: across the rows of a baseline "
+                "table they are not interpretable as a set of results. Set "
+                "`pvalue_correction` to report q-values instead.")
         if config.show_smd and len(groups) == 2:
             col_headers.append("SMD")
     else:
@@ -197,7 +219,7 @@ def generate_table1(
                 row.append(_continuous_row(gs, not use_median, config.decimal_places))
 
             # Statistical test
-            if config.show_pvalues:
+            if config.show_pvalues and not withhold_p:
                 clean_groups = [gs.dropna() for gs in group_series if len(gs.dropna()) > 0]
                 if len(clean_groups) >= 2:
                     if len(clean_groups) == 2:
@@ -216,7 +238,12 @@ def generate_table1(
                         else:
                             stat, p = stats.kruskal(*clean_groups)
                             test_name = "Kruskal-Wallis"
-                    row.append(_format_pvalue(p))
+                    # COLLECTED, NOT FORMATTED. The correction is a property
+                    # of the family, and the family is not complete until the
+                    # last row is built.
+                    raw_p.append({"var": var, "p": float(p),
+                                  "row": len(rows), "col": len(row)})
+                    row.append("")
                     metadata["tests_used"][var] = test_name
                 else:
                     row.append("—")
@@ -274,7 +301,7 @@ def generate_table1(
             rows.append(row)
 
         # P-value for categorical (chi-square or Fisher's exact)
-        if groups is not None and config.show_pvalues:
+        if groups is not None and config.show_pvalues and not withhold_p:
             contingency = pd.crosstab(df[var].dropna(), df[config.grouping_var].dropna())
             try:
                 if contingency.shape[0] <= 2 and contingency.shape[1] <= 2 and contingency.min().min() < 5:
@@ -288,7 +315,9 @@ def generate_table1(
                 p_col_idx = len(col_headers) - 1
                 if config.show_smd and len(groups) == 2:
                     p_col_idx -= 1
-                rows[header_idx][p_col_idx] = _format_pvalue(p)
+                rows[header_idx][p_col_idx] = ""
+                raw_p.append({"var": var, "p": float(p),
+                              "row": header_idx, "col": p_col_idx})
                 metadata["tests_used"][var] = test_name
             except Exception:
                 pass
@@ -312,6 +341,28 @@ def generate_table1(
             rows.append(miss_row)
 
     # Build DataFrame
+    # ── the family, corrected once ────────────────────────────────────────
+    if raw_p and config.show_pvalues and config.pvalue_correction:
+        summary = multiplicity.adjust(
+            [{"test_name": r["var"], "p_value": r["p"]} for r in raw_p],
+            method=config.pvalue_correction)
+        for cell, adjusted in zip(raw_p, summary["tests"]):
+            q = adjusted.get("q_value")
+            if 0 <= cell["row"] < len(rows) and cell["col"] < len(rows[cell["row"]]):
+                rows[cell["row"]][cell["col"]] = (
+                    _format_pvalue(q) if q is not None else "—")
+            metadata.setdefault("q_values", {})[cell["var"]] = q
+            metadata.setdefault("raw_p_values", {})[cell["var"]] = cell["p"]
+        metadata["pvalue_correction"] = config.pvalue_correction
+        metadata["pvalue_correction_label"] = multiplicity.method_label(
+            config.pvalue_correction)
+        metadata["n_tests_corrected"] = summary["n_adjusted"]
+    elif raw_p:
+        # Computed and deliberately not shown; the numbers stay in the metadata
+        # so nothing is lost, and the table does not print them as results.
+        for cell in raw_p:
+            metadata.setdefault("raw_p_values", {})[cell["var"]] = cell["p"]
+
     table_df = pd.DataFrame(rows, columns=col_headers, index=row_labels)
     table_df.index.name = "Characteristic"
 

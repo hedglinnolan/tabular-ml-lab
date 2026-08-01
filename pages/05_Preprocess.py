@@ -222,11 +222,25 @@ if _profile:
                         _pm = df[target_col].notna() & train_row_mask(df.index)
                         _feats_probe = [c for c in (st.session_state.get("selected_features")
                                                     or all_features) if c in df.columns]
+                        # AUDIT-009. The probe's folds are grouped by the
+                        # recorded entity when the cohort is longitudinal.
+                        # `cohort_structure_detection` has held both answers
+                        # since upload; this path was the one not reading them,
+                        # and the ranking the coach shows was computed on folds
+                        # a subject could span.
+                        _cohort = st.session_state.get("cohort_structure_detection")
+                        _entity = getattr(_cohort, "entity_id_final", None) if _cohort else None
+                        _longitudinal = (getattr(_cohort, "final", None)
+                                         == "longitudinal") if _cohort else False
+                        _groups = (df.loc[_pm, _entity].to_numpy()
+                                   if _longitudinal and _entity and _entity in df.columns
+                                   else None)
                         with st.spinner("Probing training rows (seeded, advisory)…"):
                             _pr = run_probe(df.loc[_pm, _feats_probe],
                                             df.loc[_pm, target_col],
                                             task_type=_profile.target_profile.task_type
-                                            if _profile.target_profile else "regression")
+                                            if _profile.target_profile else "regression",
+                                            groups=_groups)
                         st.session_state["coach_probe_result"] = _pr
 
                         # Ledger: probe findings that belong in the record
