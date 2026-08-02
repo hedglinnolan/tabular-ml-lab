@@ -672,6 +672,16 @@ def test_the_deleted_helper_has_no_callers_left():
     import re
 
     source = open("turbotab/web/index.html", encoding="utf-8").read()
+    # THE POSITIVE CONTROL, and `test_an_absence_assertion_carries_a_positive_
+    # control` is what asked for it — correctly: an assertion that something is
+    # absent from the page passes hardest on an empty file. So the file is
+    # asserted to be the page, and the deletion note is asserted to still be
+    # in it, because if that paragraph goes then the reason `nudge` may not
+    # come back goes with it and this test becomes a rule nobody can read.
+    assert len(source) > 100_000, "this is not the page"
+    assert "THE NUDGE IS GONE" in source
+    assert "runPull" in source, "the surface this defect landed on is gone"
+
     # Not preceded by a backtick, because the note explaining the deletion
     # quotes the signature as `nudge(el)` and that mention is the record rather
     # than a caller. The one place the name should appear is the paragraph

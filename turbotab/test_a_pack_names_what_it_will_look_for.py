@@ -68,7 +68,13 @@ FIXTURE = {
     P.GENOMICS: ("genomics_expression",),
     P.DIETARY: ("dietary_recalls", "nhanes_dietary", "nhanes_partial_design",
                 "nhanes_kilojoules"),
-    P.SURVEY: ("survey_instrument",),
+    # A TUPLE AT L41 for the same reason the dietary one is: the two survey
+    # detectors have preconditions that are near-negations. `ordinal_declared`
+    # fires on any block; `sentinel_codes` needs a block carrying values that
+    # break its own run, and `survey_instrument.csv` is a clean return by
+    # construction. A one-fixture registry could promise only the first, which
+    # is the *promise nobody keeps* half of this key match.
+    P.SURVEY: ("survey_instrument", "survey_sentinels"),
     # **A TUPLE HERE TOO, AND FOR A SHARPER REASON THAN THE DIETARY ONE.**
     # `clinic_visits.csv` is the generic clinical table and it carries exactly
     # one of the eight readings L41 added — `income` written with a thousands

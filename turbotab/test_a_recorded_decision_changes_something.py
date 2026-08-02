@@ -64,6 +64,25 @@ def recorded_kinds():
 
     A list written here would go stale the first time somebody added a kind,
     and a probe that silently stops covering a kind is worse than no probe.
+
+    **THREE FORMS, and the third was missing until L41-D** (`GUIDED-141`). The
+    dispatcher tests `decision.kind` three ways and this read two of them:
+
+    * `decision.kind == "x"` — the chain, 38 of them;
+    * `decision.kind not in {…}` — the record-only fallthrough, 6;
+    * `decision.kind in ("a", "b", …)` — a **group** that shares a body, 4.
+
+    Three of that last group are also in the `==` chain, so they arrived
+    anyway. `set_temporal_prediction` is not, and it is only reachable through
+    the group's own `else:` — so the denominator every count in this file is
+    computed against was one short, and that kind had never been probed.
+
+    This is the same defect this enumerator was written to fix, in a form
+    nobody had added yet. `LOOP.md` §03 records the first version: *41 decision
+    kinds enumerated — the adjudicator's grep had said 36*. The lesson is not
+    that the count was wrong; it is that **a registry recovered by pattern-
+    matching a dispatcher is only as complete as the patterns**, and the honest
+    form of that is to say how many each pattern contributed.
     """
     import re
 
@@ -73,6 +92,8 @@ def recorded_kinds():
     fallthrough = re.search(r'decision\.kind not in \{([^}]+)\}', source)
     if fallthrough:
         handled |= set(re.findall(r'"([a-z_]+)"', fallthrough.group(1)))
+    for group in re.finditer(r'decision\.kind in \(([^)]+)\)', source):
+        handled |= set(re.findall(r'"([a-z_]+)"', group.group(1)))
     return sorted(handled)
 
 
@@ -252,6 +273,26 @@ FLIPS = {
                 ("set_repeat_kind", {"kind": "repeats"})],
         ("set_unit_of_analysis", {"unit": "record"}),
         ("set_unit_of_analysis", {"unit": "person"})),
+    # **ADDED AT L41-D, AND IT HAD NEVER BEEN PROBED** (`GUIDED-141`).
+    # `recorded_kinds()` read two of the dispatcher's three forms, and this
+    # kind is reachable only through the third — a `decision.kind in (…)` group
+    # whose body falls through to an `else:`. So it was outside the denominator
+    # every count in this file is computed against, and no assertion here has
+    # ever said anything about it.
+    #
+    # Its preconditions are the narrowest in the app and they are why it sat at
+    # the end of the chain: time points rather than repeats, AND the records
+    # surviving as rows. `clinical_longitudinal.csv` is a visit schedule, which
+    # is exactly that.
+    "set_temporal_prediction": (
+        _LONG, [("set_target", {"column": "sbp"}),
+                ("set_purpose", {"answer": "prediction"}),
+                ("set_grain", {"answer": "people_repeat",
+                               "group_col": "subject_id"}),
+                ("set_repeat_kind", {"kind": "time_points"}),
+                ("set_unit_of_analysis", {"unit": "record"})],
+        ("set_temporal_prediction", {"temporal": True}),
+        ("set_temporal_prediction", {"temporal": False})),
     "set_eligibility": (_CLINIC, _TO_TARGET + [
         ("set_purpose", {"answer": "prediction"}),
         ("set_grain", {"answer": "one_row_per_person"})],
