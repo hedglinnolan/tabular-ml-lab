@@ -2243,9 +2243,23 @@ async def get_manuscript(project_id: str) -> Dict[str, Any]:
 
     project = _project(project_id)
     held = _RUNS.get(project_id)
+    # `GUIDED-131`. THE WHOLE REGISTRY, and now also what this project can
+    # actually draw. The list stays registry-wide because `promoted_figures`
+    # can name any figure and a row missing from here is a promotion the
+    # document cannot see. What was missing is the second half: this route
+    # built the list and **never read `figures.bundle`**, so the companion rule
+    # — stated as admissibility, enforced on `/figures` — had no consumer at
+    # the boundary it was written for, which is the artifact that leaves the
+    # building.
+    #
+    # `drawn` is what separates *promote the companion too* from *this project
+    # cannot draw it at all*, and only the bundle knows which.
+    drawn = _drawable(project)
+    promoted_ids = set(getattr(project, "promoted_figures", []) or [])
     figures = [
         {"id": f.id, "title": f.title, "tier": f.tier,
-         "promoted": f.id in set(getattr(project, "promoted_figures", []) or [])}
+         "promoted": f.id in promoted_ids,
+         "drawn": None if drawn is None else (f.id in drawn)}
         for f in _figure_specs_all()
     ]
     # EVERYTHING THE APP HOLDS, not just the run. The first version passed the
@@ -2299,6 +2313,36 @@ def _figure_specs_all():
     from turbotab import figures as _figs
     import turbotab.figure_specs                            # noqa: F401 — registers
     return list(_figs.REGISTRY.values())
+
+
+def _drawable(project) -> Optional[set]:
+    """Which figures this project can draw at all — `admitted` plus `held`.
+
+    **`held` counts as drawn**, and the distinction is the point. A figure the
+    bundle held still has a payload, a caption and a checklist; what it lacks is
+    its companion. Treating it as undrawable here would tell the author *this
+    project cannot produce it* when the truth is *its companion is missing* —
+    which is the same sentence the cross-section is trying to make, arriving one
+    level down and wrong.
+
+    `None` rather than an empty set when the bundle cannot be built, because
+    empty is a claim (*nothing is drawable*) and this is an absence of one. The
+    cross-section reads `None` as "unknown" and drops the extra clause instead
+    of asserting the stronger sentence from a failure.
+    """
+    try:
+        from turbotab import figure_bundle as _fb
+        bundle = _fb.render(project)
+    except Exception:
+        from turbotab import devchecks
+        import sys
+        devchecks.swallowed(
+            "api.get_manuscript::_drawable", sys.exc_info()[1] or Exception(),
+            "the manuscript's companion cross-section cannot say whether a "
+            "missing companion was drawable, so it reports the gap without "
+            "the clause that would tell the author what to do about it")
+        return None
+    return {row["id"] for row in bundle["admitted"] + bundle["held"]}
 
 
 @app.get("/project/{project_id}/instability")

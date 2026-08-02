@@ -1294,5 +1294,13 @@
   "classic": "—",
   "state": "guided-only",
   "reason": "GUIDED-123. Owed to Classic. NUTRITION_PACK section 09's six methods questions, each marked user / app / app-detects-user-confirms per the pack's own table. It reports that four of the six are the app's responsibility and none is computed, with what building each needs - the gaps are information too."
+ },
+ {
+  "id": "report-companion-cross-section",
+  "step": "report",
+  "capability": "The validation report names a promoted figure whose declared validation companion is not in the results",
+  "classic": "— pages/10 has no figure promotion, so it has nothing to cross-check",
+  "state": "guided-only",
+  "reason": "GUIDED-131, L41-A3. The companion rule is stated in turbotab/figures.py as ADMISSIBILITY - the bundle does not contain it - and DOMAIN_SCIENCE.md section 01.6 says refuse to let a confirmatory figure into the results bundle without its validation companion. The results bundle that leaves the building is the manuscript, and the rule had no consumer there: api.py built the manuscript figure list from the whole REGISTRY and never read figures.bundle, so a figure the bundle HELD promoted straight through with passed=True and the word companion nowhere in the payload. A REPORT AND NOT A REFUSAL, which is the same ruling promoted_exploratory was built to: a marked figure is promoted as the author marked it, and the record is not laundered because the validator is what reports it. Refusing at promote_figure would overrule the author in their own document. Guided-only because it is a property of promotion and Classic has none; if Classic ever gains one, this and report-figure-promotion converge together. The manuscript route now reads figures.bundle for one thing only - whether the missing companion could have been drawn at all - because telling an author to promote a figure their data cannot produce is advice that cannot be followed."
  }
 ]

@@ -2625,7 +2625,13 @@
             "What a reviewer will notice</span>" +
             '<span class="run-note">' + num((MANU.rows || []).length, 0) +
             " checks, " + num(failed.length, 0) + " unmet</span></div>";
-    if (!failed.length && !(MANU.promoted_exploratory || []).length)
+    /* GUIDED-131. The companion list joins the condition rather than being
+       rendered under it. A draft that said "every consistency check is met"
+       above a promoted figure missing its validation companion would be the
+       governing rule's assert-something-false branch in the panel whose whole
+       job is to be the honest half. */
+    if (!failed.length && !(MANU.promoted_exploratory || []).length
+        && !(MANU.promoted_without_companion || []).length)
       h += '<p class="feat-note">Every consistency check the validator makes ' +
            "is met by this draft.</p>";
     failed.forEach(function(r){
@@ -2643,6 +2649,20 @@
     (MANU.promoted_exploratory || []).forEach(function(f){
       h += '<div class="diverged"><p class="d-head">' + esc(f.title) +
            " is promoted and marked EXPLORATORY</p>" +
+           '<p class="d-now">' + esc(f.because) + "</p></div>";
+    });
+    /* GUIDED-131 · THE COMPANION RULE, AT THE BOUNDARY IT WAS WRITTEN FOR.
+       figures.bundle refuses a confirmatory figure without its validation
+       companion; the results bundle that leaves the building is this document,
+       and until L41 a figure the bundle had HELD promoted straight through it
+       with passed: true. Reported here for the same reason the tier is —
+       the author gets the document they asked for, and the record is not
+       laundered. */
+    (MANU.promoted_without_companion || []).forEach(function(f){
+      var names = (f.missing_companions || []).join(", ");
+      h += '<div class="diverged"><p class="d-head">' + esc(f.title) +
+           " is promoted without " +
+           (names ? esc(names) : "its validation companion") + "</p>" +
            '<p class="d-now">' + esc(f.because) + "</p></div>";
     });
     /* GUIDED-115. The LaTeX document, rendered by the exporter Classic uses.

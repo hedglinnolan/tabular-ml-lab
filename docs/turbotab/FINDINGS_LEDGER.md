@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**274 of 717 closed.**
+**275 of 717 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 392 |
+| `OPEN` | 391 |
 | `PARTIAL` | 51 |
-| `FIXED` | 270 |
+| `FIXED` | 271 |
 | `NOT-A-DEFECT` | 4 |
 
 ---
 
-## OPEN — 392
+## OPEN — 391
 
 
 ### Application state / lockbox — 66
@@ -264,7 +264,7 @@ Nothing is closed without a regression test named after it.
 | `MINE-043` | low | pages/06 defines fallback plotting stubs that shadow visualizations.py on ImportError | `pages/06_Train_and_Compare.py:66-90; visualizations.py:53-88, 91-126` | Unchanged at HEAD. visualizations.py is a first-party module in the repository root and cannot legitimately be missing, so the fallback can only fire on an unrelated ImportError… |
 | `MINE-044` | low | visualizations.plot_residuals will pandas-align if handed two Series with different indexes | `visualizations.py:91-126 vs 141-142; pages/06_Train_and_Compare.py:2604, 2623` | Unchanged at HEAD, and the inconsistency inside one file is the tell: plot_bland_altman coerces both arguments and plot_residuals does not, so the safe idiom was known and applied… |
 
-### Guided-door drive feedback — 33
+### Guided-door drive feedback — 32
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -279,7 +279,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-110` | high | Figure tiering and companions is specified and unbuilt, and it is the primitive MISC-015 did not count: zero ledger rows mention it at all | `docs/turbotab/DOMAIN_SCIENCE.md section 03 primitive 5 - EXPLORATORY vs CONFIRMATORY and the admissibility…` | FOUND BY THE MISC-015 GATE RATHER THAN BY MISC-015. That finding named four primitives with no rows; measuring all seven found a fifth, which is the argument for the gate over the… |
 | `GUIDED-112` | high | The generalized leakage detector is specified and unbuilt: any parameter estimated from data must be inside the loop, and the app checks this per known transform rather than as a rule | `docs/turbotab/DOMAIN_SCIENCE.md section 03 primitive 7 and section 06, which places it outside the pack order…` | FILED BY THE MISC-015 GATE. WHAT IS ALREADY TRUE AND IS NOT THE SAME THING: pipeline_plan builds preprocessing INSIDE the estimator, so a step that goes through it cannot leak.… |
 | `GUIDED-118` | high | The app cannot represent a time-to-event outcome at all, so Kaplan-Meier and every survival figure and model is unreachable: set_task_type accepts classification and regression only and there is no… | `turbotab/project.py:505 rejects any task_type other than classification or regression; searching turbotab/…` | L38-D1, AND THE REFUSAL IS THE RESULT. The loop prompt said to expect this figure to refuse and to let it, and it does: a curve drawn from a column the app believes is an ordinary… |
-| `GUIDED-131` | high | The companion admissibility rule does not gate promotion, so a CONFIRMATORY figure the bundle HELD for a missing validation companion is promoted into the manuscript with the document and the… | `driven by the adjudicator at L40 on leaky_sepsis.csv with calibration.companions restored to the pre-L40…` | FOUND WHILE ADJUDICATING GUIDED-128, and it is the layer under it. turbotab/figures.py:169 says the rule has no analogue in the app and states it as admissibility - `the bundle… |
 | `GUIDED-134` | high | DEFECT CLASS - a guard satisfies a production dependency with a fixture stand-in the real registry can never supply, so the guard proves the mechanism and cannot see that nothing feeds it | `the instance is GUIDED-128 and it is exact: turbotab/test_a_figure_carries_its_checklist_and_its_companions.py…` | FILED BY THE ADJUDICATOR BECAUSE THE AGENT NAMED IT IN A COMMENT AND NOT IN A ROW - the comment at test_a_figure_carries_its_checklist_and_its_companions.py line 91 says it… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
@@ -610,10 +609,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 270
+## FIXED — 271
 
 
-### Guided-door drive feedback — 86
+### Guided-door drive feedback — 87
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -679,6 +678,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-116` | high | The Guided manuscript has no Model Development and no Model Evaluation section, because draft.py folds over DECISIONS and which model was fitted is a property of a RUN | `turbotab/draft.py SECTIONS lists data, target, explore, preprocess, features, limitations and nothing about…` | **test:** `turbotab/test_the_manuscript_is_checked.py::test_the_sections_the_draft_cannot_source_are_named_not_silent, driven both with a run and without` — FOUND BY WIRING THE… |
 | `GUIDED-122` | high | Guided builds no Table 1, so the participant-characteristics table every reporting standard in the four packs asks for is absent from the manuscript and two validator checks that read it are inert | `turbotab/manuscript.to_latex passes no table1_df; ml/manuscript_validator.py has 'Table 1 population matches…` | **test:** `turbotab/test_the_manuscript_is_checked.py::test_table_one_is_built_from_the_shared_core, ::test_table_one_carries_smds_and_no_p_values… |
 | `GUIDED-128` | high | The calibration plot named a companion that was never registered, so it could not be admitted by any project from L34 until L40 | `turbotab/figure_specs.py CALIBRATION carried companions=('discrimination',) and no figure with that id was…` | **test:** `turbotab/test_eight_more_figures_reach_a_user.py::test_every_declared_companion_is_a_figure_that_exists and ::test_calibration_is_admissible_now_that_the_roc_exists`… |
+| `GUIDED-131` | high | The companion admissibility rule does not gate promotion, so a CONFIRMATORY figure the bundle HELD for a missing validation companion is promoted into the manuscript with the document and the… | `driven by the adjudicator at L40 on leaky_sepsis.csv with calibration.companions restored to the pre-L40…` | **test:** `turbotab/test_the_companion_rule_reaches_the_document.py` — CLOSED AT L41-A3 as a validator cross-section, per the row's own ACT and PRODUCT_VISION.md's ruling - NOT as… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |

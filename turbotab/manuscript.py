@@ -42,6 +42,26 @@ gets the document they asked for — and **is** reported by the validator, as a
 cross-section check. `promoted_exploratory` below is that check. The author
 gets their document and a separate honest list of what a reviewer will notice.
 
+## The second cross-section, and the boundary it was written for (`GUIDED-131`)
+
+`turbotab/figures.py` states the companion rule as **admissibility** — *"the
+bundle does not contain it"* — and `DOMAIN_SCIENCE.md` §01.6 says *refuse to let
+a confirmatory figure into the results bundle without its validation companion.*
+
+**The results bundle that leaves the building is this document.** Until L41
+nothing here read the companion declaration at all: `figures.bundle` enforced it
+on the `/figures` surface, and a figure it had held promoted into the manuscript
+with `passed: True` and neither `why_held` nor the word *companion* anywhere in
+the payload. `api.py` built the figure list from the whole registry and never
+read the bundle.
+
+`promoted_without_companion` is the twin of `promoted_exploratory`, and it is a
+**report, not a refusal**, for the same reason: `PRODUCT_VISION.md` rules that a
+marked figure is promoted as the author marked it, and refusing the promotion
+would be the app overruling the author in their own document. What the ruling
+also says is that **the record is not laundered**, and the validator is the
+surface that keeps that true.
+
 ## The LaTeX renderer, wired at L39 (`GUIDED-115`)
 
 `ml/latex_report.generate_latex_report` is the exporter Classic uses — 1,066
@@ -473,6 +493,87 @@ def promoted_exploratory(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
     return out
 
 
+def promoted_without_companion(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Promoted figures whose declared validation companion is not in the results.
+
+    **`GUIDED-131`.** The companion rule is stated as admissibility and
+    `figures.bundle` enforces it — on the `/figures` surface. It had no consumer
+    at the boundary it was written for, which is this document: the results
+    bundle that leaves the building is the manuscript, and a CONFIRMATORY figure
+    the bundle had *held* promoted straight through it with `passed: True`.
+
+    **A report, not a refusal.** The ruling is that a marked figure is promoted
+    as the author marked it; a route that declined the promotion would overrule
+    the author in their own document. The other half of the same ruling is that
+    the record is not laundered, and this is where that is kept true.
+
+    **Companions are resolved from `figures.REGISTRY` and from nowhere else.**
+    Not from a `companions` key on the passed-in row, which a caller could
+    forget, get wrong, or — worse — supply from a literal that no project can
+    produce. `GUIDED-134` is exactly that failure one layer down: a test handed
+    `bundle()` a bare dict key that was never a registered figure, and the rule
+    looked enforced for six loops. A check whose stand-in cannot be faked is the
+    fix for that class, so this reads the real registry or it reports nothing.
+
+    `drawn` on a figure row, where the caller supplied it, says whether the
+    companion could have been put in the results at all. It changes the
+    sentence, never the verdict: a companion the author *can* promote and one
+    this project cannot draw are different problems for the author and the same
+    problem for the reviewer.
+    """
+    from turbotab import figures as _figures
+    import turbotab.figure_specs                       # noqa: F401 — registers
+
+    rows = list(doc.get("figures") or [])
+    by_id = {str(f.get("id")): f for f in rows}
+    promoted = {fid for fid, f in by_id.items() if f.get("promoted")}
+
+    out: List[Dict[str, Any]] = []
+    for figure_id in sorted(promoted):
+        row = by_id[figure_id]
+        title = row.get("title") or figure_id
+        spec = _figures.REGISTRY.get(figure_id)
+        if spec is None:
+            # NOT `continue`. `figures.bundle` skips an unregistered id on a
+            # line marked `# pragma: no cover`, and that skip is what let
+            # `GUIDED-128` hide for six loops. A promoted id the registry does
+            # not know is a document referring to a figure that does not exist,
+            # which is worse than a missing companion, not smaller.
+            out.append({
+                "id": figure_id, "title": title, "missing_companions": [],
+                "because": (
+                    f"{title} is promoted into the results and no figure with "
+                    f"that id is registered, so nothing can say what it shows "
+                    f"or what would validate it.")})
+            continue
+        missing = [c for c in spec.companions if c not in promoted]
+        if not missing:
+            continue
+
+        undrawable = [c for c in missing
+                      if by_id.get(c, {}).get("drawn") is False]
+        names = ", ".join(missing)
+        plural = "" if len(missing) == 1 else "s"
+        because = (
+            f"{title} is registered {spec.tier} and its companion "
+            f"figure{plural} {names} {'is' if len(missing) == 1 else 'are'} not "
+            f"in these results. A confirmatory figure without its validation "
+            f"beside it is the shape every circular-figure defect takes, and a "
+            f"reviewer is likely to ask for it. The app has not changed your "
+            f"document.")
+        if undrawable:
+            because += (
+                f" This project cannot draw {', '.join(undrawable)} at all, so "
+                f"promoting {'it' if len(undrawable) == 1 else 'them'} is not "
+                f"the remedy — the claim is the one that needs narrowing.")
+        out.append({
+            "id": figure_id, "title": title, "tier": spec.tier,
+            "missing_companions": missing,
+            "undrawable_companions": undrawable,
+            "because": because})
+    return out
+
+
 def validate(project_dict: Dict[str, Any], *,
              run: Optional[Dict[str, Any]] = None,
              figures: Optional[List[Dict[str, Any]]] = None,
@@ -498,6 +599,11 @@ def validate(project_dict: Dict[str, Any], *,
         latex = ""
         doc["latex_unavailable"] = str(exc)
     promoted = promoted_exploratory(doc)
+    # `GUIDED-131`. Computed BEFORE the validator import, and served on the
+    # unavailable branch too: this cross-section is the app's own, it does not
+    # need `ml/` to run, and a companion gap that vanished when the validator
+    # failed to load would be the silence this file exists to remove.
+    orphaned = promoted_without_companion(doc)
 
     try:
         from ml.manuscript_validator import validate_manuscript_bundle
@@ -505,7 +611,8 @@ def validate(project_dict: Dict[str, Any], *,
         return {"available": False, "because": (
             f"The manuscript validator could not be loaded ({exc}), so this "
             f"draft has not been checked. It is not reported as passing."),
-            "rows": [], "promoted_exploratory": promoted, "document": doc}
+            "rows": [], "promoted_exploratory": promoted,
+            "promoted_without_companion": orphaned, "document": doc}
 
     report = validate_manuscript_bundle(
         doc["context"], rendered["methods"], rendered["report"],
@@ -540,8 +647,13 @@ def validate(project_dict: Dict[str, Any], *,
         "n_failed_for_a_missing_section": sum(
             1 for r in rows
             if r["Status"] == "FAIL" and r["blocked_by_missing_section"]),
-        "passed": bool(report.passed) and not promoted,
+        # `GUIDED-131`. `orphaned` joins the conjunction rather than being
+        # served beside a `passed: True`, which is the exact state the finding
+        # was filed about: the document carried a held CONFIRMATORY figure and
+        # reported itself clean.
+        "passed": bool(report.passed) and not promoted and not orphaned,
         "promoted_exploratory": promoted,
+        "promoted_without_companion": orphaned,
         "document": doc,
         "rendered": {**rendered, "latex": latex},
         "latex_bytes": len(latex),
