@@ -1382,5 +1382,29 @@
     "classic": "— pages/02 has no notion of an instrument, a scale or a reversal",
     "state": "guided-only",
     "reason": "research/CLINICAL_SURVEY_PACK.md section B1.2. GUIDED-136, L41-C2. THE CONSUMER set_reverse_coding HAS BEEN WAITING FOR since the survey pack shipped: the question was asked, dispatched and recorded with a methods sentence, and nothing read the answer back - AGENT_ONBOARD.md section 07's first trap, on the one question DOMAIN_PACKS.md guard #1 lets a pack add. Served at GET /project/{id}/evidence/reverse-coding and rendered as a pull affordance, dark with its reason on tables that carry no scale. RECOMPUTED PER REQUEST from the record as it stands, which is what re-rendered after every declared change means and why there is no cached table to go stale. IT NEVER PROPOSES A REVERSAL: section B1.2 is SETTLED that a negative item-rest correlation has four incompatible causes and that correlations cannot separate them, so the status vocabulary has no should_be_reversed in it and the absence is asserted as a category rather than as a string. The re-run after a declared reversal is the hard constraint and its verdict is lifted out of the table. Pearson, said, with the direction of the bias stated - polychoric is GUIDED-127 and stays unbuilt rather than approximated. 0.30 is CONVENTION and is never stamped PASS/FAIL. NOT SHIPPED: the item-rest dot plot section B1.2 specifies beside the table."
+  },
+  {
+    "id": "guard-field-granularity",
+    "step": "cross-step",
+    "capability": "The field-granularity sweep: for every field the server composes into a payload the door fetches, does anything read it",
+    "classic": "— the Streamlit door has no equivalent question because it renders from session state rather than from a wire payload",
+    "state": "guided-only",
+    "reason": "L42-B. turbotab/fieldsweep.py plus its test. THE ROUTE CHECK GUARDS THE COARSE GRANULARITY and could not see either of L41's two critical reachability defects: /project/{id} is fetched on every render, so the route has a reader while a whole source class inside its payload was rendered by nothing (GUIDED-142). This extends downward and does not replace it. METHOD: every field is tagged with a unique sentinel, the page is DRIVEN - bootstrapped and every control it rendered pressed - and the DOM is searched; every miss is re-confirmed by group-negative bisection against a clean baseline, which is sound because a field the page touches cannot change and leave the output unchanged. A mutation that crashes the render is a HIT rather than a failure. THE REPORTABLE UNIT IS THE PATH SHAPE with THREE verdicts - all, none, and PARTIAL - because collapsing findings[0].title and findings[7].title to `read` would hide GUIDED-142 exactly. Fields that are null or empty on the swept project are held out of the unread count: a field with nothing in it is not an unread field. Enumeration is derived from the live payload, so a field added next loop with no reader fails here."
+  },
+  {
+    "id": "guard-delegated-controls",
+    "step": "cross-step",
+    "capability": "Every control the click delegate declares is pressed, and a name the page cannot resolve is reported",
+    "classic": "— the Streamlit door has no client-side controller",
+    "state": "guided-only",
+    "reason": "L42-C, GUIDED-140's driven half. The row's own act prefers this over a linter because it also catches a name that exists and is not a function. The attribute list is derived from the delegate's own closest() selector. A REVERT PROBE CAUGHT THE FIRST VERSION NOT WORKING: reintroducing nudge(box) at runPull came back GREEN, because the ReferenceError is raised inside a .then(), caught by the page's own .catch(), and RENDERED into the panel as text - nothing escapes to the caller. That is the app's error handling working and it is exactly why GUIDED-139 was invisible, so the check reads both what threw and what the page wrote down. `Cannot read properties of undefined` had to come out of the signature list because pressing data-target-col with a nonsense value produces it. The static half stays unbuilt and GUIDED-140 stays OPEN: a behavioral check finds a dead name only on the paths it drives, and six of nudge's seven call sites were on paths nothing drove."
+  },
+  {
+    "id": "guard-temporal-basis",
+    "step": "explore",
+    "capability": "The seal states whether the temporal validation the user asked for was the one drawn",
+    "classic": "— pages/02 has no temporal question and ml/splits.py's chronological strategy is not routed from one",
+    "state": "guided-only",
+    "reason": "L42-A1, GUIDED-143. Three bases rather than two, on the lockbox constitution section 03's shape: grouped, chronological_grouped (honored, and unreachable today) and chronological_requested_not_drawn. An `honored` boolean travels beside the sentence. The seal carries it because question 7 is answered before the seal and can only say what was ASKED. The disclosure band flips to `not a verified clean split` rather than `sealed`, which is IMPORT-020's asymmetry - leaking behind a lock icon is the assert-something-false branch. The row stays OPEN until the chronological grouped draw exists."
   }
 ]
