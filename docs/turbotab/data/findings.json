@@ -8820,5 +8820,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "turbotab/training.py train() fits each pipeline once on the training partition; turbotab/pipeline_plan.py records a scope divergence naming train_folds and train_rows"
+ },
+ {
+  "id": "GUIDED-104",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "The app records selection scope as train_folds and fits train_rows, then corrects itself in a run note - selection.declare exists precisely so a door that fits once can SAY train_rows instead of implying the stronger claim",
+  "detail": "",
+  "ev": "driven on metabolomics_untargeted.csv: set_selection records scope=train_folds while the run note reads 'fitted ONCE over the training rows... not separately within each training fold as recorded'; turbotab/selection.py declare(scope=TRAIN_FOLDS) default; api set_selection passes no scope",
+  "act": "",
+  "status": "OPEN",
+  "note": "ADJUDICATOR, L36. NOT A DISPUTE WITH THE DISPOSITION - GUIDED-095 is accepted as FIXED, because the decision now reaches the fit and the divergence is stated per run, which is exactly the discipline L35-B established for a declaration a model cannot honor. This is the smaller thing beside it. selection.declare's own docstring says scope is explicit and has no default that hides the weaker option, and that TRAIN_ROWS exists so a project that inherits Classic's behavior can SAY so rather than imply the stronger claim. The app does the opposite: it takes the TRAIN_FOLDS default, fits train_rows, and repairs the difference in prose. So the record asserts the stronger claim and a note downstream retracts it, when the module already offers a way to assert the true one. THE FIX IS ONE ARGUMENT: api set_selection passes scope=TRAIN_ROWS while this door fits once, the record and the fit agree, and the divergence note is not needed at all. TRAIN_FOLDS becomes reachable the day GUIDED-103's resampling policy lands, and at that point the scope is chosen by what will actually happen rather than by a default. WHY IT IS WORTH A ROW RATHER THAN A COMMENT: a reader of the record alone - which is what the archive, the methods sentence and any future parity check see - reads train_folds. The correction lives in run.notes, which is a different object with a different lifetime. Two places disagreeing about one fact is the shape this loop closed everywhere else.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "driven on metabolomics_untargeted.csv: set_selection records scope=train_folds while the run note reads 'fitted ONCE over the training rows... not separately within each training fold as recorded'; turbotab/selection.py declare(scope=TRAIN_FOLDS) default; api set_selection passes no scope"
  }
 ]

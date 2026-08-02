@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**254 of 683 closed.**
+**254 of 684 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 379 |
+| `OPEN` | 380 |
 | `PARTIAL` | 50 |
 | `FIXED` | 251 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 379
+## OPEN — 380
 
 
 ### Application state / lockbox — 66
@@ -418,7 +418,7 @@ Nothing is closed without a regression test named after it.
 | `MODELS-024` | invariant | Cross-validation is skipped for the neural network because its sklearn shim cannot retrain. | `pages/06:1529 `if use_cv and model_name != 'nn'` with the else-branch at 1565 explaining it to the user…` | Unchanged at HEAD: four separate guards, all keyed on one literal model key. The skip itself is correct and is explained to the user, which is good - the shim cannot retrain, so… |
 | `GUIDED-103` | medium | Genuinely fold-local selection needs the training step to resample: this door fits each model once, so scope=train_folds is recorded and train_rows is what happens | `turbotab/training.py train() fits each pipeline once on the training partition; turbotab/pipeline_plan.py…` | FILED AT L36-A as the honest remainder of GUIDED-095's selection half, rather than left as a silence. WHAT IS TRUE NOW: the selector lives inside the estimator, so it is refitted… |
 
-### Guided-door drive feedback — 18
+### Guided-door drive feedback — 19
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -438,6 +438,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-071` | medium | FigureSpec has no field for a precondition on upstream data state, so a figure that must refuse on the shape of the values can only do it inside its payload builder | `turbotab/figures.py FigureSpec.when_applicable; turbotab/figure_specs.py volcano_payload…` | Found at L29-B by building the volcano first, hardest-first, which is what LOOP.md section 02 now asks for. METABOLOMICS_PACK.md section 06.3: the fold change must be computed… |
 | `GUIDED-073` | medium | The client technology was never decided, only defaulted: the Guided door is one 3,701-line HTML file with 2,714 lines of hand-written vanilla JS, and the one sentence that reads like a decision… | `turbotab/web/index.html; turbotab/api.py:2259 StaticFiles mount; PRODUCT_VISION.md:22; PRODUCT_VISION.md…` | RAISED BY THE PRODUCT OWNER, who expected the dynamic half of a migration off Streamlit to be in something other than Python and found it is not. MEASURED: turbotab/web/index.html… |
 | `GUIDED-085` | medium | Two composed steps the Guided door has no surface for: the models shelf and the Preprocess step, both fully reasoned server-side | `turbotab/api.py get_models three groups always returned including empty ones; get_preprocess strategies carry…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim[preprocess reaches its end]` — L34-B CLOSED THE PREPROCESS HALF. The step has a surface and an end… |
+| `GUIDED-104` | medium | The app records selection scope as train_folds and fits train_rows, then corrects itself in a run note - selection.declare exists precisely so a door that fits once can SAY train_rows instead of… | `driven on metabolomics_untargeted.csv: set_selection records scope=train_folds while the run note reads…` | ADJUDICATOR, L36. NOT A DISPUTE WITH THE DISPOSITION - GUIDED-095 is accepted as FIXED, because the decision now reaches the fit and the divergence is stated per run, which is… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 
