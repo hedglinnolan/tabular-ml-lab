@@ -353,7 +353,7 @@ def test_no_module_still_imports_the_false_name():
     that left one importer would fail at import time in whichever door reached
     it first — and `pages/` is a door this suite does not collect."""
     root = Path(__file__).resolve().parents[1]
-    offenders = []
+    offenders, carries_the_note = [], []
     for path in sorted(root.rglob("*.py")):
         parts = set(path.parts)
         if parts & {"venv", ".venv", "__pycache__", "node_modules"}:
@@ -362,8 +362,28 @@ def test_no_module_still_imports_the_false_name():
         for dead in ("get_reference_interval", "band_is_wider_than_interval"):
             # The rename note in `physiology_reference` quotes the old name on
             # purpose; that is the record of what it used to be.
-            if dead in text and "MISC-018" not in text:
-                offenders.append(f"{path.relative_to(root)} :: {dead}")
+            if dead not in text:
+                continue
+            (carries_the_note if "MISC-018" in text else offenders).append(
+                f"{path.relative_to(root)} :: {dead}")
+
+    # THE POSITIVE CONTROL, and it is the reason this test is not vacuous.
+    # Everything above is an absence claim, so a sweep that read nothing —
+    # `root` one level off, a glob that matched no file, an encoding that
+    # silently emptied every read — would report a clean rename it never
+    # checked. `physiology_reference` is the one module that legitimately
+    # still contains both old names, in the note recording what they were.
+    # If the sweep cannot find those, it did not look at the tree.
+    # Anchored on the module rather than on a count: this file names both dead
+    # names too, and a count would move every time another file cites the row.
+    assert all(f"ml/physiology_reference.py :: {dead}" in carries_the_note
+               for dead in ("get_reference_interval",
+                            "band_is_wider_than_interval")), (
+        "the sweep did not find the two old names where they are SUPPOSED to "
+        f"survive — in `ml/physiology_reference`'s MISC-018 rename note. Got "
+        f"{carries_the_note}. Nothing below this line means anything if the "
+        "sweep is reading an empty tree.")
+
     assert not offenders, offenders
 
 
