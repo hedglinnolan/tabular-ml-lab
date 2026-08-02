@@ -393,6 +393,25 @@ def build_members(project) -> Dict[str, bytes]:
             "n_groups": (int(lb["n_groups"])
                          if lb.get("n_groups") is not None else None),
             "exploratory": bool(lb.get("exploratory", False)),
+            # `GUIDED-102`. What a holdout this size can resolve, computed at
+            # the seal and stored on the lockbox precisely because the seal is
+            # the moment the cohort stops changing. Dropping it here would be
+            # the one failure the statement is designed against: a restored
+            # project would recompute it from whatever frame it now holds, and
+            # report the resolution of a cohort that has since been trimmed.
+            #
+            # Carried WHOLE rather than field by field, and that is the one
+            # place this member departs from its own whitelist discipline. The
+            # reason is that the alternative is worse: a second enumeration of
+            # `resolution.statement`'s keys here would be a copy that goes
+            # stale silently, and `test_the_archive_carries_every_field` — the
+            # guard that caught this omission — checks top-level keys, so it
+            # would not catch a missing key one level down. It contains no
+            # participant data by construction; `archive.assert_no_participant_data`
+            # is what enforces that and it refused an earlier version that
+            # carried the class label.
+            "resolution": lb.get("resolution"),
+            "resolution_unavailable": lb.get("resolution_unavailable"),
         }, indent=2).encode("utf-8")
         saved.append("test_lockbox")
 
