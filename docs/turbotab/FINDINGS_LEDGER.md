@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**273 of 716 closed.**
+**274 of 717 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 392 |
 | `PARTIAL` | 51 |
-| `FIXED` | 269 |
+| `FIXED` | 270 |
 | `NOT-A-DEFECT` | 4 |
 
 ---
@@ -297,7 +297,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-130` | medium | The app has no ordinal and no count task type, so an ordered outcome is modeled as nominal and a count as continuous - and neither loss is stated anywhere | `turbotab/project.py:505 accepts classification and regression only; driven at L40-D on multiclass_stage.csv…` | **test:** `turbotab/test_every_surface_says_what_it_cannot_take.py::test_every_silently_wrong_cell_is_filed` — FOUND BY THE L40-D SHAPE SWEEP, and it is the shape of L39-D's zero… |
 | `GUIDED-132` | medium | The model shelf ranks a three-class target identically to a binary one - same buckets, same order, no stated concern - so the three-rung ladder has no rank-and-state instance anywhere in the app | `driven by the adjudicator at L40: AnalysisProject.model_shelf_ranked on multiclass_stage.csv (k=3) and…` | THE SWEEP REPORTED THE ZERO AND DIAGNOSED IT AS A CHOICE BETWEEN TWO WRONG ALTERNATIVES - either the ladder is wrong or surfaces reach for refusal where ranking would serve.… |
 | `GUIDED-133` | medium | The decision curve risk rug is silently capped at the first 200 rows per model in row order, so on any cohort above 200 the distribution a reader judges density from is a prefix rather than a sample… | `turbotab/figure_specs.py:2025 risk_rug takes np.asarray(values)[:200] per model and concatenates across…` | CLINICAL_SURVEY_PACK.md section A4.3 is the reason this matters rather than being cosmetic: the whole argument for drawing the risk distribution is that without it a reader cannot… |
-| `GUIDED-135` | medium | Every calibration claim in this repository is verified against leaky_sepsis.csv, whose held-out C-statistic is 1.000, so the annotation_box checklist item has never been observed passing and two of… | `driven at L40 adjudication: leaky_sepsis.csv yields c_statistic=1.000 on 24 held-out rows with 16 events…` | GUIDED-097'S FIXTURE RULE AT THE OPPOSITE POLARITY. That rule was written from `do not verify against the fixture that works` - a 0/1 target where float() succeeds, hiding a… |
+| `GUIDED-137` | medium | The calibration plot's spec labels three annotations '(95% CI)' and no interval is ever computed for any of them, while the ROC figure beside it declares the same promise, computes a bootstrap… | `turbotab/figure_specs.py:195-199 CALIBRATION.annotations declares Annotation('calibration_intercept','Calibrat…` | FOUND AT L41-A2 while writing the second calibration fixture, one layer under the work rather than in it. THE GAP IS INVISIBLE AT THE SURFACE THAT WOULD SHOW IT, which is the… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 | `GUIDED-121` | low | A near-unique column is neither flagged nor asked about: the identifier rule is exactly one level per row, so a column at 95 percent distinct is treated as an ordinary predictor | `turbotab/identifiers.py UNIQUE_PER_ROW = 1.0, stated as a constant and reported in the receipt's rule…` | DELIBERATELY NOT GUESSED AT, and the threshold is not lowered because there is no honest number to lower it to. A column at 0.95 distinct-per-row is either an identifier with a… |
@@ -610,10 +610,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 269
+## FIXED — 270
 
 
-### Guided-door drive feedback — 85
+### Guided-door drive feedback — 86
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -702,6 +702,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-120` | medium | ml/dataset_profile.is_id_like requires integer dtype, so it answers False for every string identifier - including all four columns in GUIDED-108's own evidence | `ml/dataset_profile.py:192 is_id_like=(unique_count == n and is_numeric and is_integer_dtype and not is_bool)…` | **test:** `turbotab/test_a_column_that_names_a_row.py::test_the_core_and_this_module_give_the_same_answer (over every column of every fixture)… |
 | `GUIDED-125` | medium | The resolution card's trigger measures against a coin flip, so on a k-class outcome it fires late: chance is 1/k and the informative range is 1 - 1/k wide, not 0.5 | `turbotab/resolution.py _push_because condition A compares the widest 95 percent interval against 0.5…` | **test:** `turbotab/test_the_seal_says_what_it_can_resolve.py::test_the_informative_range_is_derived_from_the_arity… |
 | `GUIDED-124` | medium | Two tables name the same model differently: ml/narrative_engine._MODEL_NAMES calls histgb_clf 'Histogram Gradient Boosting (Classifier)' and ml/model_registry calls it '(Classification)' | `driven at L39-D: the manuscript validator's 'model names match between development and evaluation sections'…` | **test:** `turbotab/test_a_three_class_outcome_end_to_end.py::test_two_models_with_different_display_names_still_agree, which asserts the DERIVATION over every registry key rather… |
+| `GUIDED-135` | medium | Every calibration claim in this repository is verified against leaky_sepsis.csv, whose held-out C-statistic is 1.000, so the annotation_box checklist item has never been observed passing and two of… | `driven at L40 adjudication: leaky_sepsis.csv yields c_statistic=1.000 on 24 held-out rows with 16 events…` | **test:** `turbotab/test_calibration_is_verified_on_a_model_that_does_not_separate.py` — CLOSED AT L41-A2 with a second clinical fixture rather than a code change, because the… |
 
 ### Multi-file / JSON import — 69
 

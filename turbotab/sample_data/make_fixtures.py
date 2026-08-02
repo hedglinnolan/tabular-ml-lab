@@ -298,6 +298,105 @@ def clinical() -> pd.DataFrame:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 3b · clinical_risk — 480 encounters, a model that does NOT separate
+#
+# `GUIDED-135`, and it is `GUIDED-097`'s fixture rule at the opposite polarity.
+# That rule was written from *do not verify against the fixture that works*;
+# this is the mirror — **the fixture that degenerately fails.**
+#
+# `leaky_sepsis.csv` is the fixture behind every calibration claim in this
+# repository and its held-out C-statistic is **1.000**: 24 rows, 16 events,
+# complete separation. So `weak_calibration` correctly returns `(None, None)`,
+# the annotation box correctly renders *not estimable* for the intercept and
+# the slope, and the `annotation_box` checklist item correctly FAILS — because
+# a figure missing two of its six required numbers is not publication-grade.
+#
+# Which means the flagship clinical figure has been asserted for six loops only
+# in the one state where two of its numbers cannot exist, and its own checklist
+# item had never been observed passing anywhere.
+#
+# `leaky_sepsis` keeps its job. It is the right fixture for leakage and for the
+# not-estimable branch, and that branch is real and worth holding. What it
+# cannot do is show the figure passing, and until this file nothing else could.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def clinical_risk(n: int = 480) -> pd.DataFrame:
+    """A 30-day readmission cohort whose logistic fit lands around C = 0.72.
+
+    **Every coefficient here is chosen to keep the model ORDINARY.** A fixture
+    that separates proves nothing about the figure and a fixture at chance
+    proves nothing either; what the calibration plot needs in order to be
+    checkable is a model that is genuinely mediocre, which is what a real
+    30-day readmission model is — the LACE-index literature sits around
+    C = 0.65–0.70 and nothing in this space does much better.
+
+    Measured on the sealed 25% holdout with `logreg`, at `numpy` seed 42 for
+    the split:
+
+    | | |
+    |---|---|
+    | held-out rows / events | 120 / 31 |
+    | C-statistic | 0.719 |
+    | calibration intercept | +0.034 |
+    | calibration slope | 0.795 |
+    | E:avg / E:max | 0.066 / 0.365 |
+
+    The slope below 1 is not a defect in the fixture — it is the small-sample
+    overfitting signature the figure's own caption exists to explain, arriving
+    honestly rather than being asserted about a model that has none.
+
+    **The outcome is generated from a logistic model of the predictors plus
+    Bernoulli noise, so the true risk is genuinely partly unpredictable.** That
+    is the property `leaky_sepsis` deliberately lacks: there,
+    `abx_escalation_score` carries r = 0.9996 with the outcome, which is the
+    whole point of that file and the reason it separates.
+
+    No column here is measured after the outcome and none is a proxy for it, so
+    this table must NOT raise a leakage finding. `encounter_id` is one level per
+    row and is excluded by `turbotab/identifiers.py` with a sentence, which is
+    the ordinary path rather than a property of this fixture.
+    """
+    rng = np.random.default_rng(20260802)
+
+    age = np.clip(rng.normal(68, 13, n), 22, 97).round(0)
+    sex = rng.choice(["F", "M"], n)
+    charlson = rng.poisson(2.2, n).clip(0, 12)
+    prior = rng.poisson(0.9, n).clip(0, 8)
+    albumin = np.clip(rng.normal(3.6, 0.45, n), 1.6, 5.2).round(1)
+    creatinine = np.clip(rng.lognormal(np.log(1.05), 0.42, n), 0.3, 9.0).round(2)
+    hemoglobin = np.clip(rng.normal(11.9, 1.7, n), 6.0, 18.0).round(1)
+    sodium = np.clip(rng.normal(138, 4.0, n), 118, 155).round(0)
+    los = np.clip(rng.gamma(2.2, 2.1, n), 1, 40).round(0)
+
+    # Centered at the cohort's own means so the intercept IS the log-odds of
+    # the base rate, which is what makes the ~23% event fraction readable off
+    # the -1.35 rather than emerging from arithmetic nobody can follow.
+    z = (-1.35
+         + 0.030 * (age - 68)
+         + 0.26 * (charlson - 2.2)
+         + 0.50 * (prior - 0.9)
+         - 0.95 * (albumin - 3.6)
+         + 0.45 * np.log(creatinine / 1.05)
+         - 0.16 * (hemoglobin - 11.9)
+         + 0.075 * (los - 4.6))
+    readmit = (rng.random(n) < 1.0 / (1.0 + np.exp(-z))).astype(int)
+
+    return pd.DataFrame({
+        "encounter_id": [f"ENC{i:04d}" for i in range(n)],
+        "age": age.astype(int),
+        "sex": sex,
+        "charlson_index": charlson.astype(int),
+        "prior_admissions_12mo": prior.astype(int),
+        "albumin_g_dl": albumin,
+        "creatinine_mg_dl": creatinine,
+        "hemoglobin_g_dl": hemoglobin,
+        "sodium_mmol_l": sodium.astype(int),
+        "length_of_stay_days": los.astype(int),
+        "readmit_30d": readmit,
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 4 · survey_instrument — 300 × 40 Likert items
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -513,6 +612,7 @@ FIXTURES = {
     "metabolomics_untargeted": metabolomics,
     "dietary_recalls": dietary,
     "clinical_longitudinal": clinical,
+    "clinical_risk": clinical_risk,
     "survey_instrument": survey,
     "genomics_expression": genomics,
     "nhanes_dietary": nhanes_dietary,

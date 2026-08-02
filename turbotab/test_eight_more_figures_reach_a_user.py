@@ -40,9 +40,24 @@ from turbotab.project import AnalysisProject
 TARGET_SHAPES = {
     "binary classification": ("leaky_sepsis.csv", "sepsis", "classification",
                               "logreg"),
+    # `GUIDED-135`, added at L41. Same target shape as the arm above and the
+    # opposite CALIBRATION shape: `leaky_sepsis.csv` separates completely, so
+    # every clinical claim in this file had only ever been checked against a
+    # model with a C-statistic of exactly 1.000. That is a fixture property, it
+    # is not a property any real cohort has, and the figures below are about
+    # discrimination and net benefit — quantities a separating model makes
+    # degenerate.
+    "binary classification, non-separating": ("clinical_risk.csv",
+                                              "readmit_30d", "classification",
+                                              "logreg"),
     "three-class classification": ("multiclass_stage.csv", "disease_stage",
                                    "classification", "logreg"),
 }
+
+#: The two arms that are binary, which is what the clinical figures need. The
+#: three-class arm is a CONTROL and must be declined, so it is not in here.
+CLINICAL_BINARY_SHAPES = ("binary classification",
+                          "binary classification, non-separating")
 
 #: NOT COVERED, said out loud.
 #:
@@ -142,6 +157,26 @@ def test_the_survey_four_reach_a_user_from_an_upload():
         assert figure_id in drawn, (
             f"{figure_id} did not reach the bundle; unavailable said "
             f"{[(r['id'], r['why'][:60]) for r in bundle['unavailable']]}")
+
+
+@pytest.mark.parametrize("shape", CLINICAL_BINARY_SHAPES)
+def test_the_clinical_figures_pass_their_checklists_on_both_binary_fixtures(shape):
+    """`GUIDED-135`. These three were verified only against `leaky_sepsis.csv`,
+    whose model separates completely — and two of them are *about* separation.
+
+    The ROC of a separating model is a right angle and its C-statistic is 1.000;
+    the decision curve of one dominates treat-all at every threshold. Neither
+    figure is wrong there, but neither is being exercised: a checklist scored
+    only against a degenerate model has a pass set nobody has tested.
+    """
+    bundle = FB.render(_clinical(shape))
+    for figure_id in CLINICAL:
+        row = next((r for r in bundle["admitted"] + bundle["held"]
+                    if r["id"] == figure_id), None)
+        assert row is not None, f"{figure_id} was not drawn on {shape}"
+        failed = [item["id"] for item in row["checklist"] if not item["passed"]]
+        assert not failed, (
+            f"{figure_id} fails its own checklist on {shape}: {failed}")
 
 
 @pytest.mark.parametrize("figure_id", sorted(CLINICAL + SURVEY))
