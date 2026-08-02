@@ -3406,6 +3406,29 @@
     $(consumerId).innerHTML = esc(q.consumer || "");
   }
 
+  /* GUIDED-108 · COLUMNS THAT NAME A ROW.
+     THE SHELF IS NEVER SHORTENED, so this is a receipt with a way back, not a
+     silent drop: the app states the arithmetic — every value different — and
+     the user decides whether that means a label or a measurement that happens
+     to be unique here, which is a judgment about their table the app does not
+     have. Every sentence is the server's. */
+  function identifiersHTML(){
+    var ids = FEAT && FEAT.identifiers;
+    if (!ids) return "";
+    var h = '<div class="diverged"><p class="d-head">' + esc(ids.headline) +
+            "</p>";
+    (ids.columns || []).forEach(function(c){
+      var kept = (ids.kept || []).indexOf(c.column) >= 0;
+      h += '<p class="d-now">' + esc(c.sentence) +
+           ' <button class="answer" type="button" data-keep-id="' +
+           esc(c.column) + '" data-keep-on="' + (kept ? "0" : "1") + '">' +
+           (kept ? "Leave `" + esc(c.column) + "` out again"
+                 : "Put `" + esc(c.column) + "` back") + "</button></p>";
+    });
+    h += '<p class="d-now">' + esc(ids.rule) + "</p>";
+    return h + "</div>";
+  }
+
   function renderFeatures(){
     if (!P || !P.target || !FEAT) return;
     reveal("features");
@@ -3436,7 +3459,7 @@
           ownChild(node, "featprev-" + r.key, "feat-prev");
         });
       });
-    $("featDecided").innerHTML = featDecidedHTML();
+    $("featDecided").innerHTML = identifiersHTML() + featDecidedHTML();
     $("selBuild").innerHTML = selBuildHTML();
 
     /* THE TERMINAL. ROADMAP L9's criterion is reaching the END of this step,
@@ -3971,6 +3994,15 @@
       /* GUIDED-103 made observable: whether the CHOSEN SET moved. `null` is a
          third state and is rendered as one — a project that never selected
          has not got a perfectly stable selection. */
+      /* GUIDED-114. WHICH SCHEME WAS DRAWN, on every project, in the server's
+         own words. The plot looks identical either way — a row bootstrap on a
+         grouped table just draws a narrower cloud — so the reader who is not
+         told cannot discount it. Rendered under the caption rather than as an
+         aside, because it changes how the number above it is read. */
+      var samp = (e.prediction_instability || {}).sampling || {};
+      if (samp.sentence)
+        h += '<p class="feat-note' + (samp.understates ? " d-now" : "") + '">' +
+             esc(samp.sentence) + "</p>";
       var sel = e.selection || {};
       if (sel.moved !== null && sel.moved !== undefined)
         h += '<p class="feat-note">' + esc(sel.because) +
@@ -5109,7 +5141,7 @@
       "[data-look],[data-unskip],[data-exit-for],[data-att-send],[data-refusal-i],[data-prev-ask]," +
       "[data-feat-preview],[data-feat-add],[data-feat-remove],[data-feat-settle]," +
       "[data-lat-cell],[data-prep-mech],[data-prep-route],[data-prep-settle]," +
-      "[data-pick-model],[data-train-start],[data-train-cancel],[data-instab]," +
+      "[data-pick-model],[data-train-start],[data-train-cancel],[data-instab],[data-keep-id]," +
       "[data-sel-rank],[data-sel-set]," +
       "[data-impossible],[data-keep-impossible],[data-miss-choose]," +
       "[data-miss-mech-for],[data-miss-preview]," +
@@ -5295,6 +5327,17 @@
           setErr(err.message);
           if (err.detail) showRefusal(err.detail, { models: chosen });
         });
+      return;
+    }
+    if (t.hasAttribute("data-keep-id")){
+      api("/project/" + P.id + "/decision", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "keep_identifier", subject: t.getAttribute("data-keep-id"),
+          payload: { column: t.getAttribute("data-keep-id"),
+                     kept: t.getAttribute("data-keep-on") === "1" } })
+      }).then(function(body){ P = body; renderAll(); })
+        .catch(function(err){ setErr(err.message); });
       return;
     }
     if (t.hasAttribute("data-instab")){

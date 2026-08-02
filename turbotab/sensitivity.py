@@ -285,11 +285,11 @@ def _arms_differ(project: Any, other: Any, model_key: str):
         rows = project.training_rows
         target = str(project.target)
         group_col = (project.grain or {}).get("group_col")
-        X = _training._feature_frame(rows, target, group_col)
+        X = _training.feature_frame(project, rows)
         y = rows[target]
         seen = []
         for arm in (project, other):
-            frame = _training._feature_frame(arm.working_table, target, group_col)
+            frame = _training.feature_frame(arm)
             pipe = _plan_mod.compose(arm, model_key, frame).build(
                 _NullEstimator())
             pipe.fit(X, y)

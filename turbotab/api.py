@@ -921,6 +921,19 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
             raise HTTPException(400, str(exc)) from exc
         return _payload(project)
 
+    if decision.kind == "keep_identifier":
+        # `GUIDED-108`. The way back. Refuses a column the app never set
+        # aside, rather than recording an exception to a rule that did not
+        # apply — an allow-list entry for a column nobody excluded is a
+        # decision about nothing that outlives the reason it was made.
+        try:
+            project.keep_identifier(
+                str(decision.payload.get("column") or decision.subject or ""),
+                keep=bool(decision.payload.get("kept", True)))
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return _payload(project)
+
     if decision.kind == "promote_figure":
         # `GUIDED-107`. The consumer `promotable` has been waiting for since
         # L26. It does NOT consult the figure's tier — the ruling is that a
@@ -1317,6 +1330,14 @@ async def repair_group(project_id: str, fix_kind: str) -> Dict[str, Any]:
     payload["example_error"] = error
     payload["effect"] = _repairs.sentence(the_group.label, the_group.columns)
     return payload
+
+
+def _identifiers_mod():
+    """Imported lazily, like the other engine modules this file reaches for:
+    `turbotab.identifiers` imports `ml.dataset_profile`, and a module-level
+    import would put that cost on every process that imports the API."""
+    from turbotab import identifiers as _ids
+    return _ids
 
 
 def _project(project_id: str) -> AnalysisProject:
@@ -1946,6 +1967,10 @@ async def get_features(project_id: str) -> Dict[str, Any]:
             {"key": k, "label": m.label,
              "explainability_cost": m.explainability_cost}
             for k, m in sel_mod.METHODS.items()],
+        # `GUIDED-108`. Columns that name a row rather than describe one, left
+        # out of the models WITH A RECEIPT. `None` where there are none — a
+        # labeled empty region would read as a finding of nothing.
+        "identifiers": _identifiers_mod().receipt(project),
     }
 
 

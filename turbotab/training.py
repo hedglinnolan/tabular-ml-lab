@@ -162,6 +162,33 @@ def _feature_frame(table: pd.DataFrame, target: str,
     return table[[c for c in table.columns if str(c) not in drop]]
 
 
+def feature_frame(project: Any, table: Optional[pd.DataFrame] = None
+                  ) -> pd.DataFrame:
+    """**The one place that decides what a model is fed.**
+
+    `_feature_frame` above takes three loose arguments and four call sites in
+    this package pass them — which is four places that have to remember the
+    same rule, and `GUIDED-108` is what happens when one of them forgets.
+    Identifier exclusion is the third rule now, after the target and the
+    grouping key, and adding it as a fourth argument would have made the
+    problem worse rather than better.
+
+    So this is the project-aware door and the call sites use it.
+    `test_every_path_that_feeds_a_model_goes_through_one_door` asserts that,
+    because *somebody will pass the loose one next time* is the prediction this
+    codebase has been right about repeatedly.
+    """
+    from turbotab import identifiers as _ids
+
+    frame = project.working_table if table is None else table
+    group_col = (getattr(project, "grain", None) or {}).get("group_col")
+    out = _feature_frame(frame, str(project.target), group_col)
+    excluded = set(_ids.excluded(project))
+    if not excluded:
+        return out
+    return out[[c for c in out.columns if str(c) not in excluded]]
+
+
 def _plan(project: Any, model_key: str, frame: pd.DataFrame, *,
           seed: int = 42) -> Any:
     """What this model's fold-fitted pipeline will do, from the RECORD.
@@ -352,7 +379,7 @@ def train(project: Any, model_keys: Sequence[str], *,
     # not counted as held out and then silently dropped from the score.
     has_y = table[target].notna()
 
-    features = _feature_frame(table, target, group_col)
+    features = feature_frame(project, table)
     X_train = features[has_y & ~is_test]
     X_test = features[has_y & is_test]
     y_train = table.loc[X_train.index, target]

@@ -1612,6 +1612,12 @@ def prediction_instability_payload(result: Dict[str, Any]) -> Dict[str, Any]:
         "worst_row_label": spread["worst_row_label"],
         "worst_interval": spread["worst_interval"],
         "scored_on": result.get("scored_on", ""),
+        # `GUIDED-114`. WHICH SAMPLING SCHEME PRODUCED THE CLOUD. The figure's
+        # whole content is spread, and spread from a row bootstrap on a grouped
+        # table is a LOWER BOUND rather than an estimate — measured at 21.4%
+        # narrower on `clinical_longitudinal.csv`. A reader cannot discount a
+        # number they were not told about.
+        "sampling": result.get("sampling") or {},
         "x_range_observed": [lo, hi],
         "x_range_drawn": [lo, hi],
     }
@@ -1675,6 +1681,15 @@ PREDICTION_INSTABILITY = register(FigureSpec(
             "An instability plot that had quietly resampled the held-out rows "
             "would look identical and would have dissolved the seal.",
             lambda p: "held-out" in str(p.get("scored_on", ""))),
+        ChecklistItem(
+            "sampling_scheme_stated",
+            "Whether rows or whole groups were resampled is stated",
+            "On a table where one person contributes several rows, a row "
+            "bootstrap draws that person in repeatedly and the refits agree "
+            "more than independent samples would — measured at 21% narrower "
+            "spread. The plot looks the same either way, so a reader who is "
+            "not told cannot discount it.",
+            lambda p: bool(p.get("sampling", {}).get("sentence"))),
     ),
     caption=lambda p: (
         f"Prediction instability for {p.get('model_name', 'the model')}: the "
@@ -1693,7 +1708,8 @@ PREDICTION_INSTABILITY = register(FigureSpec(
            f"({p.get('n_failed', 0):,} resample(s) could not be fitted)"
            if p.get("n_failed") else "")
         + f"; Riley and Collins recommend on the order of "
-          f"{p.get('b_recommended', 1000):,}. {p.get('scored_on', '')}."),
+          f"{p.get('b_recommended', 1000):,}. {p.get('scored_on', '')}. "
+        + str(p.get("sampling", {}).get("sentence", ""))),
     # ITS OWN COMPANION IS THE CALIBRATION INSTABILITY PLOT. §A4.8 specifies
     # the pair, and for the reason §A5.1 gives about the originals: spread in
     # individual predictions and spread in calibration are different failures,
@@ -1767,6 +1783,7 @@ def calibration_instability_payload(result: Dict[str, Any],
         "reference_line": {"kind": "identity", "label": "ideal"},
         "aspect": "square",
         "scored_on": result.get("scored_on", ""),
+        "sampling": result.get("sampling") or {},
     }
 
 
@@ -1816,6 +1833,13 @@ CALIBRATION_INSTABILITY = register(FigureSpec(
             "Same reason as the prediction instability plot: a curve drawn "
             "over resampled held-out rows would look identical.",
             lambda p: "held-out" in str(p.get("scored_on", ""))),
+        ChecklistItem(
+            "sampling_scheme_stated",
+            "Whether rows or whole groups were resampled is stated",
+            "Same reason, and it applies to the grey band exactly as it "
+            "applies to the scatter: a band drawn from a row bootstrap on a "
+            "grouped table is narrower than the data supports.",
+            lambda p: bool(p.get("sampling", {}).get("sentence"))),
     ),
     caption=lambda p: (
         (f"Calibration instability for {p.get('model_name', 'the model')}: "
@@ -1828,7 +1852,8 @@ CALIBRATION_INSTABILITY = register(FigureSpec(
          f"curves is how much the model's calibration depends on which "
          f"patients were sampled. B = {p.get('b_completed', 0):,}; Riley and "
          f"Collins recommend on the order of "
-         f"{p.get('b_recommended', 1000):,}. {p.get('scored_on', '')}.")
+         f"{p.get('b_recommended', 1000):,}. {p.get('scored_on', '')}. "
+         + str(p.get("sampling", {}).get("sentence", "")))
         if p.get("applicable", True) else str(p.get("because", ""))),
     companions=("prediction_instability",),
     evidence=INSTABILITY_EVIDENCE,

@@ -104,6 +104,88 @@ def seeds_for(seed: int, b: int) -> List[int]:
     return [int(x) for x in root.integers(0, 2 ** 31 - 1, size=b)]
 
 
+#: The two sampling schemes, and the answer to *which rows are exchangeable?*
+ROW_BOOTSTRAP = "row"
+CLUSTER_BOOTSTRAP = "cluster"
+
+
+def scheme_for(project: Any, rows: pd.DataFrame) -> Dict[str, Any]:
+    """Which bootstrap this table needs, and the sentence that says so.
+
+    `GUIDED-114`. The row bootstrap and the seal disagreed about what a row is.
+    Constitution §02 makes the grain a precondition of the seal precisely
+    because whether one person appears in several rows decides how held-out
+    rows are chosen — and then the resampling ignored that answer and drew
+    rows.
+
+    **The consequence errs toward reassurance, which is the worst direction.**
+    Drawing rows from a longitudinal table pulls the same person into a
+    resample several times, so the refits agree more than independent samples
+    would, and the instability plot UNDERSTATES the spread. A figure whose
+    failure mode is *looks more trustworthy than the data supports* cannot be
+    left to a comment.
+
+    The answer is not a name list: `grain.group_col` already holds it. This
+    reads that, picks the scheme, and — either way — returns the disclosure,
+    because the second half of the finding is that the payload said nothing.
+    """
+    group_col = (project.grain or {}).get("group_col")
+    if not group_col or group_col not in rows.columns:
+        return {
+            "scheme": ROW_BOOTSTRAP,
+            "group_col": None,
+            "n_groups": None,
+            "because": (
+                "Each row is an independent observation on this table, so each "
+                "resample draws rows."
+                if not group_col else
+                f"`{group_col}` was recorded as the grouping column and is not "
+                f"in the training rows, so rows were drawn instead. Treat the "
+                f"spread below as a lower bound."),
+            "understates": bool(group_col),
+        }
+    groups = rows[group_col]
+    n_groups = int(groups.nunique())
+    per_group = float(len(rows)) / max(n_groups, 1)
+    return {
+        "scheme": CLUSTER_BOOTSTRAP,
+        "group_col": str(group_col),
+        "n_groups": n_groups,
+        "rows_per_group": round(per_group, 2),
+        "because": (
+            f"You recorded that one `{group_col}` can appear in more than one "
+            f"row — {n_groups:,} of them across {len(rows):,} training rows, "
+            f"about {per_group:.1f} rows each — so each resample draws "
+            f"{n_groups:,} whole {group_col}s with replacement and takes all "
+            f"of their rows. Drawing rows instead would pull the same "
+            f"{group_col} into a resample repeatedly, and the refits would "
+            f"agree more than independent samples would."),
+        "understates": False,
+    }
+
+
+def _draw(rng: Any, rows: pd.DataFrame, scheme: Dict[str, Any]) -> np.ndarray:
+    """Positions for one resample, under the scheme this table needs.
+
+    Positions rather than labels, because a cluster draw takes the same group
+    more than once and duplicate index labels do not survive `.loc`.
+    """
+    if scheme["scheme"] != CLUSTER_BOOTSTRAP:
+        return rng.integers(0, len(rows), size=len(rows))
+    codes = pd.factorize(rows[scheme["group_col"]])[0]
+    order = np.argsort(codes, kind="stable")
+    starts = np.searchsorted(codes[order], np.arange(scheme["n_groups"]))
+    ends = np.searchsorted(codes[order], np.arange(scheme["n_groups"]),
+                           side="right")
+    picked = rng.integers(0, scheme["n_groups"], size=scheme["n_groups"])
+    # THE RESAMPLE'S SIZE VARIES, and that is the cluster bootstrap rather than
+    # a defect: groups have unequal numbers of rows, so drawing `n_groups`
+    # groups with replacement gives a sample near but not equal to `len(rows)`.
+    # Forcing it back to a fixed size would mean truncating whole people, which
+    # is the independence assumption broken again from the other side.
+    return np.concatenate([order[starts[g]:ends[g]] for g in picked])
+
+
 def _predict(pipe: Any, X: pd.DataFrame, task_type: str) -> Optional[np.ndarray]:
     """The quantity the plot is about: a predicted risk, or a predicted value.
 
@@ -152,8 +234,11 @@ def run(project: Any, model_key: str, *, b: int = B_RESAMPLES,
             f"handful and the spread would describe the arithmetic rather "
             f"than the model.")
 
-    X = _training._feature_frame(rows, target, group_col)
+    X = _training.feature_frame(project, rows)
     y = rows[target]
+    # WHICH ROWS ARE EXCHANGEABLE, decided from the recorded grain rather than
+    # assumed (`GUIDED-114`). Read before the loop so the answer is one answer.
+    scheme = scheme_for(project, rows)
     registry = get_registry()
     spec = registry[model_key]
 
@@ -175,6 +260,7 @@ def run(project: Any, model_key: str, *, b: int = B_RESAMPLES,
     curves: List[np.ndarray] = []
     failures: List[str] = []
     selected_sets: List[Sequence[str]] = []
+    drawn_sizes: List[int] = []
 
     for i, resample_seed in enumerate(seeds):
         if ctx is not None:
@@ -182,8 +268,9 @@ def run(project: Any, model_key: str, *, b: int = B_RESAMPLES,
             ctx.progress(i / max(b, 1),
                          f"Refitting {spec.name}, resample {i + 1:,} of {b:,}")
         rng = np.random.default_rng(resample_seed)
-        draw = rng.integers(0, len(rows), size=len(rows))
+        draw = _draw(rng, rows, scheme)
         Xb, yb = X.iloc[draw], y.iloc[draw]
+        drawn_sizes.append(int(len(draw)))
         try:
             # THE PLAN IS COMPOSED AGAINST THE ORIGINAL FRAME AND FITTED ON THE
             # RESAMPLE, and the first working version had this backwards.
@@ -263,6 +350,17 @@ def run(project: Any, model_key: str, *, b: int = B_RESAMPLES,
         "mape": _mape(original, matrix),
         "scored_on": "training rows only (the held-out rows are not resampled "
                      "and not predicted)",
+        # `GUIDED-114`. WHICH SCHEME WAS DRAWN, always, on every project. The
+        # finding was two things: rows were drawn on grouped tables, and the
+        # payload said nothing about it — 141,126 characters across eighteen
+        # keys containing `group`, `cluster`, `subject`, `person`,
+        # `understate` and `repeated` zero times. Either half alone is a
+        # defect; the silent half is the one that makes a figure read as more
+        # reassuring than the data supports.
+        "sampling": {**scheme,
+                     "sentence": _sampling_sentence(scheme, drawn_sizes),
+                     "rows_drawn_min": min(drawn_sizes) if drawn_sizes else None,
+                     "rows_drawn_max": max(drawn_sizes) if drawn_sizes else None},
         "selected_sets": [list(s) for s in selected_sets],
         **EVIDENCE,
     }
@@ -373,3 +471,22 @@ def selection_moved(result: Dict[str, Any]) -> Dict[str, Any]:
             f"{len(distinct)} distinct feature set(s) were chosen across "
             f"{len(sets)} resamples."),
     }
+
+
+def _sampling_sentence(scheme: Dict[str, Any], sizes: List[int]) -> str:
+    """The disclosure, in one sentence a reader of the figure gets either way.
+
+    `GUIDED-089`'s precedent, applied here: the trainer could not honor the
+    recorded plan and **every run said so in its own notes**, and that
+    disclosure is what made the gap acceptable rather than silent. A grouped
+    project whose plot was drawn from a row bootstrap gets the same treatment —
+    the number is still shown, and it is labeled as the lower bound it is.
+    """
+    line = scheme["because"]
+    if sizes and min(sizes) != max(sizes):
+        line += (f" Resample sizes range from {min(sizes):,} to "
+                 f"{max(sizes):,} rows, because groups differ in size.")
+    if scheme.get("understates"):
+        line += (" The spread below is therefore a LOWER BOUND on the real "
+                 "instability, not an estimate of it.")
+    return line

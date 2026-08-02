@@ -151,7 +151,7 @@ def importance(project: Any, model_key: str, *, seed: int = 42,
     target = str(project.target)
     task = project.task_type or "regression"
     group_col = (project.grain or {}).get("group_col")
-    features = _training._feature_frame(table, target, group_col)
+    features = _training.feature_frame(project, table)
 
     sealed = set(project.lockbox["labels"]) if project.lockbox else set()
     is_test = pd.Series([i in sealed for i in table.index], index=table.index)

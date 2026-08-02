@@ -50,18 +50,15 @@ TARGET_SHAPES = {
 #:
 #: SURVIVAL — no task type exists.
 #:
-#: GROUPED / REPEATED-MEASURES — the bootstrap here draws ROWS. On a table
-#: where one person contributes several rows, a row-level bootstrap breaks the
-#: person-level independence the seal was drawn to respect, and the correct
-#: draw is a cluster bootstrap over `group_col`. `_grouped_is_refused` asserts
-#: the module does not silently do the wrong thing; the cluster bootstrap is
-#: `GUIDED-114` and is not built.
+#: GROUPED / REPEATED-MEASURES IS COVERED AS OF L39 (`GUIDED-114`) and is
+#: named here so the change is visible: the draw is a cluster bootstrap over
+#: the recorded `group_col`, and the scheme is disclosed either way.
+#: `clinical_longitudinal.csv` is the fixture, with the repeat chain walked
+#: rather than fabricated.
 SHAPES_NOT_COVERED = [
     "multiclass classification — the plotted quantity would be one class's "
     "probability rather than the prediction; filed as GUIDED-113",
     "survival / time-to-event — no task type exists",
-    "grouped or repeated-measures tables — a row-level bootstrap is the wrong "
-    "draw and the cluster bootstrap is filed as GUIDED-114",
 ]
 
 B_FOR_TESTS = 12          # enough for the probes; B_RESAMPLES is what ships
@@ -385,28 +382,168 @@ def test_it_runs_as_an_observable_job_with_a_name_and_a_cancel():
         "nothing renders from it")
 
 
-def test_a_grouped_table_is_not_silently_row_bootstrapped():
-    """`SHAPES_NOT_COVERED`'s third entry, asserted rather than assumed.
+def _longitudinal():
+    """A genuinely grouped project: `clinical_longitudinal.csv` has ~2.4 rows
+    per `subject_id`, and the repeat chain is WALKED rather than fabricated —
+    constitution §01 puts those questions before the seal, and a test that set
+    `grain` directly would be testing a project the app cannot produce."""
+    from turbotab import repeats as R
 
-    A row-level bootstrap on a table where one person contributes several rows
-    breaks the independence the seal was drawn to respect. The cluster
-    bootstrap is not built (`GUIDED-114`); what must not happen is the wrong
-    draw happening quietly.
+    df = pd.read_csv("turbotab/sample_data/clinical_longitudinal.csv")
+    df = df[df["sbp"].notna()].copy()
+    p = AnalysisProject.from_dataframe(df, "clinical_longitudinal.csv")
+    p.target, p.task_type = "sbp", "regression"
+    p.set_grain("people_repeat", group_col="subject_id")
+    p.set_repeat_kind(R.TIME_POINTS)
+    p.set_unit_of_analysis(R.UNIT_RECORD)
+    p.set_eligibility("everyone")
+    rng = np.random.default_rng(42)
+    idx = list(p.df.index)
+    rng.shuffle(idx)
+    labels = idx[:int(round(len(idx) * 0.20))]
+    p.seal_lockbox(labels, fraction=len(labels) / len(p.df))
+    return p
 
-    **This test currently records that it DOES happen quietly** — it asserts
-    the state of affairs so the gap is visible in the suite rather than only in
-    the ledger, per `LOOP.md` §05's rule about a capability shipping with a
-    failing test naming what it lacks.
+
+def test_a_grouped_table_draws_whole_groups():
+    """`GUIDED-114`. The seal and the bootstrap disagreed about what a row is.
+
+    Constitution §02 makes the grain a precondition of the seal precisely
+    because whether one person appears in several rows decides how held-out
+    rows are chosen — and the resampling then ignored that answer.
     """
+    p = _longitudinal()
+    rows = p.training_rows
+    rows = rows[rows["sbp"].notna()]
+    scheme = I.scheme_for(p, rows)
+
+    assert scheme["scheme"] == I.CLUSTER_BOOTSTRAP
+    assert scheme["group_col"] == "subject_id"
+    assert scheme["n_groups"] == rows["subject_id"].nunique()
+    assert scheme["n_groups"] < len(rows), (
+        "the fixture has one row per subject, so it cannot exercise clustering")
+
+    result = I.run(p, "ridge", b=6, seed=42)
+    assert result["sampling"]["scheme"] == I.CLUSTER_BOOTSTRAP
+    # THE SIZE VARIES, and that is the cluster bootstrap rather than a defect:
+    # groups have unequal numbers of rows. Forcing a fixed size would mean
+    # truncating whole people, which breaks the independence assumption again
+    # from the other side.
+    assert result["sampling"]["rows_drawn_min"] != \
+        result["sampling"]["rows_drawn_max"]
+
+
+def test_the_draw_takes_every_row_of_each_chosen_group():
+    """Driven on the draw itself, because *drew clusters* is a claim about
+    which rows were in the sample and nothing downstream can show it."""
+    p = _longitudinal()
+    rows = p.training_rows
+    rows = rows[rows["sbp"].notna()]
+    scheme = I.scheme_for(p, rows)
+    draw = I._draw(np.random.default_rng(7), rows, scheme)
+
+    taken = rows.iloc[draw]
+    sizes = rows.groupby("subject_id").size()
+    for subject, n in taken.groupby("subject_id").size().items():
+        assert n % sizes[subject] == 0, (
+            f"subject {subject} appears {n} times and has {sizes[subject]} "
+            f"rows; a cluster draw takes whole groups or none")
+
+
+def test_the_row_bootstrap_understates_the_spread_and_that_is_measured():
+    """The finding's own claim, turned into a number.
+
+    `GUIDED-114`: *the instability plot understates the spread — a figure that
+    errs toward reassurance.* This measures the understatement rather than
+    asserting it, and the direction is the assertion: a row bootstrap on a
+    grouped table must not report MORE spread than a cluster draw, because the
+    whole reason to prefer the cluster draw is that rows within a subject are
+    not exchangeable.
+    """
+    p = _longitudinal()
+    cluster = I.spread(I.run(p, "ridge", b=30, seed=42))["median_width"]
+
+    recorded = p.grain
+    try:
+        # The pre-L39 behavior, forced rather than simulated.
+        p.grain = dict(recorded, group_col=None)
+        row = I.spread(I.run(p, "ridge", b=30, seed=42))["median_width"]
+    finally:
+        p.grain = recorded
+
+    assert row < cluster, (
+        f"the row bootstrap reported {row:.4f} median interval width and the "
+        f"cluster draw {cluster:.4f}. The row draw is expected to be NARROWER "
+        f"— it pulls the same subject in repeatedly, so the refits agree more "
+        f"than independent samples would.")
+    assert (cluster - row) / cluster > 0.05, (
+        f"the two schemes differ by less than 5% ({row:.4f} vs {cluster:.4f}), "
+        f"so this fixture does not exercise the difference and the test is "
+        f"not evidence of anything")
+
+
+def test_the_scheme_is_disclosed_whichever_one_was_drawn():
+    """**The half of `GUIDED-114` that is not about sampling at all.**
+
+    The adjudicator drove the old payload on a grouped project: 141,126
+    characters across eighteen keys containing `group`, `cluster`, `subject`,
+    `person`, `understate` and `repeated` ZERO times. Drawing clusters without
+    saying so would fix the number and leave the silence, and `GUIDED-089`'s
+    accepted precedent is the opposite — the trainer could not honor the
+    recorded plan and every run said so in its own notes.
+    """
+    import json
+
+    grouped = I.run(_longitudinal(), "ridge", b=4, seed=42)
+    blob = json.dumps(grouped).lower()
+    for word in ("group", "cluster", "subject"):
+        assert word in blob, (
+            f"a grouped project's instability payload never says {word!r}")
+    assert grouped["sampling"]["sentence"]
+
+    # AND ON AN UNGROUPED ONE, because a disclosure that appears only when
+    # something is wrong is a warning, and the reader of an ungrouped plot is
+    # entitled to know the scheme too.
+    plain = I.run(_sealed_assay(), "logreg", b=4, seed=42)
+    assert plain["sampling"]["scheme"] == I.ROW_BOOTSTRAP
+    assert plain["sampling"]["understates"] is False
+    assert "independent observation" in plain["sampling"]["sentence"]
+
+
+def test_a_recorded_group_column_that_is_not_in_the_frame_says_so():
+    """Return nothing rather than a wrong value — here, say the bound rather
+    than imply an estimate. If the grain names a column the training rows do
+    not have, the cluster draw is impossible and the row draw understates; the
+    honest output is the number plus the words LOWER BOUND."""
+    p = _longitudinal()
+    p.grain = dict(p.grain, group_col="a_column_that_is_not_here")
+    result = I.run(p, "ridge", b=4, seed=42)
+
+    assert result["sampling"]["scheme"] == I.ROW_BOOTSTRAP
+    assert result["sampling"]["understates"] is True
+    assert "LOWER BOUND" in result["sampling"]["sentence"]
+
+
+def _sealed_assay():
     df = _assay("responder", "classification")
-    p = _sealed(df, "responder", "classification")
-    p.grain = dict(p.grain or {}, group_col="sample_id")
-    result = I.run(p, "logreg", b=4, seed=42)
-    assert result["b_completed"] == 4, (
-        "if this now refuses, the cluster-bootstrap question was answered — "
-        "update SHAPES_NOT_COVERED and close GUIDED-114")
-    assert "cluster" not in result["scored_on"].lower(), (
-        "the run claims a cluster bootstrap; none is implemented")
+    return _sealed(df, "responder", "classification")
+
+
+def test_both_figures_carry_the_sampling_sentence():
+    """The disclosure has to reach the FIGURE, not just the payload: the plot
+    looks identical under either scheme, so the caption is where a reader meets
+    the difference."""
+    from turbotab import figure_specs as F
+
+    p = _longitudinal()
+    result = I.run(p, "ridge", b=4, seed=42)
+    payload = F.prediction_instability_payload(result)
+    caption = F.PREDICTION_INSTABILITY.caption(payload)
+
+    assert "subject_id" in caption
+    assert "whole subject_ids" in caption
+    assert not [i.id for i in F.PREDICTION_INSTABILITY.checklist
+                if not i.check(payload)]
 
 
 @pytest.mark.skipif(
@@ -414,25 +551,20 @@ def test_a_grouped_table_is_not_silently_row_bootstrapped():
     reason="no JS engine on this machine")
 def test_the_instability_result_reaches_the_reader():
     """`LOOP.md` §05: a capability ships with its consumer. Driven, because
-    `GUIDED-080`'s class is a server that composes a string nothing fetches,
-    and this loop already produced one instance of it (`/sensitivity`)."""
+    `GUIDED-080`'s class is a server that composes a string nothing fetches."""
     from fastapi.testclient import TestClient
 
     from turbotab import api
     from turbotab import pageharness as PH
 
-    df = _assay("responder", "classification")
-    columns = [c for c in df.columns if c.startswith("mz_")][:8]
-    p = _sealed(df, "responder", "classification",
-                selection=S.declare("mutual_info", "responder", columns,
-                                    n_features=3))
+    p = _longitudinal()
     api.STORE.add(p)
-    p.selected_models = ["logreg"]
+    p.selected_models = ["ridge"]
     client = TestClient(api.app)
 
     job = client.post(f"/project/{p.id}/instability",
-                      json={"model": "logreg", "b": B_FOR_TESTS}).json()
-    for _ in range(400):
+                      json={"model": "ridge", "b": 6}).json()
+    for _ in range(600):
         state = client.get(f"/job/{job['id']}").json()
         if state["terminal"]:
             break
@@ -441,11 +573,11 @@ def test_the_instability_result_reaches_the_reader():
 
     served = client.get(f"/project/{p.id}/instability").json()
     project = client.get(f"/project/{p.id}").json()
-    train = {"run": {"task_type": "classification", "target": "responder",
-                     "n_train": 58, "n_test": 14, "seal_basis": "undetermined",
-                     "exploratory": True, "features": [], "notes": [],
+    train = {"run": {"task_type": "regression", "target": "sbp",
+                     "n_train": 480, "n_test": 120, "seal_basis": "grouped",
+                     "exploratory": False, "features": [], "notes": [],
                      "mark": None,
-                     "results": [{"key": "logreg", "name": "Logistic Regression",
+                     "results": [{"key": "ridge", "name": "Ridge",
                                   "concern": "", "bucket": "", "metrics": {},
                                   "error": None, "plan": {}}]},
              "blocked_by": None, "stale": []}
@@ -466,12 +598,13 @@ def test_the_instability_result_reaches_the_reader():
                  search=f"?project={p.id}")
 
     assert out, "the Train run surface rendered nothing at all"
-    assert "who you sampled" in out, (
-        "the server served an instability result and the page rendered none "
-        "of it")
-    caption = served["runs"]["logreg"]["prediction_caption"]
-    assert caption in out, "the caption on screen is not the server's caption"
-    assert f"B = {B_FOR_TESTS:,}" in out, (
-        "B is not on screen; a resample count nobody can see is a threshold "
-        "nobody can disagree with")
-    assert served["runs"]["logreg"]["calibration_caption"] in out
+    assert "who you sampled" in out
+    assert served["runs"]["ridge"]["prediction_caption"] in out
+    assert "B = 6" in out
+    # `GUIDED-114`. THE DISCLOSURE REACHES THE READER, not just the payload.
+    sentence = served["runs"]["ridge"]["prediction_instability"]["sampling"]["sentence"]
+    assert sentence in out, (
+        "the server said which sampling scheme it drew and the page rendered "
+        "none of it — the plot looks identical under either, so this sentence "
+        "is the only place a reader meets the difference")
+    assert "subject_id" in out

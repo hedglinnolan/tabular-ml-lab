@@ -283,6 +283,11 @@ class AnalysisProject:
     # every preprocessing transform is stateful by clause §06's litmus, so this
     # step's output is a set of decisions that fire inside training folds.
     missingness: List[Dict[str, Any]] = field(default_factory=list)
+    #: Identifier-like columns the user put BACK into the models
+    #: (`GUIDED-108`). Held as the exceptions rather than as the exclusions,
+    #: so a column that stops being unique — because rows were trimmed — stops
+    #: being excluded without anybody having to remember to un-exclude it.
+    kept_identifiers: List[str] = field(default_factory=list)
     #: Figures the author has placed in the results (`GUIDED-107`). Held as
     #: ids rather than as specs: the spec is the registry's, and a copy here
     #: would be a second description of one figure.
@@ -613,6 +618,42 @@ class AnalysisProject:
         return self.record(
             kind="defer_feature", subject=",".join(str(c) for c in columns),
             text=spec["sentence"], payload=dict(spec))
+
+    def keep_identifier(self, column: str, keep: bool = True) -> Decision:
+        """Put an identifier-like column back into the models, or take it out.
+
+        `GUIDED-108`. **The shelf is never shortened**, so a column that names
+        a row is excluded with a sentence rather than removed in silence, and
+        this is the way back. The app states the arithmetic — every value
+        different — and the user decides whether that means *a label* or *a
+        measurement that happens to be unique here*, which is a judgment about
+        their table that the app does not have.
+        """
+        from turbotab import identifiers as _ids
+
+        name = str(column)
+        found = {row["column"] for row in
+                 _ids.detect(self.training_rows, self.target,
+                             (self.grain or {}).get("group_col"))}
+        if name not in found:
+            raise ProjectError(
+                f"`{name}` is not one of the columns the app set aside: its "
+                f"values are not all different, so it was never excluded and "
+                f"there is nothing to put back.")
+        kept = set(self.kept_identifiers or [])
+        kept.add(name) if keep else kept.discard(name)
+        self.kept_identifiers = sorted(kept)
+        self._mark_stale(
+            f"`{name}` was {'added to' if keep else 'removed from'} the "
+            f"columns the models see")
+        return self.record(
+            kind="keep_identifier", subject=name,
+            text=(f"`{name}` was put back into the models over the app's "
+                  f"objection that every one of its values is different."
+                  if keep else
+                  f"`{name}` was left out of the models because every one of "
+                  f"its values is different."),
+            payload={"column": name, "kept": bool(keep)})
 
     def promote_figure(self, figure_id: str, promoted: bool = True) -> Decision:
         """Move a figure into the results, or take it back out.
@@ -2154,6 +2195,7 @@ class AnalysisProject:
             # `test_a_recorded_decision_changes_something` exists to catch —
             # and it caught this one.
             "promoted_figures": list(self.promoted_figures),
+            "kept_identifiers": list(self.kept_identifiers),
             "preprocess_settled": self.preprocess_settled,
             "obligations": list(self.obligations),
             "lockbox": _copy(self.lockbox),

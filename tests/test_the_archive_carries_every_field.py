@@ -67,6 +67,10 @@ PERSISTED = {
     # results, and a restored project that lost it would render a manuscript
     # missing the figures its own transcript says were promoted (`GUIDED-107`).
     "promoted_figures",
+    # `kept_identifiers` is the exception list to an automatic exclusion
+    # (`GUIDED-108`). Losing it would silently re-exclude a column the user
+    # deliberately put back, and the models would change with no record of why.
+    "kept_identifiers",
     # `orientation` is the sharpest field in this set after `aggregation`, for
     # the same reason: answering it TRANSPOSED the frame, and the parquet in the
     # archive holds the turned-around table. A restored project that lost the

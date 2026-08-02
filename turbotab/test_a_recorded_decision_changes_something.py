@@ -198,6 +198,13 @@ _TO_MODELS = _TO_SEAL + [("select_models", {"models": ["ridge", "histgb_reg"]})]
 FLIPS = {
     "set_lens": (_METAB, [], ("set_lens", {"lens": ["metabolomics"]}),
                  ("set_lens", {"lens": ["other"]})),
+    # `GUIDED-108`. Putting an identifier-like column back into the models,
+    # and taking it out again. It reaches the FIT, which is the point: the
+    # column was excluded from what the model is fed.
+    "keep_identifier": (
+        _SURVEY, [],
+        ("__identifier_sealed__", {"column": "respondent_id", "kept": True}),
+        ("__identifier_sealed__", {"column": "respondent_id", "kept": False})),
     # `GUIDED-107`. Placing a figure in the results, and taking it back out.
     # The flip is the smallest one in this table and it caught a real gap: the
     # first version recorded the decision, set `promoted_figures` on the
@@ -422,9 +429,14 @@ def _plan_fingerprint(project):
             and project.lockbox.get("labels")):
         return "not sealed"
     try:
-        features = training._feature_frame(
-            project.working_table, str(project.target),
-            (project.grain or {}).get("group_col"))
+        # THE PROJECT-AWARE DOOR, and this line is itself the argument for
+        # having one. It called `_feature_frame` — the loose three-argument
+        # form — so the probe's picture of the fitted pipeline did not include
+        # identifier exclusion, and `keep_identifier` read as a decision that
+        # changed a rendered surface and left the fit alone. A census that
+        # composes the pipeline differently from the app is measuring a
+        # pipeline the app does not fit.
+        features = training.feature_frame(project)
         plans = {}
         for key in ("ridge", "histgb_reg", "logreg", "histgb_clf"):
             try:
@@ -485,6 +497,21 @@ def _build(client, fixture, setup, answer):
                             json={"kind": step, "payload": body})
             assert r.status_code == 200, (step, r.text[:200])
         return pid, r
+    if kind == "__identifier_sealed__":
+        # The whole pre-seal sequence, then the flip, for the same reason
+        # `__lens_sealed__` needs one: an unsealed project has no fitted
+        # pipeline to differ in, and this decision's whole content is WHICH
+        # COLUMNS the model is fed.
+        for step, body in [("set_target", {"column": "age"}),
+                           ("set_purpose", {"answer": "prediction"}),
+                           ("set_grain", {"answer": "one_row_per_person"}),
+                           ("set_eligibility", {"answer": "everyone"}),
+                           ("seal", {"fraction": 0.25}),
+                           ("keep_identifier", payload)]:
+            r = client.post(f"/project/{pid}/decision",
+                            json={"kind": step, "payload": body})
+            assert r.status_code == 200, (step, r.text[:200])
+        return pid, r
     if kind == "apply":
         # The flip is *repair the first thing the engine found* against
         # *repair nothing*, so the answer's subject comes from this project's
@@ -517,6 +544,9 @@ def _build(client, fixture, setup, answer):
 REACHES_THE_FIT = {
     "route_missingness", "route_missingness_bulk", "defer_feature",
     "set_model_recipe", "set_preparation_mode", "set_lens@sealed",
+    # `GUIDED-108`. It changes WHICH COLUMNS the model is fed, which is the
+    # most direct way a decision can reach a fit.
+    "keep_identifier",
 }
 
 #: And the ones that legitimately do not, each with the reason. Measured, not

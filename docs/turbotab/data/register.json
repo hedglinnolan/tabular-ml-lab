@@ -1190,5 +1190,21 @@
   "classic": "—",
   "state": "guided-only",
   "reason": "The product owner's ruling: promoted as the author marked it, no tier annotation added on the way in. promotable and promotable_because have sat on every figure spec since L26 with no consumer; the recorded decision is that consumer now, and the tier is reported in the VALIDATION report where a reviewer's objection belongs. THE PAGE CONTROL IS NOT BUILT (GUIDED-119) - the decision, the record, the effect on the report and the no-annotation rule are driven end to end, and there is no button. Declared under LOOP section 05 with an xfail(strict) test naming the missing consumer."
+ },
+ {
+  "id": "instability-cluster-bootstrap",
+  "step": "explain",
+  "capability": "Cluster bootstrap over the recorded grouping column, with the scheme disclosed either way",
+  "classic": "—",
+  "state": "guided-only",
+  "reason": "GUIDED-114. Owed to Classic. Classic has no grain answer to read, so it could not do this without first asking the question Guided asks - which is the constitution's point. The disclosure half applies to both doors and is the part worth porting first."
+ },
+ {
+  "id": "features-identifier-exclusion",
+  "step": "features",
+  "capability": "Columns whose every value is different are kept out of the models, with a receipt and a way back",
+  "classic": "—",
+  "state": "guided-only",
+  "reason": "GUIDED-108. Owed to Classic, which hands identifier columns to the model the same way Guided did. ml/dataset_profile.id_like_features is the shared half and is read here; it misses string identifiers (GUIDED-120), so the arithmetic for text columns lives in turbotab/identifiers.py until that is settled. THE SHELF IS NEVER SHORTENED: excluded with a sentence, overturnable in one recorded decision."
  }
 ]

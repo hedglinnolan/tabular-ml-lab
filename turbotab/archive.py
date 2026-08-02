@@ -361,6 +361,10 @@ def build_members(project) -> Dict[str, bytes]:
         # project that lost it would render a manuscript missing figures its
         # own transcript says were promoted.
         "promoted_figures": [str(f) for f in (project.promoted_figures or [])],
+        # `GUIDED-108`. The columns the user put BACK over the app's objection.
+        # A decision, and one whose loss would be silent: a restored project
+        # would re-exclude them and the models would quietly change.
+        "kept_identifiers": [str(c) for c in (project.kept_identifiers or [])],
         "preprocess_settled": bool(project.preprocess_settled),
     }
     members["config.json"] = json.dumps(config, indent=2, default=str).encode("utf-8")
@@ -549,6 +553,8 @@ def from_bytes(raw: bytes):
     project.missingness = list(config.get("missingness") or [])
     project.promoted_figures = [str(f) for f in
                                 (config.get("promoted_figures") or [])]
+    project.kept_identifiers = [str(c) for c in
+                                (config.get("kept_identifiers") or [])]
     project.preprocess_settled = bool(config.get("preprocess_settled", False))
     project.engineered = list(config.get("engineered") or [])
     project.deferred_transforms = list(config.get("deferred_transforms") or [])
