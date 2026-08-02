@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**272 of 710 closed.**
+**272 of 715 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 387 |
+| `OPEN` | 392 |
 | `PARTIAL` | 51 |
 | `FIXED` | 269 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 387
+## OPEN — 392
 
 
 ### Application state / lockbox — 66
@@ -264,7 +264,7 @@ Nothing is closed without a regression test named after it.
 | `MINE-043` | low | pages/06 defines fallback plotting stubs that shadow visualizations.py on ImportError | `pages/06_Train_and_Compare.py:66-90; visualizations.py:53-88, 91-126` | Unchanged at HEAD. visualizations.py is a first-party module in the repository root and cannot legitimately be missing, so the fallback can only fire on an unrelated ImportError… |
 | `MINE-044` | low | visualizations.plot_residuals will pandas-align if handed two Series with different indexes | `visualizations.py:91-126 vs 141-142; pages/06_Train_and_Compare.py:2604, 2623` | Unchanged at HEAD, and the inconsistency inside one file is the tell: plot_bland_altman coerces both arguments and plot_residuals does not, so the safe idiom was known and applied… |
 
-### Guided-door drive feedback — 29
+### Guided-door drive feedback — 33
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -279,6 +279,8 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-110` | high | Figure tiering and companions is specified and unbuilt, and it is the primitive MISC-015 did not count: zero ledger rows mention it at all | `docs/turbotab/DOMAIN_SCIENCE.md section 03 primitive 5 - EXPLORATORY vs CONFIRMATORY and the admissibility…` | FOUND BY THE MISC-015 GATE RATHER THAN BY MISC-015. That finding named four primitives with no rows; measuring all seven found a fifth, which is the argument for the gate over the… |
 | `GUIDED-112` | high | The generalized leakage detector is specified and unbuilt: any parameter estimated from data must be inside the loop, and the app checks this per known transform rather than as a rule | `docs/turbotab/DOMAIN_SCIENCE.md section 03 primitive 7 and section 06, which places it outside the pack order…` | FILED BY THE MISC-015 GATE. WHAT IS ALREADY TRUE AND IS NOT THE SAME THING: pipeline_plan builds preprocessing INSIDE the estimator, so a step that goes through it cannot leak.… |
 | `GUIDED-118` | high | The app cannot represent a time-to-event outcome at all, so Kaplan-Meier and every survival figure and model is unreachable: set_task_type accepts classification and regression only and there is no… | `turbotab/project.py:505 rejects any task_type other than classification or regression; searching turbotab/…` | L38-D1, AND THE REFUSAL IS THE RESULT. The loop prompt said to expect this figure to refuse and to let it, and it does: a curve drawn from a column the app believes is an ordinary… |
+| `GUIDED-131` | high | The companion admissibility rule does not gate promotion, so a CONFIRMATORY figure the bundle HELD for a missing validation companion is promoted into the manuscript with the document and the… | `driven by the adjudicator at L40 on leaky_sepsis.csv with calibration.companions restored to the pre-L40…` | FOUND WHILE ADJUDICATING GUIDED-128, and it is the layer under it. turbotab/figures.py:169 says the rule has no analogue in the app and states it as admissibility - `the bundle… |
+| `GUIDED-134` | high | DEFECT CLASS - a guard satisfies a production dependency with a fixture stand-in the real registry can never supply, so the guard proves the mechanism and cannot see that nothing feeds it | `the instance is GUIDED-128 and it is exact: turbotab/test_a_figure_carries_its_checklist_and_its_companions.py…` | FILED BY THE ADJUDICATOR BECAUSE THE AGENT NAMED IT IN A COMMENT AND NOT IN A ROW - the comment at test_a_figure_carries_its_checklist_and_its_companions.py line 91 says it… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
@@ -294,6 +296,8 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-127` | medium | Polychoric correlations are not computable in this repository, so the two survey structure figures use Pearson - which CLINICAL_SURVEY_PACK B5.4 is SETTLED attenuates Likert associations | `no polychoric implementation exists in ml/, turbotab/ or utils/ and factor_analyzer is not installed…` | NOT HIDDEN, WHICH IS B5.4's OWN REQUIREMENT: 'caption must state polychoric vs Pearson and the n used.' So the figures say Pearson and carry the direction of the bias - attenuated… |
 | `GUIDED-129` | medium | The calibration plot fails its own annotation_box checklist item: calibration_render does not produce all seven of intercept, slope, C-statistic, E:avg, E:max, n and events | `driven at L40 once GUIDED-128 made the figure admissible for the first time…` | INVISIBLE FOR SIX LOOPS BECAUSE NOTHING EVER ADMITTED THE FIGURE. A checklist that never runs against a rendered payload is a specification, and GUIDED-128 kept this one from ever… |
 | `GUIDED-130` | medium | The app has no ordinal and no count task type, so an ordered outcome is modeled as nominal and a count as continuous - and neither loss is stated anywhere | `turbotab/project.py:505 accepts classification and regression only; driven at L40-D on multiclass_stage.csv…` | **test:** `turbotab/test_every_surface_says_what_it_cannot_take.py::test_every_silently_wrong_cell_is_filed` — FOUND BY THE L40-D SHAPE SWEEP, and it is the shape of L39-D's zero… |
+| `GUIDED-132` | medium | The model shelf ranks a three-class target identically to a binary one - same buckets, same order, no stated concern - so the three-rung ladder has no rank-and-state instance anywhere in the app | `driven by the adjudicator at L40: AnalysisProject.model_shelf_ranked on multiclass_stage.csv (k=3) and…` | THE SWEEP REPORTED THE ZERO AND DIAGNOSED IT AS A CHOICE BETWEEN TWO WRONG ALTERNATIVES - either the ladder is wrong or surfaces reach for refusal where ranking would serve.… |
+| `GUIDED-133` | medium | The decision curve risk rug is silently capped at the first 200 rows per model in row order, so on any cohort above 200 the distribution a reader judges density from is a prefix rather than a sample… | `turbotab/figure_specs.py:2025 risk_rug takes np.asarray(values)[:200] per model and concatenates across…` | CLINICAL_SURVEY_PACK.md section A4.3 is the reason this matters rather than being cosmetic: the whole argument for drawing the risk distribution is that without it a reader cannot… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 | `GUIDED-121` | low | A near-unique column is neither flagged nor asked about: the identifier rule is exactly one level per row, so a column at 95 percent distinct is treated as an ordinary predictor | `turbotab/identifiers.py UNIQUE_PER_ROW = 1.0, stated as a constant and reported in the receipt's rule…` | DELIBERATELY NOT GUESSED AT, and the threshold is not lowered because there is no honest number to lower it to. A column at 0.95 distinct-per-row is either an identifier with a… |
@@ -468,7 +472,7 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Other — 7
+### Other — 8
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -479,6 +483,7 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-007` | medium | Median imputation is the silent default and nothing states what it costs, which the clinical pack marks SETTLED as bad | `ml/pipeline.py:213; pages/05_Preprocess.py:1082; research/CLINICAL_SURVEY_PACK.md section A2 anti-pattern 2…` | L30-D anti-pattern audit hit 3 of 3, and the softest. CLINICAL_SURVEY_PACK.md section A2 anti-pattern 2: Mean/median imputation. Understates variance, destroys the distribution… |
 | `AUDIT-012` | medium | Outlier advice is driven by a generic IQR rate that cannot tell physiologically impossible from abnormal-but-real, while the impossibility bands sit beside it unused | `ml/outliers.py:44 IQR fences; ml/eda_actions.py:412-420; ml/dataset_profile.py:214…` | L31-A AUDIT-008 sweep, capability 6 (the impossibility bands). ml/outliers.detect_outliers is q1 - 1.5 IQR to q3 + 1.5 IQR, or a z-score, with no reference to physiology… |
 | `AUDIT-013` | medium | The Preprocess page reads capabilities.requires_scaled_numeric directly instead of resolving through the recipe table, so a pack's override cannot reach it | `pages/05_Preprocess.py:498,835; turbotab/recipes.py resolve() and the caps:requires_scaled_numeric selector` | L31-A AUDIT-008 sweep, capability 8 (the recipe table's resolve). pages/05 twice reads spec.capabilities.requires_scaled_numeric to decide whether a model needs scaling.… |
+| `MISC-017` | low | utils/insight_ledger._display_names docstring says it falls back to the previous hand-written table if the registry cannot be imported, and the code falls back to seven aliases - so the failure path… | `utils/insight_ledger.py _display_names sets names = {} in its except branch and returns {**aliases, **names}…` | FOUND WHILE ADJUDICATING GUIDED-124, whose derivation is otherwise correct and accepted. The docstring is a claim like any other and this one is false about its own function - the… |
 
 ### DRIVE — 2
 
