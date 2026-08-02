@@ -6046,9 +6046,13 @@
       return "Rewrites the table to one row per person, before anything is held out. " +
              "The receipt says how many rows became how many.";
     },
+    /* GUIDED-143. This read "the held-out rows become the latest ones rather
+       than a random draw" — an effect preview promising something no splitter
+       here can do. It is the same false claim the record used to carry, in the
+       one place a user reads BEFORE answering. */
     set_temporal_prediction: function(p){
       return (p || {}).temporal
-        ? "Records a temporal task, and the held-out rows become the latest ones rather than a random draw."
+        ? "Records that the task is predicting a later outcome. The held-out set is still drawn at random within whole people — this app cannot yet hold out the latest rows and keep people together — and the seal says so in its own words."
         : "Records a non-temporal task. Whole people are held out and the order of rows does not matter.";
     },
     route_missingness: function(p){

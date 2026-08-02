@@ -4,18 +4,26 @@ Physiologic plausibility reference framework.
 Empirical plausibility intervals are derived from NHANES-like population distributions
 and are distinct from clinical guideline thresholds, which are informational only.
 
-**Two tiers, not one.** A reference interval says a value is unusual for the
+**Two tiers, not one.** An improbability band says a value is unusual for the
 reference population; an impossibility band says it cannot describe a living
 person. A diastolic blood pressure of 1e-15 is not an outlier at the low end of
 a distribution, it is an entry error, and treating both as the same violation
 set means the advisory drowns the repair. So each variable may also carry
-`floor` / `ceiling` — hard bounds, wider than the reference interval by
+`floor` / `ceiling` — hard bounds, wider than the improbability band by
 construction, outside which the value is a data-entry artifact rather than a
 rare patient.
 
-The two tiers get different treatments downstream: outside the reference
-interval is advisory and stays advisory; outside the impossibility band gets a
+The two tiers get different treatments downstream: outside the improbability
+band is advisory and stays advisory; outside the impossibility band gets a
 repair proposal (set the entry to missing) with the affected rows shown.
+
+**Neither tier is a REFERENCE INTERVAL, and the word is not used for them here
+any more (`MISC-018`).** A reference interval is the central 95% of a healthy
+reference population — the 2.5th to 97.5th percentile, CLSI EP28-A3c, minimum
+reference sample n=120. `p01`/`p99` is the central 98% and is a different
+quantity; for `bp_sys` it gives 90-200 mmHg where the published adult reference
+interval is 90-120. Calling it one asserted a clinical term of art this file
+does not hold, to both doors.
 
 Finding: GUIDED-004.
 """
@@ -41,12 +49,13 @@ DEFAULT_NHANES_REFERENCE: Dict[str, Any] = {
     # and its licence to propose deleting entries. A name that is not here gets
     # no bounds and no flags: silence is a gap, and a wrong bound is a claim.
     "variables": {
-        # p01/p99  — the reference interval: unusual for this population.
+        # p01/p99  — the improbability band: unusual for this population.
+        #   NOT a reference interval, which is the central 95% (`MISC-018`).
         # floor/ceiling — the impossibility band: incompatible with a living
         #   person, or with the instrument that produced the number. Deliberately
         #   generous: this tier proposes a repair, so a false positive here costs
-        #   more than a missed one, and the reference interval still catches the
-        #   merely improbable.
+        #   more than a missed one, and the improbability band still catches
+        #   the merely improbable.
         "glucose":      {"unit": "mg/dL", "p01": 70,  "p99": 200,  "floor": 10,   "ceiling": 2000,
                          "aliases": ["blood_glucose", "serum_glucose", "plasma_glucose",
                                      "fasting_glucose", "glucose_mgdl", "glu", "lbxglu"]},
@@ -147,7 +156,7 @@ def match_variable_key(col_name: str, reference: Dict[str, Any]) -> Optional[str
 
     This used to match by substring — `if key in col_lower` — which answered an
     allowlist question with an accident. `hba1c_proxy`, `bp_sys_delta` and
-    `weight_change` inherited their parent variable's reference intervals and,
+    `weight_change` inherited their parent variable's improbability bands and,
     once the impossibility band landed, its licence to propose deleting entries.
     L9b contained that with a closed list of modifier words, which was the wrong
     shape for the same reason: it catches `hba1c_proxy` because `proxy` is
@@ -173,7 +182,37 @@ def match_variable_key(col_name: str, reference: Dict[str, Any]) -> Optional[str
     return None
 
 
-def get_reference_interval(reference: Dict[str, Any], var_key: str) -> Optional[Tuple[float, float, str]]:
+def get_improbability_band(reference: Dict[str, Any],
+                           var_key: str) -> Optional[Tuple[float, float, str]]:
+    """The `p01`/`p99` pair, which is the **improbability** band.
+
+    **`MISC-018`. This was called `get_reference_interval` and it never
+    returned one.** A reference interval is a defined quantity — the central
+    95% of a healthy reference population, the 2.5th to 97.5th percentile, per
+    CLSI EP28-A3c, which also sets a minimum reference sample of n=120
+    (`research/CLINICAL_SURVEY_PACK.md` §A1.2). What this returns is the
+    central **98%**, from a percentile pair, and for `bp_sys` that is
+    `90–200 mmHg` where §A1.2's own table gives the typical adult reference
+    interval as `90–120`. The upper bound was wrong by a **category**, not by
+    calibration.
+
+    The old name asserted a clinical term of art to both doors, and
+    `get_impossibility_band`'s docstring below still had the right sentence
+    with the wrong noun in it. **The code knew what it held; the name did
+    not** — which is the governing rule failing in an identifier.
+
+    **Renamed rather than aliased.** An alias would leave the false name
+    importable and let a future reader trust it, and `GUIDED-120`'s and
+    `GUIDED-124`'s precedent is that a shared-core defect is corrected once in
+    core rather than papered over per door.
+
+    **What this is NOT.** It is not a licence to call the band a reference
+    interval anywhere else, and it is not a substitute for one. Whether a real
+    `p025`/`p975` pair is worth carrying is a separate decision under D4: it is
+    reference data and must be read from primary sources, because a wrong
+    reference interval is worse than none — a clinician reads that name and
+    believes it.
+    """
     var_data = reference.get("variables", {}).get(var_key)
     if not var_data:
         return None
@@ -184,12 +223,12 @@ def get_impossibility_band(reference: Dict[str, Any],
                            var_key: str) -> Optional[Tuple[float, float, str]]:
     """Hard floor and ceiling for a variable, or None when none is published.
 
-    Distinct from `get_reference_interval` in what it licenses. A value outside
-    the reference interval is *improbable* and stays advisory. A value outside
+    Distinct from `get_improbability_band` in what it licenses. A value outside
+    the improbability band is *improbable* and stays advisory. A value outside
     this band is *impossible* — no living person, or no working instrument —
     and earns a repair proposal.
 
-    Returns None rather than falling back to the reference interval. A missing
+    Returns None rather than falling back to the improbability band. A missing
     band means the tier is unknown for that variable, and answering "unknown"
     with the weaker bound would silently promote improbable values to
     impossible ones and propose deleting real data.
@@ -205,19 +244,25 @@ def get_impossibility_band(reference: Dict[str, Any],
     return floor, ceiling, var_data["unit"]
 
 
-def band_is_wider_than_interval(reference: Dict[str, Any], var_key: str) -> bool:
+def impossibility_contains_improbability(reference: Dict[str, Any],
+                                         var_key: str) -> bool:
     """The tiers must nest: impossible ⊃ improbable, never the other way.
 
-    A band narrower than the reference interval would call ordinary values
-    impossible and propose deleting them. Checked rather than assumed —
-    `test_the_impossibility_band_contains_the_reference_interval` runs this over
-    every variable in the bundled reference.
+    An impossibility band narrower than the improbability band would call
+    ordinary values impossible and propose deleting them. Checked rather than
+    assumed — `test_the_impossibility_band_contains_the_improbability_band`
+    runs this over every variable in the bundled reference.
+
+    **`MISC-018`: renamed with the thing it compares.** It was
+    `band_is_wider_than_interval`, and the *interval* in that name was the
+    percentile pair above, which is not an interval. A predicate that names its
+    operands wrongly is the same defect as a getter that does, one call deep.
     """
-    interval = get_reference_interval(reference, var_key)
+    improbable = get_improbability_band(reference, var_key)
     band = get_impossibility_band(reference, var_key)
-    if interval is None or band is None:
+    if improbable is None or band is None:
         return True
-    ref_low, ref_high, _ = interval
+    low, high, _ = improbable
     floor, ceiling, _ = band
-    return floor <= ref_low and ceiling >= ref_high
+    return floor <= low and ceiling >= high
 

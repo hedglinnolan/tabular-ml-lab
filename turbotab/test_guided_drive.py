@@ -287,14 +287,21 @@ def test_the_matrix_reports_the_pair_the_blocker_is_about(client, project):
 # GUIDED-004 — impossible is not a kind of outlier
 # ═══════════════════════════════════════════════════════════════════════════
 
-def test_the_impossibility_band_contains_the_reference_interval():
-    """The tiers must nest. A band inside the interval would call ordinary
-    values impossible and propose deleting them."""
-    from ml.physiology_reference import band_is_wider_than_interval, load_nhanes_reference
+def test_the_impossibility_band_contains_the_improbability_band():
+    """The tiers must nest. An impossibility band inside the improbability one
+    would call ordinary values impossible and propose deleting them.
+
+    **`MISC-018` renamed this test with what it checks.** It was
+    `..._contains_the_reference_interval`, and the p01/p99 pair it compares
+    against is not a reference interval — the central 98%, where CLSI EP28-A3c
+    defines the interval as the central 95%.
+    """
+    from ml.physiology_reference import (impossibility_contains_improbability,
+                                         load_nhanes_reference)
     ref = load_nhanes_reference()
     for key in ref["variables"]:
-        assert band_is_wider_than_interval(ref, key), (
-            f"{key}'s impossibility band is narrower than its reference interval")
+        assert impossibility_contains_improbability(ref, key), (
+            f"{key}'s impossibility band is narrower than its improbability band")
 
 
 def test_a_variable_with_no_published_band_returns_none_not_the_interval():

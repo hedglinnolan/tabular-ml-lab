@@ -508,25 +508,111 @@ TEMPORAL_WHY = (
     "trains on rows from after the rows it is scored on. TRIPOD treats temporal "
     "validation as a distinct thing from internal validation.")
 
+#: **`GUIDED-143`, and this sentence used to promise the opposite.**
+#:
+#: It read: *"`ml/splits.py` reads this to choose between its chronological and
+#: grouped strategies … Answering yes selects the chronological split, grouped
+#: as well because people repeat."* Every clause of that is false, in two
+#: independent ways, and both were driven at L42:
+#:
+#: 1. **Nothing reads `temporal_prediction` at all.** `engine.draw_holdout`
+#:    takes the frame, the target, the task type and the grain, and the seal is
+#:    drawn at random within groups whatever this answer says.
+#: 2. **`ml/splits.py` could not honor it if it did.** Its five strategies are
+#:    `grouped | chronological | lockbox | stratified | random` — there is no
+#:    combined one — and `choose_strategy` returns `grouped` when both a group
+#:    column and a time column are given, by explicit design: *"Grouping
+#:    outranks time."* Driven on `clinical_longitudinal.csv` with both set, it
+#:    returns `grouped`.
+#:
+#: So the consumer sentence named a mechanism that does not run and could not
+#: do what it claimed. It now says what actually happens, which is the whole of
+#: what `GUIDED-143` step (1) asks for.
 TEMPORAL_CONSUMER = (
-    "`ml/splits.py` reads this to choose between its chronological and grouped "
-    "strategies — both already exist with sixteen equivalence tests, and what "
-    "has been missing is the routing that decides when each applies. Answering "
-    "yes selects the chronological split, grouped as well because people "
-    "repeat. Answering wrongly does not raise an error: it produces a held-out "
-    "score that is optimistic by an amount nothing on screen can show you.")
+    "It records the objective and nothing else today. **The held-out set is "
+    "drawn at random within whole people whatever you answer here**, because "
+    "no splitter in this app can hold out the latest rows and keep whole "
+    "people together at the same time — `ml/splits.py` has a chronological "
+    "strategy and a grouped one and its router picks grouped when both apply. "
+    "Answering yes is still worth doing: it is what a temporal validation "
+    "would be run from, it is carried into the methods section as the "
+    "objective you stated, and the seal says in its own words that the "
+    "validation you asked for was not the one drawn.")
+
+# ── the three bases question 7 can be in (`GUIDED-143`) ──────────────────────
+#
+# **Clause §03's shape, applied one question over.** The seal states its own
+# basis in three states rather than two, and `undetermined` is first-class:
+# persisted, asserted by a test, and never rendered as a clean lock. A temporal
+# answer the draw cannot honor is the identical shape — the app knows what was
+# asked, it cannot draw it, and the honest rendering is a basis that says so.
+#
+# `IMPORT-020`'s asymmetry decides which branch this is. Leaking and disclosing
+# is the *refuse* branch of the governing rule; leaking behind a lock icon is
+# the *assert something false* branch. A split described as chronological and
+# drawn at random is the second.
+
+#: Temporal validation was not asked for. Whole people held out, nothing about
+#: time claimed. **The draw honors this**, and it is the only one it honors.
+GROUPED = "grouped"
+
+#: Asked for, and drawn. **Unreachable today** and named anyway, because a
+#: basis set that omits the honorable state cannot say that the app is missing
+#: it — it can only say the app never tries. This is the state the
+#: chronological grouped draw will produce when it exists.
+CHRONOLOGICAL_GROUPED = "chronological_grouped"
+
+#: Asked for, and **not drawn**. The honest third state, and the one every
+#: temporal answer lands in today.
+CHRONOLOGICAL_NOT_DRAWN = "chronological_requested_not_drawn"
+
+SPLIT_BASES = (GROUPED, CHRONOLOGICAL_GROUPED, CHRONOLOGICAL_NOT_DRAWN)
+
+#: **Whether any splitter in this repository can draw a chronological split
+#: that also keeps whole people together.** It cannot, and this is the one
+#: place that says so.
+#:
+#: A constant rather than a runtime probe because there is nothing to probe:
+#: `engine.draw_holdout` has no time parameter, so the capability's absence is
+#: structural. `test_the_capability_flag_matches_what_the_draw_can_do` asserts
+#: the two agree, so the flag cannot be flipped without the draw arriving —
+#: which is the failure mode a bare boolean otherwise has.
+DRAWS_CHRONOLOGICALLY = False
 
 
-def split_strategy(temporal: bool, unit: str) -> Dict[str, str]:
-    """What question 7's answer selects. Named, so the record can carry it."""
+def split_strategy(temporal: bool, unit: str) -> Dict[str, Any]:
+    """What question 7's answer selects, and whether the draw can honor it.
+
+    **Three states, never two** (`GUIDED-143`). The middle field is `honored`,
+    and it is a boolean beside the sentence rather than only inside it: trap #7
+    is the machine-readable form being lossier than the prose, and everything
+    downstream — the manuscript, the page, the validator — reads the payload.
+    """
     if temporal and unit == UNIT_RECORD:
-        return {"strategy": "chronological_grouped",
-                "sentence": ("The held-out rows are the latest ones, and whole "
-                             "people are held out rather than individual "
-                             "records — so the model is scored on people it "
-                             "never saw, at times after the ones it trained "
-                             "on.")}
-    return {"strategy": "grouped",
-            "sentence": ("Whole people are held out rather than individual "
-                         "records, so nobody appears on both sides of the "
-                         "split.")}
+        if DRAWS_CHRONOLOGICALLY:                       # pragma: no cover
+            # Reachable when the chronological grouped draw is built. Left in
+            # rather than deferred to that loop, so the honorable state is
+            # named in the same table as the dishonorable one.
+            return {
+                "strategy": CHRONOLOGICAL_GROUPED, "honored": True,
+                "sentence": (
+                    "The held-out rows are the latest ones, and whole people "
+                    "are held out rather than individual records — so the "
+                    "model is scored on people it never saw, at times after "
+                    "the ones it trained on.")}
+        return {
+            "strategy": CHRONOLOGICAL_NOT_DRAWN, "honored": False,
+            "sentence": (
+                "You stated that the task is predicting a later outcome from "
+                "earlier measurements. **The held-out set was not drawn that "
+                "way.** This app draws whole people at random, so the model "
+                "trains on rows from after the rows it is scored on, and the "
+                "held-out score is optimistic by an amount nothing here can "
+                "measure. Your objective is recorded and the split is "
+                "described as what it is; a temporal validation would need a "
+                "split this app cannot yet draw.")}
+    return {
+        "strategy": GROUPED, "honored": True,
+        "sentence": ("Whole people are held out rather than individual "
+                     "records, so nobody appears on both sides of the "
+                     "split.")}

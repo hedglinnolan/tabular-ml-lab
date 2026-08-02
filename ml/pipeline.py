@@ -28,7 +28,7 @@ except ImportError:
 from ml.feature_steps import create_pca_step, KMeansFeatures
 from ml.preprocess_operators import UnitHarmonizer, PlausibilityGate, OutlierCapping, plausibility_row_mask
 from ml.clinical_units import infer_unit, CLINICAL_VARIABLES
-from ml.physiology_reference import load_reference_bundle, match_variable_key, get_reference_interval
+from ml.physiology_reference import load_reference_bundle, match_variable_key, get_improbability_band
 
 
 def build_unit_harmonization_config(
@@ -83,15 +83,15 @@ def build_plausibility_bounds(
 
     for col, factor in zip(numeric_features, conversion_factors):
         var_key = match_variable_key(col, nhanes_ref)
-        ref_interval = get_reference_interval(nhanes_ref, var_key) if var_key else None
-        if ref_interval:
-            ref_low, ref_high, ref_unit = ref_interval
-            lower_bounds.append(ref_low)
-            upper_bounds.append(ref_high)
+        improbability = get_improbability_band(nhanes_ref, var_key) if var_key else None
+        if improbability:
+            improbable_low, improbable_high, improbable_unit = improbability
+            lower_bounds.append(improbable_low)
+            upper_bounds.append(improbable_high)
             bounds_by_feature[col] = {
-                "lower": ref_low,
-                "upper": ref_high,
-                "unit": ref_unit
+                "lower": improbable_low,
+                "upper": improbable_high,
+                "unit": improbable_unit
             }
         else:
             lower_bounds.append(None)

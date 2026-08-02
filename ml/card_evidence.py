@@ -34,7 +34,7 @@ import pandas as pd
 from ml.clinical_units import infer_unit
 from ml.physiology_reference import (
     get_impossibility_band,
-    get_reference_interval,
+    get_improbability_band,
     load_reference_bundle,
     match_variable_key,
 )
@@ -154,7 +154,7 @@ WHOLE_COLUMN_SUSPECT_SHARE = 0.25
 COHERENCE_MIN_SHARE = 0.10
 ONE_SIDED_SHARE = 0.95
 
-# Share of the column a candidate unit must land inside the reference interval
+# Share of the column a candidate unit must land inside the improbability band
 # before it counts as having rescued it.
 RESCUE_MIN_SHARE = 0.80
 
@@ -186,7 +186,7 @@ def derived_from(column: str, var_key: str) -> Optional[str]:
     """The modifier marking `column` as derived from `var_key`, or None.
 
     `match_variable_key` matches by substring, so `hba1c_proxy` inherits HbA1c's
-    reference intervals and its impossibility band. This is the cheap, closed
+    improbability band and its impossibility band. This is the cheap, closed
     check for "the name says this is not that variable".
     """
     key_parts = name_segments(var_key)
@@ -243,7 +243,7 @@ class InterpretationVerdict:
 
 
 def rescues_the_column(values, reference, factors) -> Optional[float]:
-    """The factor that would bring this column into the reference interval.
+    """The factor that would bring this column into the improbability band.
 
     The direct question, rather than a ratio of summary statistics: *does
     multiplying by a unit the variable actually has put the values where the
@@ -254,13 +254,13 @@ def rescues_the_column(values, reference, factors) -> Optional[float]:
     """
     if reference is None:
         return None
-    ref_low, ref_high = float(reference[0]), float(reference[1])
-    inside_now = float(((values >= ref_low) & (values <= ref_high)).mean())
+    improbable_low, improbable_high = float(reference[0]), float(reference[1])
+    inside_now = float(((values >= improbable_low) & (values <= improbable_high)).mean())
     if inside_now >= RESCUE_MIN_SHARE:
         return None                      # already where it belongs
     for factor in factors:
         scaled = values * factor
-        inside = float(((scaled >= ref_low) & (scaled <= ref_high)).mean())
+        inside = float(((scaled >= improbable_low) & (scaled <= improbable_high)).mean())
         if inside >= RESCUE_MIN_SHARE:
             return factor
     return None
@@ -273,7 +273,7 @@ def interpretation_verdict(column: str, var_key: str, values, low: float,
 
     `values` and `flagged` are the column and its violations, both already
     expressed in the reference unit. `low`/`high` are the bounds they broke;
-    `reference` is the variable's reference interval, which is where the values
+    `reference` is the variable's improbability band, which is where the values
     would sit if the unit were right.
     """
     n_present = int(len(values))
@@ -302,7 +302,7 @@ def interpretation_verdict(column: str, var_key: str, values, low: float,
         evidence.append(f"share:{share:.0%}")
 
     # The ruling, in order of how directly each signal speaks to the reading.
-    # A factor that puts the whole column inside its reference interval is the
+    # A factor that puts the whole column inside its improbability band is the
     # strongest evidence available: it does not merely suggest the reading is
     # wrong, it names the right one.
     if factor is not None:
@@ -406,7 +406,7 @@ def plausibility_report(df: pd.DataFrame,
             continue
         converted = present * factor
 
-        interval = get_reference_interval(ref, var_key)
+        interval = get_improbability_band(ref, var_key)
         band = get_impossibility_band(ref, var_key)
         if band is not None:
             floor, ceiling, unit = band

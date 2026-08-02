@@ -1847,14 +1847,41 @@ class AnalysisProject:
             # matters for the thing that comments on it.
             self.lockbox["resolution"] = None
             self.lockbox["resolution_unavailable"] = str(exc)
+
+        # `GUIDED-143`. **THE SEAL STATES THE TEMPORAL BASIS TOO**, and it has
+        # to be here rather than only on question 7's own record, because this
+        # is the moment the split is actually drawn. Question 7 is answered
+        # before the seal and can only say what was *asked for*; the seal is the
+        # only place that can say what was *done*.
+        #
+        # Beside the basis rather than folded into `seal_basis`, on exactly the
+        # precedent `resolution` set above: it does not change the seal's basis,
+        # does not gate the seal, and has no branch in which the seal is
+        # refused. What it does is make the record unable to describe a
+        # chronology it does not have.
+        temporal = dict(self.temporal_prediction or {})
+        if temporal:
+            self.lockbox["temporal_basis"] = temporal.get("strategy")
+            self.lockbox["temporal_requested"] = bool(temporal.get("temporal"))
+            self.lockbox["temporal_honored"] = bool(temporal.get("honored"))
+            self.lockbox["temporal_sentence"] = temporal.get("sentence") or ""
+
+        unhonored = bool(temporal) and temporal.get("honored") is False
         return self.record(
             kind="seal_lockbox", subject=self.target or "",
             text=(f"A test set of {len(labels)} rows was sealed before exploration "
                   f"and held by row label, on the basis '{self.grain['basis']}' "
-                  f"({self.grain['basis_source']})."),
+                  f"({self.grain['basis_source']})."
+                  # THE DISCLOSURE TRAVELS ON THE SEAL'S OWN SENTENCE, which is
+                  # what `draft.py` folds into the methods section. A record
+                  # that stated the chronology only on question 7's line would
+                  # leave the seal's line describing a clean split.
+                  + (" " + temporal["sentence"] if unhonored else "")),
             payload={"n_test": int(len(labels)),
                      "seal_basis": self.grain["basis"],
                      "basis_source": self.grain["basis_source"],
+                     "temporal_basis": self.lockbox.get("temporal_basis"),
+                     "temporal_honored": self.lockbox.get("temporal_honored"),
                      "resolution": self.lockbox.get("resolution")})
 
     def repeat_chain_gap(self) -> Optional[str]:

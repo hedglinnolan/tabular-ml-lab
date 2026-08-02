@@ -356,6 +356,19 @@ def _disclosures(project: AnalysisProject) -> Dict[str, Any]:
                 "the shape of the data. That disagreement is on the record and "
                 "belongs in the methods section.")
             out["exploratory"] = True
+        # `GUIDED-143`. **A TEMPORAL VALIDATION THAT WAS ASKED FOR AND NOT
+        # DRAWN IS NOT A CLEAN LOCK**, and this is the third note on exactly the
+        # two precedents above rather than a new mechanism.
+        #
+        # `IMPORT-020`'s asymmetry is why it flips `exploratory` rather than
+        # only appending a sentence: leaking and disclosing is the *refuse*
+        # branch, and leaking behind a lock icon is the *assert something false*
+        # branch. A held-out score whose split trains on rows from after the
+        # rows it is scored on is optimistic, and a band reading `sealed` over
+        # it tells the reader the opposite of what the app knows.
+        if project.lockbox.get("temporal_honored") is False:
+            out["seal"] += " " + (project.lockbox.get("temporal_sentence") or "")
+            out["exploratory"] = True
     return out
 
 

@@ -17,7 +17,7 @@ import pandas as pd
 from pandas.api import types as _pdt
 from enum import Enum
 from ml.clinical_units import infer_unit
-from ml.physiology_reference import load_reference_bundle, match_variable_key, get_reference_interval
+from ml.physiology_reference import load_reference_bundle, match_variable_key, get_improbability_band
 from ml.outliers import detect_outliers
 
 
@@ -662,14 +662,14 @@ def compute_dataset_profile(
         if len(col_data) == 0:
             continue
         inferred_unit_info = infer_unit(col, col_data)
-        ref_interval = get_reference_interval(nhanes_ref, var_key)
-        if inferred_unit_info.get('conversion_factor') and ref_interval:
-            ref_low, ref_high, ref_unit = ref_interval
+        improbability = get_improbability_band(nhanes_ref, var_key)
+        if inferred_unit_info.get('conversion_factor') and improbability:
+            improbable_low, improbable_high, improbable_unit = improbability
             converted = col_data * inferred_unit_info['conversion_factor']
-            out_rate = ((converted < ref_low) | (converted > ref_high)).sum() / len(converted)
+            out_rate = ((converted < improbable_low) | (converted > improbable_high)).sum() / len(converted)
             if out_rate > 0.05:
                 physio_flags.append(
-                    f"{col}: {out_rate:.1%} outside NHANES reference ({ref_low}-{ref_high} {ref_unit})"
+                    f"{col}: {out_rate:.1%} outside NHANES reference ({improbable_low}-{improbable_high} {improbable_unit})"
                 )
 
     # Create profile

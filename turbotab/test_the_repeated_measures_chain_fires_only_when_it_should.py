@@ -456,23 +456,46 @@ def test_temporal_prediction_is_refused_once_the_rows_are_combined():
         p.set_temporal_prediction(True)
 
 
-def test_temporal_prediction_routes_to_the_chronological_strategy():
-    """Discharges `lockbox-01`: temporal prediction routes to the chronological
-    split rather than to a random one."""
+def test_temporal_prediction_records_the_objective_and_says_it_was_not_drawn():
+    """**This test used to assert the defect, and that is worth recording.**
+
+    It was `test_temporal_prediction_routes_to_the_chronological_strategy`, its
+    docstring said *"temporal prediction routes to the chronological split
+    rather than to a random one"*, and it asserted
+    `strategy == "chronological_grouped"` and the sentence *"at times after the
+    ones it trained on"* — **verbatim, and green, for as long as `GUIDED-143`
+    existed.**
+
+    So the false claim was held in place by two mechanisms, not one. The L41
+    report found the first: `recorded_kinds()` read two of the dispatcher's
+    three forms, so this kind was outside the probe's denominator. The second is
+    here — a passing test whose *name* asserted the routing and whose
+    assertions pinned the sentence. Nothing routed anywhere; the test checked
+    that a string composer returned a string, and its name supplied the claim.
+
+    **Not the guard-testing-its-own-description class** (trap #2), where the
+    assertion is a sentence about the code. Here the assertion was about a real
+    value and the value was wrong, and the name asserted a consequence the
+    assertion never checked. A test can pin a defect by naming it correctly.
+    """
     p = project("clinical_longitudinal", "progressed")
     p.set_grain(G.PEOPLE_REPEAT, "subject_id")
     p.set_repeat_kind(R.TIME_POINTS)
     p.set_unit_of_analysis(R.UNIT_RECORD)
     p.set_temporal_prediction(True)
-    assert p.temporal_prediction["strategy"] == "chronological_grouped"
-    assert "at times after the ones it trained on" in p.temporal_prediction["sentence"]
+    assert p.temporal_prediction["strategy"] == R.CHRONOLOGICAL_NOT_DRAWN
+    assert p.temporal_prediction["honored"] is False
+    assert "not drawn that way" in p.temporal_prediction["sentence"]
+    assert "at times after the ones it trained on" not in \
+        p.temporal_prediction["sentence"]
 
     q = project("clinical_longitudinal", "progressed")
     q.set_grain(G.PEOPLE_REPEAT, "subject_id")
     q.set_repeat_kind(R.TIME_POINTS)
     q.set_unit_of_analysis(R.UNIT_RECORD)
     q.set_temporal_prediction(False)
-    assert q.temporal_prediction["strategy"] == "grouped"
+    assert q.temporal_prediction["strategy"] == R.GROUPED
+    assert q.temporal_prediction["honored"] is True
 
 
 # ── the clinical fixture, end to end, the way a driver takes it ──────────────

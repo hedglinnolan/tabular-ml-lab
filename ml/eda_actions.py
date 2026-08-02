@@ -17,7 +17,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, a
 
 from ml.eval import calculate_regression_metrics, calculate_classification_metrics
 from ml.clinical_units import infer_unit
-from ml.physiology_reference import load_reference_bundle, match_variable_key, get_reference_interval
+from ml.physiology_reference import load_reference_bundle, match_variable_key, get_improbability_band
 from ml.outliers import detect_outliers
 from ml.stats_tests import (
     correlation_test,
@@ -96,13 +96,13 @@ def plausibility_check(
                 unit_inferences.append(unit_row)
                 
                 # Empirical plausibility from NHANES reference (percentile-based)
-                ref_interval = get_reference_interval(nhanes_ref, var_key)
-                if inferred_unit_info.get('conversion_factor') and ref_interval:
-                    ref_low, ref_high, ref_unit = ref_interval
+                improbability = get_improbability_band(nhanes_ref, var_key)
+                if inferred_unit_info.get('conversion_factor') and improbability:
+                    improbable_low, improbable_high, improbable_unit = improbability
                     converted = col_data * inferred_unit_info['conversion_factor']
 
-                    below_min = (converted < ref_low).sum()
-                    above_max = (converted > ref_high).sum()
+                    below_min = (converted < improbable_low).sum()
+                    above_max = (converted > improbable_high).sum()
                     total_out = below_min + above_max
                     out_rate = total_out / len(col_data)
 
@@ -111,7 +111,7 @@ def plausibility_check(
 
                     empirical_ranges.append({
                         'Column': col,
-                        'Reference Interval (NHANES p01–p99)': f"{ref_low}-{ref_high} {ref_unit}",
+                        'Reference Interval (NHANES p01–p99)': f"{improbable_low}-{improbable_high} {improbable_unit}",
                         'Min (canonical)': f"{converted.min():.1f}",
                         'Max (canonical)': f"{converted.max():.1f}",
                         'Out of Range %': f"{out_rate:.1%}" if total_out > 0 else "0%"
@@ -120,7 +120,7 @@ def plausibility_check(
                     if out_rate > 0.05:
                         warnings.append(
                             f"{col}: {out_rate:.1%} values outside NHANES reference interval "
-                            f"({ref_low}-{ref_high} {ref_unit}) after conversion from {inferred_unit_info['inferred_unit']}"
+                            f"({improbable_low}-{improbable_high} {improbable_unit}) after conversion from {inferred_unit_info['inferred_unit']}"
                         )
 
                 # Clinical guideline comparison (informational only)

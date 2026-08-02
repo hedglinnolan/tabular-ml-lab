@@ -1,0 +1,412 @@
+"""L42-A — two rulings: `GUIDED-143`'s false assertion, and `MISC-018`'s name.
+
+## A1 · The record described a chronology nobody drew
+
+Answering *yes, I am predicting a later outcome from earlier measurements*
+recorded `strategy: chronological_grouped` and the sentence *"The held-out rows
+are the latest ones … at times after the ones it trained on"*, and the draft
+carried it into the methods section. `engine.draw_holdout` never read
+`temporal_prediction`.
+
+**And it was false in a second, independent way that the L41 report did not
+have.** Driven at L42: `ml/splits.py` has five strategies —
+`grouped | chronological | lockbox | stratified | random` — and **no combined
+one**. `choose_strategy` returns `grouped` when both a group column and a time
+column are given, by explicit design: *"Grouping outranks time."* So
+`chronological_grouped` is a strategy name that exists in `turbotab/repeats.py`
+and in two test files and **in no splitter anywhere**. The consumer sentence the
+user reads before answering promised `ml/splits.py` would route on this answer;
+that routing could not have produced what it claimed even if it had existed.
+
+### The pattern is the lockbox constitution's own
+
+Clause §03 — *the seal states its own basis, three states, never two* — where
+`undetermined` is first-class, persisted, asserted by a test, and **never
+rendered as a clean lock.** A temporal answer the draw cannot honor is the
+identical shape: the app knows what was asked, it cannot draw it, and the honest
+rendering is a basis that says so.
+
+`IMPORT-020`'s asymmetry decides the branch. Leaking and disclosing is *refuse*;
+leaking behind a lock icon is *assert something false*. A split described as
+chronological and drawn at random is the second.
+
+**The question is not removed** — that is the shelf being shortened, and
+judgment renders as ranking or as a stated basis, never as absence. **The
+chronological grouped draw is not built here**, so `GUIDED-143` stays `OPEN`;
+this closes the false assertion and nothing else.
+
+## A2 · `MISC-018` — the core named a band after a concept it does not hold
+
+`get_reference_interval` returned a `p01`/`p99` pair. A reference interval is
+the central **95%** — 2.5th to 97.5th percentile, CLSI EP28-A3c, minimum
+reference sample n=120 (§A1.2). `p01`/`p99` is the central 98%, and for
+`bp_sys` it is `90–200 mmHg` where §A1.2's own table gives the adult reference
+interval as `90–120`. **Wrong by a category, not by calibration** — and
+`get_impossibility_band`'s docstring already had the right sentence with the
+wrong noun in it.
+
+Renamed in **core**, not aliased: an alias leaves the false name importable and
+lets the next reader trust it. `GUIDED-120` and `GUIDED-124` are the precedent —
+a shared-core defect is corrected once in core.
+
+**No `p025`/`p975` pair was added.** That is reference data under D4 and must be
+read from primary sources; a wrong reference interval is worse than none,
+because a clinician reads that name and believes it.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+from turbotab import repeats as R
+
+DATA = Path(__file__).resolve().parent / "sample_data"
+
+#: `GUIDED-097`. The temporal question needs time points surviving as rows, so
+#: both arms are longitudinal — but the two fixtures have different repeat
+#: structure and different target shape, which is what the rule asks for.
+TEMPORAL_FIXTURES = {
+    "a scheduled visit series, continuous target": (
+        "clinical_longitudinal.csv", "subject_id", "sbp"),
+    "an irregular visit series, categorical target": (
+        "longitudinal_visits.csv", "subject_id", "outcome"),
+}
+
+#: NOT COVERED, said out loud.
+#:
+#: THE HONORED BRANCH. `CHRONOLOGICAL_GROUPED` is named and unreachable —
+#: `DRAWS_CHRONOLOGICALLY` is `False` and the draw has no time parameter, so no
+#: fixture can produce it. That is the point of `GUIDED-143` staying `OPEN`, and
+#: the branch is asserted unreachable below rather than left to look covered.
+#:
+#: A NON-REPEATED TABLE. Question 7 refuses before it is asked when rows are not
+#: time points, so there is no cross-sectional arm to run.
+#:
+#: A REAL REFERENCE INTERVAL. No `p025`/`p975` pair exists to compare against;
+#: adding one is D4 reference data read from primary sources.
+SHAPES_NOT_COVERED = [
+    "the honored chronological branch — unreachable until the draw is built "
+    "(GUIDED-143 stays OPEN), and asserted unreachable rather than skipped",
+    "a cross-sectional table — question 7 refuses before it is asked",
+    "a real p025/p975 reference interval — D4 reference data, not recollected",
+]
+
+
+def _driven(fixture, temporal):
+    """Upload → the full repeated-measures chain → seal, through the routes."""
+    from fastapi.testclient import TestClient
+
+    from turbotab import api
+
+    name, group, target = TEMPORAL_FIXTURES[fixture]
+    client = TestClient(api.app)
+    with open(DATA / name, "rb") as handle:
+        pid = client.post("/project", files={
+            "file": (name, handle, "text/csv")}).json()["id"]
+    for kind, payload in (
+            ("set_target", {"column": target}),
+            ("set_purpose", {"answer": "prediction"}),
+            ("set_grain", {"answer": "people_repeat", "group_col": group}),
+            ("set_repeat_kind", {"kind": "time_points"}),
+            ("set_unit_of_analysis", {"unit": "record"}),
+            ("set_temporal_prediction", {"temporal": temporal}),
+            ("set_eligibility", {"answer": "everyone"}),
+            ("seal", {})):
+        ok = client.post(f"/project/{pid}/decision",
+                         json={"kind": kind, "payload": payload})
+        assert ok.status_code == 200, (kind, ok.text[:300])
+    return client, pid
+
+
+# ═══════════ A1 · THREE STATES, NEVER TWO ═══════════
+
+def test_the_basis_set_names_the_state_the_app_cannot_reach():
+    """**The `undetermined` property, applied one question over.**
+
+    A basis set that omitted the honorable state could not say the app is
+    *missing* it — only that the app never tries. So `CHRONOLOGICAL_GROUPED` is
+    named, and this asserts it is currently unreachable rather than letting its
+    presence read as coverage.
+    """
+    assert set(R.SPLIT_BASES) == {R.GROUPED, R.CHRONOLOGICAL_GROUPED,
+                                  R.CHRONOLOGICAL_NOT_DRAWN}
+    assert R.DRAWS_CHRONOLOGICALLY is False
+    reached = {R.split_strategy(t, u)["strategy"]
+               for t in (True, False)
+               for u in (R.UNIT_RECORD, R.UNIT_PERSON, R.UNIT_NOT_DESCRIBED)}
+    assert R.CHRONOLOGICAL_GROUPED not in reached, (
+        "the honored branch is reachable, so either the draw was built and "
+        "GUIDED-143 should close, or the flag is lying")
+    assert reached == {R.GROUPED, R.CHRONOLOGICAL_NOT_DRAWN}
+
+
+def test_the_capability_flag_matches_what_the_draw_can_do():
+    """A bare boolean's failure mode is being flipped without the capability
+    arriving. This pins it to the draw's own signature: `draw_holdout` has no
+    time parameter, so the flag cannot go `True` while the draw stays random.
+    """
+    import inspect
+
+    from turbotab import engine
+
+    params = set(inspect.signature(engine.draw_holdout).parameters)
+    takes_time = bool(params & {"datetime_col", "time_col", "temporal",
+                                "order_by"})
+    assert takes_time is R.DRAWS_CHRONOLOGICALLY, (
+        f"`DRAWS_CHRONOLOGICALLY` is {R.DRAWS_CHRONOLOGICALLY} and "
+        f"`draw_holdout` takes {sorted(params)}. If the chronological draw has "
+        f"landed, flip the flag and close GUIDED-143; if it has not, the flag "
+        f"is asserting a capability that is not there.")
+
+
+def test_the_honored_flag_is_beside_the_sentence_and_not_only_inside_it():
+    """Trap #7 — the machine-readable form lossier than the prose. The
+    manuscript, the page and the validator all read the payload."""
+    asked = R.split_strategy(True, R.UNIT_RECORD)
+    assert asked["honored"] is False
+    assert asked["strategy"] == R.CHRONOLOGICAL_NOT_DRAWN
+    plain = R.split_strategy(False, R.UNIT_RECORD)
+    assert plain["honored"] is True and plain["strategy"] == R.GROUPED
+
+
+@pytest.mark.parametrize("fixture", sorted(TEMPORAL_FIXTURES))
+def test_the_record_no_longer_claims_the_held_out_rows_are_the_latest(fixture):
+    """`GUIDED-143`'s own evidence sentence, inverted into an assertion."""
+    client, pid = _driven(fixture, temporal=True)
+    import json
+
+    everything = json.dumps(client.get(f"/project/{pid}").json())
+    draft = json.dumps(client.get(f"/project/{pid}/draft").json())
+    for lie in ("latest ones", "times after the ones it trained on"):
+        assert lie not in everything, f"the record still says {lie!r}"
+        assert lie not in draft, f"the draft still says {lie!r}"
+
+    assert "not drawn that way" in draft, (
+        "the draft says nothing about the split it did not draw, so the "
+        "assertion was removed and nothing replaced it — which is silence "
+        "where a disclosure belongs")
+    assert "optimistic" in draft
+
+
+@pytest.mark.parametrize("fixture", sorted(TEMPORAL_FIXTURES))
+def test_the_seal_carries_the_temporal_basis_because_it_is_the_draw(fixture):
+    """**Question 7 can only say what was asked; the seal is the only place
+    that can say what was done.** Beside the basis rather than folded into
+    `seal_basis`, on `resolution`'s precedent."""
+    client, pid = _driven(fixture, temporal=True)
+    lockbox = client.get(f"/project/{pid}").json()["lockbox"]
+    assert lockbox["temporal_requested"] is True
+    assert lockbox["temporal_honored"] is False
+    assert lockbox["temporal_basis"] == R.CHRONOLOGICAL_NOT_DRAWN
+    assert lockbox["temporal_sentence"]
+    # It does not become a fifth seal basis.
+    assert lockbox["seal_basis"] == "grouped"
+
+
+def test_a_non_temporal_answer_leaves_the_seal_clean():
+    """The negative control. A disclosure on every seal would be the second
+    uncalibrated layer of caution this project forbids — it makes a real
+    concern and a routine one read identically."""
+    client, pid = _driven("a scheduled visit series, continuous target",
+                          temporal=False)
+    body = client.get(f"/project/{pid}").json()
+    assert body["lockbox"]["temporal_honored"] is True
+    assert body["lockbox"]["temporal_basis"] == R.GROUPED
+    assert body["disclosures"]["exploratory"] is False
+    assert "not drawn that way" not in body["disclosures"]["seal"]
+
+
+@pytest.mark.parametrize("fixture", sorted(TEMPORAL_FIXTURES))
+def test_it_is_never_rendered_as_a_clean_lock(fixture):
+    """**The clause the ruling turns on.** `IMPORT-020`'s asymmetry: leaking
+    and disclosing is the refuse branch; leaking behind a lock icon is the
+    assert-something-false branch.
+
+    Driven through the page's own controller, because the band is the thing a
+    reader takes the held-out number to mean.
+    """
+    from turbotab import pageharness as PH
+
+    if not PH.available():
+        pytest.skip("no JS engine on this machine")
+
+    client, pid = _driven(fixture, temporal=True)
+    body = client.get(f"/project/{pid}").json()
+    assert body["disclosures"]["exploratory"] is True, (
+        "the seal reports itself clean over a split that did not honor the "
+        "validation the user asked for")
+
+    routes = {
+        f"/project/{pid}": body,
+        f"/project/{pid}/interview?step=data":
+            client.get(f"/project/{pid}/interview?step=data").json(),
+        f"/project/{pid}/interview?step=explore": {"questions": [], "steps": []},
+        f"/project/{pid}/evidence/missingness": {"cards": []},
+    }
+    out = PH.run(
+        "__emit({html: (__harness.html('disclosuresBox') || '').slice(0, 8000)});",
+        routes=routes, search=f"?project={pid}")
+    html = out["html"]
+    assert "not a verified clean split" in html, (
+        "the disclosure band renders `sealed` over a split that trains on rows "
+        "from after the rows it is scored on")
+    assert "is-exploratory" in html and "is-sealed" not in html
+
+
+def test_the_effect_preview_no_longer_promises_the_draw():
+    """The one place a user reads this *before* answering. It said *"the
+    held-out rows become the latest ones rather than a random draw"* — the same
+    false claim the record carried, in the control that sets the expectation.
+
+    **Comments stripped first, and that is the whole difficulty.** Trap #5
+    reserves grep for claims that are *genuinely about the file*, and this one
+    is — *does the shipped code still contain this string*. But the old phrase
+    is deliberately still in the file, quoted in the comment that records what
+    it used to say, and a bare grep cannot tell the record from the claim.
+
+    Driving it was tried first and does not work: `EFFECTS` is a `var` inside
+    the page's closure, so the harness cannot reach it from an injected body —
+    the same wall `PULL_RENDER` hit at L41-C, where the answer was to click the
+    control rather than call the function. There is no control that renders an
+    effect preview in isolation, so this is the honest instrument available.
+    """
+    page = (Path(__file__).resolve().parent / "web" / "index.html").read_text(
+        encoding="utf-8")
+    import re
+    code = re.sub(r"/\*.*?\*/", " ", page, flags=re.S)
+    assert "held-out rows become the latest ones" not in code, (
+        "the effect preview still promises a draw no splitter here performs")
+    assert "held-out rows become the latest ones" in page, (
+        "the comment recording what this used to say is gone, so the next "
+        "reader has no record of why the wording is what it is")
+    assert "still drawn at random within whole people" in code
+
+
+def test_no_splitter_anywhere_implements_the_strategy_the_app_records():
+    """**The second falsity, and it is why a note beside the sentence would
+    not have done.**
+
+    `chronological_grouped` appears in `turbotab/repeats.py`, where it is
+    composed, and nowhere else in the engine. `ml/splits.py` knows five
+    strategies and none of them is it — and its router puts grouping above time
+    by design, so a repeated-measures project could not reach the chronological
+    branch even if the routing existed.
+    """
+    from ml.splits import SplitSpec, choose_strategy
+
+    frame = pd.read_csv(DATA / "clinical_longitudinal.csv")
+    spec = SplitSpec(use_group_split=True, entity_id_col="subject_id",
+                     use_time_split=True, datetime_col="visit_date")
+    assert choose_strategy(frame, spec) == "grouped", (
+        "ml/splits now prefers time over grouping, which changes what "
+        "GUIDED-143's second half says")
+
+    splits = (Path(__file__).resolve().parents[1] / "ml" / "splits.py").read_text()
+    assert R.CHRONOLOGICAL_GROUPED not in splits, (
+        "ml/splits.py now knows the combined strategy; if the draw is wired "
+        "too, GUIDED-143 closes")
+
+
+def test_the_consumer_sentence_says_what_actually_happens():
+    """A hover the user reads before answering is a claim like any other."""
+    assert "drawn at random within whole people" in R.TEMPORAL_CONSUMER
+    assert "picks grouped when both apply" in R.TEMPORAL_CONSUMER
+    for lie in ("selects the chronological split",
+                "reads this to choose between its chronological"):
+        assert lie not in R.TEMPORAL_CONSUMER
+
+
+def test_guided_143_is_still_open_because_the_draw_does_not_exist():
+    """**The ruling is explicit that this part does not close the row.** The
+    false assertion stops here; the chronological grouped draw is a later
+    part, and a row closed before its `act` is satisfied is worse than an open
+    one."""
+    import json
+
+    rows = json.load(open("docs/turbotab/data/findings.json"))
+    row = next(r for r in rows if r["id"] == "GUIDED-143")
+    assert row["status"] == "OPEN", (
+        "GUIDED-143 was closed and its act asks for a draw that does not "
+        "exist; the record would be claiming a capability again")
+
+
+# ═══════════ A2 · THE NAME IN CORE ═══════════
+
+def test_the_false_name_is_gone_from_core_and_has_no_alias():
+    """**Renamed, not aliased.** An alias leaves the false name importable and
+    lets a future reader trust it, which is the whole of what `MISC-018` is
+    about — the code knew what it held and the name did not."""
+    from ml import physiology_reference as PR
+
+    assert hasattr(PR, "get_improbability_band")
+    assert not hasattr(PR, "get_reference_interval"), (
+        "the old name is still importable, so nothing stops a caller from "
+        "trusting it")
+    assert not hasattr(PR, "band_is_wider_than_interval")
+    assert hasattr(PR, "impossibility_contains_improbability")
+
+
+def test_no_module_still_imports_the_false_name():
+    """Checked over the tree rather than over the one module, because a rename
+    that left one importer would fail at import time in whichever door reached
+    it first — and `pages/` is a door this suite does not collect."""
+    root = Path(__file__).resolve().parents[1]
+    offenders = []
+    for path in sorted(root.rglob("*.py")):
+        parts = set(path.parts)
+        if parts & {"venv", ".venv", "__pycache__", "node_modules"}:
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for dead in ("get_reference_interval", "band_is_wider_than_interval"):
+            # The rename note in `physiology_reference` quotes the old name on
+            # purpose; that is the record of what it used to be.
+            if dead in text and "MISC-018" not in text:
+                offenders.append(f"{path.relative_to(root)} :: {dead}")
+    assert not offenders, offenders
+
+
+def test_what_the_band_returns_is_the_central_98_percent_not_95():
+    """The arithmetic behind the rename, said as a number.
+
+    `p01`/`p99` spans 98% of the reference population. A reference interval is
+    the central 95%, 2.5th to 97.5th (CLSI EP28-A3c). They are different
+    quantities and the old name asserted the second while returning the first.
+    """
+    from ml.physiology_reference import (get_improbability_band,
+                                         load_reference_bundle)
+
+    ref = load_reference_bundle()["nhanes"]
+    entry = ref["variables"]["bp_sys"]
+    assert (entry["p01"], entry["p99"]) == (90, 200)
+    assert get_improbability_band(ref, "bp_sys") == (90.0, 200.0, "mmHg")
+    # §A1.2's own table gives the adult SBP reference interval as 90–120. The
+    # upper bound is wrong by a category, not by calibration.
+    assert get_improbability_band(ref, "bp_sys")[1] != 120
+
+
+def test_the_tiers_still_nest_under_the_new_name():
+    """The predicate the rename carried with it, run over every variable."""
+    from ml.physiology_reference import (impossibility_contains_improbability,
+                                         load_nhanes_reference)
+
+    ref = load_nhanes_reference()
+    for key in ref["variables"]:
+        assert impossibility_contains_improbability(ref, key), key
+
+
+def test_the_pack_card_is_unchanged_and_still_says_which_band_it_counted():
+    """`GUIDED-144` was ruled: the conservative count stays and the card
+    already discloses its band. The rename must not silently move a number —
+    it renames what the app calls the band, not what the band is."""
+    from turbotab import clinical as C
+
+    finding = C.impossible_vs_extreme_finding(
+        pd.read_csv(DATA / "clinical_labs.csv"))
+    sbp = next(c for c in finding["params"]["columns"] if c["column"] == "sbp")
+    assert sbp["n_impossible"] == 4
+    assert sbp["n_abnormal_but_possible"] == 31, (
+        "the count moved; MISC-018 is a rename and GUIDED-144's ruling is that "
+        "the number moves only when a real reference interval is added")
+    assert sbp["normal_band"] == [90.0, 200.0]
