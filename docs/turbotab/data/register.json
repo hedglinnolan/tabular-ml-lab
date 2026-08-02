@@ -1206,5 +1206,77 @@
   "classic": "—",
   "state": "guided-only",
   "reason": "GUIDED-108. Owed to Classic, which hands identifier columns to the model the same way Guided did. ml/dataset_profile.id_like_features is the shared half and is read here; it misses string identifiers (GUIDED-120), so the arithmetic for text columns lives in turbotab/identifiers.py until that is settled. THE SHELF IS NEVER SHORTENED: excluded with a sentence, overturnable in one recorded decision."
+ },
+ {
+  "id": "figure-decision-curve",
+  "step": "explain",
+  "capability": "Decision curve analysis — net benefit against treat-all and treat-none",
+  "classic": "—",
+  "state": "guided-only",
+  "reason": "CLINICAL_SURVEY_PACK A4.5, marked star. Owed to Classic. The clinical-utility figure, and the one whose companion requirement is a correctness rule rather than a convention: a miscalibrated model produces a misleading decision curve, so calibration is a hard companion."
+ },
+ {
+  "id": "figure-roc",
+  "step": "explain",
+  "capability": "ROC curve with the C-statistic and a bootstrap interval",
+  "classic": "—",
+  "state": "guided-only",
+  "reason": "CLINICAL_SURVEY_PACK A4.4. Owed to Classic. Deliberately NOT the headline - the pack ranks calibration and the decision curve above it, so it declares both as companions and its caption states what a C-statistic cannot say."
+ },
+ {
+  "id": "figure-forest",
+  "step": "explain",
+  "capability": "Forest plot of model coefficients on a log axis",
+  "classic": "—",
+  "state": "guided-only",
+  "reason": "CLINICAL_SURVEY_PACK A4.7. Owed to Classic. Labeled 'model coefficients' and not 'risk factors', which is the pack's own instruction and the critical warning it says most tools omit."
+ },
+ {
+  "id": "figure-classification-instability",
+  "step": "explain",
+  "capability": "Classification instability — how often a row's decision flips across resamples",
+  "classic": "—",
+  "state": "guided-only",
+  "reason": "CLINICAL_SURVEY_PACK A4.8, specified at L38 and deferred twice because the decision curve did not exist. Owed to Classic. Shows what the prediction instability plot cannot: a risk moving 0.18 to 0.22 barely moves the scatter and crosses a 20% threshold."
+ },
+ {
+  "id": "figure-decision-curve-instability",
+  "step": "explain",
+  "capability": "Decision-curve instability — every bootstrap model's decision curve overlaid",
+  "classic": "—",
+  "state": "guided-only",
+  "reason": "CLINICAL_SURVEY_PACK A4.8's fourth plot. Owed to Classic. Reuses the decision curve's own net benefit formula rather than recomputing it, so the grey curves and the bold one cannot drift."
+ },
+ {
+  "id": "figure-scree",
+  "step": "explore",
+  "capability": "Scree plot with a parallel-analysis reference line",
+  "classic": "—",
+  "state": "guided-only",
+  "reason": "CLINICAL_SURVEY_PACK B5.5. Owed to Classic. Parallel analysis decides the factor count; Kaiser's eigenvalue>1 rule is reported for comparison and never used, because it over-extracts. Uses Pearson rather than polychoric and says so (GUIDED-127)."
+ },
+ {
+  "id": "figure-item-correlations",
+  "step": "explain",
+  "capability": "Inter-item correlation matrix on a fixed -1 to +1 palette",
+  "classic": "—",
+  "state": "guided-only",
+  "reason": "CLINICAL_SURVEY_PACK B5.4. Owed to Classic. The fixed domain is correctness rather than taste: auto-scaling makes weak matrices look strong."
+ },
+ {
+  "id": "figure-floor-ceiling",
+  "step": "explain",
+  "capability": "Floor and ceiling effects against the scale's theoretical limits",
+  "classic": "—",
+  "state": "guided-only",
+  "reason": "CLINICAL_SURVEY_PACK B5.3. Owed to Classic. Theoretical rather than observed limits is the whole distinction; the 15% threshold is stated as Terwee's convention rather than as a constant."
+ },
+ {
+  "id": "figure-item-panel",
+  "step": "explain",
+  "capability": "Item-response distribution panel on a shared axis",
+  "classic": "—",
+  "state": "guided-only",
+  "reason": "CLINICAL_SURVEY_PACK B5.2. Owed to Classic. Exists beside the diverging bar because it shows SHAPE - bimodality is visible here and invisible there."
  }
 ]

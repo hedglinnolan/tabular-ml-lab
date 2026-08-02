@@ -2329,6 +2329,17 @@ async def get_instability(project_id: str) -> Dict[str, Any]:
             entry["calibration_instability"] = calib
             entry["calibration_caption"] = \
                 _specs.CALIBRATION_INSTABILITY.caption(calib)
+            # L40-C2. The two §A4.8 named and L38 deferred because the decision
+            # curve did not exist. It does now, so all four instability plots
+            # come from one resampling run rather than from two mechanisms.
+            classification = _specs.classification_instability_payload(result)
+            entry["classification_instability"] = classification
+            entry["classification_caption"] = \
+                _specs.CLASSIFICATION_INSTABILITY.caption(classification)
+            dca = _specs.decision_curve_instability_payload(result, y)
+            entry["decision_curve_instability"] = dca
+            entry["decision_curve_caption"] = \
+                _specs.DECISION_CURVE_INSTABILITY.caption(dca)
         out["runs"][key] = entry
     return out
 

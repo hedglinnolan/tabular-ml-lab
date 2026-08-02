@@ -175,6 +175,17 @@ def state(project) -> Dict[str, Any]:
     block = likert_block(project)
     return {
         "task_type": project.task_type,
+        # L40-C. The new figures read arity and item count, so `state` supplies
+        # them — `when_applicable` may only read recorded answers and measured
+        # shape, and both of these are the second.
+        "n_classes": n_levels if project.task_type == "classification" else None,
+        "n_items": len(block["columns"]) if block else 0,
+        "has_instability_run": bool(
+            getattr(project, "instability_runs", None) or {}),
+        # A FOREST PLOT IS ABOUT COEFFICIENTS, so a project whose only fitted
+        # models are trees has nothing to plot — and that is a different
+        # sentence from "you have not trained yet".
+        "has_coefficients": bool(_coefficients_for(project)),
         # NO LONGER FALSE FOR EVERY PROJECT (`GUIDED-065`). It is a fact about
         # this project now: whether a classification run has been fitted and
         # scored on the held-out rows.
@@ -429,6 +440,149 @@ def predictions_for(project):
     return binary, best.probabilities, best.name, event
 
 
+def _risks_or_refuse(project):
+    """`(y_true, {model_name: risks})` from the held-out rows, or a refusal.
+
+    Every clinical figure added at L40 reads the same three things, so they
+    read them in one place — four copies of *find the predictions* is four
+    chances to disagree about which rows they came from, and the answer is
+    always the same: the held-out rows and nowhere else.
+    """
+    run = predictions_for(project)
+    if run is None:
+        raise FigureUnavailable(
+            "this project holds no model predictions on the held-out rows")
+    y_true, y_proba, model_name, _event = run
+    return y_true, {model_name: y_proba}
+
+
+def _decision_curve_payload(project, **_: Any) -> Dict[str, Any]:
+    y_true, risks = _risks_or_refuse(project)
+    return figure_specs.decision_curve_payload(y_true, risks)
+
+
+def _roc_payload(project, **_: Any) -> Dict[str, Any]:
+    y_true, risks = _risks_or_refuse(project)
+    return figure_specs.roc_payload(y_true, risks)
+
+
+def _forest_payload(project, **_: Any) -> Dict[str, Any]:
+    """Coefficients from a fitted LINEAR model, or a refusal that says why.
+
+    §A4.7 is about coefficients, so a project whose only fitted models are
+    trees has nothing to plot — and that is a different sentence from *you
+    have not trained yet*, which is why it is said rather than left blank.
+    """
+    import numpy as np
+
+    coefficients = _coefficients_for(project)
+    if not coefficients:
+        raise FigureUnavailable(
+            "no fitted model in this project exposes coefficients — a forest "
+            "plot is about coefficients, and a tree ensemble has none")
+    return figure_specs.forest_payload(coefficients)
+
+
+def _coefficients_for(project):
+    """`[{name, estimate, low, high}]` from a fitted linear model.
+
+    The interval is the coefficient plus or minus 1.96 standard errors where
+    the estimator exposes them, and **the coefficient alone with no interval
+    where it does not** — a forest plot of bare points is thinner than one
+    with intervals and is not false, whereas an interval invented from nothing
+    would be.
+    """
+    import numpy as np
+
+    from turbotab import pipeline_plan as _plan_mod, training as _training
+    from ml.model_registry import get_registry
+
+    run = getattr(project, "training_run", None)
+    if run is None or not getattr(project, "lockbox", None):
+        return []
+
+    # THE RUN DOES NOT RETAIN ITS FITTED ESTIMATORS — `ModelResult` carries the
+    # PLAN as a dict and the predictions, which is the right thing to persist
+    # and leaves nothing to read a coefficient off. So the recorded plan is
+    # recomposed and refitted on the training rows with the run's own seed,
+    # which is the same composition path and the same rows and therefore the
+    # same model. Not a second engine: `pipeline_plan.compose` is the only
+    # thing that builds a pipeline in this app.
+    rows = project.training_rows
+    target = str(project.target)
+    rows = rows[rows[target].notna()]
+    if rows.empty:
+        return []
+    X = _training.feature_frame(project, rows)
+    y = rows[target]
+    registry = get_registry()
+
+    for result in getattr(run, "results", []) or []:
+        if result.error or result.key not in registry:
+            continue
+        spec = registry[result.key]
+        try:
+            plan = _plan_mod.compose(project, result.key, X, seed=42)
+            pipe = plan.build(spec.factory(project.task_type or "regression", 42))
+            pipe.fit(X, y)
+            estimator = pipe.named_steps.get("model")
+        except Exception:
+            continue
+        if estimator is None or not hasattr(estimator, "coef_"):
+            continue
+        coef = np.ravel(np.asarray(estimator.coef_, dtype=float))
+        try:
+            names = [str(c) for c in pipe[:-1].get_feature_names_out()]
+        except Exception:
+            names = []
+        if len(names) != len(coef):
+            names = [f"predictor {i + 1}" for i in range(len(coef))]
+        return [{"name": n, "estimate": float(c), "low": None, "high": None}
+                for n, c in zip(names, coef)]
+    return []
+
+
+def _survey_frame(project):
+    from turbotab import packs
+
+    table = project.working_table
+    block = packs.likert_block(table)
+    if block is None:
+        raise FigureUnavailable(
+            "no block of columns sharing one declared response scale was found")
+    return table[block["columns"]], block
+
+
+def _scree_payload(project, **_: Any) -> Dict[str, Any]:
+    frame, _block = _survey_frame(project)
+    return figure_specs.scree_payload(frame)
+
+
+def _item_correlations_payload(project, **_: Any) -> Dict[str, Any]:
+    frame, _block = _survey_frame(project)
+    return figure_specs.item_correlations_payload(frame)
+
+
+def _floor_ceiling_payload(project, **_: Any) -> Dict[str, Any]:
+    frame, block = _survey_frame(project)
+    scale = list(block.get("scale") or [])
+    # THE THEORETICAL LIMITS, from the DECLARED scale rather than the observed
+    # values — §B5.3's rule, and the whole difference between "nobody is at the
+    # ceiling" and "everybody is".
+    low = high = None
+    numeric = [v for v in scale if isinstance(v, (int, float))]
+    if len(numeric) >= 2:
+        low = float(min(numeric)) * len(frame.columns)
+        high = float(max(numeric)) * len(frame.columns)
+    return figure_specs.floor_ceiling_payload(frame, scale_min=low,
+                                              scale_max=high)
+
+
+def _item_panel_payload(project, **_: Any) -> Dict[str, Any]:
+    frame, block = _survey_frame(project)
+    return figure_specs.item_panel_payload(frame, scale=block.get("scale"))
+
+
 SOURCES: Dict[str, Callable[..., Dict[str, Any]]] = {
     "pca_scores": _pca_payload,
     "shrinkage": _shrinkage_payload,
@@ -436,6 +590,16 @@ SOURCES: Dict[str, Callable[..., Dict[str, Any]]] = {
     "dose_response_spline": _spline_payload,
     "diverging_stacked_bar": _diverging_payload,
     "calibration": _calibration_payload,
+    # L40-C. Every one of the eight reaches `/figures`, which is `LOOP.md`
+    # §05's rule and `GUIDED-058`'s whole subject: a figure registered and
+    # unreachable is a specification with a passing test that no user can see.
+    "decision_curve": _decision_curve_payload,
+    "roc": _roc_payload,
+    "forest": _forest_payload,
+    "scree": _scree_payload,
+    "item_correlations": _item_correlations_payload,
+    "floor_ceiling": _floor_ceiling_payload,
+    "item_panel": _item_panel_payload,
 }
 
 

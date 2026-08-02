@@ -9142,5 +9142,47 @@
   "verified_against": "",
   "test": "turbotab/test_a_three_class_outcome_end_to_end.py::test_two_models_with_different_display_names_still_agree, which asserts the DERIVATION over every registry key rather than the agreement",
   "verified_ev": "IT WAS TWELVE MODELS, NOT TWO. Classic's rendered strings, before -> after: histgb_clf 'Histogram Gradient Boosting (Classifier)' -> '(Classification)'; histgb_reg '(Regressor)' -> '(Regression)'; knn_clf 'k-Nearest Neighbors (Classifier)' -> '(Classification)'; knn_reg '(Regressor)' -> '(Regression)'; lgbm_clf 'LightGBM (Classifier)' -> '(Classification)'; lgbm_reg '(Regressor)' -> '(Regression)'; xgb_clf 'XGBoost (Classifier)' -> '(Classification)'; xgb_reg '(Regressor)' -> '(Regression)'; svc 'Support Vector Classifier' -> 'Support Vector Classification'; svr 'Support Vector Regressor' -> 'Support Vector Regression'; lasso 'LASSO' -> 'Lasso Regression'; huber 'Huber Regression' -> 'GLM (Huber)'; nn 'Neural Network (MLP)' -> 'Neural Network'. Four Classic tests asserted the old strings and were updated: tests/test_narrative_engine.py (2) and tests/test_publication.py (2)."
+ },
+ {
+  "id": "GUIDED-127",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "Polychoric correlations are not computable in this repository, so the two survey structure figures use Pearson - which CLINICAL_SURVEY_PACK B5.4 is SETTLED attenuates Likert associations",
+  "detail": "",
+  "ev": "no polychoric implementation exists in ml/, turbotab/ or utils/ and factor_analyzer is not installed; research/CLINICAL_SURVEY_PACK.md B5.4 is SETTLED that polychoric is appropriate and B5.5 specifies parallel analysis ON the polychoric matrix; turbotab/figure_specs._correlations returns method='Pearson' with the consequence stated",
+  "act": "",
+  "status": "OPEN",
+  "note": "NOT HIDDEN, WHICH IS B5.4's OWN REQUIREMENT: 'caption must state polychoric vs Pearson and the n used.' So the figures say Pearson and carry the direction of the bias - attenuated correlations understate loadings and reliability, and a parallel analysis on them retains FEWER factors than one on polychoric would, so the factor count is conservative rather than inflated. THE CONSEQUENCE IS THE USEFUL PART: a reader told the number is a lower bound can act on it; a reader told nothing cannot. WHAT BUILDING IT NEEDS: a polychoric estimator, plus the positive-definiteness check and minimum-trace smoothing B5.4 asks for when a pairwise matrix is not PD - the figure already reports the PD condition and declines to smooth silently.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "no polychoric implementation exists in ml/, turbotab/ or utils/ and factor_analyzer is not installed; research/CLINICAL_SURVEY_PACK.md B5.4 is SETTLED that polychoric is appropriate and B5.5 specifies parallel analysis ON the polychoric matrix; turbotab/figure_specs._correlations returns method='Pearson' with the consequence stated"
+ },
+ {
+  "id": "GUIDED-128",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The calibration plot named a companion that was never registered, so it could not be admitted by any project from L34 until L40",
+  "detail": "",
+  "ev": "turbotab/figure_specs.py CALIBRATION carried companions=('discrimination',) and no figure with that id was ever registered or declared pending; figures.bundle holds any CONFIRMATORY figure whose companion is absent, so every project that could otherwise draw it got it in `held` instead of `admitted`",
+  "act": "turbotab/figure_specs.py CALIBRATION.companions is ('roc',), and turbotab/test_eight_more_figures_reach_a_user.py::test_every_declared_companion_is_a_figure_that_exists asserts the class over the whole registry.",
+  "status": "FIXED",
+  "note": "GUIDED-058's CLASS AT THE COMPANION LAYER, and worse than the original: a companion is a hard admissibility requirement rather than a suggestion, so an unresolvable one does not degrade the figure, it REMOVES it. Six loops, silently. FOUND BY BUILDING THE THING IT WAS WAITING FOR - the ROC curve is the discrimination figure A4.4 specifies, and pointing the companion at it makes calibration admissible for the first time. THE CLASS IS FILED AS A GUARD rather than only fixed: test_every_declared_companion_is_a_figure_that_exists checks every registered figure's companions resolve, so the next one fails at import rather than in six loops.",
+  "verified_against": "",
+  "test": "turbotab/test_eight_more_figures_reach_a_user.py::test_every_declared_companion_is_a_figure_that_exists and ::test_calibration_is_admissible_now_that_the_roc_exists",
+  "verified_ev": "driven on leaky_sepsis.csv: before, admitted=['pca_scores','decision_curve','roc'] with calibration HELD; after, admitted includes calibration. The guard fails on any companion that is neither registered nor pending."
+ },
+ {
+  "id": "GUIDED-129",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "The calibration plot fails its own annotation_box checklist item: calibration_render does not produce all seven of intercept, slope, C-statistic, E:avg, E:max, n and events",
+  "detail": "",
+  "ev": "driven at L40 once GUIDED-128 made the figure admissible for the first time: turbotab/figure_bundle._calibration_payload returns a payload whose annotation set does not satisfy CALIBRATION's own annotation_box item, 4 of 5 items pass",
+  "act": "",
+  "status": "OPEN",
+  "note": "INVISIBLE FOR SIX LOOPS BECAUSE NOTHING EVER ADMITTED THE FIGURE. A checklist that never runs against a rendered payload is a specification, and GUIDED-128 kept this one from ever running. THE ITEM IS THE ONE THE PACK SINGLES OUT: A4.3 says the six-number box is what stops a reader taking a curve at 0.8 on three patients for a curve on three hundred. NOT FIXED THIS LOOP because the missing numbers come from ml/calibration's own return and adding them is a core change with a Classic consumer - the same shape as GUIDED-120 and GUIDED-124, and it wants the same ruling.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "driven at L40 once GUIDED-128 made the figure admissible for the first time: turbotab/figure_bundle._calibration_payload returns a payload whose annotation set does not satisfy CALIBRATION's own annotation_box item, 4 of 5 items pass"
  }
 ]

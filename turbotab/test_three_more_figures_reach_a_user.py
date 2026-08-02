@@ -121,6 +121,18 @@ NEEDS_MORE_THAN_AN_UPLOAD = {
     "prediction_instability": "needs a bootstrap resampling run (L38-B), "
                               "which is a job the user starts",
     "calibration_instability": "same, and classification only",
+    # L40-C. Four more that need a fit, and two more that need the resampling
+    # job on top of it. Each names what it waits for rather than being absent.
+    "decision_curve": "needs a fitted model's predicted risks, and a binary "
+                      "target — net benefit is defined for one predicted risk",
+    "roc": "needs a fitted model's predicted risks, and a binary target",
+    "forest": "needs a fitted model that exposes coefficients; a tree "
+              "ensemble has none, which is a different sentence from "
+              "'you have not trained yet'",
+    "classification_instability": "needs the resampling job, and a binary "
+                                  "target",
+    "decision_curve_instability": "needs the resampling job, and a binary "
+                                  "target",
 }
 
 
@@ -429,7 +441,13 @@ def test_guided_066_did_not_reproduce_on_any_of_the_three():
     # error and whether the scope is stated, none of which belongs to a
     # discipline. So they are excluded here by their gate being named, and the
     # claim below still holds.
-    state_gated = ("has_instability_run",)
+    # L40-C added four more state gates. `has_coefficients` is the one worth
+    # naming: a forest plot is about coefficients, so a project whose only
+    # fitted models are trees is not a project the figure DOES NOT APPLY to —
+    # it applies and cannot be drawn, which is why the gate is on the state
+    # rather than on the domain.
+    state_gated = ("has_instability_run", "has_predictions", "n_classes",
+                   "has_coefficients")
     domain_free = [
         spec.id for spec in figures.REGISTRY.values()
         if not any(key in spec.when_applicable.__code__.co_consts

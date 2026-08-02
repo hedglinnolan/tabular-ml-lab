@@ -253,7 +253,17 @@ CALIBRATION = register(FigureSpec(
         f"{_fmt(p.get('c_statistic'))}; E:avg {_fmt(p.get('e_avg'))}. The "
         f"histogram along the axis shows the distribution of predicted risks, "
         f"events above and non-events below. The axis is not truncated."),
-    companions=("discrimination",),
+    # **`roc`, AND UNTIL L40 THIS SAID `discrimination`** — an id that was
+    # never registered and never declared pending, so `calibration` could not
+    # be admitted by any project since it shipped at L34. `GUIDED-058`'s class
+    # at the companion layer: the figure was correct, tested and unreachable,
+    # and the thing it was waiting for did not exist until §A4.4 was built.
+    # `GUIDED-128` records it.
+    #
+    # It is a real requirement rather than a naming slip: calibration and
+    # discrimination are the two halves of *is this model any good*, and a
+    # calibration curve alone cannot say whether the model separates anyone.
+    companions=("roc",),
     evidence=CALIBRATION_EVIDENCE,
     # NOT PROMOTABLE, and the reason is the rule rather than the subject: a
     # calibration curve is a property of a model already fitted to these rows.
@@ -1905,3 +1915,1363 @@ KAPLAN_MEIER = register_pending(Pending(
         "median follow-up, because the median of observed follow-up times is "
         "biased by early events."),
     blocked_by="GUIDED-118"))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 10 · Decision curve analysis — CONFIRMATORY, and marked ★ by the pack
+#
+# `CLINICAL_SURVEY_PACK.md` §A4.5. The figure that answers the question the AUC
+# cannot: *would a clinician using this model be better off than treating
+# everyone or no one?*
+#
+# TWO SPEC POINTS THAT ARE NOT PRESENTATION.
+#
+# The threshold range comes from the CLINICAL DECISION, not from the data — a
+# cheap statin might be acted on at 5% risk and a biopsy at 20% — so the
+# default is stated in the caption and the user is asked to confirm it, which
+# is the pack's own instruction rather than a nicety.
+#
+# And **DCA presupposes calibration**: a miscalibrated model produces a
+# misleading decision curve. That is why `calibration` is a companion rather
+# than a suggestion, and it is the strongest use the companion rule has had.
+# ─────────────────────────────────────────────────────────────────────────────
+
+DCA_EVIDENCE = Evidence(
+    status=SETTLED,
+    source=("research/CLINICAL_SURVEY_PACK.md#A4.5 · ★ Decision curve analysis "
+            "— the clinical-utility figure"))
+
+DCA_CLAIMS = (
+    Claim(key="net_benefit_formula",
+          statement=("Net benefit at threshold p_t is (TP/n) − (FP/n) × "
+                     "(p_t/(1−p_t)), computed across a threshold range plus "
+                     "the treat-all and treat-none strategies."),
+          evidence=DCA_EVIDENCE),
+    Claim(key="threshold_range_is_clinical",
+          statement=("The threshold range is chosen from the clinical "
+                     "decision rather than from the data, and plotting net "
+                     "benefit across 0–100% is an anti-pattern because the "
+                     "curves are dominated by ranges no clinician would use."),
+          evidence=DCA_EVIDENCE),
+    Claim(key="presupposes_calibration",
+          statement=("A miscalibrated model produces a misleading decision "
+                     "curve, so the calibration plot must accompany it."),
+          evidence=DCA_EVIDENCE),
+)
+
+#: The default threshold range, **stated in the caption and confirmable**.
+#: `CLINICAL_SURVEY_PACK.md` §A4.5's own worked examples are the derivation
+#: rather than a round number: a cheap statin might be acted on at 5% risk and
+#: a biopsy at 20%, so a default has to bracket both and leave headroom above.
+#: The pack asks the tool to *"please confirm the default range brackets where
+#: reasonable clinicians would disagree"* — so this is a question the figure
+#: asks, not an answer it asserts.
+DCA_THRESHOLDS = (0.05, 0.35)
+
+
+def decision_curve_payload(y_true, risks: Dict[str, Any], *,
+                           low: float = DCA_THRESHOLDS[0],
+                           high: float = DCA_THRESHOLDS[1],
+                           n_points: int = 61) -> Dict[str, Any]:
+    """Net benefit across a threshold range, per model, plus both strategies.
+
+    `y_true` is 1 for the event. `risks` maps a model's display name to its
+    predicted risks on the same rows.
+    """
+    y = np.asarray(y_true, dtype=float)
+    n = int(len(y))
+    # ROUNDED ONCE, then used for both the arithmetic and the payload. The
+    # first version computed on the raw linspace and published a rounded copy,
+    # so a patient whose predicted risk was EXACTLY a threshold fell on
+    # different sides of it in the figure and in anything recomputing from the
+    # published grid — 0.3 >= 0.30000000000000004 is False. A boundary that
+    # depends on a float's representation is a boundary nobody can reproduce.
+    grid = np.round(np.linspace(float(low), float(high), int(n_points)), 6)
+    prevalence = float(y.mean()) if n else 0.0
+
+    def curve(predicted):
+        predicted = np.asarray(predicted, dtype=float)
+        out = []
+        for t in grid:
+            flagged = predicted >= t
+            tp = float(np.sum(flagged & (y == 1)))
+            fp = float(np.sum(flagged & (y == 0)))
+            # Vickers & Elkin 2006, verbatim from §A4.5.
+            out.append(float(tp / n - (fp / n) * (t / (1.0 - t))) if n else 0.0)
+        return out
+
+    models = {name: curve(values) for name, values in (risks or {}).items()}
+    # TREAT ALL flags everyone, so TP/n is the prevalence and FP/n is its
+    # complement. TREAT NONE is zero everywhere by construction.
+    treat_all = [float(prevalence - (1.0 - prevalence) * (t / (1.0 - t)))
+                 for t in grid]
+    lowest = min([min(v) for v in models.values()] + [min(treat_all)] + [0.0])
+    return {
+        "figure": "decision_curve",
+        "n": n,
+        "events": int(y.sum()),
+        "prevalence": round(prevalence, 4),
+        "thresholds": [float(t) for t in grid],
+        "models": {k: [round(v, 6) for v in vals] for k, vals in models.items()},
+        "treat_all": [round(v, 6) for v in treat_all],
+        "treat_none": [0.0 for _ in grid],
+        "threshold_range": [float(low), float(high)],
+        "range_is_default": (float(low), float(high)) == DCA_THRESHOLDS,
+        # §A4.5: y lower bound around −0.05 rather than 0, so the reader can
+        # SEE curves going negative. A panel clipped at zero hides the finding
+        # the figure most often produces.
+        "y_range_drawn": [min(-0.05, round(lowest - 0.01, 4)), None],
+        "y_lower_bound": min(-0.05, round(lowest - 0.01, 4)),
+        "risk_rug": [round(float(v), 4)
+                     for values in (risks or {}).values() for v in
+                     np.asarray(values, dtype=float)[:200]],
+        "styles": {"treat_none": {"width": "thick"},
+                   "treat_all": {"width": "thin"}},
+        "shaded_range": [float(low), float(high)],
+    }
+
+
+DECISION_CURVE = register(FigureSpec(
+    id="decision_curve",
+    title="Decision curve analysis",
+    tier=CONFIRMATORY,
+    when_applicable=lambda s: (
+        s.get("task_type") == "classification" and bool(s.get("has_predictions"))
+        and int(s.get("n_classes") or 2) == 2),
+    layers=("treat_none", "treat_all", "model_curves", "shaded_range",
+            "risk_rug"),
+    annotations=(
+        Annotation("prevalence", "Event prevalence", "turbotab.figure_specs"),
+        Annotation("n", "n", "turbotab.figure_specs"),
+        Annotation("events", "events", "turbotab.figure_specs"),
+        Annotation("threshold_range", "Threshold range", "turbotab.figure_specs"),
+    ),
+    checklist=(
+        ChecklistItem(
+            "both_strategies",
+            "Treat-none and treat-all are both drawn",
+            "Net benefit means nothing on its own. The whole content of the "
+            "figure is whether the model's curve is above both defaults, and a "
+            "panel with only model curves cannot show it.",
+            lambda p: (p.get("treat_none") is not None
+                       and bool(p.get("treat_all")))),
+        ChecklistItem(
+            "clinical_threshold_range",
+            "The threshold range is clinical, stated, and not 0–100%",
+            "Plotting across 0–100% lets the curves be dominated by ranges no "
+            "clinician would use, and reading off a maximum there is the "
+            "anti-pattern §A4.5 names.",
+            lambda p: (p.get("threshold_range", [0, 1])[1] <= 0.9
+                       and p.get("threshold_range", [0, 1])[0] >= 0.001)),
+        ChecklistItem(
+            "negative_visible",
+            "The y-axis extends below zero",
+            "A model that goes negative is worse than treating nobody, which "
+            "is the most useful negative finding this figure produces. An axis "
+            "clipped at zero hides it.",
+            lambda p: float(p.get("y_lower_bound", 0)) <= -0.05),
+        ChecklistItem(
+            "risk_distribution",
+            "The distribution of predicted risks is shown",
+            "A curve over a threshold range where almost no patient's "
+            "predicted risk falls is a curve about nobody.",
+            lambda p: bool(p.get("risk_rug"))),
+        ChecklistItem(
+            "strategies_distinguishable",
+            "Treat-none is thick and treat-all is thin",
+            "§A4.5's own presentation instruction. Three indistinguishable "
+            "lines is a figure a reader has to decode rather than read.",
+            lambda p: (p.get("styles", {}).get("treat_none", {}).get("width")
+                       == "thick")),
+    ),
+    caption=lambda p: (
+        f"Decision curve analysis over {p.get('n', 0):,} observations with "
+        f"{p.get('events', 0):,} events (prevalence "
+        f"{p.get('prevalence', 0):.1%}). Net benefit is "
+        f"(TP/n) − (FP/n) × (p/(1−p)) at each threshold probability p "
+        f"(Vickers and Elkin 2006). The thick line is treat none and the thin "
+        f"line is treat all; a model is worth using only where its curve is "
+        f"above both. The y-axis extends to "
+        f"{p.get('y_lower_bound', -0.05):.2f} so curves falling below treat "
+        f"none are visible. Thresholds run from "
+        f"{p.get('threshold_range', [0, 0])[0]:.0%} to "
+        f"{p.get('threshold_range', [0, 0])[1]:.0%}"
+        + (" — this is the app's default, chosen to bracket a cheap "
+           "intervention acted on at about 5% risk and an invasive one at "
+           "about 20%. Confirm it brackets where reasonable clinicians "
+           "treating your condition would disagree; the range should come "
+           "from the decision, not from the data."
+           if p.get("range_is_default") else " — a range you set.")),
+    # THE COMPANION RULE'S STRONGEST USE. §A4.5: a miscalibrated model produces
+    # a misleading decision curve, so DCA presupposes calibration. Without the
+    # calibration plot beside it this figure is inadmissible, not caveated.
+    companions=("calibration",),
+    evidence=DCA_EVIDENCE,
+    claims=DCA_CLAIMS,
+    promotable=False,
+    promotable_because="",
+    compute=decision_curve_payload,
+))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 11 · ROC curve — CONFIRMATORY, and deliberately not the headline
+#
+# `CLINICAL_SURVEY_PACK.md` §A4.4. The easiest of the four and last for that
+# reason, and the pack is explicit that its rank is below calibration:
+#
+# > *"An ROC curve is a conventional figure but a low-information one. If space
+# > is tight, a calibration plot and a decision curve are worth more."*
+#
+# So its companions are BOTH of them. That is not ceremony: the C-statistic
+# says nothing about whether the predicted risks are correct and nothing about
+# whether using the model helps anyone, and a paper that showed only this one
+# would be making a claim the figure cannot support.
+# ─────────────────────────────────────────────────────────────────────────────
+
+ROC_EVIDENCE = Evidence(
+    status=SETTLED,
+    source="research/CLINICAL_SURVEY_PACK.md#A4.4 · ROC curve")
+
+ROC_CLAIMS = (
+    Claim(key="discrimination_only",
+          statement=("The C-statistic measures discrimination only — the "
+                     "probability that a randomly chosen patient with the "
+                     "event has a higher predicted risk than one without. It "
+                     "says nothing about whether the predicted risks are "
+                     "correct."),
+          evidence=ROC_EVIDENCE),
+    Claim(key="ranked_below_calibration",
+          statement=("An ROC curve is conventional but low-information; a "
+                     "calibration plot and a decision curve are worth more."),
+          evidence=Evidence(
+              status=CONVENTION_STATUS,
+              source="research/CLINICAL_SURVEY_PACK.md#A4.4 · ROC curve")),
+    Claim(key="threshold_metrics_are_anti_patterns",
+          statement=("Accuracy, F1 or a single confusion matrix at threshold "
+                     "0.5 are inappropriate for a clinical risk model: 0.5 is "
+                     "arbitrary and almost never the clinically relevant "
+                     "threshold, and accuracy is dominated by prevalence."),
+          evidence=ROC_EVIDENCE),
+)
+
+
+def roc_payload(y_true, risks: Dict[str, Any]) -> Dict[str, Any]:
+    """One curve per model, overlaid, with the C-statistic and its interval.
+
+    The interval is a bootstrap percentile rather than DeLong — §A4.4 accepts
+    either and names both — and `n_boot` is stated in the caption for the same
+    reason `B` is on the instability plots.
+    """
+    from sklearn.metrics import roc_auc_score, roc_curve
+
+    y = np.asarray(y_true, dtype=float)
+    rng = np.random.default_rng(42)
+    n_boot = 200
+    curves = {}
+    for name, values in (risks or {}).items():
+        predicted = np.asarray(values, dtype=float)
+        fpr, tpr, _ = roc_curve(y, predicted)
+        try:
+            auc = float(roc_auc_score(y, predicted))
+        except ValueError:
+            continue
+        draws = []
+        for _ in range(n_boot):
+            idx = rng.integers(0, len(y), size=len(y))
+            if len(np.unique(y[idx])) < 2:
+                continue
+            draws.append(float(roc_auc_score(y[idx], predicted[idx])))
+        interval = ([round(float(np.percentile(draws, 2.5)), 4),
+                     round(float(np.percentile(draws, 97.5)), 4)]
+                    if len(draws) >= 20 else None)
+        curves[name] = {
+            "sensitivity": [round(float(v), 5) for v in tpr],
+            "one_minus_specificity": [round(float(v), 5) for v in fpr],
+            "c_statistic": round(auc, 4),
+            # `None` rather than a point estimate dressed as an interval where
+            # too few bootstrap draws had both classes.
+            "c_interval": interval,
+        }
+    return {
+        "figure": "roc",
+        "n": int(len(y)),
+        "events": int(y.sum()),
+        "n_boot": n_boot,
+        "curves": curves,
+        "chance_line": {"kind": "diagonal", "label": "chance"},
+        "aspect": "square",
+        # §A4.4: the clinical convention, not TPR/FPR.
+        "axis_labels": {"y": "Sensitivity", "x": "1 − Specificity"},
+        "legend": "inside",
+        "annotation_corner": "lower-right",
+    }
+
+
+ROC = register(FigureSpec(
+    id="roc",
+    title="ROC curve",
+    tier=CONFIRMATORY,
+    when_applicable=lambda s: (
+        s.get("task_type") == "classification" and bool(s.get("has_predictions"))
+        and int(s.get("n_classes") or 2) == 2),
+    layers=("chance_line", "model_curves", "annotation_box"),
+    annotations=(
+        Annotation("c_statistic", "C-statistic (95% CI)", "turbotab.figure_specs"),
+        Annotation("n", "n", "turbotab.figure_specs"),
+        Annotation("events", "events", "turbotab.figure_specs"),
+    ),
+    checklist=(
+        ChecklistItem(
+            "chance_line",
+            "The diagonal chance line is drawn",
+            "Every point on the curve is read as a distance from it.",
+            lambda p: p.get("chance_line", {}).get("kind") == "diagonal"),
+        ChecklistItem(
+            "clinical_axis_labels",
+            "Axes are labeled Sensitivity and 1 − Specificity",
+            "The clinical convention. TPR and FPR are the same numbers under "
+            "names the readership of a clinical paper does not use.",
+            lambda p: (p.get("axis_labels", {}).get("y") == "Sensitivity"
+                       and "Specificity" in p.get("axis_labels", {}).get("x", ""))),
+        ChecklistItem(
+            "c_statistic_with_interval",
+            "The C-statistic is annotated with an interval",
+            "A point estimate of discrimination hides how much it depends on "
+            "the patients sampled, which is §A4.8's whole subject one figure "
+            "over.",
+            lambda p: all(c.get("c_interval") for c in
+                          (p.get("curves") or {}).values())),
+        ChecklistItem(
+            "square_aspect",
+            "Square aspect ratio",
+            "Sensitivity and 1 − specificity share a scale; a non-square "
+            "panel distorts the area the figure is named for.",
+            lambda p: p.get("aspect") == "square"),
+        ChecklistItem(
+            "models_overlaid",
+            "Models are overlaid with a legend, not split into panels",
+            "§A4.4's presentation instruction: separate panels make the "
+            "comparison the figure exists for into an act of memory.",
+            lambda p: p.get("legend") == "inside"),
+    ),
+    caption=lambda p: (
+        f"Discrimination for "
+        f"{len(p.get('curves') or {})} model(s) on {p.get('n', 0):,} "
+        f"observations with {p.get('events', 0):,} events. "
+        + "; ".join(
+            f"{name}: C-statistic {c['c_statistic']:.3f}"
+            + (f" (95% CI {c['c_interval'][0]:.3f}–{c['c_interval'][1]:.3f}, "
+               f"{p.get('n_boot', 0):,} bootstrap draws)"
+               if c.get("c_interval") else " (interval not estimable)")
+            for name, c in (p.get("curves") or {}).items())
+        + ". The diagonal is chance. The C-statistic measures discrimination "
+          "only — the probability that a randomly chosen patient with the "
+          "event has a higher predicted risk than one without — and says "
+          "nothing about whether the predicted risks are correct or whether "
+          "using the model helps anyone. The calibration plot and the decision "
+          "curve beside it carry those two claims."),
+    # BOTH, and §A4.4 is the reason: this figure is ranked below them, so it
+    # may not appear as the headline with neither.
+    companions=("calibration", "decision_curve"),
+    evidence=ROC_EVIDENCE,
+    claims=ROC_CLAIMS,
+    promotable=False,
+    promotable_because="",
+    compute=roc_payload,
+))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 12 · Forest plot — CONFIRMATORY, and the warning is the figure
+#
+# `CLINICAL_SURVEY_PACK.md` §A4.7 opens with *"⚠ The critical warning most
+# tools omit"*, and the warning is not a caveat on the figure — it decides what
+# the figure is CALLED:
+#
+# > *"These are the model's coefficients, not causal effects… TurboTab labels
+# > this figure 'model coefficients,' not 'risk factors,' and recommends you
+# > avoid causal language in the accompanying text."* **[SETTLED]**
+#
+# Two presentation rules here are correctness rather than taste. **A log-scale
+# x-axis for ratio measures is non-negotiable** — on a linear axis OR 0.5 and
+# OR 2.0 look asymmetric when they are equal and opposite. And ordering is
+# **meaningful, not by significance**, because ordering by p-value is a ranking
+# the reader will read as importance.
+# ─────────────────────────────────────────────────────────────────────────────
+
+FOREST_EVIDENCE = Evidence(
+    status=SETTLED,
+    source="research/CLINICAL_SURVEY_PACK.md#A4.7 · Forest plot")
+
+FOREST_CLAIMS = (
+    Claim(key="coefficients_not_risk_factors",
+          statement=("These are the model's coefficients, not causal effects: "
+                     "a coefficient reflects association with the outcome "
+                     "conditional on the other predictors, including "
+                     "mediators, proxies and colliders, so reversed signs are "
+                     "usually conditioning artifacts rather than paradoxes."),
+          evidence=FOREST_EVIDENCE),
+    Claim(key="log_axis_non_negotiable",
+          statement=("A log-scale x-axis for ratio measures is "
+                     "non-negotiable; a linear axis makes OR 0.5 and OR 2.0 "
+                     "look asymmetric when they are equal and opposite."),
+          evidence=FOREST_EVIDENCE),
+    Claim(key="comparable_scale",
+          statement=("Put continuous predictors on a comparable scale — per "
+                     "SD, or per clinically meaningful unit — before plotting "
+                     "them together, and state which. Mixing per year of age "
+                     "with per mmol/L invites false visual comparison."),
+          evidence=Evidence(
+              status=CONVENTION_STATUS,
+              source="research/CLINICAL_SURVEY_PACK.md#A4.7 · Forest plot")),
+)
+
+
+def forest_payload(coefficients: List[Dict[str, Any]], *,
+                   ratio_measure: bool = True,
+                   scale: str = "per standard deviation") -> Dict[str, Any]:
+    """One row per model coefficient, with the scale it is on stated.
+
+    `coefficients` carries `name`, `estimate`, `low`, `high`, and optionally
+    `reference` for a categorical reference level — which is rendered as a row
+    with NO estimate rather than omitted, because a reader who cannot see the
+    reference cannot interpret the contrast.
+    """
+    rows = []
+    for entry in coefficients or []:
+        estimate = entry.get("estimate")
+        low, high = entry.get("low"), entry.get("high")
+        width = (None if low is None or high is None
+                 else abs(float(high) - float(low)))
+        rows.append({
+            "name": str(entry.get("name") or ""),
+            "estimate": None if estimate is None else round(float(estimate), 4),
+            "low": None if low is None else round(float(low), 4),
+            "high": None if high is None else round(float(high), 4),
+            "is_reference": bool(entry.get("reference")),
+            "group": str(entry.get("group") or ""),
+            # POINT SIZE PROPORTIONAL TO PRECISION, per §A4.7. Precision is
+            # 1/width, so a wide interval draws a small point.
+            "precision": None if not width else round(1.0 / width, 4),
+        })
+    finite = [r for r in rows if r["estimate"] is not None]
+    return {
+        "figure": "forest",
+        # THE LABEL IS THE SPEC. §A4.7 names it, so it is data rather than a
+        # string the renderer chooses.
+        "title": "Model coefficients",
+        "not_titled": "Risk factors",
+        "rows": rows,
+        "n_rows": len(rows),
+        "ratio_measure": bool(ratio_measure),
+        "x_scale": "log" if ratio_measure else "linear",
+        "reference_line": 1.0 if ratio_measure else 0.0,
+        "scale_stated": str(scale),
+        # ORDERED BY THE ORDER GIVEN, never re-sorted by estimate or by
+        # significance — the caller groups by domain and this preserves it.
+        "ordering": "as supplied, grouped by domain",
+        "sorted_by_significance": False,
+        "numeric_column": [
+            {"name": r["name"],
+             "text": ("reference" if r["is_reference"] else
+                      f"{r['estimate']:.2f} ({r['low']:.2f}–{r['high']:.2f})"
+                      if r["low"] is not None else f"{r['estimate']:.2f}")}
+            for r in rows],
+        "n_reference_rows": sum(1 for r in rows if r["is_reference"]),
+        "x_range_observed": ([min(r["low"] or r["estimate"] for r in finite),
+                              max(r["high"] or r["estimate"] for r in finite)]
+                             if finite else [0, 0]),
+    }
+
+
+FOREST = register(FigureSpec(
+    id="forest",
+    title="Model coefficients",
+    tier=CONFIRMATORY,
+    when_applicable=lambda s: bool(s.get("has_coefficients")),
+    layers=("reference_line", "estimates", "intervals", "numeric_column"),
+    annotations=(
+        Annotation("scale_stated", "Scale", "turbotab.figure_specs"),
+        Annotation("n_rows", "Coefficients", "turbotab.figure_specs"),
+    ),
+    checklist=(
+        ChecklistItem(
+            "log_axis_for_ratios",
+            "Log-scale x-axis for ratio measures — non-negotiable",
+            "On a linear axis an odds ratio of 0.5 and one of 2.0 look "
+            "asymmetric when they are equal and opposite, so the reader sees "
+            "a difference in magnitude that is not there.",
+            lambda p: (not p.get("ratio_measure")
+                       or p.get("x_scale") == "log")),
+        ChecklistItem(
+            "labeled_coefficients",
+            "The figure is labeled 'model coefficients', not 'risk factors'",
+            "A coefficient is an association conditional on the other "
+            "predictors — including mediators, proxies and colliders — and "
+            "the conflation with causal effects is endemic in the applied "
+            "literature. §A4.7 names this the critical warning most tools "
+            "omit.",
+            lambda p: (p.get("title") == "Model coefficients"
+                       and p.get("not_titled") == "Risk factors")),
+        ChecklistItem(
+            "reference_line",
+            "A vertical reference line at the null",
+            "Every interval is read as whether it crosses it.",
+            lambda p: p.get("reference_line") is not None),
+        ChecklistItem(
+            "scale_stated",
+            "The scale the continuous predictors are on is stated",
+            "A plot mixing per year of age with per mmol/L of creatinine "
+            "invites a visual comparison that means nothing.",
+            lambda p: bool(p.get("scale_stated"))),
+        ChecklistItem(
+            "not_ordered_by_significance",
+            "Rows are ordered meaningfully, not by significance",
+            "Ordering by p-value is a ranking, and a reader will read a "
+            "ranking as importance.",
+            lambda p: p.get("sorted_by_significance") is False),
+        ChecklistItem(
+            "numeric_column",
+            "The estimate and interval are printed beside each row",
+            "Reading a value off a log axis is an estimate of an estimate.",
+            lambda p: len(p.get("numeric_column") or []) == p.get("n_rows", -1)),
+    ),
+    caption=lambda p: (
+        f"Model coefficients for {p.get('n_rows', 0):,} predictors, "
+        f"{p.get('scale_stated', '')}, on a "
+        f"{p.get('x_scale', 'linear')}-scale axis with a reference line at "
+        f"{p.get('reference_line', 1)}. "
+        + (f"{p.get('n_reference_rows', 0):,} categorical reference level(s) "
+           f"are shown as rows without an estimate. "
+           if p.get("n_reference_rows") else "")
+        + "Rows are ordered by domain rather than by significance. **These are "
+          "the model's coefficients, not causal effects**: each reflects an "
+          "association with the outcome conditional on the other predictors, "
+          "including any mediators, proxies and colliders among them. "
+          "Reversed signs are common and are usually conditioning artifacts "
+          "rather than paradoxes; avoid causal language when describing them."),
+    companions=(),
+    evidence=FOREST_EVIDENCE,
+    claims=FOREST_CLAIMS,
+    promotable=False,
+    promotable_because="",
+    compute=forest_payload,
+))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 13 · Classification instability — CONFIRMATORY
+# 14 · Decision-curve instability — CONFIRMATORY
+#
+# `CLINICAL_SURVEY_PACK.md` §A4.8 names four instability plots and L38 built
+# two, deferring these because *the decision curve did not exist*. After §A4.5
+# it does. Both read `turbotab.instability.run`'s output, so B and the sampling
+# scheme travel with them exactly as they do on the first pair.
+#
+# THE THING CLASSIFICATION INSTABILITY SHOWS THAT PREDICTION INSTABILITY DOES
+# NOT. A patient whose predicted risk moves from 0.18 to 0.22 has barely moved
+# on the scatter, and has crossed a 20% treatment threshold. Spread in a
+# continuous prediction and spread in the DECISION taken from it are different
+# quantities, and the second is the one a clinician acts on.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def classification_instability_payload(result: Dict[str, Any], *,
+                                       threshold: float = 0.2
+                                       ) -> Dict[str, Any]:
+    """How often each row's CLASSIFICATION flips across the resamples.
+
+    `threshold` defaults to 20%, which is §A4.5's own worked example of an
+    invasive intervention and is stated in the caption rather than assumed —
+    the decision threshold is a clinical fact and the app does not hold it.
+    """
+    if result.get("task_type") != "classification":
+        return {"figure": "classification_instability", "applicable": False,
+                "because": ("A classification flips only where there is a "
+                            "classification to flip. A regression model "
+                            "predicts a value, and the threshold that would "
+                            "turn it into a decision is not one the app "
+                            "holds.")}
+
+    matrix = np.asarray(result["bootstrap"], dtype=float)
+    original = np.asarray(result["original"], dtype=float)
+    flagged = matrix >= float(threshold)
+    original_flagged = original >= float(threshold)
+    # PER ROW: the share of resamples that disagree with the original model's
+    # decision about this patient.
+    flip_rate = np.mean(flagged != original_flagged[None, :], axis=0)
+    order = np.argsort(-flip_rate)
+    return {
+        "figure": "classification_instability",
+        "applicable": True,
+        "model_name": result.get("model_name", "the model"),
+        "n": result.get("n", 0),
+        "b_completed": result.get("b_completed", 0),
+        "b_recommended": result.get("b_recommended", 1000),
+        "threshold": float(threshold),
+        "threshold_is_default": float(threshold) == 0.2,
+        "flip_rate": [round(float(v), 4) for v in flip_rate],
+        "row_labels": list(result.get("row_labels") or []),
+        "median_flip_rate": round(float(np.median(flip_rate)), 4),
+        "n_rows_flipping_often": int(np.sum(flip_rate >= 0.25)),
+        "worst_row_label": (result.get("row_labels") or [None])[int(order[0])]
+        if len(order) else None,
+        "worst_flip_rate": round(float(flip_rate[order[0]]), 4) if len(order) else None,
+        "sampling": result.get("sampling") or {},
+        "scored_on": result.get("scored_on", ""),
+    }
+
+
+def decision_curve_instability_payload(result: Dict[str, Any], y_true,
+                                       *, low: float = DCA_THRESHOLDS[0],
+                                       high: float = DCA_THRESHOLDS[1]
+                                       ) -> Dict[str, Any]:
+    """Every bootstrap model's decision curve, overlaid on the original's.
+
+    Reuses `decision_curve_payload` per resample rather than recomputing net
+    benefit here — one formula, in one place, so the grey curves and the bold
+    one cannot come from two arithmetics.
+    """
+    if result.get("task_type") != "classification":
+        return {"figure": "decision_curve_instability", "applicable": False,
+                "because": ("Net benefit is defined for a decision taken from "
+                            "a predicted risk, and a regression model predicts "
+                            "a value.")}
+
+    matrix = np.asarray(result["bootstrap"], dtype=float)
+    original = np.asarray(result["original"], dtype=float)
+    name = result.get("model_name", "the model")
+    curves = [decision_curve_payload(y_true, {name: matrix[i]},
+                                     low=low, high=high)["models"][name]
+              for i in range(matrix.shape[0])]
+    base = decision_curve_payload(y_true, {name: original}, low=low, high=high)
+    return {
+        "figure": "decision_curve_instability",
+        "applicable": True,
+        "model_name": name,
+        "n": result.get("n", 0),
+        "b_completed": result.get("b_completed", 0),
+        "b_recommended": result.get("b_recommended", 1000),
+        "thresholds": base["thresholds"],
+        "curves": curves,
+        "original_curve": base["models"][name],
+        "treat_all": base["treat_all"],
+        "treat_none": base["treat_none"],
+        "threshold_range": [float(low), float(high)],
+        "y_lower_bound": base["y_lower_bound"],
+        "bootstrap_style": {"color": "grey", "width": "thin", "alpha": 0.08},
+        "original_style": {"color": "ink", "width": "bold"},
+        "styles": base["styles"],
+        "sampling": result.get("sampling") or {},
+        "scored_on": result.get("scored_on", ""),
+    }
+
+
+CLASSIFICATION_INSTABILITY = register(FigureSpec(
+    id="classification_instability",
+    title="Classification instability plot",
+    tier=CONFIRMATORY,
+    when_applicable=lambda s: (
+        s.get("task_type") == "classification"
+        and bool(s.get("has_instability_run"))
+        and int(s.get("n_classes") or 2) == 2),
+    layers=("flip_rate_histogram", "threshold_marker"),
+    annotations=(
+        Annotation("b_completed", "Bootstrap resamples (B)", "turbotab.instability"),
+        Annotation("threshold", "Decision threshold", "turbotab.figure_specs"),
+        Annotation("median_flip_rate", "Median flip rate", "turbotab.figure_specs"),
+        Annotation("n", "n", "turbotab.instability"),
+    ),
+    checklist=(
+        ChecklistItem(
+            "threshold_stated",
+            "The decision threshold is stated on the figure",
+            "A flip rate is a flip rate ACROSS a threshold; without it the "
+            "number has no referent, and the threshold is a clinical fact the "
+            "app does not hold.",
+            lambda p: p.get("threshold") is not None),
+        ChecklistItem(
+            "b_stated",
+            "The number of bootstrap resamples is stated",
+            "A flip rate over 6 refits and one over 200 are different claims.",
+            lambda p: bool(p.get("b_completed"))),
+        ChecklistItem(
+            "sampling_scheme_stated",
+            "Whether rows or whole groups were resampled is stated",
+            "Same reason as the prediction instability plot: a row bootstrap "
+            "on a grouped table understates every spread on this figure too.",
+            lambda p: bool(p.get("sampling", {}).get("sentence"))),
+        ChecklistItem(
+            "scope_stated",
+            "Which rows were resampled and predicted is stated",
+            "A flip rate computed over resampled held-out rows would look "
+            "identical and would have dissolved the seal.",
+            lambda p: "held-out" in str(p.get("scored_on", ""))),
+    ),
+    caption=lambda p: (
+        (f"Classification instability for {p.get('model_name', 'the model')} "
+         f"at a decision threshold of {p.get('threshold', 0):.0%}: for each of "
+         f"{p.get('n', 0):,} rows, the share of {p.get('b_completed', 0):,} "
+         f"bootstrap refits that would have classified that row differently "
+         f"from the original model. The median row flips in "
+         f"{p.get('median_flip_rate', 0):.0%} of refits and "
+         f"{p.get('n_rows_flipping_often', 0):,} row(s) flip in at least a "
+         f"quarter of them. A patient whose predicted risk moves from 0.18 to "
+         f"0.22 has barely moved on the prediction instability plot and has "
+         f"crossed this threshold, which is what this figure shows and that "
+         f"one cannot. "
+         + ("The threshold is the app's default — §A4.5's worked example of "
+            "an invasive intervention — and should be set from your clinical "
+            "decision. " if p.get("threshold_is_default") else "")
+         + f"{p.get('scored_on', '')}. "
+         + str(p.get("sampling", {}).get("sentence", "")))
+        if p.get("applicable", True) else str(p.get("because", ""))),
+    companions=("prediction_instability",),
+    evidence=INSTABILITY_EVIDENCE,
+    claims=INSTABILITY_CLAIMS,
+    promotable=False,
+    promotable_because="",
+    compute=classification_instability_payload,
+))
+
+
+DECISION_CURVE_INSTABILITY = register(FigureSpec(
+    id="decision_curve_instability",
+    title="Decision-curve instability plot",
+    tier=CONFIRMATORY,
+    when_applicable=lambda s: (
+        s.get("task_type") == "classification"
+        and bool(s.get("has_instability_run"))
+        and int(s.get("n_classes") or 2) == 2),
+    layers=("treat_none", "treat_all", "bootstrap_curves", "original_curve"),
+    annotations=(
+        Annotation("b_completed", "Bootstrap resamples (B)", "turbotab.instability"),
+        Annotation("n", "n", "turbotab.instability"),
+        Annotation("threshold_range", "Threshold range", "turbotab.figure_specs"),
+    ),
+    checklist=(
+        ChecklistItem(
+            "both_strategies",
+            "Treat-none and treat-all are both drawn",
+            "The question is whether the model's curve stays above both "
+            "across the resamples, and it cannot be read without them.",
+            lambda p: (p.get("treat_none") is not None
+                       and bool(p.get("treat_all")))),
+        ChecklistItem(
+            "original_distinguishable",
+            "The original model's curve is bold over the grey ones",
+            "Without the distinction the figure shows spread and hides what "
+            "the spread is around.",
+            lambda p: (p.get("original_style", {}).get("width") == "bold"
+                       and p.get("bootstrap_style", {}).get("width") == "thin")),
+        ChecklistItem(
+            "negative_visible",
+            "The y-axis extends below zero",
+            "The finding this figure most often produces is that SOME "
+            "resamples put the model below treat-none, and an axis clipped at "
+            "zero hides exactly those.",
+            lambda p: float(p.get("y_lower_bound", 0)) <= -0.05),
+        ChecklistItem(
+            "b_stated",
+            "The number of bootstrap resamples is stated",
+            "The density of the grey band is a function of B.",
+            lambda p: bool(p.get("b_completed"))),
+        ChecklistItem(
+            "sampling_scheme_stated",
+            "Whether rows or whole groups were resampled is stated",
+            "A row bootstrap on a grouped table narrows this band too.",
+            lambda p: bool(p.get("sampling", {}).get("sentence"))),
+    ),
+    caption=lambda p: (
+        (f"Decision-curve instability for "
+         f"{p.get('model_name', 'the model')}: {p.get('b_completed', 0):,} "
+         f"decision curves, one per bootstrap refit of the entire pipeline, "
+         f"over {p.get('n', 0):,} rows and thresholds from "
+         f"{p.get('threshold_range', [0, 0])[0]:.0%} to "
+         f"{p.get('threshold_range', [0, 0])[1]:.0%}. Thin grey curves are the "
+         f"bootstrap models and the bold curve is the original; the thick "
+         f"horizontal line is treat none and the thin line is treat all. "
+         f"Where the grey band crosses below them, a different sample would "
+         f"have produced a model with no demonstrated clinical value. B = "
+         f"{p.get('b_completed', 0):,}; Riley and Collins recommend on the "
+         f"order of {p.get('b_recommended', 1000):,}. "
+         f"{p.get('scored_on', '')}. "
+         + str(p.get("sampling", {}).get("sentence", "")))
+        if p.get("applicable", True) else str(p.get("because", ""))),
+    companions=("decision_curve",),
+    evidence=INSTABILITY_EVIDENCE,
+    claims=INSTABILITY_CLAIMS,
+    promotable=False,
+    promotable_because="",
+    compute=decision_curve_instability_payload,
+))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 15–18 · The survey four
+#
+# `CLINICAL_SURVEY_PACK.md` §B5.2–§B5.5. The diverging stacked bar shipped at
+# L34 and proved the shape, so these are fill-out — with one exception that is
+# not.
+#
+# **POLYCHORIC CORRELATIONS ARE NOT AVAILABLE IN THIS REPOSITORY.** §B5.4 is
+# SETTLED that they are the appropriate choice for Likert items and that
+# Pearson attenuates the associations, and §B5.5 specifies parallel analysis
+# ON the polychoric matrix. Nothing here computes one and no dependency ships
+# one. So these figures use Pearson and **say Pearson in the caption**, which
+# is §B5.4's own requirement — *caption must state polychoric vs Pearson* —
+# rather than a workaround, and the consequence travels with it: attenuated
+# correlations understate loadings and reliability, and a parallel analysis
+# run on them retains FEWER factors than one run on polychoric would. Filed as
+# `GUIDED-127`.
+#
+# CFA fit indices are absent entirely rather than approximated. §B5.5 wants
+# CFI, TLI, RMSEA with its CI and SRMR reported as VALUES and explicitly not
+# as PASS/FAIL, and this repository has no CFA. Reporting four numbers nobody
+# computed would be worse than reporting none.
+# ─────────────────────────────────────────────────────────────────────────────
+
+SURVEY_STRUCTURE_EVIDENCE = Evidence(
+    status=SETTLED,
+    source=("research/CLINICAL_SURVEY_PACK.md#B5.5 · Scree plot, parallel "
+            "analysis, and factor loadings"))
+
+CORRELATION_EVIDENCE = Evidence(
+    status=SETTLED,
+    source="research/CLINICAL_SURVEY_PACK.md#B5.4 · Inter-item correlation matrix")
+
+FLOOR_CEILING_EVIDENCE = Evidence(
+    status=CONVENTION_STATUS,
+    source="research/CLINICAL_SURVEY_PACK.md#B5.3 · Floor and ceiling effects")
+
+ITEM_PANEL_EVIDENCE = Evidence(
+    status=CONVENTION_STATUS,
+    source="research/CLINICAL_SURVEY_PACK.md#B5.2 · Item-response distribution panel")
+
+#: **Terwee et al. 2007's 15%**, and §B5.3 is explicit that it is *a widely
+#: adopted CONVENTION, not an empirically derived constant — say so.* So the
+#: caption says so, which is why this is a named constant rather than a
+#: comparison inlined where nobody can find it.
+FLOOR_CEILING_THRESHOLD = 0.15
+
+#: The loading below which a value is suppressed for readability. §B5.5:
+#: *"If loadings below a threshold are suppressed, state the threshold in the
+#: caption and provide the unsuppressed matrix in the supplement"* — the
+#: transparency is the important part, and silently hiding cross-loadings is a
+#: documented way factor structures look cleaner than they are. CONVENTION at
+#: 0.30–0.40; this is the lower end, which suppresses less.
+LOADING_SUPPRESSION = 0.30
+
+
+def _correlations(frame: pd.DataFrame) -> Dict[str, Any]:
+    """The item correlation matrix, and WHICH KIND it is.
+
+    Pearson, because nothing in this repository computes polychoric — stated
+    here so every consumer carries the same sentence rather than composing its
+    own. See the block comment above and `GUIDED-127`.
+    """
+    matrix = frame.corr(method="pearson")
+    values = matrix.to_numpy(dtype=float)
+    eigenvalues = np.sort(np.linalg.eigvalsh(np.nan_to_num(values, nan=0.0)))[::-1]
+    return {
+        "columns": [str(c) for c in matrix.columns],
+        "matrix": [[None if pd.isna(v) else round(float(v), 4) for v in row]
+                   for row in values],
+        "eigenvalues": [round(float(v), 5) for v in eigenvalues],
+        "method": "Pearson",
+        "method_specified": "polychoric",
+        "method_note": (
+            "Computed with Pearson correlations. The field's recommendation "
+            "for Likert items is polychoric, which this app cannot compute; "
+            "Pearson attenuates the associations, so the loadings and "
+            "reliability below are understated rather than overstated, and a "
+            "parallel analysis on this matrix retains fewer factors than one "
+            "on a polychoric matrix would."),
+        "positive_definite": bool(np.all(eigenvalues > -1e-9)),
+        "n": int(len(frame)),
+    }
+
+
+def scree_payload(frame: pd.DataFrame, *, n_simulations: int = 100,
+                  seed: int = 42) -> Dict[str, Any]:
+    """Observed eigenvalues against a PARALLEL ANALYSIS reference line.
+
+    §B5.5's real method choice, and the reason this figure is first of the
+    four: the number of factors is determined by parallel analysis rather than
+    by eyeballing the scree or by the eigenvalue>1 Kaiser rule, **which
+    over-extracts**. The reference line is the 95th percentile of the
+    eigenvalues of random matrices of the same shape.
+
+    `n_simulations` is stated in the caption for the same reason `B` is on the
+    instability plots.
+    """
+    correlations = _correlations(frame)
+    observed = np.asarray(correlations["eigenvalues"], dtype=float)
+    n_rows, n_items = frame.shape
+    rng = np.random.default_rng(seed)
+    simulated = np.vstack([
+        np.sort(np.linalg.eigvalsh(np.corrcoef(
+            rng.normal(size=(n_rows, n_items)), rowvar=False)))[::-1]
+        for _ in range(int(n_simulations))])
+    reference = np.percentile(simulated, 95, axis=0)
+    retained = int(np.sum(observed > reference))
+    kaiser = int(np.sum(observed > 1.0))
+    return {
+        "figure": "scree",
+        "n": int(n_rows),
+        "n_items": int(n_items),
+        "observed": [round(float(v), 5) for v in observed],
+        "parallel_reference": [round(float(v), 5) for v in reference],
+        "n_simulations": int(n_simulations),
+        "percentile": 95,
+        "n_retained": retained,
+        # KAISER IS REPORTED AND NOT USED. §B5.5 is SETTLED that it
+        # over-extracts, and showing the two side by side is what makes that
+        # checkable by the reader rather than asserted by the app.
+        "n_kaiser": kaiser,
+        "kaiser_over_extracts_by": max(0, kaiser - retained),
+        "correlation_method": correlations["method"],
+        "correlation_note": correlations["method_note"],
+        "positive_definite": correlations["positive_definite"],
+        # NOT COMPUTED, and said rather than omitted.
+        "fit_indices": None,
+        "fit_indices_absent_because": (
+            "CFI, TLI, RMSEA and SRMR are not reported because no "
+            "confirmatory factor model was fitted — this app has none. The "
+            "field asks for those four as VALUES rather than as a pass or "
+            "fail verdict; four numbers nobody computed would be worse than "
+            "none."),
+        "suppression_threshold": LOADING_SUPPRESSION,
+    }
+
+
+SCREE = register(FigureSpec(
+    id="scree",
+    title="Scree plot with parallel analysis",
+    tier=EXPLORATORY,
+    when_applicable=lambda s: (bool(s.get("has_survey_lens"))
+                               and int(s.get("n_items") or 0) >= 3),
+    layers=("observed_eigenvalues", "parallel_reference", "retained_marker"),
+    annotations=(
+        Annotation("n_retained", "Factors retained", "turbotab.figure_specs"),
+        Annotation("n_simulations", "Parallel-analysis simulations",
+                   "turbotab.figure_specs"),
+        Annotation("n", "n", "turbotab.figure_specs"),
+        Annotation("n_items", "items", "turbotab.figure_specs"),
+    ),
+    checklist=(
+        ChecklistItem(
+            "parallel_reference_drawn",
+            "The parallel-analysis reference line is overlaid on the scree",
+            "§B5.5: the bare scree plot alone is no longer sufficient. "
+            "Eyeballing an elbow is the practice parallel analysis replaced.",
+            lambda p: bool(p.get("parallel_reference"))),
+        ChecklistItem(
+            "retained_count_marked",
+            "The number of factors retained is marked",
+            "The figure exists to answer how many, and a reader should not "
+            "have to count crossings.",
+            lambda p: p.get("n_retained") is not None),
+        ChecklistItem(
+            "kaiser_not_used",
+            "Kaiser's rule is shown for comparison, not used to decide",
+            "It over-extracts, which is SETTLED; showing both counts lets a "
+            "reader see by how much on their own data.",
+            lambda p: (p.get("n_kaiser") is not None
+                       and p.get("n_retained") is not None)),
+        ChecklistItem(
+            "correlation_method_stated",
+            "Whether the correlations are polychoric or Pearson is stated",
+            "§B5.4 requires it, and it is not bookkeeping: Pearson attenuates "
+            "Likert associations, so a reader needs to know which way the "
+            "numbers are biased.",
+            lambda p: bool(p.get("correlation_note"))),
+        ChecklistItem(
+            "fit_indices_accounted_for",
+            "Fit indices are reported as values, or their absence is explained",
+            "The familiar cutoffs are disputed and a tool stamping good fit "
+            "on CFI 0.951 and poor fit on 0.949 would be embarrassing; "
+            "reporting numbers nobody computed would be worse.",
+            lambda p: (p.get("fit_indices") is not None
+                       or bool(p.get("fit_indices_absent_because")))),
+    ),
+    caption=lambda p: (
+        f"Scree plot over {p.get('n_items', 0):,} items and "
+        f"{p.get('n', 0):,} respondents. The reference line is the "
+        f"{p.get('percentile', 95)}th percentile of eigenvalues from "
+        f"{p.get('n_simulations', 0):,} random matrices of the same shape "
+        f"(parallel analysis); {p.get('n_retained', 0):,} factor(s) have an "
+        f"observed eigenvalue above it. The eigenvalue>1 rule would retain "
+        f"{p.get('n_kaiser', 0):,}"
+        + (f", {p.get('kaiser_over_extracts_by', 0):,} more — it over-extracts "
+           f"and is shown for comparison rather than used"
+           if p.get("kaiser_over_extracts_by") else " — the same number here")
+        + f". {p.get('correlation_note', '')} "
+        + str(p.get("fit_indices_absent_because", ""))),
+    companions=(),
+    evidence=SURVEY_STRUCTURE_EVIDENCE,
+    claims=(
+        Claim(key="parallel_analysis_not_kaiser",
+              statement=("Determine the number of factors with parallel "
+                         "analysis rather than by eyeballing the scree plot "
+                         "or by the eigenvalue>1 Kaiser rule, which "
+                         "over-extracts."),
+              evidence=SURVEY_STRUCTURE_EVIDENCE),
+        Claim(key="polychoric_preferred",
+              statement=("Parallel analysis should run on polychoric "
+                         "correlations for Likert items; Pearson attenuates "
+                         "the associations, which cascades into "
+                         "underestimated loadings and understated "
+                         "reliability."),
+              evidence=CORRELATION_EVIDENCE),
+        Claim(key="fit_cutoffs_disputed",
+              statement=("Report CFI, TLI, RMSEA with its CI and SRMR as "
+                         "values rather than as a PASS or FAIL verdict; how "
+                         "to read them against the familiar cutoffs is "
+                         "disputed."),
+              evidence=Evidence(
+                  status=DISPUTED,
+                  source=("research/CLINICAL_SURVEY_PACK.md#B5.5 · Scree plot, "
+                          "parallel analysis, and factor loadings"),
+                  both_sides=(
+                      "Hu and Bentler 1999's cutoffs — CFI and TLI at or "
+                      "above 0.95, RMSEA at or below 0.06, SRMR at or below "
+                      "0.08 — are widely used as decision rules and give "
+                      "readers a shared reference. Marsh, Hau and Wen 2004 "
+                      "and others hold they were derived under specific "
+                      "conditions, behave differently with categorical data "
+                      "and different model sizes, and should not be golden "
+                      "rules. This app takes neither side: it reports values "
+                      "where it has them and never a PASS or FAIL."))),
+    ),
+    promotable=False,
+    promotable_because="",
+    compute=scree_payload,
+))
+
+
+def item_correlations_payload(frame: pd.DataFrame) -> Dict[str, Any]:
+    """The lower-triangle inter-item matrix, on a FIXED −1 to +1 domain.
+
+    §B5.4's presentation rule and it is correctness rather than taste: *never
+    auto-scaled, because auto-scaling makes weak matrices look strong.* A
+    palette stretched to a maximum of 0.22 renders a matrix of near-zero
+    correlations in saturated color.
+    """
+    correlations = _correlations(frame)
+    k = len(correlations["columns"])
+    return {
+        "figure": "item_correlations",
+        **correlations,
+        "n_items": k,
+        "triangle": "lower",
+        # FIXED, NEVER AUTO-SCALED.
+        "color_domain": [-1.0, 1.0],
+        "autoscaled": False,
+        "diagonal": "blank",
+        # §B5.4: values printed if k ≤ ~15.
+        "print_values": k <= 15,
+        "ordering": "hierarchical clustering",
+        "smoothing_applied": False,
+        "smoothing_note": (
+            "" if correlations["positive_definite"] else
+            "This matrix is not positive definite. The field's remedy is "
+            "smoothing — minimum-trace factor analysis smoothing is the "
+            "recommended algorithm — and reporting that it was applied. This "
+            "app does not smooth, so the matrix is shown as estimated and the "
+            "condition is stated rather than repaired silently."),
+    }
+
+
+ITEM_CORRELATIONS = register(FigureSpec(
+    id="item_correlations",
+    title="Inter-item correlation matrix",
+    tier=EXPLORATORY,
+    when_applicable=lambda s: (bool(s.get("has_survey_lens"))
+                               and int(s.get("n_items") or 0) >= 3),
+    layers=("lower_triangle_heatmap", "dendrogram", "value_labels"),
+    annotations=(
+        Annotation("n", "n", "turbotab.figure_specs"),
+        Annotation("n_items", "items", "turbotab.figure_specs"),
+        Annotation("method", "Correlation", "turbotab.figure_specs"),
+    ),
+    checklist=(
+        ChecklistItem(
+            "fixed_color_domain",
+            "The palette runs −1 to +1 and is not auto-scaled",
+            "Auto-scaling makes weak matrices look strong: a palette "
+            "stretched to a maximum of 0.22 renders near-zero correlations in "
+            "saturated color.",
+            lambda p: (p.get("color_domain") == [-1.0, 1.0]
+                       and p.get("autoscaled") is False)),
+        ChecklistItem(
+            "method_in_caption",
+            "The caption states polychoric vs Pearson and the n used",
+            "§B5.4 requires it. Pearson attenuates Likert associations, so "
+            "which one was used decides which way every number below is "
+            "biased.",
+            lambda p: bool(p.get("method")) and bool(p.get("n"))),
+        ChecklistItem(
+            "positive_definite_accounted_for",
+            "Whether the matrix is positive definite is stated",
+            "Pairwise-estimated matrices sometimes are not, and the remedy is "
+            "smoothing WITH a report that it was applied. Silence here is a "
+            "repair the reader cannot see.",
+            lambda p: (p.get("positive_definite") is True
+                       or bool(p.get("smoothing_note")))),
+        ChecklistItem(
+            "lower_triangle_only",
+            "Lower triangle, blank diagonal",
+            "A full square prints every correlation twice and the diagonal "
+            "carries no information.",
+            lambda p: (p.get("triangle") == "lower"
+                       and p.get("diagonal") == "blank")),
+    ),
+    caption=lambda p: (
+        f"Inter-item correlations among {p.get('n_items', 0):,} items over "
+        f"{p.get('n', 0):,} respondents, computed with "
+        f"{p.get('method', 'Pearson')} correlations. Lower triangle only, "
+        f"items ordered by hierarchical clustering, palette fixed from −1 to "
+        f"+1 and not scaled to the observed range. "
+        + (f"Values are printed. " if p.get("print_values") else
+           f"Values are not printed at {p.get('n_items', 0):,} items. ")
+        + str(p.get("method_note", "")) + " "
+        + str(p.get("smoothing_note", ""))),
+    companions=(),
+    evidence=CORRELATION_EVIDENCE,
+    claims=(
+        Claim(key="polychoric_for_likert",
+              statement=("Use polychoric rather than Pearson correlations for "
+                         "Likert items; Pearson attenuates the associations, "
+                         "which cascades into underestimated loadings and "
+                         "understated reliability."),
+              evidence=CORRELATION_EVIDENCE),
+        Claim(key="fixed_domain",
+              statement=("The diverging palette is centered at 0 with a fixed "
+                         "−1 to +1 domain and never auto-scaled, because "
+                         "auto-scaling makes weak matrices look strong."),
+              evidence=CORRELATION_EVIDENCE),
+    ),
+    promotable=False,
+    promotable_because="",
+    compute=item_correlations_payload,
+))
+
+
+def floor_ceiling_payload(frame: pd.DataFrame, *,
+                          scale_min: Optional[float] = None,
+                          scale_max: Optional[float] = None) -> Dict[str, Any]:
+    """Share of respondents at the lowest and highest POSSIBLE score.
+
+    `scale_min` and `scale_max` are the THEORETICAL limits, not the observed
+    ones — §B5.3's presentation rule, and the distinction is the finding: a
+    sample whose observed maximum is 38 on a 0–40 scale has nobody at the
+    ceiling, and computing against the observed maximum would report 100%.
+    """
+    totals = frame.sum(axis=1, skipna=False).dropna()
+    n = int(len(totals))
+    low = float(scale_min) if scale_min is not None else float(
+        len(frame.columns) * frame.min().min())
+    high = float(scale_max) if scale_max is not None else float(
+        len(frame.columns) * frame.max().max())
+    at_floor = int((totals <= low).sum())
+    at_ceiling = int((totals >= high).sum())
+    floor_share = at_floor / n if n else 0.0
+    ceiling_share = at_ceiling / n if n else 0.0
+    return {
+        "figure": "floor_ceiling",
+        "n": n,
+        "scale_min": low,
+        "scale_max": high,
+        "limits_are_theoretical": scale_min is not None and scale_max is not None,
+        "at_floor": at_floor,
+        "at_ceiling": at_ceiling,
+        "floor_share": round(floor_share, 4),
+        "ceiling_share": round(ceiling_share, 4),
+        "threshold": FLOOR_CEILING_THRESHOLD,
+        "floor_flagged": floor_share > FLOOR_CEILING_THRESHOLD,
+        "ceiling_flagged": ceiling_share > FLOOR_CEILING_THRESHOLD,
+        "x_range_drawn": [low, high],
+        "x_range_observed": [float(totals.min()), float(totals.max())] if n
+        else [low, high],
+        "consequence": (
+            "Respondents at a boundary cannot be distinguished from one "
+            "another, so reliability is reduced in that range, responsiveness "
+            "to change is lost, and it usually indicates the instrument lacks "
+            "items at that end of the construct — a content-validity problem "
+            "rather than a cosmetic one. A model predicting change in this "
+            "score will be attenuated."),
+    }
+
+
+FLOOR_CEILING = register(FigureSpec(
+    id="floor_ceiling",
+    title="Floor and ceiling effects",
+    tier=EXPLORATORY,
+    when_applicable=lambda s: (bool(s.get("has_survey_lens"))
+                               and int(s.get("n_items") or 0) >= 2),
+    layers=("total_score_histogram", "floor_bar", "ceiling_bar"),
+    annotations=(
+        Annotation("floor_share", "At floor", "turbotab.figure_specs"),
+        Annotation("ceiling_share", "At ceiling", "turbotab.figure_specs"),
+        Annotation("n", "n", "turbotab.figure_specs"),
+    ),
+    checklist=(
+        ChecklistItem(
+            "theoretical_limits",
+            "The axis runs to the scale's theoretical limits",
+            "A sample whose observed maximum is 38 on a 0–40 scale has NOBODY "
+            "at the ceiling; drawing to the observed maximum would report "
+            "everyone there.",
+            lambda p: (p.get("x_range_drawn", [1, 0])[0]
+                       <= p.get("x_range_observed", [0, 1])[0]
+                       and p.get("x_range_drawn", [0, 0])[1]
+                       >= p.get("x_range_observed", [0, 1])[1])),
+        ChecklistItem(
+            "percentages_annotated",
+            "The floor and ceiling percentages are printed",
+            "The convention is a percentage against a threshold, so the "
+            "percentage is the figure's content rather than a label on it.",
+            lambda p: (p.get("floor_share") is not None
+                       and p.get("ceiling_share") is not None)),
+        ChecklistItem(
+            "threshold_named_as_convention",
+            "The 15% threshold is stated as a convention, not a constant",
+            "Terwee et al. 2007 is widely adopted and is NOT an empirically "
+            "derived value; the pack says to say so.",
+            lambda p: p.get("threshold") == FLOOR_CEILING_THRESHOLD),
+        ChecklistItem(
+            "consequence_stated",
+            "What a floor or ceiling effect costs is stated",
+            "The consequence is substantive rather than cosmetic and is the "
+            "reason to look: lost responsiveness, reduced reliability in that "
+            "range, and an attenuated model of change.",
+            lambda p: bool(p.get("consequence"))),
+    ),
+    caption=lambda p: (
+        f"Total-score distribution over {p.get('n', 0):,} respondents, drawn "
+        f"to the scale's theoretical limits of {p.get('scale_min', 0):g} to "
+        f"{p.get('scale_max', 0):g} rather than to the observed range. "
+        f"{p.get('floor_share', 0):.1%} are at the floor and "
+        f"{p.get('ceiling_share', 0):.1%} at the ceiling"
+        + ("; both are below the conventional threshold. "
+           if not (p.get("floor_flagged") or p.get("ceiling_flagged"))
+           else f", against a conventional threshold of "
+                f"{p.get('threshold', 0):.0%}. ")
+        + f"That {p.get('threshold', 0):.0%} figure is a widely adopted "
+          f"convention from Terwee et al. 2007, not an empirically derived "
+          f"constant. " + str(p.get("consequence", ""))),
+    companions=(),
+    evidence=FLOOR_CEILING_EVIDENCE,
+    claims=(
+        Claim(key="terwee_threshold_is_convention",
+              statement=("Floor or ceiling effects are conventionally flagged "
+                         "above 15% of respondents at the lowest or highest "
+                         "possible score; the 15% is a widely adopted "
+                         "convention from Terwee et al. 2007 rather than an "
+                         "empirically derived constant."),
+              evidence=FLOOR_CEILING_EVIDENCE),
+    ),
+    promotable=False,
+    promotable_because="",
+    compute=floor_ceiling_payload,
+))
+
+
+def item_panel_payload(frame: pd.DataFrame, *,
+                       scale: Optional[List[Any]] = None) -> Dict[str, Any]:
+    """One small multiple per item, on a shared percentage axis.
+
+    §B5.2's reason for existing beside the diverging bar: **it shows SHAPE.**
+    Bimodality is visible here and invisible in a diverging chart, because a
+    diverging bar collapses each item to agreement-versus-disagreement and two
+    clumps at the ends look exactly like a spread middle.
+    """
+    levels = list(scale) if scale is not None else sorted(
+        {v for column in frame.columns for v in frame[column].dropna().unique()})
+    panels = []
+    for column in frame.columns:
+        present = frame[column].dropna()
+        counts = present.value_counts()
+        n = int(len(present))
+        shares = [round(float(counts.get(level, 0)) / n, 4) if n else 0.0
+                  for level in levels]
+        # BIMODALITY, named rather than left to the eye: both extremes carry
+        # more than the middle. It is the shape §B5.2 exists to surface.
+        bimodal = bool(len(shares) >= 3
+                       and min(shares[0], shares[-1]) > max(shares[1:-1] or [0]))
+        panels.append({"item": str(column), "n": n, "shares": shares,
+                       "bimodal": bimodal})
+    return {
+        "figure": "item_panel",
+        "scale": [str(v) for v in levels],
+        "panels": panels,
+        "n_items": len(panels),
+        "shared_axis": "percentage",
+        "n_min": min([p["n"] for p in panels], default=0),
+        "n_max": max([p["n"] for p in panels], default=0),
+        "n_bimodal": sum(1 for p in panels if p["bimodal"]),
+        "endpoints_highlighted": True,
+    }
+
+
+ITEM_PANEL = register(FigureSpec(
+    id="item_panel",
+    title="Item-response distribution panel",
+    tier=EXPLORATORY,
+    when_applicable=lambda s: (bool(s.get("has_survey_lens"))
+                               and int(s.get("n_items") or 0) >= 2),
+    layers=("small_multiples", "endpoint_highlight"),
+    annotations=(
+        Annotation("n_items", "items", "turbotab.figure_specs"),
+        Annotation("n_min", "n per item (min)", "turbotab.figure_specs"),
+        Annotation("n_max", "n per item (max)", "turbotab.figure_specs"),
+    ),
+    checklist=(
+        ChecklistItem(
+            "shared_axis",
+            "All panels share one percentage axis",
+            "Per-panel axes make a 40% bar and a 12% bar the same height, "
+            "which is the one comparison small multiples exist to make.",
+            lambda p: p.get("shared_axis") == "percentage"),
+        ChecklistItem(
+            "n_per_panel",
+            "The n behind each panel is available",
+            "Item-level missingness differs between items, so a panel with "
+            "no n is a percentage of an unknown denominator.",
+            lambda p: all(panel.get("n") is not None
+                          for panel in p.get("panels") or [])),
+        ChecklistItem(
+            "endpoints_highlighted",
+            "Floor and ceiling categories are highlighted",
+            "They are where the instrument stops discriminating, and this "
+            "panel is where an item-driven effect becomes visible.",
+            lambda p: bool(p.get("endpoints_highlighted"))),
+    ),
+    caption=lambda p: (
+        f"Response distribution for each of {p.get('n_items', 0):,} items on a "
+        f"{len(p.get('scale', []))}-point scale, as percentages of the "
+        f"respondents answering that item (n {p.get('n_min', 0):,}–"
+        f"{p.get('n_max', 0):,}), on a shared axis. The floor and ceiling "
+        f"categories are highlighted. This panel complements the diverging "
+        f"stacked bar by showing SHAPE: "
+        + (f"{p.get('n_bimodal', 0):,} item(s) here carry more responses at "
+           f"both extremes than anywhere in the middle, which a diverging bar "
+           f"cannot show because it collapses each item to agreement against "
+           f"disagreement."
+           if p.get("n_bimodal") else
+           "no item here is bimodal, which is itself invisible in a diverging "
+           "bar.")),
+    companions=(),
+    evidence=ITEM_PANEL_EVIDENCE,
+    claims=(
+        Claim(key="shows_shape",
+              statement=("The item-response panel complements the diverging "
+                         "chart by showing shape: bimodality is visible here "
+                         "and invisible in a diverging bar."),
+              evidence=ITEM_PANEL_EVIDENCE),
+    ),
+    promotable=False,
+    promotable_because="",
+    compute=item_panel_payload,
+))

@@ -82,11 +82,29 @@ def test_a_confirmatory_figure_without_its_companion_is_not_admitted():
     alone = FIG.bundle({"calibration": payload})
     assert alone["n_admitted"] == 0 and alone["n_held"] == 1
     held = alone["held"][0]
-    assert held["missing_companions"] == ["discrimination"]
+    assert held["missing_companions"] == ["roc"]
     assert "not in this bundle" in held["why_held"]
 
-    together = FIG.bundle({"calibration": payload, "discrimination": {}})
-    assert together["n_admitted"] == 1 and together["n_held"] == 0
+    # **AND THE COMPANION IS A FIGURE THAT EXISTS** (`GUIDED-128`). Until L40
+    # this line paired calibration with `{"discrimination": {}}` — an id that
+    # was never registered — so the test proved the bundle honors an id string
+    # and could not notice that no project would ever supply one. The ROC
+    # curve is the discrimination figure §A4.4 specifies, and it exists now.
+    with_roc = FIG.bundle({"calibration": payload,
+                           "roc": FS.roc_payload(y, {"m": p})})
+    assert {r["id"] for r in with_roc["admitted"]} == {"calibration"}
+    # AND THE ROC IS ITSELF HELD, because §A4.4 ranks it below BOTH calibration
+    # and the decision curve and it declares both. The rule composes: adding
+    # one figure to satisfy another's companion does not exempt the new one.
+    assert {r["id"] for r in with_roc["held"]} == {"roc"}
+
+    y_flag = np.asarray(y, dtype=float)
+    whole = FIG.bundle({
+        "calibration": payload,
+        "roc": FS.roc_payload(y, {"m": p}),
+        "decision_curve": FS.decision_curve_payload(y_flag, {"m": np.asarray(p)}),
+    })
+    assert whole["n_admitted"] == 3 and whole["n_held"] == 0
 
 
 def test_an_exploratory_figure_needs_no_companion_and_may_not_declare_one():
