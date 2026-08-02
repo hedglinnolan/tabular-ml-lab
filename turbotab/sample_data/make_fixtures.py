@@ -641,6 +641,76 @@ def survey() -> pd.DataFrame:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 4b · survey_sentinels — the same instrument with its codebook's missing codes
+#
+# `research/CLINICAL_SURVEY_PACK.md` §B1.1 calls sentinel detection **"the
+# highest-yield check in this pack"**, and until L41 no fixture here carried
+# one. `survey_instrument.csv` is a clean return by construction, which made
+# the check unbuildable against anything: a detector for a shape no table has is
+# a detector nobody can drive.
+#
+# **Deliberately a second file rather than a change to the first.** The clean
+# instrument is the fixture eleven existing claims are written against, and
+# seeding sentinels into it would have moved every one of them — including the
+# reframing that proves the wide-shape false alarm is corrected under the survey
+# lens. And the two files together are the pair the reverse-coding audit needs:
+# the same items, the same reversals, and one of them with values that must come
+# out of the correlation before the correlation means anything.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def survey_sentinels() -> pd.DataFrame:
+    """`survey_instrument`'s items with 7/8/9 missing codes written in.
+
+    The codebook this stands for is the ordinary one: **7 = not applicable,
+    8 = don't know, 9 = refused**, on a 1–5 item. §B1.1's own sentence is that
+    *in a 1–5 item, a `9` is not "extremely agree," it is "don't know" or
+    "refused."*
+
+    Three properties are load-bearing:
+
+    * **The sentinels break the run**, which is the rule — 7, 8 and 9 all sit
+      above the 1–5 support. A `6` would not, and is deliberately absent: a 6 in
+      a 1–5 block is a different variable rather than a coded absence, and the
+      detector must keep treating it as one.
+    * **They are concentrated, not uniform.** `item_14` carries 9s at 11%,
+      because a *refused* rate is an item property — sensitive questions get
+      refused and neutral ones do not — and a fixture that spread them evenly
+      would make the per-item table pointless.
+    * **`item_05` is both reverse-coded and sentinel-carrying**, which is the
+      cell the reverse-coding audit has to get right: its item–rest correlation
+      is meaningless until the 9s come out, and a 9 read as *extremely agree* on
+      a reversed item pushes the correlation the wrong way twice.
+
+    Every item stays 1–5 otherwise, so `observed_support` across the block is
+    exactly 1–5 and the sentinels are exactly what breaks it.
+    """
+    df = survey()
+    rng = np.random.RandomState(5588)
+    n = len(df)
+
+    # item -> (code, share). The codebook's three, on the items a real return
+    # would carry them on.
+    seeded = {
+        "item_14": (9, 0.11),    # refused — the sensitive one
+        "item_05": (9, 0.06),    # refused, AND reverse-coded
+        "item_22": (8, 0.08),    # don't know
+        "item_33": (8, 0.05),
+        "item_09": (7, 0.04),    # not applicable
+    }
+    for name, (code, share) in seeded.items():
+        idx = rng.choice(n, size=int(round(share * n)), replace=False)
+        df.loc[idx, name] = code
+
+    # The item columns stay integral. `survey()` leaves three with blanks, and a
+    # float column of 1.0/2.0 would fail the block detector's integrality test
+    # for a reason that has nothing to do with sentinels.
+    for name in df.columns:
+        if name.startswith("item_"):
+            df[name] = df[name].astype("Int64")
+    return df
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 5 · genomics_expression — 60 × 500 counts
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -801,6 +871,7 @@ FIXTURES = {
     "clinical_risk": clinical_risk,
     "clinical_labs": clinical_labs,
     "survey_instrument": survey,
+    "survey_sentinels": survey_sentinels,
     "genomics_expression": genomics,
     "nhanes_dietary": nhanes_dietary,
     "nhanes_partial_design": nhanes_partial_design,

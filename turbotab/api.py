@@ -1277,6 +1277,19 @@ PULL_CAPABILITIES: Dict[str, Dict[str, Any]] = {
         "title": "Distribution of each feature",
         "why": "One page of histograms at a time, drawn from your table.",
     },
+    # `GUIDED-136`. The consumer `set_reverse_coding` has been waiting for since
+    # the survey pack shipped. It is a PULL rather than a pushed question
+    # because it reports on an answer the user has already given — the pushed
+    # question is `state_reverse_coding`, and a second card asking the same
+    # thing in the other direction would be the interview arguing with its own
+    # record.
+    "look::reverse_coding": {
+        "built": True, "endpoint": "reverse-coding",
+        "label": "Reverse-coding audit",
+        "title": "Reverse-coding audit",
+        "why": ("Each item's correlation with the rest of its scale, before "
+                "and after the reversals you declared."),
+    },
 }
 
 # Named, not counted: the reason a chip is dark is shown on the chip. Anything
@@ -1356,6 +1369,47 @@ async def evidence_plausibility(project_id: str) -> Dict[str, Any]:
     (GUIDED-004).
     """
     return engine.plausibility(_project(project_id).working_table)
+
+
+@app.get("/project/{project_id}/evidence/reverse-coding")
+async def evidence_reverse_coding(project_id: str) -> Dict[str, Any]:
+    """§B1.2's reverse-coding audit table. **`GUIDED-136`.**
+
+    The app has asked *which of these items are reverse-coded* since the survey
+    pack shipped — `set_reverse_coding` is dispatched, the `reverse_coding`
+    prior is the one deliberate exception to `DOMAIN_PACKS.md`'s guard #1, and
+    the question renders. **Nothing scored it.** A recorded decision with no
+    consumer is `AGENT_ONBOARD.md` §07's first trap, on the one question this
+    pack is allowed to add.
+
+    **Recomputed per request, from the record as it stands now**, which is what
+    §B1.2 means by *"re-rendered after every declared change"* and what makes
+    this an audit rather than a report. There is no cached table to go stale
+    and no invalidation edge to forget: the declaration is read at the top of
+    this function and the numbers below it are a function of it.
+
+    It reports and never proposes. §B1.2's central sentence is SETTLED that
+    correlations cannot distinguish the four causes of a negative item–rest
+    correlation, so the status vocabulary has no `should_be_reversed` in it.
+    """
+    from turbotab import survey as _survey
+
+    project = _project(project_id)
+    table = project.working_table
+    declared: List[str] = []
+    # THE LAST DECLARATION WINS, and the past is editable. Folding forward
+    # rather than taking the first means a user who corrects their codebook
+    # gets an audit of the correction rather than of their first answer.
+    for decision in project.decisions:
+        if decision.kind == "set_reverse_coding":
+            declared = list(decision.payload.get("columns") or [])
+
+    out = _survey.audit(table, declared=declared)
+    if out is None:
+        return {"available": False,
+                "because": _survey.unavailable_because(table),
+                "rows": [], "declared_reversed": list(declared)}
+    return out
 
 
 @app.get("/project/{project_id}/evidence/histograms")
@@ -2502,6 +2556,19 @@ def _project_capabilities(project: AnalysisProject) -> Dict[str, Any]:
     pulls: Dict[str, Any] = {}
     for key, cap in PULL_CAPABILITIES.items():
         entry = dict(cap)
+        # `GUIDED-136`. The one gate that is about the TABLE rather than about a
+        # feature count: reverse-coding is a property of an instrument, and a
+        # table with no block of items sharing a response scale has no scale to
+        # audit. Dark with the reason on the chip rather than absent, per
+        # `GUIDED-006` — a control that silently does nothing is worse than one
+        # that says so, and so is a control that is simply not there.
+        if key == "look::reverse_coding":
+            from turbotab import survey as _survey
+            because = _survey.unavailable_because(frame)
+            entry["built"] = not because
+            entry["not_built_reason"] = because or None
+            pulls[key] = entry
+            continue
         gate_name = _PER_PROJECT_GATES.get(key)
         if gate_name and entry.get("built"):
             gate = gates[gate_name](n_numeric)

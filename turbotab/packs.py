@@ -1012,6 +1012,46 @@ _MAX_MODAL_SHARE = 0.60
 # a rule that excluded those would reject the instruments it exists to find.
 _MIN_SHARE_BALANCED = 0.7
 
+# ── §B1.1's sentinel codes, and the extension they forced (`L41-C1`) ─────────
+#
+# **THE BLOCK DETECTOR USED TO MISS EXACTLY THE BLOCKS THE HIGHEST-YIELD CHECK
+# IS ABOUT.** `values <= scale` is an exact-containment test, so a 1–5 item
+# carrying a single `9` for *refused* failed it, the column dropped out of its
+# own block, and a block where enough items carried one was not found at all.
+# The check §B1.1 calls *"the highest-yield check in this pack"* was
+# structurally unreachable from the detector that finds the blocks.
+#
+# So containment is now *scale plus a bounded tail of values that break the
+# run*, and which values those were travels on the block. This is an extension
+# of the one block detector rather than a second one beside it: `LOOP.md`'s
+# `theory_anchors`/`theory_demos` lesson is that two registries describing one
+# thing drift, and two block detectors would be that with the drift able to
+# change what an instrument IS.
+#
+# §B1.1's own list. Corroborating evidence, never the rule — **the rule is
+# that the value breaks the observed contiguous run**, because a codebook may
+# use anything and the run is a property of the data.
+KNOWN_SENTINELS = (7, 8, 9, 77, 88, 99, 98, 999, 9999, -1, -8, -9, -99)
+
+# How much of a column may be out-of-run before it stops being an item with
+# sentinels and becomes a different variable. Not the research's — §B1.1 states
+# no share — so it is this module's own, chosen because a *don't know* rate
+# above a quarter is a question about the question rather than a coding
+# artifact.
+_MAX_SENTINEL_SHARE = 0.25
+
+
+def _breaks_the_run(value: int, support: set) -> bool:
+    """Whether `value` sits outside the contiguous run the support forms.
+
+    §B1.1's rule, and it is deliberately arithmetic rather than a lookup: a
+    codebook may use any value, and `KNOWN_SENTINELS` is corroboration. A `6` in
+    a 1–5 block breaks the run and is flagged even though no list names it; a
+    `9` in a 0–9 block does not break it and is not, which is the *some
+    legitimate scales do run 0–9* case the hard stop turns on.
+    """
+    return value < min(support) or value > max(support)
+
 
 def likert_block(df: pd.DataFrame, minimum: int = 8) -> Optional[Dict[str, Any]]:
     """The largest set of columns sharing one declared response scale.
@@ -1019,6 +1059,17 @@ def likert_block(df: pd.DataFrame, minimum: int = 8) -> Optional[Dict[str, Any]]
     Shared exactly, not approximately. Two columns on 1–5 and one on 1–7 are two
     instruments or one instrument and a stray, and averaging across them is the
     error the detector exists to avoid proposing.
+
+    **Except for values that break the run**, which are candidate sentinel codes
+    rather than responses and are carried on the block as `sentinels` instead of
+    disqualifying the column. See `KNOWN_SENTINELS` above for why that had to
+    change.
+
+    **The support is the union across the block, never per item** — §B1.1's own
+    instruction, and the reason is that a rarely-endorsed extreme category may
+    be absent from a single item. Read per item, a 1–5 instrument where nobody
+    picked 5 on `q14` has a 1–4 item in it, and a `5` elsewhere would then look
+    like the sentinel.
 
     **And the block must look like RESPONSES, not like small counts.** This is
     the discriminator, and guard #2 found the need for it: 30 low-expression
@@ -1036,6 +1087,7 @@ def likert_block(df: pd.DataFrame, minimum: int = 8) -> Optional[Dict[str, Any]]
     of its columns.
     """
     by_scale: Dict[Tuple[int, ...], List[str]] = {}
+    outside: Dict[str, set] = {}
     for c in _numeric(df):
         s = df[c].dropna()
         if s.empty:
@@ -1047,9 +1099,23 @@ def likert_block(df: pd.DataFrame, minimum: int = 8) -> Optional[Dict[str, Any]]
         if len(values) != s.nunique():
             continue                                    # non-integral values
         for scale in _LIKERT_SETS:
-            if values and values <= scale and len(values) >= len(scale) - 1:
-                by_scale.setdefault(tuple(sorted(scale)), []).append(str(c))
-                break
+            inside = values & scale
+            broken = {v for v in values - scale if _breaks_the_run(v, scale)}
+            # Everything outside the scale must break the RUN. A `6` in a 1–5
+            # block does not — it is inside 1..7 — and a column carrying one is
+            # a different variable rather than an item with a sentinel, so it
+            # drops out as it always did.
+            if (values - scale) - broken:
+                continue
+            if not inside or len(inside) < len(scale) - 1:
+                continue
+            if broken:
+                share = float(s.isin(list(broken)).mean())
+                if share > _MAX_SENTINEL_SHARE:
+                    continue
+            by_scale.setdefault(tuple(sorted(scale)), []).append(str(c))
+            outside[str(c)] = broken
+            break
     if not by_scale:
         return None
     scale, columns = max(by_scale.items(), key=lambda kv: len(kv[1]))
@@ -1059,6 +1125,11 @@ def likert_block(df: pd.DataFrame, minimum: int = 8) -> Optional[Dict[str, Any]]
     balanced = 0
     for c in columns:
         s = df[c].dropna()
+        # THE SENTINELS COME OUT BEFORE THE SHAPE IS JUDGED. A column that is
+        # 20% `9` and otherwise flat would fail the modal-share test on the
+        # sentinel rather than on its responses, which would reject the item
+        # this whole extension exists to keep.
+        s = s[~s.isin(list(outside.get(c) or ()))]
         if s.empty:
             continue
         used = set(int(v) for v in s.unique())
@@ -1068,7 +1139,22 @@ def likert_block(df: pd.DataFrame, minimum: int = 8) -> Optional[Dict[str, Any]]
             balanced += 1
     if balanced / len(columns) < _MIN_SHARE_BALANCED:
         return None
-    return {"scale": list(scale), "columns": columns}
+
+    # THE SUPPORT, FROM THE UNION ACROSS THE BLOCK. §B1.1's instruction, and it
+    # is computed here rather than taken from `scale` so that an instrument
+    # where a category is unused anywhere is reported as what it is: the
+    # declared scale is what the block matched, `observed_support` is what
+    # anybody actually picked, and the two disagreeing is a floor or ceiling
+    # effect rather than a detection failure.
+    support: set = set()
+    for c in columns:
+        s = df[c].dropna()
+        s = s[~s.isin(list(outside.get(c) or ()))]
+        support |= {int(v) for v in s.unique()}
+    sentinels = {c: sorted(v) for c, v in outside.items() if c in columns and v}
+    return {"scale": list(scale), "columns": columns,
+            "observed_support": sorted(support),
+            "sentinels": sentinels}
 
 
 def _ordinal_declared(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
@@ -1091,6 +1177,17 @@ def _ordinal_declared(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
         evidence=ORDINAL_DECLARED_EVIDENCE,
         columns=columns[:10],
         params={"scale": scale, "columns": columns, "encoding": "declared"})
+
+
+def _survey_sentinel_codes(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """§B1.1's highest-yield check, deferred-imported for the usual cycle.
+
+    `turbotab/survey.py` imports `likert_block`, `KNOWN_SENTINELS` and
+    `_finding` from here, so naming it at module scope would be a cycle — the
+    same shape as the nutrition and clinical wrappers above.
+    """
+    from turbotab import survey
+    return survey.sentinel_codes_finding(df)
 
 
 # ── genomics ─────────────────────────────────────────────────────────────────
@@ -1796,11 +1893,16 @@ PACKS: Dict[str, Pack] = {
         )),
     SURVEY: Pack(
         key=SURVEY, label=LENS_LABELS[SURVEY],
-        detectors=(_ordinal_declared,),
+        detectors=(_ordinal_declared, _survey_sentinel_codes),
         looks_for=(
             LooksFor("pack::survey::ordinal_declared",
                      "a block of items sharing one response scale, whose order "
                      "comes from the instrument rather than from the data"),
+            LooksFor("pack::survey::sentinel_codes",
+                     "values that break that scale's run — a 9 in a 1 to 5 "
+                     "item is a refusal rather than strong agreement, and the "
+                     "app reports what treating it as a response would do to "
+                     "the item's mean without recoding anything"),
             # The one question a pack is allowed to add (guard #1's deliberate
             # exception), so it is named where the user decides whether to
             # invite it.

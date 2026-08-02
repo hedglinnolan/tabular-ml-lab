@@ -617,6 +617,17 @@
                  padding:8px 0 4px 11px; }
   .feat-sent{ font-size:13px; margin:0 0 5px; }
   .feat-note{ font-size:12px; color:var(--muted); margin:5px 0 0; max-width:74ch; }
+  /* GUIDED-136. Data speaks mono — DESIGN_LANGUAGE §03's three-voice rule —
+     so the item names and the correlations are mono and the status is not:
+     a status is the app talking, and it is prose. */
+  .rc-audit{ width:100%; border-collapse:collapse; margin:10px 0 0; font-size:12px; }
+  .rc-audit th{ text-align:left; font-weight:600; color:var(--muted);
+                padding:4px 8px 4px 0; border-bottom:1px solid var(--line); }
+  .rc-audit td{ padding:4px 8px 4px 0; border-bottom:1px solid var(--line); }
+  .rc-audit td.mono{ font-family:var(--mono); }
+  .rc-audit td[data-rc-status="negative_after_reversal"],
+  .rc-audit td[data-rc-status="weakened_by_reversal"],
+  .rc-audit td[data-rc-status="negative_undeclared"]{ color:var(--warn); }
   /* GUIDED-074. The lattice, carried from the L31 prototype's stylesheet with
      this page's tokens. `.changed` is the mutate signal §05 requires: the cell
      survives, so the settle it is running finishes. */
@@ -2398,12 +2409,10 @@
       box.innerHTML = explainOnly(f);
       box.classList.remove("is-hidden");
       anim(box, "arrive", 360);
-      nudge(box);
       api("/project/" + P.id + "/finding/" + encodeURIComponent(id) + "/offers")
         .then(function(offers){
           if (box.classList.contains("is-hidden")) return;
           box.innerHTML = explainOnly(f, null, offers);
-          nudge(box);
         })
         .catch(function(){ /* the prose is already on screen */ });
       return;
@@ -2423,7 +2432,6 @@
                                         : explainOnly(f, pv.description);
         }
         anim(box, "arrive", 360);
-        nudge(box);
       })
       .catch(function(e){ box.innerHTML = explainOnly(f, e.message); });
   }
@@ -5040,13 +5048,12 @@
   $("d-target-chg").addEventListener("click", function(){
     $("d-target").classList.add("is-hidden");
     sectState("target", "live", "open");
-    nudge($("sec-target"));
   });
 
   $("samplePill").addEventListener("click", function(){
     var on = this.getAttribute("aria-pressed") === "true";
     this.setAttribute("aria-pressed", on ? "false" : "true");
-    if (on){ $("sampleBox").innerHTML = ""; } else { renderSample(); nudge($("sampleBox")); }
+    if (on){ $("sampleBox").innerHTML = ""; } else { renderSample(); }
   });
 
   function dockToggle(btnId, panelId, onOpen){
@@ -5159,6 +5166,63 @@
       if (!cards.length)
         return notBuiltPanel("No feature is missing enough values for a decision here.");
       return cards.map(missCard).join("");
+    },
+    /* GUIDED-136 · §B1.2's reverse-coding audit table.
+       The app has asked which items are reverse-coded since the survey pack
+       shipped and nothing scored the answer — a recorded decision with no
+       consumer, on the one question the pack is allowed to add. This is the
+       consumer, and it is a TABLE rather than a verdict: §B1.2 is SETTLED that
+       correlations cannot distinguish the four causes of a negative item-rest
+       correlation, so nothing here proposes a reversal. */
+    "reverse-coding": function(body){
+      if (!body.available) return notBuiltPanel(body.because || "");
+      var rows = body.rows || [];
+      var warn = body.warnings_after_reversal || [];
+      var h = '<div class="ev"><div class="ev-head">' +
+              '<span class="ev-lab">Reverse-coding audit</span>' +
+              '<span class="ev-note">' + rows.length + " items · " +
+              body.n_declared + " declared reversed · " +
+              esc(body.correlation_method) + "</span></div><div class=\"ev-body\">";
+      /* THE HARD CONSTRAINT, ABOVE THE NUMBERS. A reader who meets the table
+         first has already started inferring from it, which is the one thing
+         §B1.2 says must not happen. */
+      h += '<p class="feat-note">' + esc(body.will_not_infer) + "</p>";
+      h += '<p class="feat-note">' + esc(body.correlation_disclosure) + "</p>";
+      if (body.sentinels_excluded)
+        h += '<p class="feat-note">' + num(body.sentinels_excluded, 0) +
+             " sentinel value(s) in " + esc((body.sentinel_items || []).join(", ")) +
+             " were excluded before any correlation was computed. A 9 read as " +
+             "a response is a four-point outlier dropped into the correlation." +
+             "</p>";
+      /* The re-run's verdict, lifted out of a 40-row table. §B1.2's hard
+         constraint is that the check runs AGAIN after a declared reversal, and
+         burying its result in the rows would make this a report. */
+      warn.forEach(function(w){
+        h += '<div class="diverged"><p class="d-head">' + esc(w.item) +
+             " after the declared reversal</p><p class=\"d-now\">" +
+             esc(w.because) + "</p></div>";
+      });
+      h += '<table class="rc-audit"><thead><tr><th>Item</th><th>Text</th>' +
+           "<th>item–rest r</th><th>Reversal declared?</th>" +
+           "<th>after reversal</th><th>Status</th></tr></thead><tbody>";
+      rows.forEach(function(r){
+        h += "<tr><td class=\"mono\">" + esc(r.item) + "</td><td>" +
+             esc(r.text || "") + "</td><td class=\"mono\">" +
+             (r.item_rest_r_raw === null ? "—" : num(r.item_rest_r_raw, 3)) +
+             "</td><td>" + (r.reversal_declared ? "yes" : "no") +
+             "</td><td class=\"mono\">" +
+             (r.item_rest_r_after_reversal === null ? "—"
+              : num(r.item_rest_r_after_reversal, 3)) +
+             '</td><td data-rc-status="' + esc(r.status) + '" data-tip="' +
+             esc(r.because) + '">' + esc(r.status.replace(/_/g, " ")) +
+             "</td></tr>";
+      });
+      h += "</tbody></table>";
+      /* 0.30 is CONVENTION and is never a verdict — DOMAIN_SCIENCE §01.2's
+         last hard stop is never stamp PASS/FAIL on a threshold. */
+      h += '<p class="feat-note">Reference line at ' + num(body.convention, 2) +
+           ": " + esc(body.convention_is) + "</p>";
+      return h + "</div></div>";
     }
   };
   function notBuiltPanel(reason){
@@ -5176,7 +5240,6 @@
         box.setAttribute("data-open", key);
         box.setAttribute("data-open-endpoint", endpoint);
         box.setAttribute("data-open-title", title);
-        nudge(box);
       })
       .catch(function(err){ box.innerHTML = notBuiltPanel(err.message); });
   }

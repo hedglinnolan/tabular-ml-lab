@@ -1366,5 +1366,21 @@
     "classic": "pages/02 and ml/dataset_profile offer generic outlier treatment (3 SD, IQR fences) that cannot tell them apart",
     "state": "guided-only",
     "reason": "research/CLINICAL_SURVEY_PACK.md section A1.2 and DOMAIN_SCIENCE.md section 03b, which calls this the coaching line that matters most. L41-B. A CORRECTION TO BEHAVIOR THE APP SHIPS rather than a new capability: the core already flags both categories and already offers a treatment that deletes both. The two counts travel in one sentence because reported separately they read as two severities of the same thing, which is exactly the reading that removes the sickest patients. Reads the core's bands and carries none of its own, asserted over the module's AST. AND IT SETS ASIDE COLUMNS THE CORE CANNOT READ: on clinical_labs.csv, 42% of glucose falls below the mg/dL floor because 120 rows are in mmol/L, and the core already says so in whole_column_suspect - which nothing was reading. Without the filter the card would have told a user to set 120 correctly-measured values to missing. AUDIT-008 arriving inside a detector written to avoid it."
+  },
+  {
+    "id": "survey-sentinel-codes",
+    "step": "audit",
+    "capability": "Sentinel codes in a bounded block: values that break the response scale's observed run, with the mean shift treating one as a response would cause",
+    "classic": "— a 9 in a 1-5 item is read as a response by every summary, every correlation and every model",
+    "state": "guided-only",
+    "reason": "research/CLINICAL_SURVEY_PACK.md section B1.1, which calls this the highest-yield check in the pack. L41-C1. THE RULE IS THAT THE VALUE BREAKS THE OBSERVED CONTIGUOUS RUN, not that it appears in a list: a codebook may use anything, so KNOWN_SENTINELS corroborates and never decides, and a 12 in a 1-5 block is flagged although no list names it. The support is inferred from the UNION ACROSS THE BLOCK, never per item - section B1.1's own instruction, because a rarely-endorsed extreme may be absent from a single item. A HARD STOP: DOMAIN_SCIENCE.md section 01.2 forbids auto-recoding because some legitimate scales do run 0-9, so the finding is critical, fix_kind is none, and the payload names the stop rather than only the prose. The mean shift is the [X] section B1.1 leaves in its own coaching sentence and is signed, because a high sentinel inflates and a -9 deflates. EXTENDED packs.likert_block rather than adding a second block detector: exact containment meant an item carrying one 9 dropped out of its own block, so the check the research ranks first was structurally unreachable from the detector that finds the blocks."
+  },
+  {
+    "id": "survey-reverse-coding-audit",
+    "step": "audit",
+    "capability": "The reverse-coding audit table, re-rendered after every declared change: item, text, item-rest r, reversal declared, item-rest r after reversal, status",
+    "classic": "— pages/02 has no notion of an instrument, a scale or a reversal",
+    "state": "guided-only",
+    "reason": "research/CLINICAL_SURVEY_PACK.md section B1.2. GUIDED-136, L41-C2. THE CONSUMER set_reverse_coding HAS BEEN WAITING FOR since the survey pack shipped: the question was asked, dispatched and recorded with a methods sentence, and nothing read the answer back - AGENT_ONBOARD.md section 07's first trap, on the one question DOMAIN_PACKS.md guard #1 lets a pack add. Served at GET /project/{id}/evidence/reverse-coding and rendered as a pull affordance, dark with its reason on tables that carry no scale. RECOMPUTED PER REQUEST from the record as it stands, which is what re-rendered after every declared change means and why there is no cached table to go stale. IT NEVER PROPOSES A REVERSAL: section B1.2 is SETTLED that a negative item-rest correlation has four incompatible causes and that correlations cannot separate them, so the status vocabulary has no should_be_reversed in it and the absence is asserted as a category rather than as a string. The re-run after a declared reversal is the hard constraint and its verdict is lifted out of the table. Pearson, said, with the direction of the bias stated - polychoric is GUIDED-127 and stays unbuilt rather than approximated. 0.30 is CONVENTION and is never stamped PASS/FAIL. NOT SHIPPED: the item-rest dot plot section B1.2 specifies beside the table."
   }
 ]

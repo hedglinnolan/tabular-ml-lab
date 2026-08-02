@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**275 of 718 closed.**
+**277 of 721 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 392 |
+| `OPEN` | 393 |
 | `PARTIAL` | 51 |
-| `FIXED` | 271 |
+| `FIXED` | 273 |
 | `NOT-A-DEFECT` | 4 |
 
 ---
 
-## OPEN — 392
+## OPEN — 393
 
 
 ### Application state / lockbox — 66
@@ -264,7 +264,7 @@ Nothing is closed without a regression test named after it.
 | `MINE-043` | low | pages/06 defines fallback plotting stubs that shadow visualizations.py on ImportError | `pages/06_Train_and_Compare.py:66-90; visualizations.py:53-88, 91-126` | Unchanged at HEAD. visualizations.py is a first-party module in the repository root and cannot legitimately be missing, so the fallback can only fire on an unrelated ImportError… |
 | `MINE-044` | low | visualizations.plot_residuals will pandas-align if handed two Series with different indexes | `visualizations.py:91-126 vs 141-142; pages/06_Train_and_Compare.py:2604, 2623` | Unchanged at HEAD, and the inconsistency inside one file is the tell: plot_bland_altman coerces both arguments and plot_residuals does not, so the safe idiom was known and applied… |
 
-### Guided-door drive feedback — 33
+### Guided-door drive feedback — 34
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -298,6 +298,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-133` | medium | The decision curve risk rug is silently capped at the first 200 rows per model in row order, so on any cohort above 200 the distribution a reader judges density from is a prefix rather than a sample… | `turbotab/figure_specs.py:2025 risk_rug takes np.asarray(values)[:200] per model and concatenates across…` | CLINICAL_SURVEY_PACK.md section A4.3 is the reason this matters rather than being cosmetic: the whole argument for drawing the risk distribution is that without it a reader cannot… |
 | `GUIDED-137` | medium | The calibration plot's spec labels three annotations '(95% CI)' and no interval is ever computed for any of them, while the ROC figure beside it declares the same promise, computes a bootstrap… | `turbotab/figure_specs.py:195-199 CALIBRATION.annotations declares Annotation('calibration_intercept','Calibrat…` | FOUND AT L41-A2 while writing the second calibration fixture, one layer under the work rather than in it. THE GAP IS INVISIBLE AT THE SURFACE THAT WOULD SHOW IT, which is the… |
 | `GUIDED-138` | medium | blocks_substitution is the recorded purpose's second consumer and has no path to it: nothing in the missingness route knows a column was censored rather than empty, so the prediction/inference… | `turbotab/clinical.blocks_substitution and substitution_blocker are complete and correct and are called only…` | FILED AT L41-B AS THE HONEST FORM OF A CAPABILITY WITHOUT ITS CONSUMER, per LOOP.md section 05: a part that adds a capability ships either with the path that consumes it or with a… |
+| `GUIDED-140` | medium | DEFECT CLASS - a helper is deleted and its callers are not, and nothing in this repository can find the survivors: the page is one 4,000-line script and no check enumerates the names it calls against… | `GUIDED-139 is the instance and it survived because six of its seven call sites were on paths nothing drove. A…` | FILED AT L41-C AS THE CLASS BEHIND GUIDED-139, per LOOP.md section 08's first check: a class that lives only in a report - or in a code comment - gets forgotten. A GUARD WITH A… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 | `GUIDED-121` | low | A near-unique column is neither flagged nor asked about: the identifier rule is exactly one level per row, so a column at 95 percent distinct is treated as an ordinary predictor | `turbotab/identifiers.py UNIQUE_PER_ROW = 1.0, stated as a constant and reported in the receipt's rule…` | DELIBERATELY NOT GUESSED AT, and the threshold is not lowered because there is no honest number to lower it to. A column at 0.95 distinct-per-row is either an identifier with a… |
@@ -610,10 +611,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 271
+## FIXED — 273
 
 
-### Guided-door drive feedback — 87
+### Guided-door drive feedback — 89
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -627,6 +628,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-089` | critical | Training contradicts the preprocessing plan the user recorded: the plan is half-applied, and the half the recorded methods sentence is about is the half the fit overturns | `turbotab/training.py _pipeline builds median impute plus standard scale; turbotab/missingness declarations…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim[the run says what it actually fitted]` — FIXED AT L35-B with GUIDED-095, which is the class this row is… |
 | `GUIDED-093` | critical | A classification target with string labels makes every model report 'did not fit' while carrying a real held-out metric, and makes the calibration figure blame the user's models for a serialization… | `turbotab/training.py:294 result.predictions = [float(v) for v in y_pred] raises on string class labels AFTER…` | **test:** `turbotab/test_a_string_class_label_is_a_label.py::test_a_result_carries_a_score_or_a_reason_and_never_both` — FIXED AT L35-C, and the fix is not only float(). THREE… |
 | `GUIDED-095` | critical | The deferred half of constitution clause 06 has no executor: every decision recorded to be fitted inside the training fold is read by nothing that fits, so only decisions that execute immediately… | `turbotab/training.py touches exactly six project attributes - grain, lockbox, model_shelf, target, task_type…` | **test:** `turbotab/test_selection_reaches_the_fit.py::test_the_selected_set_does_not_move_when_the_held_out_rows_do` — CLOSED AT L36-A. The last member of the class - feature… |
+| `GUIDED-139` | critical | nudge() was deleted at DRIVE-006 and seven call sites outlived it, so every pull affordance in the Guided door threw ReferenceError into the panel that means `we do not have this` | `driven at L41-C through pageharness on clinic_visits.csv: clicking look::r1_plausibility and histogram_pager…` | **test:** `turbotab/test_the_survey_block_is_audited.py::test_every_pull_affordance_survives_being_clicked` — FOUND AT L41-C BY BUILDING A PULL AND DRIVING IT. The reverse-coding… |
 | `GUIDED-001` | high | Import doctor proposes numeric coercion for True/False-coded binary columns (meds_hbp, meds_chol) instead of recognizing a binary variable with informative-missingness potential | `ml/import_doctor.py; screenshot meds_chol` | **test:** `turbotab/test_guided_drive.py::test_a_true_false_column_is_read_as_binary_not_coerced_to_numbers` — Fixed, and reproduced first: a True/False column with blanks is read… |
 | `GUIDED-002` | high | High-missingness finding reports a count but never names the features, and its card carries no snippet and no dtype-aware recommendation | `ml/dataset_profile.py; turbotab explore step; screenshots` | **test:** `turbotab/test_guided_drive.py::test_missingness_routes_by_dtype` — Fixed. Cards name their column in the question text and in a mono chip, carry the count, the share… |
 | `GUIDED-004` | high | No impossibility tier: bp_di values near 1e-15 are at best 'outliers' - the profile does not distinguish medically impossible from medically improbable | `ml/clinical_units.py; ml/physiology_reference.py; ml/dataset_profile.py; screenshot physiologic_check` | **test:** `turbotab/test_guided_drive.py::test_a_diastolic_of_zero_is_impossible_and_a_high_one_is_improbable` — Fixed. The bundled NHANES reference now carries floor/ceiling… |
@@ -680,6 +682,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-122` | high | Guided builds no Table 1, so the participant-characteristics table every reporting standard in the four packs asks for is absent from the manuscript and two validator checks that read it are inert | `turbotab/manuscript.to_latex passes no table1_df; ml/manuscript_validator.py has 'Table 1 population matches…` | **test:** `turbotab/test_the_manuscript_is_checked.py::test_table_one_is_built_from_the_shared_core, ::test_table_one_carries_smds_and_no_p_values… |
 | `GUIDED-128` | high | The calibration plot named a companion that was never registered, so it could not be admitted by any project from L34 until L40 | `turbotab/figure_specs.py CALIBRATION carried companions=('discrimination',) and no figure with that id was…` | **test:** `turbotab/test_eight_more_figures_reach_a_user.py::test_every_declared_companion_is_a_figure_that_exists and ::test_calibration_is_admissible_now_that_the_roc_exists`… |
 | `GUIDED-131` | high | The companion admissibility rule does not gate promotion, so a CONFIRMATORY figure the bundle HELD for a missing validation companion is promoted into the manuscript with the document and the… | `driven by the adjudicator at L40 on leaky_sepsis.csv with calibration.companions restored to the pre-L40…` | **test:** `turbotab/test_the_companion_rule_reaches_the_document.py` — CLOSED AT L41-A3 as a validator cross-section, per the row's own ACT and PRODUCT_VISION.md's ruling - NOT as… |
+| `GUIDED-136` | high | The reverse-coding question is asked, dispatched and recorded, and nothing scores the answer - the one question the survey pack is allowed to add is a recorded decision with no consumer | `api.py dispatches set_reverse_coding and records it with a methods sentence; packs.py carries the…` | **test:** `turbotab/test_the_survey_block_is_audited.py` — CLOSED AT L41-C2. turbotab/survey.audit is the table, served at GET /project/{id}/evidence/reverse-coding and rendered… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |
