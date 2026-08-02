@@ -508,6 +508,34 @@ rendered figure"*, verified through the API, while the page fetched `/figures` z
 a `TestClient` drive, and `__harness.calls()` reports exactly which routes it fetched. Thirty
 lines. **A drive belongs in every adjudication**, and `LOOP.md` §06 carries the rule.
 
+### What comes after the journey — the product owner's sequencing ruling, 2026-08-02
+
+The Guided journey is built: upload → target → explore → features → preprocess → train → explain →
+report all reach a person, the manuscript exports, and the seal is probed rather than asserted.
+Three bodies of work remain and **all three are wanted, in this order.**
+
+1. **The D-track content fill.** The clinical pack holds one prior and no detectors against a
+   1,209-line research file; ~150 anti-patterns are specified as simultaneously pack content and a
+   conformance suite; reference data is the long tail. Well-specified, agent-shaped, and it runs
+   wide.
+2. **The missing capabilities.** `GUIDED-105` (inference model families — mixed, ordinal, count),
+   `GUIDED-106` (subgroups, both forms), `GUIDED-118` (a time-to-event target type, which unblocks
+   Kaplan–Meier and everything survival). The app asks the purpose question, the grain question and
+   the repeated-measures chain, and then offers twenty-two prediction models; three of four packs
+   name a family it does not hold.
+3. **L10, the manuscript chain.** The checklist engine — TRIPOD+AI, STROBE-nut, COSMIN and mQACC as
+   one artifact with two column types — the parity harness as a stated product promise, and
+   `GUIDED-123`'s four uncomputed nutrition objects.
+
+**And loop size varies by content**, which is the same ruling `LOOP.md` §02 already carries and
+this makes explicit: a loop that is discovering a shape stays at **four parts, deep**; a fill-out
+batch **goes as wide as the agent can hold**. §02's test is the one that decides which — *whether
+the last example bent the abstraction*, never a count. Note the evidence for both halves: `L38` ran
+six parts and finished three, and its untouched parts were re-planned twice before landing; `L40`
+ran four, finished four, and its best find — a declared figure companion that was never registered
+and had been silently removing the flagship clinical figure for six loops — came from having room
+to look properly.
+
 ### Why the front of the journey is where the depth belongs — the product owner's ruling
 
 Recorded here because it is a sequencing decision with evidence behind it, and it was made in
