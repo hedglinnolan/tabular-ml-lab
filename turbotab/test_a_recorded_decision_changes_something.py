@@ -593,6 +593,22 @@ REACHES_THE_FIT = {
 #: And the ones that legitimately do not, each with the reason. Measured, not
 #: assumed — every entry here was observed not to move `pipeline_plan`.
 NOT_IN_THE_FIT = {
+    "set_temporal_prediction": (
+        "**`GUIDED-143`, AND THIS ENTRY IS THE FINDING RATHER THAN AN EXCUSE.** "
+        "Answering *yes, I am predicting a later outcome from earlier "
+        "measurements* records `strategy: chronological_grouped` and the "
+        "sentence *'The held-out rows are the latest ones … at times after the "
+        "ones it trained on'*, which the draft carries into the methods "
+        "section. `engine.draw_holdout` takes the frame, the target, the task "
+        "type and the GRAIN, and never reads `temporal_prediction` at all — so "
+        "the split is drawn at random within groups. Driven on "
+        "`clinical_longitudinal.csv`: the held-out visit dates run "
+        "2023-01-16 to 2024-01-20 and the training ones 2023-01-10 to "
+        "2024-01-22, which overlap almost exactly. The record describes a "
+        "split that was not drawn, which is `AUDIT-001`'s shape in the "
+        "artifact that leaves the building. It is listed here because that is "
+        "the truth about where it reaches, and the row is what makes the "
+        "silence loud."),
     "promote_figure": (
         "Editorial, not analytic. Placing a figure in the results changes the "
         "manuscript and the validation report and must not touch the fit — a "

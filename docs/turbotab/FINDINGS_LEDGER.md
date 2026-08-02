@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**280 of 723 closed.**
+**280 of 724 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 392 |
+| `OPEN` | 393 |
 | `PARTIAL` | 51 |
 | `FIXED` | 276 |
 | `NOT-A-DEFECT` | 4 |
 
 ---
 
-## OPEN — 392
+## OPEN — 393
 
 
 ### Application state / lockbox — 66
@@ -264,7 +264,7 @@ Nothing is closed without a regression test named after it.
 | `MINE-043` | low | pages/06 defines fallback plotting stubs that shadow visualizations.py on ImportError | `pages/06_Train_and_Compare.py:66-90; visualizations.py:53-88, 91-126` | Unchanged at HEAD. visualizations.py is a first-party module in the repository root and cannot legitimately be missing, so the fallback can only fire on an unrelated ImportError… |
 | `MINE-044` | low | visualizations.plot_residuals will pandas-align if handed two Series with different indexes | `visualizations.py:91-126 vs 141-142; pages/06_Train_and_Compare.py:2604, 2623` | Unchanged at HEAD, and the inconsistency inside one file is the tell: plot_bland_altman coerces both arguments and plot_residuals does not, so the safe idiom was known and applied… |
 
-### Guided-door drive feedback — 33
+### Guided-door drive feedback — 34
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -279,6 +279,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-110` | high | Figure tiering and companions is specified and unbuilt, and it is the primitive MISC-015 did not count: zero ledger rows mention it at all | `docs/turbotab/DOMAIN_SCIENCE.md section 03 primitive 5 - EXPLORATORY vs CONFIRMATORY and the admissibility…` | FOUND BY THE MISC-015 GATE RATHER THAN BY MISC-015. That finding named four primitives with no rows; measuring all seven found a fifth, which is the argument for the gate over the… |
 | `GUIDED-112` | high | The generalized leakage detector is specified and unbuilt: any parameter estimated from data must be inside the loop, and the app checks this per known transform rather than as a rule | `docs/turbotab/DOMAIN_SCIENCE.md section 03 primitive 7 and section 06, which places it outside the pack order…` | FILED BY THE MISC-015 GATE. WHAT IS ALREADY TRUE AND IS NOT THE SAME THING: pipeline_plan builds preprocessing INSIDE the estimator, so a step that goes through it cannot leak.… |
 | `GUIDED-118` | high | The app cannot represent a time-to-event outcome at all, so Kaplan-Meier and every survival figure and model is unreachable: set_task_type accepts classification and regression only and there is no… | `turbotab/project.py:505 rejects any task_type other than classification or regression; searching turbotab/…` | L38-D1, AND THE REFUSAL IS THE RESULT. The loop prompt said to expect this figure to refuse and to let it, and it does: a curve drawn from a column the app believes is an ordinary… |
+| `GUIDED-143` | high | Answering the temporal-prediction question records - and the manuscript states - that the held-out rows are the latest ones, and engine.draw_holdout never reads temporal_prediction, so the split is… | `driven at L41-D on clinical_longitudinal.csv through the API: set_target sbp, purpose prediction, grain…` | FOUND AT L41-D AND IT IS WHAT GUIDED-141 WAS HIDING, which is the part worth keeping. recorded_kinds() read two of the dispatcher's three forms, so set_temporal_prediction was… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
