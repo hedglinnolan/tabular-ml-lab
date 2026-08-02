@@ -69,7 +69,15 @@ FIXTURE = {
     P.DIETARY: ("dietary_recalls", "nhanes_dietary", "nhanes_partial_design",
                 "nhanes_kilojoules"),
     P.SURVEY: ("survey_instrument",),
-    P.CLINICAL: ("clinic_visits",),
+    # **A TUPLE HERE TOO, AND FOR A SHARPER REASON THAN THE DIETARY ONE.**
+    # `clinic_visits.csv` is the generic clinical table and it carries exactly
+    # one of the eight readings L41 added — `income` written with a thousands
+    # separator. The other seven need a lab extract: censoring tokens, an
+    # analyte in two units, a result column holding a verdict. A registry that
+    # could only promise what the generic fixture triggers would promise one
+    # detector in eight, which is the *promise nobody keeps* half of this key
+    # match rather than the safe half.
+    P.CLINICAL: ("clinic_visits", "clinical_labs"),
 }
 
 
@@ -122,21 +130,23 @@ def test_the_key_match_is_not_passing_on_an_empty_set(key):
 
     Both directions above compare `_emitted(key)` against the declared sources,
     and both pass trivially when `_emitted` is empty — which it is for a pack
-    with no detectors. So the packs that DO declare detectors are asserted to
-    fire them on the fixture the pack was built for, and `clinical`'s emptiness
-    is asserted as the deliberate thing it is rather than left to look like the
-    same silence.
+    with no detectors.
+
+    **Every pack now declares detectors.** `clinical` was the exception until
+    L41 and its emptiness was asserted here as the deliberate thing it was; the
+    branch that held it is gone rather than left as an unreachable `else`,
+    because an unreachable branch asserting a position nobody holds any more is
+    the record decaying in the place that exists to stop it.
     """
     emitted = _emitted(key)
-    if P.PACKS[key].detectors:
-        assert emitted, (
-            f"the {key} pack declares {len(P.PACKS[key].detectors)} detector(s) "
-            f"and none fires on any of {list(FIXTURE[key])}, so both key-match "
-            f"assertions above are comparing against nothing")
-    else:
-        assert key == P.CLINICAL and not emitted, (
-            f"{key} has no detectors; if that is now false the fixture table "
-            f"above is stale")
+    assert P.PACKS[key].detectors, (
+        f"the {key} pack declares no detectors, so both key-match assertions "
+        f"above compare against an empty set and pass vacuously. If that is "
+        f"deliberate, say so here rather than letting it look like coverage.")
+    assert emitted, (
+        f"the {key} pack declares {len(P.PACKS[key].detectors)} detector(s) "
+        f"and none fires on any of {list(FIXTURE[key])}, so both key-match "
+        f"assertions above are comparing against nothing")
 
 
 @pytest.mark.parametrize("key", sorted(FIXTURE))

@@ -42,6 +42,13 @@ FIXTURES = {
     "metabolomics_untargeted": ("responder", {P.METABOLOMICS}),
     "dietary_recalls": ("hba1c", {P.DIETARY, P.CLINICAL}),
     "clinical_longitudinal": ("progressed", {P.CLINICAL}),
+    # L41's clinical import fixture. In the matrix for the same reason every
+    # other fixture is: a table the clinical pack DOES match is where the other
+    # four packs get their chance to fire on something they do not — and this
+    # one is the hardest of those chances, because it carries censoring tokens
+    # that look like the metabolomics pack's territory and a wide block of lab
+    # columns that looks like an assay.
+    "clinical_labs": ("readmitted", {P.CLINICAL}),
     "survey_instrument": ("sought_support", {P.SURVEY}),
     "genomics_expression": ("condition", {P.GENOMICS}),
     "clinic_visits": ("outcome", {P.CLINICAL}),
@@ -282,13 +289,32 @@ def test_the_genomics_pack_recognizes_the_shape_and_asserts_no_normalization():
     assert P.recipe_origins([P.GENOMICS]) == []
 
 
-def test_the_clinical_pack_is_one_prior_and_no_findings():
-    """Deliberately thin: physiologic bounds and unit harmonization already
-    exist in the core. The pack adds ONE prior, and it points the OPPOSITE way
-    from the metabolomics one."""
-    assert P.PACKS[P.CLINICAL].detectors == ()
-    for fixture in FIXTURES:
-        assert P.findings(load(fixture), [P.CLINICAL]) == []
+def test_the_clinical_prior_points_the_opposite_way_from_the_metabolomics_one():
+    """**This test used to be `..._is_one_prior_and_no_findings`, and the
+    emptiness it asserted was a real position that stopped being true at L41.**
+
+    The argument was that physiologic bounds and unit harmonization already
+    exist in the core. That is true of §A1.2 — this pack reads
+    `ml/physiology_reference.py`'s bands rather than carrying its own — and it
+    was never true of §A1.3, which specifies censoring tokens, detection limits
+    inferred from the data, and result columns carrying a qualifier inside the
+    value. The pack now runs eight detectors and the prior is unchanged.
+
+    What the old assertion was *actually* protecting is kept below and
+    sharpened: the pack must stay silent on the four fixtures it does not
+    describe. That is the guard; `detectors == ()` was one way of guaranteeing
+    it and the expensive way.
+    """
+    assert P.PACKS[P.CLINICAL].detectors, (
+        "the clinical pack has no detectors again; if that is deliberate, this "
+        "test and the pack's `looks_for` both have to say so")
+    quiet = [f for f in FIXTURES
+             if P.CLINICAL not in FIXTURES[f][1]]
+    for fixture in quiet:
+        found = P.findings(load(fixture), [P.CLINICAL])
+        assert found == [], (
+            f"the clinical pack fires {[f['id'] for f in found]} on "
+            f"{fixture}, which it does not describe")
 
     clinical = P.priors([P.CLINICAL], "missingness_direction")[0]
     metabolomics = P.priors([P.METABOLOMICS], "missingness_direction")[0]

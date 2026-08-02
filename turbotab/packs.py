@@ -932,6 +932,58 @@ def _nutrition_lonely_psu(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
     return nutrition.lonely_psu_finding(df)
 
 
+# ── clinical ─────────────────────────────────────────────────────────────────
+#
+# Same shape and the same reason as the four above: `turbotab/clinical.py`
+# imports `_finding`, `Evidence` and `Claim` from here, so naming it at module
+# scope would be a cycle, and a thin wrapper is inspectable where a lazy
+# registry is not.
+#
+# **The pack held zero detectors until L41**, with a comment arguing the
+# thinness was the point because physiologic bounds live in the core. That was
+# true of §A1.2 and never true of §A1.3.
+
+
+def _clinical_censored(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    from turbotab import clinical
+    return clinical.censored_values_finding(df)
+
+
+def _clinical_text_numeric(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    from turbotab import clinical
+    return clinical.text_numeric_finding(df)
+
+
+def _clinical_mixed_result(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    from turbotab import clinical
+    return clinical.mixed_result_finding(df)
+
+
+def _clinical_mixed_units(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    from turbotab import clinical
+    return clinical.mixed_units_finding(df)
+
+
+def _clinical_default_mass(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    from turbotab import clinical
+    return clinical.default_value_mass_finding(df)
+
+
+def _clinical_temporal(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    from turbotab import clinical
+    return clinical.temporal_implausibility_finding(df)
+
+
+def _clinical_number_format(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    from turbotab import clinical
+    return clinical.number_format_finding(df)
+
+
+def _clinical_impossible_vs_extreme(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    from turbotab import clinical
+    return clinical.impossible_vs_extreme_finding(df)
+
+
 # ── survey ───────────────────────────────────────────────────────────────────
 
 # THE DETECTION, not the modeling treatment. §B4 — *"Ordinal vs interval — the
@@ -1645,13 +1697,66 @@ PACKS: Dict[str, Pack] = {
         )),
     CLINICAL: Pack(
         key=CLINICAL, label=LENS_LABELS[CLINICAL],
-        detectors=(),
-        # A pack with no detectors still looks for something — its prior is
-        # scoped to the columns the engine's reference matcher recognizes, so
-        # the recognition IS the looking. Sourced `prior::` rather than `pack::`
-        # because there is no finding behind it, which the key-match test reads
-        # as the honest case rather than as a missing row.
+        # **THE THINNEST PACK BECAME THE WIDEST, AND THE OLD ARGUMENT WAS HALF
+        # RIGHT.** This read `detectors=()` until L41, under a comment saying
+        # the thinness was the point because physiologic bounds and unit
+        # harmonization already live in the core. That is true of §A1.2 — the
+        # impossibility bands are `ml/physiology_reference.py`'s and this pack
+        # reads them rather than copying them — and it was never true of §A1.3,
+        # which specifies censoring tokens, detection limits inferred from the
+        # data, and result columns that carry a qualifier inside the value.
+        # None of that existed anywhere.
+        #
+        # Ordered hardest-first, per `LOOP.md` §02, which is also the order they
+        # were built in.
+        detectors=(_clinical_censored, _clinical_text_numeric,
+                   _clinical_mixed_result, _clinical_mixed_units,
+                   _clinical_default_mass, _clinical_temporal,
+                   _clinical_number_format, _clinical_impossible_vs_extreme),
         looks_for=(
+            # NO ANGLE BRACKETS IN A HOVER. The obvious phrasing here was
+            # *"results recorded as `<0.3`"*, which is the clearest sentence and
+            # the wrong one: the page renders an option note into a `data-tip`
+            # attribute, so `<` and `>` come back HTML-escaped and the string
+            # the user reads stops being the string this registry holds. Caught
+            # by `test_the_page_shows_the_note_on_the_option_it_belongs_to`,
+            # which reads the note back off the render rather than off a grep —
+            # which is exactly what that test is for.
+            LooksFor("pack::clinical::censored_values",
+                     "lab results recorded as below the detection limit or "
+                     "above the upper limit of quantitation rather than as a "
+                     "number, with the limit read back per analyte — and "
+                     "`TNTC` and `QNS` separated out, because those are "
+                     "measurement failures rather than censoring"),
+            LooksFor("pack::clinical::text_numeric",
+                     "columns that arrived as text and are more than four "
+                     "fifths numbers, which is where a qualifier is hiding "
+                     "inside the result"),
+            LooksFor("pack::clinical::mixed_result_type",
+                     "a result column holding both a measured value and a "
+                     "verdict — a troponin with `0.04` in some rows and "
+                     "`negative` in others"),
+            LooksFor("pack::clinical::mixed_units",
+                     "an analyte whose values fall into two populations a "
+                     "known conversion factor apart, which is two sites "
+                     "reporting different units into one field"),
+            LooksFor("pack::clinical::default_value_mass",
+                     "vitals piling up on 120/80 and 98.6 — value preference "
+                     "and manual entry rather than measurement"),
+            LooksFor("pack::clinical::temporal_implausibility",
+                     "trajectories that are not believable even where every "
+                     "value in them is: an adult gaining height between "
+                     "visits, a weight moving a third in three weeks"),
+            LooksFor("pack::clinical::number_format",
+                     "numbers written so they do not parse as numbers — "
+                     "thousands separators and decimal commas"),
+            LooksFor("pack::clinical::impossible_vs_extreme",
+                     "the difference between a physiologically impossible "
+                     "value and an abnormal one, which no generic outlier rule "
+                     "can tell apart"),
+            # The prior. Sourced `prior::` rather than `pack::` because there
+            # is no finding behind it, which the key-match test reads as the
+            # honest case rather than as a missing row.
             LooksFor("prior::missingness_direction",
                      "recognized clinical measurements, where a blank often "
                      "means a test was not ordered rather than a value lost — "

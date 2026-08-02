@@ -9296,5 +9296,16 @@
     "verified_against": "",
     "test": "",
     "verified_ev": "turbotab/figure_specs.py:195-199 CALIBRATION.annotations declares Annotation('calibration_intercept','Calibration intercept (95% CI)'), Annotation('calibration_slope','Calibration slope (95% CI)') and Annotation('c_statistic','C-statistic (95% CI)'), all required=True; calibration_payload returns bare floats for all three and no interval key exists in the payload; the annotation_box checklist item scores presence of the seven VALUES and never the intervals; contrast turbotab/figure_specs.py:2185-2266 where the ROC computes c_interval as a bootstrap percentile, renders '(95% CI a-b)' in its caption, returns None rather than a point dressed as an interval, and carries the checklist item c_statistic_with_interval that scores it"
+  },
+  {
+    "id": "GUIDED-138",
+    "sev": "medium",
+    "status": "OPEN",
+    "item": "blocks_substitution is the recorded purpose's second consumer and has no path to it: nothing in the missingness route knows a column was censored rather than empty, so the prediction/inference contraindication cannot fire on a real project",
+    "ev": "turbotab/clinical.blocks_substitution and substitution_blocker are complete and correct and are called only by turbotab/test_the_clinical_detectors_reach_an_upload.py; project.declare_missingness routes a blank by mechanism and strategy and has no notion of censoring, so a column whose blanks came from `<0.3` is indistinguishable there from a column whose blanks came from a skipped draw; test_a_censored_column_reaches_the_missingness_route is xfail(strict=True) naming the missing consumer",
+    "act": "A declare_censoring decision kind beside declare_missingness, carrying the analyte, the modal detection limit and the censored fraction that censored_values_finding already computes - then the purpose contraindication fires where the handling is chosen. The block itself is written: two exits, resolve-or-attest, typed acknowledgment, CONVENTION badge.",
+    "note": "FILED AT L41-B AS THE HONEST FORM OF A CAPABILITY WITHOUT ITS CONSUMER, per LOOP.md section 05: a part that adds a capability ships either with the path that consumes it or with a test that names the missing consumer and FAILS. This is the second clause, and GUIDED-119's xfail(strict=True) is the model. WHY THE CONSUMER COULD NOT SHIP THIS LOOP: censoring is not missingness. The values are present in the file as text, so declare_missingness never sees them - they are not blanks until somebody decides to make them blanks, and that decision is the one the block is about. Wiring it means a new recorded decision kind rather than a branch in an existing one, which is a scope of its own. WHAT IS ALREADY DONE: the detector computes the fraction and the limit per analyte, substitution_position returns both sides of the DISPUTED question with the band the fraction falls in, and blocks_substitution is gated on the fraction as well as the purpose because the research does not say substitution is always wrong for inference - it says the bias grows with the fraction and that below ~5% it rarely matters.",
+    "area": "GUIDED",
+    "detail": ""
   }
 ]

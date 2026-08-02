@@ -397,6 +397,192 @@ def clinical_risk(n: int = 480) -> pd.DataFrame:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 3c · clinical_labs — the messy EHR export the clinical detectors were written for
+#
+# `research/CLINICAL_SURVEY_PACK.md` §A1.1 and §A1.3, and `DOMAIN_SCIENCE.md`
+# §03b's clinical rows. Until L41 the clinical pack held one prior and zero
+# detectors against a 1,209-line research file, and the argument for the
+# thinness — *physiologic bounds and unit harmonization already live in the
+# core* — was true of §A1.2 and **not true of §A1.3**, which describes machinery
+# nothing in this repository has.
+#
+# One table rather than six, because §A1.3's own framing is that these arrive
+# together: a real multi-site lab extract carries censoring tokens, a column
+# typed as text because of them, an analyte reported in two units by two sites,
+# and a vitals column with a manual-entry spike, all at once. Splitting them
+# into one property per file would make each detector easy and the interaction
+# untested.
+#
+# It is LONGITUDINAL — 96 patients × 3 visits — because temporal plausibility
+# (§A1.2, Kahn et al.) is a claim about a trajectory and cannot be built on a
+# cross-section.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def clinical_labs(n_patients: int = 96, n_visits: int = 3) -> pd.DataFrame:
+    """288 rows carrying every §A1.3 format problem at once, each one seeded.
+
+    Every property below is named in the companion `.md` as *must surface* or
+    *must not*, and each is pinned to something a detector actually reads.
+
+    | Column | What it carries | Section |
+    |---|---|---|
+    | `hs_crp` | `<0.3` on ~19% of rows — one modal detection limit | §A1.3 left censoring |
+    | `ferritin` | `>1500` above the upper limit of quantitation | §A1.3 ULOQ |
+    | `wbc` | `TNTC` and `QNS` — **measurement failures, not censoring** | §A1.3 |
+    | `troponin` | `0.04` and `negative` in one column | §A1.3 mixed quant/qual |
+    | `glucose` | two sites, mmol/L and mg/dL, ratio 18.0 | §A1.1 mixed units |
+    | `sbp` / `dbp` | mass at 120/80, four impossible, many abnormal-but-real | §A1.2, §03b |
+    | `temp_f` | mass at 98.6 | §03b default values |
+    | `height_cm` | one adult growing 9 cm between visits | §A1.2 temporal |
+    | `weight_kg` | one adult losing 34% in 21 days | §A1.2 temporal |
+    | `platelets` | `252,000` — a thousands separator | §A1.3 |
+    | `creatinine` | `1,05` — a European decimal comma | §A1.3 |
+    | `bnp` | `1.2E3` — scientific notation | §A1.3 |
+
+    **The censored fraction is deliberately 19%**, which sits above §A1.3's 10%
+    warning threshold and inside the *"above ~20% it is not defensible"* band it
+    calls the boundary of the substitution dispute. A fixture at 4% would make
+    the DISPUTED clause unreachable and a fixture at 40% would make it
+    uninteresting; 19% is the only region where both positions are live.
+    """
+    rng = np.random.default_rng(770118)
+    base = date(2024, 2, 5)
+
+    rows = []
+    for p in range(n_patients):
+        pid = f"PT{p + 1:04d}"
+        age = int(rng.integers(31, 88))
+        sex = str(rng.choice(["F", "M"]))
+        height = float(np.round(rng.normal(172 if sex == "M" else 160, 7.0), 1))
+        weight = float(np.round(rng.normal(86 if sex == "M" else 73, 14.0), 1))
+        # A REAL SEVERE-HYPERTENSION TAIL, and it is the whole point of the
+        # coaching sentence. One patient in nine runs at hypertensive-urgency
+        # pressures — above the 200 mmHg the reference population's 99th
+        # percentile sits at — and those readings are abnormal, real, and the
+        # sickest people in the cohort. A ±3 SD screen deletes them. Without
+        # this tail the fixture would carry four impossible values and nothing
+        # to contrast them against, which is the sentence's other half missing.
+        severe = rng.random() < 0.11
+        sbp0 = float(np.round(rng.normal(212 if severe else 134, 14 if severe else 16), 0))
+        dbp0 = float(np.round(rng.normal(118 if severe else 80, 9 if severe else 10), 0))
+        # WHICH SITE THIS PATIENT WAS SEEN AT, and it decides the glucose unit.
+        # A mixed-unit column is not noise: it is a variable whose meaning
+        # changes between rows, and the reason it is patient-level here rather
+        # than random is that this is how it actually happens — two hospitals
+        # reporting into one extract.
+        site = "NORTH" if rng.random() < 0.62 else "SOUTH"
+        enrolled = base + timedelta(days=int(rng.integers(0, 240)))
+        for v in range(n_visits):
+            when = enrolled + timedelta(days=90 * v + int(rng.integers(-6, 7)))
+            gluc_mgdl = float(np.round(np.clip(rng.normal(112, 30), 55, 340), 0))
+            rows.append({
+                "patient_id": pid,
+                "visit_date": when.isoformat(),
+                "site": site,
+                "age": age,
+                "sex": sex,
+                "height_cm": height,
+                "weight_kg": round(weight + rng.normal(0, 1.1), 1),
+                "sbp": round(sbp0 + rng.normal(0, 6), 0),
+                "dbp": round(dbp0 + rng.normal(0, 5), 0),
+                "temp_f": round(float(np.clip(rng.normal(98.4, 0.8), 95.0, 104.0)), 1),
+                # mmol/L at SOUTH, mg/dL at NORTH. 18.0 exactly — §A1.1's own
+                # first row.
+                "glucose": (round(gluc_mgdl / 18.0, 1) if site == "SOUTH"
+                            else gluc_mgdl),
+                "hs_crp": round(float(np.clip(rng.lognormal(0.4, 1.0), 0.05, 90)), 2),
+                "ferritin": round(float(np.clip(rng.lognormal(4.7, 0.8), 5, 4000)), 0),
+                "wbc": round(float(np.clip(rng.normal(8.1, 2.6), 1.2, 28)), 1),
+                "troponin": round(float(np.clip(rng.lognormal(-3.4, 0.9), 0.005, 4)), 3),
+                # Reported per microliter rather than as ×10⁹/L, which is the
+                # common US lab convention and the reason the column carries a
+                # thousands separator at all — a `252` never needs one.
+                "platelets": int(np.clip(rng.normal(252, 70), 40, 900)) * 1000,
+                "creatinine": round(float(np.clip(rng.lognormal(np.log(1.02), 0.35), 0.3, 8)), 2),
+                "bnp": round(float(np.clip(rng.lognormal(4.6, 1.2), 5, 9000)), 0),
+                "readmitted": int(rng.random() < 0.21),
+            })
+
+    df = pd.DataFrame(rows)
+    n = len(df)
+
+    # ── §A1.3 · censoring, as TEXT, which is what makes the column text ──────
+    #
+    # One detection limit per analyte, because that is what an assay has. A
+    # fixture with three different `<X` values per analyte would make the modal
+    # inference trivially wrong rather than trivially right.
+    crp = df["hs_crp"].astype(object)
+    below = rng.choice(n, size=int(round(0.19 * n)), replace=False)
+    crp.iloc[below] = "<0.3"
+    df["hs_crp"] = crp.astype(str)
+
+    ferritin = df["ferritin"].astype(object)
+    above = rng.choice(np.setdiff1d(np.arange(n), below), size=22, replace=False)
+    ferritin.iloc[above] = ">1500"
+    df["ferritin"] = ferritin.astype(str)
+
+    # TNTC AND QNS ARE NOT CENSORING. Too numerous to count and quantity not
+    # sufficient are measurement FAILURES — the specimen was unusable, or the
+    # count was uncountable — and treating them as extreme values would put a
+    # number where the assay produced none.
+    wbc = df["wbc"].astype(object)
+    failures = rng.choice(np.arange(n), size=14, replace=False)
+    wbc.iloc[failures[:8]] = "QNS"
+    wbc.iloc[failures[8:]] = "TNTC"
+    df["wbc"] = wbc.astype(str)
+
+    # A troponin column holding both `0.04` and `negative` — §A1.3's own
+    # example, and the one a generic profiler reads as a categorical.
+    trop = df["troponin"].astype(object)
+    qualitative = rng.choice(np.arange(n), size=41, replace=False)
+    trop.iloc[qualitative] = np.where(rng.random(41) < 0.75, "negative", "positive")
+    df["troponin"] = trop.astype(str)
+
+    # ── §A1.3 · number formats ───────────────────────────────────────────────
+    df["platelets"] = [f"{v:,}" for v in df["platelets"]]
+    df["creatinine"] = [f"{v:.2f}".replace(".", ",") for v in df["creatinine"]]
+    df["bnp"] = [f"{v:.1E}" for v in df["bnp"]]
+
+    # ── §03b · repeated-digit / default-value mass ───────────────────────────
+    #
+    # Value preference and manual entry, not measurement. 120/80 on the same
+    # rows, because a cuff nobody read is written down as a pair.
+    preferred = rng.choice(n, size=int(round(0.12 * n)), replace=False)
+    df.loc[df.index[preferred], "sbp"] = 120.0
+    df.loc[df.index[preferred], "dbp"] = 80.0
+    df.loc[df.index[rng.choice(n, size=int(round(0.09 * n)), replace=False)],
+           "temp_f"] = 98.6
+
+    # ── §A1.2 · four impossible systolic values, and the abnormal ones kept ──
+    #
+    # THE COACHING SENTENCE'S OWN ARITHMETIC. Four below 30 mmHg are entry
+    # errors; every reading above 140 is abnormal and real and must stay, and
+    # the whole point of the sentence is that no ±3 SD rule separates them.
+    impossible = rng.choice(n, size=4, replace=False)
+    df.loc[df.index[impossible], "sbp"] = [28.0, 12.0, 0.0, 22.0]
+
+    # ── §A1.2 · temporal implausibility ──────────────────────────────────────
+    #
+    # Seeded on named patients rather than at random, so the companion `.md` can
+    # state exactly which rows a detector must find.
+    grown = df.index[(df["patient_id"] == "PT0007") & (df["visit_date"] > df.loc[
+        df["patient_id"] == "PT0007", "visit_date"].min())]
+    df.loc[grown, "height_cm"] = df.loc[grown, "height_cm"] + 9.0
+
+    lost = df.index[(df["patient_id"] == "PT0021")]
+    lost_later = lost[1:]
+    df.loc[lost_later, "weight_kg"] = (df.loc[lost_later, "weight_kg"] * 0.66).round(1)
+    # ...and move that visit inside 30 days, because ±30% over six months is a
+    # trajectory and over three weeks is a transcription error.
+    first_visit = pd.to_datetime(df.loc[lost[0], "visit_date"])
+    df.loc[lost_later, "visit_date"] = [
+        (first_visit + timedelta(days=21 * (i + 1))).date().isoformat()
+        for i in range(len(lost_later))]
+
+    return df
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 4 · survey_instrument — 300 × 40 Likert items
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -613,6 +799,7 @@ FIXTURES = {
     "dietary_recalls": dietary,
     "clinical_longitudinal": clinical,
     "clinical_risk": clinical_risk,
+    "clinical_labs": clinical_labs,
     "survey_instrument": survey,
     "genomics_expression": genomics,
     "nhanes_dietary": nhanes_dietary,
