@@ -2,7 +2,7 @@
 
 `GUIDED-095`, and it is the class rather than one defect:
 
-> The app records **36 kinds of decision.** `training.py` read **six** project
+> The app records **41 kinds of decision.** `training.py` read **six** project
 > attributes and contained no reference to `recipes`, `model_recipes`, the
 > missingness declarations, `deferred_transforms`, `selection_spec`,
 > `engineered`, `purpose` or `lens`.

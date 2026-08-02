@@ -506,7 +506,10 @@ REACHES_THE_FIT = {
 #: assumed — every entry here was observed not to move `pipeline_plan`.
 NOT_IN_THE_FIT = {
     "set_selection": (
-        "**A REAL SEVERED SEAM, FILED AS `GUIDED-099`.** `selection.declare`'s "
+        "**A REAL SEVERED SEAM, AND IT IS WHY `GUIDED-095` IS `PARTIAL` RATHER "
+        "THAN `FIXED`** — adjudicator, L35; this line previously pointed at "
+        "`GUIDED-099`, which is the pack recipe table and a different finding. "
+        "`selection.declare`'s "
         "own docstring calls this the sharpest case in the whole project and "
         "says the per-model pipeline fits the spec inside each training fold. "
         "`pipeline_plan` implements no selection at all, so the spec reaches "
