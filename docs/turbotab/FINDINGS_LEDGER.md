@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**282 of 727 closed.**
+**282 of 728 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 394 |
+| `OPEN` | 395 |
 | `PARTIAL` | 51 |
 | `FIXED` | 278 |
 | `NOT-A-DEFECT` | 4 |
 
 ---
 
-## OPEN — 394
+## OPEN — 395
 
 
 ### Application state / lockbox — 66
@@ -264,7 +264,7 @@ Nothing is closed without a regression test named after it.
 | `MINE-043` | low | pages/06 defines fallback plotting stubs that shadow visualizations.py on ImportError | `pages/06_Train_and_Compare.py:66-90; visualizations.py:53-88, 91-126` | Unchanged at HEAD. visualizations.py is a first-party module in the repository root and cannot legitimately be missing, so the fallback can only fire on an unrelated ImportError… |
 | `MINE-044` | low | visualizations.plot_residuals will pandas-align if handed two Series with different indexes | `visualizations.py:91-126 vs 141-142; pages/06_Train_and_Compare.py:2604, 2623` | Unchanged at HEAD, and the inconsistency inside one file is the tell: plot_bland_altman coerces both arguments and plot_residuals does not, so the safe idiom was known and applied… |
 
-### Guided-door drive feedback — 35
+### Guided-door drive feedback — 36
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -303,6 +303,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 | `GUIDED-121` | low | A near-unique column is neither flagged nor asked about: the identifier rule is exactly one level per row, so a column at 95 percent distinct is treated as an ordinary predictor | `turbotab/identifiers.py UNIQUE_PER_ROW = 1.0, stated as a constant and reported in the receipt's rule…` | DELIBERATELY NOT GUESSED AT, and the threshold is not lowered because there is no honest number to lower it to. A column at 0.95 distinct-per-row is either an identifier with a… |
+| `GUIDED-146` | low | The project payload carries n_rows, n_columns and name at the top level AND inside `profile`, and the page prefers the profile copy - so the top-level trio is a fallback branch the server's own… | `found at L42-B by the field sweep, which reported top-level n_rows, n_columns and row_identity unread while…` | FILED AT L42-B AS THE FIRST THING THE FIELD SWEEP FOUND, and it is worth keeping for what it says about the granularity rather than for its own size. The ROUTE check cannot see… |
 
 ### Migration safety net — 28
 
