@@ -9184,5 +9184,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "driven at L40 once GUIDED-128 made the figure admissible for the first time: turbotab/figure_bundle._calibration_payload returns a payload whose annotation set does not satisfy CALIBRATION's own annotation_box item, 4 of 5 items pass"
+ },
+ {
+  "id": "GUIDED-130",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "The app has no ordinal and no count task type, so an ordered outcome is modeled as nominal and a count as continuous - and neither loss is stated anywhere",
+  "detail": "",
+  "ev": "turbotab/project.py:505 accepts classification and regression only; driven at L40-D on multiclass_stage.csv whose disease_stage is remission/controlled/progressive - an ordered scale the app records as three unordered labels - and on clinical_longitudinal.csv's visit, a count the app models as continuous; no surface mentions either",
+  "act": "",
+  "status": "OPEN",
+  "note": "FOUND BY THE L40-D SHAPE SWEEP, and it is the shape of L39-D's zero rather than a new instance of it. NOTHING THE APP SAYS IS FALSE: an ordered outcome IS a classification and a count IS a number, so every answer is defensible in isolation. What is missing is the DISTINCTION, and the cost is concrete. For an ordered outcome, discarding the order throws away the information a proportional-odds model would use and makes an error between adjacent categories count the same as one between the extremes - CLINICAL_SURVEY_PACK B6 specifies detecting ordinal outcomes and testing the proportional odds assumption, and none of that can fire without a task type to hang it on. For a count, nothing notices that a prediction below zero is impossible, and no count model family is offered. WHY IT IS FILED RATHER THAN BUILT: a task type is a target REPRESENTATION change, which is GUIDED-118's shape and GUIDED-105's dependency - the inference families are a decision before they are a build. THE CHEAP HONEST HALF FIRST, and it is the same one GUIDED-118 took: say it. A recorded outcome the app has read as nominal when its levels look ordered is a thing the app can notice and state without modeling.",
+  "verified_against": "",
+  "test": "turbotab/test_every_surface_says_what_it_cannot_take.py::test_every_silently_wrong_cell_is_filed",
+  "verified_ev": "L40-D matrix: 7 shapes x 7 surfaces = 49 cells, 6 silently wrong, of which 2 are this row"
  }
 ]
