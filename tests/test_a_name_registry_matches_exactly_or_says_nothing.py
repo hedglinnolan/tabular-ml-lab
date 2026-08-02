@@ -177,6 +177,34 @@ def test_a_declared_identifier_spelling_still_resolves():
 # substring. That is the list being checked in both directions, and it is why a
 # repair cannot leave a permanent excuse behind it.
 DECLARED = {
+    # ── L41-B · the clinical pack's §A1.3 censoring tokens ───────────────────
+    #
+    # **Not a name registry, and the difference is the axis.** Every other site
+    # in this table matches against a COLUMN NAME, where a substring hit is the
+    # defect this guard exists to prevent — `bp` inside `bmi_pct`. These match
+    # against a CELL VALUE, and `research/CLINICAL_SURVEY_PACK.md` §A1.3
+    # specifies the tokens as things that appear *inside* a result string:
+    # `<LOD`, `see comment`, `QNS — insufficient sample`, `not detected`. An
+    # exact-match rule would find none of them, which is the opposite failure.
+    #
+    # The residual risk is real and small, and it is stated rather than waved
+    # at: a lab result cell reading `retrace` would match `trace`. The tokens
+    # are the research's own list and the alternative — a word-boundary regex
+    # per token — breaks on `<LOD` and `>ULOQ`, which begin with punctuation
+    # and are the two that matter most.
+    ("turbotab/clinical.py", "_LEFT_TOKENS"):
+        "Not a name registry. Substring match against a CELL VALUE rather than "
+        "a column name: research/CLINICAL_SURVEY_PACK.md section A1.3 "
+        "specifies these as qualifiers embedded in a lab result, so an exact "
+        "match would find none of them. See the block comment above this "
+        "entry for the residual risk.",
+    ("turbotab/clinical.py", "_RIGHT_TOKENS"):
+        "Not a name registry. The same, for the above-range qualifiers.",
+    ("turbotab/clinical.py", "_FAILURE_TOKENS"):
+        "Not a name registry. The same, for the measurement-failure tokens "
+        "section A1.3 is explicit are NOT censoring - TNTC, QNS, hemolyzed, "
+        "see comment - which routinely arrive as part of a longer free-text "
+        "comment rather than as the whole cell.",
     ("ml/splits.py", "kept_labels"):
         "Not a name registry. `kept_labels` holds ROW LABELS and the test is "
         "membership in an index, not a substring of a name.",
