@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**251 of 677 closed.**
+**251 of 678 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 376 |
+| `OPEN` | 377 |
 | `PARTIAL` | 50 |
 | `FIXED` | 248 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 376
+## OPEN — 377
 
 
 ### Application state / lockbox — 66
@@ -394,7 +394,7 @@ Nothing is closed without a regression test named after it.
 | `COACH-031` | invariant | Coaching voice must never reach the manuscript verbatim. | `utils/insight_ledger.py:1188 — `text = (i.manuscript_text or '').strip() or…` | The invariant is stated correctly and is broken in exactly the way this row predicts, unchanged at HEAD. The register separation works - manuscript_text is preferred and the regex… |
 | `COACH-032` | invariant | 'high' confidence is the only tier the UI pre-selects, so 'high' means the app is asserting (docs/FINDINGS_LEDGER.md, Governing rule, lines 20-27). | `PARTIALLY, and only in the import/join domain: ml/join_doctor.py:922 `if include_low or c.confidence !=…` | All three weakenings confirmed at HEAD. (1) is COACH-015: a medium-confidence join key IS pre-selected. (2) is exact - final returns detected with no tier check, so a… |
 
-### Guided-door drive feedback — 19
+### Guided-door drive feedback — 20
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -415,6 +415,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-071` | medium | FigureSpec has no field for a precondition on upstream data state, so a figure that must refuse on the shape of the values can only do it inside its payload builder | `turbotab/figures.py FigureSpec.when_applicable; turbotab/figure_specs.py volcano_payload…` | Found at L29-B by building the volcano first, hardest-first, which is what LOOP.md section 02 now asks for. METABOLOMICS_PACK.md section 06.3: the fold change must be computed… |
 | `GUIDED-073` | medium | The client technology was never decided, only defaulted: the Guided door is one 3,701-line HTML file with 2,714 lines of hand-written vanilla JS, and the one sentence that reads like a decision… | `turbotab/web/index.html; turbotab/api.py:2259 StaticFiles mount; PRODUCT_VISION.md:22; PRODUCT_VISION.md…` | RAISED BY THE PRODUCT OWNER, who expected the dynamic half of a migration off Streamlit to be in something other than Python and found it is not. MEASURED: turbotab/web/index.html… |
 | `GUIDED-085` | medium | Two composed steps the Guided door has no surface for: the models shelf and the Preprocess step, both fully reasoned server-side | `turbotab/api.py get_models three groups always returned including empty ones; get_preprocess strategies carry…` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim[preprocess reaches its end]` — L34-B CLOSED THE PREPROCESS HALF. The step has a surface and an end… |
+| `GUIDED-101` | medium | The Explain step has no research backing and no parity register row: the four packs contain zero explainability content, so the one journey step left to build is the only one whose method choice… | `grep for SHAP, permutation importance, variable importance and explainab across the 3,602 lines of…` | ADJUDICATOR FINDING, filed before L36 so the loop that builds Explain knows what it does not have. EVERY OTHER STEP OF THIS JOURNEY RESTS ON A SOURCED SECTION - the seal on clause… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 
