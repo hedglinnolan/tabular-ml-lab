@@ -72,6 +72,7 @@ import numpy as np
 import pandas as pd
 
 from turbotab import missingness as _miss
+from turbotab import selection as _sel
 
 #: The percentile pair a `winsorize` variant clips at, and the number of median
 #: absolute deviations a `mad` variant clips at. Chosen as the conventional
@@ -294,6 +295,11 @@ class Plan:
     undeclared: List[str] = field(default_factory=list)
     #: Set by `build`. Kept so a caller can report the shape without rebuilding.
     _blocks: Any = None
+    #: The fitted selector's step name, or `None` where no selection was
+    #: recorded. Held so `training` can read the surviving feature set off the
+    #: fitted pipeline rather than re-deriving it — a second derivation of a
+    #: selected set is a second answer to *which columns did the model see*.
+    selector_step: Optional[str] = None
 
     def sentences(self) -> List[str]:
         return [s.sentence for s in self.steps if s.sentence]
@@ -318,8 +324,16 @@ class Plan:
         """The unfitted `Pipeline`. Nothing here has seen a value."""
         from sklearn.pipeline import Pipeline
 
-        prep, shape = self._blocks
-        return Pipeline([("prep", prep), ("shape", shape), ("model", estimator)])
+        prep, shape, selector = self._blocks
+        steps = [("prep", prep), ("shape", shape)]
+        if selector is not None:
+            # BETWEEN THE SHAPE AND THE MODEL, and inside the estimator like
+            # everything else. That placement is the whole leakage argument:
+            # the selected SET is a fact about the rows the selector saw, and a
+            # set chosen outside `fit` is a set chosen with the held-out rows in
+            # view even though no held-out value was copied anywhere.
+            steps.append(("select", selector))
+        return Pipeline(steps + [("model", estimator)])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -449,11 +463,295 @@ def _encoder(variant: str, seed: int) -> Optional[Any]:
     raise PlanRefusal(f"no encoding named {variant!r}.")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Feature selection · the last member of `GUIDED-095`'s class
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# `selection.declare` takes `scope=TRAIN_FOLDS`, refuses any third option, and
+# says in its own refusal that *there is no option that fits on the whole
+# table.* Until this loop nothing fitted it at all — so the record made a
+# fold-local claim and nothing delivered it, which is the same defect as a
+# recorded strategy nothing fits, one object over.
+#
+# **What is genuinely deliverable here, stated before the code so it cannot be
+# overclaimed.** This door fits each model ONCE: `train()` fits on the training
+# partition and scores on the sealed rows. There is one fold. So a selector
+# placed inside the estimator is refitted wherever the pipeline is refitted —
+# which makes it fold-local *by construction* under any resampling — and in
+# THIS run it saw the training partition exactly once. That is
+# `scope=TRAIN_ROWS`, which is precisely the weaker claim `selection.py` keeps
+# a name for. The plan records the divergence rather than letting the stronger
+# sentence stand.
+
+class Renamed(_BASE, _MIXIN):
+    """Pass values through and give the output columns declared names.
+
+    **Found by turning on pandas output for the shape stage.** A deferred
+    binning of `age` produced an output column sklearn also names `age`, so the
+    model received two columns called `age` — the raw one and the binned one —
+    and nothing said so. With numpy output the collision was invisible; the
+    first thing that asked for names raised.
+
+    The names come from `features.new_column_name`, which is where every other
+    surface in this app gets the name of a derived column, so the plan, the
+    receipt and the fitted matrix agree about what a column is called.
+    """
+
+    def __init__(self, names=()):
+        self.names = names
+
+    def fit(self, X, y=None):
+        self.n_features_in_ = pd.DataFrame(X).shape[1]
+        return self
+
+    def transform(self, X):
+        return X
+
+    def get_feature_names_out(self, input_features=None):
+        width = len(self.names)
+        return np.asarray(list(self.names) if width else
+                          list(input_features or []), dtype=object)
+
+
+class ScopedSelector(_BASE, _MIXIN):
+    """Rank inside the recorded CANDIDATE POOL; pass everything else through.
+
+    **Found by driving the first working version**, and it is the same defect
+    one level in. `selection.declare` records `candidates` — the columns the
+    user offered to the method — and a selector dropped straight into the
+    pipeline ranks over the SHAPED matrix instead: on `clinic_visits.csv` a
+    user who offered six numeric columns got a top-3 chosen from 244 one-hot
+    columns. The record said which columns were in play and the fit ignored it,
+    which is `GUIDED-095` arriving inside `GUIDED-095`'s own fix.
+
+    So the pool is resolved by NAME EQUALITY against the columns the numeric
+    blocks pass through unchanged — never by prefix. `bp_1` and `bp_10` are
+    different columns, and a `startswith` here would be the substring-matching
+    class `ml/name_registry.py` exists to end.
+
+    Columns outside the pool are **passed through, not dropped**. `candidates`
+    names what was offered to the method; a selector that silently discarded
+    everything nobody nominated would be shortening the feature set in the
+    user's name.
+    """
+
+    def __init__(self, inner=None, pool=()):
+        self.inner = inner
+        self.pool = pool
+
+    def fit(self, X, y=None):
+        frame = pd.DataFrame(X)
+        names = [str(c) for c in frame.columns]
+        wanted = [c for c in names if c in set(self.pool)]
+        self.passthrough_ = [c for c in names if c not in set(wanted)]
+        if not wanted:
+            # Nothing the record nominated survived to this point. Selecting
+            # from an empty pool would be the app choosing on its own; keeping
+            # everything and saying so is the honest branch.
+            self.kept_ = []
+            self.pool_ = []
+            self.inner_ = None
+            self.n_features_in_ = frame.shape[1]
+            return self
+        self.pool_ = wanted
+        from sklearn.base import clone
+
+        self.inner_ = clone(self.inner)
+        self.inner_.fit(frame[wanted], y)
+        support = self.inner_.get_support()
+        self.kept_ = [c for c, keep in zip(wanted, support) if keep]
+        self.n_features_in_ = frame.shape[1]
+        return self
+
+    def transform(self, X):
+        frame = pd.DataFrame(X)
+        frame.columns = [str(c) for c in frame.columns]
+        return frame[list(self.kept_) + list(self.passthrough_)]
+
+    def get_feature_names_out(self, input_features=None):
+        return np.asarray(list(self.kept_) + list(self.passthrough_),
+                          dtype=object)
+
+    def get_support(self, indices: bool = False):
+        """Over the WHOLE input, so a caller reading `support` against the
+        shape stage's names gets the columns the model actually received."""
+        keep = set(self.kept_) | set(self.passthrough_)
+        names = list(self.kept_) + list(self.pool_) + list(self.passthrough_)
+        # Rebuilt in input order rather than in output order, because the
+        # caller pairs this with the SHAPE stage's names.
+        ordered = list(dict.fromkeys(list(self.pool_) + list(self.passthrough_)))
+        mask = np.asarray([n in keep for n in ordered], dtype=bool)
+        return np.where(mask)[0] if indices else mask
+
+    def input_order(self):
+        """The column order `get_support` is expressed in."""
+        return list(dict.fromkeys(list(self.pool_) + list(self.passthrough_)))
+
+
+def _selector(spec: Dict[str, Any], task_type: str, seed: int) -> Any:
+    """The fold-fitted selector for one recorded spec.
+
+    Every branch is an sklearn transformer that fits from `(X, y)` inside the
+    pipeline. `stability` is the one the module offers and sklearn does not
+    ship, so it is built here rather than approximated with something else
+    wearing its name.
+    """
+    from sklearn.feature_selection import (RFE, SelectFromModel, SelectKBest,
+                                           f_classif, f_regression,
+                                           mutual_info_classif,
+                                           mutual_info_regression)
+
+    method = str(spec.get("method") or "")
+    n_features = spec.get("n_features")
+    classify = task_type == "classification"
+
+    if method == "mutual_info":
+        from functools import partial
+
+        # **SEEDED, and it was not.** `mutual_info_classif` and
+        # `mutual_info_regression` add noise to break ties in the nearest-
+        # neighbour estimate, and with `random_state=None` they draw from
+        # numpy's GLOBAL state — so the same project selected different columns
+        # depending on what else had run in the process first. Found by the
+        # full suite: the probe passed in isolation and failed after other
+        # files had advanced the global RNG.
+        #
+        # This module is handed a seed precisely so the number that comes out
+        # travels with the number that produced it (`turbotab/jobs.py`), and a
+        # selected SET is a result like any other.
+        score = partial(mutual_info_classif if classify
+                        else mutual_info_regression, random_state=seed)
+        return SelectKBest(score_func=score, k=_k(n_features))
+    if method == "univariate":
+        score = f_classif if classify else f_regression
+        return SelectKBest(score_func=score, k=_k(n_features))
+    if method == "lasso":
+        from sklearn.linear_model import Lasso, LogisticRegression
+
+        estimator = (LogisticRegression(penalty="l1", solver="liblinear",
+                                        random_state=seed)
+                     if classify else Lasso(alpha=0.01, random_state=seed))
+        # `threshold=None` keeps sklearn's own default — the mean of the
+        # coefficients' magnitudes — rather than a number nobody calibrated.
+        return SelectFromModel(estimator, threshold=None)
+    if method == "rfe":
+        from sklearn.ensemble import (ExtraTreesClassifier,
+                                      ExtraTreesRegressor)
+
+        estimator = (ExtraTreesClassifier(n_estimators=50, random_state=seed)
+                     if classify else
+                     ExtraTreesRegressor(n_estimators=50, random_state=seed))
+        return RFE(estimator, n_features_to_select=_k(n_features, rfe=True))
+    if method == "stability":
+        return StabilitySelector(n_features=n_features, classify=classify,
+                                 random_state=seed)
+    raise PlanRefusal(
+        f"{method!r} is a recorded selection method with no fitted form here. "
+        f"A method the record accepts and the pipeline cannot perform is the "
+        f"gap this module exists to close, so it refuses rather than quietly "
+        f"selecting everything.")
+
+
+def _k(n_features: Optional[int], *, rfe: bool = False):
+    """`k` for a selector, or sklearn's own all-features sentinel.
+
+    A spec with no count means the METHOD decides how many survive — LASSO and
+    stability both do — and forcing a number here would be this module
+    inventing a size the user did not choose.
+    """
+    if n_features is None:
+        return None if rfe else "all"
+    return int(n_features)
+
+
+class StabilitySelector(_BASE, _MIXIN):
+    """Keep the features chosen in at least half of resamples.
+
+    `selection.py` offers stability selection and sklearn ships no estimator
+    for it, so it is written here rather than silently mapped onto something
+    else — a method the record names and the pipeline substitutes is the
+    divergence this project states rather than performs.
+
+    **Every resample is drawn from the rows the selector was FITTED on**, which
+    inside the pipeline is the training partition. The held-out rows are not in
+    `X` at all here, which is the placement doing the work rather than a rule
+    somebody remembered.
+
+    The half-of-resamples threshold is Meinshausen & Bühlmann's convention and
+    is stated on the spec's own sentence; it is not tuned here.
+    """
+
+    def __init__(self, n_features=None, classify: bool = False,
+                 n_resamples: int = 20, random_state: int = 0):
+        self.n_features = n_features
+        self.classify = classify
+        self.n_resamples = n_resamples
+        self.random_state = random_state
+
+    def fit(self, X, y=None):
+        from sklearn.feature_selection import (SelectKBest, f_classif,
+                                               f_regression)
+
+        frame = pd.DataFrame(X)
+        rng = np.random.default_rng(self.random_state)
+        counts = np.zeros(frame.shape[1], dtype=float)
+        target = np.asarray(y)
+        k = self.n_features or max(1, frame.shape[1] // 2)
+        k = min(int(k), frame.shape[1])
+        score = f_classif if self.classify else f_regression
+        drawn = 0
+        for _ in range(self.n_resamples):
+            rows = rng.choice(len(frame), size=max(2, len(frame) // 2),
+                              replace=False)
+            if len(np.unique(target[rows])) < 2 and self.classify:
+                continue
+            try:
+                chosen = SelectKBest(score_func=score, k=k).fit(
+                    frame.iloc[rows], target[rows]).get_support()
+            except Exception:
+                continue
+            counts += chosen.astype(float)
+            drawn += 1
+        # RETURN NOTHING RATHER THAN A WRONG VALUE. If no resample could be
+        # scored, the selector has no evidence and keeps every column rather
+        # than inventing a set from zero draws.
+        self.support_ = (np.ones(frame.shape[1], dtype=bool) if not drawn
+                         else counts / drawn >= 0.5)
+        if not self.support_.any():
+            self.support_ = np.ones(frame.shape[1], dtype=bool)
+        self.n_resamples_scored_ = drawn
+        self.n_features_in_ = frame.shape[1]
+        return self
+
+    def transform(self, X):
+        return pd.DataFrame(X).to_numpy()[:, self.support_]
+
+    def get_support(self, indices: bool = False):
+        return np.where(self.support_)[0] if indices else self.support_
+
+
 _DEFERRED_BUILDERS = {
     "bin_quantile": ("quantile", "equal-sized"),
     "bin_uniform": ("uniform", "equal-width"),
     "bin_kmeans": ("kmeans", "clustered"),
 }
+
+
+def _deferred_names(spec: Dict[str, Any], columns: Sequence[str]) -> List[str]:
+    """The names a deferred transform's output columns take.
+
+    `pca` is the one that produces a different WIDTH from its input, so it gets
+    component names; everything else is one output per input and takes
+    `features.new_column_name`, which is the name the receipt, the plan and the
+    manuscript all already use.
+    """
+    from turbotab import features as _feat
+
+    params = spec.get("params") or {}
+    if spec["key"] == "pca":
+        n = int(params.get("n_components") or 2)
+        return [f"pc{i + 1}" for i in range(n)]
+    return [_feat.new_column_name(spec["key"], [c], params) for c in columns]
 
 
 def _deferred_transformer(spec: Dict[str, Any], seed: int) -> Any:
@@ -769,7 +1067,13 @@ def compose(project: Any, model_key: str, frame: pd.DataFrame, *,
         branch = ("numeric" if all(c in numeric for c in columns)
                   else "categorical")
         block = Pipeline([("fill", _imputer(_DEFAULT_FILL[branch], seed)),
-                          ("t", transformer)])
+                          ("t", transformer),
+                          # NAMED, or the binned `age` and the raw `age` are
+                          # both called `age` and the model gets two columns
+                          # with one name. `features.new_column_name` is where
+                          # every other surface gets a derived column's name.
+                          ("name", Renamed(names=_deferred_names(deferred,
+                                                                 columns)))])
         shape_blocks.append((f"deferred_{i}_{deferred['key']}", block,
                              list(columns)))
         plan.steps.append(Step(
@@ -792,7 +1096,75 @@ def compose(project: Any, model_key: str, frame: pd.DataFrame, *,
         shape_blocks.append(("all", "passthrough", list(frame.columns)))
     shape = ColumnTransformer(shape_blocks, remainder="drop",
                               verbose_feature_names_out=False)
-    plan._blocks = (prep, shape)
+    # PANDAS OUT, so the selector can resolve the recorded candidate pool by
+    # NAME rather than by position. A positional pool would be the same class
+    # of defect `MINE-014` names one door over.
+    shape.set_output(transform="pandas")
+
+    # ── the selection, at last fitted ───────────────────────────────────────
+    selector = None
+    spec = getattr(project, "selection_spec", None)
+    if spec:
+        # THE POOL IS THE RECORDED CANDIDATES, resolved against the columns the
+        # numeric blocks pass through by name. A candidate that is not one of
+        # those cannot be ranked here — it has been expanded or renamed by the
+        # shape stage — and that is a stated divergence rather than a guess at
+        # which output column it became.
+        passthrough_names = set(numeric_filled) | set(numeric_blank)
+        pool = [c for c in (spec.get("candidates") or [])
+                if str(c) in passthrough_names]
+        unrankable = [str(c) for c in (spec.get("candidates") or [])
+                      if str(c) not in passthrough_names]
+        selector = ScopedSelector(inner=_selector(spec, task, seed), pool=pool)
+        plan.selector_step = "select"
+        if unrankable:
+            plan.divergences.append(Divergence(
+                subject=", ".join(unrankable), source="selection",
+                requested="ranked among the candidates",
+                applied="passed through unranked",
+                why=("these columns do not reach the selector under their own "
+                     "names — the shape stage encodes or bins them first, so "
+                     "there is no single output column to rank."),
+                recorded_sentence=spec["sentence"],
+                fitted_sentence=(
+                    f"{len(unrankable)} recorded candidate(s) were not ranked "
+                    f"by the selector and were passed to the model unchanged: "
+                    f"{', '.join(unrankable)}. They are encoded or binned "
+                    f"before selection runs, so no single column carries them.")))
+        plan.steps.append(Step(
+            key=f"select:{spec['method']}", source="selection",
+            columns=tuple(str(c) for c in spec.get("candidates") or ()),
+            # IDENTITY, as everywhere else: the record's own sentence.
+            sentence=spec["sentence"],
+            because=spec.get("because", ""),
+            params={"method": spec["method"],
+                    "n_features": spec.get("n_features"),
+                    "scope_recorded": spec.get("scope"),
+                    "scope_fitted": _sel.TRAIN_ROWS}))
+        if spec.get("scope") == _sel.TRAIN_FOLDS:
+            # **NEVER CLAIM THE STRONGER SCOPE.** The selector is inside the
+            # estimator, so it is refitted wherever the pipeline is — fold-local
+            # by construction under any resampling. But this door fits each
+            # model ONCE, on the training partition, so in this run there is one
+            # fold and the selector saw those rows once. That is `train_rows`,
+            # which is exactly the weaker claim `selection.py` keeps a name for,
+            # and the difference is stated rather than absorbed.
+            why = ("this door fits each model once, on the training partition, "
+                   "so there is a single fold and the selector saw those rows "
+                   "one time. Refitting per fold needs the training step to "
+                   "resample, which it does not.")
+            plan.divergences.append(Divergence(
+                subject=f"feature selection ({spec['method']})",
+                source="selection",
+                requested=_sel.TRAIN_FOLDS, applied=_sel.TRAIN_ROWS,
+                why=why,
+                recorded_sentence=spec["sentence"],
+                fitted_sentence=(
+                    f"Feature selection was fitted ONCE over the training rows "
+                    f"with the held-out rows excluded, not separately within "
+                    f"each training fold as recorded, because {why}")))
+
+    plan._blocks = (prep, shape, selector)
     return plan
 
 

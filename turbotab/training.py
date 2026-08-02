@@ -84,6 +84,21 @@ class ModelResult:
     #: `leave` is honored by gradient boosting and not by a linear fit, and a
     #: run-level note could not say which (`GUIDED-095`).
     plan: Dict[str, Any] = field(default_factory=dict)
+    #: The features that SURVIVED selection, read off the fitted selector.
+    #: `None` where no selection was recorded — which is not the same as an
+    #: empty list, and a consumer that could not tell those apart would report
+    #: *selection kept nothing* about a project that never selected.
+    selected_features: Optional[List[str]] = None
+    #: How many columns the selector was OFFERED — the recorded candidate pool
+    #: as it survived to the selector — so the run can say *kept 3 of 6* rather
+    #: than *kept 3*. A count with no denominator is a number a reader cannot
+    #: judge.
+    n_candidates: Optional[int] = None
+    #: Columns that reached the model WITHOUT being offered to selection.
+    #: Counted separately and never folded into the kept total: a run that said
+    #: *kept 241 of 244* about a user who nominated six columns would be
+    #: describing the encoder's output as if it were the user's choice.
+    n_passthrough: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -95,6 +110,12 @@ class ModelResult:
             "positive_label": (None if self.positive_label is None
                                else str(self.positive_label)),
             "plan": dict(self.plan),
+            "selected_features": (None if self.selected_features is None
+                                  else list(self.selected_features)),
+            "n_selected": (None if self.selected_features is None
+                           else len(self.selected_features)),
+            "n_candidates": self.n_candidates,
+            "n_passthrough": self.n_passthrough,
         }
 
 
@@ -109,6 +130,12 @@ class TrainingRun:
     results: List[ModelResult] = field(default_factory=list)
     features: List[str] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
+    #: The invalidation log's length when this run was produced (`GUIDED-094`).
+    #: Anything appended after it is a change these numbers do not account for,
+    #: and `project.stale_since(mark)` says WHICH. `None` means the run
+    #: predates the watermark and its staleness is undetermined — which is a
+    #: third state, not a synonym for fresh.
+    mark: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -116,6 +143,7 @@ class TrainingRun:
             "n_train": self.n_train, "n_test": self.n_test,
             "seal_basis": self.seal_basis, "exploratory": self.exploratory,
             "features": list(self.features), "notes": list(self.notes),
+            "mark": self.mark,
             "results": [r.to_dict() for r in self.results],
         }
 
@@ -195,6 +223,37 @@ def _metrics(task_type: str, y_true: np.ndarray, y_pred: np.ndarray,
     return {k: (None if v is None or (isinstance(v, float) and not np.isfinite(v))
                 else float(v))
             for k, v in out.items() if isinstance(v, (int, float, np.floating))}
+
+
+def _surviving_features(pipe: Any, plan: Any):
+    """Which features the fitted selector kept, READ OFF THE FIT.
+
+    `None` where no selection was recorded — distinct from `[]`, which would
+    say the selector kept nothing.
+
+    Read rather than re-derived: the selected set is the thing a reader most
+    wants to check, and a second derivation of it is a second answer to *which
+    columns did the model see*. The names come from the step BEFORE the
+    selector, so a one-hot expansion is named as the columns the model actually
+    got rather than as the categorical column they came from.
+    """
+    if getattr(plan, "selector_step", None) is None:
+        return None, None, None
+    try:
+        selector = pipe.named_steps[plan.selector_step]
+        # WHAT THE SELECTOR RANKED, asked of the selector. The pool is the
+        # recorded candidates that reached it; everything else passed through
+        # unranked and is counted separately, because a run that folded the
+        # encoder's 238 one-hot columns into the kept total would be describing
+        # the encoding as if it were the user's choice.
+        pool = [str(c) for c in selector.pool_]
+        kept = [str(c) for c in selector.kept_]
+        passthrough = [str(c) for c in selector.passthrough_]
+    except Exception:
+        # A selector that cannot say what it kept says nothing, rather than a
+        # list somebody would read as the answer.
+        return None, None, None
+    return kept, len(pool), len(passthrough)
 
 
 def _serialize(values: np.ndarray) -> List[Any]:
@@ -300,11 +359,16 @@ def train(project: Any, model_keys: Sequence[str], *,
     y_test = table.loc[X_test.index, target]
 
     disclosures = getattr(project, "lockbox", {}) or {}
+    # STAMPED BEFORE THE FIRST FIT, so a change made while the job runs counts
+    # as a change this run does not account for. Stamping afterwards would
+    # silently absorb it.
+    stamped = project.mark() if hasattr(project, "mark") else None
     run = TrainingRun(
         task_type=task_type, target=target,
         n_train=int(len(X_train)), n_test=int(len(X_test)),
         seal_basis=disclosures.get("seal_basis"),
         exploratory=bool(_is_exploratory(project)),
+        mark=stamped,
         features=[str(c) for c in features.columns])
 
     # `GUIDED-089` / `GUIDED-095`. This used to be a note saying the recorded
@@ -361,6 +425,8 @@ def train(project: Any, model_keys: Sequence[str], *,
                     classes = getattr(pipe, "classes_", None)
                     if classes is not None and len(classes) == 2:
                         result.positive_label = classes[1]
+            (result.selected_features, result.n_candidates,
+             result.n_passthrough) = _surviving_features(pipe, plan)
             result.metrics = _metrics(task_type, np.asarray(y_test), y_pred,
                                       y_proba)
             # SERIALIZED AS WHAT THEY ARE (`GUIDED-093`). This was
@@ -409,6 +475,23 @@ def train(project: Any, model_keys: Sequence[str], *,
             f"training fold: {', '.join(undeclared[:8])}"
             + (f", and {len(undeclared) - 8} more." if len(undeclared) > 8
                else "."))
+    # HOW MANY FEATURES SURVIVED, AND WHICH. Named rather than counted: a
+    # selection that reports only a count is a decision a reader cannot check,
+    # and the surviving set is the one thing a methods section must carry.
+    for result in run.results:
+        if result.selected_features is None:
+            continue
+        kept = result.selected_features
+        shown = ", ".join(f"`{c}`" for c in kept[:10])
+        if len(kept) > 10:
+            shown += f", and {len(kept) - 10} more"
+        offered = result.n_candidates or len(kept)
+        passed = result.n_passthrough or 0
+        run.notes.append(
+            f"{result.name}: feature selection kept {len(kept)} of {offered} "
+            f"candidate column(s) — {shown}."
+            + (f" {passed} further column(s) were not offered to selection and "
+               f"reached the model unchanged." if passed else ""))
     # AND WHERE A MODEL COULD NOT DO WHAT WAS RECORDED. Per model, because a
     # divergence is per model: `leave` is honored by gradient boosting and not
     # by a linear fit, and a run-level sentence could not say which.

@@ -627,6 +627,13 @@ class AnalysisProject:
         self._mark_stale(
             f"feature selection was set to {spec['label']}" if spec
             else "feature selection was cleared: every column goes to the models")
+        if spec is not None:
+            # STAMPED AFTER ITS OWN ENTRY, or the spec is born stale by its own
+            # recording. A later change to the candidate columns can then be
+            # told from no change at all (`GUIDED-094`): the spec names
+            # columns, and one added or removed since makes the recorded pool
+            # describe a table that no longer exists.
+            self.selection_spec = dict(spec, mark=self.mark())
         return self.record(
             kind="set_selection", subject=(spec or {}).get("method", ""),
             text=(spec["sentence"] if spec else
@@ -651,6 +658,33 @@ class AnalysisProject:
             payload={"skipped": bool(skipped), "n_engineered": n,
                      "n_deferred": d,
                      "has_selection": self.selection_spec is not None})
+
+    def mark(self) -> int:
+        """A watermark on the invalidation log, for stamping a downstream artifact.
+
+        `GUIDED-094`. `stale_downstream` records WHAT changed and never which
+        artifact the change invalidated, so a renderer reading it could only
+        say *something happened* — and the fitted run, the selection spec and
+        the explanation are invalidated by different things at different times.
+
+        A watermark is the smallest thing that answers per artifact: stamp an
+        artifact with the log's length when it is produced, and anything
+        appended afterwards is a change it does not account for. No second
+        graph, no second list to drift.
+        """
+        return len(self.stale_downstream)
+
+    def stale_since(self, mark: Optional[int]) -> List[Dict[str, Any]]:
+        """WHY an artifact stamped at `mark` no longer describes this project.
+
+        Empty when nothing has changed since — which is the ordinary case and
+        is not the same as `None`. `None` means the artifact carries no
+        watermark at all, and a caller that cannot tell those apart would
+        report a fresh artifact as stale, or the reverse.
+        """
+        if mark is None:
+            return []
+        return [dict(e) for e in self.stale_downstream[int(mark):]]
 
     def _mark_stale(self, why: str) -> None:
         """Record that downstream results no longer describe this feature set.

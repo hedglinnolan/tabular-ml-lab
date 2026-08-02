@@ -38,6 +38,21 @@ SECTIONS: Sequence[Dict[str, str]] = (
      "waiting": "The outcome has not been chosen yet."},
     {"key": "explore", "title": "Exploratory analysis",
      "waiting": "No exploratory decision has been recorded yet."},
+    # THE PREPROCESSING PLAN, AND IT IS ONLY SAFE TO EXPORT NOW.
+    #
+    # `GUIDED-089`'s note recorded that this module had no reference to
+    # missingness or preprocess, so the recorded methods sentence was never
+    # exported — and until `L35-B` that was FORTUNATE, because the sentence
+    # disagreed with the fit: the record said a blank was left and the pipeline
+    # filled it with the median. `pipeline_plan.py` composes the fit from the
+    # record now, and the sentence and the pipeline are one object, so the same
+    # string is true of both. That is why this section exists in this loop and
+    # could not have existed in the last one.
+    {"key": "preprocess", "title": "Missing data and preprocessing",
+     "waiting": ("No missingness or preprocessing decision has been recorded "
+                 "yet.")},
+    {"key": "features", "title": "Feature handling",
+     "waiting": "No feature or selection decision has been recorded yet."},
     {"key": "limitations", "title": "Limitations",
      "waiting": "Nothing has been accepted over an objection yet."},
 )
@@ -48,6 +63,12 @@ _KIND_SECTION = {
     "revert": "data",
     "set_target": "target",
     "set_task_type": "target",
+    "set_grain": "target",
+    "set_eligibility": "target",
+    "set_repeat_kind": "target",
+    "set_unit_of_analysis": "target",
+    "set_aggregation": "data",
+    "seal_lockbox": "target",
     "dismiss": "explore",
     "defer": "explore",
     "flag": "explore",
@@ -56,6 +77,18 @@ _KIND_SECTION = {
     "resolve_blocker": "data",
     "select_models": "target",
     "set_model_recipe": "target",
+    # `L36-C`. Each of these carries a sentence composed once by the record and
+    # now fitted by `pipeline_plan`, so the manuscript quotes the same string
+    # the transcript shows and the pipeline performs.
+    "route_missingness": "preprocess",
+    "route_missingness_bulk": "preprocess",
+    "settle_preprocess": "preprocess",
+    "add_feature": "features",
+    "remove_feature": "features",
+    "defer_feature": "features",
+    "set_selection": "features",
+    "settle_features": "features",
+    "trim_training_rows": "limitations",
     # The comparison caveat is a LIMITATION, not a method note. Per-model
     # preparation is the right default and it makes a between-model difference
     # ambiguous between the model and its pipeline — which is precisely the
@@ -120,6 +153,38 @@ def _sentence_for(d: Dict[str, Any]) -> Optional[str]:
     if kind == "acknowledge_blocker":
         return (f"{text} {AUTHOR_GAP} — state the effect of this on the "
                 f"interpretation of the results.")
+
+    if kind == "route_missingness":
+        # THE RECORD'S OWN SENTENCE, quoted rather than rewritten. It is the
+        # same string `pipeline_plan` carries on the fitted step — asserted as
+        # IDENTITY there — so the transcript, the fit and the manuscript are
+        # one claim rather than three that agree today (`GUIDED-089`).
+        #
+        # The STABILITY ASSUMPTION travels with it where §07 recorded one,
+        # because it is a methods assumption rather than a warning: it may not
+        # hold across sites and a reader has to be able to see it.
+        assumption = (payload.get("assumption") or "").strip()
+        line = text or None
+        if line and assumption:
+            line = f"{line} {assumption}"
+        if line and payload.get("acknowledged_signal_loss"):
+            line += (f" This was accepted over the app's objection and is "
+                     f"recorded as a stated limitation.")
+        return line
+
+    if kind == "settle_preprocess":
+        # The receipt's headline, plus the count of columns nobody answered
+        # for. A methods section that reported only the answered ones would be
+        # describing a plan more complete than the one that ran.
+        outstanding = (payload.get("outstanding") or "").strip()
+        return f"{text} {outstanding}".strip() if outstanding else (text or None)
+
+    if kind == "set_selection":
+        # `L36-A` made this a fitted decision rather than a recorded one, so
+        # the manuscript may quote it. The scope the RECORD carries is what is
+        # quoted; where the run could not honor it the run says so, per model,
+        # and that divergence belongs to the results rather than the methods.
+        return text or None
 
     return text or None
 

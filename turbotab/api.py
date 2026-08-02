@@ -1896,6 +1896,10 @@ async def get_features(project_id: str) -> Dict[str, Any]:
         "engineered": project.engineered,
         "deferred_transforms": project.deferred_transforms,
         "selection": project.selection_spec,
+        # The recorded pool names columns; one added or removed since makes it
+        # describe a table that no longer exists (`GUIDED-094`).
+        "selection_stale": project.stale_since(
+            (project.selection_spec or {}).get("mark")),
         "settled": project.features_settled,
         "selection_methods": [
             {"key": k, "label": m.label,
@@ -2026,6 +2030,73 @@ async def cancel_job(job_id: str) -> Dict[str, Any]:
         raise HTTPException(404, f"no job {job_id!r}") from exc
 
 
+@app.get("/project/{project_id}/explain")
+async def get_explain(project_id: str, model: Optional[str] = None) -> Dict[str, Any]:
+    """Why the model predicts what it predicts, on the held-out rows.
+
+    **The step that has no research behind it, scoped to what this repository
+    can defend** (`GUIDED-101`). Permutation importance from
+    `sklearn.inspection`, computed on the sealed rows — the choice with a
+    leakage consequence — with the interpretation prose read out of
+    `ml/plot_narrative.py` rather than written here.
+
+    `blocked_by` says WHICH of the states applies rather than returning an
+    empty object, the same rule the training and prevalence surfaces follow: a
+    step that has not happened and a step that produced nothing are different
+    sentences.
+    """
+    from turbotab import explain as _explain, training as _training
+
+    project = _project(project_id)
+    run = getattr(project, "training_run", None)
+    fitted = [r for r in (run.results if run else []) if r.metrics]
+    if not fitted:
+        return {"run": None, "shap": _explain.unavailable(),
+                "costly_decisions": _explain.costly_decisions(project),
+                "blocked_by": (
+                    "No model has been fitted yet. Permutation importance is a "
+                    "drop in a metric when a column is shuffled, so there has "
+                    "to be a metric first — choose models in Train."
+                    if run is None else
+                    "Every model in the last run reported a reason instead of "
+                    "a score, so there is no metric to permute against.")}
+
+    chosen = model or fitted[0].key
+    if chosen not in {r.key for r in fitted}:
+        raise HTTPException(
+            400, f"{chosen!r} did not produce a score in the last run, so "
+                 f"there is no metric for shuffling a column to move.")
+    try:
+        payload = _explain.importance(project, chosen)
+    except _explain.ExplainRefusal as exc:
+        return {"run": None, "shap": _explain.unavailable(),
+                "costly_decisions": _explain.costly_decisions(project),
+                "blocked_by": str(exc)}
+    stale = project.stale_since(getattr(run, "mark", None))
+    return {
+        "run": payload,
+        "models": [{"key": r.key, "name": r.name} for r in fitted],
+        # THE RANKING IS RECOMPUTED FROM THE CURRENT RECORD on every request,
+        # so it is never stale itself — and the metrics it sits beside are the
+        # stored run's, which can be. Presenting a fresh ranking next to a
+        # stale accuracy without saying so would be two numbers about two
+        # different analyses (`GUIDED-094`). Said, rather than resolved by
+        # refusing: principle 4 is visible and recoverable, not blocked.
+        "stale": stale,
+        "recomputed_note": (
+            "This ranking was computed just now, from the analysis as it "
+            "stands. The held-out scores above it are from the last training "
+            "run, which does not account for what changed since."
+            if stale else None),
+        # THE PROMISE THE REGISTER ALREADY MADE. Every transform carries
+        # `explainability_cost` and `FEATURE_REGISTER.md`'s `prep-pca` row
+        # states the consequence in words; until now nothing delivered it.
+        "costly_decisions": _explain.costly_decisions(project),
+        "shap": _explain.unavailable(),
+        "blocked_by": None,
+    }
+
+
 @app.get("/project/{project_id}/training")
 async def get_training(project_id: str) -> Dict[str, Any]:
     """The last run, or what is missing before there can be one."""
@@ -2034,15 +2105,23 @@ async def get_training(project_id: str) -> Dict[str, Any]:
 
     held = _RUNS.get(project_id)
     if held:
-        return {"run": held["run"].to_dict(), "blocked_by": None}
+        # WHAT CHANGED SINCE THESE NUMBERS WERE PRODUCED (`GUIDED-094`). The
+        # project has recorded it all along and nothing read it, so a held-out
+        # accuracy stood unchanged over a table that had moved beneath it —
+        # `PRODUCT_VISION.md` principle 4's *visible, veiled, recoverable*
+        # failing at the visible step. Never a recompute and never a clear: the
+        # run stays, and it says what it no longer accounts for.
+        run = held["run"]
+        return {"run": run.to_dict(), "blocked_by": None,
+                "stale": project.stale_since(getattr(run, "mark", None))}
     try:
         _training.check(project, list(project.selected_models or []))
     except _training.TrainingRefusal as exc:
         # WHAT IT NEEDS, not an empty object. The same rule the prevalence
         # surface follows: a step that has not happened and a step that
         # produced nothing are different sentences.
-        return {"run": None, "blocked_by": str(exc)}
-    return {"run": None, "blocked_by": None}
+        return {"run": None, "blocked_by": str(exc), "stale": []}
+    return {"run": None, "blocked_by": None, "stale": []}
 
 
 @app.get("/capabilities")

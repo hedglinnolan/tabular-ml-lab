@@ -201,6 +201,12 @@ DECLARED = {
         "Not a name registry. The columns a recorded deferred transform names, "
         "tested for exact membership in this frame's own numeric column list "
         "to decide which branch's fill the block needs.",
+    ("turbotab/pipeline_plan.py", "ordered"):
+        "Not a name registry. The selector's own input column order, tested "
+        "for exact membership in the set of columns it kept — both sides are "
+        "the same frame's labels, and the whole point of resolving the "
+        "candidate pool by equality rather than by prefix is that `bp_1` and "
+        "`bp_10` are different columns.",
 }
 
 SCAN_DIRS = ("ml", "utils", "turbotab", "models", "pages")
