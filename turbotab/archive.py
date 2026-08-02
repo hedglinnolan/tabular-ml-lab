@@ -421,6 +421,27 @@ def build_members(project) -> Dict[str, bytes]:
             # carried the class label.
             "resolution": lb.get("resolution"),
             "resolution_unavailable": lb.get("resolution_unavailable"),
+            # `GUIDED-143`. The temporal basis, beside the seal basis and for
+            # the same constitutional reason: the seal states what it rests on,
+            # and half of what this seal rests on is that the chronological
+            # validation the user asked for was NOT the one drawn. Losing these
+            # four on save is the worst shape the archive has, because the two
+            # that survive are the honest ones — a restored project would show
+            # a clean grouped seal over a holdout that was never drawn
+            # chronologically, with no disclosure and nothing to notice.
+            #
+            # `honored` travels as a tri-state rather than a bool: `None` means
+            # a project sealed before this existed, and coercing that to False
+            # would make the archive assert a disclosure the seal never made.
+            "temporal_basis": (str(lb["temporal_basis"])
+                               if lb.get("temporal_basis") else None),
+            "temporal_requested": (bool(lb["temporal_requested"])
+                                   if lb.get("temporal_requested") is not None
+                                   else None),
+            "temporal_honored": (bool(lb["temporal_honored"])
+                                 if lb.get("temporal_honored") is not None
+                                 else None),
+            "temporal_sentence": str(lb.get("temporal_sentence") or ""),
         }, indent=2).encode("utf-8")
         saved.append("test_lockbox")
 
