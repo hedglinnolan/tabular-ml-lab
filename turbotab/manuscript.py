@@ -326,7 +326,7 @@ def to_latex(doc: Dict[str, Any]) -> str:
     # produced, and a second derivation of a held-out metric is the last thing
     # this app should grow.
     model_results = {
-        str(r.get("name") or r.get("key")): {"metrics": r.get("metrics") or {}}
+        model_name(r): {"metrics": r.get("metrics") or {}}
         for r in (run.get("results") or []) if not r.get("error")
     }
 
@@ -619,6 +619,33 @@ def _with_run_sections(sections: List[Dict[str, Any]],
     return out
 
 
+def model_name(result: Dict[str, Any]) -> str:
+    """The model's name IN THE VALIDATOR'S VOCABULARY.
+
+    `ml/narrative_engine._MODEL_NAMES` and `ml/model_registry` disagree —
+    `histgb_clf` is *"Histogram Gradient Boosting (Classifier)"* in the first
+    and *"(Classification)"* in the second — and the validator's *model names
+    match between development and evaluation sections* check reads the first.
+    Writing the registry's name made that check fail on any project using a
+    model whose two names differ, which is the same coupling `_HEADINGS`
+    documents: a manuscript is read by a machine with its own vocabulary.
+
+    **The disagreement is filed as `GUIDED-124`** rather than papered over
+    here; this reads the validator's table where it has the key so the
+    manuscript and its checker agree today, and falls back to the registry's
+    name so a model neither table knows still gets a name a reader recognizes.
+    And it must not fall back to the KEY — the validator's own *no internal
+    model keys leak into export text* check forbids exactly that.
+    """
+    key = str(result.get("key") or "")
+    try:
+        from ml.narrative_engine import _MODEL_NAMES
+        known = _MODEL_NAMES.get(key) or _MODEL_NAMES.get(key.lower())
+    except Exception:                                       # pragma: no cover
+        known = None
+    return str(known or result.get("name") or key)
+
+
 def _line(text: str) -> Dict[str, Any]:
     return {"text": text, "kind": "run", "subject": "", "at": None,
             "has_gap": _draft.AUTHOR_GAP in text}
@@ -633,7 +660,7 @@ def _development(run: Dict[str, Any], counts: Dict[str, Any]) -> List[Dict[str, 
     analysis the user specified rather than the one that ran.
     """
     results = [r for r in (run.get("results") or []) if not r.get("error")]
-    names = [str(r.get("name") or r.get("key")) for r in results]
+    names = [model_name(r) for r in results]
     lines: List[Dict[str, Any]] = []
     if not names:
         return [_line(f"No model completed a fit. {_draft.AUTHOR_GAP} — state "
@@ -646,7 +673,7 @@ def _development(run: Dict[str, Any], counts: Dict[str, Any]) -> List[Dict[str, 
         f"feature selection — was fitted inside the model's own pipeline, so "
         f"no parameter was estimated from the held-out observations."))
 
-    diverged = [(str(r.get("name") or r.get("key")), d)
+    diverged = [(model_name(r), d)
                 for r in results
                 for d in ((r.get("plan") or {}).get("divergences") or [])]
     if diverged:
@@ -692,8 +719,7 @@ def _evaluation(run: Dict[str, Any]) -> List[Dict[str, Any]]:
             continue
         stated = ", ".join(f"{k} {v:.3f}" for k, v in sorted(metrics.items())
                            if isinstance(v, (int, float)))
-        lines.append(_line(
-            f"{result.get('name') or result.get('key')}: {stated}."))
+        lines.append(_line(f"{model_name(result)}: {stated}."))
     if run.get("exploratory"):
         lines.append(_line(
             "This split is not a verified clean one, so these figures are "

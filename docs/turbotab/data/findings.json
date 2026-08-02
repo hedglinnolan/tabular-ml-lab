@@ -8956,10 +8956,10 @@
   "ev": "turbotab/instability.py _predict returns proba[:, 1] for any classification task; no fixture in the repository has a multiclass target, so this is filed rather than driven; turbotab/test_the_whole_pipeline_is_refitted.py SHAPES_NOT_COVERED names it",
   "act": "",
   "status": "OPEN",
-  "note": "FOUND WHILE WRITING THE FIXTURE RULE'S not-covered list, which is the list doing its job. A multiclass project would get a prediction instability plot about ONE class's probability, captioned as though it were about the prediction - true of a quantity nobody asked for. THE CHOICE WHEN THIS IS BUILT: refuse, or plot the predicted-class probability, or plot k panels. Refusing is the smallest honest answer and matches the module's posture elsewhere; a k-panel version is the one A4.8 would probably want.",
+  "note": "FOUND WHILE WRITING THE FIXTURE RULE'S not-covered list, which is the list doing its job. A multiclass project would get a prediction instability plot about ONE class's probability, captioned as though it were about the prediction - true of a quantity nobody asked for. THE CHOICE WHEN THIS IS BUILT: refuse, or plot the predicted-class probability, or plot k panels. Refusing is the smallest honest answer and matches the module's posture elsewhere; a k-panel version is the one A4.8 would probably want.  CONFIRMED BY DRIVING AT L39-D, no longer filed on reading. On turbotab/sample_data/multiclass_stage.csv the plotted vector is np.allclose to predict_proba[:,1] and is NOT the predicted-class probability, so the figure is about `controlled` while its caption says it is about the prediction. Nothing refuses: `class` appears nowhere in scored_on or in the failures list. turbotab/test_a_three_class_outcome_end_to_end.py::test_the_instability_plot_draws_one_class_of_three holds the proof and includes the control that column 1 does not merely happen to equal the row max on this fixture.",
   "verified_against": "",
   "test": "",
-  "verified_ev": "turbotab/instability.py _predict returns proba[:, 1] for any classification task; no fixture in the repository has a multiclass target, so this is filed rather than driven; turbotab/test_the_whole_pipeline_is_refitted.py SHAPES_NOT_COVERED names it"
+  "verified_ev": "turbotab/instability.py _predict returns proba[:, 1] for any classification task; no fixture in the repository has a multiclass target, so this is filed rather than driven; turbotab/test_the_whole_pipeline_is_refitted.py SHAPES_NOT_COVERED names it L39-D: driven on the new multiclass fixture; proba.shape[1]==3 and original==proba[:,1]."
  },
  {
   "id": "GUIDED-114",
@@ -9100,5 +9100,47 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "research/NUTRITION_PACK.md section 09's table marks each of these 'app' or 'app detects + user confirms'; turbotab/manuscript.py NOT_EXPORTED does not list them because the app does not compute them at all; ml/latex_report.generate_latex_report has no argument for any of them either"
+ },
+ {
+  "id": "GUIDED-125",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "The resolution card's trigger measures against a coin flip, so on a k-class outcome it fires late: chance is 1/k and the informative range is 1 - 1/k wide, not 0.5",
+  "detail": "",
+  "ev": "turbotab/resolution.py _push_because condition A compares the widest 95 percent interval against 0.5, described in its own docstring as 'the whole distance from a coin flip to a perfect classifier'; recomputed from the module's own constants the binary boundary is n<15.4 and the three-class boundary would be n<9.5; turbotab/resolution.statement carries no class count at all, so nothing downstream could adapt it",
+  "act": "",
+  "status": "OPEN",
+  "note": "FOUND BY THE L39-D MULTICLASS SWEEP, and it is the defect version of a limit L37 NAMED at the time - the trigger was documented as calibrated for binary in resolution.py's own SHAPES_NOT_COVERED. What the sweep adds is that it is SILENT: the card computes a widest_interval and a push decision on a three-class target and reports both without qualification. THE FIX IS SMALL AND THE DECISION IS NOT: 1 - 1/k is the informative range, so the boundary moves DOWN with k, which means a three-class study needs FEWER held-out rows before the card fires, not more - and whether that is the right reading of `what this instrument can resolve` for a k-class discrimination statistic is a question for the packs rather than for arithmetic. NOT MOVED IN THIS LOOP: the threshold must not move in the same loop as the change that pressured it.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/resolution.py _push_because condition A compares the widest 95 percent interval against 0.5, described in its own docstring as 'the whole distance from a coin flip to a perfect classifier'; recomputed from the module's own constants the binary boundary is n<15.4 and the three-class boundary would be n<9.5; turbotab/resolution.statement carries no class count at all, so nothing downstream could adapt it"
+ },
+ {
+  "id": "GUIDED-126",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "The calibration and calibration-instability figures are offered on a multiclass target, where there is no single predicted risk to plot observed risk against",
+  "detail": "",
+  "ev": "turbotab/figure_specs.py CALIBRATION.when_applicable asks only task_type == 'classification' and has_predictions; CALIBRATION_INSTABILITY the same plus has_instability_run; driven on a three-class project both are returned by figures.applicable and neither refuses",
+  "act": "",
+  "status": "OPEN",
+  "note": "FOUND BY THE L39-D MULTICLASS SWEEP. A calibration curve plots observed risk against predicted risk and a three-class model predicts three, so the figure would be drawn against one class's probability under a caption that says otherwise - the same shape as GUIDED-113 one layer out. THE FIELD HAS AN ANSWER: one-versus-rest calibration curves, one panel per class, which is what a multiclass prediction paper reports. THE CHEAP HONEST VERSION FIRST is arity in when_applicable, so the figure is not offered rather than drawn wrong; the k-panel version is the build. NOTE THE COMPANION RULE INTERACTION: calibration_instability declares prediction_instability as its companion, so a fix to one that leaves the other offered would make an inadmissible pair.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/figure_specs.py CALIBRATION.when_applicable asks only task_type == 'classification' and has_predictions; CALIBRATION_INSTABILITY the same plus has_instability_run; driven on a three-class project both are returned by figures.applicable and neither refuses"
+ },
+ {
+  "id": "GUIDED-124",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "Two tables name the same model differently: ml/narrative_engine._MODEL_NAMES calls histgb_clf 'Histogram Gradient Boosting (Classifier)' and ml/model_registry calls it '(Classification)'",
+  "detail": "",
+  "ev": "driven at L39-D: the manuscript validator's 'model names match between development and evaluation sections' check reads _MODEL_NAMES and failed on any project fitting a model whose two names differ, on BINARY as well as multiclass targets; turbotab/manuscript.model_name now reads the validator's table and falls back to the registry",
+  "act": "",
+  "status": "OPEN",
+  "note": "FOUND BY THE MULTICLASS SWEEP AND IS NOT A MULTICLASS FINDING - the binary control failed identically, which is why the control was in the sweep. TWO READERS OF ONE FACT, the shape this project keeps finding: a manuscript and its checker used different words for one model, so a check designed to catch a section asserting what another does not support failed for a reason that was about neither. WHY L39-B MISSED IT: its own tests fitted a SINGLE model whose two names happen to agree. WORKED AROUND RATHER THAN FIXED, deliberately: reconciling the tables changes what Classic's narrative engine prints, which is a shared-core change with a second consumer. turbotab/manuscript.model_name reads the validator's vocabulary the same way _HEADINGS reads its headings, and must not fall back to the model KEY because the validator's own 'no internal model keys leak into export text' check forbids exactly that.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "driven at L39-D: the manuscript validator's 'model names match between development and evaluation sections' check reads _MODEL_NAMES and failed on any project fitting a model whose two names differ, on BINARY as well as multiclass targets; turbotab/manuscript.model_name now reads the validator's table and falls back to the registry"
  }
 ]
