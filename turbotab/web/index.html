@@ -3860,6 +3860,82 @@
     return h + "</ul></details></td></tr>";
   }
 
+  /* A4.8 · PREDICTION AND CALIBRATION INSTABILITY.
+     Every sentence is the server's, including both captions — they state B,
+     and B is the number a different analyst would choose differently, so the
+     page must not be able to print a different one than the engine used. */
+  var INSTAB = null, INSTAB_JOB = null;
+
+  /* Polled the same way the training job is. A job that finishes and leaves
+     the section unchanged is indistinguishable from one still running, which
+     is what `DRIVE-001` is about one surface over. */
+  function pollInstabJob(id){
+    api("/job/" + encodeURIComponent(id))
+      .then(function(j){
+        INSTAB_JOB = j;
+        if (!j.terminal){
+          renderTrain();
+          window.setTimeout(function(){ pollInstabJob(id); }, 600);
+          return;
+        }
+        INSTAB_JOB = null;
+        api("/project/" + P.id + "/instability")
+          .then(function(body){ INSTAB = body; renderTrain(); })
+          .catch(function(){ renderTrain(); });
+      })
+      .catch(function(){ INSTAB_JOB = null; renderTrain(); });
+  }
+
+  function instabilityHTML(){
+    if (!P || !TRAIN || !TRAIN.run) return "";
+    var picked = (TRAIN.run.results || []).filter(function(r){ return !r.error; });
+    if (!picked.length) return "";
+    var h = '<div class="run"><div class="run-head"><span class="run-lab">' +
+            "How much does this depend on who you sampled?</span></div>";
+    if (INSTAB_JOB && !INSTAB_JOB.terminal){
+      h += '<p class="feat-note">' + esc(INSTAB_JOB.name) + " — " +
+           Math.round((INSTAB_JOB.progress || 0) * 100) + "%" +
+           (INSTAB_JOB.message ? " · " + esc(INSTAB_JOB.message) : "") + "</p>";
+      return h + "</div>";
+    }
+    if (!INSTAB || INSTAB.blocked_by){
+      h += '<p class="feat-note">' +
+           esc((INSTAB && INSTAB.blocked_by) ||
+               "Refitting the whole pipeline in bootstrap resamples has not " +
+               "been run yet.") + "</p>";
+      h += '<div class="feat-ctl">' + picked.map(function(r){
+        return '<button class="answer" type="button" data-instab="' +
+               esc(r.key) + '">Resample ' + esc(r.name) + "</button>";
+      }).join("") + "</div>";
+      return h + "</div>";
+    }
+    var any = false;
+    picked.forEach(function(r){
+      var e = (INSTAB.runs || {})[r.key];
+      if (!e) return;
+      any = true;
+      h += '<p class="feat-note">' + esc(e.prediction_caption) + "</p>";
+      if (e.calibration_caption)
+        h += '<p class="feat-note">' + esc(e.calibration_caption) + "</p>";
+      /* GUIDED-103 made observable: whether the CHOSEN SET moved. `null` is a
+         third state and is rendered as one — a project that never selected
+         has not got a perfectly stable selection. */
+      var sel = e.selection || {};
+      if (sel.moved !== null && sel.moved !== undefined)
+        h += '<p class="feat-note">' + esc(sel.because) +
+             (sel.moved ? " The set the model was built from is not settled by "
+                        : " The same set was chosen from ") +
+             "this data alone.</p>";
+    });
+    if (!any){
+      h += '<div class="feat-ctl">' + picked.map(function(r){
+        return '<button class="answer" type="button" data-instab="' +
+               esc(r.key) + '">Resample ' + esc(r.name) + "</button>";
+      }).join("") + "</div>";
+    }
+    return h + "</div>";
+  }
+
   function renderTrain(){
     if (!P || !SHELF) return;
     reveal("train");
@@ -3877,7 +3953,7 @@
       (picked.length ? picked.length + " model(s)" : "the models you pick") +
       " on the held-out split</button>";
 
-    $("trainRun").innerHTML = trainRunHTML();
+    $("trainRun").innerHTML = trainRunHTML() + instabilityHTML();
     sectState("train", TRAIN && TRAIN.run ? "recorded" : "live",
               TRAIN && TRAIN.run ? "recorded" : "open");
     /* `GUIDED-094`. The run stays; it wears the state and names the change. */
@@ -3922,6 +3998,13 @@
         renderTrainState();
       })
       .catch(function(){});
+    /* GUIDED-103 / A4.8. The resampling results, if any have been produced.
+       This does NOT start one: B refits of the whole pipeline is the longest
+       thing the app does and it is a job the user chooses, not something that
+       happens on the way past a section. */
+    api("/project/" + P.id + "/instability")
+      .then(function(body){ INSTAB = body; renderTrain(); })
+      .catch(function(){ INSTAB = null; });
   }
 
   function renderPreprocessStep(){
@@ -4975,7 +5058,7 @@
       "[data-look],[data-unskip],[data-exit-for],[data-att-send],[data-refusal-i],[data-prev-ask]," +
       "[data-feat-preview],[data-feat-add],[data-feat-remove],[data-feat-settle]," +
       "[data-lat-cell],[data-prep-mech],[data-prep-route],[data-prep-settle]," +
-      "[data-pick-model],[data-train-start],[data-train-cancel]," +
+      "[data-pick-model],[data-train-start],[data-train-cancel],[data-instab]," +
       "[data-sel-rank],[data-sel-set]," +
       "[data-impossible],[data-keep-impossible],[data-miss-choose]," +
       "[data-miss-mech-for],[data-miss-preview]," +
@@ -5161,6 +5244,22 @@
           setErr(err.message);
           if (err.detail) showRefusal(err.detail, { models: chosen });
         });
+      return;
+    }
+    if (t.hasAttribute("data-instab")){
+      /* The same job posture as training, for the same reason and more so:
+         B refits of the whole pipeline is the longest thing this app does. The
+         POST returns the JOB, the button becomes the job's own progress, and
+         the answer arrives by polling. */
+      var im = t.getAttribute("data-instab");
+      api("/project/" + P.id + "/instability", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: im })
+      }).then(function(j){
+        INSTAB_JOB = j;
+        renderTrain();
+        window.setTimeout(function(){ pollInstabJob(j.id); }, 400);
+      }).catch(function(err){ setErr(err.message); });
       return;
     }
     if (t.hasAttribute("data-train-cancel")){

@@ -1142,5 +1142,29 @@
   "classic": "Step 11",
   "state": "classic-only",
   "reason": "MISC-016 found this page had no row at all — 5,162 lines, the largest file in pages/. Not ported, and the reason is a design position rather than a backlog entry: Guided's education model is layer 3, `teach on the user's own data at the moment the decision is made` (DESIGN_LANGUAGE 10), and a separate reference chapter is layer 1 — the layer the journey exists to replace. The CONTENT is owed; the destination is each step's own coaching text, not a page."
+ },
+ {
+  "id": "instability-resampling",
+  "step": "explain",
+  "capability": "Bootstrap resampling of the entire modeling pipeline, including variable selection, with per-individual prediction instability",
+  "classic": "—",
+  "state": "guided-only",
+  "reason": "CLINICAL_SURVEY_PACK A4.8, marked star. A debt owed back to Classic, and it could not have been built there: `refit the entire pipeline` needs a pipeline composed from the record, which is turbotab/pipeline_plan.py and has no Classic equivalent. Classic's pages/08 seed sensitivity is the nearest thing and re-splits (STATE-013)."
+ },
+ {
+  "id": "instability-prediction-plot",
+  "step": "explain",
+  "capability": "Prediction instability plot with MAPE and the 45-degree reference",
+  "classic": "—",
+  "state": "guided-only",
+  "reason": "A4.8's first named output. States B in its own caption beside what Riley and Collins recommend, so the compromise is visible rather than implied. Owed to Classic."
+ },
+ {
+  "id": "instability-calibration-plot",
+  "step": "explain",
+  "capability": "Calibration instability plot — every bootstrap calibration curve overlaid",
+  "classic": "—",
+  "state": "guided-only",
+  "reason": "A4.8's third named output, and the prediction plot's declared companion: spread in individual predictions and spread in calibration are different failures and a model can look tight on one while moving badly on the other. Owed to Classic."
  }
 ]

@@ -1531,3 +1531,309 @@ DIVERGING_STACKED_BAR = register(FigureSpec(
     promotable_because="",
     compute=diverging_bar_payload,
 ))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7 · Prediction instability — CONFIRMATORY
+# 8 · Calibration instability — CONFIRMATORY
+#
+# `CLINICAL_SURVEY_PACK.md` §A4.8, marked ★, and the two figures are one build
+# because they read the same resampling result: `turbotab.instability.run`
+# refits the entire pipeline B times and both of these are views of its output.
+#
+# THE SEAM THIS PAIR FOUND. Every figure before them annotated a computation
+# that already existed; these two required the computation to be built first,
+# and that inverted the usual order — `B` is a number the FIGURE has to state
+# and the ENGINE has to choose. The resolution is that the engine owns the
+# constant and the caption reads it, so there is one number and it is visible.
+# ─────────────────────────────────────────────────────────────────────────────
+
+INSTABILITY_EVIDENCE = Evidence(
+    status=CONVENTION_STATUS,
+    source=("research/CLINICAL_SURVEY_PACK.md#A4.8 · ★ Prediction stability "
+            "plots — the modern addition"))
+
+#: Per-requirement, because the pack does not hold these at one status. The
+#: METHOD is emerging convention in the pack's own words; the presentation
+#: details are its specific instructions and are not disputed.
+INSTABILITY_CLAIMS = (
+    Claim(key="resample_the_whole_pipeline",
+          statement=("The ENTIRE modeling pipeline is refitted in each resample, "
+                "including any variable selection — not the estimator over a "
+                "fixed feature set."),
+          evidence=Evidence(
+              status=SETTLED,
+              source=("research/CLINICAL_SURVEY_PACK.md#A5.5 Modeling "
+                      "practice"))),
+    Claim(key="instability_is_expected_reporting",
+          statement=("Reviewers now ask for per-individual prediction instability "
+                "rather than a single point estimate of discrimination."),
+          evidence=INSTABILITY_EVIDENCE),
+    Claim(key="alpha_and_overlay",
+          statement=("Scatter with the 45° line and semi-transparent points "
+                "(alpha about 0.02); calibration instability as many thin grey "
+                "curves with the original in bold."),
+          evidence=INSTABILITY_EVIDENCE),
+)
+
+
+def prediction_instability_payload(result: Dict[str, Any]) -> Dict[str, Any]:
+    """The render's payload, from `turbotab.instability.run`'s output.
+
+    Adds exactly what the checklist needs and the engine does not produce: the
+    45° reference, the alpha the pack names, and both axis ranges — the same
+    `no_truncation` scoring the calibration plot needs, and for the same
+    reason. The instability plot's sparse region is where the model is least
+    trustworthy, so it is the region that must not be cropped.
+    """
+    from turbotab import instability as _inst
+
+    spread = _inst.spread(result)
+    original = np.asarray(result["original"], dtype=float)
+    matrix = np.asarray(result["bootstrap"], dtype=float)
+    lo = float(min(original.min(), matrix.min()))
+    hi = float(max(original.max(), matrix.max()))
+    return {
+        "figure": "prediction_instability",
+        "model_name": result.get("model_name", "the model"),
+        "task_type": result.get("task_type"),
+        "n": result.get("n", 0),
+        "b_completed": result.get("b_completed", 0),
+        "b_requested": result.get("b_requested", 0),
+        "b_recommended": result.get("b_recommended", _inst.RECOMMENDED_B),
+        "n_failed": len(result.get("failures") or []),
+        "points": int(matrix.size),
+        "alpha": 0.02,
+        "reference_line": {"kind": "identity", "label": "no change"},
+        "aspect": "square",
+        "mape": result.get("mape") or {},
+        "median_width": spread["median_width"],
+        "max_width": spread["max_width"],
+        "worst_row_label": spread["worst_row_label"],
+        "worst_interval": spread["worst_interval"],
+        "scored_on": result.get("scored_on", ""),
+        "x_range_observed": [lo, hi],
+        "x_range_drawn": [lo, hi],
+    }
+
+
+PREDICTION_INSTABILITY = register(FigureSpec(
+    id="prediction_instability",
+    title="Prediction instability plot",
+    tier=CONFIRMATORY,
+    when_applicable=lambda s: bool(s.get("has_instability_run")),
+    layers=("identity_line", "bootstrap_scatter", "per_row_interval"),
+    annotations=(
+        Annotation("b_completed", "Bootstrap resamples (B)", "turbotab.instability"),
+        Annotation("mape", "Mean absolute prediction error", "turbotab.instability"),
+        Annotation("median_width", "Median 95% interval width", "turbotab.instability"),
+        Annotation("max_width", "Widest 95% interval", "turbotab.instability"),
+        Annotation("n", "n", "turbotab.instability"),
+    ),
+    checklist=(
+        ChecklistItem(
+            "b_stated",
+            "The number of bootstrap resamples is stated on the figure",
+            "A reader cannot judge the width of the cloud without knowing how "
+            "many refits produced it, and B is the one number a different "
+            "analyst would choose differently.",
+            lambda p: bool(p.get("b_completed"))),
+        ChecklistItem(
+            "identity_line",
+            "45° reference line, labeled",
+            "The plot's whole content is vertical distance FROM this line. "
+            "Without it the scatter is a cloud with no claim attached.",
+            lambda p: p.get("reference_line", {}).get("kind") == "identity"),
+        ChecklistItem(
+            "semi_transparent",
+            "Points are semi-transparent (alpha about 0.02)",
+            "One point per patient per resample is tens of thousands of "
+            "points; drawn opaque the plot is a solid block and the density "
+            "that carries the message is invisible.",
+            lambda p: 0 < float(p.get("alpha", 1)) <= 0.05),
+        ChecklistItem(
+            "mape_annotated",
+            "Mean absolute prediction error is on the figure, named in full",
+            "The pack writes MAPE and does not expand it, and the absolute and "
+            "percentage readings differ by more than an order of magnitude on "
+            "predicted risks near zero. Writing it out is what stops a reader "
+            "assuming the other one.",
+            lambda p: (p.get("mape", {}).get("absolute") is not None
+                       and "absolute" in str(p.get("mape", {}).get("label", "")).lower())),
+        ChecklistItem(
+            "no_truncation",
+            "The axis is not truncated",
+            "The extremes are where predictions move most, which is what the "
+            "figure exists to show.",
+            lambda p: (p.get("x_range_drawn", [1, 0])[0]
+                       <= p.get("x_range_observed", [0, 1])[0]
+                       and p.get("x_range_drawn", [0, 0])[1]
+                       >= p.get("x_range_observed", [0, 1])[1])),
+        ChecklistItem(
+            "scope_stated",
+            "Which rows were resampled and predicted is stated",
+            "An instability plot that had quietly resampled the held-out rows "
+            "would look identical and would have dissolved the seal.",
+            lambda p: "held-out" in str(p.get("scored_on", ""))),
+    ),
+    caption=lambda p: (
+        f"Prediction instability for {p.get('model_name', 'the model')}: the "
+        f"entire modeling pipeline, including any variable selection, was "
+        f"refitted in {p.get('b_completed', 0):,} bootstrap resamples of the "
+        f"{p.get('n', 0):,} training rows and each refitted model was applied "
+        f"back to those same rows — one point per row per resample "
+        f"({p.get('points', 0):,} points, alpha {p.get('alpha', 0.02)}). "
+        f"The 45° line is no change from the original model; vertical spread "
+        f"is how much an individual's prediction would have moved had a "
+        f"different sample been drawn. Mean absolute prediction error "
+        f"{_fmt(p.get('mape', {}).get('absolute'))}; median 95% interval width "
+        f"{_fmt(p.get('median_width'))}, widest {_fmt(p.get('max_width'))}. "
+        f"B = {p.get('b_completed', 0):,}"
+        + (f" of {p.get('b_requested', 0):,} requested "
+           f"({p.get('n_failed', 0):,} resample(s) could not be fitted)"
+           if p.get("n_failed") else "")
+        + f"; Riley and Collins recommend on the order of "
+          f"{p.get('b_recommended', 1000):,}. {p.get('scored_on', '')}."),
+    # ITS OWN COMPANION IS THE CALIBRATION INSTABILITY PLOT. §A4.8 specifies
+    # the pair, and for the reason §A5.1 gives about the originals: spread in
+    # individual predictions and spread in calibration are different failures,
+    # and a model can look tight on one while moving badly on the other.
+    companions=("calibration_instability",),
+    evidence=INSTABILITY_EVIDENCE,
+    claims=INSTABILITY_CLAIMS,
+    # NOT PROMOTABLE, and the reason is the rule rather than the subject: this
+    # figure is about a set of models already fitted to these rows. Re-running
+    # it inside a fold would need the fold's own B refits, which is a bootstrap
+    # inside a bootstrap and is not what promotion means.
+    promotable=False,
+    promotable_because="",
+    compute=prediction_instability_payload,
+))
+
+
+def calibration_instability_payload(result: Dict[str, Any],
+                                    y_true) -> Dict[str, Any]:
+    """Every bootstrap model's calibration curve, plus the original in bold.
+
+    One curve per resample, each binned the way `calibration_payload` bins the
+    original — the two figures sit beside each other and a reader compares
+    them, so a different binning would make the comparison a comparison of
+    binnings.
+
+    Regression has no calibration curve in this sense, so this returns
+    `applicable: False` rather than a plot of something else.
+    """
+    if result.get("task_type") != "classification":
+        return {"figure": "calibration_instability", "applicable": False,
+                "because": ("A calibration curve plots observed risk against "
+                            "predicted risk, and a regression model predicts a "
+                            "value rather than a risk. There is nothing here "
+                            "to overlay.")}
+
+    y_true = np.asarray(y_true, dtype=float)
+    matrix = np.asarray(result["bootstrap"], dtype=float)
+    original = np.asarray(result["original"], dtype=float)
+    edges = np.linspace(0.0, 1.0, 11)
+
+    def _curve(predicted):
+        binned = np.clip(np.digitize(predicted, edges[1:-1]), 0, 9)
+        xs, ys, ns = [], [], []
+        for b in range(10):
+            mask = binned == b
+            if not mask.any():
+                continue
+            xs.append(float(predicted[mask].mean()))
+            ys.append(float(y_true[mask].mean()))
+            ns.append(int(mask.sum()))
+        return {"x": xs, "y": ys, "n": ns}
+
+    curves = [_curve(matrix[i]) for i in range(matrix.shape[0])]
+    return {
+        "figure": "calibration_instability",
+        "applicable": True,
+        "model_name": result.get("model_name", "the model"),
+        "n": result.get("n", 0),
+        "events": int(y_true.sum()),
+        "b_completed": result.get("b_completed", 0),
+        "b_requested": result.get("b_requested", 0),
+        "b_recommended": result.get("b_recommended", 1000),
+        "n_bins": 10,
+        "curves": curves,
+        "original_curve": _curve(original),
+        # The pack's presentation instruction, carried as data so the checklist
+        # can score it rather than trusting the renderer.
+        "bootstrap_style": {"color": "grey", "width": "thin", "alpha": 0.08},
+        "original_style": {"color": "ink", "width": "bold"},
+        "reference_line": {"kind": "identity", "label": "ideal"},
+        "aspect": "square",
+        "scored_on": result.get("scored_on", ""),
+    }
+
+
+CALIBRATION_INSTABILITY = register(FigureSpec(
+    id="calibration_instability",
+    title="Calibration instability plot",
+    tier=CONFIRMATORY,
+    when_applicable=lambda s: (
+        s.get("task_type") == "classification"
+        and bool(s.get("has_instability_run"))),
+    layers=("identity_line", "bootstrap_curves", "original_curve"),
+    annotations=(
+        Annotation("b_completed", "Bootstrap resamples (B)", "turbotab.instability"),
+        Annotation("n", "n", "turbotab.instability"),
+        Annotation("events", "events", "turbotab.figure_specs"),
+    ),
+    checklist=(
+        ChecklistItem(
+            "b_stated",
+            "The number of bootstrap resamples is stated on the figure",
+            "The density of the grey band is a function of B; without it a "
+            "reader cannot tell a tight model from a small B.",
+            lambda p: bool(p.get("b_completed"))),
+        ChecklistItem(
+            "original_distinguishable",
+            "The original model's curve is drawn in bold over the grey ones",
+            "The pack asks for many thin grey curves plus the original in "
+            "bold. Without the distinction the figure shows spread and hides "
+            "what the spread is around.",
+            lambda p: (p.get("original_style", {}).get("width") == "bold"
+                       and p.get("bootstrap_style", {}).get("width") == "thin")),
+        ChecklistItem(
+            "identity_line",
+            "45° reference line, labeled 'ideal'",
+            "Every curve on this plot is read as a distance from ideal.",
+            lambda p: (p.get("reference_line", {}).get("kind") == "identity"
+                       and p.get("reference_line", {}).get("label") == "ideal")),
+        ChecklistItem(
+            "square_aspect",
+            "Square aspect ratio, same scale on both axes",
+            "Predicted and observed risk are the same quantity; a non-square "
+            "panel makes agreement look like disagreement.",
+            lambda p: p.get("aspect") == "square"),
+        ChecklistItem(
+            "scope_stated",
+            "Which rows were resampled and predicted is stated",
+            "Same reason as the prediction instability plot: a curve drawn "
+            "over resampled held-out rows would look identical.",
+            lambda p: "held-out" in str(p.get("scored_on", ""))),
+    ),
+    caption=lambda p: (
+        (f"Calibration instability for {p.get('model_name', 'the model')}: "
+         f"{p.get('b_completed', 0):,} calibration curves, one per bootstrap "
+         f"refit of the entire pipeline, over {p.get('n', 0):,} training rows "
+         f"with {p.get('events', 0):,} events, binned into "
+         f"{p.get('n_bins', 10)} equal-width bins of predicted risk. Thin grey "
+         f"curves are the bootstrap models; the bold curve is the original. "
+         f"The dashed 45° line is ideal calibration. Spread between the grey "
+         f"curves is how much the model's calibration depends on which "
+         f"patients were sampled. B = {p.get('b_completed', 0):,}; Riley and "
+         f"Collins recommend on the order of "
+         f"{p.get('b_recommended', 1000):,}. {p.get('scored_on', '')}.")
+        if p.get("applicable", True) else str(p.get("because", ""))),
+    companions=("prediction_instability",),
+    evidence=INSTABILITY_EVIDENCE,
+    claims=INSTABILITY_CLAIMS,
+    promotable=False,
+    promotable_because="",
+    compute=calibration_instability_payload,
+))

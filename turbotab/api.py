@@ -2154,6 +2154,90 @@ async def get_training(project_id: str) -> Dict[str, Any]:
     return {"run": None, "blocked_by": None, "stale": []}
 
 
+def _instability_worker(ctx, project_id: str, model_key: str, b: int):
+    from turbotab import instability as _inst
+
+    project = STORE.get(project_id)
+    result = _inst.run(project, model_key, b=b, ctx=ctx,
+                       seed=int(ctx.rng.integers(0, 2 ** 31 - 1)))
+    # HELD ON THE PROJECT, same reason the training run is: the figure layer
+    # asks the project rather than the API, so a figure that had to know where
+    # the web layer keeps its results would be a second place to look.
+    runs = getattr(project, "instability_runs", None)
+    if runs is None:
+        runs = {}
+        project.instability_runs = runs
+    runs[model_key] = result
+    return {k: v for k, v in result.items() if k != "bootstrap"}
+
+
+@app.post("/project/{project_id}/instability")
+async def start_instability(project_id: str,
+                            body: Dict[str, Any]) -> Dict[str, Any]:
+    """Submit a resampling run. Returns the JOB, not the answer.
+
+    `PRODUCT_VISION.md` §04: anything over about a second is an observable job
+    with a name in plain language, progress and a cancel. B refits of a full
+    pipeline is the longest thing this app does, and it is the one place where
+    a spinner would be least forgivable — a researcher cannot tell a slow
+    bootstrap from a hung one by looking.
+    """
+    from turbotab import instability as _inst
+
+    project = _project(project_id)
+    model_key = str(body.get("model") or "")
+    b = int(body.get("b") or _inst.B_RESAMPLES)
+    if not model_key:
+        raise HTTPException(400, "Name the model to resample.")
+    handle = _QUEUE.submit(
+        f"Refitting the whole pipeline in {b:,} bootstrap resamples",
+        _instability_worker, project_id, model_key, b)
+    return handle.to_dict()
+
+
+@app.get("/project/{project_id}/instability")
+async def get_instability(project_id: str) -> Dict[str, Any]:
+    """The resampling results held for this project, and what they say.
+
+    The bootstrap MATRIX is not served — B × n floats is megabytes and the page
+    draws from the figure payload rather than from the raw draws. What is
+    served is the figure's own payload plus the two sentences the run supports.
+    """
+    from turbotab import instability as _inst
+    from turbotab import figure_specs as _specs
+
+    project = _project(project_id)
+    runs = getattr(project, "instability_runs", None) or {}
+    if not runs:
+        return {"runs": {}, "blocked_by": (
+            "No resampling has been run yet. It refits the entire pipeline "
+            f"{_inst.B_RESAMPLES:,} times, so it is a job you start rather "
+            "than something computed on the way past.")}
+    out: Dict[str, Any] = {"runs": {}, "blocked_by": None,
+                           "b_default": _inst.B_RESAMPLES,
+                           "b_recommended": _inst.RECOMMENDED_B}
+    for key, result in runs.items():
+        payload = _specs.prediction_instability_payload(result)
+        entry = {
+            "prediction_instability": payload,
+            "prediction_caption": _specs.PREDICTION_INSTABILITY.caption(payload),
+            "selection": _inst.selection_moved(result),
+            "spread": {k: v for k, v in _inst.spread(result).items()
+                       if k != "per_row"},
+        }
+        if result.get("task_type") == "classification":
+            rows = project.training_rows
+            rows = rows[rows[str(project.target)].notna()]
+            positive = sorted(rows[str(project.target)].dropna().unique())[-1]
+            y = (rows[str(project.target)] == positive).astype(float)
+            calib = _specs.calibration_instability_payload(result, y)
+            entry["calibration_instability"] = calib
+            entry["calibration_caption"] = \
+                _specs.CALIBRATION_INSTABILITY.caption(calib)
+        out["runs"][key] = entry
+    return out
+
+
 @app.get("/project/{project_id}/sensitivity")
 async def get_sensitivity(project_id: str) -> Dict[str, Any]:
     """`MISC-014`. The recorded plan run the other way, over one axis.

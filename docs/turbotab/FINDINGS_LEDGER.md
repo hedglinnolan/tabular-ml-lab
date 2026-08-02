@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**259 of 692 closed.**
+**260 of 694 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 383 |
+| `OPEN` | 384 |
 | `PARTIAL` | 50 |
-| `FIXED` | 256 |
+| `FIXED` | 257 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 383
+## OPEN — 384
 
 
 ### Application state / lockbox — 66
@@ -424,7 +424,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 
-### Models / training / eval — 19
+### Models / training / eval — 20
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -438,6 +438,7 @@ Nothing is closed without a regression test named after it.
 | `MODELS-012` | landmine | BCa acceleration is computed from a jackknife that is capped at 200 leave-one-out replicates and then PADDED to length n with the mean of those 200. | `ml/bootstrap.py:152-166 — `n_jack = min(n, 200)`, `jack_stats = np.full(n, np.nan)`, the loop runs only `for…` | Unchanged at HEAD, byte for byte. For n > 200 the BCa acceleration is still computed over an array whose tail is a constant, damping the third and second moments by an amount that… |
 | `MODELS-013` | landmine | The weighted_huber emphasis window is derived during fit and stored only on the instance as _whuber_t0 / _whuber_s, with legacy glucose constants (t0=180.0, s=20.0) as the getattr fallback. | `models/nn_whuber.py:376-378 sets them only in the `elif self.loss_function == 'weighted_huber'` branch; lines…` | Unchanged at HEAD. The emphasis window is still derived during fit, stored only on the instance, and read back through getattr with the legacy glucose constants 180.0 and 20.0 as… |
 | `T0-BUILD-006` | landmine | Classic decides which class is the event by alphabetical order, silently and with no way to see or change it | `ml/splits.py:294-301 (LabelEncoder on a categorical target); no Classic page renders or offers the class…` | Found at L9c while writing the register row for target-positive-class, and worth recording how: the row was first written asserting the opposite mapping from memory, then checked… |
+| `GUIDED-114` | high | The bootstrap draws ROWS, so on a grouped or repeated-measures table it breaks the person-level independence the seal was drawn to respect - the correct draw is a cluster bootstrap over the grain's… | `turbotab/instability.py run() draws rng.integers(0, len(rows)) with no reference to grain group_col, while…` | THE SEAL AND THE BOOTSTRAP DISAGREE ABOUT WHAT A ROW IS, which is the identity barrier seen from a new side. Constitution 02 makes the grain a precondition of the seal precisely… |
 | `MODELS-015` | invariant | Preprocessing is fit on training rows only, and cross-validation re-fits it inside every fold — a pre-transformed matrix must never be scored directly. | `ml/eval.py:182 make_cv_pipeline() composes Pipeline([('prep', clone(preprocessing)), ('densify', ...)…` | The invariant is implemented where it cannot be bypassed by accident, and NOTHING TESTS IT - so it stays OPEN. ml/eval.py:182-190 make_cv_pipeline composes Pipeline([('prep'… |
 | `MODELS-016` | invariant | Metrics are reported on the ORIGINAL target scale: when target_transformer is active, predictions are inverse-transformed and compared against y_*_original. | `pages/06:1486-1497 (test) and 1508-1517 (train), plus the CV branch wrapping the estimator in…` | The invariant is real, currently honored, and unguarded - so it stays OPEN. Every consumer inverse-transforms before scoring and prefers y_*_original, which is correct. What makes… |
 | `MODELS-018` | invariant | Every model factory has the signature (task_type: str, random_state: int) -> estimator, and every model object satisfies fit/predict, with predict_proba only reachable through the runtime… | `ml/model_registry.py:44 declares factory: Callable[[str, int], Any]; all 22 factories honor it.…` | The invariant holds today and nothing enforces either half, so it stays OPEN. The factory signature is declared in a type annotation that Python does not check and no test… |
@@ -446,7 +447,7 @@ Nothing is closed without a regression test named after it.
 | `MODELS-021` | invariant | Bootstrap CIs are deterministic given (y_true, y_pred, metric_fn, n_resamples, random_state) — the module touches no global RNG. | `ml/bootstrap.py:115 `rng = np.random.RandomState(random_state)` is the sole randomness; every public entry…` | The invariant holds structurally and no test asserts it, so it stays OPEN. ml/bootstrap.py:115 creates its own np.random.RandomState(random_state) and the module touches the… |
 | `MODELS-023` | invariant | The NN's best-epoch weights are snapshotted by CLONE, not by reference, so later optimizer steps cannot mutate the saved state. | `models/nn_whuber.py:430 and 529 — `best_model_state = {k: v.detach().clone() for k, v in…` | The invariant holds at both snapshot sites and nothing guards it, so it stays OPEN. state_dict() returns references to live tensors, so a bare copy would let subsequent optimizer… |
 | `MODELS-024` | invariant | Cross-validation is skipped for the neural network because its sklearn shim cannot retrain. | `pages/06:1529 `if use_cv and model_name != 'nn'` with the else-branch at 1565 explaining it to the user…` | Unchanged at HEAD: four separate guards, all keyed on one literal model key. The skip itself is correct and is explained to the user, which is good - the shim cannot retrain, so… |
-| `GUIDED-103` | medium | Genuinely fold-local selection needs the training step to resample: this door fits each model once, so scope=train_folds is recorded and train_rows is what happens | `turbotab/training.py train() fits each pipeline once on the training partition; turbotab/pipeline_plan.py…` | FILED AT L36-A as the honest remainder of GUIDED-095's selection half, rather than left as a silence. WHAT IS TRUE NOW: the selector lives inside the estimator, so it is refitted… |
+| `GUIDED-113` | medium | The instability engine plots the wrong quantity on a multiclass target and does not refuse: _predict takes predict_proba's second column, which is the positive class of a binary problem and one class… | `turbotab/instability.py _predict returns proba[:, 1] for any classification task; no fixture in the…` | FOUND WHILE WRITING THE FIXTURE RULE'S not-covered list, which is the list doing its job. A multiclass project would get a prediction instability plot about ONE class's… |
 
 ### Verified against main — 11
 
@@ -600,7 +601,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 256
+## FIXED — 257
 
 
 ### Guided-door drive feedback — 74
@@ -903,6 +904,16 @@ Nothing is closed without a regression test named after it.
 | `T0-BUILD-005` | high | The routing harness diagnosed without a target while the API diagnosed with one, so it measured a door that no longer existed - and a composition change in the inventory moves no metric, so nothing… | `tests/integration/test_routing_value_check.py _run_guided; tests/integration/test_routing_baseline.py…` | **test:** `tests/integration/test_routing_baseline.py::test_both_doors_are_scored_against_one_inventory` — Found at L9c while implementing the target-question ruling. Both halves… |
 | `GUIDED-100` | medium | The propagation probe itself: for each recorded decision kind, two projects identical except for that answer, and something downstream must differ | `turbotab/test_a_recorded_decision_changes_something.py; 41 kinds recorded, 23 probed (24 flips), 6 asserted…` | **test:** `turbotab/test_a_recorded_decision_changes_something.py::test_a_decision_about_the_analysis_reaches_the_fitted_pipeline` — BUILT AT L35-E as the instrument that would… |
 
+### Models / training / eval — 5
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `MODELS-001` | landmine | SklearnCompatibleNNRegressor.fit() and SklearnCompatibleNNClassifier.fit() do not train. They set is_fitted_=True, record n_features_in_ (and classes_), and return self. Any sklearn utility that… | `models/nn_whuber.py:115-128 (regressor) and 174-188 (classifier); reachable through…` | **test:** `tests/test_the_pretrained_mark_does_not_survive_a_clone.py::test_the_pretrained_mark_does_not_survive_a_clone` — Closed at L19 against a guard that RUNS in this… |
+| `MODELS-005` | landmine | The 'Cancel Training' button is decorative — st.session_state.cancel_training is written and NEVER read anywhere in the codebase. | `pages/06_Train_and_Compare.py:1252-1253 (init), 1263-1264 (set to True). grep for 'cancel_training' across…` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Closed by removal plus an honest replacement, which is the right shape. The decorative… |
+| `MODELS-017` | invariant | ModelCapabilities.requires_scaled_numeric determines each model's preprocessing pipeline; a model that needs scaling must not be trained on an unscaled pipeline. | `pages/05_Preprocess.py:487, 801, 847, 1059 read spec.capabilities.requires_scaled_numeric to build per-model…` | **test:** `tests/workflow/test_per_model_pipelines.py::test_scaled_vs_unscaled_outputs_differ` — The invariant holds on both sides of the migration and has a test that would catch… |
+| `MODELS-022` | invariant | Degenerate bootstrap resamples are DROPPED, never substituted with the point estimate, and a run with too few valid replicates returns a NaN CI rather than a narrow one. | `ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot =…` | **test:** `tests/test_review_fixes.py::TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples` — The invariant is implemented with the reasoning in the… |
+| `GUIDED-103` | medium | Genuinely fold-local selection needs the training step to resample: this door fits each model once, so scope=train_folds is recorded and train_rows is what happens | `turbotab/training.py train() fits each pipeline once on the training partition; turbotab/pipeline_plan.py…` | **test:** `turbotab/test_the_whole_pipeline_is_refitted.py (17 tests, two target shapes, the page surface driven), especially… |
+
 ### Record / narrative / export — 5
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -912,15 +923,6 @@ Nothing is closed without a regression test named after it.
 | `RECORD-023` | invariant | The software never certifies adequacy: no unconditional effectiveness claim, a negative R² is stated plainly as below a mean-only baseline, 'strongest' is claimed only when more than one model was… | `ml/narrative_engine.py _gen_discussion() (_comparative flag, the r2>=0 branch, the Conclusions [AUTHOR…` | **test:** `tests/test_manuscript_trust.py::TestDiscussionHonesty::test_no_unconditional_effectiveness_claim` — All five clauses of the invariant have a test each, which is unusual… |
 | `RECORD-027` | invariant | Exported LaTeX contains no markdown artifacts, no raw bare [PLACEHOLDER] tags, no internal model keys, no coaching phrases and no dangling punctuation or 'Table X'/'Figure X' references. | `ml/manuscript_validator.py checks 10-12 (artifact_patterns, internal_keys from _MODEL_NAMES…` | **test:** `tests/test_manuscript_validator.py::test_validate_manuscript_bundle_allows_investigator_placeholders_but_rejects_raw_markdown_artifacts` — The invariant is enforced by… |
 | `RECORD-028` | invariant | Reported population and predictor counts are identical across abstract, Methods, Table 1 and the split arithmetic: analysis_total == train_n+val_n+test_n == abstract N == Study Design N == Table 1… | `ml/manuscript_validator.py checks 1-5, driven by the regex templates in _extract_analysis_n /…` | **test:** `tests/test_manuscript_validator.py::test_validate_manuscript_bundle_flags_table1_population_and_feature_coverage` — The consistency invariant is enforced and tested in… |
-
-### Models / training / eval — 4
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `MODELS-001` | landmine | SklearnCompatibleNNRegressor.fit() and SklearnCompatibleNNClassifier.fit() do not train. They set is_fitted_=True, record n_features_in_ (and classes_), and return self. Any sklearn utility that… | `models/nn_whuber.py:115-128 (regressor) and 174-188 (classifier); reachable through…` | **test:** `tests/test_the_pretrained_mark_does_not_survive_a_clone.py::test_the_pretrained_mark_does_not_survive_a_clone` — Closed at L19 against a guard that RUNS in this… |
-| `MODELS-005` | landmine | The 'Cancel Training' button is decorative — st.session_state.cancel_training is written and NEVER read anywhere in the codebase. | `pages/06_Train_and_Compare.py:1252-1253 (init), 1263-1264 (set to True). grep for 'cancel_training' across…` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Closed by removal plus an honest replacement, which is the right shape. The decorative… |
-| `MODELS-017` | invariant | ModelCapabilities.requires_scaled_numeric determines each model's preprocessing pipeline; a model that needs scaling must not be trained on an unscaled pipeline. | `pages/05_Preprocess.py:487, 801, 847, 1059 read spec.capabilities.requires_scaled_numeric to build per-model…` | **test:** `tests/workflow/test_per_model_pipelines.py::test_scaled_vs_unscaled_outputs_differ` — The invariant holds on both sides of the migration and has a test that would catch… |
-| `MODELS-022` | invariant | Degenerate bootstrap resamples are DROPPED, never substituted with the point estimate, and a run with too few valid replicates returns a NaN CI rather than a narrow one. | `ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot =…` | **test:** `tests/test_review_fixes.py::TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples` — The invariant is implemented with the reasoning in the… |
 
 ### Features / preprocessing — 2
 
