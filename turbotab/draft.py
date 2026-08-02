@@ -179,6 +179,26 @@ def _sentence_for(d: Dict[str, Any]) -> Optional[str]:
         outstanding = (payload.get("outstanding") or "").strip()
         return f"{text} {outstanding}".strip() if outstanding else (text or None)
 
+    if kind == "seal_lockbox":
+        # `GUIDED-102`. The seal's own sentence, plus what a holdout this size
+        # can resolve. `PRODUCT_VISION.md` §04: *it is a recorded decision, and
+        # it belongs in the manuscript* — a reader who is told 11 rows were
+        # held out and not told what 11 rows can distinguish has been given the
+        # number without the thing the number means.
+        #
+        # It travels WHETHER OR NOT the card was pushed, and that asymmetry is
+        # deliberate: `push` decides what interrupts a user mid-journey, and a
+        # methods section interrupts nobody. Suppressing the line on the
+        # comfortable studies would make its presence a verdict, which is the
+        # reading `turbotab/resolution.py` exists to avoid.
+        res = payload.get("resolution") or {}
+        line = res.get("sentence")
+        if not line:
+            return text or None
+        # The record's sentence first — it states the BASIS, which is §03's
+        # requirement and is not derivable from the arithmetic.
+        return f"{text} {line}".strip() if text else line
+
     if kind == "set_selection":
         # `L36-A` made this a fitted decision rather than a recorded one, so
         # the manuscript may quote it. The scope the RECORD carries is what is

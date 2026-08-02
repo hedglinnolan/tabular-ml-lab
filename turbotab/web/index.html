@@ -579,6 +579,24 @@
   .disc-mark{ display:inline-block; font-family:var(--mono); font-size:10px;
               letter-spacing:.06em; text-transform:uppercase; margin-left:8px; }
   .disc-row.is-attested{ border-left-color:var(--warn); }
+  /* GUIDED-102. What this holdout can resolve. Deliberately `--accent` and NOT
+     `--warn`: the warn palette is this app's word for *something is wrong*, and
+     this card is not a complaint about the study. It reports the instrument's
+     resolution and leaves the judgment with the researcher, so it must not
+     borrow the color of a problem. It also gets no `.disc-mark` badge and no
+     icon — a badge would read as a verdict at a glance, which is precisely the
+     reading `turbotab/resolution.py` is written to prevent. */
+  .disc-res{ margin:9px 0 0; border-left:2px solid var(--accent);
+             background:var(--accent-tint); border-radius:0 8px 8px 0;
+             padding:9px 12px; }
+  .disc-res .dr-head{ font-size:13px; line-height:1.55; margin:0; font-weight:600; }
+  .disc-res .dr-why{ font-size:12.5px; line-height:1.6; margin:5px 0 0;
+                     color:var(--muted); }
+  .disc-res .dr-nums{ display:flex; flex-wrap:wrap; gap:4px 16px; margin:8px 0 0;
+                      font-family:var(--mono); font-size:11px; color:var(--muted); }
+  .disc-res .dr-not{ font-size:12px; line-height:1.6; margin:8px 0 0;
+                     padding-top:7px; border-top:1px solid var(--line);
+                     color:var(--faint); max-width:70ch; }
   /* GUIDED-079. The Features step. */
   .feat{ border-top:1px solid var(--line); padding:12px 0 4px; }
   .feat:first-child{ border-top:0; }
@@ -2430,7 +2448,7 @@
      defend: permutation importance on the HELD-OUT rows, with the
      interpretation prose read out of `ml/plot_narrative.py`. Every sentence in
      this surface was composed by the server; nothing here writes one. */
-  var EXPLAIN = null, EXPLAIN_FOR = undefined;
+  var EXPLAIN = null, EXPLAIN_FOR = undefined, SENS = null;
 
   function renderExplainStep(){
     if (!P || !P.target) return;
@@ -2445,6 +2463,15 @@
     api("/project/" + P.id + "/explain")
       .then(function(body){ EXPLAIN = body; renderExplain(); })
       .catch(function(){ /* a surface, not a gate on anything above it */ });
+    /* MISC-014. The sensitivity fork, fetched on the same key for the same
+       reason: it refits every model twice and must not re-run on a repaint.
+       A SEPARATE fetch rather than a field on `/explain`, because the two
+       answer different questions and one of them can be unavailable while the
+       other is fine — folding them together would make the fork's three
+       distinct empty answers into a missing key. */
+    api("/project/" + P.id + "/sensitivity")
+      .then(function(body){ SENS = body; renderExplain(); })
+      .catch(function(){ SENS = null; });
   }
 
   function renderExplain(){
@@ -2454,7 +2481,7 @@
       (EXPLAIN.run || {}).interpretation ||
       "Shuffling one column and watching the held-out metric drop says how " +
       "much the model was relying on it.");
-    $("explainBox").innerHTML = explainHTML();
+    $("explainBox").innerHTML = explainHTML() + sensitivityHTML();
     var ready = !!(EXPLAIN.run);
     sectState("explain", ready ? "recorded" : "live", ready ? "recorded" : "open");
     /* The ranking itself is recomputed on every request, so it is never stale;
@@ -2463,6 +2490,46 @@
     var estale = EXPLAIN.stale || [];
     setStale("explain", ready && estale.length > 0, estale);
     if (ready) setMap("explain", estale.length ? "stale" : "done");
+  }
+
+  /* MISC-014 · THE SENSITIVITY FORK, rendered.
+     Every string is the server's, same rule as the disclosure band. The page
+     does not decide whether the conclusion changed and does not grade the
+     difference — STATE-034 is two invented ladders that can contradict each
+     other, and the defense is having no ladder here either. The number is
+     printed for the reader to judge against what would matter in their field,
+     which the app does not know. */
+  function sensitivityHTML(){
+    if (!SENS) return "";
+    if (!SENS.available){
+      /* An unavailable fork says WHICH of its three reasons, or nothing at
+         all. A labelled empty region would read as "we checked and it was
+         fine", which is the one thing it must not say. */
+      if (!SENS.because) return "";
+      return '<div class="run"><div class="run-head"><span class="run-lab">' +
+             "Run the other way</span></div>" +
+             '<p class="feat-note">' + esc(SENS.because) + "</p></div>";
+    }
+    var r = SENS.result, c = r.conclusion;
+    var h = '<div class="run"><div class="run-head"><span class="run-lab">' +
+            "Run the other way</span>" +
+            '<span class="run-note">' + esc(r.title) + " · " +
+            num(r.n_columns, 0) + " column(s) · " + num(r.n_train, 0) +
+            " training / " + num(r.n_test, 0) + " held out, both arms" +
+            "</span></div>";
+    h += '<p class="feat-note">' + esc(c.sentence) + "</p>";
+    h += '<table class="data"><thead><tr><th>Model</th>' +
+         "<th>" + esc(r.metric) + " as recorded</th>" +
+         "<th>" + esc(r.metric) + " the other way</th><th>Difference</th>" +
+         "</tr></thead><tbody>";
+    (r.rows || []).forEach(function(row){
+      h += "<tr><td>" + esc(row.name) + "</td><td>" + row.recorded +
+           "</td><td>" + row.alternative + "</td><td>" +
+           (row.difference > 0 ? "+" : "") + row.difference + "</td></tr>";
+    });
+    h += "</tbody></table>";
+    h += '<p class="feat-note">' + esc(r.because) + "</p>";
+    return h + "</div>";
   }
 
   function explainHTML(){
@@ -2996,6 +3063,46 @@
       : '<span class="disc-mark">sealed</span>';
   }
 
+  /* GUIDED-102. What this holdout can resolve, appended INSIDE the seal row
+     because it is a statement beside the basis rather than a sixth disclosure
+     of its own — the constitution's §03 band lists what was decided, and this
+     is arithmetic about one of those decisions, not another decision.
+
+     Every string is the server's, same rule as the band above. The page does
+     not decide whether to raise it either: `push` is computed in
+     `turbotab/resolution.py` from the holdout's own arithmetic, and a page
+     that applied its own threshold would be a second trigger to drift. When
+     `push` is false the statement is still on the record and still reaches the
+     manuscript — it is simply not pushed at the reader, which is
+     PRODUCT_VISION §04's *push the notable, pull the rest*. */
+  function resolutionHTML(res){
+    if (!res || !res.push) return "";
+    var nums = [];
+    if (res.n_test != null) nums.push(res.n_test + " held out");
+    if (res.n_train != null) nums.push(res.n_train + " for fitting");
+    if (res.events_held_out != null)
+      /* The COUNT, never the class value. `archive.assert_no_participant_data`
+         rejects a serialized project that carries a cell from the table, and
+         the class label is one — so the record holds the arithmetic and this
+         renders the arithmetic. Which class is positive is a property of a
+         fitted model and is carried there. */
+      nums.push(res.events_held_out + " of the less common outcome");
+    if (res.parameters && res.parameters.total != null)
+      nums.push(res.parameters.total + " candidate parameters");
+    if (res.step_per_row != null)
+      nums.push("1 row moves a rate by " + res.step_per_row);
+    return '<div class="disc-res">' +
+      '<p class="dr-head">' + esc(res.headline || "") + "</p>" +
+      (res.because
+        ? '<p class="dr-why">Shown because ' + esc(res.because) + ".</p>" : "") +
+      (nums.length
+        ? '<div class="dr-nums">' + nums.map(function(n){
+            return "<span>" + esc(n) + "</span>"; }).join("") + "</div>" : "") +
+      (res.not_a_verdict
+        ? '<p class="dr-not">' + esc(res.not_a_verdict) + "</p>" : "") +
+      "</div>";
+  }
+
   function renderDisclosures(){
     var box = $("disclosuresBox");
     if (!box) return;
@@ -3015,7 +3122,8 @@
       seen[key] = true;
       var html = '<span class="disc-k">' + esc(pair[1]) +
                  discMark(key, body) + "</span>" +
-                 '<p class="disc-v">' + esc(sentence) + "</p>";
+                 '<p class="disc-v">' + esc(sentence) + "</p>" +
+                 (key === "seal" ? resolutionHTML(body.resolution) : "");
       var cls = discClass(key, body);
       /* The renderer owns its nodes for the same reason the figure surface
          does: *is there an element with this id* is not *is this my node*, and

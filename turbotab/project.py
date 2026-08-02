@@ -1752,6 +1752,29 @@ class AnalysisProject:
             "n_groups": self.grain.get("n_groups"),
             **disclosure,
         }
+        # `GUIDED-102`. What this holdout can RESOLVE, computed here because
+        # the seal is the moment the cohort stops changing and the labels above
+        # are the split that was actually drawn rather than the fraction that
+        # was asked for. Stored on the lockbox so it travels with the record —
+        # a consumer that recomputed it from the current frame would be
+        # answering about a table that has since been trimmed.
+        #
+        # A statement BESIDE the basis, never a fifth basis value: it does not
+        # change `seal_basis`, does not gate the seal, and has no failure mode
+        # in which the seal is refused. See `turbotab/resolution.py` for why
+        # that boundary is the entire point.
+        try:
+            from turbotab import resolution as _res
+            self.lockbox["resolution"] = _res.statement(
+                self.df, self.target or "", self.task_type or "regression",
+                list(labels), self.grain.get("group_col"))
+        except Exception as exc:                              # pragma: no cover
+            # The seal succeeds without it. A study that cannot be described is
+            # still a study that was sealed correctly, and refusing the barrier
+            # because a descriptive sentence failed would trade the thing that
+            # matters for the thing that comments on it.
+            self.lockbox["resolution"] = None
+            self.lockbox["resolution_unavailable"] = str(exc)
         return self.record(
             kind="seal_lockbox", subject=self.target or "",
             text=(f"A test set of {len(labels)} rows was sealed before exploration "
@@ -1759,7 +1782,8 @@ class AnalysisProject:
                   f"({self.grain['basis_source']})."),
             payload={"n_test": int(len(labels)),
                      "seal_basis": self.grain["basis"],
-                     "basis_source": self.grain["basis_source"]})
+                     "basis_source": self.grain["basis_source"],
+                     "resolution": self.lockbox.get("resolution")})
 
     def repeat_chain_gap(self) -> Optional[str]:
         """Which of clause §01's bracketed steps is still open, if any.

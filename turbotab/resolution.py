@@ -1,0 +1,309 @@
+"""turbotab.resolution — what a holdout this size can resolve.
+
+`GUIDED-102`, and it is the case where a **shipped step contradicts its own
+specification** rather than a future step being unbuilt. `engine.draw_holdout`
+takes a constant `0.15` with no *n* term. Driven on
+`metabolomics_untargeted.csv` — n=80, `PRODUCT_VISION.md`'s own worked case —
+the seal draws **11 held-out rows** and says *"11 rows (15%) are held out and
+will not be looked at again until the models are scored."* True, and the only
+thing said.
+
+`PRODUCT_VISION.md` §04 specifies the missing half:
+
+> **State the instrument's resolution and let the researcher judge their claim
+> against it.**
+
+## The four rules, because the difference between the correct form and the
+## anti-pattern is the entire content of this module
+
+**1 · It never says "don't."** No refusal, no blocked step, no gate, no
+severity. A researcher who wants a holdout at n=80 gets one. The app states
+what that study can see and records the sentence.
+
+**2 · It states the INSTRUMENT's resolution, never a verdict on the claim.**
+*"A metric estimated on 11 rows has an interval spanning most of the unit
+interval"* is arithmetic over quantities the app already holds. *"This study is
+underpowered"* is **post-hoc power in a nicer suit** — listed flatly as an
+anti-pattern in `research/METABOLOMICS_PACK.md` §10 — and writing it would be
+committing a named error while presenting as the tool that catches them. We do
+not hold the claim: at the seal we know the target, the task, the grain, the
+eligibility and the purpose, and we do not know the expected effect size, which
+predictor is the exposure of interest, or what magnitude would be meaningful.
+
+**3 · It fires only when stark, and the trigger is DERIVED.** A card on every
+dataset is wallpaper (`PRODUCT_VISION.md` §04, *push the notable*). The trigger
+below contains no number anybody picked — see `_push_because`.
+
+**4 · It is recorded, and it reaches the manuscript.** Its natural home is the
+seal extended: the sealed *n* is the input and the seal is the moment the
+cohort stops changing. A statement *beside* the basis, never a fifth basis
+value.
+
+## What is deliberately NOT here
+
+The full resolution statement — the metabolomics detectable-fold-change curve
+(`METABOLOMICS_PACK.md` §751), nutrition's λ and its 1/λ² penalty
+(`NUTRITION_PACK.md` §254), Riley's criteria-based minimum with anticipated R²
+and prevalence (`CLINICAL_SURVEY_PACK.md` §A5.4) — is specified-unbuilt by
+design and is a larger piece. Each needs an input the app does not hold at the
+seal: an observed per-feature CV, a within-to-between variance ratio, an
+anticipated R². This module computes only what the seal already knows.
+"""
+from __future__ import annotations
+
+import math
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import pandas as pd
+
+#: The two-sided normal multiplier for a 95% interval. Arithmetic rather than a
+#: domain constant — it is not a threshold anybody in the research files chose,
+#: and it is stated here so a reader can see which interval is meant.
+Z95 = 1.96
+
+#: The widest a proportion's standard error can be, at p = 0.5. Used because
+#: the seal has no metric yet: the honest statement before a model is fitted is
+#: the WORST case this holdout could produce, not a guess at the actual one.
+WORST_CASE_SD = 0.5
+
+#: Where each cited claim comes from. Read at build, never recollected — a
+#: number marked `[verify-at-build]` may not ship as a constant, and none of
+#: these is one: they are the pack's own words about method, not thresholds.
+SOURCES = {
+    "single_split": {
+        "source": "research/CLINICAL_SURVEY_PACK.md#A5.5 Modeling practice",
+        "evidence_status": "CONVENTION",
+        "claim": (
+            "Internal validation must resample the entire modeling pipeline. "
+            "Bootstrap optimism correction is the recommended default because "
+            "it uses all the data and has smaller variance than a single "
+            "split; repeated k-fold is acceptable. A single train/test split "
+            "is the weakest option and is discouraged at typical clinical "
+            "sample sizes."),
+    },
+    "candidate_parameters": {
+        "source": "research/CLINICAL_SURVEY_PACK.md#A5.4 Sample size",
+        "evidence_status": "SETTLED",
+        "claim": (
+            "Candidate predictors count toward sample size even if they are "
+            "later dropped: screening 40 variables and keeping 8 means sizing "
+            "for 40, because data-driven selection consumes degrees of "
+            "freedom whether or not it appears in the final model. Count "
+            "PARAMETERS, not variables — a 5-level factor is 4."),
+    },
+}
+
+
+def candidate_parameters(frame: pd.DataFrame, target: str,
+                         group_col: Optional[str] = None) -> Dict[str, Any]:
+    """How many PARAMETERS the model may spend, not how many columns there are.
+
+    `CLINICAL_SURVEY_PACK.md` §A5.4 is explicit and it is the count people get
+    wrong: *count parameters, not variables — a 4-knot spline is 3, a 5-level
+    factor is 4.* A numeric column is one; a categorical column with k observed
+    levels is k−1, which is exactly what the one-hot encoder in
+    `pipeline_plan` will produce.
+
+    **Counted over the columns this app will actually hand the model** — the
+    same frame `training._feature_frame` builds — rather than over the file, so
+    the number describes the fit rather than the spreadsheet.
+    """
+    drop = {str(target)} | ({str(group_col)} if group_col else set())
+    numeric, categorical, per_column = 0, 0, []
+    for column in frame.columns:
+        name = str(column)
+        if name in drop:
+            continue
+        series = frame[column]
+        if isinstance(series, pd.DataFrame):                # pragma: no cover
+            continue
+        if pd.api.types.is_numeric_dtype(series):
+            numeric += 1
+            per_column.append({"column": name, "parameters": 1, "kind": "numeric"})
+            continue
+        levels = int(series.dropna().nunique())
+        spent = max(0, levels - 1)
+        categorical += spent
+        per_column.append({"column": name, "parameters": spent,
+                           "kind": f"{levels} observed levels"})
+    per_column.sort(key=lambda d: -d["parameters"])
+    return {
+        "total": int(numeric + categorical),
+        "numeric": int(numeric),
+        "from_categorical": int(categorical),
+        "largest": per_column[:5],
+        **SOURCES["candidate_parameters"],
+    }
+
+
+def _widest_interval(n_test: int) -> Optional[float]:
+    """The WIDTH of the widest 95% interval a proportion on `n_test` rows can
+    have. `None` below one row, because a width computed from nothing is a
+    number that asserts precision it does not have."""
+    if n_test < 1:
+        return None
+    return float(2 * Z95 * WORST_CASE_SD / math.sqrt(n_test))
+
+
+def _push_because(task_type: str, n_test: int, events_test: Optional[int],
+                  non_events_test: Optional[int]) -> Optional[str]:
+    """Whether this is stark, and **the trigger contains no picked number.**
+
+    Three conditions, each of which is a fact rather than a threshold:
+
+    **A · The interval is wider than the whole distance from chance to
+    perfect.** A discrimination statistic runs from 0.5 (a coin) to 1.0
+    (perfect), so the range that carries any information is 0.5 wide. When the
+    widest 95% interval this holdout can produce exceeds that, the holdout
+    cannot distinguish a useless model from a perfect one. The 0.5 comes from
+    the metric's own scale and the 1.96 from the interval named; nothing here
+    was chosen for taste. It resolves to n_test ≤ 15.
+
+    **B · A class is missing or all-but-missing from the holdout.** With fewer
+    than two of either class, sensitivity or specificity is undefined rather
+    than imprecise. Not a threshold: two is the smallest number from which a
+    proportion has any spread at all.
+
+    **Both are about the HOLDOUT**, which is this card's subject.
+
+    A third condition was measured and **deliberately rejected**: *more
+    candidate parameters than training rows*. It is true arithmetic — a model
+    cannot estimate p parameters from fewer than p observations — but driven
+    across the fixtures it fired on five of six, which is wallpaper, and it
+    fired for a reason that is not about resolution at all. The counts are
+    dominated by per-row identifier columns the app hands the model as
+    candidate predictors: `respondent_id` is 299 of `survey_instrument.csv`'s
+    344 parameters, `admission_id` is 159 of `leaky_sepsis.csv`'s 164. That is
+    a real defect and it is filed as one (`GUIDED-108`) rather than being
+    laundered through this card. The parameter count is still **reported** in
+    every statement, because `PRODUCT_VISION.md` §04 names it as an input; it
+    just does not decide whether the card is raised.
+
+    `None` means do not push. The statement is still computed and still
+    recorded — this decides only whether the app raises it unprompted, which is
+    `PRODUCT_VISION.md` §04's *push the notable, pull the rest*.
+    """
+    widest = _widest_interval(n_test)
+    if widest is not None and task_type == "classification" and widest > 0.5:
+        return (
+            f"the widest 95% interval a metric on {n_test} held-out rows can "
+            f"have is {widest:.2f} wide, which is more than the whole distance "
+            f"from a coin flip to a perfect classifier")
+    if task_type == "classification":
+        if events_test is not None and events_test < 2:
+            return (f"the held-out set contains {events_test} of the outcome, "
+                    f"so sensitivity is undefined rather than imprecise")
+        if non_events_test is not None and non_events_test < 2:
+            return (f"the held-out set contains {non_events_test} rows without "
+                    f"the outcome, so specificity is undefined rather than "
+                    f"imprecise")
+    return None
+
+
+def statement(frame: pd.DataFrame, target: str, task_type: str,
+              labels: List[Any], group_col: Optional[str] = None) -> Dict[str, Any]:
+    """What this holdout can resolve, computed at the seal.
+
+    `labels` is the lockbox's own row labels, so the counts describe the split
+    that was actually drawn rather than the fraction that was requested — the
+    same reason `draw_holdout` reports the achieved row fraction
+    (`IMPORT-255`).
+    """
+    has_y = frame[target].notna()
+    sealed = set(labels)
+    is_test = pd.Series([i in sealed for i in frame.index], index=frame.index)
+    n = int(has_y.sum())
+    n_test = int((has_y & is_test).sum())
+    n_train = int((has_y & ~is_test).sum())
+
+    events_test = non_events_test = events_train = None
+    minority = None
+    if task_type == "classification":
+        counts = frame.loc[has_y, target].value_counts()
+        if len(counts) >= 1:
+            minority = counts.index[-1]
+            in_test = frame.loc[has_y & is_test, target]
+            events_test = int((in_test == minority).sum())
+            non_events_test = int(n_test - events_test)
+            events_train = int(
+                (frame.loc[has_y & ~is_test, target] == minority).sum())
+
+    parameters = candidate_parameters(frame, target, group_col)
+    widest = _widest_interval(n_test)
+    because = _push_because(task_type, n_test, events_test, non_events_test)
+
+    return {
+        "n": n, "n_train": n_train, "n_test": n_test,
+        "task_type": task_type,
+        # THE CLASS LABEL IS NOT STORED, and the guard is what found it.
+        # `archive.assert_no_participant_data` rejected a serialized project
+        # carrying `responder` — a cell value from the table — and its
+        # instruction is the right one: *persist decisions and inputs;
+        # regenerate derivatives.* This statement is a derivative. Exempting
+        # the value instead would have meant exempting every project's class
+        # labels, which is the guard switched off rather than satisfied.
+        #
+        # Nothing is lost that a reader needs here: the COUNT is what the
+        # holdout's resolution depends on, and which class is the positive one
+        # is already carried, per model, on `ModelResult.positive_label` where
+        # it is about a fitted thing rather than about the record.
+        "events_held_out": events_test,
+        "non_events_held_out": non_events_test,
+        "events_in_training": events_train,
+        # Counts only. `candidate_parameters` returns its badge and its
+        # per-column breakdown for a caller that wants them; the RECORD keeps
+        # the arithmetic, and the citation is served from `SOURCES` at read
+        # time so one edit to the pack reference reaches every project rather
+        # than only the ones sealed afterwards.
+        "parameters": {k: parameters[k] for k in
+                       ("total", "numeric", "from_categorical")},
+        # The step a single held-out row moves a proportion by. Exact counting,
+        # and the most legible form of "what this instrument can resolve".
+        "step_per_row": None if n_test < 1 else round(1.0 / n_test, 4),
+        "widest_interval": None if widest is None else round(widest, 3),
+        "push": because is not None,
+        "because": because,
+        "headline": _headline(task_type, n_test, widest, events_test),
+        "sentence": _sentence(n, n_train, n_test, task_type, widest,
+                              parameters["total"], events_test),
+        # SAID OUT LOUD, because the absence of this line is what would turn
+        # the module into the anti-pattern it exists to avoid.
+        "not_a_verdict": (
+            "This is a statement about the instrument, not about your study. "
+            "The app does not know your expected effect size, which predictor "
+            "is your exposure of interest, or what difference would matter — "
+            "so it cannot say whether this design is adequate for your "
+            "question, and it does not try. What it can do is arithmetic over "
+            "what it holds, and leave the judgment where it belongs."),
+    }
+
+
+def _headline(task_type: str, n_test: int, widest: Optional[float],
+              events_test: Optional[int]) -> str:
+    where = f"{n_test:,} held-out row" + ("" if n_test == 1 else "s")
+    if task_type == "classification" and events_test is not None:
+        where += f" ({events_test:,} with the outcome)"
+    if widest is None:
+        return f"This seal holds out {where}."
+    return (f"A metric estimated on {where} carries a 95% interval up to "
+            f"{widest:.2f} wide, on a scale of 0 to 1.")
+
+
+def _sentence(n: int, n_train: int, n_test: int, task_type: str,
+              widest: Optional[float], parameters: int,
+              events_test: Optional[int]) -> str:
+    """The methods line. Reports what was done and what it can resolve, and
+    stops there — no adequacy, no adjective, no recommendation."""
+    line = (f"Of {n:,} rows with a value for the outcome, {n_test:,} were "
+            f"sealed as a held-out set before exploration and {n_train:,} were "
+            f"available for fitting")
+    if task_type == "classification" and events_test is not None:
+        line += f", with {events_test:,} of the held-out rows carrying the outcome"
+    line += (f". {parameters:,} candidate predictor parameters were available "
+             f"to the models, counted including any later dropped by feature "
+             f"selection")
+    if widest is not None:
+        line += (f"; a performance metric estimated on {n_test:,} rows carries "
+                 f"a 95% interval up to {widest:.2f} wide")
+    return line + "."

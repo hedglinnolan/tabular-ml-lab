@@ -260,7 +260,23 @@ bins, and only the first costs design.
 2. The **purpose question** (prediction vs inference) and the fork it drives.
 3. The **hard-stop class** — detect, declare, never execute.
 4. The **sensitivity fork** — run it both ways, report whether the conclusion changes. Named as the
-   highest-value cheap addition by three of four threads, and currently absent from the app entirely.
+   highest-value cheap addition by three of four threads. **[CORRECTED — `MISC-014`]** This entry read
+   *"and currently absent from the app entirely"* and that clause was false when it was written.
+   `ml/sensitivity.py` (132 lines) and `pages/08_Sensitivity_Analysis.py` (568 lines) ship it,
+   `FEATURE_PARITY.md` §1 lists it as shared, and `ml/publication.py` writes it into the manuscript.
+   What was absent was a **Guided** route — `turbotab/sensitivity.py` is that route now, over one
+   axis, and the design cost was not in building the fork but in **not inheriting the two landmines
+   Classic's version carries**: `STATE-013` (seed sensitivity pools train+val+test and re-splits,
+   dissolving the lockbox for numbers printed beside lockbox-derived metrics) and `STATE-034` (two
+   independent robustness verdict systems shown side by side, which can contradict each other).
+   The Guided route has no splitter and no verdict ladder; it reports whether the leader changed and
+   the size of the largest difference, and leaves the judgment with the reader.
+
+   > **The lesson this correction is really about.** A capability that ships in one surface is not
+   > absent from the app; it is *unrouted*, and those are different problems with different costs.
+   > Reading unrouted as absent is what turns a routing task into a rebuild, and it is how a landmine
+   > gets ported along with the feature. Before any primitive here is called absent, `FEATURE_PARITY.md`
+   > and the `pages/` tree are the two places to look — which is what `MISC-016` now gates.
 5. **Figure tiering and companions** — EXPLORATORY vs CONFIRMATORY, and the admissibility rule.
 6. The **checklist engine** — one artifact, four checklist definitions, two column types.
 7. The **generalized leakage detector** — any parameter estimated from data, inside the loop.
@@ -439,7 +455,9 @@ Ordered by ratio of what it changes to what it costs, not by domain.
    where being wrong is most expensive.
 
 The sensitivity fork and the generalized leakage detector sit outside this order deliberately: both are
-engine-level, both are independent of any pack, and both can land at any point.
+engine-level, both are independent of any pack, and both can land at any point. **The sensitivity fork
+landed in L37** over the missingness axis — see the correction attached to §03 primitive 4 for what was
+built, what was deliberately not ported, and why the entry's original claim of absence was wrong.
 
 **And one constraint on the whole sequence, from §03b.** No loop may consist only of primitives. Each
 one carries content from the research files alongside its scaffolding, and each builder prompt names

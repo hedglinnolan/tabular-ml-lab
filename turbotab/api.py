@@ -321,6 +321,16 @@ def _disclosures(project: AnalysisProject) -> Dict[str, Any]:
             project.missingness, len(_miss.survey(project.df, project.target)))
     if project.lockbox:
         out["seal"] = grain_mod.seal_disclosure(project.lockbox)
+        # `GUIDED-102`. Read off the lockbox rather than recomputed, so the
+        # page cannot show a resolution for a cohort other than the sealed one.
+        # The CITATIONS are merged from the module at read time instead: they
+        # are static content about a research file, and a copy frozen into
+        # every project record would go stale one project at a time.
+        recorded = project.lockbox.get("resolution")
+        if recorded:
+            from turbotab import resolution as _res
+            recorded = {**recorded, "sources": _res.SOURCES}
+        out["resolution"] = recorded
         out["exploratory"] = grain_mod.is_exploratory_basis(
             project.lockbox.get("seal_basis"))
         if (project.grain or {}).get("design_not_described"):
@@ -883,7 +893,27 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
                 payload.get("candidates") or [],
                 n_features=payload.get("n_features"),
                 consensus_min_methods=payload.get("consensus_min_methods"),
-                scope=payload.get("scope", sel_mod.TRAIN_FOLDS))
+                # THE SCOPE THIS DOOR ACTUALLY FITS (`GUIDED-104`).
+                #
+                # `selection.declare`'s own docstring says scope *"is explicit
+                # and has no default that hides the weaker option"*, and that
+                # `TRAIN_ROWS` exists so a door that inherits Classic's
+                # behavior can SAY so rather than imply the stronger claim.
+                # This door took the `TRAIN_FOLDS` default, fitted train-rows-
+                # once, and repaired the difference in a run note — so the
+                # record asserted the stronger claim and a note in a different
+                # object with a different lifetime retracted it. The archive,
+                # the methods sentence and any future parity check read the
+                # record.
+                #
+                # `train_rows` is what happens: `training.train` fits each
+                # model once, on the training partition. `TRAIN_FOLDS` becomes
+                # reachable the day `GUIDED-103`'s resampling policy lands, and
+                # is then chosen by what will happen rather than by a default —
+                # which is why the caller may still ask for it explicitly and
+                # `pipeline_plan` still states the divergence if it cannot be
+                # honored.
+                scope=payload.get("scope", sel_mod.TRAIN_ROWS))
             project.set_selection(spec)
         except sel_mod.SelectionRefusal as exc:
             raise HTTPException(400, str(exc)) from exc
@@ -2122,6 +2152,46 @@ async def get_training(project_id: str) -> Dict[str, Any]:
         # produced nothing are different sentences.
         return {"run": None, "blocked_by": str(exc), "stale": []}
     return {"run": None, "blocked_by": None, "stale": []}
+
+
+@app.get("/project/{project_id}/sensitivity")
+async def get_sensitivity(project_id: str) -> Dict[str, Any]:
+    """`MISC-014`. The recorded plan run the other way, over one axis.
+
+    A GET rather than a job because the fork is bounded by the models that were
+    already chosen and it fits each of them twice — expensive, but not the
+    open-ended work `/train` exists to make watchable. If that stops being true
+    the answer is the job queue, not a longer timeout.
+
+    Three distinct empty answers, and they are three different sentences for
+    the same reason the training route has three: *nothing was recorded to
+    fork*, *the arms were not comparable*, and *there is no run to compare
+    against* are not the same fact, and a client that could not tell them apart
+    would render one of them as the others.
+    """
+    project = _project(project_id)
+    from turbotab import sensitivity as _sens
+
+    spec = _sens.fork(project)
+    if spec is None:
+        return {"available": False, "result": None, "because": (
+            "No missing-value decision on this project has an alternative that "
+            "can be fitted the same way, so there is nothing to run both "
+            "ways.")}
+
+    models = list(project.selected_models or [])
+    if not models:
+        return {"available": False, "result": None, "fork": spec, "because": (
+            "No models have been chosen yet, so there is no result to check "
+            "against the other handling.")}
+
+    result = _sens.run(project, models)
+    if result is None or result.get("unavailable"):
+        return {"available": False, "result": None, "fork": spec,
+                "because": (result or {}).get("unavailable") or (
+                    "The comparison could not be made.")}
+    return {"available": True, "result": result,
+            "methods_sentence": _sens.methods_sentence(result)}
 
 
 @app.get("/capabilities")

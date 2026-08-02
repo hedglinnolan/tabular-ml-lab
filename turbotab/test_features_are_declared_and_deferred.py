@@ -494,7 +494,15 @@ def test_a_driver_reaches_the_end_of_feature_work_without_leaving_guided(client)
     assert sel.status_code == 200, sel.text
     spec = sel.json()["selection_spec"]
     assert spec["selected"] is None
-    assert "within each training fold" in spec["sentence"]
+    # `GUIDED-104`. This used to assert "within each training fold" and the
+    # door did not fit one — it fits once, over the training rows, and the run
+    # had to correct the record in a note afterwards. The API records the scope
+    # it actually fits now, so the sentence is true when it is written rather
+    # than true after a correction. `S.declare`'s own default is unchanged and
+    # is still fold-local; the test above covers that caller.
+    assert "once over the training rows" in spec["sentence"]
+    assert "held-out rows excluded" in spec["sentence"]
+    assert spec["scope"] == "train_rows"
 
     # and the step ends, recorded
     done = client.post(f"/project/{pid}/decision",

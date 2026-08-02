@@ -1062,5 +1062,85 @@
   "classic": "reset_downstream_results() deletes downstream results silently",
   "state": "guided-only",
   "reason": "BUILT at L36-D. PRODUCT_VISION section 05 calls this the single feature Streamlit most fundamentally cannot render, and principle 4 states the shape: the past is editable, never silently destroyed - changes mark downstream work stale, VISIBLE, VEILED, RECOVERABLE. Classic's answer is destructive by construction. GUIDED-094 measured the gap: project.py wrote stale_downstream faithfully from L5 and archive.py and devchecks.py read it, and the page had zero readers - so a held-out accuracy stood unchanged over a table that had moved beneath it. THREE ARTIFACTS, NOT ONE, which is why the fix is a watermark rather than a flag: the fitted run, the selection spec and the explanation are invalidated by different changes at different times, and a veil that knew about one would be the same defect class this loop closed elsewhere. Each artifact is stamped with the invalidation log's length when it is produced; anything appended after is a change it does not account for, and the log has always carried WHY. The explanation fails differently and says so: it is recomputed from the current record on every request, so the RANKING is never stale while the scores beside it can be, and presenting the two silently would be two numbers about two different analyses. NEVER A RECOMPUTE AND NEVER A CLEAR: the numbers stay, the section wears the state, and the tag names the change. DESIGN_LANGUAGE section 05.2 asks for identity continuity here - propagate is one of exactly four places motion may be spent - so the veil toggles a class on the section already on screen rather than replacing it. Section 05.2 also records that this app has no mechanism for animating a change of content at all, so the transition is instantaneous; that is a stated limit rather than a claimed motion."
+ },
+ {
+  "id": "sens-seed",
+  "step": "explain",
+  "capability": "Seed sensitivity — refit under N random seeds and report the spread",
+  "classic": "Step 8",
+  "state": "classic-only",
+  "reason": "Deliberately NOT ported. STATE-013: the Classic version pools train+val+test and re-splits per seed, so the numbers beside it are no longer lockbox-derived. In Guided the seal is the thing that makes two runs comparable, so a seed axis there would have to re-fit on the SAME rows — a different capability with the same name. No pack names the seed axis; MISC-014 chose the axis two packs do."
+ },
+ {
+  "id": "sens-feature-dropout",
+  "step": "explain",
+  "capability": "Feature dropout sensitivity — refit with random feature subsets",
+  "classic": "Step 8",
+  "state": "classic-only",
+  "reason": "Not ported. Guided records a SELECTION decision with a method and a candidate pool (GUIDED-095), so dropping features at random would answer a question the user did not ask instead of the one they did. The Guided analogue is the selection spec's own fork, which is not built and is not filed as owed."
+ },
+ {
+  "id": "sens-missingness-fork",
+  "step": "explain",
+  "capability": "Missingness sensitivity — refit the recorded plan under the alternative imputation and report whether the leading model changes",
+  "classic": "—",
+  "state": "guided-only",
+  "reason": "MISC-014. A debt owed back to Classic. Justified by two packs (METABOLOMICS_PACK 03, CLINICAL_SURVEY_PACK A2) rather than picked. Both arms fit on the training rows and score the sealed rows — there is no splitter in turbotab/sensitivity.py at all, which is how STATE-013 cannot be inherited — and there is one verdict, `did the leading model change`, which is how STATE-034 cannot be. Served at /project/{id}/sensitivity; no page surface yet."
+ },
+ {
+  "id": "sens-robustness-verdict",
+  "step": "explain",
+  "capability": "Robustness verdict bands over the sensitivity spread",
+  "classic": "Step 8",
+  "state": "classic-only",
+  "reason": "Deliberately not ported, and this row exists so the absence is a claim rather than a gap. STATE-034: Classic shows coefficient-of-variation bands and absolute-range bands side by side and they can contradict each other. Both ladders are invented — no pack sets a robustness threshold — so Guided reports the difference as a number and lets the reader judge it."
+ },
+ {
+  "id": "stats-correlation-test",
+  "step": "explore",
+  "capability": "Correlation test with a p-value (Pearson / Spearman / Kendall)",
+  "classic": "Step 9",
+  "state": "classic-only",
+  "reason": "Not yet routed. Guided's Explore step serves ranked FINDINGS rather than tests the user runs, and a significance test is a confirmatory act that the constitution puts on the far side of the seal — DOMAIN_SCIENCE figure tiering (EXPLORATORY vs CONFIRMATORY) is the primitive that decides where it lands. Owed, and blocked on that primitive rather than on effort."
+ },
+ {
+  "id": "stats-two-sample",
+  "step": "explore",
+  "capability": "Two-sample comparison (t-test / Mann-Whitney) with effect size",
+  "classic": "Step 9",
+  "state": "classic-only",
+  "reason": "Not yet routed; same blocker as `stats-correlation-test`."
+ },
+ {
+  "id": "stats-multi-group",
+  "step": "explore",
+  "capability": "Multi-group comparison (ANOVA / Kruskal-Wallis) with post-hoc",
+  "classic": "Step 9",
+  "state": "classic-only",
+  "reason": "Not yet routed; same blocker as `stats-correlation-test`."
+ },
+ {
+  "id": "stats-categorical-association",
+  "step": "explore",
+  "capability": "Categorical association test (chi-square / Fisher)",
+  "classic": "Step 9",
+  "state": "classic-only",
+  "reason": "Not yet routed; same blocker as `stats-correlation-test`."
+ },
+ {
+  "id": "stats-normality",
+  "step": "explore",
+  "capability": "Normality test (Shapiro-Wilk / D'Agostino) with a QQ plot",
+  "classic": "Step 9",
+  "state": "classic-only",
+  "reason": "Not yet routed. Guided reads distribution shape as a FINDING that routes a decision (a power transform, an ordinal treatment) rather than as a test with a verdict, and CLINICAL_SURVEY_PACK is explicit that a normality test at large n answers a question nobody asked. Whether this is owed at all is undecided."
+ },
+ {
+  "id": "theory-reference",
+  "step": "cross-step",
+  "capability": "Browsable statistical theory reference, chaptered by topic",
+  "classic": "Step 11",
+  "state": "classic-only",
+  "reason": "MISC-016 found this page had no row at all — 5,162 lines, the largest file in pages/. Not ported, and the reason is a design position rather than a backlog entry: Guided's education model is layer 3, `teach on the user's own data at the moment the decision is made` (DESIGN_LANGUAGE 10), and a separate reference chapter is layer 1 — the layer the journey exists to replace. The CONTENT is owed; the destination is each step's own coaching text, not a page."
  }
 ]

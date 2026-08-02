@@ -275,41 +275,66 @@ def test_a_candidate_the_shape_stage_renames_is_a_stated_divergence(client):
 # ── 3 · the stronger scope is never claimed ──────────────────────────────────
 
 @pytest.mark.parametrize("shape", sorted(SHAPES), ids=sorted(SHAPES))
-def test_the_run_records_the_scope_it_achieved_and_not_the_one_recorded(
-        client, shape):
-    """**Fold-local means fold-local.**
+def test_the_record_states_the_scope_this_door_actually_fits(client, shape):
+    """**`GUIDED-104`. The record says what happens, and nothing retracts it.**
 
-    The selector is inside the estimator, so it is refitted wherever the
-    pipeline is — fold-local by construction under any resampling. But this
-    door fits each model ONCE, on the training partition, so in this run there
-    is a single fold and the selector saw those rows one time. That is
-    `train_rows`, which is exactly the weaker claim `selection.py` keeps a name
-    for, and claiming the stronger one would be the app asserting a resampling
-    it does not perform.
+    `selection.declare`'s docstring says scope *"is explicit and has no default
+    that hides the weaker option"*, and that `TRAIN_ROWS` exists so a door that
+    inherits Classic's behavior can SAY so rather than imply the stronger
+    claim. The app took the `TRAIN_FOLDS` default, fitted train-rows-once, and
+    repaired the difference in a run note — so the record asserted the stronger
+    claim and a note in a different object, with a different lifetime, retracted
+    it. The archive, the methods sentence and any parity check read the record.
+
+    This door fits each model once, so `train_rows` is what happens and is what
+    is recorded. No divergence is needed, because there is nothing to diverge
+    from.
     """
     fixture, target, task, models = SHAPES[shape]
     pid, project, decide, _ = _sealed(client, shape)
     decide("set_selection", method="univariate", n_features=2,
            candidates=_candidates(client, pid))
-    assert project.selection_spec["scope"] == _sel.TRAIN_FOLDS   # control
+    assert project.selection_spec["scope"] == _sel.TRAIN_ROWS, (
+        "the record claims a scope this door does not fit")
+    assert "once over the training rows" in project.selection_spec["sentence"]
+    assert project.selection_spec["fit_on"] == "training rows only"
 
     run = training.train(project, [models[0]])
     result = run.results[0]
     assert result.metrics, result.error
-    scoped = [d for d in result.plan["divergences"]
-              if d["source"] == "selection"
-              and d["requested"] == _sel.TRAIN_FOLDS]
-    assert scoped, (
-        "the record claims fold-local selection and the run performed a single "
-        "fit over the training rows, and nothing says so")
-    assert scoped[0]["applied"] == _sel.TRAIN_ROWS
-    assert any(scoped[0]["fitted_sentence"] == note for note in run.notes), (
-        "the scope divergence is in the plan and not in the run's notes")
+    assert not [d for d in result.plan["divergences"]
+                if d["source"] == "selection"
+                and d["requested"] == _sel.TRAIN_FOLDS], (
+        "the record and the fit agree and the run still retracts something")
 
     step = [s for s in result.plan["steps"] if s["source"] == "selection"][0]
-    assert step["sentence"] is not None
-    assert step["params"]["scope_recorded"] == _sel.TRAIN_FOLDS
+    assert step["params"]["scope_recorded"] == _sel.TRAIN_ROWS
     assert step["params"]["scope_fitted"] == _sel.TRAIN_ROWS
+
+
+def test_a_caller_that_asks_for_fold_local_is_still_told_it_did_not_get_it(
+        client):
+    """**The divergence machinery stays**, and this is why.
+
+    `GUIDED-104` changes the DEFAULT, not the capability. A client that asks
+    for `train_folds` explicitly — and the day `GUIDED-103`'s resampling policy
+    lands, the app itself — must still be told the door fitted once. Deleting
+    the divergence with the default would leave the stronger claim
+    unchallenged the moment anyone asks for it.
+    """
+    pid, project, decide, models = _sealed(client, "continuous")
+    decide("set_selection", method="univariate", n_features=2,
+           candidates=_candidates(client, pid), scope=_sel.TRAIN_FOLDS)
+    assert project.selection_spec["scope"] == _sel.TRAIN_FOLDS
+
+    run = training.train(project, [models[0]])
+    scoped = [d for d in run.results[0].plan["divergences"]
+              if d["source"] == "selection"]
+    assert scoped, (
+        "a caller asked for fold-local selection, got a single fit, and was "
+        "told nothing")
+    assert scoped[0]["applied"] == _sel.TRAIN_ROWS
+    assert any(scoped[0]["fitted_sentence"] == note for note in run.notes)
 
 
 # ── 4 · the run says what survived ───────────────────────────────────────────
