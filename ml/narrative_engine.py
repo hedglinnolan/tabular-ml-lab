@@ -230,8 +230,11 @@ class ManuscriptDraft:
 # ---------------------------------------------------------------------------
 
 _MODEL_NAMES: dict = {
+    # `MODEL_DISPLAY_NAMES` now DERIVES from `ml.model_registry` (`GUIDED-124`),
+    # so the aliases below must not re-override a key the registry carries —
+    # `"lasso": "LASSO"` sat here and put this table back into disagreement
+    # with the shelf for one model after the other twelve were reconciled.
     **MODEL_DISPLAY_NAMES,
-    "lasso": "LASSO",
     "xgb": "XGBoost (Gradient Boosting)",
     "lgbm": "LightGBM",
     "svm": "Support Vector Machine",

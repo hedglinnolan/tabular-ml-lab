@@ -156,7 +156,7 @@ class TestNarrativeEngineGeneration:
         # Should mention per-model differences using human-readable names
         assert "Ridge Regression" in draft.data_preprocessing
         assert "Random Forest" in draft.data_preprocessing
-        assert "Histogram Gradient Boosting (Regressor)" in draft.data_preprocessing
+        assert "Histogram Gradient Boosting (Regression)" in draft.data_preprocessing
 
         # Ridge gets scaling + transform
         assert "z-score" in draft.data_preprocessing.lower() or "standardization" in draft.data_preprocessing.lower()
@@ -184,7 +184,7 @@ class TestNarrativeEngineGeneration:
 
         assert "Ridge Regression" in draft.model_development
         assert "Random Forest" in draft.model_development
-        assert "Histogram Gradient Boosting (Regressor)" in draft.model_development
+        assert "Histogram Gradient Boosting (Regression)" in draft.model_development
         assert "5-fold" in draft.model_development
         assert "Random Forest" in draft.model_development  # primary model
 

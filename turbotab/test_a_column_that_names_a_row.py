@@ -312,3 +312,75 @@ def test_the_receipt_reaches_the_features_payload():
         "kind": "keep_identifier", "subject": "age",
         "payload": {"column": "age", "kept": True}})
     assert bad.status_code == 400, "a column nobody excluded was accepted"
+
+
+# ═══════════ L40-A2 · `GUIDED-120` — ONE CORE, NO FORKS ═══════════
+
+def test_the_core_and_this_module_give_the_same_answer():
+    """**The private copy is gone, and this is what would notice it returning.**
+
+    `turbotab/identifiers.py` used to read `ml/dataset_profile` for numeric
+    columns and apply its own arithmetic to text ones, because the core's rule
+    required an integer dtype and answered `False` for every string identifier.
+    That was the honest interim; the product owner ruled at L40 that the fix
+    belongs in core, and it is there.
+
+    So the two must now agree on every column of every fixture, and
+    `core_says_id_like` stops being a compensation and becomes the receipt.
+    """
+    import pathlib
+
+    from ml.dataset_profile import compute_feature_profile
+
+    checked = 0
+    for path in sorted(pathlib.Path("turbotab/sample_data").glob("*.csv")):
+        df = pd.read_csv(path)
+        flagged = {r["column"] for r in ID.detect(df, target=None)}
+        for column in df.columns:
+            core = compute_feature_profile(df, column, len(df))
+            checked += 1
+            assert bool(core.is_id_like) == (str(column) in flagged), (
+                f"{path.name}:{column} — core says "
+                f"{core.is_id_like}, this module says "
+                f"{str(column) in flagged}. One of them holds a private copy "
+                f"of the rule, which is what ROADMAP's One core, no forks "
+                f"forbids.")
+    assert checked > 200, f"only {checked} columns compared"
+
+    for row in ID.detect(pd.read_csv(
+            "turbotab/sample_data/survey_instrument.csv"), "age"):
+        assert row["core_says_id_like"] is True, (
+            "a flagged column the core disagrees with means the private copy "
+            "is back")
+
+
+def test_the_widened_core_rule_catches_string_identifiers():
+    """The ruling's own argument: *a string identifier is an identifier*, and
+    widening makes Classic MORE correct rather than different.
+
+    Before L40 all four of these answered `False` in core.
+    """
+    from ml.dataset_profile import compute_feature_profile
+
+    for name, column in [("survey_instrument.csv", "respondent_id"),
+                         ("leaky_sepsis.csv", "admission_id"),
+                         ("clinic_visits.csv", "patient_id"),
+                         ("metabolomics_untargeted.csv", "sample_id")]:
+        df = pd.read_csv(f"turbotab/sample_data/{name}")
+        assert df[column].dtype == object, f"{column} is no longer a string"
+        assert compute_feature_profile(df, column, len(df)).is_id_like, (
+            f"core does not flag {column}; the L40 widening regressed")
+
+
+def test_the_widened_rule_still_spares_continuous_measurements():
+    """The half that must not be lost. Dropping the numeric dtype test would
+    have flagged 88 assay columns — the study's own predictors."""
+    from ml.dataset_profile import compute_feature_profile
+
+    df = pd.read_csv("turbotab/sample_data/metabolomics_untargeted.csv")
+    assay = [c for c in df.columns if str(c).startswith("mz_")]
+    unique = [c for c in assay if df[c].dropna().nunique() == len(df)]
+    assert unique, "the fixture no longer exercises this"
+    flagged = [c for c in unique
+               if compute_feature_profile(df, c, len(df)).is_id_like]
+    assert not flagged, f"{len(flagged)} continuous assay columns flagged"

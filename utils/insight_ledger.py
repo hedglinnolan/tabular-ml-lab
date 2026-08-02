@@ -96,32 +96,50 @@ MODEL_TO_FAMILY = {
     "lgbm_reg": MODEL_FAMILY_TREE, "lgbm_clf": MODEL_FAMILY_TREE,
 }
 
-# Human-readable model names for reports and narrative
-MODEL_DISPLAY_NAMES = {
-    "ridge": "Ridge Regression",
-    "lasso": "LASSO",
-    "elasticnet": "Elastic Net",
-    "logreg": "Logistic Regression",
-    "glm": "Generalized Linear Model",
-    "huber": "Huber Regression",
-    "rf": "Random Forest",
-    "extratrees_reg": "Extra Trees (Regressor)",
-    "extratrees_clf": "Extra Trees (Classifier)",
-    "histgb_reg": "Histogram Gradient Boosting (Regressor)",
-    "histgb_clf": "Histogram Gradient Boosting (Classifier)",
-    "nn": "Neural Network (MLP)",
-    "knn_reg": "k-Nearest Neighbors (Regressor)",
-    "knn_clf": "k-Nearest Neighbors (Classifier)",
-    "svr": "Support Vector Regressor",
-    "svc": "Support Vector Classifier",
-    "naive_bayes": "Naïve Bayes",
-    "gaussian_nb": "Gaussian Naïve Bayes",
-    "lda": "Linear Discriminant Analysis",
-    "xgb_reg": "XGBoost (Regressor)",
-    "xgb_clf": "XGBoost (Classifier)",
-    "lgbm_reg": "LightGBM (Regressor)",
-    "lgbm_clf": "LightGBM (Classifier)",
-}
+# Human-readable model names for reports and narrative.
+#
+# **DERIVED FROM `ml.model_registry`, not maintained beside it (`GUIDED-124`).**
+# These were two hand-written tables and they had drifted on TWELVE models:
+# `histgb_clf` was "Histogram Gradient Boosting (Classifier)" here and
+# "(Classification)" in the registry, `svr` was "Support Vector Regressor" and
+# "Support Vector Regression", `lasso` was "LASSO" and "Lasso Regression".
+#
+# It surfaced as a manuscript defect. `ml/manuscript_validator.py` checks that
+# the model named in the Model Development section is the model named in Model
+# Evaluation, and it resolves names through this table while Guided's shelf
+# used the registry's — so a check built to catch one section asserting what
+# another does not support failed for a reason that was about neither.
+#
+# `ROADMAP.md` "One core, no forks": neither door may hold a private copy of a
+# rule, a default, or a NAME. The registry is what the user picks from, so the
+# registry is the source; this reads it and adds only the aliases it does not
+# have.
+def _display_names() -> dict:
+    """The registry's names, plus aliases for keys it does not carry.
+
+    Falls back to the previous hand-written table if the registry cannot be
+    imported — this module is loaded by Streamlit pages at import time, and a
+    display-name lookup is not worth taking a page down for.
+    """
+    aliases = {
+        # Not model keys in the registry; kept because callers pass them.
+        "naive_bayes": "Naïve Bayes",
+        "logistic": "Logistic Regression",
+        "xgb": "XGBoost (Gradient Boosting)",
+        "lgbm": "LightGBM",
+        "svm": "Support Vector Machine",
+        "knn": "K-Nearest Neighbors",
+        "dt": "Decision Tree",
+    }
+    try:
+        from ml.model_registry import get_registry
+        names = {key: spec.name for key, spec in get_registry().items()}
+    except Exception:                                       # pragma: no cover
+        names = {}
+    return {**aliases, **names}
+
+
+MODEL_DISPLAY_NAMES = _display_names()
 
 
 def model_display_name(key: str) -> str:

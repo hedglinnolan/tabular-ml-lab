@@ -187,10 +187,37 @@ def compute_feature_profile(df: pd.DataFrame, col: str, n: int, outlier_method: 
         unique_count=unique_count,
         cardinality_ratio=cardinality_ratio,
         is_constant=(unique_count <= 1),
-        # Integer dtype asked by predicate: a nullable Int64 column is still
-        # integer, and `dtype in ['int64','int32']` says it is not.
-        is_id_like=(unique_count == n and is_numeric
-                    and _pdt.is_integer_dtype(series) and not _pdt.is_bool_dtype(series))
+        # WHAT MAKES A COLUMN A ROW'S NAME (`GUIDED-120`).
+        #
+        # This required an INTEGER dtype and so answered False for every string
+        # identifier — `respondent_id`, `admission_id`, `patient_id`,
+        # `sample_id`, all `object`. Guided compensated with its own arithmetic
+        # for text columns, which is a private copy of a core rule and the
+        # thing `ROADMAP.md` "One core, no forks" forbids. Widened here so
+        # Classic gets the same answer rather than a narrower one.
+        #
+        # Two conditions, and the second is why numerics still need the dtype
+        # test. A column is a row's name when every value is different AND the
+        # model cannot use the values' ORDER:
+        #
+        #   * a NON-NUMERIC column with one level per row has no order to use —
+        #     one-hot encoding it spends n-1 parameters, each true for exactly
+        #     one row;
+        #   * a NUMERIC column with one level per row is normally a continuous
+        #     MEASUREMENT, which is a perfectly good predictor. Requiring an
+        #     integer dtype there is what separates a row number from a
+        #     measurement, and dropping it would have flagged 88 assay columns
+        #     on `metabolomics_untargeted.csv` — the study's own predictors.
+        #
+        # A nullable Int64 column is still integer, and `dtype in
+        # ['int64','int32']` says it is not, which is why the predicate is
+        # asked rather than the dtype compared.
+        is_id_like=(
+            unique_count == n
+            and not _pdt.is_bool_dtype(series)
+            and (not is_numeric
+                 or _pdt.is_integer_dtype(series))
+        )
     )
     
     if is_numeric:

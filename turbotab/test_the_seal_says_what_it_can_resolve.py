@@ -455,3 +455,132 @@ def test_a_quiet_holdout_renders_no_card_at_all():
     assert "sealed" in out, "the seal itself must still render"
     assert "disc-res" not in out, (
         "a holdout of 90 rows raised the card; it fires only when stark")
+
+
+# ═══════════ L40-A1 · `GUIDED-125` — THE TRIGGER LEARNS ITS ARITY ═══════════
+#
+# **A DELIBERATE EXCEPTION to *never move a threshold in the same loop as the
+# change that pressured it*.** `LOOP.md` §06.2 prescribes exactly this run: the
+# quantity being gated was wrong, the correction is made on a PASSING run, and
+# the reasoning is recorded before it is load-bearing. After a breach the same
+# correction would be indistinguishable from relaxing a gate under pressure.
+
+def test_the_informative_range_is_derived_from_the_arity():
+    """`1 − 1/k`, generalized rather than special-cased at k = 3.
+
+    A classifier that guesses is right `1/k` of the time, so the distance
+    between chance and perfect is `1 − 1/k`. The original derivation used a
+    constant 0.5, which IS `1 − 1/k` at k = 2 — it was right for every fixture
+    that existed when it was written, and wrong the moment one had three
+    classes.
+    """
+    assert R.informative_range(2) == 0.5
+    assert round(R.informative_range(3), 4) == 0.6667
+    assert round(R.informative_range(4), 4) == 0.75
+    # UNKNOWN ARITY IS THE WIDEST RANGE, so it can only make the card fire
+    # LATER. An unknown that made a warning more likely would be the app
+    # asserting something about a study it could not see.
+    assert R.informative_range(None) == 1.0
+    assert R.informative_range(0) == 1.0
+    assert R.informative_range(1) == 1.0
+
+
+def test_the_boundary_moves_down_with_k_and_the_numbers_are_stated():
+    """Recomputed from the module's own constants, so changing the interval to
+    90% moves every boundary here too.
+
+    **8.6 at k = 3, not 9.5.** The L39 report rounded it loosely and the L40
+    prompt quoted that back; the arithmetic is written out in
+    `_push_because`'s docstring so the number cannot drift again.
+    """
+    def boundary(k):
+        return (2 * R.Z95 * R.WORST_CASE_SD / R.informative_range(k)) ** 2
+
+    assert round(boundary(2), 1) == 15.4
+    assert round(boundary(3), 1) == 8.6
+    assert round(boundary(4), 1) == 6.8
+    assert boundary(3) < boundary(2), (
+        "a wider informative range must move the boundary DOWN: a three-class "
+        "model has more room between chance and perfect, so a given interval "
+        "width says relatively less")
+
+    # AND THE FIRING POINTS, which are what a reader actually experiences.
+    # STRATIFIED, so condition B (a class with fewer than two held-out rows)
+    # cannot fire and mask the interval condition this test is about.
+    df = pd.read_csv("turbotab/sample_data/multiclass_stage.csv")
+    by_class = {k: list(g.index) for k, g in df.groupby("disease_stage")}
+    for n_test, expected in ((8, True), (9, False)):
+        labels, i = [], 0
+        while len(labels) < n_test:
+            for level in sorted(by_class):
+                if len(labels) < n_test and i < len(by_class[level]):
+                    labels.append(by_class[level][i])
+            i += 1
+        s = R.statement(df, "disease_stage", "classification", labels)
+        assert s["n_classes"] == 3
+        assert s["push"] is expected, (
+            f"k=3 with {n_test} held-out rows: push={s['push']}, expected "
+            f"{expected} — the boundary is 8.6")
+
+
+def test_the_card_states_k_where_a_reader_can_see_it():
+    """*Say the number.* A threshold that changes with the outcome's arity and
+    does not say so is a threshold nobody can check."""
+    df = pd.read_csv("turbotab/sample_data/multiclass_stage.csv")
+    s = R.statement(df, "disease_stage", "classification", list(df.index)[:8])
+
+    assert s["n_classes"] == 3
+    assert s["chance"] == 0.3333
+    assert round(s["informative_range"], 4) == 0.6667
+    for text in (s["headline"], s["because"], s["sentence"]):
+        assert "3 classes" in text, (
+            f"the arity is not stated where the reader meets the number: "
+            f"{text!r}")
+    assert "33%" in s["headline"]
+    # AND IT IS STILL NOT A VERDICT.
+    for word in FORBIDDEN:
+        assert word not in (s["headline"] + s["because"] + s["sentence"]).lower()
+
+
+def test_the_binary_case_is_unchanged():
+    """The correction must not move a boundary that was already right. `1 − 1/2`
+    is 0.5, so every binary project behaves exactly as it did before."""
+    df = _frame(*TARGET_SHAPES["binary classification"][:2])
+    for n_test, expected in ((15, True), (16, False)):
+        s = R.statement(df, "responder", "classification",
+                        list(df.index)[:n_test])
+        assert s["n_classes"] == 2
+        assert s["push"] is expected, f"binary at {n_test}: {s['push']}"
+
+
+def test_a_class_count_travels_and_a_class_label_does_not():
+    """`GUIDED-102`'s own correction still holds: the archive guard refuses a
+    serialized project carrying a cell value, so what travels is HOW MANY
+    classes rather than which."""
+    df = pd.read_csv("turbotab/sample_data/multiclass_stage.csv")
+    s = R.statement(df, "disease_stage", "classification", list(df.index)[:20])
+    blob = repr(s)
+    for label in df["disease_stage"].unique():
+        assert str(label) not in blob, (
+            f"the class label {label!r} is in the resolution statement, which "
+            f"`archive.assert_no_participant_data` refuses")
+
+
+def test_a_middle_class_missing_from_the_holdout_is_caught():
+    """Condition B, generalized. The first version checked the minority class
+    and its complement — every class when k = 2, and two of three when k = 3 —
+    so a three-class holdout missing its MIDDLE class passed silently."""
+    df = pd.read_csv("turbotab/sample_data/multiclass_stage.csv")
+    middle = df["disease_stage"].value_counts().index[1]
+    # A holdout large enough that the interval condition cannot fire, and
+    # deliberately missing one class.
+    labels = [i for i in df.index if df.at[i, "disease_stage"] != middle][:40]
+
+    s = R.statement(df, "disease_stage", "classification", labels)
+    assert s["n_classes"] == 3
+    assert s["widest_interval"] < s["informative_range"], (
+        "the interval condition fires here, so this cannot show condition B")
+    assert s["classes_with_fewer_than_two_held_out"] >= 1
+    assert s["push"] is True
+    assert "outcome classes" in s["because"]
+    assert "undefined rather than imprecise" in s["because"]

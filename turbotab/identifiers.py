@@ -20,19 +20,26 @@ that no held-out set can reproduce.
 this was found: `parameters > training rows` fired on five of six fixtures and
 every one of them was this.
 
-## What the core knows, and what it does not
+## What the core knows — and it knows this now (`GUIDED-120`, closed in core)
 
 `AUDIT-008` is *the core already holds the capability and the path that needs
 it does not read it*, and this began as an instance of it —
-`ml/dataset_profile.py` computes `id_like_features`. **Driven, that capability
-answers `False` for every column that motivated the finding.** Its rule is
+`ml/dataset_profile.py` computes `id_like_features`. Driven at L39, that
+capability answered `False` for every column that motivated the finding,
+because its rule required an INTEGER dtype and `respondent_id`,
+`admission_id`, `patient_id` and `sample_id` are all strings.
 
-    unique_count == n and is_numeric and is_integer_dtype and not is_bool
+**At L40 the product owner ruled that the fix belongs in core**, and it is
+there: a string identifier is an identifier, and widening the rule makes
+Classic *more* correct rather than different. `ROADMAP.md` "One core, no
+forks" is the governing line, and this module carrying its own arithmetic for
+text columns was the honest interim, not the destination.
 
-and `respondent_id`, `admission_id`, `patient_id` and `sample_id` are all
-*strings*. So the core's answer is read here, and it is not sufficient on its
-own: reading it and stopping would have closed the row while fixing none of the
-four cases in the argument for it. Filed as `GUIDED-120`.
+So the detection below is now **the core's answer, read**, with no private
+copy of the rule beside it. `core_says_id_like` stays on every row — not as a
+compensation but as the receipt that the two agree, and
+`test_the_core_and_this_module_give_the_same_answer` is what would notice if
+they stopped.
 
 ## The rule, and why it is not a name list
 
@@ -124,27 +131,25 @@ def detect(frame: pd.DataFrame, target: Optional[str] = None,
         core = compute_feature_profile(frame, name, n)
         numeric = pd.api.types.is_numeric_dtype(series)
 
-        # **UNIQUE PER ROW IS NOT ENOUGH, AND DRIVING IS WHAT SHOWED IT.**
+        # **THE CORE DECIDES** (`GUIDED-120`, fixed in core at L40).
         #
-        # The first version flagged every column at one level per row and, on
-        # `metabolomics_untargeted.csv`, that was `sample_id` plus about NINETY
-        # `mz_*` columns — the study's actual predictors. A continuous
-        # measurement is unique per row because it is continuous; every float
-        # differs. Excluding them would have deleted the analysis to protect it.
+        # This used to read the core for numerics and apply its own arithmetic
+        # to text columns, because the core's rule required an integer dtype
+        # and answered False for every string identifier. That private half is
+        # gone: `ml/dataset_profile` now asks *every value different AND the
+        # model cannot use their order*, which is the same question this module
+        # was asking, in the one place both doors read.
         #
-        # The distinction is what the model can DO with the values. A numeric
-        # column is used for its ORDER, and an order over n distinct values is
-        # exactly what a continuous predictor is. A text column with one level
-        # per row has no order to use: one-hot encoding spends n−1 parameters
-        # and each is true for exactly one row, which is a row's name written
-        # as a matrix.
-        #
-        # So a numeric column is flagged only where the CORE flags it — its
-        # rule adds integer dtype, which is the arithmetic for *this is a row
-        # number* rather than *this is a measurement*. That is `AUDIT-008`
-        # honored where the core is right, and extended where its dtype gate
-        # excludes the four cases in this finding's own evidence.
-        if numeric and not getattr(core, "is_id_like", False):
+        # The distinction the core encodes, worth keeping written down because
+        # it is the non-obvious half: unique-per-row alone is NOT the rule. A
+        # continuous measurement is unique per row by construction, and
+        # flagging those cost 88 assay columns on
+        # `metabolomics_untargeted.csv` the first time this was built — the
+        # study's own predictors. A numeric column is used for its ORDER, and
+        # an order over n distinct values is exactly what a continuous
+        # predictor is; a text column with one level per row has no order to
+        # use.
+        if not getattr(core, "is_id_like", False):
             continue
         out.append({
             "column": name,

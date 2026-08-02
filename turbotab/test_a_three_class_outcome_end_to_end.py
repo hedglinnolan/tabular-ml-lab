@@ -83,8 +83,13 @@ SHAPES_NOT_COVERED = [
 #: refuses is a surface a user can see is refusing.
 SILENTLY_WRONG_ON_MULTICLASS = {
     "instability plot": "GUIDED-113",
-    "resolution card trigger": "GUIDED-125",
     "calibration figure applicability": "GUIDED-126",
+}
+
+#: Closed since the sweep ran, kept so the count's history is legible rather
+#: than silently improving.
+WAS_SILENTLY_WRONG_NOW_FIXED = {
+    "resolution card trigger": "GUIDED-125 — closed at L40-A1",
 }
 
 
@@ -169,13 +174,24 @@ def test_two_models_with_different_display_names_still_agree():
     from ml.narrative_engine import _MODEL_NAMES
     from ml.model_registry import get_registry
 
+    # **RECONCILED IN CORE AT L40** (`GUIDED-124`). It was twelve models, not
+    # two: `svr` was "Support Vector Regressor" against "Support Vector
+    # Regression", `lasso` was "LASSO" against "Lasso Regression". The display
+    # table now DERIVES from the registry, so there is one source rather than
+    # two that agree today, and this asserts the derivation rather than the
+    # agreement — two hand-written tables that match are one edit from not
+    # matching.
     registry = get_registry()
-    disagree = [k for k in ("logreg", "histgb_clf", "ridge", "rf")
-                if k in registry and _MODEL_NAMES.get(k)
-                and _MODEL_NAMES[k] != registry[k].name]
-    assert disagree, (
-        "no model's two names disagree any more — if the tables were "
-        "reconciled, close GUIDED-124 and delete this guard")
+    disagree = [(k, _MODEL_NAMES.get(k), registry[k].name) for k in registry
+                if _MODEL_NAMES.get(k) and _MODEL_NAMES[k] != registry[k].name]
+    assert not disagree, (
+        f"{len(disagree)} model(s) are named differently by the registry and "
+        f"by the narrative engine: {disagree[:3]}. ROADMAP's One core, no "
+        f"forks covers names as well as rules.")
+    for key, spec in registry.items():
+        assert _MODEL_NAMES.get(key) == spec.name, (
+            f"{key} is missing from the display table, so a manuscript naming "
+            f"it would fall back to a title-cased key")
 
     for shape in sorted(TARGET_SHAPES):
         p = _sealed(shape)
@@ -249,12 +265,18 @@ def test_the_resolution_trigger_measures_against_a_coin_flip():
         f"binary fires below n={binary_boundary:.1f} and three-class should "
         f"fire below n={k_boundary:.1f}")
 
-    # The statement carries no class count at all, which is why the arithmetic
-    # cannot adapt: nothing downstream could tell it k.
-    assert "minority_class" not in statement
-    assert not any("class" in k for k in statement if k != "task_type"), (
-        "the resolution statement now carries a class count — if the trigger "
-        "was made arity-aware, close GUIDED-125")
+    # **CLOSED AT L40-A1.** This test was written to fail the day the fix
+    # landed, and it did. The statement carries `k` now, the trigger measures
+    # against `1 − 1/k`, and the boundary moves from 15.4 to 8.6 at k = 3.
+    # `test_the_boundary_moves_down_with_k_and_the_numbers_are_stated` in
+    # `test_the_seal_says_what_it_can_resolve.py` owns the arithmetic; this
+    # asserts the sweep's own cell has flipped.
+    assert statement["n_classes"] == 3
+    assert round(statement["informative_range"], 4) == 0.6667
+    assert "3 classes" in statement["headline"]
+    assert "minority_class" not in statement, (
+        "the class LABEL is back in the statement; the archive guard refuses "
+        "a serialized project carrying a cell value")
 
 
 def test_calibration_is_offered_on_a_target_with_no_single_risk():
@@ -286,12 +308,16 @@ def test_the_sweep_reports_its_own_coverage(capsys):
     looks exactly like a right answer."""
     with capsys.disabled():
         print(f"\n  surfaces driven                14")
-        print(f"  correct                        11")
+        print(f"  correct                        12")
         print(f"  silently wrong                  "
               f"{len(SILENTLY_WRONG_ON_MULTICLASS)}  "
               f"({', '.join(sorted(SILENTLY_WRONG_ON_MULTICLASS.values()))})")
+        print(f"  fixed since the sweep           "
+              f"{len(WAS_SILENTLY_WRONG_NOW_FIXED)}  "
+              f"({', '.join(sorted(WAS_SILENTLY_WRONG_NOW_FIXED.values()))})")
         print(f"  refused, or said out of scope    0")
-    assert len(SILENTLY_WRONG_ON_MULTICLASS) == 3
+    assert len(SILENTLY_WRONG_ON_MULTICLASS) == 2
+    assert len(WAS_SILENTLY_WRONG_NOW_FIXED) == 1
     # THE ZERO, asserted rather than printed: if any surface starts refusing,
     # this fails and the inventory gets rewritten, which is the correct
     # outcome and not a regression.

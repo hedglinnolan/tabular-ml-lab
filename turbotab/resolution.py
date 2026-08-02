@@ -146,8 +146,30 @@ def _widest_interval(n_test: int) -> Optional[float]:
     return float(2 * Z95 * WORST_CASE_SD / math.sqrt(n_test))
 
 
+def informative_range(n_classes: Optional[int]) -> float:
+    """The width of the range a discrimination statistic can say anything in.
+
+    **`GUIDED-125`, and this is the generalization rather than a special case
+    for k = 3.** A classifier that guesses is right `1/k` of the time, so the
+    distance between chance and perfect is `1 − 1/k`. For two classes that is
+    0.5, which is what the original derivation used and why it was correct for
+    every fixture that existed when it was written; for three it is 0.667, and
+    the boundary moves DOWN with k rather than up.
+
+    `1.0` where the arity is unknown or the task is not classification — the
+    widest possible range, so an unknown k can only make the card fire LATER
+    and never earlier. An unknown that made a warning more likely would be the
+    app asserting something about a study it could not see.
+    """
+    if not n_classes or n_classes < 2:
+        return 1.0
+    return 1.0 - (1.0 / float(n_classes))
+
+
 def _push_because(task_type: str, n_test: int, events_test: Optional[int],
-                  non_events_test: Optional[int]) -> Optional[str]:
+                  non_events_test: Optional[int],
+                  n_classes: Optional[int] = None,
+                  thin_classes: int = 0) -> Optional[str]:
     """Whether this is stark, and **the trigger contains no picked number.**
 
     Three conditions, each of which is a fact rather than a threshold:
@@ -157,8 +179,15 @@ def _push_because(task_type: str, n_test: int, events_test: Optional[int],
     (perfect), so the range that carries any information is 0.5 wide. When the
     widest 95% interval this holdout can produce exceeds that, the holdout
     cannot distinguish a useless model from a perfect one. The 0.5 comes from
-    the metric's own scale and the 1.96 from the interval named; nothing here
-    was chosen for taste. It resolves to n_test ≤ 15.
+    the interval named, and the range from `informative_range` — nothing here
+    was chosen for taste. **It resolves to n_test ≤ 15 for two classes and
+    n_test ≤ 9 for three**, and the boundary moves DOWN with k because a
+    three-class model has more room between chance and perfect, so a given
+    interval width says relatively less.
+
+    `GUIDED-125` corrected this: the first version compared against a constant
+    0.5, which is `1 − 1/k` at k = 2 and was right for every fixture that
+    existed when it was written.
 
     **B · A class is missing or all-but-missing from the holdout.** With fewer
     than two of either class, sensitivity or specificity is undefined rather
@@ -185,12 +214,25 @@ def _push_because(task_type: str, n_test: int, events_test: Optional[int],
     `PRODUCT_VISION.md` §04's *push the notable, pull the rest*.
     """
     widest = _widest_interval(n_test)
-    if widest is not None and task_type == "classification" and widest > 0.5:
+    span = informative_range(n_classes)
+    if widest is not None and task_type == "classification" and widest > span:
+        chance = 1.0 / float(n_classes) if n_classes and n_classes >= 2 else 0.5
         return (
             f"the widest 95% interval a metric on {n_test} held-out rows can "
             f"have is {widest:.2f} wide, which is more than the whole distance "
-            f"from a coin flip to a perfect classifier")
+            f"from chance to perfect — with {n_classes or 2} classes a model "
+            f"that guesses is right {chance:.0%} of the time, so that distance "
+            f"is {span:.2f}")
     if task_type == "classification":
+        # CONDITION B, ALSO GENERALIZED (`GUIDED-125`). The first version
+        # checked the minority class and its complement, which is every class
+        # when k = 2 and two of three when k = 3 — so a three-class holdout
+        # missing its MIDDLE class passed silently. `thin_classes` is the count
+        # of classes with fewer than two held-out rows, whatever k is.
+        if thin_classes:
+            return (f"{thin_classes} of the {n_classes or 2} outcome classes "
+                    f"have fewer than two held-out rows, so a per-class rate "
+                    f"is undefined rather than imprecise")
         if events_test is not None and events_test < 2:
             return (f"the held-out set contains {events_test} of the outcome, "
                     f"so sensitivity is undefined rather than imprecise")
@@ -219,8 +261,14 @@ def statement(frame: pd.DataFrame, target: str, task_type: str,
 
     events_test = non_events_test = events_train = None
     minority = None
+    n_classes = None
+    thin_classes = 0
     if task_type == "classification":
         counts = frame.loc[has_y, target].value_counts()
+        # THE ARITY, and it is a count rather than a label — `GUIDED-125` needs
+        # k and the archive guard refuses class VALUES in a serialized project
+        # (`GUIDED-102`'s own correction), so what travels is how many.
+        n_classes = int(len(counts)) or None
         if len(counts) >= 1:
             minority = counts.index[-1]
             in_test = frame.loc[has_y & is_test, target]
@@ -228,10 +276,16 @@ def statement(frame: pd.DataFrame, target: str, task_type: str,
             non_events_test = int(n_test - events_test)
             events_train = int(
                 (frame.loc[has_y & ~is_test, target] == minority).sum())
+            # EVERY CLASS, not just the minority and its complement. A class
+            # absent from the holdout is absent whatever its rank.
+            held = frame.loc[has_y & is_test, target].value_counts()
+            thin_classes = int(sum(
+                1 for level in counts.index if int(held.get(level, 0)) < 2))
 
     parameters = candidate_parameters(frame, target, group_col)
     widest = _widest_interval(n_test)
-    because = _push_because(task_type, n_test, events_test, non_events_test)
+    because = _push_because(task_type, n_test, events_test, non_events_test,
+                            n_classes, thin_classes)
 
     return {
         "n": n, "n_train": n_train, "n_test": n_test,
@@ -251,6 +305,15 @@ def statement(frame: pd.DataFrame, target: str, task_type: str,
         "events_held_out": events_test,
         "non_events_held_out": non_events_test,
         "events_in_training": events_train,
+        # STATED, because a threshold that changes with the outcome's arity and
+        # does not say so is a threshold nobody can check.
+        "n_classes": n_classes,
+        "chance": (None if not n_classes or n_classes < 2
+                   else round(1.0 / n_classes, 4)),
+        "classes_with_fewer_than_two_held_out": (
+            None if task_type != "classification" else thin_classes),
+        "informative_range": (None if task_type != "classification"
+                              else round(informative_range(n_classes), 4)),
         # Counts only. `candidate_parameters` returns its badge and its
         # per-column breakdown for a caller that wants them; the RECORD keeps
         # the arithmetic, and the citation is served from `SOURCES` at read
@@ -264,9 +327,10 @@ def statement(frame: pd.DataFrame, target: str, task_type: str,
         "widest_interval": None if widest is None else round(widest, 3),
         "push": because is not None,
         "because": because,
-        "headline": _headline(task_type, n_test, widest, events_test),
+        "headline": _headline(task_type, n_test, widest, events_test,
+                              n_classes),
         "sentence": _sentence(n, n_train, n_test, task_type, widest,
-                              parameters["total"], events_test),
+                              parameters["total"], events_test, n_classes),
         # SAID OUT LOUD, because the absence of this line is what would turn
         # the module into the anti-pattern it exists to avoid.
         "not_a_verdict": (
@@ -280,19 +344,28 @@ def statement(frame: pd.DataFrame, target: str, task_type: str,
 
 
 def _headline(task_type: str, n_test: int, widest: Optional[float],
-              events_test: Optional[int]) -> str:
+              events_test: Optional[int],
+              n_classes: Optional[int] = None) -> str:
     where = f"{n_test:,} held-out row" + ("" if n_test == 1 else "s")
     if task_type == "classification" and events_test is not None:
         where += f" ({events_test:,} with the outcome)"
     if widest is None:
         return f"This seal holds out {where}."
-    return (f"A metric estimated on {where} carries a 95% interval up to "
+    line = (f"A metric estimated on {where} carries a 95% interval up to "
             f"{widest:.2f} wide, on a scale of 0 to 1.")
+    if task_type == "classification" and n_classes and n_classes >= 2:
+        # `k` ON THE CARD. `GUIDED-125`.
+        line += (f" With {n_classes} classes a model that guesses is right "
+                 f"{1.0 / n_classes:.0%} of the time, so the range that "
+                 f"carries information is {informative_range(n_classes):.2f} "
+                 f"wide.")
+    return line
 
 
 def _sentence(n: int, n_train: int, n_test: int, task_type: str,
               widest: Optional[float], parameters: int,
-              events_test: Optional[int]) -> str:
+              events_test: Optional[int],
+              n_classes: Optional[int] = None) -> str:
     """The methods line. Reports what was done and what it can resolve, and
     stops there — no adequacy, no adjective, no recommendation."""
     line = (f"Of {n:,} rows with a value for the outcome, {n_test:,} were "
@@ -306,4 +379,8 @@ def _sentence(n: int, n_train: int, n_test: int, task_type: str,
     if widest is not None:
         line += (f"; a performance metric estimated on {n_test:,} rows carries "
                  f"a 95% interval up to {widest:.2f} wide")
+        if task_type == "classification" and n_classes and n_classes >= 2:
+            line += (f", against a range of {informative_range(n_classes):.2f} "
+                     f"between chance ({1.0 / n_classes:.0%}, with "
+                     f"{n_classes} classes) and perfect")
     return line + "."
