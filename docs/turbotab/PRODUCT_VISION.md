@@ -218,6 +218,37 @@ The test for the top rung is not severity — it is whether a competent research
 reason. There is no analysis in which the outcome belongs in the imputation model; there are many
 in which a suspicious column is measured before the outcome and the researcher knows it.
 
+### The export, and what a marked figure means — the product owner's rulings
+
+Recorded when made, because both were answered in conversation and both decide work that is
+already scoped (`GUIDED-107`).
+
+**The manuscript is data before it is a document.** `draft.py` composes one structured document
+and two thin renderers emit Markdown and LaTeX — the latter through `ml/latex_report.py`, which
+is already detainted and imports headless, so neither door holds a private exporter. The larger
+scope was chosen over shipping Markdown alone, and the reason is downstream: **L10's checklist
+engine has to read the manuscript**, and a checklist cannot be run against prose. TRIPOD+AI,
+STROBE-nut, COSMIN and mQACC are one artifact with two column types — what the app knows, and
+what it must ask — and both column types need a document with structure to attach to.
+
+**A marked figure is promoted as the author marked it.** No tier annotation is added on the way
+in. An `EXPLORATORY` figure the modeler moves into Results appears there as they placed it.
+
+> The manuscript is the author's document. The app drafts it; the researcher signs it.
+
+The alternative — annotating the caption with the tier — was considered and rejected as the
+second, uncalibrated layer of caution this project already forbids elsewhere: a caveat printed on
+every promoted figure makes a real concern and a routine one read identically, which is the exact
+failure the evidence badge exists to prevent.
+
+**But the record is not laundered, and this is the part that makes the ruling safe.** The tier
+stays on the figure in the record, and `ml/manuscript_validator.py` is the surface that reports
+it — a cross-section check in the validation report, not a caveat in the prose. The author gets
+the document they asked for and a separate, honest list of what a reviewer will notice. That
+keeps `AUDIT-001`'s lesson intact: the defect there was the *generated document* asserting
+something no section supported, and a validator flagging a promoted exploratory figure is that
+machine doing its job rather than the app editorializing in the author's voice.
+
 ### The resolution statement — what the app may say about a study, as opposed to a method
 
 **Status: specified, unbuilt.** The design guidance is here so it is not re-derived; the loop that
