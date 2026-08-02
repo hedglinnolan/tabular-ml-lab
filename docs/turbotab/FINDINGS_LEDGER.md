@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**280 of 724 closed.**
+**280 of 725 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 393 |
+| `OPEN` | 394 |
 | `PARTIAL` | 51 |
 | `FIXED` | 276 |
 | `NOT-A-DEFECT` | 4 |
 
 ---
 
-## OPEN — 393
+## OPEN — 394
 
 
 ### Application state / lockbox — 66
@@ -264,7 +264,7 @@ Nothing is closed without a regression test named after it.
 | `MINE-043` | low | pages/06 defines fallback plotting stubs that shadow visualizations.py on ImportError | `pages/06_Train_and_Compare.py:66-90; visualizations.py:53-88, 91-126` | Unchanged at HEAD. visualizations.py is a first-party module in the repository root and cannot legitimately be missing, so the fallback can only fire on an unrelated ImportError… |
 | `MINE-044` | low | visualizations.plot_residuals will pandas-align if handed two Series with different indexes | `visualizations.py:91-126 vs 141-142; pages/06_Train_and_Compare.py:2604, 2623` | Unchanged at HEAD, and the inconsistency inside one file is the tell: plot_bland_altman coerces both arguments and plot_residuals does not, so the safe idiom was known and applied… |
 
-### Guided-door drive feedback — 34
+### Guided-door drive feedback — 35
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -299,6 +299,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-137` | medium | The calibration plot's spec labels three annotations '(95% CI)' and no interval is ever computed for any of them, while the ROC figure beside it declares the same promise, computes a bootstrap… | `turbotab/figure_specs.py:195-199 CALIBRATION.annotations declares Annotation('calibration_intercept','Calibrat…` | FOUND AT L41-A2 while writing the second calibration fixture, one layer under the work rather than in it. THE GAP IS INVISIBLE AT THE SURFACE THAT WOULD SHOW IT, which is the… |
 | `GUIDED-138` | medium | blocks_substitution is the recorded purpose's second consumer and has no path to it: nothing in the missingness route knows a column was censored rather than empty, so the prediction/inference… | `turbotab/clinical.blocks_substitution and substitution_blocker are complete and correct and are called only…` | FILED AT L41-B AS THE HONEST FORM OF A CAPABILITY WITHOUT ITS CONSUMER, per LOOP.md section 05: a part that adds a capability ships either with the path that consumes it or with a… |
 | `GUIDED-140` | medium | DEFECT CLASS - a helper is deleted and its callers are not, and nothing in this repository can find the survivors: the page is one 4,000-line script and no check enumerates the names it calls against… | `GUIDED-139 is the instance and it survived because six of its seven call sites were on paths nothing drove. A…` | FILED AT L41-C AS THE CLASS BEHIND GUIDED-139, per LOOP.md section 08's first check: a class that lives only in a report - or in a code comment - gets forgotten. A GUARD WITH A… |
+| `GUIDED-144` | medium | The impossible-vs-extreme coaching sentence counts `abnormal but real` against the core's p01/p99 band rather than against the reference interval section A1.2 defines, so it undercounts the category… | `measured at L41-B on clinical_labs.csv: 4 systolic values are outside the impossibility band 40-300 mmHg, and…` | FILED AT L41-B AS A DELIBERATE UNDERCOUNT RATHER THAN A BUG, because the alternative was worse. The pack reads the core's bands and carries none of its own - turbotab/clinical.py… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 | `GUIDED-121` | low | A near-unique column is neither flagged nor asked about: the identifier rule is exactly one level per row, so a column at 95 percent distinct is treated as an ordinary predictor | `turbotab/identifiers.py UNIQUE_PER_ROW = 1.0, stated as a constant and reported in the receipt's rule…` | DELIBERATELY NOT GUESSED AT, and the threshold is not lowered because there is no honest number to lower it to. A column at 0.95 distinct-per-row is either an identifier with a… |
