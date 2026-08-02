@@ -47,6 +47,7 @@ silent on. `SHAPES_NOT_COVERED` names what neither reaches.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import numpy as np
@@ -167,6 +168,100 @@ def test_every_detector_fires_from_an_upload_and_not_from_its_own_test():
         badge = finding["evidence"]
         assert badge["evidence_status"] in ("SETTLED", "CONVENTION", "DISPUTED")
         assert badge["source"].startswith("research/CLINICAL_SURVEY_PACK.md#")
+
+
+#: `GUIDED-142`. Every pack that has detectors, with a fixture that fires them
+#: and the target that opens Explore. Parametrized over all of them rather than
+#: over the clinical one, because the defect was never clinical: nothing
+#: rendered ANY pack's findings, and a test naming one pack would have passed
+#: with the other four still invisible.
+PACKS_WITH_DETECTORS = {
+    "clinical": ("clinical_labs.csv", "clinical", "readmitted", 8),
+    "dietary": ("nhanes_kilojoules.csv", "dietary", "DR1TKCAL", 4),
+    "metabolomics": ("metabolomics_untargeted.csv", "metabolomics",
+                     "responder", 3),
+    "survey": ("survey_sentinels.csv", "survey", "sought_support", 2),
+    "genomics": ("genomics_expression.csv", "genomics", "condition", 1),
+}
+
+
+@pytest.mark.parametrize("lens", sorted(PACKS_WITH_DETECTORS))
+def test_every_pack_finding_reaches_a_person_and_carries_its_badge(lens):
+    """**`GUIDED-142`, and it is the largest instance of trap #6 this door has
+    had.**
+
+    `bySource("profile")` and `bySource("structure")` were the only two callers
+    in the page. Every finding a LENS produces — the Atwater reconstruction, the
+    pooled-QC rows, the mixed-unit analyte, the sentinel codes, all eight of
+    L41-B's — was computed correctly, served correctly on `/project/{id}`, and
+    **rendered nowhere.** Five packs, eighteen detectors.
+
+    That is `GUIDED-058`'s class one layer past where L28 closed it: the L28
+    fix made the detectors reachable from an upload through the API, and the
+    test that closed it never drove the page. `GUIDED-075` is the same story
+    about `/figures` and cost two loops.
+
+    **And the badge travels with them**, because a pack claim without one is
+    the uniform confidence `DOMAIN_SCIENCE.md` §01.1 exists to end — and the
+    badge is nested on a finding, which is why the flat renderer did not pick
+    it up for free.
+    """
+    from fastapi.testclient import TestClient
+
+    from turbotab import api
+    from turbotab import pageharness as PH
+
+    if not PH.available():
+        pytest.skip("no JS engine on this machine")
+
+    fixture, key, target, expected = PACKS_WITH_DETECTORS[lens]
+    client = TestClient(api.app)
+    with open(DATA / fixture, "rb") as handle:
+        pid = client.post("/project", files={
+            "file": (fixture, handle, "text/csv")}).json()["id"]
+    for kind, payload in (("set_lens", {"lens": [key]}),
+                          ("set_target", {"column": target})):
+        ok = client.post(f"/project/{pid}/decision",
+                         json={"kind": kind, "payload": payload})
+        assert ok.status_code == 200, (kind, ok.text[:300])
+
+    project = client.get(f"/project/{pid}").json()
+    served = [f for f in project["findings"] if f["source"] == "pack"]
+    assert len(served) == expected, (
+        f"{lens} serves {len(served)} pack findings, not {expected}: "
+        f"{[f['id'] for f in served]}")
+
+    routes = {
+        f"/project/{pid}": project,
+        f"/project/{pid}/interview?step=data":
+            client.get(f"/project/{pid}/interview?step=data").json(),
+        f"/project/{pid}/interview?step=explore":
+            client.get(f"/project/{pid}/interview?step=explore").json(),
+        f"/project/{pid}/evidence/missingness": {"cards": []},
+        f"/project/{pid}/capabilities":
+            client.get(f"/project/{pid}/capabilities").json(),
+    }
+    out = PH.run(
+        "__emit({html: (__harness.html('profList') || '').slice(0, 90000)});",
+        routes=routes, search=f"?project={pid}")
+    html = out["html"]
+    assert html, "the Explore findings list rendered nothing at all"
+
+    missing = [f["id"] for f in served if f["title"][:28] not in html]
+    assert not missing, (
+        f"the {lens} pack computes {missing} and the page never shows them. "
+        f"Server-composed and never rendered is the class this door has "
+        f"already paid for at six surfaces.")
+
+    # THE BADGE, because a pack claim without one is the app being uniformly
+    # confident — and the finding's is NESTED, so a renderer written for the
+    # question's flat shape shows nothing and raises nothing.
+    statuses = set(re.findall(r'class="badge (\w+)"', html))
+    expected_statuses = {f["evidence"]["evidence_status"].lower()
+                         for f in served}
+    assert expected_statuses <= statuses, (
+        f"these badge statuses are on the wire and not on the page: "
+        f"{sorted(expected_statuses - statuses)}")
 
 
 def test_no_detector_offers_a_repair():

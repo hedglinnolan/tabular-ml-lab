@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**279 of 722 closed.**
+**280 of 723 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 392 |
 | `PARTIAL` | 51 |
-| `FIXED` | 275 |
+| `FIXED` | 276 |
 | `NOT-A-DEFECT` | 4 |
 
 ---
@@ -610,10 +610,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 275
+## FIXED — 276
 
 
-### Guided-door drive feedback — 91
+### Guided-door drive feedback — 92
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -628,6 +628,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-093` | critical | A classification target with string labels makes every model report 'did not fit' while carrying a real held-out metric, and makes the calibration figure blame the user's models for a serialization… | `turbotab/training.py:294 result.predictions = [float(v) for v in y_pred] raises on string class labels AFTER…` | **test:** `turbotab/test_a_string_class_label_is_a_label.py::test_a_result_carries_a_score_or_a_reason_and_never_both` — FIXED AT L35-C, and the fix is not only float(). THREE… |
 | `GUIDED-095` | critical | The deferred half of constitution clause 06 has no executor: every decision recorded to be fitted inside the training fold is read by nothing that fits, so only decisions that execute immediately… | `turbotab/training.py touches exactly six project attributes - grain, lockbox, model_shelf, target, task_type…` | **test:** `turbotab/test_selection_reaches_the_fit.py::test_the_selected_set_does_not_move_when_the_held_out_rows_do` — CLOSED AT L36-A. The last member of the class - feature… |
 | `GUIDED-139` | critical | nudge() was deleted at DRIVE-006 and seven call sites outlived it, so every pull affordance in the Guided door threw ReferenceError into the panel that means `we do not have this` | `driven at L41-C through pageharness on clinic_visits.csv: clicking look::r1_plausibility and histogram_pager…` | **test:** `turbotab/test_the_survey_block_is_audited.py::test_every_pull_affordance_survives_being_clicked` — FOUND AT L41-C BY BUILDING A PULL AND DRIVING IT. The reverse-coding… |
+| `GUIDED-142` | critical | No pack finding in any pack has ever been rendered by the Guided page - bySource('profile') and bySource('structure') were the only two callers, so eighteen detectors across five packs were computed… | `driven at L41 through pageharness on nhanes_kilojoules.csv with the dietary lens and on clinical_labs.csv…` | **test:** `turbotab/test_the_clinical_detectors_reach_an_upload.py::test_every_pack_finding_reaches_a_person_and_carries_its_badge` — FOUND AT L41 WHILE VERIFYING PART B'S OWN… |
 | `GUIDED-001` | high | Import doctor proposes numeric coercion for True/False-coded binary columns (meds_hbp, meds_chol) instead of recognizing a binary variable with informative-missingness potential | `ml/import_doctor.py; screenshot meds_chol` | **test:** `turbotab/test_guided_drive.py::test_a_true_false_column_is_read_as_binary_not_coerced_to_numbers` — Fixed, and reproduced first: a True/False column with blanks is read… |
 | `GUIDED-002` | high | High-missingness finding reports a count but never names the features, and its card carries no snippet and no dtype-aware recommendation | `ml/dataset_profile.py; turbotab explore step; screenshots` | **test:** `turbotab/test_guided_drive.py::test_missingness_routes_by_dtype` — Fixed. Cards name their column in the question text and in a mono chip, carry the count, the share… |
 | `GUIDED-004` | high | No impossibility tier: bp_di values near 1e-15 are at best 'outliers' - the profile does not distinguish medically impossible from medically improbable | `ml/clinical_units.py; ml/physiology_reference.py; ml/dataset_profile.py; screenshot physiologic_check` | **test:** `turbotab/test_guided_drive.py::test_a_diastolic_of_zero_is_impossible_and_a_high_one_is_improbable` — Fixed. The bundled NHANES reference now carries floor/ceiling… |
