@@ -50,8 +50,9 @@ TARGET_SHAPES = {
 SHAPES_NOT_COVERED = [
     "multiclass classification — the task-type metric check knows two types",
     "survival / time-to-event — no task type exists",
-    "the LaTeX document — deferred as GUIDED-115; its validator checks are "
-    "inert rather than passing, and the deferral is served in the payload",
+    "PDF compilation — `ml/latex_report.compile_latex_to_pdf` shells out to a "
+    "LaTeX toolchain this environment does not have, so the .tex is rendered "
+    "and never compiled; nothing asserts the document typesets",
 ]
 
 
@@ -129,7 +130,11 @@ def test_the_counts_are_numbers_not_prose(shape):
 
     counts = doc["context"]["population_counts"]
     assert isinstance(counts.get("analysis_total"), int)
-    assert counts["train"] + counts["test"] == counts["analysis_total"]
+    # The VALIDATOR's key names — `train_n`/`val_n`/`test_n` is what
+    # `validate_manuscript_bundle` sums, and using `train`/`test` made its
+    # reconciliation check compare 300 against 0 (`GUIDED-116`).
+    assert counts["train_n"] + counts["val_n"] + counts["test_n"] == \
+        counts["analysis_total"]
     assert doc["context"]["included_models"], "no model reached the document"
     assert doc["sections"], "the structured document has no sections"
     assert all("key" in s and "title" in s for s in doc["sections"])
@@ -173,7 +178,18 @@ def test_a_promoted_exploratory_figure_is_not_caveated_in_the_prose():
     assert "EXPLORATORY" not in prose, (
         "the tier was annotated into the manuscript; the ruling is that no "
         "tier annotation is added on the way in")
-    assert "exploratory" not in prose.lower()
+    # NOT a blanket ban on the WORD. `L39-B1` added a Model Evaluation
+    # sentence that calls an unverified split's figures *exploratory*, which is
+    # a true claim about the SPLIT and has nothing to do with a figure's tier.
+    # The ruling is about tier annotation; asserting the absence of a common
+    # English word would have forced that honest sentence out of the
+    # manuscript to satisfy a test.
+    assert "pca scores" not in prose.lower(), (
+        "the promoted figure was named in the prose with its tier nearby")
+    for figure in figures:
+        assert figure["tier"].lower() not in prose.lower().split(
+            str(figure["title"]).lower())[0][-200:] if \
+            str(figure["title"]).lower() in prose.lower() else True
 
     # AND IT IS REPORTED, separately.
     flagged = out["promoted_exploratory"]
@@ -215,7 +231,16 @@ def test_the_sections_the_draft_cannot_source_are_named_not_silent():
     p, run = _project(name, target, task)
     out = MS.validate(p.to_dict(), run=run)
 
-    headings = {u["heading"] for u in out["unsourced_sections"]}
+    # WITH a run both sections have a source (`L39-B1`), so the gap is
+    # conditional now rather than permanent. Driven both ways: the unsourced
+    # list is what a manuscript with no fit still cannot say.
+    assert out["unsourced_sections"] == []
+    assert any(s["key"] == "models" for s in out["document"]["sections"])
+    assert any(s["key"] == "evaluation" for s in out["document"]["sections"])
+
+    p_nofit, _ = _project(name, target, task, fit=False)
+    dry = MS.validate(p_nofit.to_dict(), run=None)
+    headings = {u["heading"] for u in dry["unsourced_sections"]}
     assert headings == {"Model Development", "Model Evaluation"}
     for entry in out["unsourced_sections"]:
         assert len(entry["because"]) > 60, "a gap named with no reason"
@@ -225,33 +250,94 @@ def test_the_sections_the_draft_cannot_source_are_named_not_silent():
         "Data Sources", "Exploratory Analysis", "Missing Data", "Limitations"}, (
         out["unchecked_sections"])
 
-    blocked = [r for r in out["rows"]
-               if r["Status"] == "FAIL" and r["blocked_by_missing_section"]]
-    assert blocked, (
-        "no failing check was attributed to a missing section, so the "
-        "separation this reports is not doing anything")
-    assert out["n_failed_for_a_missing_section"] == len(blocked)
-    assert out["n_failed"] > out["n_failed_for_a_missing_section"], (
-        "every failure was attributed to a missing section; the remaining "
-        "ones are the real findings and there should be some")
+    # WITH a run, nothing fails at all — which is the point of `L39-B1` and
+    # is asserted here rather than in a separate test, because *the sections
+    # exist now* and *the checks pass now* are one claim.
+    assert out["n_failed"] == 0, [
+        r["Check"] for r in out["rows"] if r["Status"] == "FAIL"]
+
+    # WITHOUT one, three checks fail and NONE is attributable to a missing
+    # section — which is worth stating rather than glossing. They are all
+    # about counts a project with no fit does not have, and that is the honest
+    # state: a manuscript describing an analysis nobody ran cannot state its
+    # analysis population.
+    assert dry["n_failed"] == 3, [
+        r["Check"] for r in dry["rows"] if r["Status"] == "FAIL"]
+    assert dry["n_failed_for_a_missing_section"] == 0
+    # One PASSING check does name a missing section — *model names match
+    # between development and evaluation sections*, which passes vacuously
+    # because there are no models to disagree about. Attributed and not
+    # failing is the correct pair of states, and asserting `all False` would
+    # have been asserting the attribution never fires.
+    attributed = [r for r in dry["rows"] if r["blocked_by_missing_section"]]
+    assert all(r["Status"] == "PASS" for r in attributed), [
+        r["Check"] for r in attributed if r["Status"] != "PASS"]
+
+    # **THE ATTRIBUTION MECHANISM NOW HAS NO LIVE CASE**, because the check it
+    # was built for — *model names match between development and evaluation
+    # sections* — passes vacuously with no run and genuinely with one. It is
+    # kept and asserted on a constructed row rather than deleted: the next
+    # section the validator wants and the draft cannot source will need it,
+    # and a mechanism with no test is a mechanism nobody trusts.
+    assert MS.REQUIRED_BUT_UNSOURCED, "the mechanism's input list is empty"
+    heading = sorted(MS.REQUIRED_BUT_UNSOURCED)[0]
+    synthetic = {"Status": "FAIL", "Check": f"something about {heading}",
+                 "Location": "Methods", "Detail": ""}
+    unsourced = {u["heading"] for u in dry["unsourced_sections"]}
+    assert any(h.lower() in (synthetic["Check"] + " "
+                             + synthetic["Location"]).lower()
+               for h in unsourced), (
+        "a check naming an unsourced heading would not be attributed to it, "
+        "so the separation is decorative")
 
 
-def test_the_latex_half_is_absent_and_says_so():
-    """`GUIDED-115`. Deferred per the loop's scope note, and DECLARED.
+def test_the_latex_document_is_rendered_by_the_exporter_classic_uses():
+    """`GUIDED-115`, closed. *One core, no forks.*
 
-    Passing the markdown as the LaTeX document would manufacture failures about
-    a document that does not exist; passing nothing leaves those checks inert.
-    Either way the absence must be visible, or a reader takes the report as
-    covering an export that was never made.
+    Deferred at L38 with the cost named — three validator checks were INERT
+    rather than passing, because they look for markdown artifacts and internal
+    model keys leaking into a LaTeX file and were handed an empty string. A
+    check with nothing to read reports nothing wrong, which is the same
+    silence-as-agreement this whole file is about.
     """
-    name, target, task, _ = TARGET_SHAPES["binary classification"]
+    import ast
+
+    name, target, task, _ = TARGET_SHAPES["continuous regression"]
     p, run = _project(name, target, task)
     out = MS.validate(p.to_dict(), run=run)
-    assert "LaTeX export is not wired yet" in out["latex_deferred"]
-    assert "latex_report" in out["latex_deferred"], (
-        "the deferral does not name where it will render from, so it reads as "
-        "an omission rather than a decision")
-    assert "latex" not in out["rendered"]
+
+    latex = out["rendered"]["latex"]
+    assert latex, "no LaTeX was rendered"
+    assert out["latex_bytes"] == len(latex)
+    assert "\\documentclass" in latex or "\\begin{document}" in latex, (
+        "the rendered text is not a LaTeX document")
+    # THE CHECKS THAT WERE INERT ARE LIVE, asserted by name so a future
+    # regression to `""` fails here rather than going green.
+    for live in ("LaTeX output is free of markdown and note artifacts",
+                 "No internal model keys leak into export text"):
+        row = next(r for r in out["rows"] if r["Check"] == live)
+        assert row["Status"] == "PASS", row["Detail"]
+
+    # RENDERED BY ml/, NOT BY A SECOND EXPORTER.
+    tree = ast.parse(open("turbotab/manuscript.py").read())
+    modules = {n.module for n in ast.walk(tree)
+               if isinstance(n, ast.ImportFrom) and n.module}
+    assert "ml.latex_report" in modules
+    body = ast.unparse(tree)
+    for invented in ("\\\\documentclass", "\\\\begin{document}", "usepackage"):
+        assert invented not in body, (
+            f"turbotab/manuscript.py writes {invented!r} itself; the exporter "
+            f"is ml/latex_report.py and there must not be two")
+
+
+def test_a_manuscript_with_no_fit_renders_no_latex_rather_than_a_template():
+    """Return nothing rather than a wrong value. An empty template is a
+    document asserting a study that does not exist."""
+    name, target, task, _ = TARGET_SHAPES["continuous regression"]
+    p, _ = _project(name, target, task, fit=False)
+    out = MS.validate(p.to_dict(), run=None)
+    assert out["rendered"]["latex"] == ""
+    assert out["latex_bytes"] == 0
 
 
 def test_the_heading_map_is_the_validators_own_vocabulary():
@@ -385,14 +471,156 @@ def test_the_route_records_a_promotion_and_the_report_notices():
                                  + after["rendered"]["report"])
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "GUIDED-119. The promotion DECISION and its consequence are built and "
-    "driven; the page has no control that records one, so a user cannot "
-    "promote a figure from the Guided door. LOOP.md §05 permits shipping a "
-    "capability with a failing test naming the consumer it lacks, and this is "
-    "that test — it flips to passing the day the control exists."))
+@pytest.mark.skipif(
+    not __import__("turbotab.pageharness", fromlist=["x"]).available(),
+    reason="no JS engine on this machine")
 def test_the_page_offers_a_way_to_promote_a_figure():
-    page = open("turbotab/web/index.html").read()
-    assert "promote_figure" in page, (
+    """`GUIDED-119`, closed. It shipped at L38 as an `xfail(strict=True)`
+    naming the consumer it lacked, which is `LOOP.md` §05 working as intended;
+    this is the same test with the mark removed and the claim DRIVEN rather
+    than grepped, because a string in the file is not a control on the page.
+
+    **The control is at the FIGURE, not in Report.** A figure is promoted where
+    it is looked at; Report renders the consequence. And it does not consult
+    the tier — the ruling is that a marked figure is promoted as the author
+    marked it.
+    """
+    from fastapi.testclient import TestClient
+
+    from turbotab import api
+    from turbotab import pageharness as PH
+
+    name, target, task, _ = TARGET_SHAPES["binary classification"]
+    p, _ = _project(name, target, task, fit=False)
+    api.STORE.add(p)
+    client = TestClient(api.app)
+    project = client.get(f"/project/{p.id}").json()
+    figures = client.get(f"/project/{p.id}/figures").json()
+    assert figures["admitted"] or figures["held"], (
+        "no figure was drawn, so there is nothing to promote and this proves "
+        "nothing")
+
+    routes = {
+        f"/project/{p.id}": project,
+        f"/project/{p.id}/interview?step=data":
+            client.get(f"/project/{p.id}/interview?step=data").json(),
+        f"/project/{p.id}/interview?step=explore": {"questions": [], "steps": []},
+        f"/project/{p.id}/evidence/missingness": {"cards": []},
+        f"/project/{p.id}/evidence/plausibility": {"columns": []},
+        f"/project/{p.id}/draft": {"paragraphs": []},
+        f"/project/{p.id}/gaps": {"gaps": []},
+        f"/project/{p.id}/figures": figures,
+    }
+    out = PH.run(
+        """
+        var html = __harness.html('figuresBox');
+        var rx = /<button([^>]*data-promote="[^"]*"[^>]*)>/g, m, opts = [];
+        while ((m = rx.exec(html)) !== null){
+          var a = {};
+          m[1].replace(/([a-zA-Z-]+)="([^"]*)"/g,
+                       function(_, k, v){ a[k] = v; return ""; });
+          opts.push(a);
+        }
+        __emit({html: html, controls: opts});
+        """,
+        routes=routes, search=f"?project={p.id}")
+
+    assert out["controls"], (
         "no control in the Guided door records a promotion, so `promotable` "
         "still has no user-facing consumer")
+    for control in out["controls"]:
+        assert control.get("data-promote"), "a control with no figure to promote"
+        assert control.get("data-promote-on") in ("0", "1")
+    # THE TIER CHIP IS UNTOUCHED, which is the ruling: no annotation is added
+    # on the way in, and a control that only appeared on CONFIRMATORY figures
+    # would be the same overruling by omission.
+    drawn = {r["id"] for r in figures["admitted"] + figures["held"]}
+    assert {c["data-promote"] for c in out["controls"]} == drawn, (
+        "the promotion control is offered on some drawn figures and not "
+        "others; the ruling is that the author marks the figure")
+
+
+# ═══════════ WHAT THE EXPORT CARRIES ═══════════
+
+def test_the_export_carries_every_analysis_the_app_has_already_done():
+    """**Err toward more information, and the audit that produced this test.**
+
+    The first `to_latex` passed 9 of `generate_latex_report`'s 22 arguments
+    while the app already held seven more, so a Guided manuscript exported a
+    methods section and an abstract and dropped the metrics table, the
+    predictor list, the recorded limitations, the importance ranking and the
+    resampling results on the floor. Nothing failed. The document was simply
+    thinner than the analysis behind it, which is the quietest way to be wrong
+    in an artifact that leaves the building.
+    """
+    from turbotab import explain as _explain
+
+    name, target, task, model = TARGET_SHAPES["continuous regression"]
+    p, run = _project(name, target, task)
+    p.training_run = None
+    explain = {"run": _explain.importance(p, model)}
+    out = MS.validate(
+        p.to_dict(), run=run, explain=explain,
+        figures=[{"id": "calibration", "title": "Calibration plot",
+                  "tier": "CONFIRMATORY", "promoted": False}])
+    latex = out["rendered"]["latex"]
+    assert latex
+
+    for section, why in [
+        ("Model Performance", "the held-out metrics table"),
+        ("Feature Importance and Explainability",
+         "the permutation-importance ranking explain.py computed"),
+        ("Limitations", "the caveats the RECORD holds, not a placeholder"),
+    ]:
+        assert section in latex, (
+            f"the export carries no {section} section, so {why} was computed "
+            f"and dropped")
+
+    assert "[Discuss limitations here]" not in latex, (
+        "the exporter's default limitations placeholder survived, so the "
+        "app's own recorded caveats were dropped and replaced with a blank")
+
+    # CALIBRATION ABOVE DISCRIMINATION, which is the pack's ordering
+    # (CLINICAL_SURVEY_PACK A5.1, A5.3). An export that reported only the
+    # metrics table would invert it.
+    assert "Calibration" in latex
+
+
+def test_what_the_export_cannot_carry_is_served_rather_than_silent():
+    """The gaps are information too. Each names a reason someone can argue
+    with, and one of them is a deliberate refusal rather than a backlog item:
+    the exporter's `sensitivity_summary` slot wants a coefficient-of-variation
+    band, which is one of `STATE-034`'s two invented ladders."""
+    name, target, task, _ = TARGET_SHAPES["continuous regression"]
+    p, run = _project(name, target, task)
+    out = MS.validate(p.to_dict(), run=run)
+
+    fields = {x["field"] for x in out["not_exported"]}
+    assert "table1_df" in fields and "tripod_checklist" in fields
+    for entry in out["not_exported"]:
+        assert len(entry["because"]) > 60, (
+            f"{entry['field']} is unexported with a reason that is a shrug")
+    refusal = next(x for x in out["not_exported"]
+                   if x["field"] == "sensitivity_summary")
+    assert "STATE-034" in refusal["because"], (
+        "the one gap that is a REFUSAL rather than a gap does not say so")
+
+
+def test_the_provenance_card_carries_what_the_app_knows_and_no_more():
+    """`NUTRITION_PACK.md` §09 asks for an analysis provenance card so the
+    analysis is reproducible from the paper. What the app holds is the split,
+    the resampling scheme and B; what it does not — the weight variable, the
+    design specification, the residual-adjustment constants — is ABSENT rather
+    than blank, because a provenance card with empty fields reads as a study
+    that had none."""
+    name, target, task, _ = TARGET_SHAPES["continuous regression"]
+    p, run = _project(name, target, task)
+    doc = MS.structure(p.to_dict(), run=run)
+    card = MS._provenance(doc)
+
+    assert card["analysis_population"]["analysis_total"] > 0
+    assert card["predictors"]["selected"] is not None
+    for absent in ("weight_variable", "design_specification",
+                   "residual_adjustment_constants"):
+        assert absent not in card, (
+            f"the provenance card claims {absent}, which the app does not hold")

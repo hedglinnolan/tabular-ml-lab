@@ -1180,8 +1180,8 @@
   "step": "report",
   "capability": "LaTeX manuscript export",
   "classic": "pages/10 via ml/latex_report.py",
-  "state": "classic-only",
-  "reason": "GUIDED-115, deferred by the L38 scope note rather than declined. It will render from ml/latex_report.py, which is where Classic renders from, so there is one exporter waiting rather than two that can disagree."
+  "state": "core",
+  "reason": "GUIDED-115, closed at L39. Both doors render through ml/latex_report.generate_latex_report now - one core, no forks. turbotab/manuscript.to_latex is a mapping onto its arguments and an AST test asserts Guided writes no LaTeX preamble of its own. NOT COVERED: PDF compilation, which shells out to a toolchain this environment does not have."
  },
  {
   "id": "report-figure-promotion",
@@ -1189,7 +1189,7 @@
   "capability": "Promoting a figure into the results, as the author marked it",
   "classic": "—",
   "state": "guided-only",
-  "reason": "The product owner's ruling: promoted as the author marked it, no tier annotation added on the way in. promotable and promotable_because have sat on every figure spec since L26 with no consumer; the recorded decision is that consumer now, and the tier is reported in the VALIDATION report where a reviewer's objection belongs. THE PAGE CONTROL IS NOT BUILT (GUIDED-119) - the decision, the record, the effect on the report and the no-annotation rule are driven end to end, and there is no button. Declared under LOOP section 05 with an xfail(strict) test naming the missing consumer."
+  "reason": "The product owner's ruling: promoted as the author marked it, no tier annotation added on the way in. promotable and promotable_because had no consumer from L26 until L38 recorded the decision and L39 shipped the control - ON THE FIGURE, because a figure is promoted where it is looked at and Report renders the consequence. Offered on every drawn figure regardless of tier; a control that appeared only on CONFIRMATORY ones would be the app overruling the author by omission."
  },
  {
   "id": "instability-cluster-bootstrap",

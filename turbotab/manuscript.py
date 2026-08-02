@@ -42,15 +42,20 @@ gets the document they asked for — and **is** reported by the validator, as a
 cross-section check. `promoted_exploratory` below is that check. The author
 gets their document and a separate honest list of what a reviewer will notice.
 
-## What is deliberately not here
+## The LaTeX renderer, wired at L39 (`GUIDED-115`)
 
-**The LaTeX renderer.** `ml/latex_report.py` is 1,066 lines, already detainted,
-imports headless, and is the exporter Classic uses — so *"one core, no forks"*
-says Guided must render through it rather than growing a private one. That is a
-mapping job onto its expected context dict, and the loop's scope note says to
-ship the validator wiring and the structured document first and defer it. It is
-deferred, and `GUIDED-115` is what it is deferred as. The structured document
-is what makes it a renderer rather than a rewrite.
+`ml/latex_report.generate_latex_report` is the exporter Classic uses — 1,066
+lines, detainted, headless — and *"one core, no forks"* says Guided renders
+through it rather than growing a private one. `to_latex` below is a MAPPING,
+not a second exporter: the structured document already holds every argument it
+takes, which is what the ruling meant by *the manuscript is data before it is a
+document*.
+
+**And wiring it turned three validator checks from inert to live.** They look
+for markdown artifacts and internal model keys leaking into a LaTeX file; with
+`latex_text=""` they had nothing to read and reported PASS on a document
+nobody had made. That is the shape of every finding in this file: silence read
+as agreement.
 """
 from __future__ import annotations
 
@@ -72,6 +77,12 @@ _HEADINGS = {
     "preprocess": (3, "Missing Data", "methods"),
     "features": (3, "Predictor Variables", "methods"),
     "limitations": (3, "Limitations", "methods"),
+    # `GUIDED-116`. Sourced from the RUN rather than from the decision fold —
+    # see `_with_run_sections`. Both are extracted by the validator, which is
+    # why its *model names match between development and evaluation* check
+    # could never pass before they existed.
+    "models": (3, "Model Development", "methods"),
+    "evaluation": (3, "Model Evaluation", "methods"),
 }
 
 #: Which of those headings the validator actually EXTRACTS, and therefore which
@@ -83,7 +94,8 @@ _HEADINGS = {
 #: not happen is a reader taking a clean validation report as covering the
 #: whole document: `unchecked_sections` says which parts nothing looked at.
 #: `GUIDED-117`.
-CHECKED_HEADINGS = frozenset({"Study Design", "Predictor Variables"})
+CHECKED_HEADINGS = frozenset({"Study Design", "Predictor Variables",
+                              "Model Development", "Model Evaluation"})
 
 #: Sections the VALIDATOR looks for that `draft.SECTIONS` has no source for,
 #: and this is the first thing wiring the validator found.
@@ -123,7 +135,10 @@ ABSTRACT_HEADING = (2, "Abstract (Draft)")
 
 def structure(project_dict: Dict[str, Any],
               *, run: Optional[Dict[str, Any]] = None,
-              figures: Optional[List[Dict[str, Any]]] = None
+              figures: Optional[List[Dict[str, Any]]] = None,
+              explain: Optional[Dict[str, Any]] = None,
+              sensitivity: Optional[Dict[str, Any]] = None,
+              instability: Optional[Dict[str, Any]] = None,
               ) -> Dict[str, Any]:
     """The manuscript as data: sections, counts, figures, and the gaps.
 
@@ -134,8 +149,11 @@ def structure(project_dict: Dict[str, Any],
     """
     body = _draft.draft(project_dict)
     counts = _counts(project_dict, run)
+    sections = _with_run_sections(body["sections"], run, counts)
+    sections = _with_analysis_sections(sections, explain, sensitivity,
+                                       instability)
     return {
-        "sections": body["sections"],
+        "sections": sections,
         "standfirst": body["standfirst"],
         "gap_marker": body["gap_marker"],
         "n_gaps": body["n_gaps"],
@@ -146,10 +164,13 @@ def structure(project_dict: Dict[str, Any],
         # rather than a translation that could drift.
         "context": counts,
         "figures": list(figures or []),
-        # THE SECTIONS A MANUSCRIPT NEEDS AND THIS DRAFT CANNOT SOURCE, named
-        # rather than left as an absence. See `REQUIRED_BUT_UNSOURCED`.
-        "unsourced_sections": [{"heading": h, "because": why}
-                               for h, why in REQUIRED_BUT_UNSOURCED.items()],
+        # WHAT IS STILL UNSOURCED, which is now conditional rather than
+        # permanent: with a run, both sections have a source; without one, the
+        # manuscript describes an analysis nobody has fitted and says which
+        # parts are missing and why (`GUIDED-116`).
+        "unsourced_sections": (
+            [] if run else [{"heading": h, "because": why}
+                            for h, why in REQUIRED_BUT_UNSOURCED.items()]),
         # WHICH RENDERED SECTIONS NOTHING CHECKS. A validation report that
         # listed only what it found would let its silence read as coverage.
         "unchecked_sections": sorted(
@@ -157,6 +178,13 @@ def structure(project_dict: Dict[str, Any],
             if where == "methods" and heading not in CHECKED_HEADINGS),
         "task_type": project_dict.get("task_type") or "",
         "target": project_dict.get("target") or "",
+        # EVERYTHING ELSE THE APP HOLDS, carried on the document rather than
+        # recomposed by each renderer. See `to_latex` for why the list is this
+        # long and `NOT_EXPORTED` for what is still missing.
+        "explain": explain or None,
+        "sensitivity": sensitivity or None,
+        "instability": instability or None,
+        "run": run or None,
     }
 
 
@@ -176,22 +204,45 @@ def _counts(project_dict: Dict[str, Any],
         n_train = run.get("n_train")
         n_test = run.get("n_test")
         if n_train is not None and n_test is not None:
+            # THE VALIDATOR'S OWN KEY NAMES. `train_n`/`val_n`/`test_n` is
+            # what `validate_manuscript_bundle` sums, and the first version
+            # used `train`/`test` — so the reconciliation check compared 300
+            # against 0 and failed for a reason that had nothing to do with the
+            # manuscript. A key is an interface here exactly as a heading is.
+            #
+            # `val_n` is 0 and stated rather than omitted: Guided has two
+            # partitions, and a missing key would let the sum quietly agree for
+            # the wrong reason on a project that did have three.
             out["population_counts"] = {
                 "analysis_total": int(n_train) + int(n_test),
-                "train": int(n_train),
-                "test": int(n_test),
+                "train_n": int(n_train),
+                "val_n": 0,
+                "test_n": int(n_test),
             }
         out["included_models"] = [r.get("key") for r in (run.get("results") or [])
                                   if not r.get("error")]
         surviving = next((r.get("selected_features") for r in
                           (run.get("results") or [])
                           if r.get("selected_features")), None)
+        candidates = len(run.get("features") or [])
         if surviving is not None:
-            out["feature_counts"] = {"final": len(surviving),
-                                     "candidates": len(run.get("features") or [])}
+            out["feature_counts"] = {"selected": len(surviving),
+                                     "candidates": candidates,
+                                     "selection_ran": True}
+        elif candidates:
+            # NO SELECTION WAS RECORDED, so every candidate IS the final set.
+            # Stating that is not a guess: the run's `features` list is the
+            # columns the model was handed. Leaving it absent made the
+            # validator fall back to `len(feature_names_for_manuscript)`, which
+            # is 0 on a Guided project, so the check compared the abstract's
+            # silence against zero and failed for a reason that was about
+            # neither.
+            out["feature_counts"] = {"selected": candidates,
+                                     "candidates": candidates,
+                                     "selection_ran": False}
     elif lockbox.get("n_total"):
         out["population_counts"] = {"analysis_total": int(lockbox["n_total"]),
-                                    "test": int(lockbox.get("n_test") or 0)}
+                                    "test_n": int(lockbox.get("n_test") or 0)}
     return out
 
 
@@ -221,21 +272,174 @@ def to_markdown(doc: Dict[str, Any]) -> Dict[str, str]:
     level, heading = ABSTRACT_HEADING
     report: List[str] = [f"{'#' * level} {heading}\n"]
     if counts.get("analysis_total"):
-        # THE ONE SENTENCE THIS MODULE COMPOSES, and it exists so the validator
-        # has two independent statements of the analysis n to compare. It is
-        # built from the COUNT rather than from the methods text, so a
-        # disagreement between them is a real disagreement rather than a
-        # copy of itself.
+        # THE ABSTRACT, and it exists so the validator has two independent
+        # statements of the analysis n to compare. `_extract_analysis_n`'s own
+        # third pattern, because the wording is an interface.
         report.append(
-            f"We analyzed {counts['analysis_total']:,} participants"
-            + (f", of whom {counts['test']:,} were held out for evaluation."
-               if counts.get("test") else "."))
+            f"A dataset of {counts['analysis_total']:,} observations was "
+            f"analyzed"
+            + (f", of which {counts['test_n']:,} were held out for "
+               f"evaluation." if counts.get("test_n") else "."))
+        features = (doc.get("context", {}).get("feature_counts") or {})
+        if features.get("selected") is not None:
+            report.append(
+                f"The final modeling set contained {features['selected']:,} "
+                f"predictors.")
     else:
         report.append(
             f"{_draft.AUTHOR_GAP} — no model has been fitted, so the analysis "
             f"population is not yet fixed.")
     report.append("")
     return {"methods": "\n".join(methods), "report": "\n".join(report)}
+
+
+def to_latex(doc: Dict[str, Any]) -> str:
+    """The manuscript as LaTeX, rendered by the exporter Classic uses.
+
+    `GUIDED-115`. A mapping onto `generate_latex_report`'s arguments and
+    nothing more — every one of them is already on the structured document,
+    which is the argument for having built that first.
+
+    Returns `""` where the document has no analysis population, because a
+    manuscript with no fit has no results section to render and an empty
+    template would be a document asserting a study that does not exist.
+    """
+    from ml.latex_report import generate_latex_report
+
+    context = doc.get("context") or {}
+    counts = context.get("population_counts") or {}
+    # GATED ON A FITTED MODEL, not merely on a population count. `_counts`
+    # falls back to the lockbox's own total when there is no run, which is the
+    # right input for the ABSTRACT's cohort sentence and the wrong one here: a
+    # LaTeX manuscript has a results section, and rendering the template around
+    # an analysis nobody ran would be a document asserting a study that does
+    # not exist.
+    if not counts.get("analysis_total") or not context.get("included_models"):
+        return ""
+    rendered = to_markdown(doc)
+    run = doc.get("run") or {}
+    task_type = doc.get("task_type") or "regression"
+
+    # THE METRICS TABLE. `_metrics_to_latex_table` keys on the exporter's own
+    # metric names and reads `res["metrics"]`, so this is a reshape of
+    # `run.results` and not a recomputation — the numbers are the ones the run
+    # produced, and a second derivation of a held-out metric is the last thing
+    # this app should grow.
+    model_results = {
+        str(r.get("name") or r.get("key")): {"metrics": r.get("metrics") or {}}
+        for r in (run.get("results") or []) if not r.get("error")
+    }
+
+    return generate_latex_report(
+        methods_section=rendered["methods"],
+        abstract=rendered["report"].split("\n", 1)[-1].strip(),
+        task_type=task_type,
+        target_name=doc.get("target") or "outcome",
+        n_total=int(counts.get("analysis_total") or 0),
+        n_train=int(counts.get("train_n") or 0),
+        n_val=int(counts.get("val_n") or 0),
+        n_test=int(counts.get("test_n") or 0),
+        # EVERYTHING BELOW WAS DROPPED BY THE FIRST VERSION. See `NOT_EXPORTED`
+        # for the arguments that are still unfilled and why; these are the ones
+        # the app already held while the export left them behind.
+        model_results=model_results,
+        feature_names=list(run.get("features") or []),
+        limitations=_limitations(doc),
+        calibration_text=_calibration_text(doc),
+        explainability_summary=_explainability(doc),
+        data_config=_provenance(doc),
+        manuscript_context=doc.get("context") or {},
+    )
+
+
+def _limitations(doc: Dict[str, Any]) -> str:
+    """The limitations the RECORD already holds, rather than a placeholder.
+
+    `draft.py` routes `trim_training_rows`, `acknowledge_blocker` and the
+    per-model preparation caveat here, and every one of them is a thing the
+    study cannot conclude. The exporter's default is
+    `"[Discuss limitations here]"`, so shipping without this meant an export
+    that silently dropped the app's own recorded caveats and replaced them
+    with a blank.
+    """
+    for section in doc.get("sections") or []:
+        if section["key"] == "limitations" and section.get("sentences"):
+            return " ".join(str(i["text"]) for i in section["sentences"])
+    return ""
+
+
+def _calibration_text(doc: Dict[str, Any]) -> str:
+    """What the app can say about calibration, or nothing.
+
+    `CLINICAL_SURVEY_PACK.md` §A5.1 and §A5.3 rank calibration ABOVE
+    discrimination, so an export that reported only the metrics table would
+    invert the field's own ordering. The app draws a calibration figure; what
+    it does not yet do is carry the intercept and slope into the manuscript,
+    which is why this returns the figure's presence rather than its numbers
+    and says so.
+    """
+    drawn = {f.get("id") for f in (doc.get("figures") or [])}
+    if "calibration" not in drawn:
+        return ""
+    return ("Calibration was assessed graphically; the calibration plot is "
+            "reported with its intercept, slope and C-statistic. "
+            f"{_draft.AUTHOR_GAP} — state whether calibration in the "
+            f"clinically relevant risk range is adequate for the intended use.")
+
+
+def _explainability(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The importance ranking, in the exporter's own shape.
+
+    `turbotab/explain.py` computes permutation importance on the HELD-OUT rows
+    and composes its own methods sentence, and until now none of it reached the
+    export.
+    """
+    explain = doc.get("explain") or {}
+    run = explain.get("run") or {}
+    ranked = run.get("ranked") or []
+    if not ranked:
+        return None
+    return {
+        "top_features": [str(r.get("feature") or r.get("column") or "")
+                         for r in ranked[:5]],
+        "permutation_importance_available": True,
+        # SAID, NOT IMPLIED. `explain.py` records both reasons SHAP is absent,
+        # and an export that left the key off would let a reader assume it was
+        # simply not run.
+        "shap_available": False,
+    }
+
+
+def _provenance(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """The analysis provenance card `NUTRITION_PACK.md` §09 asks for.
+
+    > *analysis provenance card: package versions, seeds, weight variable,
+    > design specification, and the exact residual-adjustment constants — so
+    > the analysis is reproducible from the paper.*
+
+    What the app holds is the seed, the split, the sampling scheme and the
+    number of resamples. What it does not hold — the weight variable, the
+    design specification, the residual-adjustment constants — belongs to the
+    complex-survey and energy-adjustment work that is not built, so it is
+    absent rather than blank.
+    """
+    context = doc.get("context") or {}
+    instability = doc.get("instability") or {}
+    out: Dict[str, Any] = {
+        "analysis_population": context.get("population_counts") or {},
+        "predictors": context.get("feature_counts") or {},
+    }
+    for key, entry in (instability.get("runs") or {}).items():
+        sampling = ((entry.get("prediction_instability") or {})
+                    .get("sampling") or {})
+        if sampling:
+            out["resampling_scheme"] = sampling.get("scheme")
+            out["resampling_disclosure"] = sampling.get("sentence")
+        b = (entry.get("prediction_instability") or {}).get("b_completed")
+        if b:
+            out["bootstrap_resamples"] = b
+        break
+    return out
 
 
 def promoted_exploratory(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -268,7 +472,10 @@ def promoted_exploratory(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def validate(project_dict: Dict[str, Any], *,
              run: Optional[Dict[str, Any]] = None,
-             figures: Optional[List[Dict[str, Any]]] = None
+             figures: Optional[List[Dict[str, Any]]] = None,
+             explain: Optional[Dict[str, Any]] = None,
+             sensitivity: Optional[Dict[str, Any]] = None,
+             instability: Optional[Dict[str, Any]] = None,
              ) -> Dict[str, Any]:
     """Render the manuscript and run `ml`'s validator over it.
 
@@ -276,8 +483,14 @@ def validate(project_dict: Dict[str, Any], *,
     `AUDIT-008` is *the core already holds the capability and the path that
     needs it does not read it*, and this is that path.
     """
-    doc = structure(project_dict, run=run, figures=figures)
+    doc = structure(project_dict, run=run, figures=figures, explain=explain,
+                    sensitivity=sensitivity, instability=instability)
     rendered = to_markdown(doc)
+    try:
+        latex = to_latex(doc)
+    except Exception as exc:                                # pragma: no cover
+        latex = ""
+        doc["latex_unavailable"] = str(exc)
     promoted = promoted_exploratory(doc)
 
     try:
@@ -290,11 +503,11 @@ def validate(project_dict: Dict[str, Any], *,
 
     report = validate_manuscript_bundle(
         doc["context"], rendered["methods"], rendered["report"],
-        # NO LATEX YET, and passing the Markdown here would be worse than
-        # passing nothing: the validator's LaTeX checks look for markdown
-        # artifacts leaking into a LaTeX file, and handing them markdown would
-        # manufacture failures about a document that does not exist.
-        "", doc["task_type"] or "classification")
+        # THE REAL LATEX DOCUMENT (`GUIDED-115`). Until L39 this was `""`,
+        # which left three checks inert — they look for markdown artifacts and
+        # internal model keys leaking into a LaTeX file and had nothing to
+        # read, so they reported PASS about a document nobody had made.
+        latex, doc["task_type"] or "classification")
 
     rows = report.to_rows()
     # THE VALIDATOR'S FAILURES ARE NOT ALL THE SAME KIND, and reporting them as
@@ -318,10 +531,260 @@ def validate(project_dict: Dict[str, Any], *,
         "passed": bool(report.passed) and not promoted,
         "promoted_exploratory": promoted,
         "document": doc,
-        "rendered": rendered,
-        "latex_deferred": (
-            "LaTeX export is not wired yet. `ml/latex_report.py` is the "
-            "exporter Classic uses and is where it will render from, so this "
-            "draft has one exporter waiting rather than two that can "
-            "disagree."),
+        "rendered": {**rendered, "latex": latex},
+        "latex_bytes": len(latex),
+        "latex_unavailable": doc.get("latex_unavailable"),
+        # WHAT THE EXPORT STILL CANNOT CARRY, served rather than left to be
+        # discovered. *Err toward more information* applies to the gaps too.
+        "not_exported": [{"field": k, "because": v}
+                         for k, v in NOT_EXPORTED.items()],
     }
+
+
+def _with_run_sections(sections: List[Dict[str, Any]],
+                       run: Optional[Dict[str, Any]],
+                       counts: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """**The second source. `GUIDED-116`.**
+
+    `draft.py` is a pure fold over DECISIONS, and both missing sections
+    describe a RUN — which model was fitted, on how many rows, and how it
+    scored. That is why the fold had nothing to put there, and it is why the
+    fix is not a new decision kind: nobody *decides* a held-out RMSE.
+
+    So the run is a second source, folded in here rather than in `draft.py`,
+    which stays the pure function it is documented as being. Without a run the
+    sections are absent and `unsourced_sections` says why — a manuscript that
+    described a model nobody had fitted would be worse than one that stops.
+
+    Study Design also gains its analysis population from this source, and that
+    matters more than it looks: the abstract asserts an *n* and until now the
+    methods never stated one, so the validator's very first check — *analysis
+    population is consistent across abstract and study design* — compared a
+    number against nothing. **Both statements are rendered from
+    `counts`**, which would make the check self-confirming, except that
+    `counts` is built from the RUN and the seal's own sentence beside it is
+    built from the RECORD. A project whose rows were trimmed after the seal has
+    two numbers that disagree, and that is exactly the disagreement worth
+    catching.
+    """
+    if not run:
+        return sections
+
+    by_key = {s["key"]: s for s in sections}
+    out = [dict(s) for s in sections]
+
+    population = counts.get("population_counts") or {}
+    total = population.get("analysis_total")
+    if total is not None and "target" in by_key:
+        # THE VALIDATOR'S OWN PHRASING. `_extract_analysis_n` reads three fixed
+        # patterns and nothing else, so a sentence that says the same thing in
+        # different words leaves the check comparing a number against `None` —
+        # which passes as *nothing found* rather than failing. The wording is
+        # an interface, exactly as `_HEADINGS` is.
+        line = (f"A total of {total:,} observations were available for "
+                f"analysis, of which {population.get('train_n', 0):,} were "
+                f"used for model development and "
+                f"{population.get('test_n', 0):,} were held out for "
+                f"evaluation.")
+        for section in out:
+            if section["key"] == "target":
+                section["sentences"] = [
+                    {"text": line, "kind": "derived", "subject": "",
+                     "at": None, "has_gap": False}] + list(section["sentences"])
+
+    features = counts.get("feature_counts") or {}
+    if features.get("selected") is not None:
+        # INTO `Predictor Variables`, because that is the section
+        # `_extract_final_predictor_count` reads. Putting it in Model
+        # Development would leave the check comparing the abstract against
+        # `None`, which passes as *nothing found* rather than failing — the
+        # silent-disable failure `GUIDED-117` is about.
+        line = (
+            f"Feature selection retained {features['selected']:,} predictors "
+            f"for final modeling from {features.get('candidates', 0):,} "
+            f"candidates."
+            if features.get("selection_ran") else
+            f"No feature selection was performed, so all "
+            f"{features['selected']:,} candidate predictors were carried "
+            f"forward; the final modeling set contained "
+            f"{features['selected']:,} predictors.")
+        for section in out:
+            if section["key"] == "features":
+                section["sentences"] = list(section["sentences"]) + [_line(line)]
+
+    out.append({"key": "models", "title": "Model development",
+                "sentences": _development(run, counts), "waiting_for": None})
+    out.append({"key": "evaluation", "title": "Model evaluation",
+                "sentences": _evaluation(run), "waiting_for": None})
+    return out
+
+
+def _line(text: str) -> Dict[str, Any]:
+    return {"text": text, "kind": "run", "subject": "", "at": None,
+            "has_gap": _draft.AUTHOR_GAP in text}
+
+
+def _development(run: Dict[str, Any], counts: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Which models were fitted, on what, and where the plan could not be kept.
+
+    The DIVERGENCES travel, because `GUIDED-095`'s discipline is that a model
+    which cannot honor a recorded declaration says so per model — and a methods
+    section that reported the plan without them would be describing the
+    analysis the user specified rather than the one that ran.
+    """
+    results = [r for r in (run.get("results") or []) if not r.get("error")]
+    names = [str(r.get("name") or r.get("key")) for r in results]
+    lines: List[Dict[str, Any]] = []
+    if not names:
+        return [_line(f"No model completed a fit. {_draft.AUTHOR_GAP} — state "
+                      f"why no model is reported.")]
+
+    lines.append(_line(
+        f"{_join(names)} {'were' if len(names) > 1 else 'was'} fitted on the "
+        f"{run.get('n_train', 0):,} development observations. Every step that "
+        f"estimates anything from data — imputation, scaling, encoding and any "
+        f"feature selection — was fitted inside the model's own pipeline, so "
+        f"no parameter was estimated from the held-out observations."))
+
+    diverged = [(str(r.get("name") or r.get("key")), d)
+                for r in results
+                for d in ((r.get("plan") or {}).get("divergences") or [])]
+    if diverged:
+        for name, d in diverged:
+            # `Divergence`'s OWN field names, checked against the dataclass
+            # rather than guessed. The first version read `recorded`/`fitted`,
+            # which do not exist, and rendered "the recorded plan could not be
+            # applied as written:" followed by nothing — a methods sentence
+            # that announces a caveat and does not deliver it, which is worse
+            # than omitting it.
+            requested = str(d.get("requested") or "").strip()
+            applied = str(d.get("applied") or "").strip()
+            why = str(d.get("why") or "").strip()
+            subject = str(d.get("subject") or "").strip()
+            if not (requested and applied):
+                continue
+            lines.append(_line(
+                f"For {name}, the recorded handling of "
+                f"`{subject}` could not be applied: {requested} was recorded "
+                f"and {applied} was fitted"
+                + (f", because {why.rstrip('.')}." if why else ".")))
+    return lines
+
+
+def _evaluation(run: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """How it scored, on the sealed rows, with the metric named.
+
+    The metric names are the evaluator's own, and the validator flags terms
+    invalid for the task type — so a regression section that said `accuracy`
+    would be caught. That check has been running against a section that did not
+    exist.
+    """
+    results = [r for r in (run.get("results") or []) if not r.get("error")]
+    if not results:
+        return [_line("No model produced a held-out score.")]
+    lines = [_line(
+        f"Performance was estimated on the {run.get('n_test', 0):,} held-out "
+        f"observations, which were sealed before any exploration and were not "
+        f"used to fit or to select anything.")]
+    for result in results:
+        metrics = result.get("metrics") or {}
+        if not metrics:
+            continue
+        stated = ", ".join(f"{k} {v:.3f}" for k, v in sorted(metrics.items())
+                           if isinstance(v, (int, float)))
+        lines.append(_line(
+            f"{result.get('name') or result.get('key')}: {stated}."))
+    if run.get("exploratory"):
+        lines.append(_line(
+            "This split is not a verified clean one, so these figures are "
+            f"exploratory. {_draft.AUTHOR_GAP} — state what that means for "
+            f"the conclusion."))
+    return lines
+
+
+def _join(names: List[str]) -> str:
+    if len(names) == 1:
+        return names[0]
+    return ", ".join(names[:-1]) + f" and {names[-1]}"
+
+
+#: **What `generate_latex_report` accepts that Guided still cannot supply**,
+#: and why — because *err toward more information* only works if the gaps are
+#: also information. Each entry is filed rather than left to be discovered.
+#:
+#: The audit that produced this list is the reason it exists: the first version
+#: of `to_latex` passed **9 of the exporter's 22 arguments** while the app
+#: already held seven more, so a Guided manuscript exported a methods section
+#: and an abstract and dropped the metrics table, the predictor list, the
+#: limitations paragraph, the importance ranking and the instability results on
+#: the floor. Nothing failed; the document was simply thinner than the analysis.
+NOT_EXPORTED = {
+    "table1_df": (
+        "Guided builds no Table 1. `STROBE-nut` (NUTRITION_PACK §09) and "
+        "TRIPOD both expect one, and the validator has two checks that read it "
+        "and are inert without it. Filed as `GUIDED-122`."),
+    "tripod_checklist": (
+        "The checklist engine is `DOMAIN_SCIENCE` primitive 6 and is unbuilt "
+        "(`GUIDED-111`). STROBE-nut is four checklists' worth of the same "
+        "artifact and is the reason the manuscript had to become data first."),
+    "stat_validation_summary": (
+        "Guided has no hypothesis-testing step; `pages/09` is `classic-only` "
+        "and blocked on figure tiering (`stats-correlation-test` in the "
+        "register)."),
+    "sensitivity_summary": (
+        "DELIBERATELY NOT MAPPED. The exporter's slot expects Classic's shape "
+        "— `seed_stability` with a `cv_percent` — and that coefficient-of-"
+        "variation band is one of the two invented ladders `STATE-034` is "
+        "about, which `turbotab/sensitivity.py` exists not to inherit. "
+        "Guided's fork reports whether the leading model changed, so its own "
+        "sentence goes into the methods section instead of being reshaped to "
+        "fit a verdict system this app rejected."),
+    "authors / affiliation / title": (
+        "The author's, not the app's. They render as the exporter's own "
+        "placeholders, which is the `[AUTHOR REQUIRED]` rule in another "
+        "vocabulary."),
+}
+
+
+def _with_analysis_sections(sections: List[Dict[str, Any]],
+                            explain: Optional[Dict[str, Any]],
+                            sensitivity: Optional[Dict[str, Any]],
+                            instability: Optional[Dict[str, Any]],
+                            ) -> List[Dict[str, Any]]:
+    """Fold the analyses that are neither decisions nor the primary run.
+
+    Each already composes its own methods sentence — `explain.methods_sentence`,
+    `sensitivity.methods_sentence`, the instability caption — and this puts
+    them in the document rather than leaving them on three surfaces the export
+    never visits. That is the same `AUDIT-008` shape as the validator itself:
+    the app holds the sentence and the path that needs it does not read it.
+    """
+    out = [dict(s) for s in sections]
+    extra: List[Dict[str, Any]] = []
+
+    if explain and explain.get("run"):
+        run = explain["run"]
+        line = run.get("methods_sentence") or run.get("narrative")
+        if line:
+            extra.append(_line(str(line)))
+    if sensitivity and sensitivity.get("methods_sentence"):
+        extra.append(_line(str(sensitivity["methods_sentence"])))
+    if instability:
+        for key, entry in (instability.get("runs") or {}).items():
+            caption = entry.get("prediction_caption")
+            if caption:
+                extra.append(_line(str(caption)))
+            sampling = ((entry.get("prediction_instability") or {})
+                        .get("sampling") or {})
+            if sampling.get("understates"):
+                extra.append(_line(str(sampling.get("sentence") or "")))
+
+    if not extra:
+        return out
+    for section in out:
+        if section["key"] == "evaluation":
+            section["sentences"] = list(section["sentences"]) + extra
+            return out
+    out.append({"key": "evaluation", "title": "Model evaluation",
+                "sentences": extra, "waiting_for": None})
+    return out

@@ -2248,9 +2248,37 @@ async def get_manuscript(project_id: str) -> Dict[str, Any]:
          "promoted": f.id in set(getattr(project, "promoted_figures", []) or [])}
         for f in _figure_specs_all()
     ]
+    # EVERYTHING THE APP HOLDS, not just the run. The first version passed the
+    # project and the run and dropped the importance ranking, the sensitivity
+    # fork and the resampling results — three analyses the app had already
+    # done, absent from the document that leaves the building.
+    from turbotab import explain as _explain
+    from turbotab import instability as _inst
+
+    extra: Dict[str, Any] = {}
+    try:
+        extra["explain"] = {"run": _explain.importance(
+            project, (project.selected_models or [None])[0])} \
+            if project.selected_models else None
+    except Exception:
+        extra["explain"] = None
+    try:
+        extra["sensitivity"] = await get_sensitivity(project_id)
+    except Exception:
+        extra["sensitivity"] = None
+    runs = getattr(project, "instability_runs", None) or {}
+    if runs:
+        try:
+            extra["instability"] = await get_instability(project_id)
+        except Exception:
+            extra["instability"] = None
+
     return _ms.validate(project.to_dict(),
                         run=held["run"].to_dict() if held else None,
-                        figures=figures)
+                        figures=figures,
+                        explain=extra.get("explain"),
+                        sensitivity=(extra.get("sensitivity") or {}).get("result"),
+                        instability=extra.get("instability"))
 
 
 def _figure_specs_all():
