@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**251 of 678 closed.**
+**251 of 682 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 377 |
+| `OPEN` | 381 |
 | `PARTIAL` | 50 |
 | `FIXED` | 248 |
 | `NOT-A-DEFECT` | 3 |
 
 ---
 
-## OPEN — 377
+## OPEN — 381
 
 
 ### Application state / lockbox — 66
@@ -394,7 +394,7 @@ Nothing is closed without a regression test named after it.
 | `COACH-031` | invariant | Coaching voice must never reach the manuscript verbatim. | `utils/insight_ledger.py:1188 — `text = (i.manuscript_text or '').strip() or…` | The invariant is stated correctly and is broken in exactly the way this row predicts, unchanged at HEAD. The register separation works - manuscript_text is preferred and the regex… |
 | `COACH-032` | invariant | 'high' confidence is the only tier the UI pre-selects, so 'high' means the app is asserting (docs/FINDINGS_LEDGER.md, Governing rule, lines 20-27). | `PARTIALLY, and only in the import/join domain: ml/join_doctor.py:922 `if include_low or c.confidence !=…` | All three weakenings confirmed at HEAD. (1) is COACH-015: a medium-confidence join key IS pre-selected. (2) is exact - final returns detected with no tier check, so a… |
 
-### Guided-door drive feedback — 20
+### Guided-door drive feedback — 21
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -405,6 +405,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-080` | high | Measured extent of the dominant Guided defect class: six server surfaces the page never mentions, and the sharpest is nutrition/prevalence — the entire refusal apparatus the nutrition pack was built… | `turbotab/api.py endpoints vs turbotab/web/index.html; GUIDED-075 (fixed), GUIDED-078, GUIDED-079` | **test:** `turbotab/test_the_page_says_what_the_record_says.py::test_claim[a refusal reaches a person]` — L33-A CLOSED THE SHARPEST OF THE SIX. /project/{id}/nutrition/prevalence… |
 | `GUIDED-094` | high | A fitted run never goes stale: the project records stale_downstream when an upstream answer changes and the page has no reader for it, so a held-out number stands unchanged over a table that moved… | `turbotab/project.py:662 appends to stale_downstream; archive.py and devchecks.py read it…` | ADJUDICATOR FINDING, L34, and it is the standing risk ROADMAP names, tested for the first time. The L5 invalidation DAG has never been exercised by a real recompute because until… |
 | `GUIDED-096` | high | Post-seal Explore reads the held-out rows: every noticing, count, histogram and correlation a user routes on is computed over the whole table, and the one line that would resolve it is already… | `turbotab/rankings.py SURFACES ranked_findings and missingness_survey are WHOLE_TABLE exemptions…` | FILED AT L35-A BY THE ENUMERATION GUIDED-092 ASKED FOR, and it is the class the enumeration found rather than the instance it was pointed at. MEASURED with a poison probe on… |
+| `GUIDED-102` | high | The seal draws a constant 15 percent holdout and states only that the rows are held out, so at n=80 it produces 11 test rows and says nothing about what 11 rows can resolve - PRODUCT_VISION specifies… | `turbotab/engine.py:727 draw_holdout fraction default 0.15, a constant with no n term; driven on…` | ADJUDICATOR REVIEW OF THE DESIGN DOCS, and this is the one where a SHIPPED step contradicts its own specification rather than a future step being unbuilt. DRIVEN, NOT READ… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
@@ -458,17 +459,20 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Other — 7
+### Other — 10
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `AUDIT-008` | high | The class the anti-pattern audit is actually finding: the core already holds the correct capability and the path that needs it does not read it — four of the last four hits have this shape, and it is… | `AUDIT-001 vs ml/feature_selection.py:186 multipletests; AUDIT-002 vs ml/splits.py; AUDIT-006 vs…` | NAMED BY THE EXECUTION AGENT IN THE L30 REPORT AND LEFT IN PROSE, which is the gap LOOP.md section 06.1 calls the most common one in an otherwise good report. Filing it because a… |
 | `AUDIT-011` | high | The Streamlit side has no record of the prediction/inference purpose at all, so none of the five decisions DOMAIN_SCIENCE section 01.3 says invert can read it | `utils/session_state.py has no purpose field; turbotab/purpose.py; DOMAIN_SCIENCE.md section 01.3…` | L31-A AUDIT-008 sweep, capability 4 (the recorded purpose), and it is STRUCTURAL rather than a missed call site. turbotab/purpose.py asks the question and records the answer… |
+| `MISC-014` | high | DOMAIN_SCIENCE section 03 asserts that the sensitivity fork is currently absent from the app entirely, and it is not: the capability ships in Classic, is listed as shared by FEATURE_PARITY, and is… | `docs/turbotab/DOMAIN_SCIENCE.md:263 primitive 4; ml/sensitivity.py 132 lines with…` | ADJUDICATOR REVIEW OF THE DESIGN DOCS, requested by the product owner after L36 was scoped. THE CLAIM IS FALSE AND IT IS LOAD-BEARING. DOMAIN_SCIENCE section 03 names seven… |
+| `MISC-015` | high | Four of DOMAIN_SCIENCE's seven primitives have zero ledger rows: hard stops, the sensitivity fork, the checklist engine and the generalized leakage detector are tracked only in a prose line inside an… | `ROADMAP.md D1 line reads 'hard stops, sensitivity fork, checklist engine, generalized leakage detector…` | ADJUDICATOR REVIEW OF THE DESIGN DOCS. THE PROJECT'S OWN RULE IS THE FINDING: a finding that is documented but not tracked is a finding that gets lost - README's loop section, and… |
 | `AUDIT-003` | medium | A log transform is recommended from skewness alone, with no check for data that has already been transformed | `ml/eda_recommender.py:394; research/METABOLOMICS_PACK.md section 10 Structural; DOMAIN_SCIENCE.md section 03b` | L29-D anti-pattern audit hit 3 of 4. eda_recommender.py:394 emits High skew, consider log transform or robust loss (Huber) from the target's skewness and nothing else.… |
 | `AUDIT-006` | medium | The PCA biplot sets no aspect constraint, so PC2 is stretched to fill the panel and separation is visually exaggerated | `ml/macro_shape.py plot_pca_biplot; research/GENOMICS_PACK.md section 11; research/METABOLOMICS_PACK.md…` | L30-D anti-pattern audit hit 2 of 3. GENOMICS_PACK.md section 11 lists Unlabeled PCA axes, unequal aspect ratio as a SETTLED presentation error whose consequence is… |
 | `AUDIT-007` | medium | Median imputation is the silent default and nothing states what it costs, which the clinical pack marks SETTLED as bad | `ml/pipeline.py:213; pages/05_Preprocess.py:1082; research/CLINICAL_SURVEY_PACK.md section A2 anti-pattern 2…` | L30-D anti-pattern audit hit 3 of 3, and the softest. CLINICAL_SURVEY_PACK.md section A2 anti-pattern 2: Mean/median imputation. Understates variance, destroys the distribution… |
 | `AUDIT-012` | medium | Outlier advice is driven by a generic IQR rate that cannot tell physiologically impossible from abnormal-but-real, while the impossibility bands sit beside it unused | `ml/outliers.py:44 IQR fences; ml/eda_actions.py:412-420; ml/dataset_profile.py:214…` | L31-A AUDIT-008 sweep, capability 6 (the impossibility bands). ml/outliers.detect_outliers is q1 - 1.5 IQR to q3 + 1.5 IQR, or a z-score, with no reference to physiology… |
 | `AUDIT-013` | medium | The Preprocess page reads capabilities.requires_scaled_numeric directly instead of resolving through the recipe table, so a pack's override cannot reach it | `pages/05_Preprocess.py:498,835; turbotab/recipes.py resolve() and the caps:requires_scaled_numeric selector` | L31-A AUDIT-008 sweep, capability 8 (the recipe table's resolve). pages/05 twice reads spec.capabilities.requires_scaled_numeric to decide whether a model needs scaling.… |
+| `MISC-016` | medium | The feature register has no rows for two shipped Classic pages and nothing gates its coverage, so a capability can be absent from the register without any check noticing | `docs/turbotab/FEATURE_REGISTER.md: 132 rows, zero matching pages/08_Sensitivity_Analysis (568 lines) and zero…` | ADJUDICATOR REVIEW OF THE DESIGN DOCS. THE REGISTER IS THE INSTRUMENT THAT STOPS A FEATURE GOING MISSING QUIETLY, and it has the shape of the defect it guards against: it catches… |
 
 ### DRIVE — 2
 

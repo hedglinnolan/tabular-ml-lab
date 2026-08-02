@@ -8750,5 +8750,61 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "grep for SHAP, permutation importance, variable importance and explainab across the 3,602 lines of docs/turbotab/research returns zero substantive hits; DOMAIN_SCIENCE.md mentions only variance explained in the PCA figure spec; FEATURE_PARITY.md and FEATURE_REGISTER.md have no Explain rows"
+ },
+ {
+  "id": "MISC-014",
+  "area": "MISC",
+  "sev": "high",
+  "item": "DOMAIN_SCIENCE section 03 asserts that the sensitivity fork is currently absent from the app entirely, and it is not: the capability ships in Classic, is listed as shared by FEATURE_PARITY, and is written into the manuscript",
+  "detail": "",
+  "ev": "docs/turbotab/DOMAIN_SCIENCE.md:263 primitive 4; ml/sensitivity.py 132 lines with SensitivityAnalysis.is_robust and sensitivity_random_seeds; pages/08_Sensitivity_Analysis.py 568 lines; ml/publication.py:1220-1222,:1381-1382 writes it into the manuscript; FEATURE_PARITY.md section 1 lists 'Sensitivity analysis | ml/sensitivity.py | 132 | yes'",
+  "act": "",
+  "status": "OPEN",
+  "note": "ADJUDICATOR REVIEW OF THE DESIGN DOCS, requested by the product owner after L36 was scoped. THE CLAIM IS FALSE AND IT IS LOAD-BEARING. DOMAIN_SCIENCE section 03 names seven primitives and calls number 4 the sensitivity fork - run it both ways, report whether the conclusion changes - adding 'named as the highest-value cheap addition by three of four threads, and currently absent from the app entirely.' The last clause is wrong. ml/sensitivity.py re-runs the modeling pipeline under varying imputation strategies, seeds, outlier thresholds and feature subsets, and exposes is_robust(metric, tolerance), which is the fork's whole content. pages/08_Sensitivity_Analysis.py is a shipped Streamlit page over it. ml/publication.py already writes the result into the generated manuscript. TWO DOCUMENTS IN THIS FOLDER CONTRADICT EACH OTHER about the same capability: FEATURE_PARITY section 1's capability table lists it as shared, with the line count. WHY THIS MATTERS MORE THAN A WRONG SENTENCE. DOMAIN_SCIENCE is the document that routes every domain-track loop, so the error propagates into the scoping of every D-track prompt: the work is priced as NEW CONSTRUCTION - design a primitive, decide what it means, build it - when it is EXPOSURE, which is a call site and a question. That is the difference between a loop and a paragraph, on the item three of four research threads ranked highest for value per unit of cost. It is also AUDIT-008's shape at the level of the planning document rather than the code: the repository holds the capability and the plan that needs it does not know. WHAT TO DO: correct the sentence, and re-scope the primitive as a routing question - what does Guided ask, and which of ml/sensitivity.py's four variation axes does the fork offer - noting that STATE-013 is open against the Classic page for pooling train+val+test and re-splitting, so the existing implementation has a lockbox defect that must not be inherited.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "docs/turbotab/DOMAIN_SCIENCE.md:263 primitive 4; ml/sensitivity.py 132 lines with SensitivityAnalysis.is_robust and sensitivity_random_seeds; pages/08_Sensitivity_Analysis.py 568 lines; ml/publication.py:1220-1222,:1381-1382 writes it into the manuscript; FEATURE_PARITY.md section 1 lists 'Sensitivity analysis | ml/sensitivity.py | 132 | yes'"
+ },
+ {
+  "id": "MISC-015",
+  "area": "MISC",
+  "sev": "high",
+  "item": "Four of DOMAIN_SCIENCE's seven primitives have zero ledger rows: hard stops, the sensitivity fork, the checklist engine and the generalized leakage detector are tracked only in a prose line inside an ASCII diagram",
+  "detail": "",
+  "ev": "ROADMAP.md D1 line reads 'hard stops, sensitivity fork, checklist engine, generalized leakage detector remain'; searching data/findings.json for each of the four returns zero rows; DOMAIN_SCIENCE.md section 03 numbers them 3, 4, 6 and 7 of seven",
+  "act": "",
+  "status": "OPEN",
+  "note": "ADJUDICATOR REVIEW OF THE DESIGN DOCS. THE PROJECT'S OWN RULE IS THE FINDING: a finding that is documented but not tracked is a finding that gets lost - README's loop section, and the reason the ledger exists. Four of the seven primitives DOMAIN_SCIENCE calls new capability needing design and a decision are recorded nowhere except one line of prose inside the roadmap's ASCII map. MEASURED: zero rows for 'hard stop', zero for 'sensitivity fork', zero for 'checklist engine', zero for 'generalized leakage'. TWO OF THE EIGHT SIGNATURE FIGURES ARE IN THE SAME STATE and are filed with this row: Kaplan-Meier, whose numbers-at-risk table DOMAIN_SCIENCE section 02 marks mandatory, and the forest plot, whose log-scale x-axis for ratio measures it marks non-negotiable. figure_specs.py registers six of eight. Both missing figures are CLINICAL, which is the pack with the largest research file - 1,209 lines - and zero detectors. WHY THIS IS A REAL GAP AND NOT BOOKKEEPING. Every number this project reports about its own progress comes from the ledger: 678 findings, 251 closed. None of these items appears in that denominator, so the burn-down cannot see them and no report will ever mention them going missing. It is the built-with-no-consumer habit (LOOP.md section 05) one level up - specified in a document, never built, never filed - and it is invisible to exactly the instrument that was built to catch the code version. THE CHECK THAT WOULD HAVE CAUGHT IT, and it is cheap: every primitive, signature figure and named detector in DOMAIN_SCIENCE gets a ledger row when it is specified, not when someone decides to build it. A specification is a claim about future work and a claim needs a record.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "ROADMAP.md D1 line reads 'hard stops, sensitivity fork, checklist engine, generalized leakage detector remain'; searching data/findings.json for each of the four returns zero rows; DOMAIN_SCIENCE.md section 03 numbers them 3, 4, 6 and 7 of seven"
+ },
+ {
+  "id": "GUIDED-102",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The seal draws a constant 15 percent holdout and states only that the rows are held out, so at n=80 it produces 11 test rows and says nothing about what 11 rows can resolve - PRODUCT_VISION specifies a consequence card here and it was never built or filed",
+  "detail": "",
+  "ev": "turbotab/engine.py:727 draw_holdout fraction default 0.15, a constant with no n term; driven on metabolomics_untargeted.csv n=80: sealed with 11 held-out rows and the disclosure reads '11 rows (15%) are held out and will not be looked at again until the models are scored'; PRODUCT_VISION.md:296-305 'The holdout should track n'",
+  "act": "",
+  "status": "OPEN",
+  "note": "ADJUDICATOR REVIEW OF THE DESIGN DOCS, and this is the one where a SHIPPED step contradicts its own specification rather than a future step being unbuilt. DRIVEN, NOT READ: metabolomics_untargeted.csv is n=80 - PRODUCT_VISION's own worked case - and sealing it yields 11 held-out rows. The app says '11 rows (15%) are held out and will not be looked at again until the models are scored.' That sentence is true and it is the ONLY thing said. Nothing in the disclosures or the findings mentions a confidence interval, a bootstrap, optimism correction, instability, or what a metric estimated on 11 rows can resolve - eleven probes, all absent. WHAT THE VISION SPECIFIES, at PRODUCT_VISION.md:296. A 20 percent test set at n=80 is 16 rows and a C-statistic estimated on 16 rows has a confidence interval spanning most of the unit interval - an honest number that answers nothing. The clinical thread is direct that a single train/test split is the weakest option at typical sample sizes and bootstrap optimism correction is preferred because it uses all the data. So WHETHER TO DRAW A HOLDOUT AT ALL is specified as a consequence card at the seal, not a default - the same treatment the constitution gives every choice whose cost is invisible at the moment it is made - and at small n the prediction-instability plot and the resolution statement stop being supplementary and become the headline. NONE OF IT IS BUILT AND NONE OF IT WAS FILED. Zero ledger rows for 'holdout should track n', 'prediction-instability', 'Riley', 'attenuation'. THE GOVERNING-RULE READING, stated carefully because it is not a clean violation. The app does not assert anything false: 11 rows ARE held out. But the seal is the app's most load-bearing disclosure and it presents a number that answers nothing in exactly the register it uses for one that answers something, which is the silence the rule permits doing the work of an assertion. The vision's own framing is the fix and it is not a refusal - the app supplies what only it can compute and withholds the judgment that is the researcher's. SCOPE NOTE: the resolution statement proper is specified-unbuilt by design and is a larger piece. The consequence card at the seal is smaller, is about a step that already ships, and is the half that changes what a user does.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/engine.py:727 draw_holdout fraction default 0.15, a constant with no n term; driven on metabolomics_untargeted.csv n=80: sealed with 11 held-out rows and the disclosure reads '11 rows (15%) are held out and will not be looked at again until the models are scored'; PRODUCT_VISION.md:296-305 'The holdout should track n'"
+ },
+ {
+  "id": "MISC-016",
+  "area": "MISC",
+  "sev": "medium",
+  "item": "The feature register has no rows for two shipped Classic pages and nothing gates its coverage, so a capability can be absent from the register without any check noticing",
+  "detail": "",
+  "ev": "docs/turbotab/FEATURE_REGISTER.md: 132 rows, zero matching pages/08_Sensitivity_Analysis (568 lines) and zero matching pages/09_Hypothesis_Testing (1,060 lines); tools/register.py check validates row schema only; no test asserts per-page coverage",
+  "act": "",
+  "status": "OPEN",
+  "note": "ADJUDICATOR REVIEW OF THE DESIGN DOCS. THE REGISTER IS THE INSTRUMENT THAT STOPS A FEATURE GOING MISSING QUIETLY, and it has the shape of the defect it guards against: it catches what someone remembered to add. Its own contract makes the absence meaningful - classic-only is defined as 'a claim to be justified, never a shrug' - so a page with no rows is a shrug by default, and the register cannot tell 'we decided Guided will not do sensitivity analysis' from 'nobody considered it'. BE PRECISE ABOUT WHAT IS AND IS NOT MISSING, because both pages ARE covered elsewhere: ARCHITECTURE.md's page census dispositions both, and both carry real ledger rows as CLASSIC defects - STATE-013, STATE-018, STATE-034, CONTRACT-027, CONTRACT-059 for pages/08, and CONTRACT-060, TEST-020 for pages/09. What is absent is a PARITY disposition: a recorded decision about whether the Guided door ever gets robustness re-runs or hypothesis testing, and if not, why not. That is the one question the register exists to answer and the only one nothing answers. pages/11_Theory_Reference is NOT part of this finding: it has zero register rows and is correctly dispositioned as a content asset in ARCHITECTURE, METHODOLOGY, ROADMAP and DESIGN_LANGUAGE section 10 - checked before filing, because a review that counts absences without reading the dispositions produces four findings where there are two. THE FIX IS A GATE, not four rows: register.py check should require that every page under pages/ has at least one row, or an explicit exemption with a reason, in the same file. That is the same move LOOP.md section 05's new rule made for capabilities and the same move the L35 probe made for decision kinds - the partition must be exhaustive, and what is not covered must be named rather than absent.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "docs/turbotab/FEATURE_REGISTER.md: 132 rows, zero matching pages/08_Sensitivity_Analysis (568 lines) and zero matching pages/09_Hypothesis_Testing (1,060 lines); tools/register.py check validates row schema only; no test asserts per-page coverage"
  }
 ]
