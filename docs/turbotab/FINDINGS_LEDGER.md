@@ -20,7 +20,7 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**272 of 715 closed.**
+**273 of 716 closed.**
 
 
 | Status | Count |
@@ -28,7 +28,7 @@ Nothing is closed without a regression test named after it.
 | `OPEN` | 392 |
 | `PARTIAL` | 51 |
 | `FIXED` | 269 |
-| `NOT-A-DEFECT` | 3 |
+| `NOT-A-DEFECT` | 4 |
 
 ---
 
@@ -294,10 +294,10 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-111` | medium | The checklist engine is specified and unbuilt: one artifact, four checklist definitions, two column types, and no ledger row for any of it | `docs/turbotab/DOMAIN_SCIENCE.md section 03 primitive 6 and the sequence at section 06 step 6, 'seeded with…` | FILED BY THE MISC-015 GATE. THE OVERLAP TO RESOLVE BEFORE BUILDING: turbotab/draft.py already emits [AUTHOR REQUIRED] gaps and GUIDED-107 records that ml/manuscript_validator.py… |
 | `GUIDED-126` | medium | The calibration and calibration-instability figures are offered on a multiclass target, where there is no single predicted risk to plot observed risk against | `turbotab/figure_specs.py CALIBRATION.when_applicable asks only task_type == 'classification' and…` | FOUND BY THE L39-D MULTICLASS SWEEP. A calibration curve plots observed risk against predicted risk and a three-class model predicts three, so the figure would be drawn against… |
 | `GUIDED-127` | medium | Polychoric correlations are not computable in this repository, so the two survey structure figures use Pearson - which CLINICAL_SURVEY_PACK B5.4 is SETTLED attenuates Likert associations | `no polychoric implementation exists in ml/, turbotab/ or utils/ and factor_analyzer is not installed…` | NOT HIDDEN, WHICH IS B5.4's OWN REQUIREMENT: 'caption must state polychoric vs Pearson and the n used.' So the figures say Pearson and carry the direction of the bias - attenuated… |
-| `GUIDED-129` | medium | The calibration plot fails its own annotation_box checklist item: calibration_render does not produce all seven of intercept, slope, C-statistic, E:avg, E:max, n and events | `driven at L40 once GUIDED-128 made the figure admissible for the first time…` | INVISIBLE FOR SIX LOOPS BECAUSE NOTHING EVER ADMITTED THE FIGURE. A checklist that never runs against a rendered payload is a specification, and GUIDED-128 kept this one from ever… |
 | `GUIDED-130` | medium | The app has no ordinal and no count task type, so an ordered outcome is modeled as nominal and a count as continuous - and neither loss is stated anywhere | `turbotab/project.py:505 accepts classification and regression only; driven at L40-D on multiclass_stage.csv…` | **test:** `turbotab/test_every_surface_says_what_it_cannot_take.py::test_every_silently_wrong_cell_is_filed` — FOUND BY THE L40-D SHAPE SWEEP, and it is the shape of L39-D's zero… |
 | `GUIDED-132` | medium | The model shelf ranks a three-class target identically to a binary one - same buckets, same order, no stated concern - so the three-rung ladder has no rank-and-state instance anywhere in the app | `driven by the adjudicator at L40: AnalysisProject.model_shelf_ranked on multiclass_stage.csv (k=3) and…` | THE SWEEP REPORTED THE ZERO AND DIAGNOSED IT AS A CHOICE BETWEEN TWO WRONG ALTERNATIVES - either the ladder is wrong or surfaces reach for refusal where ranking would serve.… |
 | `GUIDED-133` | medium | The decision curve risk rug is silently capped at the first 200 rows per model in row order, so on any cohort above 200 the distribution a reader judges density from is a prefix rather than a sample… | `turbotab/figure_specs.py:2025 risk_rug takes np.asarray(values)[:200] per model and concatenates across…` | CLINICAL_SURVEY_PACK.md section A4.3 is the reason this matters rather than being cosmetic: the whole argument for drawing the risk distribution is that without it a reader cannot… |
+| `GUIDED-135` | medium | Every calibration claim in this repository is verified against leaky_sepsis.csv, whose held-out C-statistic is 1.000, so the annotation_box checklist item has never been observed passing and two of… | `driven at L40 adjudication: leaky_sepsis.csv yields c_statistic=1.000 on 24 held-out rows with 16 events…` | GUIDED-097'S FIXTURE RULE AT THE OPPOSITE POLARITY. That rule was written from `do not verify against the fixture that works` - a 0/1 target where float() succeeds, hiding a… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 | `GUIDED-121` | low | A near-unique column is neither flagged nor asked about: the identifier rule is exactly one level per row, so a column at 95 percent distinct is treated as an ordinary predictor | `turbotab/identifiers.py UNIQUE_PER_ROW = 1.0, stated as a constant and reported in the receipt's rule…` | DELIBERATELY NOT GUESSED AT, and the threshold is not lowered because there is no honest number to lower it to. A column at 0.95 distinct-per-row is either an identifier with a… |
@@ -954,7 +954,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## NOT-A-DEFECT — 3
+## NOT-A-DEFECT — 4
 
 
 ### Multi-file / JSON import — 3
@@ -964,3 +964,9 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-215` | low | json_normalize minting a duplicate column label when a record carries both a dotted key and the nested object it would flatten to | `data_processor.py:246 (pd.json_normalize with max_level=2); tested at HEAD` | NOT-A-DEFECT: does not occur. [{SEQN:1, 'lab.glucose':95, 'lab':{'glucose':999}}, ...] loads as columns ['SEQN','lab.glucose'] with columns.duplicated().any() False - pandas… |
 | `IMPORT-218` | low | Stale fix parameters: a fix computed against the pre-repair frame being applied to the post-repair frame, so positional params point at the wrong rows | `utils/import_ui.py:153-155 (current = repaired_frame(...); findings = diagnose(current))…` | NOT-A-DEFECT: not reachable at HEAD. render_import_doctor recomputes findings from `current` - the already-repaired frame - on every render, and apply_fix is called with that same… |
 | `IMPORT-221` | low | Stale structural repairs surviving a corrected re-upload, because the frame signature ignores content or falls back to shape alone | `utils/import_ui.py:_frame_signature and its fallback chain; utils/import_ui.py:147-151 (the reset on…` | NOT-A-DEFECT: already hardened, and the code documents both the original defect and the trap in its first fix. _frame_signature hashes CONTENT via hash_pandas_object, and its… |
+
+### Guided-door drive feedback — 1
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `GUIDED-129` | medium | The calibration plot fails its own annotation_box checklist item: calibration_render does not produce all seven of intercept, slope, C-statistic, E:avg, E:max, n and events | `driven at L40 once GUIDED-128 made the figure admissible for the first time…` | NOT-A-DEFECT — THE PREMISE IS WRONG, AND IT WAS CHECKED BY DRIVING RATHER THAN BY READING. The row says calibration_render does not produce all seven of intercept, slope… |
