@@ -2273,7 +2273,18 @@ async def get_manuscript(project_id: str) -> Dict[str, Any]:
         except Exception:
             extra["instability"] = None
 
+    built = _ms.table_one(project)
+    # `GUIDED-123`. The nutrition checklist, on a dietary project. The lens is
+    # a RECORDED answer, so this is not an inference from column names — a
+    # table of numbers does not know it is food.
+    strobe = None
+    from turbotab.packs import DIETARY as _DIETARY
+    if _DIETARY in (project.lens or []):
+        from turbotab import strobe_nut as _sn
+        strobe = _sn.checklist(project)
     return _ms.validate(project.to_dict(),
+                        table1=built[0] if built else None,
+                        strobe_nut=strobe,
                         run=held["run"].to_dict() if held else None,
                         figures=figures,
                         explain=extra.get("explain"),

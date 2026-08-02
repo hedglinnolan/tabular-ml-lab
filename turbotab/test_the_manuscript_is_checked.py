@@ -596,7 +596,10 @@ def test_what_the_export_cannot_carry_is_served_rather_than_silent():
     out = MS.validate(p.to_dict(), run=run)
 
     fields = {x["field"] for x in out["not_exported"]}
-    assert "table1_df" in fields and "tripod_checklist" in fields
+    # `table1_df` LEFT THIS LIST AT L40-B1 (`GUIDED-122`) — it is exported now,
+    # which is what closing a gap looks like from the list's side.
+    assert "table1_df" not in fields
+    assert "tripod_checklist" in fields
     for entry in out["not_exported"]:
         assert len(entry["because"]) > 60, (
             f"{entry['field']} is unexported with a reason that is a shrug")
@@ -624,3 +627,239 @@ def test_the_provenance_card_carries_what_the_app_knows_and_no_more():
                    "residual_adjustment_constants"):
         assert absent not in card, (
             f"the provenance card claims {absent}, which the app does not hold")
+
+
+# ═══════════ L40-B1 · `GUIDED-122` — TABLE 1, REUSED ═══════════
+
+def test_table_one_is_built_from_the_shared_core():
+    """`ml/table_one.py` is 375 lines and `FEATURE_PARITY.md` §1 lists it as
+    shared. Writing a second one would be the fork `ROADMAP.md` forbids, and
+    this loop has already closed two of those in core."""
+    import ast
+
+    tree = ast.parse(open("turbotab/manuscript.py").read())
+    imports = {n.module for n in ast.walk(tree)
+               if isinstance(n, ast.ImportFrom) and n.module}
+    assert "ml.table_one" in imports
+    body = ast.unparse(tree)
+    for invented in ("def _smd", "def _continuous_row", "def _categorical_row"):
+        assert invented not in body, (
+            f"turbotab/manuscript.py defines {invented!r}; §A3's arithmetic "
+            f"lives in ml/table_one.py")
+
+
+@pytest.mark.parametrize("shape", sorted(TARGET_SHAPES))
+def test_table_one_carries_smds_and_no_p_values(shape):
+    """§A3 is SETTLED: *significance tests should be avoided in descriptive
+    tables*, and the SMD is shown as a value with no PASS or FAIL — the 0.10
+    rule of thumb behaves poorly at small n, so the reader judges."""
+    name, target, task, _ = TARGET_SHAPES[shape]
+    p, _ = _project(name, target, task, fit=False)
+    built = MS.table_one(p)
+    if built is None:
+        pytest.skip("no describable frame")
+    table, meta = built
+
+    columns = " ".join(str(c) for c in table.columns).lower()
+    assert "p-value" not in columns and "p value" not in columns, (
+        "a p-value column reached a baseline table, which is the Table 1 "
+        "fallacy §A3 names")
+    assert meta["evidence_status"] == "SETTLED"
+    assert "A3" in meta["source"]
+    rendered = table.to_string()
+    for verdict in ("PASS", "FAIL", "balanced", "imbalanced"):
+        assert verdict not in rendered, (
+            f"the table stamps {verdict!r} on an SMD; §A3 says show the value "
+            f"and let the reader judge")
+    if meta["grouping_var"]:
+        assert "SMD" in [str(c) for c in table.columns]
+
+
+def test_table_one_describes_the_columns_the_model_is_fed():
+    """§A3 calls all candidate predictors non-negotiable, so the variable list
+    comes from `training.feature_frame` — which applies the target, the
+    grouping key and the identifier exclusion — rather than from the file."""
+    from turbotab import training as T
+
+    p, _ = _sepsis()
+    table, meta = MS.table_one(p)
+    described = {str(i).split(",")[0].strip() for i in table.index}
+    fed = set(T.feature_frame(p).columns)
+
+    assert described <= fed | {""}, (
+        f"Table 1 describes {described - fed}, which the model is not fed")
+    assert "admission_id" not in described, (
+        "the identifier the app excluded is described as a predictor")
+
+
+def _sepsis():
+    """A binary fixture outside `TARGET_SHAPES`, because Table 1's stratifier
+    is the outcome and a continuous one has no strata to compare."""
+    df = pd.read_csv("turbotab/sample_data/leaky_sepsis.csv")
+    df = df[df["sepsis"].notna()].copy()
+    p = AnalysisProject.from_dataframe(df, "leaky_sepsis.csv")
+    p.target, p.task_type = "sepsis", "classification"
+    p.set_grain("not_sure")
+    p.set_eligibility("everyone")
+    rng = np.random.default_rng(42)
+    idx = list(p.df.index)
+    rng.shuffle(idx)
+    labels = idx[:int(round(len(idx) * 0.25))]
+    p.seal_lockbox(labels, fraction=len(labels) / len(p.df))
+    return p, T.train(p, ["logreg"]).to_dict()
+
+
+def test_the_two_table_one_checks_are_live_and_can_fail():
+    """**Not passing, merely not running** — the state L38 named for the LaTeX
+    checks and L39 closed. Without a table both short-circuit to PASS, so this
+    drives a table whose n DISAGREES and asserts the check goes red."""
+    p, run = _sepsis()
+    table, _meta = MS.table_one(p)
+
+    passing = MS.validate(p.to_dict(), run=run, table1=table)
+    row = next(r for r in passing["rows"]
+               if r["Check"].startswith("Table 1 population"))
+    assert row["Status"] == "PASS", row["Detail"]
+    assert passing["table1_rows"] > 0
+
+    # THE PROBE: a Table 1 describing a different cohort.
+    wrong = table.copy()
+    wrong.columns = [str(c).replace("(N=160)", "(N=999)") for c in wrong.columns]
+    failed = MS.validate(p.to_dict(), run=run, table1=wrong)
+    row = next(r for r in failed["rows"]
+               if r["Check"].startswith("Table 1 population"))
+    assert row["Status"] == "FAIL", (
+        "a Table 1 reporting 999 participants against an analysis population "
+        "of 160 passed, so the check is still inert")
+
+
+# ═══════════ L40-B2 · `GUIDED-123` — THE STROBE-NUT OBJECTS ═══════════
+
+def _dietary():
+    from turbotab import packs
+
+    df = pd.read_csv("turbotab/sample_data/clinic_visits.csv")
+    p = AnalysisProject.from_dataframe(df, "clinic_visits.csv")
+    p.target, p.task_type = "hba1c", "regression"
+    # A RECORDED ANSWER, not an inference from column names — a table of
+    # numbers does not know it is food.
+    p.set_lens([packs.DIETARY])
+    p.set_grain("not_sure")
+    p.set_eligibility("everyone")
+    return p
+
+
+def test_the_reviewers_six_are_six_and_in_order():
+    """§09's fixed order is part of the specification. *A nutrition reviewer
+    reads your methods in a fixed order and checks six things*, so a checklist
+    with the same items in a different sequence is a different artifact."""
+    from turbotab import strobe_nut as SN
+
+    assert isinstance(SN.ITEMS, tuple), "a list can be reordered in place"
+    assert [item["order"] for item in SN.ITEMS] == [1, 2, 3, 4, 5, 6]
+    assert [item["key"] for item in SN.ITEMS] == [
+        "instrument", "food_composition_database", "validation",
+        "misreporting", "energy_adjustment", "within_person_variation"]
+
+    result = SN.checklist(_dietary())
+    assert [row["key"] for row in result["items"]] == \
+        [item["key"] for item in SN.ITEMS], "the order did not survive"
+
+
+def test_four_of_the_six_are_owed_by_the_app_and_say_so():
+    """The product owner's question, answered concretely. §09's own table marks
+    each item `user`, `app`, or `app detects + user confirms`, and four of the
+    six the reviewer reads are the app's — none computed."""
+    from turbotab import strobe_nut as SN
+
+    result = SN.checklist(_dietary())
+    owed_in_the_six = [row["key"] for row in result["items"]
+                       if row["who"] == SN.APP and not row["answered"]]
+    assert set(owed_in_the_six) == {"misreporting", "energy_adjustment",
+                                    "within_person_variation"}
+    # And complex survey design, which §09 assigns to the app but which is not
+    # one of the reviewer's six — kept in `ALSO_OWED` so the six stay six.
+    assert "complex_survey_design" in result["owed_by_the_app"]
+
+    for row in result["items"] + result["also_owed"]:
+        if row["who"] in (SN.APP, SN.BOTH) and not row["answered"]:
+            assert len(row["needs"]) > 60, (
+                f"{row['key']} is owed with no statement of what building it "
+                f"needs, which makes the gap an absence rather than a plan")
+            # AN ITEM WAITING ON A STEP IS NOT AN ITEM WAITING ON A BUILD, and
+            # a checklist that rendered them alike would tell a user to wait
+            # for us when they should be answering a question.
+            if row.get("waiting_on"):
+                assert "Nothing to build" in row["needs"]
+            else:
+                assert "GUIDED-123" in row["needs"] or "GUIDED-067" in row["needs"]
+
+
+def test_an_item_the_app_does_hold_is_answered_rather_than_uniformly_red():
+    """A checklist that is uniformly red is as uninformative as one that is
+    uniformly green. `route_missingness` records a mechanism per column and
+    §09 asks for exactly that, so it answers."""
+    from turbotab import missingness as M
+    from turbotab import strobe_nut as SN
+
+    p = _dietary()
+    before = SN.checklist(p)
+    assert not any(r["answered"] for r in before["also_owed"]
+                   if r["key"] == "missing_data")
+
+    for card in M.survey(p.df, p.target):
+        if card["branch"] == "numeric":
+            p.route_missingness(card["column"], M.NOT_SURE, M.IMPUTE_MEDIAN)
+    after = SN.checklist(p)
+    row = next(r for r in after["also_owed"] if r["key"] == "missing_data")
+    assert row["answered"] is True
+    assert "mechanism" in row["answer"]
+    assert after["n_owed_by_the_app"] < before["n_owed_by_the_app"]
+
+
+def test_the_checklist_reaches_the_manuscript_in_the_reviewers_order():
+    """`LOOP.md` §05: ships with its consumer. And the consumer is the METHODS
+    section, because that is where a reviewer reads it."""
+    from turbotab import strobe_nut as SN
+
+    p = _dietary()
+    out = MS.validate(p.to_dict(), strobe_nut=SN.checklist(p))
+    section = next((s for s in out["document"]["sections"]
+                    if s["key"] == "dietary_reporting"), None)
+    assert section is not None, "the checklist did not reach the manuscript"
+    assert "STROBE-nut" in section["title"]
+
+    text = " ".join(i["text"] for i in section["sentences"])
+    # UNANSWERED ITEMS BECOME AUTHOR GAPS, and an item the APP owes says so —
+    # one gap is waiting for the researcher and one is waiting for us.
+    assert "[AUTHOR REQUIRED]" in text
+    assert "The app does not compute this yet" in text
+    assert "food composition database" in text.lower()
+    assert "energy adjustment" in text.lower()
+
+
+def test_a_non_dietary_project_gets_no_nutrition_checklist():
+    """The lens decides. A clinical project is not owed STROBE-nut, and
+    rendering it there would be ceremony the reader has to skip past."""
+    p, _ = _sepsis()
+    out = MS.validate(p.to_dict(), strobe_nut=None)
+    assert out["strobe_nut"] is None
+    assert not any(s["key"] == "dietary_reporting"
+                   for s in out["document"]["sections"])
+
+
+def test_the_checklist_is_rendered_from_the_result_it_serves():
+    """Two computations of one checklist are two checklists that agree today."""
+    import ast
+
+    from turbotab import strobe_nut as SN
+
+    p = _dietary()
+    result = SN.checklist(p)
+    assert SN.methods_sentences_from(result) == SN.methods_sentences(p)
+
+    tree = ast.parse(open("turbotab/manuscript.py").read())
+    body = ast.unparse(tree)
+    assert "methods_sentences_from" in body, (
+        "the manuscript recomputes the checklist rather than rendering the "
+        "one it serves")

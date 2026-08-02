@@ -1278,5 +1278,21 @@
   "classic": "—",
   "state": "guided-only",
   "reason": "CLINICAL_SURVEY_PACK B5.2. Owed to Classic. Exists beside the diverging bar because it shows SHAPE - bimodality is visible here and invisible there."
+ },
+ {
+  "id": "report-table-one",
+  "step": "report",
+  "capability": "Table 1 with standardized mean differences and per-variable missing counts",
+  "classic": "pages/10 via ml/table_one.py",
+  "state": "core",
+  "reason": "GUIDED-122. ml/table_one.py is the shared core and both doors call it now. Guided configures it to CLINICAL_SURVEY_PACK A3's own positions - SMDs rather than p-values, which is SETTLED - and takes the variable list from training.feature_frame so the table describes the columns the model is fed, which A3 calls non-negotiable."
+ },
+ {
+  "id": "report-strobe-nut-checklist",
+  "step": "report",
+  "capability": "STROBE-nut reviewer checklist in the manuscript, in the reviewer's fixed order",
+  "classic": "—",
+  "state": "guided-only",
+  "reason": "GUIDED-123. Owed to Classic. NUTRITION_PACK section 09's six methods questions, each marked user / app / app-detects-user-confirms per the pack's own table. It reports that four of the six are the app's responsibility and none is computed, with what building each needs - the gaps are information too."
  }
 ]

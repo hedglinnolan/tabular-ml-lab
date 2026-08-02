@@ -139,6 +139,7 @@ def structure(project_dict: Dict[str, Any],
               explain: Optional[Dict[str, Any]] = None,
               sensitivity: Optional[Dict[str, Any]] = None,
               instability: Optional[Dict[str, Any]] = None,
+              strobe_nut: Optional[Dict[str, Any]] = None,
               ) -> Dict[str, Any]:
     """The manuscript as data: sections, counts, figures, and the gaps.
 
@@ -152,6 +153,7 @@ def structure(project_dict: Dict[str, Any],
     sections = _with_run_sections(body["sections"], run, counts)
     sections = _with_analysis_sections(sections, explain, sensitivity,
                                        instability)
+    sections = _with_strobe_nut(sections, strobe_nut)
     return {
         "sections": sections,
         "standfirst": body["standfirst"],
@@ -185,6 +187,7 @@ def structure(project_dict: Dict[str, Any],
         "sensitivity": sensitivity or None,
         "instability": instability or None,
         "run": run or None,
+        "strobe_nut": strobe_nut or None,
     }
 
 
@@ -476,6 +479,8 @@ def validate(project_dict: Dict[str, Any], *,
              explain: Optional[Dict[str, Any]] = None,
              sensitivity: Optional[Dict[str, Any]] = None,
              instability: Optional[Dict[str, Any]] = None,
+             table1: Optional[Any] = None,
+             strobe_nut: Optional[Dict[str, Any]] = None,
              ) -> Dict[str, Any]:
     """Render the manuscript and run `ml`'s validator over it.
 
@@ -484,7 +489,8 @@ def validate(project_dict: Dict[str, Any], *,
     needs it does not read it*, and this is that path.
     """
     doc = structure(project_dict, run=run, figures=figures, explain=explain,
-                    sensitivity=sensitivity, instability=instability)
+                    sensitivity=sensitivity, instability=instability,
+                    strobe_nut=strobe_nut)
     rendered = to_markdown(doc)
     try:
         latex = to_latex(doc)
@@ -507,7 +513,13 @@ def validate(project_dict: Dict[str, Any], *,
         # which left three checks inert — they look for markdown artifacts and
         # internal model keys leaking into a LaTeX file and had nothing to
         # read, so they reported PASS about a document nobody had made.
-        latex, doc["task_type"] or "classification")
+        latex, doc["task_type"] or "classification",
+        # `GUIDED-122`. Until L40 this was omitted, so *Table 1 population
+        # matches the analysis cohort* and *Table 1 includes all finalized
+        # predictors* both short-circuited to PASS on a table that did not
+        # exist. Two more checks that were not passing, merely not running —
+        # the state L38 named for the LaTeX checks and L39 closed.
+        table1_df=table1)
 
     rows = report.to_rows()
     # THE VALIDATOR'S FAILURES ARE NOT ALL THE SAME KIND, and reporting them as
@@ -538,6 +550,9 @@ def validate(project_dict: Dict[str, Any], *,
         # discovered. *Err toward more information* applies to the gaps too.
         "not_exported": [{"field": k, "because": v}
                          for k, v in NOT_EXPORTED.items()],
+        "strobe_nut": doc.get("strobe_nut"),
+        "table1_rows": 0 if table1 is None else int(len(table1)),
+        "table1_columns": [] if table1 is None else [str(c) for c in table1.columns],
     }
 
 
@@ -745,10 +760,6 @@ def _join(names: List[str]) -> str:
 #: limitations paragraph, the importance ranking and the instability results on
 #: the floor. Nothing failed; the document was simply thinner than the analysis.
 NOT_EXPORTED = {
-    "table1_df": (
-        "Guided builds no Table 1. `STROBE-nut` (NUTRITION_PACK §09) and "
-        "TRIPOD both expect one, and the validator has two checks that read it "
-        "and are inert without it. Filed as `GUIDED-122`."),
     "tripod_checklist": (
         "The checklist engine is `DOMAIN_SCIENCE` primitive 6 and is unbuilt "
         "(`GUIDED-111`). STROBE-nut is four checklists' worth of the same "
@@ -813,4 +824,118 @@ def _with_analysis_sections(sections: List[Dict[str, Any]],
             return out
     out.append({"key": "evaluation", "title": "Model evaluation",
                 "sentences": extra, "waiting_for": None})
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# `GUIDED-122` — Table 1, reusing the one that exists
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: `CLINICAL_SURVEY_PACK.md` §A3's own defaults, and every one of them is a
+#: correctness position rather than a preference:
+#:
+#: * **SMDs, not p-values.** *"p-values in a baseline table answer a question
+#:   nobody asked — whether the observed groups differ from a hypothetical
+#:   random draw — and they systematically mislead by declaring trivial
+#:   differences significant in large cohorts and important differences
+#:   non-significant in small ones. The STROBE explanation-and-elaboration
+#:   document states that significance tests should be avoided in descriptive
+#:   tables."* SETTLED.
+#: * **Missing counts in the table**, per variable. *"Reviewers ask for it
+#:   every time, and burying it in the text is the most common revision
+#:   request on a cohort paper."*
+#: * **Medians with IQRs for skewed variables.** *"A mean CRP of 42 mg/L with
+#:   SD 90 tells the reader nothing about a typical patient."*
+#:
+#: And the SMD is **shown, never stamped**: §A3 records that the 0.10 rule of
+#: thumb behaves poorly at small n and says to *show the value and let the
+#: reader judge — never stamp PASS/FAIL*. `ml/table_one` prints the number and
+#: no verdict, which is why it can be reused as it is.
+TABLE1_EVIDENCE = {
+    "source": "research/CLINICAL_SURVEY_PACK.md#A3 · Table One / cohort description",
+    "evidence_status": "SETTLED",
+    "claim": ("Build Table 1 with standardized mean differences rather than "
+              "p-values; significance tests should be avoided in descriptive "
+              "tables. Show the SMD value and let the reader judge — never "
+              "stamp PASS or FAIL."),
+}
+
+
+def table_one(project: Any, run: Optional[Dict[str, Any]] = None):
+    """Table 1 for this project, or `None` where there is nothing to describe.
+
+    **Reuses `ml/table_one.generate_table1`** — `FEATURE_PARITY.md` §1 lists it
+    as shared and it already implements every §A3 requirement, including the
+    SMD formulas and the Yang & Dalton multinomial extension. Writing a second
+    one would be the fork `ROADMAP.md` forbids, and this loop has already
+    closed two of those in core.
+
+    **All candidate predictors belong in it — §A3 calls that non-negotiable**,
+    so the variable list comes from the frame the model is actually fed rather
+    than from the file: `training.feature_frame` applies the target, the
+    grouping key and the identifier exclusion, which is exactly the set a
+    reader needs described.
+    """
+    from ml.table_one import Table1Config, generate_table1, \
+        partition_table1_variables
+    from turbotab import training as _training
+
+    frame = getattr(project, "working_table", None)
+    if frame is None or frame.empty or not project.target:
+        return None
+    features = _training.feature_frame(project, frame)
+    if features.empty:
+        return None
+
+    continuous, categorical = partition_table1_variables(
+        features, list(features.columns))
+    # THE STRATIFIER IS THE OUTCOME for a prediction paper, which is §A3's
+    # first named case. Only where it has few enough levels to be columns —
+    # a continuous outcome has no strata, and a table with 240 columns is not
+    # a table.
+    grouping = None
+    levels = int(frame[project.target].nunique())
+    if project.task_type == "classification" and 2 <= levels <= 5:
+        grouping = str(project.target)
+
+    table, metadata = generate_table1(
+        frame, Table1Config(
+            grouping_var=grouping,
+            continuous_vars=continuous,
+            categorical_vars=categorical,
+            # §A3, SETTLED. Not a preference.
+            show_pvalues=False,
+            show_smd=bool(grouping),
+            show_missing=True,
+            use_median_iqr_if_skewed=True,
+        ))
+    return table, {**metadata, "grouping_var": grouping,
+                   "n_continuous": len(continuous),
+                   "n_categorical": len(categorical), **TABLE1_EVIDENCE}
+
+
+def _with_strobe_nut(sections: List[Dict[str, Any]],
+                     checklist: Optional[Dict[str, Any]]
+                     ) -> List[Dict[str, Any]]:
+    """`GUIDED-123`. The nutrition checklist reaching the manuscript.
+
+    Into the METHODS, in the reviewer's own order, because §09's order is part
+    of the specification — *a nutrition reviewer reads your methods in a fixed
+    order and checks six things* — and a checklist rendered elsewhere in a
+    different sequence is a different artifact.
+
+    Unanswered items become `[AUTHOR REQUIRED]` gaps rather than being
+    dropped, which is how this app has always handled a claim only the author
+    can make. An item the APP owes says so, so the two kinds of gap are not
+    confused: one is waiting for the researcher and one is waiting for us.
+    """
+    if not checklist or not checklist.get("items"):
+        return sections
+    from turbotab import strobe_nut as _sn
+
+    out = [dict(s) for s in sections]
+    lines = [_line(text) for text in _sn.methods_sentences_from(checklist)]
+    out.append({"key": "dietary_reporting",
+                "title": "Dietary assessment reporting (STROBE-nut)",
+                "sentences": lines, "waiting_for": None})
     return out
