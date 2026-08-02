@@ -1828,6 +1828,23 @@ def unload_for_test() -> None:
     _LOADED.clear()
 
 
+def loaded_for_test() -> frozenset:
+    """Which packs this process has registered into the recipe table.
+
+    Exists so a test can put the bookkeeping back exactly as it found it.
+    Restoring the TABLE without restoring this leaves the two disagreeing:
+    `load` would re-register rows the restore already put back, or skip rows
+    the restore removed. Both are silent.
+    """
+    return frozenset(_LOADED)
+
+
+def restore_loaded_for_test(keys) -> None:
+    """Put the load bookkeeping back. Pairs with `loaded_for_test`."""
+    _LOADED.clear()
+    _LOADED.update(keys)
+
+
 def prior_columns(pack_key: str, detector: str,
                   df: pd.DataFrame) -> Optional[List[str]]:
     """The columns a column-scoped prior applies to, from its own detector.

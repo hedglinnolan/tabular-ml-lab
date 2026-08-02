@@ -147,12 +147,14 @@ The second option opens a follow-up: *which column identifies the person?* — p
 | Branch | Strategy | Label | Executes | Because |
 |---|---|---|---|---|
 | numeric | `indicator` | Add a was-it-missing column and leave the value blank | now (row-local) | Row-local: the new column is 1 where this row's value is blank and 0 where it is not. Nothing about any other row is consulted. |
+| numeric | `indicator_and_impute` | Add a was-it-missing column and fill the value | in training folds | Both halves of clause §06 at once. The was-it-missing column is row-local and is added now; the value under it is a fact about the whole column and is fitted inside each training fold. The fact of the absence is kept AND the model gets a number to work with. |
 | numeric | `impute_median` | Fill with the median | in training folds | Stateful: the median is a fact about the whole column. Fitted inside each training fold, never over the sealed rows. |
 | numeric | `impute_mean` | Fill with the mean | in training folds | Stateful: the mean is a fact about the whole column, and a more fragile one than the median — one extreme value moves it. |
 | numeric | `impute_mice` | Fill by modeling it from the other columns (MICE) | in training folds | Stateful, and the most so: MICE fits a model per column against the others, so it learns the joint distribution of the training rows. |
 | numeric | `leave` | Leave it alone for now | now (row-local) | Nothing is computed and nothing is deferred. Recorded so that 'decided to leave it' and 'never looked at it' are different states. |
 | categorical | `explicit_category` | Keep blanks as an explicit `Missing` category | now (row-local) | Row-local: a blank becomes a literal `Missing` token using nothing but that row's own cell, so it can execute now. |
 | categorical | `indicator` | Add a was-it-missing column and leave the value blank | now (row-local) | Row-local: the new column is 1 where this row's value is blank and 0 where it is not. Nothing about any other row is consulted. |
+| categorical | `indicator_and_impute` | Add a was-it-missing column and fill the value | in training folds | Both halves of clause §06 at once. The was-it-missing column is row-local and is added now; the value under it is a fact about the whole column and is fitted inside each training fold. The fact of the absence is kept AND the model gets a number to work with. |
 | categorical | `impute_mode` | Fill with the most common value | in training folds | Stateful: the most common value is a fact about the whole column, so computing it over the full table would compute it over the held-out rows too. |
 | categorical | `leave` | Leave it alone for now | now (row-local) | Nothing is computed and nothing is deferred. Recorded so that 'decided to leave it' and 'never looked at it' are different states. |
 

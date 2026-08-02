@@ -340,14 +340,40 @@ def _matches(selector: str, model_key: str, spec: Any) -> bool:
     return bool(getattr(spec.capabilities, flag, False))
 
 
+def allowed_origins(lens: Optional[Sequence[str]]) -> Optional[frozenset]:
+    """Which contributors' rows THIS project may resolve against.
+
+    **`packs.load` is process-global and never unloads**, so once any project
+    selects the metabolomics lens every later project in the same process finds
+    `pareto` and `log1p` in the table — including one whose lens is `other`.
+    That was a display defect while nothing fitted from the table; it became a
+    fit defect the moment `pipeline_plan` started reading it, which is how
+    `test_a_recorded_decision_changes_something` found it.
+
+    Filtering by ORIGIN rather than unloading, because unloading would mean
+    mutating module-global state around a request and the job queue runs two
+    workers. A filter is a read.
+
+    `None` means *every origin*, which is the old behavior and is what a caller
+    reading the catalogue rather than a project wants.
+    """
+    if lens is None:
+        return None
+    return frozenset({CORE} | {f"{key}_pack" for key in lens})
+
+
 def resolve(model_key: str, operation_key: str,
-            registry: Optional[Dict[str, Any]] = None) -> Resolved:
+            registry: Optional[Dict[str, Any]] = None,
+            origins: Optional[frozenset] = None) -> Resolved:
     """The table's answer for one model and one operation.
 
     Most specific selector wins, ties broken by registration order so a pack
     registered after core overrides core at equal specificity — which is the
     behavior a pack author expects and the reason `register_default` appends
     rather than inserts.
+
+    `origins` scopes the rows to this project's own lens; see
+    `allowed_origins`. `None` reads the whole table.
     """
     if registry is None:
         from ml.model_registry import get_registry
@@ -360,6 +386,8 @@ def resolve(model_key: str, operation_key: str,
     best: Optional[Default] = None
     best_rank = -1
     for d in _DEFAULTS:
+        if origins is not None and d.origin not in origins:
+            continue
         if d.operation != operation_key or not _matches(d.selector, model_key, spec):
             continue
         rank = _SPECIFICITY[_selector_kind(d.selector)]
@@ -378,7 +406,8 @@ def resolve(model_key: str, operation_key: str,
 
 
 def candidates(model_key: str, operation_key: str,
-               registry: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+               registry: Optional[Dict[str, Any]] = None,
+               origins: Optional[frozenset] = None) -> List[Dict[str, Any]]:
     """Every default row that MATCHED this cell, ranked as `resolve` ranks them,
     with the winner marked.
 
@@ -403,6 +432,8 @@ def candidates(model_key: str, operation_key: str,
 
     rows: List[Dict[str, Any]] = []
     for d in _DEFAULTS:
+        if origins is not None and d.origin not in origins:
+            continue
         if d.operation != operation_key or not _matches(d.selector, model_key, spec):
             continue
         kind = _selector_kind(d.selector)
@@ -420,10 +451,11 @@ def candidates(model_key: str, operation_key: str,
 
 
 def recipe(model_key: str, registry: Optional[Dict[str, Any]] = None,
-           operations_: Optional[Sequence[str]] = None) -> List[Resolved]:
+           operations_: Optional[Sequence[str]] = None,
+           origins: Optional[frozenset] = None) -> List[Resolved]:
     """Every operation resolved for one model, in a stable order."""
     keys = list(operations_ or sorted(_OPERATIONS))
-    return [resolve(model_key, k, registry) for k in keys]
+    return [resolve(model_key, k, registry, origins) for k in keys]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

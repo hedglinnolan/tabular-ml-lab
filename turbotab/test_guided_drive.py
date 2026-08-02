@@ -164,7 +164,12 @@ def test_a_categorical_column_is_offered_an_explicit_missing_level():
     card = missingness_cards(df)[0]
     assert card["dtype_route"] == "categorical"
     keys = {o["key"] for o in card["options"]}
-    assert "explicit_missing" in keys and "impute_mode" in keys
+    # The card speaks the RECORD's vocabulary since `GUIDED-090`: one table
+    # decides what both doors offer, so the option key IS the declaration key.
+    assert "explicit_category" in keys and "impute_mode" in keys
+    assert "leave" in keys, (
+        "the categorical branch permits leaving the blanks and the card does "
+        "not offer it — judgment renders as ranking, never as absence")
 
 
 def test_every_option_states_when_it_happens(client, project):
@@ -181,12 +186,12 @@ def test_every_option_states_when_it_happens(client, project):
     # about the INTERFACE inventing one; the engine naming a compound it really
     # performs is the clause being stated more precisely, not less.
     from ml.missingness_plan import (TIMING_IMMEDIATE, TIMING_IN_PIPELINE,
-                                     TIMING_MIXED)
+                                     TIMING_MIXED, TIMING_RECORDED_ONLY)
     cards = client.get(f"/project/{project}/evidence/missingness").json()["cards"]
     for c in cards:
         for o in c["options"]:
             assert o["timing"] in (TIMING_IMMEDIATE, TIMING_IN_PIPELINE,
-                                   TIMING_MIXED)
+                                   TIMING_MIXED, TIMING_RECORDED_ONLY)
             assert o["timing_prose"]
             assert o["decision_sentence"].endswith("."), (
                 "a decision sentence that is not a sentence cannot appear in a "
@@ -198,7 +203,11 @@ def test_the_timing_is_methods_prose_not_a_ui_lecture(client, project):
     lecture about how the software works."""
     cards = client.get(f"/project/{project}/evidence/missingness").json()["cards"]
     sentences = [o["decision_sentence"] for c in cards for o in c["options"]]
-    assert any("training-fold" in s for s in sentences), (
+    # "training fold", not "training-fold": since `GUIDED-090` the card quotes
+    # the RECORD's sentence rather than writing its own, and the record's
+    # phrasing is "within each training fold". The claim is about the timing
+    # being in the prose, which is unchanged; the hyphen was never the claim.
+    assert any("training fold" in s for s in sentences), (
         "no sentence states that the statistic is fitted on training folds")
     banned = ("pipeline", "the app ", "the tool ", "click", "button", "the UI")
     for s in sentences:

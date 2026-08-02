@@ -124,13 +124,20 @@ def _flat_frame(n: int = 160, seed: int = 1):
 # ── 1 · parameters, and the family is larger than the coefficients ─────────
 
 def _fitted_prep(project, model_key="ridge"):
-    """The preprocessing parameters a run actually fitted.
+    """Every preprocessing parameter a run actually fitted.
 
     Read off the pipeline rather than recomputed, because a recomputation here
     would be a second implementation agreeing with itself.
-    """
-    from sklearn.compose import ColumnTransformer                      # noqa: F401
 
+    **Collected by walking the fitted pipeline rather than by naming three
+    attributes.** It used to reach for `prep.named_transformers_["num"]` and
+    two known steps inside it, which was fine while the trainer built one
+    hard-coded ColumnTransformer — and would have quietly stopped covering
+    anything the moment the pipeline was composed from the user's own plan
+    (`GUIDED-095`), because the imputer a user chose could be in a block this
+    never opened. Walking finds every fitted array wherever the plan put it, so
+    a step added next loop is probed without anybody remembering to add it.
+    """
     table = project.working_table
     target = str(project.target)
     sealed = set(project.lockbox["labels"])
@@ -144,18 +151,51 @@ def _fitted_prep(project, model_key="ridge"):
     from ml.model_registry import get_registry
     spec = get_registry()[model_key]
     pipe = training._pipeline(spec.factory("regression", 42), features,
-                              needs_scaling=True)
+                              needs_scaling=True, project=project,
+                              model_key=model_key)
     pipe.fit(X_train, y_train)
-    prep = pipe.named_steps["prep"]
-    num = prep.named_transformers_["num"]
-    return {
-        "medians": np.asarray(num.named_steps["impute"].statistics_,
-                              dtype=float),
-        "means": np.asarray(num.named_steps["scale"].mean_, dtype=float),
-        "scales": np.asarray(num.named_steps["scale"].scale_, dtype=float),
-        "coef": np.asarray(pipe.named_steps["model"].coef_, dtype=float),
-        "n_train": int(len(X_train)),
-    }
+    out = {"n_train": int(len(X_train)),
+           "coef": np.asarray(pipe.named_steps["model"].coef_, dtype=float)}
+    for name, array in sorted(_fitted_arrays(pipe.named_steps["prep"])
+                              + _fitted_arrays(pipe.named_steps["shape"])):
+        out[name] = array
+    assert len(out) > 2, (
+        "no fitted preprocessing parameter was found at all, so the "
+        "comparison below is between two dictionaries of nothing")
+    return out
+
+
+#: Attributes scikit-learn fits from data. Named rather than sniffed by the
+#: trailing underscore, because that convention also covers `n_features_in_`
+#: and `feature_names_in_`, which are facts about the SHAPE and move whenever
+#: the column list moves — a probe that compared those would report a leak
+#: every time the plan changed.
+_FITTED_ATTRIBUTES = ("statistics_", "mean_", "scale_", "var_", "center_",
+                      "deviation_", "lower_", "upper_", "lambdas_",
+                      "data_min_", "data_max_", "bin_edges_",
+                      "components_", "categories_", "encodings_")
+
+
+def _fitted_arrays(node, prefix=""):
+    """Every fitted parameter under a fitted transformer, named by its path."""
+    found = []
+    for attribute in _FITTED_ATTRIBUTES:
+        if not hasattr(node, attribute):
+            continue
+        try:
+            value = np.asarray(getattr(node, attribute), dtype=float)
+        except (TypeError, ValueError):
+            value = np.asarray(
+                [str(v) for v in np.ravel(np.asarray(
+                    getattr(node, attribute), dtype=object))])
+        found.append((f"{prefix}{type(node).__name__}.{attribute}", value))
+    for entry in (getattr(node, "transformers_", None) or []):
+        child_name, child = entry[0], entry[1]
+        if hasattr(child, "fit"):
+            found += _fitted_arrays(child, f"{prefix}{child_name}/")
+    for child_name, child in (getattr(node, "named_steps", None) or {}).items():
+        found += _fitted_arrays(child, f"{prefix}{child_name}/")
+    return found
 
 
 def test_no_held_out_row_moves_any_fitted_parameter(client):
@@ -185,11 +225,12 @@ def test_no_held_out_row_moves_any_fitted_parameter(client):
 
     after = _fitted_prep(project)
     assert after["n_train"] == before["n_train"]
-    for key in ("medians", "means", "scales", "coef"):
+    assert set(before) == set(after), (
+        "the fitted pipeline changed shape when only the held-out rows did")
+    for key in sorted(set(before) - {"n_train"}):
         assert np.array_equal(before[key], after[key]), (
             f"{key} moved when only the HELD-OUT rows changed, so the held-out "
-            f"rows are inside the fit — "
-            f"{np.abs(before[key] - after[key]).max():.6g} maximum change")
+            f"rows are inside the fit")
 
 
 def test_the_probe_can_fail(client):
@@ -230,11 +271,18 @@ def test_the_preprocessing_lives_inside_the_estimator(client):
     features = training._feature_frame(project.working_table, "y", None)
     from ml.model_registry import get_registry
     pipe = training._pipeline(get_registry()["ridge"].factory("regression", 0),
-                              features, needs_scaling=True)
+                              features, needs_scaling=True, project=project,
+                              model_key="ridge")
     names = list(pipe.named_steps)
     assert names[0] == "prep" and names[-1] == "model", (
         "preprocessing is not inside the estimator, so `fit` is no longer the "
         "only place a parameter can come from")
+    # EVERY step between them is a transformer, so nothing can smuggle a fit
+    # in outside the estimator by being named something else.
+    for name in names[1:-1]:
+        assert hasattr(pipe.named_steps[name], "fit_transform"), (
+            f"the step {name!r} sits inside the pipeline and is not a "
+            "transformer")
 
 
 def test_the_outcome_is_not_among_the_features(client):
@@ -505,21 +553,29 @@ def test_the_seal_is_consulted_wherever_a_choice_is_ranked(client):
         "checked against the code")
 
 
-def test_the_run_records_what_it_did_not_use(client):
-    """**The limit of this slice, asserted so it cannot be forgotten.**
+def test_the_run_records_what_it_read(client):
+    """**This test asserted a defect and the defect is closed** (`GUIDED-089`).
 
-    The trainer fits its own pipeline — median impute, standard-scale where the
-    model needs it — and does NOT read the preprocessing the user recorded in
-    the Preprocess step or the variants the recipe lattice resolved. That is a
-    divergence between what the app records and what it fits, and the honest
-    form of it is a note on the run rather than a silence.
+    It used to require the run to say that the recorded preprocessing plan was
+    NOT the one fitted — the honest form of a real divergence, and a
+    placeholder with a deadline. The plan is composed from the record now, so
+    the run says what it READ, with counts a reader can check against the
+    Preprocess receipt.
 
-    `GUIDED-089` tracks closing it. What must never happen is the run reading
-    as though the recorded plan was applied.
+    The full property is in
+    `turbotab/test_the_fitted_pipeline_is_the_recorded_plan.py`. What is here
+    is the seal file's own stake: a run that goes back to fitting defaults
+    would put this sentence back, and this is where a reader of the seal probes
+    would look for it.
     """
     frame = _flat_frame()
     pid, project = _sealed_project(client, frame, "y")
     run = training.train(project, ["ridge"])
-    assert any("recorded preprocessing" in n for n in run.notes), (
-        "the run does not say that the recorded preprocessing plan was not "
-        "the one fitted, so a reader would assume it was")
+    assert not any("not the recorded" in n or "not yet what gets fitted" in n
+                   for n in run.notes), (
+        "the run still says the recorded plan was not the one fitted")
+    assert any("composed from the recorded plan" in n for n in run.notes), (
+        "the run does not say where its pipeline came from, so a reader "
+        "cannot tell a fit from the record from a fit from the defaults")
+    assert run.results[0].plan["steps"], (
+        "the result carries no plan, so nothing says what was fitted")

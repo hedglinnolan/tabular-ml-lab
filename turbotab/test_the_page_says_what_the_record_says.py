@@ -1351,9 +1351,17 @@ def claim_an_upload_reaches_a_held_out_number(client, project):
     assert scored, "no model produced a metric"
     # A model that would not fit keeps its row and says why — the shelf is not
     # shortened by a failure any more than by a ranking.
+    #
+    # **MUTUALLY EXCLUSIVE, not `or`** (`GUIDED-093`). `metrics or error` is
+    # satisfied when BOTH are set, and that is exactly the state the app spent
+    # two loops in: Accuracy 0.857 beside "did not fit", from one line that
+    # coerced a string class label to `float` after the metrics were assigned.
+    # If serialization failed the metric is not trustworthy either.
     for result in run["results"]:
-        assert result["metrics"] or result["error"], (
-            f"{result['key']} produced neither a score nor a reason")
+        assert bool(result["metrics"]) != bool(result["error"]), (
+            f"{result['key']} carries a score and a reason at once "
+            f"({result['metrics']} / {result['error']}), so two readers of one "
+            f"result get two answers to one question")
 
 
 def claim_the_calibration_figure_is_drawn_for_the_first_time(client, project):
@@ -1438,6 +1446,100 @@ def claim_the_calibration_figure_is_drawn_for_the_first_time(client, project):
 
 
 
+def claim_the_run_says_what_it_actually_fitted(client, project):
+    """**`GUIDED-095`, driven.** The trainer used to build its own pipeline and
+    read no declaration at all, so the analysis a user specified and the
+    analysis that was fitted were two different things and only one of them was
+    on screen.
+
+    Driven rather than verified through the API, because the whole class this
+    closes has the other shape — a server composing a user-facing string that
+    the interface never renders (`GUIDED-080`). A per-model plan that reaches
+    only the payload is that defect wearing this loop's fix.
+
+    The case is the hard one on purpose: `indicator` on a column, fitted by a
+    model that reads a blank natively AND by one that cannot. The second must
+    show the recorded sentence beside the one that is now true of its fit.
+    """
+    with open(DATA / "metabolomics_untargeted.csv", "rb") as fh:
+        pid = client.post("/project", files={
+            "file": ("s.csv", fh, "text/csv")}).json()["id"]
+    for what, payload in [("set_target", {"column": "responder"}),
+                          ("set_purpose", {"answer": "prediction"}),
+                          ("set_grain", {"answer": "one_row_per_person"}),
+                          ("set_eligibility", {"answer": "everyone"}),
+                          ("seal", {"fraction": 0.25}),
+                          ("route_missingness",
+                           {"column": "bmi", "mechanism": "informative",
+                            "strategy": "indicator"})]:
+        r = client.post(f"/project/{pid}/decision",
+                        json={"kind": what, "payload": payload})
+        assert r.status_code == 200, (what, r.text[:200])
+
+    shelf = client.get(f"/project/{pid}/models").json()
+    keys = [m["key"] for g in shelf["groups"] for m in g["models"]]
+    picks = [k for k in ("histgb_clf", "logreg") if k in keys]
+    assert len(picks) == 2, keys
+    job = client.post(f"/project/{pid}/train", json={"models": picks}).json()
+    for _ in range(400):
+        job = client.get(f"/job/{job['id']}").json()
+        if job["terminal"]:
+            break
+    assert job["status"] == "done", (job["status"], job.get("error"))
+    served = client.get(f"/project/{pid}/training").json()
+
+    diverged = [d for r in served["run"]["results"]
+                for d in r["plan"]["divergences"]]
+    assert diverged, (
+        "no model diverged, so this claim would pass against a page that "
+        "renders divergences nowhere")
+    seen = client.get(f"/project/{pid}").json()
+    out = _drive(
+        """
+        var p = Promise.resolve();
+        for (var i = 0; i < 26; i++) { p = p.then(function(){}); }
+        p.then(function(){
+          __harness.drainRaf();
+          __emit(__harness.html('trainRun'));
+        });
+        """,
+        _routes(client, seen, **{
+            f"/project/{pid}/models": shelf,
+            f"/project/{pid}/training": served,
+            f"/project/{pid}/figures":
+                client.get(f"/project/{pid}/figures").json(),
+            f"/project/{pid}/features":
+                client.get(f"/project/{pid}/features").json(),
+            f"/project/{pid}/preprocess":
+                client.get(f"/project/{pid}/preprocess").json(),
+            f"/project/{pid}/recipes":
+                client.get(f"/project/{pid}/recipes").json(),
+        }),
+        pid)
+
+    assert "composed from the recorded plan" in out, (
+        "the run does not tell a reader where its pipeline came from")
+    assert "not the recorded preprocessing plan" not in out, (
+        "the page still carries the mitigation for a defect that is closed")
+
+    # THE DIVERGENCE REACHES A PERSON, with both sentences.
+    d = diverged[0]
+    assert d["recorded_sentence"][:50] in out, (
+        "the page shows what was fitted and not what was recorded, so a "
+        "reader cannot see that the two differ")
+    assert d["fitted_sentence"][:60] in out, (
+        "the divergence was composed by the server and rendered nowhere")
+
+    # AND THE STEPS DO. The honored model's own sentence for the same column
+    # is the record's, and it is on screen.
+    honored = [r for r in served["run"]["results"]
+               if not r["plan"]["divergences"]]
+    assert honored, "no model honored the declaration"
+    kept = [s for s in honored[0]["plan"]["sentences"] if "bmi" in s]
+    assert kept and kept[0][:60] in out, (
+        "the fitted plan is served per model and the page prints none of it")
+
+
 CLAIMS = [
     ("questions render", claim_questions_render),
     ("a decision re-paints", claim_a_decision_repaints),
@@ -1464,6 +1566,8 @@ CLAIMS = [
      claim_the_calibration_figure_is_drawn_for_the_first_time),
     ("imputing an informative blank is a blocker with a way through",
      claim_imputing_an_informative_blank_is_a_blocker_with_a_way_through),
+    ("the run says what it actually fitted",
+     claim_the_run_says_what_it_actually_fitted),
 ]
 
 

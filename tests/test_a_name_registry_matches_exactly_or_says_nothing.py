@@ -197,6 +197,10 @@ DECLARED = {
         "Not a name registry. The frame's own columns. FROZEN PATH "
         "(TRANSITION_PLAN section 05) — engine-move-only, and there is nothing "
         "here to repair.",
+    ("turbotab/pipeline_plan.py", "columns"):
+        "Not a name registry. The columns a recorded deferred transform names, "
+        "tested for exact membership in this frame's own numeric column list "
+        "to decide which branch's fill the block needs.",
 }
 
 SCAN_DIRS = ("ml", "utils", "turbotab", "models", "pages")

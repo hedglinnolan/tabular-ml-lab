@@ -1774,11 +1774,14 @@ async def get_recipes(project_id: str) -> Dict[str, Any]:
     # sealed rows included, so a question a user answers was raised or
     # suppressed partly by rows the models will never see.
     ranking_frame = project.training_rows
+    # Scoped to THIS project's lens: `packs.load` never unloads, so the table
+    # accumulates every pack any project in this process has selected.
+    origins = _rec.allowed_origins(project.lens or [])
     resolved = project.resolved_recipes()
     suppressed = 0
     for rows in resolved.values():
         for row in rows:
-            r = _rec.resolve(row["model"], row["operation"])
+            r = _rec.resolve(row["model"], row["operation"], origins=origins)
             raise_variant, div = _rec.worth_asking(ranking_frame, numeric, r)
             row["divergence"] = div.to_dict() if div else None
 
@@ -1822,7 +1825,7 @@ async def get_recipes(project_id: str) -> Dict[str, Any]:
         # second thing to drift.
         "candidates": {
             f"{model_key}::{row['operation']}":
-                _rec.candidates(model_key, row["operation"])
+                _rec.candidates(model_key, row["operation"], origins=origins)
             for model_key, rows in resolved.items() for row in rows},
         "n_choices_suppressed": suppressed,
         # Read back out of the recipe table rather than mirrored from the pack,

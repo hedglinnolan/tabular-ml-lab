@@ -677,6 +677,18 @@
             color:var(--faint); }
   .run-note{ font-size:12px; color:var(--muted); }
   .run-err{ color:var(--warn); font-size:12px; }
+  /* What was actually fitted, per model (GUIDED-095). A divergence is
+     type-differentiated from the ordinary steps because it is the one line a
+     reader must not skim: the recorded plan and the fit disagree here. */
+  .planrow > td{ padding:6px 10px 11px; }
+  .planrow ul{ margin:6px 0 0 18px; padding:0; }
+  .planrow li{ font-size:12px; color:var(--muted); line-height:1.55; }
+  .diverged{ border-left:2px solid var(--warn); padding:2px 0 2px 10px;
+             margin:0 0 8px; }
+  .d-head{ font-size:12px; color:var(--warn); margin:0 0 3px; }
+  .d-was, .d-now{ font-size:12px; color:var(--muted); margin:2px 0;
+                  max-width:78ch; line-height:1.5; }
+  .d-was{ text-decoration:line-through; opacity:.75; }
   .uperr{margin:12px 0 0;font-size:12.5px;color:var(--del);background:var(--del-tint);
          border:1px solid var(--del);border-radius:8px;padding:9px 12px;line-height:1.5}
   .uperr:empty{display:none}
@@ -3459,8 +3471,41 @@
       }
       h += "<tr><td>" + esc(r.name) + "</td><td>" + cell + "</td><td>" +
            esc(r.concern || "") + "</td></tr>";
+      h += planRow(r);
     });
     return h + "</table></div>";
+  }
+
+  /* ═════════ WHAT WAS ACTUALLY FITTED ═════════ `GUIDED-095`.
+     The server composes, per model, the methods prose for every step of the
+     fold-fitted pipeline and every place this model could not do what was
+     recorded. A run that printed only the score would be the dominant defect
+     class again: the server composes a user-facing string and the interface
+     never renders it (GUIDED-080).
+
+     A divergence is rendered FIRST and separately, with the recorded sentence
+     beside the fitted one, because "the plan says X and this model did Y" is
+     the one thing a reader cannot reconstruct from either sentence alone. */
+  function planRow(r){
+    var plan = r.plan || {};
+    var lines = plan.sentences || [];
+    var diffs = plan.divergences || [];
+    if (!lines.length && !diffs.length) return "";
+    var h = '<tr class="planrow"><td colspan="3">';
+    diffs.forEach(function(d){
+      h += '<div class="diverged"><p class="d-head">This model could not do ' +
+           "what was recorded for " + '<span class="v">' + esc(d.subject) +
+           "</span></p>" +
+           '<p class="d-was">recorded: ' + esc(d.recorded_sentence) + "</p>" +
+           '<p class="d-now">fitted: ' + esc(d.fitted_sentence) + "</p></div>";
+    });
+    h += '<details class="snip"><summary>What was fitted (' + lines.length +
+         " step" + (lines.length === 1 ? "" : "s") + ")</summary><ul>";
+    lines.forEach(function(s){
+      h += "<li>" + esc(s).replace(/`([^`]+)`/g, function(_, m){
+        return '<span class="v">' + esc(m) + "</span>"; }) + "</li>";
+    });
+    return h + "</ul></details></td></tr>";
   }
 
   function renderTrain(){
@@ -4128,6 +4173,7 @@
     api("/project/" + P.id + "/evidence/missingness")
       .then(function(body){
         var cards = body.cards || [];
+        MISS_CARDS = cards;
         if (!cards.length){ box.innerHTML = ""; return; }
         box.innerHTML = cards.map(missCard).join("");
         cards.forEach(function(c){
@@ -4154,6 +4200,40 @@
      distinguishes the rows where it is missing from the rows where it is not.
      Neighboring columns for the same reason — a column of the word "missing"
      answers nothing. */
+  /* The mechanism answered on THIS door, before any strategy is offered. Held
+     the way PREP_MECH is held for the Preprocess panel — the answer is not a
+     decision yet, so it is not posted until a strategy is chosen with it. */
+  var MISS_MECH = {};
+  //: The last cards the server served, so answering the mechanism repaints
+  //: from what is already held rather than re-asking for a survey that has not
+  //: changed. Nothing is posted until a strategy is chosen with the answer.
+  var MISS_CARDS = [];
+
+  function repaintMissingness(){
+    var box = $("missBox");
+    if (!box || !MISS_CARDS.length) return;
+    box.innerHTML = MISS_CARDS.map(missCard).join("");
+  }
+
+  function missMechHTML(c){
+    var q = c.mechanism_question || {};
+    if (!q.question) return "";
+    var chosen = MISS_MECH[c.column] || c.mechanism || "";
+    var values = q.values || [];
+    var h = '<div class="prep-ask"><p class="prep-q">' +
+            esc(q.question).replace(/`([^`]+)`/g, function(_, m){
+              return '<span class="v">' + esc(m) + "</span>"; }) + "</p>" +
+            '<p class="feat-note">' + esc(q.why || "") + "</p>" +
+            '<div class="prep-opts">';
+    (q.options || []).forEach(function(label, i){
+      h += '<button class="pill" type="button" data-miss-mech-for="' +
+           esc(c.column) + '" data-miss-mech-value="' + esc(values[i] || "") +
+           '" aria-pressed="' + (chosen === values[i] ? "true" : "false") +
+           '">' + esc(label) + "</button>";
+    });
+    return h + "</div></div>";
+  }
+
   function missSnippet(c){
     var s = c.snippet;
     if (!s || !s.rows || !s.rows.length) return "";
@@ -4192,8 +4272,21 @@
     h += '<p class="because">' + esc(c.because) + "</p>";
     h += missSnippet(c);
     h += '<div id="misshist-' + esc(c.column) + '"></div>';
+    h += missMechHTML(c);
     h += '<div class="opts">';
-    (c.options || []).forEach(function(o){
+    /* §07's FORK, ASSERTED BY THIS SURFACE TOO (`GUIDED-091`). The card used to
+       render every strategy immediately and post `c.mechanism || "not_sure"` —
+       a mechanism the user was never asked for — which made clause §07's
+       blocker unreachable from this door by any user on any column. The
+       Preprocess panel already asserts the order as a property; the two doors
+       gating one constitutional decision differently was the defect. */
+    var mech = MISS_MECH[c.column] || c.mechanism || "";
+    if (!mech){
+      h += '<p class="feat-note">The strategies appear once that is answered. ' +
+           "Which fills are legitimate depends on the answer, so the app will " +
+           "not show them beside the question.</p>";
+    }
+    (mech ? (c.options || []) : []).forEach(function(o){
       MISS_TIMING[o.key] = o.timing;
       h += '<div class="optrow' + (o.recommended ? " rec" : "") + '">' +
            '<div class="otop"><span class="oname">' + esc(o.label) + "</span>" +
@@ -4204,7 +4297,7 @@
            '<p class="conseq">' + esc(o.consequence) + "</p>" +
            '<div class="oacts">' +
            '<button class="cbtn" data-miss-choose="' + esc(c.column) + '" data-miss-opt="' +
-           esc(o.key) + '" data-miss-mech="' + esc(c.mechanism || "not_sure") + '" ' +
+           esc(o.key) + '" data-miss-mech="' + esc(mech) + '" ' +
            'data-tip="' + esc(o.timing === "immediate"
              ? "Rewrites this column in the working table now, and it can be undone."
              : "Records this now and fits it inside each training fold, so the "
@@ -4529,7 +4622,8 @@
       "[data-lat-cell],[data-prep-mech],[data-prep-route],[data-prep-settle]," +
       "[data-pick-model],[data-train-start],[data-train-cancel]," +
       "[data-sel-rank],[data-sel-set]," +
-      "[data-impossible],[data-keep-impossible],[data-miss-choose],[data-miss-preview]," +
+      "[data-impossible],[data-keep-impossible],[data-miss-choose]," +
+      "[data-miss-mech-for],[data-miss-preview]," +
       "[data-hist-page],[data-pg-step],[data-copy-rows]," +
       "[data-rg-show],[data-rg-defer],[data-rg-pick],[data-rg-apply]," +
       "[data-rg-decline]") : null;
@@ -4909,12 +5003,30 @@
        `route_missingness` is the real path: it declares the decision, executes
        the row-local strategies on the working table now, and leaves the
        stateful ones to the training folds — with the timing on the card. */
+    if (t.hasAttribute("data-miss-mech-for")){
+      /* §07's fork, answered on this door. Held, not posted: the mechanism is
+         half of one decision and the strategy is the other half, and posting
+         it alone would record an answer with nothing attached to it. */
+      MISS_MECH[t.dataset.missMechFor] = t.dataset.missMechValue;
+      repaintMissingness();
+      return;
+    }
     if (t.hasAttribute("data-miss-choose")){
       var mcol = t.dataset.missChoose;
+      /* NO FALLBACK. `c.mechanism || "not_sure"` was unconditional here, so
+         every column routed from this door recorded an answer nobody gave and
+         clause §07's blocker could not fire (`GUIDED-091`). The button does not
+         exist until the question is answered, and if it somehow does, this
+         refuses rather than supplying one. */
+      if (!t.dataset.missMech){
+        setErr("Answer whether a blank in " + mcol + " means something first — " +
+               "which fills are legitimate depends on it.");
+        return;
+      }
       decide("route_missingness", mcol,
              { column: mcol,
                card_option: t.dataset.missOpt,
-               mechanism: t.dataset.missMech || "not_sure" },
+               mechanism: t.dataset.missMech },
              missTiming(t.dataset.missOpt) === "immediate"
                ? "Applying that to the working table…"
                : "Recording that, to run inside each training fold…");

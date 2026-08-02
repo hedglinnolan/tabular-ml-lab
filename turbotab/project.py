@@ -1212,7 +1212,10 @@ class AnalysisProject:
                 col = col.cat.add_categories([_miss.MISSING_LEVEL])
             out[column] = col.fillna(_miss.MISSING_LEVEL)
             self.df = out
-        elif strategy == _miss.INDICATOR:
+        elif strategy in (_miss.INDICATOR, _miss.INDICATOR_AND_IMPUTE):
+            # The ROW-LOCAL HALF of both, and for the compound one that is only
+            # half: the fill under the indicator is stateful and is fitted
+            # inside each training fold by `turbotab.pipeline_plan`.
             name = _miss.indicator_column(column)
             if name in self.df.columns:
                 raise ProjectError(
@@ -1552,11 +1555,18 @@ class AnalysisProject:
         out: Dict[str, List[Dict[str, Any]]] = {}
         if not self.selected_models:
             return out
+        # SCOPED TO THIS PROJECT'S LENS. `packs.load` is process-global and
+        # never unloads, so once any project selects the metabolomics lens
+        # every later project in the same process finds `pareto` and `log1p`
+        # in the table — including one whose lens is `other`. Filtering by
+        # origin is a read, which matters: the job queue runs two workers and
+        # unloading would mean mutating the table around a request.
+        origins = _rec.allowed_origins(self.lens or [])
         source = (self.selected_models[0]
                   if self.preparation_mode == "uniform" else None)
         for key in self.selected_models:
             rows = []
-            for r in _rec.recipe(source or key):
+            for r in _rec.recipe(source or key, origins=origins):
                 d = r.to_dict()
                 override = (self.model_recipes.get(source or key, {})
                             .get(r.operation))

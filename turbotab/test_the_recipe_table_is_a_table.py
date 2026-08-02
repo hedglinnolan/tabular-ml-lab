@@ -37,17 +37,38 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from ml.model_registry import get_registry                            # noqa: E402
+from turbotab import packs as P                                       # noqa: E402
 from turbotab import recipes as R                                     # noqa: E402
 
 
 @pytest.fixture
 def table():
-    """Every test gets the core table back, however badly it mangles it."""
+    """Every test gets the CORE table, however badly it mangles it — and
+    however badly anything that ran earlier in the session did.
+
+    It used to snapshot and restore, which gives back *whatever was there*
+    rather than core. That was indistinguishable from core for as long as
+    nothing in the suite loaded a real pack before this file ran. `GUIDED-099`
+    is what changed: `packs.load` is process-global and never unloads, so once
+    any project selects the metabolomics lens, an unscoped `resolve("ridge",
+    "scale")` answers `pareto` — and every assertion here about "core" was
+    really about core-plus-whatever-ran-first. Which is the failure this file's
+    own `test_the_pack_is_gone_when_the_test_is` was written to prevent, one
+    level out from where it was looking.
+
+    So: reset to core, run, put back exactly what was there — the table AND the
+    load bookkeeping, because restoring one without the other leaves them
+    disagreeing about which rows are registered.
+    """
     state = R.snapshot()
+    loaded = P.loaded_for_test()
+    R._install_core()
+    P.unload_for_test()
     try:
         yield R
     finally:
         R.restore(state)
+        P.restore_loaded_for_test(loaded)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -206,7 +206,7 @@ def test_a_row_local_choice_changes_the_working_table_now():
     client = _client()
     pid = _project(client)
     card = next(c for c in _cards(client, pid)
-                if any(o["key"] == "explicit_missing" for o in c["options"]))
+                if any(o["key"] == "explicit_category" for o in c["options"]))
     column = card["column"]
 
     before = _frame(pid)
@@ -277,6 +277,14 @@ def test_the_panel_no_longer_records_a_note_that_routes_nothing():
 
     body = H.run(
         """
+        // §07's ORDER, and it now binds on this door too (`GUIDED-091`): the
+        // strategies are not on screen until the mechanism is answered, so the
+        // drive answers it exactly as a user would before it can press one.
+        var mech = /data-miss-mech-for="([^"]+)"/.exec(__harness.html('missBox'));
+        if (!mech) throw new Error('no mechanism question rendered');
+        __harness.dispatch('click', __harness.target(
+          {'data-miss-mech-for': mech[1], 'data-miss-mech-value': 'not_sure'},
+          ['pill']));
         var html = __harness.html('missBox');
         var m = /data-miss-choose="([^"]+)"[^>]*data-miss-opt="([^"]+)"/.exec(html);
         if (!m) throw new Error('no missingness control rendered');
@@ -341,7 +349,17 @@ def test_the_button_says_which_of_the_two_things_it_will_do():
     client = _client()
     pid = _project(client)
     project = client.get(f"/project/{pid}").json()
-    html = H.run("__emit(__harness.html('missBox'));", routes={
+    html = H.run(
+        """
+        // The mechanism first, because §07's fork now binds on this door too
+        // (`GUIDED-091`) — no strategy is on screen until it is answered.
+        var mech = /data-miss-mech-for="([^"]+)"/.exec(__harness.html('missBox'));
+        if (!mech) throw new Error('no mechanism question rendered');
+        __harness.dispatch('click', __harness.target(
+          {'data-miss-mech-for': mech[1], 'data-miss-mech-value': 'not_sure'},
+          ['pill']));
+        __emit(__harness.html('missBox'));
+        """, routes={
         f"/project/{pid}": project,
         f"/project/{pid}/interview?step=data":
             client.get(f"/project/{pid}/interview?step=data").json(),
@@ -353,7 +371,7 @@ def test_the_button_says_which_of_the_two_things_it_will_do():
 
     assert "data-miss-choose" in html, "the missingness panel did not render"
     assert "Apply this now" in html, (
-        "no option offers to apply now, and `explicit_missing` is row-local")
+        "no option offers to apply now, and `explicit_category` is row-local")
     assert "Record this" in html, (
         "no option is recorded for the fold, and every imputation is")
     assert "Show me these rows" in html, "the data snippet did not render"

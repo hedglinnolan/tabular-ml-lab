@@ -379,10 +379,14 @@ def _calibration_payload(project, **_: Any) -> Dict[str, Any]:
     if run is None:
         raise FigureUnavailable(
             "this project holds no model predictions to calibrate")
-    y_true, y_proba, model_name = run
+    y_true, y_proba, model_name, event = run
     payload = _specs.calibration_render(y_true, y_proba)
     payload["model"] = model_name
     payload["scored_on"] = "held-out rows only"
+    # WHICH EVENT the curve is about, carried rather than assumed. On a 0/1
+    # target this reads `1`; on `responder` / `non-responder` it is the
+    # difference between a calibration plot and its mirror image.
+    payload["event"] = str(event)
     return payload
 
 
@@ -390,10 +394,18 @@ def _calibration_payload(project, **_: Any) -> Dict[str, Any]:
 #: the figure layer does not depend on where the run is stored — it asks the
 #: project, and a project with no run answers `None` rather than raising.
 def predictions_for(project):
-    """`(y_true, y_proba, model_name)` for the best-calibratable held-out run.
+    """`(y_true, y_proba, model_name, event)` for the best-calibratable run.
 
     `None` where there is nothing to calibrate — which is a different sentence
     from a failure, and the caller renders it as one.
+
+    **The outcome is binarized against the class the probabilities are ABOUT**
+    (`GUIDED-093`). `predict_proba`'s second column is `classes_[1]`; with a
+    0/1 target that is `1` and nobody had to ask, and with `responder` /
+    `non-responder` it is whichever sorts second. A curve drawn against the
+    other class is a picture of the complementary event, drawn confidently, and
+    that is the governing rule's *assert something false* branch. The event's
+    name travels with the payload so the figure can say which.
     """
     run = getattr(project, "training_run", None)
     if run is None or getattr(run, "task_type", None) != "classification":
@@ -407,7 +419,14 @@ def predictions_for(project):
     best = scored[0]
     if len(y_true) != len(best.probabilities):
         return None
-    return y_true, best.probabilities, best.name
+    event = best.positive_label
+    if event is None:
+        # The run did not record which class the column is about. Refusing
+        # here is the honest branch: guessing `1` would be right on a 0/1
+        # target and silently wrong on every other one.
+        return None
+    binary = [1 if value == event else 0 for value in y_true]
+    return binary, best.probabilities, best.name, event
 
 
 SOURCES: Dict[str, Callable[..., Dict[str, Any]]] = {

@@ -60,12 +60,20 @@ TIMING_IN_PIPELINE = "in_pipeline"
 # it "immediate" would have overstated it — and clause §06's whole point is that
 # the user is told WHEN.
 TIMING_MIXED = "mixed"
+# A fourth, and it is the honest one for `leave`. Nothing is applied and
+# nothing is scheduled, which the card used to render as `in_pipeline` — a
+# claim that something would be fitted in the fold when the whole point of the
+# option is that nothing is. `turbotab/missingness.py`'s own `_BECAUSE` for
+# `leave` says it: *nothing is computed and nothing is deferred.*
+TIMING_RECORDED_ONLY = "recorded_only"
 
 _TIMING_PROSE = {
     TIMING_IMMEDIATE: "applied to the working table now",
     TIMING_IN_PIPELINE: "fitted inside each model's pipeline, on training folds only",
     TIMING_MIXED: ("the indicator is added now; the value under it is fitted "
                    "inside each model's pipeline, on training folds only"),
+    TIMING_RECORDED_ONLY: ("recorded and nothing else — no fill is applied now "
+                           "and none is scheduled"),
 }
 
 
@@ -168,143 +176,149 @@ def _option(key: str, label: str, sentence: str, timing: str,
     }
 
 
-def _binary_options(column: str, n_missing: int, n_rows: int) -> List[Dict[str, Any]]:
-    return [
-        _option(
-            "indicator",
-            "Keep the absence as information",
-            (f"Missingness in `{column}` was treated as informative: a binary "
-             f"indicator was added and the value itself imputed within each "
-             f"training fold."),
-            # The sentence above says both halves; the timing now does too.
-            TIMING_MIXED,
-            (f"Adds one column. The model can learn from *whether* {column} was "
-             f"recorded, which is the right reading when the absence has a cause "
-             f"— not asked, not applicable, refused."),
-            recommended=True,
-        ),
-        _option(
-            "impute_mode",
-            "Treat it as the common level",
-            (f"Missing values in `{column}` were imputed with the most frequent "
-             f"level of the training folds."),
-            TIMING_IN_PIPELINE,
-            (f"Asserts a value for {n_missing:,} participant(s) nobody recorded. "
-             "Defensible when the absence is clerical and unrelated to the "
-             "outcome; indefensible when it is not, and nothing in the file says "
-             "which."),
-        ),
-        _option(
-            "leave",
-            "Leave it missing",
-            (f"Missing values in `{column}` were left missing; models that accept "
-             f"missing values were fitted on the column as recorded."),
-            TIMING_IN_PIPELINE,
-            ("Gradient boosting handles this natively. Linear and neural models "
-             "do not, and will refuse the column or the row."),
-        ),
-    ]
-
-
-def _numeric_options(column: str, series: pd.Series, n_missing: int) -> List[Dict[str, Any]]:
+#: WHAT EACH STRATEGY COSTS, in the card's register. The strategy's own
+#: `because` is clause §06's litmus answer — *why it is fitted where it is* —
+#: and this is the other question a user is asking: *what does choosing it do
+#: to my study?* Both travel on the card.
+#:
+#: Callables take `(column, n_missing, series)` where the sentence depends on
+#: the data, which is `DESIGN_LANGUAGE.md` §09's rule that a finding carries its
+#: evidence.
+def _skew_note(column: str, n_missing: int, series: pd.Series) -> str:
     present = pd.to_numeric(series, errors="coerce").dropna()
     skew = float(present.skew()) if len(present) > 2 else 0.0
-    skewed = abs(skew) > 1.0
-    median_first = skewed
-    return [
-        _option(
-            "impute_median",
-            "Impute with the median",
-            (f"Missing values in `{column}` were imputed with the training-fold "
-             f"median."),
-            TIMING_IN_PIPELINE,
-            (f"`{column}` is skewed (skew = {skew:.2f}), so the mean sits away "
-             "from the bulk of the data and the median is the more representative "
-             "filler."
-             if skewed else
-             "Robust to the tails. Shrinks the variance of the column, which "
-             "biases any standard error computed from it toward zero."),
-            recommended=median_first,
-        ),
-        _option(
-            "impute_mean",
-            "Impute with the mean",
-            (f"Missing values in `{column}` were imputed with the training-fold "
-             f"mean."),
-            TIMING_IN_PIPELINE,
-            ("Preserves the column mean exactly and nothing else. On a skewed "
-             "column it places every filled value where few real ones are."
-             if skewed else
-             "Preserves the column mean exactly; shrinks its variance."),
-            recommended=not median_first,
-        ),
-        _option(
-            "impute_iterative",
-            "Impute from the other columns",
-            (f"Missing values in `{column}` were imputed by iterative "
-             f"regression on the remaining features, fitted within each "
-             f"training fold."),
-            TIMING_IN_PIPELINE,
-            ("Uses the correlations in the data rather than one number. Costs "
-             "run time and makes the imputation itself a model you have to "
-             "describe."),
-        ),
-        _option(
-            "indicator_and_impute",
-            "Impute, and record that it was missing",
-            (f"Missing values in `{column}` were imputed with the training-fold "
-             f"median and a missingness indicator was retained."),
-            # Compound, like the binary `indicator` above and for the same
-            # reason: the indicator is row-local and lands now, the median is
-            # fitted in the fold.
-            TIMING_MIXED,
-            (f"Adds one column and keeps the fact that {n_missing:,} value(s) "
-             "were absent available to the model."),
-        ),
-    ]
+    if abs(skew) > 1.0:
+        return (f"`{column}` is skewed (skew = {skew:.2f}), so the mean sits "
+                "away from the bulk of the data and the median is the more "
+                "representative filler.")
+    return ("Robust to the tails. Shrinks the variance of the column, which "
+            "biases any standard error computed from it toward zero.")
 
 
-def _categorical_options(column: str, series: pd.Series, n_missing: int) -> List[Dict[str, Any]]:
-    present = series.dropna()
-    mode = present.mode()
-    mode_label = str(mode.iloc[0]) if len(mode) else "the most frequent level"
-    return [
-        _option(
-            "explicit_missing",
-            "Make Missing its own level",
-            (f"Missing values in `{column}` were encoded as an explicit "
-             f"`Missing` category."),
-            # ROW-LOCAL, and this said `in_pipeline` (`DRIVE-008`). A blank
-            # becoming the literal level `Missing` consults nothing but that
-            # row's own cell, and `project.route_missingness` has always
-            # executed it immediately — so the card was stating a timing the
-            # server contradicted, on the one clause that is about timing.
-            TIMING_IMMEDIATE,
-            ("Keeps the absence as a fact about the participant, and lets the "
-             "model estimate whether it carries signal. Adds one level to the "
-             "encoding."),
-            recommended=True,
-        ),
-        _option(
-            "impute_mode",
-            f"Treat them as {mode_label}",
-            (f"Missing values in `{column}` were imputed with the most frequent "
-             f"level of the training folds."),
-            TIMING_IN_PIPELINE,
-            (f"Asserts `{mode_label}` for {n_missing:,} participant(s) nobody "
-             "recorded, and inflates that level's share."),
-        ),
-        _option(
-            "drop_rows",
-            "Drop the affected rows",
+def _mode_note(column: str, n_missing: int, series: pd.Series) -> str:
+    mode = series.dropna().mode()
+    label = str(mode.iloc[0]) if len(mode) else "the most frequent level"
+    return (f"Asserts `{label}` for {n_missing:,} participant(s) nobody "
+            "recorded, and inflates that level's share.")
+
+
+_CONSEQUENCE = {
+    "explicit_category": lambda c, n, s: (
+        "Keeps the absence as a fact about the participant, and lets the model "
+        "estimate whether it carries signal. Adds one level to the encoding."),
+    "indicator": lambda c, n, s: (
+        f"Adds one column. The model can learn from *whether* {c} was recorded, "
+        "which is the right reading when the absence has a cause — not asked, "
+        "not applicable, refused. The value itself stays blank, which gradient "
+        "boosting reads natively and a linear model cannot."),
+    "indicator_and_impute": lambda c, n, s: (
+        f"Adds one column and keeps the fact that {n:,} value(s) were absent "
+        "available to the model, while still giving every model a number to "
+        "work with."),
+    "impute_median": _skew_note,
+    "impute_mean": lambda c, n, s: (
+        "Preserves the column mean exactly and nothing else. On a skewed "
+        "column it places every filled value where few real ones are."),
+    "impute_mode": _mode_note,
+    "impute_mice": lambda c, n, s: (
+        "Uses the correlations in the data rather than one number. Costs run "
+        "time and makes the imputation itself a model you have to describe."),
+    "leave": lambda c, n, s: (
+        "Gradient boosting handles this natively. Linear and neural models do "
+        "not — the app fills the blank for those and says so on the run, per "
+        "model."),
+}
+
+#: Which option the coach would take, per branch. Ranking carries the judgment;
+#: absence never does (`PRODUCT_VISION.md`, the shelf is never shortened).
+_RECOMMENDED = {"categorical": "explicit_category", "numeric": "indicator"}
+
+
+def _mechanism_question(column: str) -> Dict[str, Any]:
+    """§07's fork, in the Explore door's own card.
+
+    **The same question and the same copy Preprocess asks**, from the same
+    module, because the two doors gating one constitutional decision
+    differently is what `GUIDED-091` was. The adjudicator's ruling: the Explore
+    card is the noticing, and a noticing may not answer a constitutional
+    question on the user's behalf in order to offer a shortcut past the step
+    that asks it.
+    """
+    from turbotab import missingness as _miss
+
+    return {
+        "question": _miss.MECHANISM_QUESTION.format(column=column),
+        "why": _miss.MECHANISM_WHY,
+        "consumer": _miss.MECHANISM_CONSUMER,
+        "options": list(_miss.MECHANISM_OPTIONS),
+        "values": list(_miss.MECHANISMS),
+    }
+
+
+def _timing_of(spec: Dict[str, Any]) -> str:
+    if spec["defers"] and spec["executes_now"]:
+        return TIMING_MIXED
+    if spec["defers"]:
+        return TIMING_IN_PIPELINE
+    if spec["executes_now"]:
+        return TIMING_IMMEDIATE
+    return TIMING_RECORDED_ONLY
+
+
+def _options_for(column: str, branch: str, series: pd.Series,
+                 n_missing: int) -> List[Dict[str, Any]]:
+    """The strategies this branch offers, FROM THE ONE TABLE THAT DECIDES.
+
+    `GUIDED-090`. This used to be three hand-written lists, and they disagreed
+    with `turbotab.missingness.STRATEGIES_BY_BRANCH` in both directions: `leave`
+    was on the numeric branch's list and never on the numeric card, so a user in
+    Explore could not choose to leave the blanks alone on exactly the column
+    where the absence carries signal; and `impute_mode` was on the binary card
+    while the record refuses it for a numeric column, so the card offered a
+    route the record would reject.
+
+    That is the product owner's own ruling at a surface nobody had compared:
+    **judgment renders as ranking, never as absence.** `GUIDED-086` made the
+    CHECK read this table; this is the half that OFFERS.
+
+    The decision sentence is `missingness.sentence_for`, so the sentence on the
+    card and the sentence on the record are one object rather than two that
+    used to contradict each other (`GUIDED-098`).
+    """
+    from turbotab import missingness as _miss
+
+    out: List[Dict[str, Any]] = []
+    for key in _miss.STRATEGIES_BY_BRANCH[branch]:
+        spec = _miss.strategy(key)
+        consequence = _CONSEQUENCE.get(key)
+        out.append(_option(
+            key, spec["label"].replace("`", ""),
+            _miss.sentence_for(column, branch, key),
+            _timing_of(spec),
+            consequence(column, n_missing, series) if consequence else
+            spec["because"],
+            recommended=(key == _RECOMMENDED.get(branch)),
+        ))
+
+    # THE ONE OFFER THAT IS NOT A STRATEGY, and it stays on the card.
+    #
+    # Clause §04: dropping every row with no value changes who the study is
+    # about, so it is an eligibility criterion reported in participant flow —
+    # and `declare` refuses it with exactly that reason. It is kept here on the
+    # rule that *a gap that becomes routing is worth more than a transform*: a
+    # user who reaches for it deserves the argument and somewhere to go, not an
+    # absence. Marked so nothing can mistake it for part of the branch table.
+    for key, reason in _miss.NOT_A_STRATEGY.items():
+        option = _option(
+            key, "Drop the affected rows",
             (f"{n_missing:,} row(s) with no value for `{column}` were excluded "
              f"from the analysis."),
-            TIMING_IMMEDIATE,
-            ("A complete-case analysis for this column. This is an exclusion "
-             "criterion and belongs in the participant flow — it changes who the "
-             "study is about."),
-        ),
-    ]
+            TIMING_IMMEDIATE, reason)
+        option["is_strategy"] = False
+        out.append(option)
+    for option in out:
+        option.setdefault("is_strategy", True)
+    return out
 
 
 def missingness_cards(df: pd.DataFrame,
@@ -336,19 +350,31 @@ def missingness_cards(df: pd.DataFrame,
             continue
 
         kind = _kind_of(series)
+        # TWO ROUTINGS, AND THEY ARE DIFFERENT QUESTIONS.
+        #
+        # `dtype_route` is PRESENTATION — how to word the question, whether a
+        # histogram belongs beside it — and it has three values because a 0/1
+        # column reads differently from a continuous one.
+        #
+        # `branch` is what the RECORD will use, and it is the dtype, because
+        # that is what decides whether a strategy would change what the column
+        # IS (`GUIDED-086`). They disagreed on a 0/1 numeric column: the card
+        # offered `impute_mode` and `declare` refuses it there, so the Explore
+        # door offered a route the record would reject. One table now decides
+        # the offer, keyed on the branch the record keys on.
+        branch = ("numeric" if pd.api.types.is_numeric_dtype(series)
+                  else "categorical")
+        options = _options_for(str(col), branch, series, n_missing)
         if kind == "binary":
-            options = _binary_options(str(col), n_missing, n_rows)
             question = (f"Is the missingness in `{col}` informative?")
             because = ("A binary variable that was not recorded is not the same "
                        "as one recorded as absent, and only you know which this "
                        "is.")
         elif kind == "numeric":
-            options = _numeric_options(str(col), series, n_missing)
             question = f"How should the missing values in `{col}` be filled?"
             because = ("Every choice below changes the distribution the model "
                        "sees. The before/after is shown for each.")
         else:
-            options = _categorical_options(str(col), series, n_missing)
             question = f"What should `{col}` say where nothing was recorded?"
             because = ("An explicit Missing level keeps the absence; the mode "
                        "replaces it with a value nobody recorded.")
@@ -357,11 +383,21 @@ def missingness_cards(df: pd.DataFrame,
             "id": f"missing__{col}",
             "column": str(col),
             "dtype_route": kind,
+            "branch": branch,
             "n_missing": n_missing,
             "n_rows": n_rows,
             "share": share,
             "question": question,
             "because": because,
+            # §07'S FORK, CARRIED BY THIS DOOR TOO (`GUIDED-091`). The card had
+            # no `mechanism` field at all, so the page's `c.mechanism ||
+            # "not_sure"` was unconditional and every column routed from here
+            # recorded an answer the user was never asked for — which made
+            # clause §07's blocker unreachable from this door by any user on
+            # any column. `None` is *not yet asked*, and the strategies are not
+            # offered until it is answered, exactly as Preprocess does it.
+            "mechanism": None,
+            "mechanism_question": _mechanism_question(str(col)),
             "options": options,
             # THE ACTUAL ROWS (`DRIVE-008`). The panel stated a count, a share
             # and what each option would write into the transcript, and showed

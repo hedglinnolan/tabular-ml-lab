@@ -51,6 +51,7 @@ MECHANISMS = (INFORMATIVE, NOT_INFORMATIVE, NOT_SURE)
 # What may be done about it, per branch.
 EXPLICIT_CATEGORY = "explicit_category"      # row-local
 INDICATOR = "indicator"                      # row-local
+INDICATOR_AND_IMPUTE = "indicator_and_impute"  # BOTH — see below
 IMPUTE_MODE = "impute_mode"                  # stateful
 IMPUTE_MEDIAN = "impute_median"              # stateful
 IMPUTE_MEAN = "impute_mean"                  # stateful
@@ -58,6 +59,22 @@ IMPUTE_MICE = "impute_mice"                  # stateful
 LEAVE = "leave"                              # nothing, recorded
 
 ROW_LOCAL_STRATEGIES = frozenset({EXPLICIT_CATEGORY, INDICATOR, LEAVE})
+
+# THE COMPOUND ONE, and it is here because the card was already offering it and
+# the record had nowhere to put it (`GUIDED-098`).
+#
+# `ml/missingness_plan.py` has always offered *"Impute, and record that it was
+# missing"* on the numeric branch and *"Keep the absence as information"* on the
+# binary one, and both said in their own decision sentence that the value is
+# imputed within each training fold. `CARD_STRATEGY` mapped both to `INDICATOR`,
+# whose sentence is *"the underlying value is left blank."* One click, two
+# methods sentences, opposite claims — and after `GUIDED-095` the pipeline
+# honors the record, so the fill the card promised does not happen.
+#
+# It is genuinely both halves of clause §06: the indicator is row-local and
+# lands now, the fill is stateful and is fitted in the fold. Modeling it as
+# either one alone is what produced the contradiction.
+MIXED_STRATEGIES = frozenset({INDICATOR_AND_IMPUTE})
 
 
 class MissingnessRefusal(Exception):
@@ -283,8 +300,10 @@ def survey(df: pd.DataFrame, target: Optional[str] = None) -> List[Dict[str, Any
     return out
 
 
-CATEGORICAL_STRATEGIES = (EXPLICIT_CATEGORY, INDICATOR, IMPUTE_MODE, LEAVE)
-NUMERIC_STRATEGIES = (INDICATOR, IMPUTE_MEDIAN, IMPUTE_MEAN, IMPUTE_MICE, LEAVE)
+CATEGORICAL_STRATEGIES = (EXPLICIT_CATEGORY, INDICATOR, INDICATOR_AND_IMPUTE,
+                          IMPUTE_MODE, LEAVE)
+NUMERIC_STRATEGIES = (INDICATOR, INDICATOR_AND_IMPUTE, IMPUTE_MEDIAN,
+                      IMPUTE_MEAN, IMPUTE_MICE, LEAVE)
 # One table, so the offer and the check read the same thing. Two lists that
 # happen to agree are two lists.
 STRATEGIES_BY_BRANCH = {"numeric": NUMERIC_STRATEGIES,
@@ -296,6 +315,7 @@ STRATEGIES_ALL = frozenset(CATEGORICAL_STRATEGIES) | frozenset(NUMERIC_STRATEGIE
 _LABELS = {
     EXPLICIT_CATEGORY: "Keep blanks as an explicit `Missing` category",
     INDICATOR: "Add a was-it-missing column and leave the value blank",
+    INDICATOR_AND_IMPUTE: "Add a was-it-missing column and fill the value",
     IMPUTE_MODE: "Fill with the most common value",
     IMPUTE_MEDIAN: "Fill with the median",
     IMPUTE_MEAN: "Fill with the mean",
@@ -320,6 +340,11 @@ _BECAUSE = {
     INDICATOR:
         "Row-local: the new column is 1 where this row's value is blank and 0 "
         "where it is not. Nothing about any other row is consulted.",
+    INDICATOR_AND_IMPUTE:
+        "Both halves of clause §06 at once. The was-it-missing column is "
+        "row-local and is added now; the value under it is a fact about the "
+        "whole column and is fitted inside each training fold. The fact of the "
+        "absence is kept AND the model gets a number to work with.",
     IMPUTE_MODE:
         "Stateful: the most common value is a fact about the whole column, so "
         "computing it over the full table would compute it over the held-out "
@@ -345,7 +370,12 @@ def strategy(key: str) -> Dict[str, Any]:
             f"'{key}' is not a missingness strategy. Known: "
             f"{', '.join(sorted(_LABELS))}.")
     return {"key": key, "label": _LABELS[key], "because": _BECAUSE[key],
-            "defers": key not in ROW_LOCAL_STRATEGIES}
+            "defers": key not in ROW_LOCAL_STRATEGIES,
+            # A compound strategy does both, and saying so is the whole point
+            # of the third timing (`DRIVE-008`): understating what already
+            # happened to the table and overstating it are both wrong.
+            "executes_now": bool(key in (ROW_LOCAL_STRATEGIES - {LEAVE})
+                                 or key in MIXED_STRATEGIES)}
 
 
 def blocks(mechanism: Optional[str], strategy_key: str) -> bool:
@@ -447,7 +477,7 @@ def declare(column: str, branch: str, mechanism: str, strategy_key: str,
         "outcome_in_scope": outcome_note,
         "uses_columns": scope or None,
         "acknowledged_signal_loss": bool(blocks(mechanism, strategy_key) and acknowledged),
-        "sentence": _sentence(column, mechanism, strategy_key, spec),
+        "sentence": sentence_for(column, branch, strategy_key),
     }
     if mechanism == INFORMATIVE:
         # §07: recorded as a methods ASSUMPTION rather than a warning, because a
@@ -457,8 +487,24 @@ def declare(column: str, branch: str, mechanism: str, strategy_key: str,
     return record
 
 
-def _sentence(column: str, mechanism: str, key: str, spec: Dict[str, Any]) -> str:
-    """The methods-prose line, carrying the TIMING for anything deferred."""
+#: What a compound strategy fills with, per branch. Named here so the card and
+#: the record cannot describe the same click differently.
+_MIXED_FILL = {"numeric": "the median", "categorical": "the most common value"}
+
+
+def sentence_for(column: str, branch: str, key: str) -> str:
+    """The methods-prose line for one (column, branch, strategy).
+
+    **One composer, read by both doors** (`GUIDED-098`). The Explore card used
+    to write its own `decision_sentence` per option and the record wrote
+    another when the option was taken, and on two options they said opposite
+    things: the card promised a training-fold median and the record said the
+    value was left blank. Two strings that happen to agree are two strings, and
+    these two did not even agree.
+
+    So `ml/missingness_plan.py` asks this, and `declare` asks this, and there is
+    nothing left to drift.
+    """
     if key == LEAVE:
         return (f"Missing values in `{column}` are left as they are; no "
                 f"imputation is applied and none is scheduled.")
@@ -468,7 +514,12 @@ def _sentence(column: str, mechanism: str, key: str, spec: Dict[str, Any]) -> st
     if key == INDICATOR:
         return (f"A was-it-missing indicator is added for `{column}`; the "
                 f"underlying value is left blank.")
-    where = " within each training fold" if spec["defers"] else ""
+    if key == INDICATOR_AND_IMPUTE:
+        return (f"A was-it-missing indicator is added for `{column}`, and the "
+                f"underlying value is filled with "
+                f"{_MIXED_FILL.get(branch, 'the training-fold value')} of each "
+                f"training fold.")
+    where = " within each training fold" if strategy(key)["defers"] else ""
     return (f"Missing values in `{column}` will be filled using "
             f"{_LABELS[key].lower().replace('fill with ', '').replace('fill by ', '')}"
             f"{where}.")
@@ -509,14 +560,24 @@ MISSING_LEVEL = "Missing"
 # with no entry is refused rather than guessed at: a missing key would otherwise
 # become a silent default, which is the failure `declare` already refuses for
 # strategies.
+# SINCE `GUIDED-090` THE CARD EMITS THE RECORD'S OWN KEYS, because one table
+# decides what both doors offer. What remains here is the join for the card's
+# OLD spellings, which a client written against the previous payload may still
+# send — and `indicator_and_impute`, which is the entry that was wrong.
+#
+# It mapped to `INDICATOR`, whose sentence is *"the underlying value is left
+# blank"*, while the card option it came from promised a training-fold median.
+# One click, two methods sentences, opposite claims (`GUIDED-098`).
 CARD_STRATEGY: Dict[str, str] = {
-    "explicit_missing": EXPLICIT_CATEGORY,
+    "explicit_missing": EXPLICIT_CATEGORY,          # the card's old spelling
+    "explicit_category": EXPLICIT_CATEGORY,
     "indicator": INDICATOR,
-    "indicator_and_impute": INDICATOR,
+    "indicator_and_impute": INDICATOR_AND_IMPUTE,
     "impute_mode": IMPUTE_MODE,
     "impute_median": IMPUTE_MEDIAN,
     "impute_mean": IMPUTE_MEAN,
-    "impute_iterative": IMPUTE_MICE,
+    "impute_iterative": IMPUTE_MICE,                # the card's old spelling
+    "impute_mice": IMPUTE_MICE,
     "leave": LEAVE,
 }
 
@@ -574,12 +635,21 @@ def plan_receipt(declared: Sequence[Dict[str, Any]],
     now = [d for d in declared if not d["defers"] and d["strategy"] != LEAVE]
     later = [d for d in declared if d["defers"]]
     left = [d for d in declared if d["strategy"] == LEAVE]
+    # A COMPOUND STRATEGY IS IN BOTH COLUMNS AND THE RECEIPT SAYS SO
+    # (`GUIDED-098`). `indicator_and_impute` puts the was-it-missing column on
+    # the table now and defers the fill, so counting it only as deferred
+    # understates what already happened — which is the same understatement
+    # `DRIVE-008` fixed on the card's timing.
+    mixed = [d for d in declared if d["strategy"] in MIXED_STRATEGIES]
     attested = [d for d in declared if d.get("acknowledged_signal_loss")]
     assumptions = [d["assumption"] for d in declared if d.get("assumption")]
 
     parts: List[str] = []
     if now:
         parts.append(f"{len(now)} column(s) changed now")
+    if mixed:
+        parts.append(f"{len(mixed)} given an indicator now and a fill in the "
+                     f"folds")
     parts.append(f"{len(later)} recorded to be fitted inside the training folds")
     if left:
         parts.append(f"{len(left)} deliberately left alone")
@@ -588,6 +658,7 @@ def plan_receipt(declared: Sequence[Dict[str, Any]],
     return {
         "n_applied_now": len(now),
         "n_deferred": len(later),
+        "n_mixed": len(mixed),
         "n_left": len(left),
         "n_unanswered": unanswered,
         "assumptions": assumptions,
