@@ -2593,13 +2593,64 @@
     api("/project/" + P.id + "/draft")
       .then(function(body){ REPORT = body; renderReport(); })
       .catch(function(){});
+    /* GUIDED-107. The VALIDATION report, fetched beside the draft rather than
+       folded into it. Two objects because they are two claims: what your
+       decisions say, and what a machine found wrong with what they say. */
+    api("/project/" + P.id + "/manuscript")
+      .then(function(body){ MANU = body; renderReport(); })
+      .catch(function(){ MANU = null; });
+  }
+
+  /* GUIDED-107 · WHAT A REVIEWER WILL NOTICE.
+     `AUDIT-001` was a section composed correctly in isolation asserting what no
+     other section supported, and ml/manuscript_validator.py is the machine that
+     catches it — reachable only from the Streamlit door until now.
+
+     THE FOURTH RULING IS THE SHAPE OF THIS SURFACE. A promoted EXPLORATORY
+     figure is NOT caveated in the prose above; it is listed here. The author
+     gets the document they asked for and a separate honest list beside it. */
+  var MANU = null;
+
+  function validationHTML(){
+    if (!MANU) return "";
+    if (!MANU.available)
+      return '<div class="refused-card"><p class="r-reason">' +
+             esc(MANU.because || "") + "</p></div>";
+    var failed = (MANU.rows || []).filter(function(r){ return r.Status === "FAIL"; });
+    var h = '<div class="run"><div class="run-head"><span class="run-lab">' +
+            "What a reviewer will notice</span>" +
+            '<span class="run-note">' + num((MANU.rows || []).length, 0) +
+            " checks, " + num(failed.length, 0) + " unmet</span></div>";
+    if (!failed.length && !(MANU.promoted_exploratory || []).length)
+      h += '<p class="feat-note">Every consistency check the validator makes ' +
+           "is met by this draft.</p>";
+    failed.forEach(function(r){
+      h += '<div class="diverged"><p class="d-head">' + esc(r.Check) + "</p>" +
+           '<p class="d-now">' + esc(r.Detail) + "</p>" +
+           '<p class="d-now">' + esc(r.Location) + "</p></div>";
+    });
+    /* A SECTION THE DRAFT CANNOT SOURCE is not the same as a check that
+       failed, and rendering them alike would let a structural gap read as a
+       formatting slip. */
+    (MANU.unsourced_sections || []).forEach(function(u){
+      h += '<div class="diverged"><p class="d-head">No ' + esc(u.heading) +
+           " section</p>" + '<p class="d-now">' + esc(u.because) + "</p></div>";
+    });
+    (MANU.promoted_exploratory || []).forEach(function(f){
+      h += '<div class="diverged"><p class="d-head">' + esc(f.title) +
+           " is promoted and marked EXPLORATORY</p>" +
+           '<p class="d-now">' + esc(f.because) + "</p></div>";
+    });
+    if (MANU.latex_deferred)
+      h += '<p class="feat-note">' + esc(MANU.latex_deferred) + "</p>";
+    return h + "</div>";
   }
 
   function renderReport(){
     if (!P || !REPORT) return;
     reveal("report");
     $("reportWhy").innerHTML = esc(REPORT.standfirst || "");
-    $("reportBox").innerHTML = reportHTML();
+    $("reportBox").innerHTML = reportHTML() + validationHTML();
     var written = (REPORT.n_sentences || 0) > 0;
     sectState("report", written ? "recorded" : "live",
               written ? "recorded" : "open");

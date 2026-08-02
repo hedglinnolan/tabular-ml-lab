@@ -5,9 +5,9 @@
 | State | Meaning | Count |
 |---|---|---:|
 | `both` | exposed in Classic and Guided | 49 |
-| `core` | extracted into the shared core | 4 |
-| `classic-only` | a claim to be justified, never a shrug | 46 |
-| `guided-only` | a debt owed back to Classic | 30 |
+| `core` | extracted into the shared core | 5 |
+| `classic-only` | a claim to be justified, never a shrug | 47 |
+| `guided-only` | a debt owed back to Classic | 31 |
 
 ## Data & Target (Classic: pages/01, Step 4) — 34
 
@@ -189,8 +189,11 @@
 | `sens-robustness-verdict` | Robustness verdict bands over the sensitivity spread | Step 8 | **classic-only** | Deliberately not ported, and this row exists so the absence is a claim rather than a gap. STATE-034: Classic shows coefficient-of-variation bands and absolute-range bands side by side and they can contradict each other. Both ladders are invented — no pack sets a robustness threshold — so Guided reports the difference as a number and lets the reader judge it. |
 | `sens-seed` | Seed sensitivity — refit under N random seeds and report the spread | Step 8 | **classic-only** | Deliberately NOT ported. STATE-013: the Classic version pools train+val+test and re-splits per seed, so the numbers beside it are no longer lockbox-derived. In Guided the seal is the thing that makes two runs comparable, so a seed axis there would have to re-fit on the SAME rows — a different capability with the same name. No pack names the seed axis; MISC-014 chose the axis two packs do. |
 
-## Report & export (Classic: pages/10) — 1
+## Report & export (Classic: pages/10) — 4
 
 | ID | Capability | Classic | State | Reason |
 |---|---|---|---|---|
+| `report-figure-promotion` | Promoting a figure into the results, as the author marked it | — | **guided-only** | The product owner's ruling: promoted as the author marked it, no tier annotation added on the way in. promotable and promotable_because have sat on every figure spec since L26 with no consumer; the recorded decision is that consumer now, and the tier is reported in the VALIDATION report where a reviewer's objection belongs. THE PAGE CONTROL IS NOT BUILT (GUIDED-119) - the decision, the record, the effect on the report and the no-annotation rule are driven end to end, and there is no button. Declared under LOOP section 05 with an xfail(strict) test naming the missing consumer. |
 | `report-draft-manuscript` | The Report step: the recorded decisions as methods prose, with the gaps only the author can fill left visible | pages/10 — a report builder that assembles sections from session state, with ml/publication.py composing the manuscript | **both** | BUILT at L36-C, and it is the thesis tested for the first time: the transcript the user scrolls and the manuscript they export are the same object at two levels of formality. turbotab/draft.py already folded decisions into sections and marked AUTHOR REQUIRED; the page fetched /draft and rendered nothing. THE SPECIFIC THING THIS LOOP MADE POSSIBLE: GUIDED-089's note recorded that draft.py had no reference to missingness or preprocess, so the recorded methods sentence was never exported - and until L35-B that was FORTUNATE, because the sentence disagreed with the fit. The record said a blank was left and the pipeline filled it with the median. pipeline_plan.py composes the fit from the record now and the sentence and the pipeline are asserted as one object, so the same string is true of the transcript, the fit and the manuscript. Two new sections carry it: missing data and preprocessing, and feature handling. The stability assumption travels with an informative-missingness declaration, because section 07 records it as a methods ASSUMPTION rather than a warning precisely so a manuscript can carry it. WHAT THIS IS NOT: the checklist engine - TRIPOD+AI, STROBE-nut, COSMIN, MSI/mQACC - which is L10 and absorbs the domain track. It assembles what was recorded and asserts nothing the record does not hold, which is AUDIT-001's rule: the generated manuscript once reported a raw p < 0.05 count and named no correction. |
+| `report-manuscript-validation` | Pre-export manuscript consistency validation | pages/10_Report_Export.py:1893 validate_manuscript_bundle | **core** | GUIDED-107. ml/manuscript_validator.py is the shared core and both doors call it now; Guided reached L36 with a Report step and no validator, which is AUDIT-008 in the last step of the journey. Guided adds the structured document the checklist engine will need and reports promoted EXPLORATORY figures separately from the prose, per the ruling. |
+| `report-latex-export` | LaTeX manuscript export | pages/10 via ml/latex_report.py | **classic-only** | GUIDED-115, deferred by the L38 scope note rather than declined. It will render from ml/latex_report.py, which is where Classic renders from, so there is one exporter waiting rather than two that can disagree. |

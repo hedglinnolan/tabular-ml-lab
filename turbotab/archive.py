@@ -356,6 +356,11 @@ def build_members(project) -> Dict[str, bytes]:
         "preparation_mode": project.preparation_mode,
         "model_recipes": _json_safe(project.model_recipes),
         "missingness": _json_safe(project.missingness),
+        # `GUIDED-107`. Which figures the author placed in the results. A
+        # decision, not a derivative — nothing recomputes it, and a restored
+        # project that lost it would render a manuscript missing figures its
+        # own transcript says were promoted.
+        "promoted_figures": [str(f) for f in (project.promoted_figures or [])],
         "preprocess_settled": bool(project.preprocess_settled),
     }
     members["config.json"] = json.dumps(config, indent=2, default=str).encode("utf-8")
@@ -542,6 +547,8 @@ def from_bytes(raw: bytes):
     project.preparation_mode = config.get("preparation_mode") or None
     project.model_recipes = dict(config.get("model_recipes") or {})
     project.missingness = list(config.get("missingness") or [])
+    project.promoted_figures = [str(f) for f in
+                                (config.get("promoted_figures") or [])]
     project.preprocess_settled = bool(config.get("preprocess_settled", False))
     project.engineered = list(config.get("engineered") or [])
     project.deferred_transforms = list(config.get("deferred_transforms") or [])

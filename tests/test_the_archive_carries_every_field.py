@@ -62,6 +62,11 @@ from turbotab.project import AnalysisProject                         # noqa: E40
 # read back, because a few land under a different name or shape.
 PERSISTED = {
     "id", "name", "created_at", "target", "task_type", "task_confidence",
+    # `promoted_figures` is a DECISION about the manuscript, not a derivative
+    # of one: nothing recomputes which figures the author placed in the
+    # results, and a restored project that lost it would render a manuscript
+    # missing the figures its own transcript says were promoted (`GUIDED-107`).
+    "promoted_figures",
     # `orientation` is the sharpest field in this set after `aggregation`, for
     # the same reason: answering it TRANSPOSED the frame, and the parquet in the
     # archive holds the turned-around table. A restored project that lost the

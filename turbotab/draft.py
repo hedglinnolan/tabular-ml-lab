@@ -99,7 +99,15 @@ _KIND_SECTION = {
 
 # Decisions that are bookkeeping rather than method. A draft that reports every
 # click is a log, not a manuscript.
-_NOT_METHOD = frozenset({"flag", "unflag", "undismiss"})
+_NOT_METHOD = frozenset({"flag", "unflag", "undismiss",
+                         # `promote_figure` is an editorial act on the
+                         # manuscript, not a step in the analysis. Unrouted it
+                         # would fall to Data preparation and put "`pca_scores`
+                         # was placed in the results" in the middle of the
+                         # cohort description — a log wearing a methods
+                         # section. The transcript still carries it, and the
+                         # validation report is where its consequence is read.
+                         "promote_figure"})
 
 
 def _sentence_for(d: Dict[str, Any]) -> Optional[str]:

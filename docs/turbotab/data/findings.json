@@ -8870,12 +8870,12 @@
   "item": "The Guided manuscript is never validated and has no export format: ml/manuscript_validator.py checks that a manuscript does not contradict itself and is reachable only from pages/10, while turbotab/draft.py imports nothing from ml at all",
   "detail": "",
   "ev": "ml/manuscript_validator.py 426 lines, validate_manuscript_bundle; imported only by pages/10_Report_Export.py:1893 and tests/test_manuscript_validator.py; turbotab/draft.py has no ml imports; ml/latex_report.py and ml/publication.py likewise unreferenced from turbotab/",
-  "act": "",
-  "status": "OPEN",
-  "note": "RAISED BY THE PRODUCT OWNER, measured by the adjudicator, and it is AUDIT-008 in the last step of the journey - the sixth instance of the same shape and the one with the worst consequence, because the manuscript is the artifact that LEAVES THE BUILDING. WHAT THE VALIDATOR DOES, and it is not a spell-check: validate_manuscript_bundle extracts the analysis n, the final predictor count and Table 1's overall n from the rendered text and CHECKS THEM AGAINST EACH OTHER; it checks that the model named in the prose is the model that was selected; and it flags metric terms invalid for the task type - an AUC quoted in a regression manuscript. Those are cross-section consistency checks, which is exactly the class a generated document fails at, because each section is composed correctly in isolation. AUDIT-001 IS THE PRECEDENT AND IT IS THE SAME MACHINE: the generated manuscript reported an uncorrected count of significant tests, composed correctly by a section that did not know what another section knew. The validator is the instrument built for that class, and Guided's Report - shipped at L36 - runs without it. SECOND HALF, THE PRODUCT OWNER'S OTHER QUESTION: in what format, and with which plots. ml/latex_report.py is 1,066 lines and ml/publication.py holds the methods sentences; neither is referenced from turbotab/. Guided's draft is sections of prose in JSON with AUTHOR_GAP markers and no export at all. And the plots question has a mechanism ALREADY BUILT AND STILL UNCONSUMED: every figure spec carries promotable and promotable_because, which is the modeler marking a figure for the manuscript, and ROADMAP names artifact promotion as one of three front-half designs that remain unfalsifiable because nothing downstream consumes them. Report is the downstream that was supposed to consume it. THREE THINGS TO SEPARATE WHEN THIS IS SCOPED: validation (reuse the validator, do not write a second one), export format (a decision - LaTeX via the existing module, or Markdown/DOCX, and Classic's answer is already LaTeX), and figure promotion (the field exists; the mechanism does not). The first is a call site. The third is the design that has been waiting longest.",
+  "act": "turbotab/manuscript.py composes the draft as a STRUCTURED DOCUMENT with the counts carried as integers, renders Markdown from it, and runs ml/manuscript_validator.validate_manuscript_bundle over the result - reusing the validator rather than writing a second one, which the AST test asserts. Served at /project/{id}/manuscript and rendered in the Report step. Figure promotion follows the product owner's ruling: promoted as the author marked it, NO tier annotation in the prose, and a promoted EXPLORATORY figure reported in the VALIDATION report instead - the author gets the document they asked for and a separate honest list beside it.",
+  "status": "PARTIAL",
+  "note": "RAISED BY THE PRODUCT OWNER, measured by the adjudicator, and it is AUDIT-008 in the last step of the journey - the sixth instance of the same shape and the one with the worst consequence, because the manuscript is the artifact that LEAVES THE BUILDING. WHAT THE VALIDATOR DOES, and it is not a spell-check: validate_manuscript_bundle extracts the analysis n, the final predictor count and Table 1's overall n from the rendered text and CHECKS THEM AGAINST EACH OTHER; it checks that the model named in the prose is the model that was selected; and it flags metric terms invalid for the task type - an AUC quoted in a regression manuscript. Those are cross-section consistency checks, which is exactly the class a generated document fails at, because each section is composed correctly in isolation. AUDIT-001 IS THE PRECEDENT AND IT IS THE SAME MACHINE: the generated manuscript reported an uncorrected count of significant tests, composed correctly by a section that did not know what another section knew. The validator is the instrument built for that class, and Guided's Report - shipped at L36 - runs without it. SECOND HALF, THE PRODUCT OWNER'S OTHER QUESTION: in what format, and with which plots. ml/latex_report.py is 1,066 lines and ml/publication.py holds the methods sentences; neither is referenced from turbotab/. Guided's draft is sections of prose in JSON with AUTHOR_GAP markers and no export at all. And the plots question has a mechanism ALREADY BUILT AND STILL UNCONSUMED: every figure spec carries promotable and promotable_because, which is the modeler marking a figure for the manuscript, and ROADMAP names artifact promotion as one of three front-half designs that remain unfalsifiable because nothing downstream consumes them. Report is the downstream that was supposed to consume it. THREE THINGS TO SEPARATE WHEN THIS IS SCOPED: validation (reuse the validator, do not write a second one), export format (a decision - LaTeX via the existing module, or Markdown/DOCX, and Classic's answer is already LaTeX), and figure promotion (the field exists; the mechanism does not). The first is a call site. The third is the design that has been waiting longest.  WHAT WIRING THE VALIDATOR FOUND ON ITS FIRST RUN, which is the argument for doing it at all. Three checks fail for reasons that are not formatting: the methods prose never states the analysis population, never reconciles the split counts, and never states the final predictor count - while the abstract asserts an analysis population. That is AUDIT-001's class in the artifact that leaves the building. Not papered over by rendering the numbers into both places from one source, which would be a check that can only pass.",
   "verified_against": "",
-  "test": "",
-  "verified_ev": "ml/manuscript_validator.py 426 lines, validate_manuscript_bundle; imported only by pages/10_Report_Export.py:1893 and tests/test_manuscript_validator.py; turbotab/draft.py has no ml imports; ml/latex_report.py and ml/publication.py likewise unreferenced from turbotab/"
+  "test": "turbotab/test_the_manuscript_is_checked.py (11 tests, two target shapes)",
+  "verified_ev": "driven on metabolomics_untargeted.csv: 13 checks run, 4 unmet, 1 of them attributable to a section the draft cannot source. PARTIAL because the LaTeX renderer is deferred (GUIDED-115) and because the wiring surfaced two gaps of its own, GUIDED-116 and GUIDED-117."
  },
  {
   "id": "GUIDED-108",
@@ -8974,5 +8974,75 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "turbotab/instability.py run() draws rng.integers(0, len(rows)) with no reference to grain group_col, while project.seal_lockbox already keys the seal on the grain's basis and carries group_col; turbotab/test_the_whole_pipeline_is_refitted.py::test_a_grouped_table_is_not_silently_row_bootstrapped records the current behavior so the gap is visible in the suite"
+ },
+ {
+  "id": "GUIDED-115",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "LaTeX export is unwired in Guided: the structured document renders Markdown only, and ml/latex_report.py - the exporter Classic uses - has no Guided caller",
+  "detail": "",
+  "ev": "turbotab/manuscript.py to_markdown returns methods and report only; validate() passes an empty string as latex_text; ml/latex_report.py 1066 lines, detainted and headless, referenced from pages/ only",
+  "act": "",
+  "status": "OPEN",
+  "note": "DEFERRED BY THE L38 SCOPE NOTE, which says to ship the validator wiring and the structured document first and say so. THE COST OF THE DEFERRAL IS NAMED: every validator check that reads latex_text runs against an empty string, so those checks are INERT rather than passing - they look for markdown artifacts leaking into a LaTeX file, and passing the markdown instead would manufacture failures about a document that does not exist. The served payload carries latex_deferred saying this, so a reader cannot take the report as covering an export nobody made. WHY IT IS A RENDERER AND NOT A REWRITE: the structured document exists now, so this is a mapping onto latex_report's context dict.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/manuscript.py to_markdown returns methods and report only; validate() passes an empty string as latex_text; ml/latex_report.py 1066 lines, detainted and headless, referenced from pages/ only"
+ },
+ {
+  "id": "GUIDED-116",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The Guided manuscript has no Model Development and no Model Evaluation section, because draft.py folds over DECISIONS and which model was fitted is a property of a RUN",
+  "detail": "",
+  "ev": "turbotab/draft.py SECTIONS lists data, target, explore, preprocess, features, limitations and nothing about models; ml/manuscript_validator.py extracts 'Model Development' and 'Model Evaluation' and its 'model names match between development and evaluation sections' check cannot pass; turbotab/manuscript.py REQUIRED_BUT_UNSOURCED names both",
+  "act": "",
+  "status": "OPEN",
+  "note": "FOUND BY WIRING THE VALIDATOR, and it is AUDIT-001's class in the artifact that LEAVES THE BUILDING: the abstract asserts an analysis population and the methods never say which model was fitted or how it was scored. A manuscript exported today describes the decisions and not the model. WHY THE FOLD CANNOT SOURCE IT: draft.py is a pure fold over decisions and both sections describe a run. THE FIX IS A SECOND SOURCE, not a new decision kind - the run already holds the model, the metrics, the plan and the divergences, and manuscript.structure already takes it as an argument for the counts. SURFACED RATHER THAN LEFT AS A BARE FAIL because a validator that finds no section reports nothing wrong, and a reader takes that failure for a formatting slip.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/draft.py SECTIONS lists data, target, explore, preprocess, features, limitations and nothing about models; ml/manuscript_validator.py extracts 'Model Development' and 'Model Evaluation' and its 'model names match between development and evaluation sections' check cannot pass; turbotab/manuscript.py REQUIRED_BUT_UNSOURCED names both"
+ },
+ {
+  "id": "GUIDED-117",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "Four of the six methods sections Guided renders are extracted by nothing, so a clean validation report covers a third of the document",
+  "detail": "",
+  "ev": "turbotab/manuscript.py CHECKED_HEADINGS is {Study Design, Predictor Variables}; Data Sources, Exploratory Analysis, Missing Data and Limitations are rendered and ml/manuscript_validator.py extracts none of them; asserted both directions by turbotab/test_the_manuscript_is_checked.py::test_the_heading_map_is_the_validators_own_vocabulary",
+  "act": "",
+  "status": "OPEN",
+  "note": "FOUND BY THE TEST THAT ASSERTS THE HEADING MAP AGAINST THE VALIDATOR'S OWN SOURCE. A heading is an interface here: the validator extracts by literal string, so a renderer that called Study Design 'Population' would SILENTLY DISABLE the check rather than fail it, and nothing found is nothing wrong. The four unchecked sections are still rendered, because the validator's coverage and the document's needs are different questions - what must not happen is a clean report reading as whole-document coverage, so unchecked_sections is served. NOT A REQUEST TO WRITE MORE CHECKS IN turbotab/: they belong in ml/manuscript_validator.py where the others are.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/manuscript.py CHECKED_HEADINGS is {Study Design, Predictor Variables}; Data Sources, Exploratory Analysis, Missing Data and Limitations are rendered and ml/manuscript_validator.py extracts none of them; asserted both directions by turbotab/test_the_manuscript_is_checked.py::test_the_heading_map_is_the_validators_own_vocabulary"
+ },
+ {
+  "id": "GUIDED-118",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The app cannot represent a time-to-event outcome at all, so Kaplan-Meier and every survival figure and model is unreachable: set_task_type accepts classification and regression only and there is no censoring concept anywhere",
+  "detail": "",
+  "ev": "turbotab/project.py:505 rejects any task_type other than classification or regression; searching turbotab/ for 'censor', 'survival' and 'time_to_event' returns nothing; research/CLINICAL_SURVEY_PACK.md A4.6 specifies the figure in full; turbotab/figure_specs.py registers kaplan_meier as Pending blocked on this row",
+  "act": "",
+  "status": "OPEN",
+  "note": "L38-D1, AND THE REFUSAL IS THE RESULT. The loop prompt said to expect this figure to refuse and to let it, and it does: a curve drawn from a column the app believes is an ordinary number would be a survival claim about something nobody declared to be survival data. Registered as Pending rather than left absent, because the app's own rule is that a refusal offering nothing is indistinguishable from a missing feature. WHAT IS MISSING, PRECISELY: (1) a target that is TWO columns read as one - a follow-up time and an event indicator; (2) a way to record that a row's outcome is censored rather than missing, which the missingness router would otherwise route as a blank; (3) competing-risk detection, because CLINICAL_SURVEY_PACK A4.6 is SETTLED that 1 - KM OVERESTIMATES cumulative incidence when a competing event is treated as censoring, and names it a very common error - the correct figure under competing risks is the Aalen-Johansen cumulative incidence function, so this is not decoration on the figure, it decides WHICH figure is correct; (4) reverse-Kaplan-Meier median follow-up, since the median of observed follow-up times is biased by early events. THE ORDER MATTERS: (3) before the figure, not after. A tool that produced KM curves for cardiovascular events in an elderly cohort without flagging competing mortality would be badly wrong, and shipping the figure first is how that happens. RELATED AND SEPARATE: GUIDED-105 is the survival MODEL family and is deliberately unbuilt; this row is the TARGET REPRESENTATION, which comes first and is smaller.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/project.py:505; turbotab/figures.py resolve('kaplan_meier') returns status pending"
+ },
+ {
+  "id": "GUIDED-119",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "Figure promotion is recorded, served and checked, and the Guided page has no control that records one - so promotable still has no user-facing consumer",
+  "detail": "",
+  "ev": "turbotab/project.py promote_figure records the decision and turbotab/api.py dispatches kind=promote_figure; /project/{id}/manuscript serves promoted_exploratory and the Report surface renders it; searching turbotab/web/index.html for 'promote_figure' returns nothing",
+  "act": "",
+  "status": "OPEN",
+  "note": "DECLARED UNDER LOOP.md section 05, which permits shipping a capability with a FAILING TEST naming the consumer it lacks; turbotab/test_the_manuscript_is_checked.py::test_the_page_offers_a_way_to_promote_a_figure is that test, marked xfail(strict=True) so it flips to passing the day the control exists and fails loudly if somebody adds the string without the control. WHY THE BACK HALF WAS BUILT FIRST RATHER THAN NEITHER: promotable and promotable_because have carried no consumer since L26, and ROADMAP names that one of three front-half designs that are unfalsifiable until something downstream consumes them. The decision, its record, its effect on the validation report and the ruling that no tier annotation reaches the prose are all now driven end to end - what is missing is the button. THE CONTROL BELONGS AT THE FIGURE, not in Report: a figure is promoted where it is looked at, and Report renders the consequence.",
+  "verified_against": "",
+  "test": "turbotab/test_the_manuscript_is_checked.py::test_the_route_records_a_promotion_and_the_report_notices",
+  "verified_ev": "driven: POST /decision kind=promote_figure on pca_scores makes /manuscript report it as a promoted EXPLORATORY figure and passed=False, while the rendered prose contains no tier annotation"
  }
 ]

@@ -111,16 +111,43 @@ def test_each_new_figure_reaches_a_user_from_an_upload(client, figure_id,
     assert row["payload"], "the figure arrived without its numbers"
 
 
-def test_the_registry_is_six_and_five_of_them_are_reachable(client, assay,
-                                                            dietary, survey):
-    """`GUIDED-058` closed on three figures with one unreachable. Three more,
-    and the ratio is what `GUIDED-065` predicted it would be."""
+#: Figures that CANNOT reach a user from an upload alone, and why. Every entry
+#: is gated on something a fresh project does not have yet, which is a
+#: different state from `GUIDED-058`'s — registered and unreachable because
+#: nothing fetched it. A figure absent from this list and absent from the
+#: served bundle is that defect returning.
+NEEDS_MORE_THAN_AN_UPLOAD = {
+    "calibration": "needs a fitted model's predictions",
+    "prediction_instability": "needs a bootstrap resampling run (L38-B), "
+                              "which is a job the user starts",
+    "calibration_instability": "same, and classification only",
+}
+
+
+def test_every_registered_figure_either_reaches_a_user_or_says_what_it_needs(
+        client, assay, dietary, survey):
+    """`GUIDED-058` closed on three figures with one unreachable, and the rule
+    it established is the one asserted here: a figure that does not arrive must
+    be gated on something NAMED, not merely missing.
+
+    Written as a partition rather than as a count. The count version said
+    `len(REGISTRY) == 6` and broke the day a figure was added — which is a test
+    that has to be edited to stay true, and an edit is where the thing it
+    guards gets waved through.
+    """
     drawn = set()
     for pid in (assay, dietary, survey):
         body = client.get(f"/project/{pid}/figures").json()
         drawn |= {row["id"] for row in body["admitted"] + body["held"]}
-    assert len(figures.REGISTRY) == 6
-    assert drawn == set(figures.REGISTRY) - {"calibration"}, drawn
+
+    registered = set(figures.REGISTRY)
+    assert drawn <= registered, drawn - registered
+    unreachable = registered - drawn
+    assert unreachable == set(NEEDS_MORE_THAN_AN_UPLOAD), (
+        f"unreachable from an upload: {sorted(unreachable)}. Every one must "
+        f"be listed in NEEDS_MORE_THAN_AN_UPLOAD with what it is waiting for, "
+        f"or it is GUIDED-058 again — registered, and reached by nothing.")
+    assert drawn, "no figure reached a user at all"
 
 
 # ── the volcano · the one that bent the spec ────────────────────────────────
@@ -393,10 +420,20 @@ def test_guided_066_did_not_reproduce_on_any_of_the_three():
     """
     gated_by = ("has_assay_lens", "has_dietary_lens", "has_survey_lens",
                 "has_predictions")
+    # GATED ON STATE, NOT ON DOMAIN — a distinction L38-B forced into the open.
+    # The instability plots apply to any project that has run a resampling job,
+    # so they are not domain-gated and this scan reads them as domain-free. The
+    # question `GUIDED-066` actually asks is narrower: can a figure's CHECKLIST
+    # score a requirement from a field the table is not in? Theirs cannot —
+    # every item is about B, the reference line, the alpha, the units of the
+    # error and whether the scope is stated, none of which belongs to a
+    # discipline. So they are excluded here by their gate being named, and the
+    # claim below still holds.
+    state_gated = ("has_instability_run",)
     domain_free = [
         spec.id for spec in figures.REGISTRY.values()
         if not any(key in spec.when_applicable.__code__.co_consts
-                   for key in gated_by)]
+                   for key in gated_by + state_gated)]
     assert domain_free == ["pca_scores"], domain_free
     # And every checklist item that can score a table from another field still
     # belongs to that one figure.

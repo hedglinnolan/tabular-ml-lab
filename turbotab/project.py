@@ -283,6 +283,10 @@ class AnalysisProject:
     # every preprocessing transform is stateful by clause §06's litmus, so this
     # step's output is a set of decisions that fire inside training folds.
     missingness: List[Dict[str, Any]] = field(default_factory=list)
+    #: Figures the author has placed in the results (`GUIDED-107`). Held as
+    #: ids rather than as specs: the spec is the registry's, and a copy here
+    #: would be a second description of one figure.
+    promoted_figures: List[str] = field(default_factory=list)
     # True once the Preprocess step has been ended, including by leaving every
     # column alone. A skip must be RECORDED (DESIGN_LANGUAGE §09's
     # recorded-absence rule): a silent skip is indistinguishable from a step
@@ -609,6 +613,33 @@ class AnalysisProject:
         return self.record(
             kind="defer_feature", subject=",".join(str(c) for c in columns),
             text=spec["sentence"], payload=dict(spec))
+
+    def promote_figure(self, figure_id: str, promoted: bool = True) -> Decision:
+        """Move a figure into the results, or take it back out.
+
+        `GUIDED-107`, and the product owner's ruling is the whole design:
+        **promoted as the author marked it.** No tier annotation is added on
+        the way in, and this method does not consult the figure's tier at all —
+        an `EXPLORATORY` figure the modeler moves into Results appears there as
+        they placed it. The tier stays ON the figure and the consequence is
+        reported in the VALIDATION report, which is where a reviewer's
+        objection belongs.
+
+        Recorded rather than toggled, because it is a decision about the
+        manuscript and the transcript is what the manuscript is made of.
+        """
+        promoted_now = set(self.promoted_figures or [])
+        if promoted:
+            promoted_now.add(str(figure_id))
+        else:
+            promoted_now.discard(str(figure_id))
+        self.promoted_figures = sorted(promoted_now)
+        return self.record(
+            kind="promote_figure", subject=str(figure_id),
+            text=(f"`{figure_id}` was placed in the results."
+                  if promoted else
+                  f"`{figure_id}` was taken back out of the results."),
+            payload={"figure_id": str(figure_id), "promoted": bool(promoted)})
 
     def set_selection(self, spec: Optional[Dict[str, Any]]) -> Decision:
         """Record what will be selected, inside the training folds.
@@ -2117,6 +2148,12 @@ class AnalysisProject:
             "preparation_mode": self.preparation_mode,
             "model_recipes": {k: dict(v) for k, v in self.model_recipes.items()},
             "missingness": list(self.missingness),
+            # `GUIDED-107`. Which figures the author placed in the results. A
+            # decision that changed nothing a caller could see would be a
+            # decision in name only, which is what
+            # `test_a_recorded_decision_changes_something` exists to catch —
+            # and it caught this one.
+            "promoted_figures": list(self.promoted_figures),
             "preprocess_settled": self.preprocess_settled,
             "obligations": list(self.obligations),
             "lockbox": _copy(self.lockbox),

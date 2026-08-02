@@ -921,6 +921,17 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
             raise HTTPException(400, str(exc)) from exc
         return _payload(project)
 
+    if decision.kind == "promote_figure":
+        # `GUIDED-107`. The consumer `promotable` has been waiting for since
+        # L26. It does NOT consult the figure's tier — the ruling is that a
+        # marked figure is promoted as the author marked it, and a route that
+        # refused an EXPLORATORY one would be the app overruling the author in
+        # their own document.
+        project.promote_figure(
+            str(decision.payload.get("figure_id") or decision.subject or ""),
+            promoted=bool(decision.payload.get("promoted", True)))
+        return _payload(project)
+
     if decision.kind == "settle_features":
         project.settle_features(skipped=bool(decision.payload.get("skipped")))
         return _payload(project)
@@ -2193,6 +2204,37 @@ async def start_instability(project_id: str,
         f"Refitting the whole pipeline in {b:,} bootstrap resamples",
         _instability_worker, project_id, model_key, b)
     return handle.to_dict()
+
+
+@app.get("/project/{project_id}/manuscript")
+async def get_manuscript(project_id: str) -> Dict[str, Any]:
+    """`GUIDED-107`. The draft as data, rendered, and CHECKED.
+
+    The validation report is served beside the document rather than instead of
+    it: the ruling is that the author gets the document they asked for, and a
+    separate honest list of what a reviewer will notice.
+    """
+    from turbotab import manuscript as _ms
+
+    project = _project(project_id)
+    held = _RUNS.get(project_id)
+    figures = [
+        {"id": f.id, "title": f.title, "tier": f.tier,
+         "promoted": f.id in set(getattr(project, "promoted_figures", []) or [])}
+        for f in _figure_specs_all()
+    ]
+    return _ms.validate(project.to_dict(),
+                        run=held["run"].to_dict() if held else None,
+                        figures=figures)
+
+
+def _figure_specs_all():
+    """Every registered figure. Imported for the side effect, which is how the
+    registry is populated — a module that lists them here instead would be a
+    second list that goes stale."""
+    from turbotab import figures as _figs
+    import turbotab.figure_specs                            # noqa: F401 — registers
+    return list(_figs.REGISTRY.values())
 
 
 @app.get("/project/{project_id}/instability")

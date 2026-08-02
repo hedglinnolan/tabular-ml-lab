@@ -1837,3 +1837,46 @@ CALIBRATION_INSTABILITY = register(FigureSpec(
     promotable_because="",
     compute=calibration_instability_payload,
 ))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9 · Kaplan–Meier — PENDING, and the refusal IS the result
+#
+# `CLINICAL_SURVEY_PACK.md` §A4.6. Attempted at L38-D1 and it cannot be drawn,
+# because the app cannot represent what it needs: `project.set_task_type`
+# accepts `classification` and `regression` and nothing else, there is no
+# censoring concept anywhere, and no control declares a time + event-indicator
+# pair. A figure that drew from a target the app cannot verify would be worse
+# than one that does not draw.
+#
+# **And the naive figure is a named anti-pattern even once the target exists**,
+# which is why the entry says so rather than leaving it for the build. §A4.6 is
+# SETTLED and marks it a very common error: under competing risks 1 − KM
+# OVERESTIMATES cumulative incidence, because KM treats the competing event as
+# censoring — as if those patients could still develop the outcome later, which
+# they cannot. The correct behavior is to detect competing risks (an event
+# indicator with more than two levels, or a death/other-cause column) and report
+# the Aalen–Johansen cumulative incidence function instead, or refuse and say
+# why. That detection is not optional decoration on the figure; it decides which
+# figure is correct.
+# ─────────────────────────────────────────────────────────────────────────────
+
+KAPLAN_MEIER = register_pending(Pending(
+    id="kaplan_meier",
+    title="Kaplan–Meier survival curve",
+    specified_in="research/CLINICAL_SURVEY_PACK.md#A4.6 · Kaplan–Meier and time-to-event",
+    needs=(
+        "a time-to-event outcome, which this app cannot currently represent. "
+        "It needs two columns read as one target — a follow-up time and an "
+        "event indicator — plus a way to say that a row's outcome is censored "
+        "rather than absent. `set_task_type` accepts classification and "
+        "regression only, so there is nowhere to record that pair, and a "
+        "curve drawn from a column the app believes is an ordinary number "
+        "would be a survival claim about something nobody declared to be "
+        "survival data. Two further things must exist before the figure is "
+        "correct rather than merely drawable: competing-risk detection, "
+        "because 1 − Kaplan–Meier overestimates cumulative incidence when a "
+        "competing event is treated as censoring, and reverse-Kaplan–Meier "
+        "median follow-up, because the median of observed follow-up times is "
+        "biased by early events."),
+    blocked_by="GUIDED-118"))

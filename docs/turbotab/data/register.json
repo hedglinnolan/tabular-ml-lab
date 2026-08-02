@@ -1166,5 +1166,29 @@
   "classic": "—",
   "state": "guided-only",
   "reason": "A4.8's third named output, and the prediction plot's declared companion: spread in individual predictions and spread in calibration are different failures and a model can look tight on one while moving badly on the other. Owed to Classic."
+ },
+ {
+  "id": "report-manuscript-validation",
+  "step": "report",
+  "capability": "Pre-export manuscript consistency validation",
+  "classic": "pages/10_Report_Export.py:1893 validate_manuscript_bundle",
+  "state": "core",
+  "reason": "GUIDED-107. ml/manuscript_validator.py is the shared core and both doors call it now; Guided reached L36 with a Report step and no validator, which is AUDIT-008 in the last step of the journey. Guided adds the structured document the checklist engine will need and reports promoted EXPLORATORY figures separately from the prose, per the ruling."
+ },
+ {
+  "id": "report-latex-export",
+  "step": "report",
+  "capability": "LaTeX manuscript export",
+  "classic": "pages/10 via ml/latex_report.py",
+  "state": "classic-only",
+  "reason": "GUIDED-115, deferred by the L38 scope note rather than declined. It will render from ml/latex_report.py, which is where Classic renders from, so there is one exporter waiting rather than two that can disagree."
+ },
+ {
+  "id": "report-figure-promotion",
+  "step": "report",
+  "capability": "Promoting a figure into the results, as the author marked it",
+  "classic": "—",
+  "state": "guided-only",
+  "reason": "The product owner's ruling: promoted as the author marked it, no tier annotation added on the way in. promotable and promotable_because have sat on every figure spec since L26 with no consumer; the recorded decision is that consumer now, and the tier is reported in the VALIDATION report where a reviewer's objection belongs. THE PAGE CONTROL IS NOT BUILT (GUIDED-119) - the decision, the record, the effect on the report and the no-annotation rule are driven end to end, and there is no button. Declared under LOOP section 05 with an xfail(strict) test naming the missing consumer."
  }
 ]

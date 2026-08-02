@@ -198,6 +198,15 @@ _TO_MODELS = _TO_SEAL + [("select_models", {"models": ["ridge", "histgb_reg"]})]
 FLIPS = {
     "set_lens": (_METAB, [], ("set_lens", {"lens": ["metabolomics"]}),
                  ("set_lens", {"lens": ["other"]})),
+    # `GUIDED-107`. Placing a figure in the results, and taking it back out.
+    # The flip is the smallest one in this table and it caught a real gap: the
+    # first version recorded the decision, set `promoted_figures` on the
+    # project, and did not serialize it — so a decision the transcript showed
+    # changed nothing any caller could see, which is a decision in name only.
+    "promote_figure": (
+        _METAB, [],
+        ("promote_figure", {"figure_id": "pca_scores", "promoted": True}),
+        ("promote_figure", {"figure_id": "pca_scores", "promoted": False})),
     # The same flip, driven to a SEAL, so the fold-fitted pipeline exists to
     # compare. Unsealed it could only ever move the display surfaces — which is
     # how a lens that reached the lattice and not the fit stayed invisible.
@@ -384,6 +393,14 @@ def _fingerprint(client, pid):
         "recipes": _get(client, f"/project/{pid}/recipes"),
         "models": _get(client, f"/project/{pid}/models"),
         "draft": _get(client, f"/project/{pid}/draft"),
+        # `L38-C`. The MANUSCRIPT is a computed surface and this probe did not
+        # fingerprint it, because Report shipped at L36 and the probe was
+        # written at L35. The gap surfaced the first time a decision changed
+        # only the manuscript: `promote_figure` moved the validation report and
+        # nothing else, and the probe reported that it changed NOTHING. A
+        # census that cannot see a surface reports every decision about it as
+        # inert.
+        "manuscript": _get(client, f"/project/{pid}/manuscript"),
         "selection_evidence": _get(client, f"/project/{pid}/selection/evidence"),
     }
     for step in ("data", "explore", "features", "preprocess", "train"):
@@ -505,6 +522,10 @@ REACHES_THE_FIT = {
 #: And the ones that legitimately do not, each with the reason. Measured, not
 #: assumed — every entry here was observed not to move `pipeline_plan`.
 NOT_IN_THE_FIT = {
+    "promote_figure": (
+        "Editorial, not analytic. Placing a figure in the results changes the "
+        "manuscript and the validation report and must not touch the fit — a "
+        "figure the author promoted is not a feature the model gets."),
     "set_selection": (
         "**A REAL SEVERED SEAM, AND IT IS WHY `GUIDED-095` IS `PARTIAL` RATHER "
         "THAN `FIXED`** — adjudicator, L35; this line previously pointed at "

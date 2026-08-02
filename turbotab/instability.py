@@ -45,7 +45,6 @@ number nobody can see is a number nobody can disagree with.
 """
 from __future__ import annotations
 
-import math
 from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
