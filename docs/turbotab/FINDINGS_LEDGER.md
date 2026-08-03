@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**286 of 754 closed.**
+**286 of 755 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 417 |
+| `OPEN` | 418 |
 | `PARTIAL` | 51 |
 | `FIXED` | 282 |
 | `NOT-A-DEFECT` | 4 |
 
 ---
 
-## OPEN — 417
+## OPEN — 418
 
 
 ### Application state / lockbox — 66
@@ -222,7 +222,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-264` | low | HUNT stack-blank-file-blocks-with-wrong-advice: one zero-column file blocks the entire stack and the message tells the researcher to consider joining instead | `utils/combine.py plan_stack - the no-shared-columns blocker and its message; measured at HEAD` | REPRODUCES AT HEAD. Two well-formed cycles sharing SEQN and age, plus one zero-column frame, give blocking: 'These files have no column names in common, so stacking them would… |
 | `IMPORT-265` | low | HUNT stack-duplicate-column-label-crash: does not reproduce on this pandas, and there is no guard - recorded as environment-dependent rather than fixed | `utils/combine.py execute_stack - the copy, rename and pd.concat path, which contains no duplicate-label…` | DOES NOT REPRODUCE AT HEAD, AND IS NOT CLOSED - the distinction is the point. Two frames with columns [1, '1'] give plan_stack no blocking and no warnings (so the recorded… |
 
-### Guided-door drive feedback — 43
+### Guided-door drive feedback — 44
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -240,6 +240,7 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-016` | high | The calibration figure's caption tells the reader the curve is a loess estimate with a pointwise 95% band; it is a 10-equal-width-bin plot with no band — the exact anti-pattern §A4.3 names | `turbotab/figure_specs.py:245-255 (caption), 192-193 (layers), with ml/calibration.py:81-95 — CALIBRATION's…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `AUDIT-019` | high | The seal's methods sentence states a candidate-parameter count that includes the identifier columns the app refuses to give the model — 344 instead of 45 on the repo's own survey fixture | `turbotab/resolution.py:112 (and the assertion it feeds, turbotab/resolution.py:376)…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `AUDIT-034` | high | The recorded reverse-coding sentence promises a flip and a scoring step the app never performs, and it is exported into the manuscript | `turbotab/api.py:538-543 — On set_reverse_coding the dispatcher records text="{n} item(s) were declared…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
+| `GUIDED-148` | high | The /recipes payload reaches no person at all - 50 fields, 16 path shapes, every one of them unread - and it is the per-model preprocessing table the Preprocess step is built around | `measured at L43-A1 by turbotab/fieldsweep on survey_sentinels.csv sealed, the survey lens, target age.…` | FOUND AT L43-A1, SWEEPING THE THREE PAYLOADS L42-B NAMED AND SKIPPED. That report called the omission a cost decision rather than a shape-of-the-problem decision and named it the… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
