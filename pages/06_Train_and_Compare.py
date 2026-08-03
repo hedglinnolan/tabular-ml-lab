@@ -1571,13 +1571,22 @@ def _train_models(models_to_train, selected_model_params, use_optimization=False
         )
         try:
             from utils.workflow_provenance import get_provenance
+            from ml.holdout_selection import criterion_phrase
             _task_type = st.session_state.get('task_type', '')
             _selection_metric = 'RMSE' if _task_type == 'regression' else 'Accuracy'
             _model_results_local = st.session_state.get('model_results', {})
+            # AUDIT-030. This recorded `validation <metric>` and the loop above
+            # ranks `results['metrics']`, which is the TEST dict written at
+            # :1496 from `test_metrics`. No per-model validation score is stored
+            # anywhere, so the word named a split this ranking never saw. The
+            # record now says what was compared, and `selected_on_holdout` says
+            # what that comparison costs — a recorded fact rather than a word the
+            # manuscript would have to parse back out of prose.
             get_provenance().record_training(
                 models_trained=list(trained_models.keys()),
                 primary_model=best_model_name or '',
-                selection_criteria=f'validation {_selection_metric}',
+                selection_criteria=criterion_phrase(_selection_metric),
+                selected_on_holdout=len(trained_models) >= 2,
                 use_cv=st.session_state.get('use_cv', False),
                 cv_folds=st.session_state.get('cv_folds', 5) if st.session_state.get('use_cv', False) else None,
                 use_hyperopt=use_optimization,

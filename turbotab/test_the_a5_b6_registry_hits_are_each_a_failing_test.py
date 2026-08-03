@@ -69,7 +69,10 @@ MARKED = [
     "AUDIT-027",
     "AUDIT-028",
     "AUDIT-029",
-    "AUDIT-030",
+    # AUDIT-030 closed at L45-A2. The ruling was made at the L44 adjudication and
+    # applied here: the Methods section no longer calls the held-out comparison a
+    # validation one, and it states what selecting among N on those rows costs.
+    # `tests/test_the_methods_section_names_the_set_it_compared_on.py`.
     "AUDIT-031",
     "AUDIT-032",
     "AUDIT-033",
@@ -210,17 +213,26 @@ def test_audit_029_the_generated_methods_section_tells_the_reader_that_cross_val
     pytest.fail(
         "AUDIT-029 is still open: " + row["item"][:160])
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-030 — filed at L43-B, not fixed this loop")
-def test_audit_030_the_primary_model_is_chosen_by_comparing_held_out_test_metrics__and_th():
-    """The primary model is chosen by comparing HELD-OUT TEST metrics, and the record and manuscript state the criterion was "validation"
+def test_audit_030_is_closed_and_its_regression_test_is_the_one_named_here():
+    """`AUDIT-030` — ruled at L44, applied at L45-A2, and no longer an xfail.
 
-    Where: `pages/06_Train_and_Compare.py:1541-1557 and :1574-1580`
-    Registry: §A5.5 Anti-patterns: "Tuning on the test set · reporting apparent performance without optimism correction". §A5.5 also: "Internal validation must resample the entire modeling pipeline — imputation, transformation, selection, tuning." Choosing among N fitted models by their test scores is selection p
+    The strict xfail above it is gone rather than left to pass, which is the
+    whole point of `test_every_row_this_file_names_is_open_and_every_open_one_is_named`
+    — a closed row keeping its marker is a strict xfail that now passes, which
+    pytest reports as a failure and which nobody can read.
+
+    What stays here is the pointer. The row's regression tests live in
+    `tests/`, because the defect is Classic-door — `pages/06`, `ml/narrative_engine.py`
+    and `utils/workflow_provenance.py` — and this file is the registry index
+    rather than the test.
     """
     row = _ledger()["AUDIT-030"]
-    assert row["status"] in ("OPEN", "PARTIAL")
-    pytest.fail(
-        "AUDIT-030 is still open: " + row["item"][:160])
+    assert row["status"] == "FIXED", (
+        f"AUDIT-030 reopened and this file no longer marks it: {row['status']}")
+    assert "test_the_methods_section_names_the_set_it_compared_on" in (
+        row.get("test") or ""), (
+        "AUDIT-030 is closed against a test this file cannot name")
+
 
 @pytest.mark.xfail(strict=True, reason="AUDIT-031 — filed at L43-B, not fixed this loop")
 def test_audit_031_the_manuscript_s_auto_generated_strengths_list_asserts_the_dataset_con():

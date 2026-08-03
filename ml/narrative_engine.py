@@ -583,8 +583,17 @@ class NarrativeEngine:
 
         best_metric_name = self.manuscript_context.get("best_metric_name")
         if best_metric_name:
+            from ml.holdout_selection import criterion_phrase
+
             self.ctx["best_metric_name"] = best_metric_name
-            self.ctx["selection_criteria"] = f"validation {best_metric_name}"
+            # `AUDIT-030`. This said "validation <metric>" and there is no
+            # validation split behind it: `_get_export_best_model` ranks the
+            # models on `results['metrics']`, which is the TEST dict.
+            self.ctx["selection_criteria"] = criterion_phrase(best_metric_name)
+            # A `best_model_by_metric` IS the argmax over held-out scores — the
+            # export path computed it that way — so the fact is known here rather
+            # than guessed.
+            self.ctx["selected_on_holdout"] = True
 
         population_counts = self.manuscript_context.get("population_counts") or {}
         if population_counts:
@@ -1077,7 +1086,16 @@ class NarrativeEngine:
             from ml.imbalance_advice import manuscript_sentence
             parts.append(manuscript_sentence(self.ctx.get("model_purpose")))
 
-        # Primary model selection
+        # PRIMARY MODEL SELECTION, AND WHAT SELECTING ON THE HELD-OUT SET COSTS.
+        #
+        # `AUDIT-030`, ruled at L45. This said "based on validation <metric>"
+        # while no per-model validation score is stored anywhere: the ranking
+        # that names the primary model reads the TEST dict. So the section now
+        # says two things — what was compared, and what that comparison costs —
+        # and `ml/holdout_selection.py` owns both sentences because the false
+        # word was composed in five places and the row named two.
+        from ml.holdout_selection import optimism_sentence
+
         primary = self.ctx.get("primary_model", "")
         best_by_metric = self.ctx.get("best_model_by_metric", "")
         criteria = self.ctx.get("selection_criteria", "")
@@ -1087,13 +1105,14 @@ class NarrativeEngine:
                 f"{f', based on {criteria}' if criteria else ''}."
             )
         elif best_by_metric:
-            metric_phrase = criteria or (
-                f"validation {self.ctx.get('best_metric_name')}"
-                if self.ctx.get('best_metric_name') else ""
-            )
+            # The bare metric name here, not `criterion_phrase`: this branch
+            # already names the held-out set in its own words, and "scored best
+            # on the held-out set by the held-out RMSE" is the surface saying it
+            # twice.
+            metric = str(self.ctx.get("best_metric_name") or "").strip()
             parts.append(
-                f"{self._model_name(best_by_metric)} achieved the best held-out performance"
-                f"{f' on {metric_phrase}' if metric_phrase else ''}, "
+                f"{self._model_name(best_by_metric)} scored best on the held-out "
+                f"set{f' by {metric}' if metric else ''}, "
                 "but no manuscript-primary model was explicitly selected."
             )
         elif models:
@@ -1101,6 +1120,17 @@ class NarrativeEngine:
                 "The model demonstrating the best performance on the primary evaluation "
                 "metric was selected for reporting."
             )
+
+        # WHAT THE COMPARISON COSTS. Fired off a RECORDED fact rather than off a
+        # substring of the criterion prose — `selected_on_holdout` defaults to
+        # False, so a run that selected some other way never has this attached.
+        # `optimism_sentence` returns "" below two models, because one model is
+        # not a selection and a caveat that fires on every manuscript is the
+        # uncalibrated second layer of caution this project forbids.
+        if self.ctx.get("selected_on_holdout"):
+            said = optimism_sentence(len(models) if models else 0)
+            if said:
+                parts.append(said)
 
         return " ".join(parts)
 

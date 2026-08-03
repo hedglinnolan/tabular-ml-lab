@@ -215,9 +215,25 @@ class TestNarrativeEngineGeneration:
         )
         draft = engine.generate()
 
+        # THE NAME'S PROPERTY, unchanged: a metric winner is not a primary model.
         assert "selected as the primary model" not in draft.model_development
-        assert "best held-out performance on validation RMSE" in draft.model_development
         assert "no manuscript-primary model was explicitly selected" in draft.model_development
+
+        # AND THE ASSERTION THAT WAS WRONG. `AUDIT-030`, and `LOOP.md` trap #3c
+        # in its clearest form: this line read
+        #
+        #     assert "best held-out performance on validation RMSE" in ...
+        #
+        # It was green, it was about real behavior, and **the behavior it
+        # protected was false.** `_get_export_best_model` ranks
+        # `results['metrics']`, which is the test dict; no per-model validation
+        # score is stored anywhere. So the fix had to make a passing assertion
+        # fail, and the question was never how to make it pass again — it was
+        # what the assertion claimed and whether that claim was true.
+        assert "validation" not in draft.model_development.lower(), (
+            "the Methods section still calls the held-out comparison a "
+            f"validation one: {draft.model_development!r}")
+        assert "scored best on the held-out set by RMSE" in draft.model_development
 
     def test_manuscript_context_overrides_population_and_feature_counts_when_provenance_is_sparse(self):
         prov = WorkflowProvenance()

@@ -142,7 +142,17 @@ class TrainingProvenance:
     models_trained: List[str] = field(default_factory=list)
     hyperparameters: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     primary_model: str = ""
-    selection_criteria: str = ""  # "validation RMSE", "validation F1", etc.
+    # "the held-out RMSE", "the held-out F1", etc. NEVER "validation <metric>":
+    # nothing stores a per-model validation score, so that word named a split the
+    # ranking never saw (`AUDIT-030`). `ml/holdout_selection.criterion_phrase`
+    # composes it.
+    selection_criteria: str = ""
+    # Whether the primary model was chosen by comparing the trained models'
+    # HELD-OUT scores — the thing that makes the reported number optimistic.
+    # Recorded rather than inferred from the criterion string, and defaulting to
+    # False, so a caller who selected some other way never has the caveat
+    # attached to their manuscript on the strength of a substring match.
+    selected_on_holdout: bool = False
     use_cv: bool = False
     cv_folds: Optional[int] = None
     use_hyperopt: bool = False
@@ -446,6 +456,7 @@ class WorkflowProvenance:
         models_trained: List[str],
         primary_model: str = "",
         selection_criteria: str = "",
+        selected_on_holdout: bool = False,
         use_cv: bool = False,
         cv_folds: Optional[int] = None,
         use_hyperopt: bool = False,
@@ -462,6 +473,7 @@ class WorkflowProvenance:
             hyperparameters=dict(hyperparameters or {}),
             primary_model=primary_model,
             selection_criteria=selection_criteria,
+            selected_on_holdout=selected_on_holdout,
             use_cv=use_cv,
             cv_folds=cv_folds,
             use_hyperopt=use_hyperopt,
@@ -649,15 +661,24 @@ class WorkflowProvenance:
         if self.training:
             ctx["models_trained"] = self.training.models_trained
             ctx["primary_model"] = self.training.primary_model
-            # Provide task-appropriate default if selection_criteria is empty
+            # Provide task-appropriate default if selection_criteria is empty.
+            #
+            # `AUDIT-030`, and THESE TWO LINES ARE THE PART THE ROW MISSED. It
+            # named `pages/06:1580` and `narrative_engine:587`; the same false
+            # word was also the DEFAULT here, so a record that never got a
+            # criterion written to it acquired the claim on the way out. A sweep
+            # that stops at the sites the finding cited stops one surface early.
+            from ml.holdout_selection import criterion_phrase
+
             selection_criteria = self.training.selection_criteria
             if not selection_criteria and self.upload:
                 task_type = self.upload.task_type
                 if task_type == "regression":
-                    selection_criteria = "validation RMSE"
+                    selection_criteria = criterion_phrase("RMSE")
                 elif task_type == "classification":
-                    selection_criteria = "validation F1"
+                    selection_criteria = criterion_phrase("F1")
             ctx["selection_criteria"] = selection_criteria
+            ctx["selected_on_holdout"] = self.training.selected_on_holdout
             ctx["use_cv"] = self.training.use_cv
             ctx["cv_folds"] = self.training.cv_folds
             ctx["use_hyperopt"] = self.training.use_hyperopt
