@@ -65,9 +65,9 @@ DATA = Path(__file__).resolve().parent / "sample_data"
 #: `(fixture, lens, target, finding id, the step it must come back at)`.
 #: Different steps on purpose — see the module docstring.
 CASES = {
-    "clinical → Preprocess": ("clinical_labs.csv", "clinical", "readmitted",
+    "clinical to Preprocess": ("clinical_labs.csv", "clinical", "readmitted",
                               "pack::clinical::censored_values", "preprocess"),
-    "dietary → Features": ("nhanes_kilojoules.csv", "dietary", "DR1TKCAL",
+    "dietary to Features": ("nhanes_kilojoules.csv", "dietary", "DR1TKCAL",
                            "pack::dietary::energy_adjustment", "features"),
 }
 
