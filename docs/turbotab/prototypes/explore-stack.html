@@ -523,6 +523,14 @@ var CAPTURE = {
       "profile_physiologic_plausibility_4"
      ],
      "outside_bound": 1,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "pack::clinical::mixed_units",
+      "pack::clinical::censored_values",
+      "pack::clinical::impossible_vs_extreme"
+     ],
+     "cleared": [],
      "complete": false,
      "remainder": {
       "n": 10,
@@ -578,6 +586,17 @@ var CAPTURE = {
       "profile_physiologic_plausibility_4"
      ],
      "outside_bound": 1,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "pack::clinical::mixed_units",
+      "pack::clinical::censored_values",
+      "pack::clinical::impossible_vs_extreme",
+      "pack::clinical::mixed_result_type",
+      "pack::clinical::number_format",
+      "pack::clinical::temporal_implausibility"
+     ],
+     "cleared": [],
      "complete": false,
      "remainder": {
       "n": 7,
@@ -633,6 +652,20 @@ var CAPTURE = {
       "profile_physiologic_plausibility_4"
      ],
      "outside_bound": 1,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "pack::clinical::mixed_units",
+      "pack::clinical::censored_values",
+      "pack::clinical::impossible_vs_extreme",
+      "pack::clinical::mixed_result_type",
+      "pack::clinical::number_format",
+      "pack::clinical::temporal_implausibility",
+      "pack::clinical::text_numeric",
+      "pack::clinical::default_value_mass",
+      "profile_sample_size_0"
+     ],
+     "cleared": [],
      "complete": false,
      "remainder": {
       "n": 4,
@@ -809,6 +842,17 @@ var CAPTURE = {
       "profile_outliers_4"
      ],
      "outside_bound": 4,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "pack::metabolomics::pooled_qc",
+      "profile_dimensionality_1",
+      "profile_missingness_2",
+      "profile_sample_size_0",
+      "pack::metabolomics::left_censored",
+      "pack::metabolomics::run_order"
+     ],
+     "cleared": [],
      "complete": false,
      "remainder": {
       "n": 2,
@@ -848,6 +892,19 @@ var CAPTURE = {
      ],
      "collapsed": [],
      "outside_bound": 4,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "pack::metabolomics::pooled_qc",
+      "profile_dimensionality_1",
+      "profile_missingness_2",
+      "profile_sample_size_0",
+      "pack::metabolomics::left_censored",
+      "pack::metabolomics::run_order",
+      "profile_cardinality_3",
+      "profile_outliers_4"
+     ],
+     "cleared": [],
      "complete": true,
      "remainder": {
       "n": 0,
@@ -875,6 +932,19 @@ var CAPTURE = {
      ],
      "collapsed": [],
      "outside_bound": 4,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "pack::metabolomics::pooled_qc",
+      "profile_dimensionality_1",
+      "profile_missingness_2",
+      "profile_sample_size_0",
+      "pack::metabolomics::left_censored",
+      "pack::metabolomics::run_order",
+      "profile_cardinality_3",
+      "profile_outliers_4"
+     ],
+     "cleared": [],
      "complete": true,
      "remainder": {
       "n": 0,
@@ -1002,6 +1072,13 @@ var CAPTURE = {
       "pack::dietary::implausible_intake"
      ],
      "outside_bound": 0,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "pack::dietary::atwater",
+      "pack::dietary::energy_adjustment"
+     ],
+     "cleared": [],
      "complete": false,
      "remainder": {
       "n": 4,
@@ -1049,34 +1126,32 @@ var CAPTURE = {
       "pack::dietary::energy_adjustment",
       "pack::dietary::survey_weights",
       "profile_sample_size_0",
-      "profile_outliers_1"
-     ],
-     "collapsed": [
+      "profile_outliers_1",
       "pack::dietary::implausible_intake"
      ],
+     "collapsed": [],
      "outside_bound": 0,
-     "complete": false,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "pack::dietary::atwater",
+      "pack::dietary::energy_adjustment",
+      "pack::dietary::survey_weights",
+      "profile_sample_size_0",
+      "profile_outliers_1",
+      "pack::dietary::implausible_intake"
+     ],
+     "cleared": [],
+     "complete": true,
      "remainder": {
-      "n": 1,
-      "by_severity": [
-       {
-        "key": "info",
-        "n": 1,
-        "label": "info"
-       }
-      ],
-      "by_source": [
-       {
-        "key": "dietary lens",
-        "n": 1,
-        "label": "from the dietary lens"
-       }
-      ]
+      "n": 0,
+      "by_severity": [],
+      "by_source": []
      },
-     "affordance": "1 more — 1 info",
-     "affordance_detail": "1 from the dietary lens",
-     "affordance_open": "Fold that one back",
-     "affordance_title": "Adds 1 more finding to this list. It ranked below the top 5; nothing is out of the record either way."
+     "affordance": "All 6 shown.",
+     "affordance_detail": "",
+     "affordance_open": "",
+     "affordance_title": ""
     },
     "8": {
      "bound": 8,
@@ -1092,6 +1167,17 @@ var CAPTURE = {
      ],
      "collapsed": [],
      "outside_bound": 0,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "pack::dietary::atwater",
+      "pack::dietary::energy_adjustment",
+      "pack::dietary::survey_weights",
+      "profile_sample_size_0",
+      "profile_outliers_1",
+      "pack::dietary::implausible_intake"
+     ],
+     "cleared": [],
      "complete": true,
      "remainder": {
       "n": 0,
@@ -1165,34 +1251,29 @@ var CAPTURE = {
      "served": 3,
      "pushed": [
       "profile_sample_size_0",
-      "profile_cardinality_1"
-     ],
-     "collapsed": [
+      "profile_cardinality_1",
       "pack::survey::ordinal_declared"
      ],
+     "collapsed": [],
      "outside_bound": 0,
-     "complete": false,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "profile_sample_size_0",
+      "profile_cardinality_1",
+      "pack::survey::ordinal_declared"
+     ],
+     "cleared": [],
+     "complete": true,
      "remainder": {
-      "n": 1,
-      "by_severity": [
-       {
-        "key": "info",
-        "n": 1,
-        "label": "info"
-       }
-      ],
-      "by_source": [
-       {
-        "key": "survey lens",
-        "n": 1,
-        "label": "from the survey lens"
-       }
-      ]
+      "n": 0,
+      "by_severity": [],
+      "by_source": []
      },
-     "affordance": "1 more — 1 info",
-     "affordance_detail": "1 from the survey lens",
-     "affordance_open": "Fold that one back",
-     "affordance_title": "Adds 1 more finding to this list. It ranked below the top 2; nothing is out of the record either way."
+     "affordance": "All 3 shown.",
+     "affordance_detail": "",
+     "affordance_open": "",
+     "affordance_title": ""
     },
     "5": {
      "bound": 5,
@@ -1205,6 +1286,14 @@ var CAPTURE = {
      ],
      "collapsed": [],
      "outside_bound": 0,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "profile_sample_size_0",
+      "profile_cardinality_1",
+      "pack::survey::ordinal_declared"
+     ],
+     "cleared": [],
      "complete": true,
      "remainder": {
       "n": 0,
@@ -1227,6 +1316,14 @@ var CAPTURE = {
      ],
      "collapsed": [],
      "outside_bound": 0,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "profile_sample_size_0",
+      "profile_cardinality_1",
+      "pack::survey::ordinal_declared"
+     ],
+     "cleared": [],
      "complete": true,
      "remainder": {
       "n": 0,
@@ -1271,6 +1368,12 @@ var CAPTURE = {
      ],
      "collapsed": [],
      "outside_bound": 0,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "profile_sample_size_0"
+     ],
+     "cleared": [],
      "complete": true,
      "remainder": {
       "n": 0,
@@ -1291,6 +1394,12 @@ var CAPTURE = {
      ],
      "collapsed": [],
      "outside_bound": 0,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "profile_sample_size_0"
+     ],
+     "cleared": [],
      "complete": true,
      "remainder": {
       "n": 0,
@@ -1311,6 +1420,12 @@ var CAPTURE = {
      ],
      "collapsed": [],
      "outside_bound": 0,
+     "promoted": [],
+     "promoted_because": "",
+     "live": [
+      "profile_sample_size_0"
+     ],
+     "cleared": [],
      "complete": true,
      "remainder": {
       "n": 0,
@@ -1367,7 +1482,7 @@ var CAPTURE = {
    "lens": "dietary",
    "n": 6,
    "n_gating": 0,
-   "collapsed_at_ships": 1
+   "collapsed_at_ships": 0
   },
   {
    "fixture": "nhanes_dietary.csv",
@@ -1388,7 +1503,7 @@ var CAPTURE = {
    "lens": "dietary",
    "n": 6,
    "n_gating": 0,
-   "collapsed_at_ships": 1
+   "collapsed_at_ships": 0
   },
   {
    "fixture": "metabolomics_untargeted.csv",
@@ -1459,7 +1574,7 @@ var CAPTURE = {
   8,
   13
  ],
- "n_collapsing": 3
+ "n_collapsing": 1
 };
 /* ⟦CAPTURE-END⟧ */
 

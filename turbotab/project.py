@@ -93,16 +93,29 @@ def _copy(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     return None if value is None else dict(value)
 
 
-def _attention_stack(findings: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+def _attention_stack(findings: Sequence[Dict[str, Any]],
+                     decisions: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     """The Explore stack partition, imported at call time.
 
     Deferred for the reason every other `turbotab` import in this file is: the
     package imports back into the project model, and a module-scope import here
     is a cycle waiting for the next module to grow one.
+
+    The decisions go in because `GUIDED-154` made a dismissal move the line: a
+    cleared card stops consuming budget, so the partition is a function of the
+    record and not of the finding list alone.
     """
     from turbotab import attention as _att
 
-    return _att.stack(findings)
+    return _att.stack(findings, spent=_att.spent_ids(decisions))
+
+
+def _deferred_noticings(findings: Sequence[Dict[str, Any]],
+                        decisions: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    """What comes back where, imported at call time for the same reason."""
+    from turbotab import attention as _att
+
+    return _att.deferred_noticings(findings, decisions)
 
 
 def _label(value: Any) -> Any:
@@ -2286,6 +2299,10 @@ class AnalysisProject:
         append-mutates-the-project class, which is the dangerous one — and the
         record is read-only by contract below that.
         """
+        # Serialized once and used twice: the record goes on the wire, and the
+        # Explore partition reads it because `GUIDED-154` made a dismissal move
+        # the line.
+        decisions = [d.to_dict() for d in self.decisions]
         out: Dict[str, Any] = {
             "id": self.id,
             "name": self.name,
@@ -2299,7 +2316,7 @@ class AnalysisProject:
             "task_overridden": self.task_overridden,
             "task_reasons": list(self.task_reasons),
             "columns": self.columns,
-            "decisions": [d.to_dict() for d in self.decisions],
+            "decisions": decisions,
             "findings": list(self.findings),
             "findings_stale": self.findings_stale,
             # `GUIDED-149`. What the Explore stack pushes and what it collapses,
@@ -2309,7 +2326,11 @@ class AnalysisProject:
             # already paid for at `cohort_findings`, at `repairs.group` and at
             # the missingness timing. Ids rather than findings: the page resolves
             # them against `findings` above, so nothing travels twice.
-            "explore_stack": _attention_stack(self.findings),
+            "explore_stack": _attention_stack(self.findings, decisions),
+            # `GUIDED-153`. What was set aside, keyed by the step it comes back
+            # at, so the surface that renders it asks one question and holds no
+            # rule about which findings those are.
+            "deferred_noticings": _deferred_noticings(self.findings, decisions),
             "applied_fixes": self.applied_fixes,
             "engineered": list(self.engineered),
             "deferred_transforms": list(self.deferred_transforms),

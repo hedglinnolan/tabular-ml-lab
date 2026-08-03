@@ -707,7 +707,12 @@ def rank_findings(
     if lens and df is not None:
         from turbotab import packs as _packs
         items = _packs.reframe(items, lens, df)
-        items = items + _packs.findings(df, lens)
+        # `_with_deferral` HERE TOO, and its absence was `GUIDED-153`. The pack
+        # stream was appended raw, so every pack finding shipped with
+        # `defer_target: null`, the button read "Decide later" instead of naming
+        # a step, and pressing it recorded a target the API's fallback chose —
+        # which `ml.router.defer_destination`'s own docstring forbids.
+        items = items + [_with_deferral(f) for f in _packs.findings(df, lens)]
 
     items.sort(key=lambda d: (
         SEVERITY_RANK.get(d["severity"], 99),

@@ -1010,6 +1010,24 @@
      palette's silhouette because it is the same gesture: everything is still
      here, quietly. */
   .chip.src{color:var(--faint)}
+  /* GUIDED-154 · a promoted card says why it is here. Sans and italic for the
+     same reason `.chip.scope` is: this is a STATEMENT, not a name, and §03's
+     three-voice rule is what tells the reader that before they read a word. No
+     new hue — §02 — and deliberately not `--accent`, which marks the open
+     question and would have this competing with it for the one accent moment a
+     viewport gets. */
+  /* GUIDED-153 · the came-back block. NOT a new card type (§04): the finding
+     returns as the card it already was, with one line of attribution above it.
+     The warn keyline is the coach's voice — §02 — because a deferral is a
+     noticing the coach is holding, which is exactly what `--warn` means. */
+  .cameback:empty{display:none}
+  .cameback{border-left:3px solid var(--warn-line);padding-left:13px;margin:16px 0 4px}
+  .cb-head{font-family:var(--serif);font-size:14.5px;font-weight:700;margin:0 0 2px}
+  .cb-why{font-family:var(--mono);font-size:10px;color:var(--warn);
+          letter-spacing:.02em;margin:0}
+  .chip.arrived{font-family:var(--sans);font-style:italic;letter-spacing:0;
+                text-transform:none;color:var(--muted);
+                background:var(--surface-2);border-color:var(--line)}
   .more{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
         padding:13px 0 3px;border-top:1px solid var(--line-soft);margin-top:4px}
   .more-detail{font-family:var(--mono);font-size:10px;color:var(--faint);
@@ -1258,6 +1276,15 @@
             <div id="profMore"></div>
             <div class="findlist" id="profRest"></div>
 
+            <!-- GUIDED-153 · WHAT CAME BACK HERE. A noticing set aside earlier
+                 reappears at the step that can act on it, attributed to where it
+                 was set aside — PRODUCT_VISION §04's promise, which was open for
+                 the whole pack stream because a pack finding carries no
+                 `fix_kind` and the Router's resurfacing loop admits only
+                 findings that do. The server says which findings land here; this
+                 page holds no rule about it. -->
+            <div class="cameback" id="back-explore"></div>
+
             <!-- Missingness, named per feature and routed by dtype. -->
             <div id="missBox" style="margin-top:14px;"></div>
 
@@ -1322,6 +1349,15 @@
       <span class="stale-tag" id="stale-features">stale — an earlier answer changed</span>
       <div class="sect-body">
         <div class="stepcard" id="card-features">
+
+            <!-- GUIDED-153 · WHAT CAME BACK HERE. A noticing set aside earlier
+                 reappears at the step that can act on it, attributed to where it
+                 was set aside — PRODUCT_VISION §04's promise, which was open for
+                 the whole pack stream because a pack finding carries no
+                 `fix_kind` and the Router's resurfacing loop admits only
+                 findings that do. The server says which findings land here; this
+                 page holds no rule about it. -->
+            <div class="cameback" id="back-features"></div>
           <div class="sub">
             <div class="subhead"><span class="sub-num">01</span></div>
             <h2><span class="fact-mark" aria-hidden="true"></span><span id="featTitle"></span></h2>
@@ -1398,6 +1434,15 @@
       <span class="stale-tag" id="stale-preprocess">stale — an earlier answer changed</span>
       <div class="sect-body">
         <div class="stepcard" id="card-preprocess">
+
+            <!-- GUIDED-153 · WHAT CAME BACK HERE. A noticing set aside earlier
+                 reappears at the step that can act on it, attributed to where it
+                 was set aside — PRODUCT_VISION §04's promise, which was open for
+                 the whole pack stream because a pack finding carries no
+                 `fix_kind` and the Router's resurfacing loop admits only
+                 findings that do. The server says which findings land here; this
+                 page holds no rule about it. -->
+            <div class="cameback" id="back-preprocess"></div>
           <div class="sub">
             <div class="subhead"><span class="sub-num">01</span></div>
             <h2><span class="fact-mark" aria-hidden="true"></span>What do the blanks in your table mean?</h2>
@@ -1428,6 +1473,15 @@
       <span class="stale-tag" id="stale-train">stale — an earlier answer changed</span>
       <div class="sect-body">
         <div class="stepcard" id="card-train">
+
+            <!-- GUIDED-153 · WHAT CAME BACK HERE. A noticing set aside earlier
+                 reappears at the step that can act on it, attributed to where it
+                 was set aside — PRODUCT_VISION §04's promise, which was open for
+                 the whole pack stream because a pack finding carries no
+                 `fix_kind` and the Router's resurfacing loop admits only
+                 findings that do. The server says which findings land here; this
+                 page holds no rule about it. -->
+            <div class="cameback" id="back-train"></div>
           <div class="sub">
             <div class="subhead"><span class="sub-num">01</span></div>
             <h2><span class="fact-mark" aria-hidden="true"></span>Which models should be fitted?</h2>
@@ -1806,11 +1860,29 @@
      The label is the SERVER'S (`source_label`), never composed here: a page that
      decided for itself what a finding's provenance is called would hold a second
      copy of the rule, which is `cohort_findings`' own argument one field over. */
-  function findingCard(f, withSource){
+  function findingCard(f, withSource, arrived){
     var st = statusOf(f.id);
     var cls = "find no-thumb" + (st.deferred ? " deferred" : "") + (st.dismissed ? " gone" : "");
     var chips = "";
-    /* FIRST, and in a fixed position. A provenance chip that moves with the
+    /* GUIDED-154 · WHY THIS CARD IS HERE AT ALL, before anything about what it
+       says. Clearing a card frees its slot and the next finding is promoted into
+       it, so a card the user did not ask for appears where they just acted — and
+       the honest failure mode is that it reads as *my dismissal did not work*.
+
+       A STATE, NOT A MOTION, and that is ruled rather than convenient. This one
+       genuinely IS a consequence rather than disclosure, so it would meet §05.2's
+       criterion where the expand did not — and the list stays closed at four
+       anyway: the app has no mechanism for animating a change of content, and a
+       fifth slot pulls in `GUIDED-073`, which is deliberately unbuilt. So the
+       card is marked where it stands.
+
+       §09's recorded-absence rule from the other side: an object appearing with
+       no explanation is as unexplained as one vanishing without it. The sentence
+       is the server's, quoted (§05.1 rule 3). */
+    if (arrived){
+      chips += '<span class="chip arrived">' + esc(arrived) + "</span>";
+    }
+    /* Then the provenance, in a fixed position. A chip that moves with the
        length of the severity word cannot be scanned down a column, and scanning
        is the whole job it took over from the grouping. */
     if (withSource && f.source_label){
@@ -4306,6 +4378,7 @@
       .catch(function(){ /* no reference match is a real answer, not an error */ });
     attachSkewPlots();
     renderMissingness();
+    renderCameBack();
   }
 
   /* ═════════ THE EXPLORE STACK ═════════ `GUIDED-149`
@@ -4330,11 +4403,50 @@
      scale. */
   var STACK_OPEN = false;
 
-  function stackCards(ids){
+  function stackCards(ids, promoted, note){
+    var marked = promoted || [];
     return (ids || []).map(function(id){
       var f = findingById(id);
-      return f ? findingCard(f, true) : "";
+      if (!f) return "";
+      return findingCard(f, true, marked.indexOf(id) === -1 ? "" : note);
     }).join("");
+  }
+
+  /* GUIDED-153 · WHAT CAME BACK HERE.
+     `PRODUCT_VISION.md` §04: *deferred items resurface, pre-checked and
+     attributed, at the step they target. That closes the loop between what the
+     app noticed and what the user decided, which is the whole point.* For the
+     pack stream the loop never closed: a pack finding carries `fix_kind: none`
+     by design — §A1.1's *detect, propose, require explicit confirmation* — and
+     the Router's resurfacing loop admits only findings that carry a repair. So
+     the deferral was recorded, the dock listed it, and the step it named showed
+     nothing.
+
+     THE SERVER SAYS WHICH FINDINGS LAND WHERE. This function asks one question
+     per step and holds no rule, which is the same arrangement as the stack
+     partition one surface over. A step whose slot is missing renders nothing and
+     `test_a_deferred_pack_finding_comes_back_where_it_said` names it. */
+  var CAMEBACK_STEPS = ["explore", "features", "preprocess", "train"];
+
+  function renderCameBack(){
+    var by = (P && P.deferred_noticings) || {};
+    CAMEBACK_STEPS.forEach(function(step){
+      var box = $("back-" + step);
+      if (!box) return;
+      var items = by[step] || [];
+      if (!items.length){ box.innerHTML = ""; return; }
+      box.innerHTML =
+        '<p class="cb-head">' + esc(items.length === 1
+          ? "One thing you set aside comes back here."
+          : items.length + " things you set aside come back here.") + "</p>" +
+        items.map(function(x){
+          var f = findingById(x.id);
+          return '<div class="cb-item" id="cb-' + esc(x.id) + '">' +
+                 '<p class="cb-why">' + esc(x.why) + "</p>" +
+                 (f ? findingCard(f, true) : '<p class="cb-why">' +
+                      esc(x.title) + "</p>") + "</div>";
+        }).join("");
+    });
   }
 
   function renderExploreStack(){
@@ -4357,7 +4469,7 @@
       return;
     }
 
-    list.innerHTML = stackCards(st.pushed);
+    list.innerHTML = stackCards(st.pushed, st.promoted, st.promoted_because);
 
     if (st.complete){
       /* The recorded-absence rule (§09): "All 13 shown." is an answer. Without

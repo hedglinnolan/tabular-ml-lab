@@ -59,12 +59,21 @@ these* — the Explore stack runs
 
 — **median five.** `docs/turbotab/prototypes/capture_explore_stack.py` re-derives
 that list every time it runs, and the prototype prints it, so the number behind
-this constant is checkable rather than quoted. A bound at the median collapses something on three of the
-sixteen and nothing on the other thirteen, so it fires on the tail rather than on
-the typical table. That is the property being bought, and `PRODUCT_VISION.md`
-already states it about a different surface: *"a resolution statement that fires
-on every dataset is wallpaper."* A collapse that fires on every dataset is the
-same thing — it stops being judgment and becomes a cap.
+this constant is checkable rather than quoted. A bound at the median collapses
+something on **one** of the sixteen and nothing on the other fifteen, so it fires
+on the tail rather than on the typical table. That is the property being bought,
+and `PRODUCT_VISION.md` already states it about a different surface: *"a
+resolution statement that fires on every dataset is wallpaper."* A collapse that
+fires on every dataset is the same thing — it stops being judgment and becomes a
+cap.
+
+**One, and L45 measured three. `MIN_COLLAPSE` moved it.** Two of the three tables
+that used to collapse were collapsing exactly one card, and an overflow of one is
+now shown — so A2 changed the number A1 was justified by, in the direction that
+strengthens A1's argument and away from where the measurement says much. At one
+in sixteen the median is doing very little work, and if this fixture population
+is ever taken seriously as a population, that is the thing to revisit. Recorded
+rather than quietly restated, because the number was load-bearing.
 
 **Stated as a parameter rather than shipped as a constant**, because the
 population it was measured on is this repository's fixtures, which are synthetic.
@@ -73,15 +82,26 @@ learned on synthetic data as a hypothesis until a real dataset has seen it.* The
 number is therefore an argument, `prototypes/explore-stack.html` is where it gets
 looked at, and every caller can pass a different one.
 
-**What deliberately has no second parameter.** A remainder of exactly one is
-collapsed like any other, and the affordance then hides one card and costs one
-row — which is mildly silly and is not wrong. The alternative is a rule that says
-*collapse unless the overflow is one*, and §05 has already paid for that shape:
-the scroll rule was revised to a size-dependent condition, was correct at one
-dataset size and wrong at the next, and *"prefer a rule with no free parameter
-over a rule with a tuned one"* is the lesson written down. So the one-card
-remainder is shown to the product owner in the prototype rather than special-cased
-here, because that is a ruling somebody makes after looking.
+**The one-card remainder is not collapsed, and the exception has to state its
+reason here because the next reader meets §05's lesson before they meet this.**
+`MIN_COLLAPSE` is 2: an overflow of one is pushed.
+
+L45 shipped without it and argued the other way, from §05 — *"prefer a rule with
+no free parameter over a rule with a tuned one"*, the lesson the scroll rule
+bought. **The product owner overruled it and the distinction is the whole of
+why.** The scroll rule's parameter was tuned to **dataset size**: it was correct
+when a section held two or three cards and wrong on a table with nine findings,
+and nothing in the interface could tell which case it was in. **An overflow of one
+is not tuned to anything.** It is the point where the affordance costs exactly one
+row to hide exactly one row, so the control returns nothing for the space it
+occupies — a derivation from what the affordance *is*, and it does not move when
+the data does. An exception with no stated reason is how a recorded lesson gets
+quietly reversed, so this paragraph is the reason and it sits where the constant
+does.
+
+**And it is one of three claims this loop sent to the literature.**
+`research/INTERACTION_PACK.md` §03 is the check; if it comes back saying a
+one-card affordance is fine, this is cheap to reverse.
 
 ## What this module does not do
 
@@ -111,6 +131,13 @@ NEVER_COLLAPSED = frozenset({"critical", "blocker"})
 #: puts there. See the module docstring for the measurement.
 BOUND = 5
 
+#: The smallest remainder worth collapsing. **Not a tuned parameter, and the
+#: module docstring says why at length**: below this the affordance costs the row
+#: it saves, so the control returns nothing for the space it occupies. That is a
+#: property of the affordance rather than of any dataset, which is what separates
+#: it from the size-dependent scroll condition §05 retired.
+MIN_COLLAPSE = 2
+
 #: The sentence the number ships with, because a magic constant is a decision
 #: nobody can argue with. Quoted by the prototype and by the ledger row.
 BOUND_BECAUSE = (
@@ -118,11 +145,15 @@ BOUND_BECAUSE = (
     "turbotab/sample_data/, driven through the API under the lens each fixture's "
     "companion names and with no lens where there is no companion: "
     "1·3·3·3·3·4·4·5·5·5·5·6·6·6·8·13. A bound at the median collapses something "
-    "on three of them and nothing on thirteen, so it fires on the tail rather "
-    "than on the typical table — a collapse that fires on every dataset has "
-    "stopped being judgment and become a cap. It is not the prototype's two: two "
-    "is the interruption budget, and a stack is not an interruption. The "
-    "measurement is re-derived, not quoted, by "
+    "on ONE of them and nothing on the other fifteen, so it fires on the tail "
+    "rather than on the typical table — a collapse that fires on every dataset "
+    "has stopped being judgment and become a cap. It is not the prototype's two: "
+    "two is the interruption budget, and a stack is not an interruption. "
+    "ONE, NOT THREE, AND THE CHANGE IS L46's MIN_COLLAPSE: two of the three "
+    "tables that used to collapse were collapsing exactly one card, and an "
+    "overflow of one is now shown. The two rulings interact, and the number the "
+    "bound was justified by moved when the second landed. The measurement is "
+    "re-derived rather than quoted, by "
     "docs/turbotab/prototypes/capture_explore_stack.py."
 )
 
@@ -250,8 +281,97 @@ def _source_phrase(label: str) -> str:
     return f"about the {label}"
 
 
+def spent_ids(decisions: Sequence[Dict[str, Any]]) -> Dict[str, str]:
+    """Findings the user has cleared, mapped to how — and which cost no budget.
+
+    `GUIDED-154`, ruled by the product owner at L46. A dismissed card collapses
+    to a one-line *"Dismissed: X. Still in the record, out of your way."* note
+    and a deferred one goes grey with its destination named; neither is asking
+    for attention any more, so neither should be holding a slot that keeps a live
+    finding behind an affordance. **The stack keeps its full budget of live
+    findings.**
+
+    Last decision wins for dismiss/undismiss, and a deferral has no inverse — the
+    same reading the page's `statusOf` does. **They are two readers of one record
+    and that is deliberate rather than sloppy**, because they answer different
+    questions: `statusOf` asks *how does this card look* and needs `flagged` too;
+    this asks *does this finding still cost budget*, which is a partition rule
+    and belongs on the server with the rest of them.
+    `test_the_promoted_card_says_why_it_is_there` asserts the two agree, which is
+    the check that keeps the pair honest.
+    """
+    state: Dict[str, Optional[str]] = {}
+    for decision in decisions or ():
+        subject = str((decision or {}).get("subject") or "")
+        kind = str((decision or {}).get("kind") or "")
+        if not subject:
+            continue
+        if kind in ("dismiss", "defer"):
+            state[subject] = kind
+        elif kind == "undismiss":
+            state[subject] = None
+    return {k: v for k, v in state.items() if v}
+
+
+def deferred_noticings(findings: Sequence[Dict[str, Any]],
+                       decisions: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    """What the user set aside, grouped by the step it comes back at.
+    `GUIDED-153`.
+
+    **This exists because a deferred pack finding had nowhere to come back to.**
+    `ml.router.plan` re-presents a deferred finding as a repair question, and
+    `_is_repairable` admits only findings that carry a `fix_kind` — a pack
+    finding carries `none`, by design, because §A1.1's rule is *detect, propose,
+    require explicit confirmation* and none of the eighteen detectors proposes a
+    repair. So the deferral was recorded, the dock listed it, and the step it
+    named never showed it. `PRODUCT_VISION.md` §04: *deferred items resurface,
+    pre-checked and attributed, at the step they target. That closes the loop
+    between what the app noticed and what the user decided, which is the whole
+    point.* The loop stayed open.
+
+    **A noticing is not a question and this does not make it one.** It comes back
+    as the card it already was, attributed to where it was set aside — which is
+    `test_a_finding_with_no_repair_still_offers_something`'s precedent, one
+    disposition over: something is always offerable, and for a finding with no
+    repair that something is the finding itself, in front of the step that can
+    act on it.
+
+    Keyed by step so the page asks one question — *what comes back here* — and
+    holds no rule about which findings those are.
+    """
+    cleared = spent_ids(decisions)
+    by_step: Dict[str, List[Dict[str, Any]]] = {}
+    for finding in findings:
+        fid = str(finding.get("id") or "")
+        if cleared.get(fid) != "defer":
+            continue
+        step = str(finding.get("defer_target") or "")
+        label = str(finding.get("defer_target_label") or "")
+        if not step:
+            # A deferral with no destination is the defect this closes, so it is
+            # reported rather than filed under a step nobody chose.
+            by_step.setdefault("__unrouted__", []).append(
+                {"id": fid, "title": finding.get("title") or "", "from": "explore",
+                 "why": "This was set aside and nothing recorded where it comes "
+                        "back, so it cannot be shown at a step. That is a defect "
+                        "rather than a state."})
+            continue
+        by_step.setdefault(step, []).append({
+            "id": fid,
+            "title": finding.get("title") or "",
+            "label": label,
+            # WHERE IT CAME FROM, because "attributed" is half of §04's promise
+            # and a card arriving with no history is the promotion problem in a
+            # different costume.
+            "why": f"You set this aside at Explore. {label} is the step that can "
+                   f"act on it.",
+        })
+    return by_step
+
+
 def stack(findings: Sequence[Dict[str, Any]],
-          bound: Optional[int] = None) -> Dict[str, Any]:
+          bound: Optional[int] = None,
+          spent: Sequence[str] = ()) -> Dict[str, Any]:
     """Partition the Explore findings into what is pushed and what is collapsed.
 
     Returns ids rather than findings. The page already resolves an id against
@@ -259,34 +379,92 @@ def stack(findings: Sequence[Dict[str, Any]],
     would be two copies of one object on one wire — the shape trap #7 is about,
     one layer down.
 
-    The invariants, asserted here rather than trusted, because both are the kind
-    of thing that silently stops being true:
+    `spent` is the ids the user has dismissed or deferred. **They stay exactly
+    where they are and stop consuming budget**, which is the whole of
+    `GUIDED-154`'s ruling. Two things it deliberately is not:
+
+    * **Not a promotion of the spent card.** A finding cleared while the group
+      was open does not climb into the pushed list — spentness frees a slot, it
+      does not grant one. Otherwise dismissing a collapsed card would pull it up,
+      which is the opposite of what dismissing means.
+    * **Not a shortening.** A spent finding is still `pushed` and still rendered;
+      the shelf is never shortened, and `.gone`'s undo note is the record saying
+      so out loud.
+
+    The invariants, asserted here rather than trusted, because all three are the
+    kind of thing that silently stops being true:
 
     * `len(pushed) + len(collapsed) == served` — every finding is in exactly one
       place, and the number in the affordance is the number behind it.
+    * `live + spent_pushed + collapsed == served` — the same ledger with the
+      pushed side split, which is the form the arithmetic takes once a dismissal
+      can move the line.
     * no finding in `collapsed` gates a decision.
     """
     limit = BOUND if bound is None else int(bound)
     if limit < 0:
         raise StackError(f"a bound of {limit} is not a number of cards")
+    # A mapping id → how it was cleared, or a bare sequence of ids when the
+    # caller does not know. The kinds are only ever used to make the promoted
+    # card's sentence say the true verb.
+    kinds: Dict[str, str] = (dict(spent) if isinstance(spent, dict)
+                             else {str(i): "" for i in (spent or ())})
+    cleared = set(kinds)
 
     ordered = explore_findings(findings)
-    pushed: List[Dict[str, Any]] = []
-    collapsed: List[Dict[str, Any]] = []
-    budget = limit
-    for finding in ordered:
-        if gates_a_decision(finding):
-            pushed.append(finding)
-        elif budget > 0:
-            budget -= 1
-            pushed.append(finding)
-        else:
-            collapsed.append(finding)
+
+    def partition(free_spent: bool):
+        pushed_, collapsed_, budget = [], [], limit
+        for finding in ordered:
+            if gates_a_decision(finding):
+                pushed_.append(finding)
+            elif budget > 0:
+                pushed_.append(finding)
+                if not (free_spent and str(finding.get("id")) in cleared):
+                    budget -= 1
+            else:
+                collapsed_.append(finding)
+        # THE ONE-CARD REMAINDER IS NOT COLLAPSED (`MIN_COLLAPSE`, and the module
+        # docstring carries the reason at length). Applied inside the partition
+        # so both the real one and the counterfactual below obey it — otherwise
+        # `promoted` would be computed against a stack that does not exist.
+        if 0 < len(collapsed_) < MIN_COLLAPSE:
+            pushed_ = pushed_ + collapsed_
+            collapsed_ = []
+        return pushed_, collapsed_
+
+    pushed, collapsed = partition(True)
+    # WHICH CARDS AROSE BECAUSE A SLOT OPENED, derived by asking what the
+    # partition would have been if nothing had been cleared. Derived rather than
+    # tracked through the loop because the difference IS the definition: a
+    # promoted card is one that would otherwise be behind the affordance.
+    if cleared:
+        would_be, _ = partition(False)
+        was = {str(f.get("id")) for f in would_be}
+        promoted = [str(f.get("id")) for f in pushed if str(f.get("id")) not in was]
+    else:
+        promoted = []
+    # THE VERB THE MARKER USES, taken from what actually happened rather than
+    # generalized. `dismiss` and `defer` are different decisions — one lets a
+    # finding go, the other says *bring this back at Preprocess* — and a marker
+    # that called both "cleared" when only one occurred would be the interface
+    # rounding a recorded decision off.
+    freed = {kinds.get(str(f.get("id")), "")
+             for f in pushed if str(f.get("id")) in cleared}
+    verb = ("dismissed" if freed == {"dismiss"}
+            else "deferred" if freed == {"defer"} else "cleared")
+    promoted_because = f"Moved up when you {verb} a card above."
 
     if len(pushed) + len(collapsed) != len(ordered):
         raise StackError(
             f"{len(pushed)} pushed + {len(collapsed)} collapsed does not "
             f"account for {len(ordered)} served")
+    spent_pushed = [f for f in pushed if str(f.get("id")) in cleared]
+    live = [f for f in pushed if str(f.get("id")) not in cleared]
+    if len(live) + len(spent_pushed) + len(collapsed) != len(ordered):
+        raise StackError(
+            f"{len(live)} live + {len(spent_pushed)} cleared + "
+            f"{len(collapsed)} collapsed does not account for {len(ordered)}")
     gated = [f.get("id") for f in collapsed if gates_a_decision(f)]
     if gated:
         raise StackError(
@@ -328,6 +506,18 @@ def stack(findings: Sequence[Dict[str, Any]],
         # they fit — so a reader of the payload can tell a stack of eight at
         # bound five from a bound somebody quietly raised.
         "outside_bound": sum(1 for f in pushed if gates_a_decision(f)),
+        # `GUIDED-154`. Which cards are on screen because a slot opened, and the
+        # sentence each one carries. **A state, not a motion** — §05.2's list
+        # stays closed at four, the app has no mechanism for animating a change
+        # of content, and a fifth slot pulls in `GUIDED-073`. §09's
+        # recorded-absence rule from the other side: an object appearing without
+        # explanation is as unexplained as one vanishing without it.
+        "promoted": promoted,
+        "promoted_because": promoted_because if promoted else "",
+        # The pushed side split, so a reader of the payload can check the ledger
+        # after a dismissal without recomputing which ids were cleared.
+        "live": [f.get("id") for f in live],
+        "cleared": [f.get("id") for f in spent_pushed],
         "complete": not collapsed,
         "remainder": {
             "n": len(collapsed),

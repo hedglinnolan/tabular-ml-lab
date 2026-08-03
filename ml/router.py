@@ -973,6 +973,70 @@ def _is_repairable(f: Dict[str, Any]) -> bool:
             and f.get("fix_kind") not in (None, "none"))
 
 
+#: WHERE EACH PACK DETECTOR'S FINDING COMES BACK. `GUIDED-153`.
+#:
+#: **Read off each detector's own `why_it_matters`, not assigned by taste.** The
+#: eight clinical detectors are not one kind of thing — `mixed_units` needs the
+#: units declared per analyte, which is a repair to the table, and
+#: `default_value_mass` needs a spike at a default treated as missing, which is a
+#: transform fitted in the pipeline — so one default for the whole stream was
+#: always going to be wrong for most of it.
+#:
+#: Three destinations, and the rule for choosing is *which step can act on this*:
+#:
+#: * **`explore`** — the value is not what it appears to be, and the table can
+#:   still be repaired there. Parsing, splitting, recoding, unit conversion, and
+#:   rows leaving the analysis.
+#: * **`preprocess`** — the value is real and its handling is a statistical
+#:   transform recorded now and fitted inside the per-model pipeline. Missingness
+#:   substitution, drift correction, log-ratios.
+#: * **`features`** — the decision is which covariate enters the model.
+#: * **`train`** — the decision is how the fit estimates, which is the survey
+#:   design family.
+#:
+#: A detector missing from this table is a suite failure rather than a silent
+#: `preprocess`, which is what `GUIDED-153` was: an unmapped default is the same
+#: defect wearing a table.
+PACK_DEFER: Dict[str, str] = {
+    # The value is not what it appears to be — repairable while the table is.
+    "clinical::text_numeric": "explore",
+    "clinical::mixed_result_type": "explore",
+    "clinical::mixed_units": "explore",
+    "clinical::number_format": "explore",
+    "survey::sentinel_codes": "explore",
+    "survey::ordinal_declared": "explore",
+    "dietary::atwater": "explore",
+    # Rows leaving the analysis. An exclusion changes N and is reported in
+    # participant flow, so it belongs where the cohort is still being decided.
+    "dietary::implausible_intake": "explore",
+    "metabolomics::pooled_qc": "explore",
+    # The value is real; its handling is a transform.
+    "clinical::censored_values": "preprocess",
+    "clinical::default_value_mass": "preprocess",
+    "clinical::impossible_vs_extreme": "preprocess",
+    "clinical::temporal_implausibility": "preprocess",
+    "metabolomics::left_censored": "preprocess",
+    "metabolomics::run_order": "preprocess",
+    "dietary::compositional": "preprocess",
+    "genomics::counts_p_over_n": "preprocess",
+    # Which covariate enters the model.
+    "dietary::energy_adjustment": "features",
+    # How the fit estimates. The survey-design family.
+    "dietary::survey_weights": "train",
+    "dietary::partial_design": "train",
+    "dietary::lonely_psu": "train",
+}
+
+
+class UnroutedFinding(RouterError):
+    """A pack finding whose destination nobody declared.
+
+    Raised rather than defaulted, because `GUIDED-153` was exactly a default: the
+    API filled an empty target with `explore` and the record then said *"deferred
+    to the step where it belongs"* while nothing had decided where it belongs.
+    """
+
+
 def defer_destination(finding: Dict[str, Any]) -> Tuple[str, str]:
     """Where a deferred finding resurfaces, and the label the button shows.
 
@@ -980,7 +1044,7 @@ def defer_destination(finding: Dict[str, Any]) -> Tuple[str, str]:
     frontend must not invent a destination: a deferral whose target is chosen by
     the renderer is a deferral the record cannot honor.
 
-    Two rules:
+    Three rules:
 
     * A **structural** repair changes what the table *is*, so it has to be
       settled before rows acquire identities (`T0-ID-001`). Its home step is
@@ -989,10 +1053,26 @@ def defer_destination(finding: Dict[str, Any]) -> Tuple[str, str]:
     * A **profile** finding — missingness, distribution, plausibility — is
       answered by a statistical transform, and those are recorded now and fitted
       inside the per-model pipeline. They belong to `preprocess`.
+    * A **pack** finding is routed by `PACK_DEFER`, per detector, because the
+      pack stream is the one whose members do not share a remedy (`GUIDED-153`).
     """
     source = finding.get("source")
     category = ((finding.get("params") or {}).get("category") or "")
-    if source == "structure":
+    if source == "pack":
+        key = str(finding.get("id") or "")
+        # `pack::<lens>::<detector>` — the two trailing segments are the key,
+        # because the id is the only place the detector names itself.
+        parts = key.split("::")
+        short = "::".join(parts[1:]) if len(parts) >= 3 else key
+        if short not in PACK_DEFER:
+            raise UnroutedFinding(
+                f"{key!r} has no declared defer destination. Add it to "
+                f"ml.router.PACK_DEFER — a pack finding routed by a default is "
+                f"`GUIDED-153` returning, because the record would then say "
+                f"'deferred to the step where it belongs' with nothing having "
+                f"decided where that is.")
+        step = PACK_DEFER[short]
+    elif source == "structure":
         step = "explore"
     elif category.startswith("missing") or category in (
             "physiologic_plausibility", "outliers", "distribution", "skew"):

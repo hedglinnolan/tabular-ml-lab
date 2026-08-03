@@ -254,33 +254,45 @@ def test_what_a_person_sees_is_stated_at_every_size(pool, label, n, n_gating):
 
 def test_a_bound_of_zero_still_cannot_hide_something_that_gates_a_decision():
     """The sharpest form of rule 1: no bound can bury a blocker, including one
-    that pushes nothing else at all."""
+    that pushes nothing else at all.
+
+    Three ordinary findings rather than one, because `MIN_COLLAPSE` means a
+    remainder of one is shown — so a two-finding fixture would collapse nothing
+    and the claim would pass without the rule being exercised. That is `L45`'s
+    own lesson about a fixture nothing is wrong for, arriving on the test that
+    lesson was written in.
+    """
     gating = {"id": "g", "severity": "blocker", "source": "pack",
               "pack": "clinical", "rank": 7}
-    ordinary = {"id": "o", "severity": "warning", "source": "profile", "rank": 0}
-    st = A.stack([ordinary, gating], bound=0)
+    ordinary = [{"id": f"o{i}", "severity": "warning", "source": "profile",
+                 "rank": i} for i in range(3)]
+    st = A.stack(ordinary + [gating], bound=0)
     assert st["pushed"] == ["g"], (
         f"a bound of zero collapsed something that gates a decision: {st}")
-    assert st["collapsed"] == ["o"]
+    assert st["collapsed"] == ["o0", "o1", "o2"]
     # AND IT IS FIRST, ahead of a finding the engine ranked above it.
     # `engine.SEVERITY_RANK` has no `blocker` key, so `rank_findings` would sort
     # that severity to 99 and put it LAST while `ml/router.py:77` ranks it 0.
     # The surface re-asserts the one clause the constitution makes absolute
     # rather than trusting a rank table that disagrees with itself
     # (`GUIDED-151`).
-    st2 = A.stack([ordinary, gating], bound=40)
+    st2 = A.stack(ordinary + [gating], bound=40)
     assert st2["pushed"][0] == "g", (
         f"a blocker is not first: {st2['pushed']}. A blocker third in a list of "
         f"nine is a blocker in name only.")
 
 
 def test_a_finding_with_no_rank_is_placed_by_arrival_and_never_dropped():
-    """The fallback `_rank` takes when a producer sets no rank."""
-    raw = [{"id": "a", "severity": "warning", "source": "profile"},
-           {"id": "b", "severity": "warning", "source": "profile"}]
+    """The fallback `_rank` takes when a producer sets no rank.
+
+    Three, not two: `MIN_COLLAPSE` shows a remainder of one, so a two-finding
+    fixture at bound 1 collapses nothing and says nothing about arrival order.
+    """
+    raw = [{"id": k, "severity": "warning", "source": "profile"}
+           for k in ("a", "b", "c")]
     st = A.stack(raw, bound=1)
-    assert st["served"] == 2
-    assert st["pushed"] == ["a"] and st["collapsed"] == ["b"]
+    assert st["served"] == 3
+    assert st["pushed"] == ["a"] and st["collapsed"] == ["b", "c"]
 
 
 def test_the_structural_stream_is_not_in_this_stack():

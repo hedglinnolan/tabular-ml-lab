@@ -243,6 +243,35 @@ HAND: List[Dict[str, Any]] = [
          source="turbotab/attention.py",
          probe="Nothing stood out in the profile or under the lens"),
 
+    # ── Explore · the card that arrived because a slot opened (`GUIDED-154`) ──
+    dict(step="Explore", state="findings stack · a card was promoted into a "
+                               "cleared slot",
+         trigger="a dismissal or deferral frees budget and the next collapsed "
+                 "finding is pushed. §09's recorded-absence rule from the other "
+                 "side: an object appearing without explanation is as "
+                 "unexplained as one vanishing without it",
+         copy="Moved up when you dismissed a card above.  ·  …deferred…  ·  "
+              "…cleared… (when both kinds occurred)",
+         source="turbotab/attention.py",
+         probe='promoted_because = f"Moved up when you {verb} a card above."'),
+
+    # ── Cross-step · what came back here (`GUIDED-153`) ─────────────────────
+    dict(step="Explore", state="deferral · the attribution it comes back with",
+         trigger="a deferred noticing renders at the step `ml.router.PACK_DEFER` "
+                 "sent it to. `PRODUCT_VISION.md` §04: *pre-checked and "
+                 "attributed*, and the attribution is this sentence",
+         copy="You set this aside at Explore. {Step} is the step that can act on it.",
+         source="turbotab/attention.py",
+         probe="is the step that can "),
+    dict(step="Explore", state="deferral · deferred with no destination",
+         trigger="a finding deferred while carrying no `defer_target`. Reported "
+                 "rather than filed under a step nobody chose — `GUIDED-153` "
+                 "was exactly that silence",
+         copy="This was set aside and nothing recorded where it comes back, so "
+              "it cannot be shown at a step. That is a defect rather than a state.",
+         source="turbotab/attention.py",
+         probe="That is a defect rather than a state"),
+
     dict(step="Explore", state="trim · the label saying what it is NOT",
          trigger="every successful `trim_training_rows`; §04's two objects look "
                  "identical in a spreadsheet, so the trim says which one it is",
