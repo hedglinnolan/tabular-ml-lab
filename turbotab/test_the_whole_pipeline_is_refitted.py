@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from turbotab import jobwait as JW                   # noqa: E402
 from turbotab import instability as I
 from turbotab import missingness as M
 from turbotab import selection as S
@@ -366,12 +367,7 @@ def test_it_runs_as_an_observable_job_with_a_name_and_a_cancel():
         "a job's name is read by a person waiting on it")
     assert str(B_FOR_TESTS) in job["name"]
 
-    for _ in range(400):
-        state = client.get(f"/job/{job['id']}").json()
-        if state["terminal"]:
-            break
-        time.sleep(0.05)
-    assert state["status"] == "done", state.get("error")
+    JW.settle_done(client, job)                              # `TEST-040`
 
     body = client.get(f"/project/{p.id}/instability").json()
     entry = body["runs"]["logreg"]
@@ -564,12 +560,7 @@ def test_the_instability_result_reaches_the_reader():
 
     job = client.post(f"/project/{p.id}/instability",
                       json={"model": "ridge", "b": 6}).json()
-    for _ in range(600):
-        state = client.get(f"/job/{job['id']}").json()
-        if state["terminal"]:
-            break
-        time.sleep(0.05)
-    assert state["status"] == "done", state.get("error")
+    JW.settle_done(client, job)                              # `TEST-040`
 
     served = client.get(f"/project/{p.id}/instability").json()
     project = client.get(f"/project/{p.id}").json()

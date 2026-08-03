@@ -52,6 +52,13 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# `TEST-041`. `figures.REGISTRY` is populated only as an import side
+# effect of `figure_specs`, so a file that reads the registry without
+# importing its populator is reading whatever an EARLIER FILE happened
+# to load. Module scope, not inside a fixture: the first test in a file
+# runs before any fixture that imports `api`.
+from turbotab import figure_specs  # noqa: F401 — populates FIG.REGISTRY
+from turbotab import jobwait as JW                   # noqa: E402
 from turbotab import exits as X                                       # noqa: E402
 from turbotab import pageharness as H                                 # noqa: E402
 
@@ -1340,11 +1347,7 @@ def claim_an_upload_reaches_a_held_out_number(client, project):
     started = client.post(f"/project/{pid}/train", json=posted[-1])
     assert started.status_code == 200, started.text[:250]
     job = started.json()
-    for _ in range(200):
-        job = client.get(f"/job/{job['id']}").json()
-        if job["terminal"]:
-            break
-    assert job["status"] == "done", (job["status"], job.get("error"))
+    JW.settle_done(client, job)                              # `TEST-040`
     run = client.get(f"/project/{pid}/training").json()["run"]
     assert run and run["n_test"] > 0
     scored = [r for r in run["results"] if r["metrics"]]
@@ -1396,11 +1399,7 @@ def claim_the_calibration_figure_is_drawn_for_the_first_time(client, project):
     shelf = client.get(f"/project/{pid}/models").json()
     keys = [m["key"] for g in shelf["groups"] for m in g["models"]][:3]
     job = client.post(f"/project/{pid}/train", json={"models": keys}).json()
-    for _ in range(200):
-        job = client.get(f"/job/{job['id']}").json()
-        if job["terminal"]:
-            break
-    assert job["status"] == "done", (job["status"], job.get("error"))
+    JW.settle_done(client, job)                              # `TEST-040`
 
     after = client.get(f"/project/{pid}/figures").json()
     drawn = [f for f in after["admitted"] + after["held"]
@@ -1481,11 +1480,7 @@ def claim_the_run_says_what_it_actually_fitted(client, project):
     picks = [k for k in ("histgb_clf", "logreg") if k in keys]
     assert len(picks) == 2, keys
     job = client.post(f"/project/{pid}/train", json={"models": picks}).json()
-    for _ in range(400):
-        job = client.get(f"/job/{job['id']}").json()
-        if job["terminal"]:
-            break
-    assert job["status"] == "done", (job["status"], job.get("error"))
+    JW.settle_done(client, job)                              # `TEST-040`
     served = client.get(f"/project/{pid}/training").json()
 
     diverged = [d for r in served["run"]["results"]

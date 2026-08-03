@@ -44,6 +44,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
+# `TEST-041`. `figures.REGISTRY` is populated only as an import side
+# effect of `figure_specs`, so a file that reads the registry without
+# importing its populator is reading whatever an EARLIER FILE happened
+# to load. Module scope, not inside a fixture: the first test in a file
+# runs before any fixture that imports `api`.
+from turbotab import figure_specs  # noqa: F401 — populates FIG.REGISTRY
 from turbotab import identifiers as _ids
 from turbotab import instability as I
 from turbotab import manuscript as MS

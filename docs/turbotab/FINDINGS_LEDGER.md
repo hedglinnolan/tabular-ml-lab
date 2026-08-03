@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**282 of 730 closed.**
+**283 of 731 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 397 |
 | `PARTIAL` | 51 |
-| `FIXED` | 278 |
+| `FIXED` | 279 |
 | `NOT-A-DEFECT` | 4 |
 
 ---
@@ -332,12 +332,12 @@ Nothing is closed without a regression test named after it.
 | `TEST-037` | high | test_engine_is_headless has not run for two loops, so L7's central architectural claim - that the engine runs without Streamlit - is currently unverified rather than verified | `tests/test_engine_is_headless.py:143 (the non-Streamlit failure branch); models/nn_whuber.py:5 (the unguarded…` | MEASURED IN THIS CONTAINER at L13, and stated as an environment fact rather than a code defect. The suite runs 1,584 passed / 4 failed: the shap three (TEST-034) plus this one.… |
 | `TEST-038` | high | models/nn_whuber.py imports torch unguarded at module scope while utils/seed.py guards the identical import, so a 1.1 GB dependency is mandatory for a user who never trains a neural net | `models/nn_whuber.py:5 (unguarded `import torch`); utils/seed.py:7-10 (the same import, guarded, with a…` | A PRINCIPLE-LOCALITY INSTANCE, which is why it is filed here rather than left as a packaging note. The rule - torch is optional, guard it - is stated once, correctly, in… |
 | `TEST-039` | high | Every Makefile test target exits 4 without running a single test: PYTEST_OPTS passes --timeout=60 and pytest-timeout is not installed in venv/, so the documented command and the CI target are both… | `Makefile:18,24,44; requirements-dev.txt:25` | Makefile:18 sets PYTEST_OPTS := --timeout=60 -q and every target interpolates it, so 'make test' produces 'error: unrecognized arguments: --timeout=60' and 'make: *** [test] Error… |
-| `TEST-040` | high | Four job-polling sites spin a bounded loop with NO WAIT and then assert status == done, so under machine load the suite reports a timing fact as an app fact - and the turbotab/ pass count stops being… | `measured at the L42 adjudication: a full turbotab/ run on the accepted tree returned 1 failed, 1422 passed…` | FOUND BY RE-COUNTING AN ACCEPTED REPORT, AND THE REPORT WAS NOT WRONG - the agent's run was green and the adjudicator's was not, on the same tree. THAT IS THE FINDING: the number… |
 | `TEST-027` | medium | utils/persistence.py is dead code — zero importers — yet contains the reproducibility manifest the new Project layer needs | `utils/persistence.py:1-158; zero import sites repo-wide` | Unchanged at HEAD - verified unreachable, not merely uncovered. The trap the row names is the one to record: it is tempting to adopt this wholesale as the Project serializer, and… |
 | `TEST-028` | medium | visualizations.py returns figures nobody inspects — the safest module to move and the easiest to break unnoticed | `visualizations.py:12,53,91,129,170; consumers pages/06_Train_and_Compare.py:69…` | Unchanged at HEAD: the module is genuinely pure and genuinely untested - the two tests that name it check that it imports, not what it draws. That combination is the row's point… |
 | `TEST-029` | medium | ml.feature_steps and ml.baseline_models are uncovered and produce the numbers the manuscript compares against | `ml/feature_steps.py:11,39; ml/baseline_models.py:21,150` | Unchanged at HEAD: both still uncovered, and both still produce published numbers. The seed sensitivity is the specific hazard - PCA's sign convention and KMeans' init are… |
 | `TEST-030` | medium | tests/workflow/* is order-dependent by design and silently degrades to false passes if pytest ordering changes | `tests/workflow/conftest.py:9-15; tests/workflow/test_state_invalidation.py:145-150` | Unchanged at HEAD, and the adjacent test is worth naming precisely because it looks like a fix and is not: tests/test_suite_is_order_independent.py guards RNG reseeding - that… |
 | `TEST-031` | medium | The plain-dict fake state in tests/workflow/ is the ready-made bridge to the Project object — the only asset that transfers directly | `tests/conftest.py:60-85, :88-122, :125-145; tests/workflow/conftest.py:41-45` | Unchanged at HEAD and this is the most useful row in the batch, because it is an ASSET rather than a defect. The test helpers already run against a plain dict, so a Project that… |
+| `TEST-041` | medium | Four turbotab test files read figures.REGISTRY, which is populated only as an import side effect of figure_specs, and one of them asserted a count over it before anything had imported the populator… | `turbotab/figures.py:REGISTRY is an empty dict filled by turbotab/figure_specs.py's module body…` | FOUND WHILE FIXING TEST-040 AND IT IS THE SAME PROPERTY FROM THE OTHER SIDE: TEST-040 is a count that moves with machine LOAD, this is a count that moves with ORDERING, and… |
 | `TEST-033` | low | _NOT_STAGE_RESULTS in tests/integration/test_cascade_dag_equivalence.py:31 is defined and never referenced - a dead exclusion set that reads as if it were enforcing something | `tests/integration/test_cascade_dag_equivalence.py:31` | Filed post-Loop-1; not part of the 370 Tier-1 rows. |
 
 ### Record / narrative / export — 28
@@ -615,7 +615,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 278
+## FIXED — 279
 
 
 ### Guided-door drive feedback — 93
@@ -918,6 +918,17 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-016` | high | Active cohort run and completed runs are not persisted at all | `utils/cohorts.py:334-344 (CohortRun), :389-407 (_ACTIVE_KEY/_DONE_KEY); utils/session_manager.py:73-162 (key…` | **test:** `tests/test_session_carries_the_run.py::test_the_active_run_comes_back` — Closed for both keys. The failure this row describes - a save taken mid-cohort-run restoring… |
 | `CONTRACT-050` | medium | Boundary FeatureSel: feature_selection_results and consensus_features | `pages/04_Feature_Selection.py:277-282, :447-448, :493-494; utils/session_state.py:283-298, :355-357` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_keeping_a_stage_does_not_keep_its_descendants` — The subtlety survived the port, and in the form the action… |
 
+### Migration safety net — 6
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `TEST-001` | critical | The invalidation DAG has NO test that calls the production function — three separate re-implementations test themselves | `utils/session_state.py:283 vs tests/workflow/test_state_invalidation.py:40-51 and…` | **test:** `tests/integration/test_characterization_cascade.py::test_full_reset_clears_every_downstream_key` — The production function is now called by a test, which is the whole… |
+| `TEST-003` | critical | PlausibilityGate violates sklearn's clone() contract — cross-validation raises RuntimeError whenever plausibility bounds are configured | `ml/preprocess_operators.py:49-55; ml/pipeline.py:185; ml/eval.py:161; contrast ml/preprocess_operators.py:13` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_cross_validation_runs_with_plausibility_bounds_configured` — Fixed with STATE-002 - same defect, same edit, and this… |
+| `TEST-013` | high | tests/integration/test_lockbox_split.py is the ONLY integration test that exercises real behavior end-to-end — it must be ported, not dropped | `tests/integration/test_lockbox_split.py:45-112` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page` — Ported before the cut, exactly as this row instructed, and strengthened… |
+| `T0-BUILD-005` | high | The routing harness diagnosed without a target while the API diagnosed with one, so it measured a door that no longer existed - and a composition change in the inventory moves no metric, so nothing… | `tests/integration/test_routing_value_check.py _run_guided; tests/integration/test_routing_baseline.py…` | **test:** `tests/integration/test_routing_baseline.py::test_both_doors_are_scored_against_one_inventory` — Found at L9c while implementing the target-question ruling. Both halves… |
+| `TEST-040` | high | Four job-polling sites spin a bounded loop with NO WAIT and then assert status == done, so under machine load the suite reports a timing fact as an app fact - and the turbotab/ pass count stops being… | `measured at the L42 adjudication: a full turbotab/ run on the accepted tree returned 1 failed, 1422 passed…` | **test:** `turbotab/test_a_job_is_waited_for_against_a_clock.py::test_no_test_polls_a_job_by_counting_iterations` — CLOSED AT L43-A4 BY POLLING AGAINST A CLOCK.… |
+| `GUIDED-100` | medium | The propagation probe itself: for each recorded decision kind, two projects identical except for that answer, and something downstream must differ | `turbotab/test_a_recorded_decision_changes_something.py; 41 kinds recorded, 23 probed (24 flips), 6 asserted…` | **test:** `turbotab/test_a_recorded_decision_changes_something.py::test_a_decision_about_the_analysis_reaches_the_fitted_pipeline` — BUILT AT L35-E as the instrument that would… |
+
 ### Models / training / eval — 6
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -938,16 +949,6 @@ Nothing is closed without a regression test named after it.
 | `MINE-016` | high | EDA's _data_fingerprint is schema-only — it cannot see value changes | `pages/02_EDA.py:122-125, 146-169, 809, 920, 957, 988, 1082; ml/import_doctor.py:876-895` | **test:** `tests/test_eda_caches_follow_the_data.py::test_the_page_has_one_fingerprint_and_it_follows_the_values` — Closed, and closed against a stronger requirement than this row… |
 | `MINE-021` | high | apply_plausibility_filter resets the index, destroying lockbox and cohort label correspondence | `ml/pipeline.py:109-124; pages/05_Preprocess.py:860; utils/test_lockbox.py:16-17, 248` | **test:** `tests/test_row_labels_are_identities.py::test_the_filter_keeps_the_labels_it_was_given` — Duplicate of STATE-001 from the landmine pass, and closed. The filter returns… |
 | `MINE-039` | medium | GroupShuffleSplit failure silently degrades the lockbox to a non-grouped split | `utils/test_lockbox.py:176-210, 282-294` | **test:** `tests/test_grouping_picks_the_person.py::test_too_few_groups_to_split_by_is_said_out_loud` — Closed, and the test's own assertion message is the invariant: 'the… |
-
-### Migration safety net — 5
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `TEST-001` | critical | The invalidation DAG has NO test that calls the production function — three separate re-implementations test themselves | `utils/session_state.py:283 vs tests/workflow/test_state_invalidation.py:40-51 and…` | **test:** `tests/integration/test_characterization_cascade.py::test_full_reset_clears_every_downstream_key` — The production function is now called by a test, which is the whole… |
-| `TEST-003` | critical | PlausibilityGate violates sklearn's clone() contract — cross-validation raises RuntimeError whenever plausibility bounds are configured | `ml/preprocess_operators.py:49-55; ml/pipeline.py:185; ml/eval.py:161; contrast ml/preprocess_operators.py:13` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_cross_validation_runs_with_plausibility_bounds_configured` — Fixed with STATE-002 - same defect, same edit, and this… |
-| `TEST-013` | high | tests/integration/test_lockbox_split.py is the ONLY integration test that exercises real behavior end-to-end — it must be ported, not dropped | `tests/integration/test_lockbox_split.py:45-112` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page` — Ported before the cut, exactly as this row instructed, and strengthened… |
-| `T0-BUILD-005` | high | The routing harness diagnosed without a target while the API diagnosed with one, so it measured a door that no longer existed - and a composition change in the inventory moves no metric, so nothing… | `tests/integration/test_routing_value_check.py _run_guided; tests/integration/test_routing_baseline.py…` | **test:** `tests/integration/test_routing_baseline.py::test_both_doors_are_scored_against_one_inventory` — Found at L9c while implementing the target-question ruling. Both halves… |
-| `GUIDED-100` | medium | The propagation probe itself: for each recorded decision kind, two projects identical except for that answer, and something downstream must differ | `turbotab/test_a_recorded_decision_changes_something.py; 41 kinds recorded, 23 probed (24 flips), 6 asserted…` | **test:** `turbotab/test_a_recorded_decision_changes_something.py::test_a_decision_about_the_analysis_reaches_the_fitted_pipeline` — BUILT AT L35-E as the instrument that would… |
 
 ### Record / narrative / export — 5
 

@@ -45,7 +45,14 @@ import json
 import pandas as pd
 import pytest
 
+# `TEST-041`. `figures.REGISTRY` is populated only as an import side
+# effect of `figure_specs`, so a file that reads the registry without
+# importing its populator is reading whatever an EARLIER FILE happened
+# to load. Module scope, not inside a fixture: the first test in a file
+# runs before any fixture that imports `api`.
+from turbotab import figure_specs  # noqa: F401 — populates FIG.REGISTRY
 from turbotab import figures as FIG
+from turbotab import jobwait as JW
 from turbotab import manuscript as MS
 from turbotab.project import AnalysisProject
 
@@ -115,11 +122,10 @@ def _driven(shape):
 
     job = client.post(f"/project/{project_id}/train",
                       json={"models": [model]}).json()
-    for _ in range(400):
-        job = client.get(f"/job/{job['id']}").json()
-        if job["terminal"]:
-            break
-    assert job["status"] == "done", (job["status"], job.get("error"))
+    # `TEST-040`: a deadline, not an iteration count. A bounded loop with no
+    # wait elapses in milliseconds and reports "still running" as "wrong
+    # answer" — see `turbotab/jobwait.py`.
+    JW.settle_done(client, job)
     return client, project_id
 
 
