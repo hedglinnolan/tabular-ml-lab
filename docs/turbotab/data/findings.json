@@ -9927,5 +9927,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "turbotab/engine.py rank_findings applies _with_deferral to the structural and profile streams and then appends _packs.findings(df, lens) WITHOUT it, so every pack finding is served with defer_target: null and defer_target_label: null. Driven on clinical_labs.csv under the clinical lens: all 8 pack findings carry both as null. The page's deferLabel falls back to `Decide later` and deferButton emits data-defer-to=''; POST /project/{id}/decision with kind=defer and an empty payload returns 200 and records payload {'target_step': 'explore'} with the text '<title> - deferred to the step where it belongs.'"
+ },
+ {
+  "id": "GUIDED-154",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "A dismissed or deferred finding keeps its slot inside the Explore bound, so acting on a card does not promote the next one from the collapsed group - and whether it should is a product decision nobody has made",
+  "detail": "",
+  "ev": "turbotab/attention.py partitions project.findings, and dismiss/defer are DECISIONS rather than changes to the finding set, so the partition is identical before and after. Driven on clinical_labs.csv under the clinical lens: 6 pushed / 7 collapsed; POST a dismiss for pack::clinical::censored_values and it is still 6 pushed / 7 collapsed with that id still in pushed. The page renders it as the .gone card plus its one-line 'Dismissed: X. Still in the record, out of your way.' note, so it costs a row and no attention.",
+  "act": "TWO POSITIONS, BOTH DEFENSIBLE, AND THE ROW EXISTS SO SOMEBODY CHOOSES RATHER THAN SO SOMEBODY BUILDS. PROMOTE: the bound is an attention budget, a dismissed card has spent no attention, and leaving the slot occupied means a user who triages the top five sees nothing new while seven wait behind an affordance - the budget stops being a budget and becomes a window. DO NOT PROMOTE: the partition is the server's judgment about what is notable and it should not shuffle under the user's hands; a card arriving from nowhere as you dismiss things is content changing while the reader's eye is elsewhere, and DESIGN_LANGUAGE.md section 05.2 is explicit that a change of content is the one thing this app has no mechanism for showing. Whichever wins, the arithmetic must stay exact and no bound may hide a blocker.",
+  "status": "OPEN",
+  "note": "FOUND AT L45-B BY DRIVING THE DISMISS PATH AGAINST THE NEW PARTITION, and filed rather than decided. NO RULING IS VIOLATED TODAY: rendered + collapsed = served holds, nothing that gates a decision is collapsed, and the shelf is not shortened - everything is one press away either way. So this is an open design question and not a defect, which is why it is OPEN at medium rather than filed as a bug. IT IS THE SAME QUESTION FOR DEFER, and the deferred case is the sharper one: a deferral says 'bring this back at Preprocess', which is a stronger statement that the user is done with it here than a dismissal is. DESIGN_LANGUAGE.md section 05.2's closing rule is the precedent for parking it: 'A fourth item added to that list is a design decision, not an implementation detail, and belongs in a loop prompt rather than in a renderer.' The same holds one surface over.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/attention.py partitions project.findings, and dismiss/defer are DECISIONS rather than changes to the finding set, so the partition is identical before and after. Driven on clinical_labs.csv under the clinical lens: 6 pushed / 7 collapsed; POST a dismiss for pack::clinical::censored_values and it is still 6 pushed / 7 collapsed with that id still in pushed. The page renders it as the .gone card plus its one-line 'Dismissed: X. Still in the record, out of your way.' note, so it costs a row and no attention."
  }
 ]
