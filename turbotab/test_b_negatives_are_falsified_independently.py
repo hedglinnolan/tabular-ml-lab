@@ -206,8 +206,8 @@ def test_a_sample_of_bs_unread_fields_cannot_move_the_page(swept, capsys):
         print("      TRADED per the prompt's scope note rather than missed")
         print("    - fields outside the sample; the cap is "
               f"{SAMPLE} per lens and is a cost bound, not a shape bound")
-        print("    - post-seal payloads, and the three Explore-adjacent ones")
-        print("      L43-A1 did not reach")
+        print("    - post-seal payloads. The three L42-B skipped are swept")
+        print("      at L43-A1, but by B's instrument, not by this probe")
 
     assert not disagreements, (
         f"these are fields B's bisection calls unread and this probe moved the "

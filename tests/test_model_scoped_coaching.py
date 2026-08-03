@@ -234,7 +234,18 @@ class TestTopPicksShapeAwareness:
         assert "histgb_clf" not in keys and "rf" not in keys, (
             "low EPV must not recommend high-capacity models")
         assert any("EPV" in reason for _, reason in skips)
-        assert "class weights" in picks[0].preprocessing
+        # `AUDIT-014` (L43-B). This asserted `"class weights"` — a green
+        # test holding the contraindicated advice in place, which is
+        # `GUIDED-145`'s class one layer over: a guard pinning a
+        # behavior the research says is wrong. §A5.2 is [SETTLED] that
+        # the remedy for a rare outcome is penalization and adequate
+        # sample size, not reweighting, and this is a LOW-EPV profile —
+        # the one place the registry is most explicit.
+        assert "penalize" in picks[0].preprocessing, (
+            "the coach no longer names penalization for a low-EPV "
+            "profile, which is §A5.2's named remedy")
+        assert "class weights" not in picks[0].preprocessing, (
+            "the coach recommends reweighting again")
 
     def test_calibration_claim_requires_events(self):
         from ml.model_coach import select_top_picks
