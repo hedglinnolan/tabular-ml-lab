@@ -252,6 +252,25 @@ where **identity would otherwise be lost**, which is a short and closed list:
 Everything else changes state instantly. A fourth item added to that list is a design decision, not
 an implementation detail, and belongs in a loop prompt rather than in a renderer.
 
+**Asked and ruled, 2026-08-03 — the collapsed-remainder expand does NOT get a slot.** `GUIDED-149`
+bounds what the Explore stack pushes and collapses the rest into a counted, typed affordance, and
+the question is whether that expand joins the closed list. **It does not, and the expand is
+instant.**
+
+Three reasons, in the order they bind. **The criterion is not met**: the four entries are all a
+*decision and its consequence* — a question becoming its sentence, a section caused by the answer
+above it, staleness crossing what remains on screen, a table morphing under a reshape the user
+chose. An expand is **disclosure, not consequence**, and §05 rule 5 governs it directly: *only
+consequences move.* **The scarcity argument is this section's own**: continuity is expensive
+attention, an app that says *this is the same thing* about everything has said it about nothing, and
+expanding a list is the most ordinary interaction the app has — spending the vocabulary's scarcest
+signal there devalues it at the three places it is load-bearing. And **the mechanics agree**: the
+app has no mechanism for animating a change of content, so a fifth slot pulls in `GUIDED-073`'s
+stack decision, which is deliberately unbuilt.
+
+Recorded here rather than in the loop prompt so the next reader meets the ruling where the list is,
+not where one build happened to need it.
+
 **One thing this section cannot yet source, stated rather than papered over.** Item 4 is the single
 load-bearing design assertion in `PRODUCT_VISION.md` that resolves to no evidence — an empirical
 claim about whether animating a transformation improves a viewer's ability to follow it, asserted
