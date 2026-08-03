@@ -180,6 +180,18 @@ in the app.
 **You are the only writer** to `findings.json`, `register.json` and their generated markdown while
 your loop runs.
 
+**And a file a tool owns has exactly one writer — the tool.** If a script of yours edits
+`findings.json` or `register.json`, it goes through `ledger.py` / `register.py`, or it writes the
+file back **byte-identically to how the tool writes it**. `ledger.py` serializes at `indent=1`; a
+script that dumps at `indent=2` reformats all nine thousand lines, so one loop's diff reads as
+18,000 changed lines over thirty real ones and the next `add` anyone runs churns it all back.
+
+This rule is written down because it was broken **twice in two loops, once by the execution agent
+and once by the adjudicator**, and nothing caught either — both were found by a human reading a
+diffstat. It is the existing *never edit the generated markdown by hand* rule one level down, and
+that rule failed to generalize because it named the **generated** file rather than the **owned**
+one. A commit's diffstat is a claim about what changed, same as its subject line.
+
 ---
 
 ## 07 · The traps — read this section twice
@@ -227,6 +239,24 @@ finds it.
 
 **When a test hands a collaborator an id, a key, a name or a route that stands for a registered
 object, assert the stand-in resolves in the real registry.**
+
+### 3b · A test whose *name* asserts a consequence its assertions never check
+
+The third variant, and the most uncomfortable, because the test is otherwise correct.
+`test_temporal_prediction_routes_to_the_chronological_strategy` asserted that a composer returned
+the string `chronological_grouped` and returned the right sentence. **Both assertions were true.**
+Nothing routed anywhere — the word *routes* in the name supplied a claim about the split that no
+assertion in the body touched, and the guard ran green on every suite for as long as the false
+claim survived. `GUIDED-145`.
+
+**Where a test's name carries a consequence verb — routes, reaches, fits, draws, renders, reports —
+either an assertion in it observes that consequence, or the name says what it actually checks.** A
+test name is read by everyone grepping for coverage and by nobody checking assertions, so a name
+that overstates is a claim with no record behind it.
+
+The three variants together: **#2** the assertion is about the description · **#3** the fixture
+supplies what production cannot · **#3b** the name promises what the body does not check. All three
+are green tests over broken things, and no single detector finds all three.
 
 ### 4 · Verifying against the fixture that works
 

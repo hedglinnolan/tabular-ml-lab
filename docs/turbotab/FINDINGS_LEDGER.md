@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**282 of 729 closed.**
+**282 of 730 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 396 |
+| `OPEN` | 397 |
 | `PARTIAL` | 51 |
 | `FIXED` | 278 |
 | `NOT-A-DEFECT` | 4 |
 
 ---
 
-## OPEN — 396
+## OPEN — 397
 
 
 ### Application state / lockbox — 66
@@ -306,7 +306,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-121` | low | A near-unique column is neither flagged nor asked about: the identifier rule is exactly one level per row, so a column at 95 percent distinct is treated as an ordinary predictor | `turbotab/identifiers.py UNIQUE_PER_ROW = 1.0, stated as a constant and reported in the receipt's rule…` | DELIBERATELY NOT GUESSED AT, and the threshold is not lowered because there is no honest number to lower it to. A column at 0.95 distinct-per-row is either an identifier with a… |
 | `GUIDED-146` | low | The project payload carries n_rows, n_columns and name at the top level AND inside `profile`, and the page prefers the profile copy - so the top-level trio is a fallback branch the server's own… | `found at L42-B by the field sweep, which reported top-level n_rows, n_columns and row_identity unread while…` | FILED AT L42-B AS THE FIRST THING THE FIELD SWEEP FOUND, and it is worth keeping for what it says about the granularity rather than for its own size. The ROUTE check cannot see… |
 
-### Migration safety net — 28
+### Migration safety net — 29
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -332,6 +332,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-037` | high | test_engine_is_headless has not run for two loops, so L7's central architectural claim - that the engine runs without Streamlit - is currently unverified rather than verified | `tests/test_engine_is_headless.py:143 (the non-Streamlit failure branch); models/nn_whuber.py:5 (the unguarded…` | MEASURED IN THIS CONTAINER at L13, and stated as an environment fact rather than a code defect. The suite runs 1,584 passed / 4 failed: the shap three (TEST-034) plus this one.… |
 | `TEST-038` | high | models/nn_whuber.py imports torch unguarded at module scope while utils/seed.py guards the identical import, so a 1.1 GB dependency is mandatory for a user who never trains a neural net | `models/nn_whuber.py:5 (unguarded `import torch`); utils/seed.py:7-10 (the same import, guarded, with a…` | A PRINCIPLE-LOCALITY INSTANCE, which is why it is filed here rather than left as a packaging note. The rule - torch is optional, guard it - is stated once, correctly, in… |
 | `TEST-039` | high | Every Makefile test target exits 4 without running a single test: PYTEST_OPTS passes --timeout=60 and pytest-timeout is not installed in venv/, so the documented command and the CI target are both… | `Makefile:18,24,44; requirements-dev.txt:25` | Makefile:18 sets PYTEST_OPTS := --timeout=60 -q and every target interpolates it, so 'make test' produces 'error: unrecognized arguments: --timeout=60' and 'make: *** [test] Error… |
+| `TEST-040` | high | Four job-polling sites spin a bounded loop with NO WAIT and then assert status == done, so under machine load the suite reports a timing fact as an app fact - and the turbotab/ pass count stops being… | `measured at the L42 adjudication: a full turbotab/ run on the accepted tree returned 1 failed, 1422 passed…` | FOUND BY RE-COUNTING AN ACCEPTED REPORT, AND THE REPORT WAS NOT WRONG - the agent's run was green and the adjudicator's was not, on the same tree. THAT IS THE FINDING: the number… |
 | `TEST-027` | medium | utils/persistence.py is dead code — zero importers — yet contains the reproducibility manifest the new Project layer needs | `utils/persistence.py:1-158; zero import sites repo-wide` | Unchanged at HEAD - verified unreachable, not merely uncovered. The trap the row names is the one to record: it is tempting to adopt this wholesale as the Project serializer, and… |
 | `TEST-028` | medium | visualizations.py returns figures nobody inspects — the safest module to move and the easiest to break unnoticed | `visualizations.py:12,53,91,129,170; consumers pages/06_Train_and_Compare.py:69…` | Unchanged at HEAD: the module is genuinely pure and genuinely untested - the two tests that name it check that it imports, not what it draws. That combination is the row's point… |
 | `TEST-029` | medium | ml.feature_steps and ml.baseline_models are uncovered and produce the numbers the manuscript compares against | `ml/feature_steps.py:11,39; ml/baseline_models.py:21,150` | Unchanged at HEAD: both still uncovered, and both still produce published numbers. The seed sensitivity is the specific hazard - PCA's sign convention and KMeans' init are… |
