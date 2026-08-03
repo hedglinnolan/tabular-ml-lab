@@ -254,9 +254,24 @@ either an assertion in it observes that consequence, or the name says what it ac
 test name is read by everyone grepping for coverage and by nobody checking assertions, so a name
 that overstates is a claim with no record behind it.
 
-The three variants together: **#2** the assertion is about the description · **#3** the fixture
-supplies what production cannot · **#3b** the name promises what the body does not check. All three
-are green tests over broken things, and no single detector finds all three.
+### 3c · A green test that *pins* the defect in place
+
+The fourth variant, and the only one where the test must be **deleted or rewritten** rather than
+strengthened. `test_low_epv_keeps_lineup_small_and_cites_numbers` asserted `"class weights" in
+picks[0].preprocessing` — on a low-EPV profile, which is exactly where §A5.2 is most explicit that
+the remedy is penalization and not resampling. The test was green, its assertion was about real
+behavior, and **the behavior it protected was the one the research says is wrong.** Fixing the
+defect required a passing test to fail.
+
+**When a fix makes a green test go red, read the test before you touch the fix.** A loop that
+chases the failure reverts the correction and records the revert as a success. The question is
+never *how do I make this pass again* — it is *what is this test claiming, and is that claim
+true?*
+
+The four variants: **#2** the assertion is about the description · **#3** the fixture supplies what
+production cannot · **#3b** the name promises what the body does not check · **#3c** the body pins a
+behavior that should change. All four are green tests over broken things, and no single detector
+finds them all.
 
 ### 4 · Verifying against the fixture that works
 
