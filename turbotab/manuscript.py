@@ -401,8 +401,24 @@ def _calibration_text(doc: Dict[str, Any]) -> str:
     which is why this returns the figure's presence rather than its numbers
     and says so.
     """
-    drawn = {f.get("id") for f in (doc.get("figures") or [])}
-    if "calibration" not in drawn:
+    # `AUDIT-015`. THIS GATE COULD NEVER FIRE, and the reason is a shape
+    # change one layer up. It used to read membership — `"calibration" in
+    # {f["id"] for f in doc["figures"]}` — which was right when `figures` was
+    # the list of figures this project drew. `GUIDED-131` made it the WHOLE
+    # REGISTRY, carrying drawability as a per-row field, so the id is
+    # unconditionally present and the guard became a tautology.
+    #
+    # The result was the manuscript stating *"Calibration was assessed
+    # graphically"* on every project with a fitted model — including
+    # regression, where the app's own `/figures` surface says the opposite
+    # sentence for the same project: *"Calibration is a claim about predicted
+    # PROBABILITIES, and this is a regression task."*
+    #
+    # `drawn is None` means the bundle could not say, and silence is what the
+    # governing rule permits there. Only `True` earns the sentence.
+    calibration = next((f for f in (doc.get("figures") or [])
+                        if f.get("id") == "calibration"), None)
+    if calibration is None or calibration.get("drawn") is not True:
         return ""
     return ("Calibration was assessed graphically; the calibration plot is "
             "reported with its intercept, slope and C-statistic. "
