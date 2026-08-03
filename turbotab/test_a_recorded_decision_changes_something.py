@@ -156,6 +156,22 @@ ALLOWED_NO_EFFECT = {
 #: Kinds this probe could not construct a flip for, each with the reason.
 #: **A fourth count, not a silent omission.**
 NOT_CONSTRUCTED = {
+    # `GUIDED-143` L43-C.
+    "set_time_column": (
+        "The flip needs two columns that both parse as dates, and the app "
+        "refuses any column that does not — `set_time_column` validates by "
+        "PARSING rather than by name, on purpose, because `visit_date`, "
+        "`date_of_visit`, `dov` and `RecallDate` are four spellings of one "
+        "thing. `clinical_longitudinal.csv` carries exactly one date column, "
+        "so the second arm would have to be a refusal rather than an answer, "
+        "and a refusal is not the same project with one answer changed. "
+        "WHAT IS PROBED INSTEAD, in "
+        "`test_the_chronological_split_is_drawn.py`: recording the column "
+        "flips the seal's basis from `chronological_requested_not_drawn` to "
+        "`chronological_grouped`, changes which rows are held out, and is "
+        "refused after the barrier — three downstream effects, driven end to "
+        "end through the real routes. The effect is measured; it is the "
+        "TWO-ARM SHAPE this probe requires that the fixture cannot supply."),
     "set_orientation": (
         "Fires only where an assay lens meets a feature-major table, and the "
         "answer that flips it — *the table was already one row per sample* — "

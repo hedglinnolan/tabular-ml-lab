@@ -150,12 +150,26 @@ def test_every_surface_this_check_reads_actually_parses():
     """
     import ast
 
-    broken = {}
+    broken, parsed = {}, 0
     for path in SHIPPED:
         try:
             ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
+            parsed += 1
         except SyntaxError as exc:
             broken[str(path.relative_to(ROOT))] = f"line {exc.lineno}: {exc.msg}"
+
+    # THE POSITIVE CONTROL, and the standing absence check demanded it —
+    # correctly. Everything below is *nothing was broken*, which passes
+    # hardest on an empty sweep. `SHIPPED` globs four directories; if the
+    # glob ever stops matching, this fails here instead of reporting a clean
+    # tree it never read.
+    assert parsed > 40, (
+        f"only {parsed} shipped files parsed, and there were well over a "
+        f"hundred when this was written — the sweep has stopped sweeping, so "
+        f"its silence means nothing")
+    assert any(p.name == "imbalance_advice.py" for p in SHIPPED), (
+        "the module that owns the position is not in the swept set")
+
     assert not broken, (
         f"these do not parse: {broken}. Every check in this file reads them as "
         f"text, so its verdict over them means nothing.")
