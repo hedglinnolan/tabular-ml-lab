@@ -275,15 +275,32 @@ def container_ids(page_source: str) -> List[str]:
 #: the page starts rather than what it does.
 #:
 #: So every control the page rendered is pressed before the DOM is read. The
-#: attributes are scraped out of the markup the page itself produced — nothing
-#: is hand-listed, so a surface added next loop is pressed too — and each is
-#: dispatched through the page's own delegated click handler.
+#: attribute VALUES are scraped out of the markup the page itself produced, so a
+#: new instance of a known control is pressed without anyone touching this file,
+#: and each is dispatched through the page's own delegated click handler.
+#:
+#: **The attribute NAMES are hand-listed, and that sentence used to say nothing
+#: was.** It was wrong in the way a claim about code goes wrong — silently, while
+#: the people who already know keep working — and `GUIDED-149` found it: the
+#: Explore stack gained a `data-stack-more` affordance, the sweep did not press
+#: it, and the seven findings behind it were reported as reaching nobody. That
+#: reading was *correct for a passive drive and false about the app*, which is
+#: exactly the defect the paragraph above describes, arriving a second time
+#: through a control the list did not name.
 #:
 #: `data-panel` and `data-look` are the two deferred-render families:
 #: `data-look` is the pull palette (`runPull`), `data-panel` is the per-finding
-#: evidence preview. `samplePill` is its own control and has no data attribute,
-#: so it is named — the one hand-listed thing here, and it is named because the
-#: page names it.
+#: evidence preview. `data-stack-more` opens `GUIDED-149`'s collapsed remainder,
+#: which is disclosure rather than absence — the findings behind it are served,
+#: counted and one press away, and a sweep that called them dark could not tell
+#: that from `GUIDED-142`, where they were computed and rendered nowhere.
+#: `samplePill` is its own control and has no data attribute, so it is named
+#: because the page names it.
+#:
+#: **Adding one here widens what the sweep can see and never narrows it**, which
+#: is why this is not `LOOP.md` §08's *a threshold moved under pressure*: the
+#: quantity gated is unchanged, and a control the page offers and the drive skips
+#: is the instrument measuring how the page starts rather than what it does.
 _READ_ALL = """
 var IDS = %s;
 var NEEDLES = %s;
@@ -296,7 +313,7 @@ function collect(){
    rendered, so this widens as the page does. */
 var markup = collect();
 var pressed = {};
-["data-look", "data-panel", "data-target-col"].forEach(function(attr){
+["data-look", "data-panel", "data-target-col", "data-stack-more"].forEach(function(attr){
   var rx = new RegExp(attr + '="([^"]*)"', "g"), m;
   while ((m = rx.exec(markup)) !== null){
     var key = attr + "=" + m[1];

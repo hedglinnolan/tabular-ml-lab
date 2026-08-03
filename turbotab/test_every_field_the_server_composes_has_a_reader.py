@@ -96,6 +96,25 @@ NOT_SWEPT = [
 #: there is no fourth option, and a reason that names neither a reader nor a
 #: row is not a reason.
 DECLARED = {
+    ("project", "explore_stack"): (
+        "`GUIDED-149`'s partition, read by `renderExploreStack` in "
+        "`turbotab/web/index.html` — every field of it, on every render. It "
+        "reports unread here for a reason the sweep states in its own "
+        "docstring one level up: this instrument detects a read by stamping a "
+        "SENTINEL VALUE and looking for it in the DOM, and `pushed` and "
+        "`collapsed` are arrays of finding IDS. Stamp one and `findingById` "
+        "returns null, the card is not built, and the sentinel appears "
+        "nowhere — so the page reading the field correctly and the page "
+        "ignoring it produce the same DOM. That is the id-shaped blind spot, "
+        "not a dark family. "
+        "WHAT DOES SEE IT: "
+        "`turbotab/test_the_bounded_stack_holds_at_its_edges.py::"
+        "test_the_page_shows_exactly_what_the_stack_says_it_shows` drives the "
+        "page across three lenses and eight sizes and asserts the rendered "
+        "cards ARE `pushed` and the expanded cards ARE `collapsed`, by id and "
+        "in order — which is the stronger claim this sweep cannot make. The "
+        "declaration is here rather than a `FILED` row because the reader is "
+        "known, named, and tested."),
     ("project", "profile"): (
         "The dataset profile's per-column block. The Guided door renders the "
         "summary rows and the target profile; the remaining per-column "
