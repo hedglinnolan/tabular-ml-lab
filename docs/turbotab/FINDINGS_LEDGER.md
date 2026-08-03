@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**288 of 759 closed.**
+**286 of 759 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 420 |
-| `PARTIAL` | 51 |
-| `FIXED` | 284 |
+| `OPEN` | 419 |
+| `PARTIAL` | 54 |
+| `FIXED` | 282 |
 | `NOT-A-DEFECT` | 4 |
 
 ---
 
-## OPEN — 420
+## OPEN — 419
 
 
 ### Application state / lockbox — 66
@@ -491,13 +491,12 @@ Nothing is closed without a regression test named after it.
 | `T0-DROP-003` | low | decision_curve_analysis has zero production callers but is README-advertised | `ml/calibration.py` | verified on main |
 | `T0-TOOL-002` | low | AppTest raised RuntimeError once in five runs of the same integration file | `tests/integration/test_split_extraction_equivalence.py via streamlit.testing.v1.AppTest` | Watch during L9. If it recurs, pin the order with -p no:randomly to confirm, then isolate AppTest instances per test rather than per module. |
 
-### Other — 9
+### Other — 8
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `AUDIT-008` | high | The class the anti-pattern audit is actually finding: the core already holds the correct capability and the path that needs it does not read it — four of the last four hits have this shape, and it is… | `AUDIT-001 vs ml/feature_selection.py:186 multipletests; AUDIT-002 vs ml/splits.py; AUDIT-006 vs…` | NAMED BY THE EXECUTION AGENT IN THE L30 REPORT AND LEFT IN PROSE, which is the gap LOOP.md section 06.1 calls the most common one in an otherwise good report. Filing it because a… |
 | `AUDIT-011` | high | The Streamlit side has no record of the prediction/inference purpose at all, so none of the five decisions DOMAIN_SCIENCE section 01.3 says invert can read it | `utils/session_state.py has no purpose field; turbotab/purpose.py; DOMAIN_SCIENCE.md section 01.3…` | L31-A AUDIT-008 sweep, capability 4 (the recorded purpose), and it is STRUCTURAL rather than a missed call site. turbotab/purpose.py asks the question and records the answer… |
-| `MISC-019` | high | DEFECT CLASS - a row is marked FIXED and its fix reached a fraction of the surfaces its own item describes, and ledger.py check cannot see it because it verifies that a test is NAMED rather than that… | `the instance is GUIDED-049, critical, FIXED, whose fix reached three call sites out of ten shipped surfaces…` | FILED BY THE ADJUDICATOR AT L43 BECAUSE THE INSTANCE WAS FILED AND THE CLASS WAS NOT - LOOP.md section 06's first check, and the most common gap in an otherwise good report. THE… |
 | `AUDIT-003` | medium | A log transform is recommended from skewness alone, with no check for data that has already been transformed | `ml/eda_recommender.py:394; research/METABOLOMICS_PACK.md section 10 Structural; DOMAIN_SCIENCE.md section 03b` | L29-D anti-pattern audit hit 3 of 4. eda_recommender.py:394 emits High skew, consider log transform or robust loss (Huber) from the target's skewness and nothing else.… |
 | `AUDIT-006` | medium | The PCA biplot sets no aspect constraint, so PC2 is stretched to fill the panel and separation is visually exaggerated | `ml/macro_shape.py plot_pca_biplot; research/GENOMICS_PACK.md section 11; research/METABOLOMICS_PACK.md…` | L30-D anti-pattern audit hit 2 of 3. GENOMICS_PACK.md section 11 lists Unlabeled PCA axes, unequal aspect ratio as a SETTLED presentation error whose consequence is… |
 | `AUDIT-007` | medium | Median imputation is the silent default and nothing states what it costs, which the clinical pack marks SETTLED as bad | `ml/pipeline.py:213; pages/05_Preprocess.py:1082; research/CLINICAL_SURVEY_PACK.md section A2 anti-pattern 2…` | L30-D anti-pattern audit hit 3 of 3, and the softest. CLINICAL_SURVEY_PACK.md section A2 anti-pattern 2: Mean/median imputation. Understates variance, destroys the distribution… |
@@ -527,10 +526,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 51
+## PARTIAL — 54
 
 
-### Application state / lockbox — 10
+### Application state / lockbox — 11
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -542,8 +541,23 @@ Nothing is closed without a regression test named after it.
 | `STATE-056` | landmine | InsightLedger.from_list uses .add() (skip duplicates) rather than .upsert(), and Insight.to_dict omits manuscript_text. | `utils/insight_ledger.py:1346-1355 (from_list → ledger.add(...) inside `except (TypeError, KeyError)…` | **test:** `tests/test_the_manuscript_voice_survives_the_save_file.py::test_the_ledger_round_trips_through_json` — Both halves fixed. (a) from_list now calls upsert rather than… |
 | `STATE-066` | invariant | Every result computed from the current data is cleared when the data, target, features, or feature set changes. 'Any page that introduces a new result key must add it here.' | `utils/session_state.py:283 reset_downstream_results() (its own docstring states the rule)…` | The competing implementation is gone; the key list is still incomplete. pages/03 no longer bypasses the function - all three of its paths route through it and an AST guard fails… |
 | `STATE-074` | invariant | reset_downstream_results is the SINGLE source of truth for invalidation; every new result key must be registered there. | `utils/session_state.reset_downstream_results docstring and body (pipelines, splits, targets, models, 11…` | The 'second copy' half is closed and the 'every new key is registered' half is not. The 22-key competing cascade in pages/03 is gone - it omitted the ledger rollback, the… |
+| `STATE-086` | invariant | A cohort switch throws away every model, split, pipeline and figure — decisions replay, fits do not. | `utils/cohorts.py docstring invariant #2; utils/cohort_ui.py:_switch_to and :_advance_to both call…` | **test:** `tests/test_cohort_runs.py` — REOPENED AS PARTIAL AT L44-D BY THE MISC-019 SWEEP. THE SITE: utils/cohort_ui.py:250-252. The sidebar repair button - rendered on every… |
 | `STATE-087` | invariant | reset_downstream_results is the SINGLE source of truth for downstream invalidation; any page that introduces a new result key must add it there. | `utils/session_state.py:288-291 docstring; tests/test_review_fixes.py::TestDownstreamReset::test_reset_clears_e…` | Duplicate of STATE-066 / STATE-074 from the invariant pass. The first of the row's two breakages is closed - pages/03's competing 21-key cascade is gone and an AST guard fails if… |
 | `STATE-095` | invariant | set_data distinguishes three cases: schema change (full reset), same-schema content change (results cleared, config kept), identical content (no-op) — because page 01 re-sets the same working table… | `utils/session_state.set_data:266-280 with the _raw_data_fingerprint comparison. Tests…` | The three cases are implemented and well tested - including the subtle one, that re-setting the SAME frame on every page-01 visit must not end a cohort run - and four tests cover… |
+
+### Guided-door drive feedback — 9
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `GUIDED-044` | high | Seven of the harness's eight guards were tested only against hand-built dicts, so a guard inert on the real path was indistinguishable from a guard that works | `turbotab/devchecks.py check_transition; turbotab/test_the_harness_reports_and_does_not_stop_the_drive.py` | **test:** `turbotab/test_every_guard_is_planted_against_the_real_path.py::test_every_guard_is_classified_as_planted_or_filed` — FOUND BY THE PART D SWEEP, and not where the sweep… |
+| `GUIDED-051` | high | The figure layer had seven geometries and nineteen actions and no way to say what a publication-grade figure requires, which is annotation rather than geometry | `docs/turbotab/DOMAIN_SCIENCE.md section 02; turbotab/figures.py` | **test:** `turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_a_confirmatory_figure_without_its_companion_is_not_admitted` — Eight signature figures across… |
+| `GUIDED-053` | high | A finding whose subject is the cohort rendered an empty chip row inside a full card frame, which reads as a card that failed to load | `turbotab/web/index.html findingCard; ml/import_doctor.py:954` | **test:** `turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_a_real_fixture_already_produces_a_cohort_finding` — NOT HYPOTHETICAL: clinic_visits.csv already… |
+| `GUIDED-055` | high | The nutrition pack had structure and no content: nothing in the app could infer an energy unit or read an NHANES survey design | `research/NUTRITION_PACK.md section 01; turbotab/nutrition.py` | **test:** `turbotab/test_the_nutrition_pack_carries_real_content.py::test_the_drift_gate_runs_before_any_factor_is_proposed` — THE ATWATER RECONSTRUCTION: E_hat = 4P + 4C + 9F +… |
+| `GUIDED-122` | high | Guided builds no Table 1, so the participant-characteristics table every reporting standard in the four packs asks for is absent from the manuscript and two validator checks that read it are inert | `turbotab/manuscript.to_latex passes no table1_df; ml/manuscript_validator.py has 'Table 1 population matches…` | **test:** `turbotab/test_the_manuscript_is_checked.py::test_table_one_is_built_from_the_shared_core, ::test_table_one_carries_smds_and_no_p_values… |
+| `GUIDED-030` | medium | Four pack priors still have no consumer - GUIDED-024's defect surviving for a subset, now declared and counted rather than noticed | `turbotab/packs.py PACKS priors; test_every_prior_has_a_consumer_or_is_declared_unconsumed lists the four with…` | Four priors had no consumer at L21 and three still do. THE ONE REAL DEFECT IS FIXED as GUIDED-033: qc_rows_excluded stated at derived confidence that pooled QC rows are not… |
+| `GUIDED-052` | medium | No artifact stated whether its content may become model input, so promotion had no field to read and label-blindness was standing in for the rule | `docs/turbotab/PRODUCT_VISION.md artifact promotion; turbotab/figures.py FigureSpec` | **test:** `turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_pca_is_promotable_and_calibration_is_not` — THE RULE IS RE-EXECUTABILITY, NOT LABEL-BLINDNESS… |
+| `GUIDED-101` | medium | The Explain step has no research backing and no parity register row: the four packs contain zero explainability content, so the one journey step left to build is the only one whose method choice… | `grep for SHAP, permutation importance, variable importance and explainab across the 3,602 lines of…` | SCOPING INSTRUCTION HONORED AT L36-B, and the row stays open because the research it asks for is still absent. WHAT WAS BUILT: permutation importance on the held-out rows via… |
+| `GUIDED-123` | medium | The nutrition-specific manuscript objects STROBE-nut assigns to the app are not carried into the export: energy adjustment model, misreporting rule with equation and cut-off, usual-intake handling… | `research/NUTRITION_PACK.md section 09's table marks each of these 'app' or 'app detects + user confirms'…` | **test:** `turbotab/test_the_manuscript_is_checked.py (6 tests, from ::test_the_reviewers_six_are_six_and_in_order)` — RAISED BY THE PRODUCT OWNER: are the objects carried into… |
 
 ### Migration safety net — 8
 
@@ -571,19 +585,6 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-061` | medium | Import cycle ml.publication ↔ utils.insight_ledger is a genuine layering inversion | `ml/publication.py:128,182,453,460; utils/insight_ledger.py (imports at module top)` | The inversion narrowed from four formatting helpers to one pure-data constant. The presentation helpers this row says belong to neither module are no longer imported from… |
 | `CONTRACT-069` | low | models/* (7 files, 1000 loc) has zero streamlit and a single stable ABC — port it first | `models/base.py:10-73; models/nn_whuber.py:226; pages/06_Train_and_Compare.py:1371-1375` | The row's blocking condition is satisfied and its recommendation still stands. 'Entirely untested, which is the reason to do it first WITH TESTS ATTACHED' - the tests are attached… |
 
-### Guided-door drive feedback — 8
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `GUIDED-044` | high | Seven of the harness's eight guards were tested only against hand-built dicts, so a guard inert on the real path was indistinguishable from a guard that works | `turbotab/devchecks.py check_transition; turbotab/test_the_harness_reports_and_does_not_stop_the_drive.py` | **test:** `turbotab/test_every_guard_is_planted_against_the_real_path.py::test_every_guard_is_classified_as_planted_or_filed` — FOUND BY THE PART D SWEEP, and not where the sweep… |
-| `GUIDED-051` | high | The figure layer had seven geometries and nineteen actions and no way to say what a publication-grade figure requires, which is annotation rather than geometry | `docs/turbotab/DOMAIN_SCIENCE.md section 02; turbotab/figures.py` | **test:** `turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_a_confirmatory_figure_without_its_companion_is_not_admitted` — Eight signature figures across… |
-| `GUIDED-053` | high | A finding whose subject is the cohort rendered an empty chip row inside a full card frame, which reads as a card that failed to load | `turbotab/web/index.html findingCard; ml/import_doctor.py:954` | **test:** `turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_a_real_fixture_already_produces_a_cohort_finding` — NOT HYPOTHETICAL: clinic_visits.csv already… |
-| `GUIDED-055` | high | The nutrition pack had structure and no content: nothing in the app could infer an energy unit or read an NHANES survey design | `research/NUTRITION_PACK.md section 01; turbotab/nutrition.py` | **test:** `turbotab/test_the_nutrition_pack_carries_real_content.py::test_the_drift_gate_runs_before_any_factor_is_proposed` — THE ATWATER RECONSTRUCTION: E_hat = 4P + 4C + 9F +… |
-| `GUIDED-030` | medium | Four pack priors still have no consumer - GUIDED-024's defect surviving for a subset, now declared and counted rather than noticed | `turbotab/packs.py PACKS priors; test_every_prior_has_a_consumer_or_is_declared_unconsumed lists the four with…` | Four priors had no consumer at L21 and three still do. THE ONE REAL DEFECT IS FIXED as GUIDED-033: qc_rows_excluded stated at derived confidence that pooled QC rows are not… |
-| `GUIDED-052` | medium | No artifact stated whether its content may become model input, so promotion had no field to read and label-blindness was standing in for the rule | `docs/turbotab/PRODUCT_VISION.md artifact promotion; turbotab/figures.py FigureSpec` | **test:** `turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_pca_is_promotable_and_calibration_is_not` — THE RULE IS RE-EXECUTABILITY, NOT LABEL-BLINDNESS… |
-| `GUIDED-101` | medium | The Explain step has no research backing and no parity register row: the four packs contain zero explainability content, so the one journey step left to build is the only one whose method choice… | `grep for SHAP, permutation importance, variable importance and explainab across the 3,602 lines of…` | SCOPING INSTRUCTION HONORED AT L36-B, and the row stays open because the research it asks for is still absent. WHAT WAS BUILT: permutation importance on the held-out rows via… |
-| `GUIDED-123` | medium | The nutrition-specific manuscript objects STROBE-nut assigns to the app are not carried into the export: energy adjustment model, misreporting rule with equation and cut-off, usual-intake handling… | `research/NUTRITION_PACK.md section 09's table marks each of these 'app' or 'app detects + user confirms'…` | **test:** `turbotab/test_the_manuscript_is_checked.py (6 tests, from ::test_the_reviewers_six_are_six_and_in_order)` — RAISED BY THE PRODUCT OWNER: are the objects carried into… |
-
 ### Verified against main — 3
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -608,6 +609,14 @@ Nothing is closed without a regression test named after it.
 | `MODELS-011` | landmine | RegistryModelWrapper re-derives the task type from the data with a fragile heuristic instead of being told, and it is the only wrapper honoring sample_weight. | `models/registry_wrappers.py:44 — `if len(np.unique(y_train)) < 20 and y_train.dtype in [np.int64, np.int32…` | The dtype half was repaired; the cardinality half was not. The test is no longer dtype-identity against ['int64','int32'] - it now asks through pd.api.types.is_integer_dtype with… |
 | `MODELS-014` | landmine | NN classification silently remaps unseen validation classes to index 0, and models/base, glm, huber_glm, rf and registry_wrappers have literally zero test coverage. | `models/nn_whuber.py:337 — `y_val_mapped = np.array([class_to_idx.get(cls, 0) for cls in y_val])` (note: the…` | The coverage half is closed; the silent remap is not. models/base, glm, huber_glm, rf and registry_wrappers are no longer untested - tests/test_characterization_wrappers.py… |
 
+### Multi-file / JSON import — 3
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `IMPORT-243` | high | HUNT dtype-mismatch-blocked-but-executed: the screen still shows a red 'will not work' blocker and then combines successfully, though the withheld row count and the recurrence on later legs are both… | `ml/join_doctor.py diagnose_join (a dtype mismatch is still classified blocking, can_proceed False, while…` | PARTIAL, measured at HEAD. A genuine text-vs-numeric key pair still gives dtype_mismatch True, can_proceed False and a red blocking message - and combine_ui overrides the block… |
+| `IMPORT-109` | medium | Duplicate key column name makes every ml/join_doctor.py entry point raise AttributeError and makes find_key_candidates silently drop the true key — but the module has no UI callers and no loader can… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 09'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — REOPENED AS PARTIAL AT L44-D BY THE MISC-019 SWEEP. THE SITES: ml/join_doctor.py:118, :380, :943, :1002. The… |
+| `IMPORT-240` | medium | HUNT stack-empty-file-turns-every-numeric-column-to-text: the dtype corruption is gone, but a header-only cycle now produces a FALSE type-conflict warning and is still never named as contributing… | `utils/combine.py plan_stack (total_rows as a plain sum, no zero-row check) and execute_stack's pd.concat…` | PARTIAL, measured at HEAD. Three cycles with glucose float64 in two of them and an empty header-only frame between: the stacked glucose column comes back float64 with 4 rows - the… |
+
 ### Coach to Router — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -621,13 +630,6 @@ Nothing is closed without a regression test named after it.
 |---|---|---|---|---|
 | `MINE-020` | high | The JSON wrapper-key guess still lives in the engine while the disclosure lives in the view | `data_processor.py:124, 236-239, 283-287, 400-420; pages/01_Upload_and_Audit.py:311, 385-388, 413…` | The disclosure landed; the guess did not change. inspect_json now computes the candidate wrapper keys and returns a note the page renders, which is what closed FINDINGS_LEDGER C4… |
 | `MINE-028` | high | The de-facto Router logic lives in the view, and four modules disagree about what 'done' means | `utils/theme.py:744-758; utils/workflow_provenance.py:461-477; utils/insight_ledger.py:495-501…` | One of the four definitions was removed; three remain. The theme.py probe this row names as the de-facto Router is gone - the page asks turbotab.readiness now and a source-reading… |
-
-### Multi-file / JSON import — 2
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `IMPORT-243` | high | HUNT dtype-mismatch-blocked-but-executed: the screen still shows a red 'will not work' blocker and then combines successfully, though the withheld row count and the recurrence on later legs are both… | `ml/join_doctor.py diagnose_join (a dtype mismatch is still classified blocking, can_proceed False, while…` | PARTIAL, measured at HEAD. A genuine text-vs-numeric key pair still gives dtype_mismatch True, can_proceed False and a red blocking message - and combine_ui overrides the block… |
-| `IMPORT-240` | medium | HUNT stack-empty-file-turns-every-numeric-column-to-text: the dtype corruption is gone, but a header-only cycle now produces a FALSE type-conflict warning and is still never named as contributing… | `utils/combine.py plan_stack (total_rows as a plain sum, no zero-row check) and execute_stack's pd.concat…` | PARTIAL, measured at HEAD. Three cycles with glucose float64 in two of them and an empty header-only frame between: the stacked glucose column comes back float64 with 4 rows - the… |
 
 ### DRIVE — 1
 
@@ -643,10 +645,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 284
+## FIXED — 282
 
 
-### Guided-door drive feedback — 94
+### Guided-door drive feedback — 93
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -712,7 +714,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-107` | high | The Guided manuscript is never validated and has no export format: ml/manuscript_validator.py checks that a manuscript does not contradict itself and is reachable only from pages/10, while… | `ml/manuscript_validator.py 426 lines, validate_manuscript_bundle; imported only by…` | **test:** `turbotab/test_the_manuscript_is_checked.py (11 tests, two target shapes)` — RAISED BY THE PRODUCT OWNER, measured by the adjudicator, and it is AUDIT-008 in the last… |
 | `GUIDED-108` | high | A per-row identifier column is handed to the model as a candidate predictor: training._feature_frame drops only the target and the group column, so patient_id, sample_id, admission_id and… | `measured in L37-B via turbotab/resolution.candidate_parameters over every fixture: survey_instrument.csv…` | **test:** `turbotab/test_a_column_that_names_a_row.py (15 tests, two target shapes)` — FOUND BY MEASUREMENT, not by reading - GUIDED-102's parameter count is what surfaced it, and… |
 | `GUIDED-116` | high | The Guided manuscript has no Model Development and no Model Evaluation section, because draft.py folds over DECISIONS and which model was fitted is a property of a RUN | `turbotab/draft.py SECTIONS lists data, target, explore, preprocess, features, limitations and nothing about…` | **test:** `turbotab/test_the_manuscript_is_checked.py::test_the_sections_the_draft_cannot_source_are_named_not_silent, driven both with a run and without` — FOUND BY WIRING THE… |
-| `GUIDED-122` | high | Guided builds no Table 1, so the participant-characteristics table every reporting standard in the four packs asks for is absent from the manuscript and two validator checks that read it are inert | `turbotab/manuscript.to_latex passes no table1_df; ml/manuscript_validator.py has 'Table 1 population matches…` | **test:** `turbotab/test_the_manuscript_is_checked.py::test_table_one_is_built_from_the_shared_core, ::test_table_one_carries_smds_and_no_p_values… |
 | `GUIDED-128` | high | The calibration plot named a companion that was never registered, so it could not be admitted by any project from L34 until L40 | `turbotab/figure_specs.py CALIBRATION carried companions=('discrimination',) and no figure with that id was…` | **test:** `turbotab/test_eight_more_figures_reach_a_user.py::test_every_declared_companion_is_a_figure_that_exists and ::test_calibration_is_admissible_now_that_the_roc_exists`… |
 | `GUIDED-131` | high | The companion admissibility rule does not gate promotion, so a CONFIRMATORY figure the bundle HELD for a missing validation companion is promoted into the manuscript with the document and the… | `driven by the adjudicator at L40 on leaky_sepsis.csv with calibration.companions restored to the pre-L40…` | **test:** `turbotab/test_the_companion_rule_reaches_the_document.py` — CLOSED AT L41-A3 as a validator cross-section, per the row's own ACT and PRODUCT_VISION.md's ruling - NOT as… |
 | `GUIDED-134` | high | DEFECT CLASS - a guard satisfies a production dependency with a fixture stand-in the real registry can never supply, so the guard proves the mechanism and cannot see that nothing feeds it | `the instance is GUIDED-128 and it is exact: turbotab/test_a_figure_carries_its_checklist_and_its_companions.py…` | **test:** `turbotab/test_a_stand_in_resolves_in_the_real_registry.py` — CLOSED AT L41-D as a detector over the class rather than as a fix to the instance - the instance was… |
@@ -745,7 +746,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-124` | medium | Two tables name the same model differently: ml/narrative_engine._MODEL_NAMES calls histgb_clf 'Histogram Gradient Boosting (Classifier)' and ml/model_registry calls it '(Classification)' | `driven at L39-D: the manuscript validator's 'model names match between development and evaluation sections'…` | **test:** `turbotab/test_a_three_class_outcome_end_to_end.py::test_two_models_with_different_display_names_still_agree, which asserts the DERIVATION over every registry key rather… |
 | `GUIDED-135` | medium | Every calibration claim in this repository is verified against leaky_sepsis.csv, whose held-out C-statistic is 1.000, so the annotation_box checklist item has never been observed passing and two of… | `driven at L40 adjudication: leaky_sepsis.csv yields c_statistic=1.000 on 24 held-out rows with 16 events…` | **test:** `turbotab/test_calibration_is_verified_on_a_model_that_does_not_separate.py` — CLOSED AT L41-A2 with a second clinical fixture rather than a code change, because the… |
 
-### Multi-file / JSON import — 69
+### Multi-file / JSON import — 68
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -812,14 +813,13 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-250` | high | HUNT blank-id-reattachment-invalid-index: an outer join with blank IDs crashed with 'Reindexing only valid with uniquely valued Index objects' when the second file carried a column named like the… | `ml/join_doctor.py execute_join - `if left_key != right_key and left_key in r.columns: overlap.add(left_key)`…` | **test:** `tests/test_join_doctor.py::test_blank_ids_survive_a_right_side_column_named_like_the_left_key` — VERIFIED AT HEAD. demographics(SEQN with one blank) outer-joined to… |
 | `IMPORT-255` | high | HUNT grouped-lockbox-fraction-mislabel: 'Held-out test fraction 15%' was applied to subjects and reported as a fraction of rows - the real held-out share was 37% | `utils/test_lockbox.py:475-482 - _actual_fraction is computed as len(test_labels)/len(eligible) and stored as…` | **test:** `tests/test_grouping_picks_the_person.py::test_a_grouped_seal_reports_the_row_share_it_actually_held_out` — VERIFIED AT HEAD, and the code documents the finding: the… |
 | `IMPORT-107` | medium | diagnose_join green-lights date-vs-text key pairs that execute_join(repair=False) cannot merge | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 07'` | **test:** `tests/test_stress_regressions.py::TestBlockingMessagesNameTheCause` — Original finding 07 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
-| `IMPORT-109` | medium | Duplicate key column name makes every ml/join_doctor.py entry point raise AttributeError and makes find_key_candidates silently drop the true key — but the module has no UI callers and no loader can… | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 09'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 09 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 | `IMPORT-113` | medium | Duplicate column labels crash three checks; diagnose() silently swallows the crashes and drops unrelated findings frame-wide | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 13'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 13 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 | `IMPORT-123` | medium | diagnose_join returns can_proceed=True for a predicted 25,000,000-row many-to-many blow-up, and execute_join has no size cap | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 23'` | **test:** `tests/test_stress_regressions.py::TestBlowUpIsRefused` — Original finding 23 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 | `IMPORT-133` | medium | apply_fix('melt_repeated') raises an unhandled ValueError when the frame already has a column named 'value' (and silently produces duplicate columns when it has one named 'measurement') | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 33'` | **test:** `tests/test_import_doctor.py::test_melt_does_not_crash_on_a_column_named_value` — Closed at L12 against a test written for it this loop. The L11 note deferred to finding… |
 | `IMPORT-136` | medium | coerce_numeric's methods-section description omits how many values it blanked (up to 20% of a column) | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 36'` | **test:** `tests/test_stress_regressions.py::TestLossyFixesAreNeverPreSelected` — Original finding 36 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in… |
 | `IMPORT-147` | medium | Duplicated key column name crashes normalize_key and therefore diagnose_join / execute_join / repair_keys (AttributeError), and silently blanks find_key_candidates | `docs/audit/ORIGINAL_48_FINDINGS.md 'Finding 47'` | **test:** `tests/test_stress_regressions.py::TestDuplicateLabels` — Original finding 47 of the 48, recovered from docs/audit/ORIGINAL_48_FINDINGS.md - which was in the repository… |
 
-### Application state / lockbox — 34
+### Application state / lockbox — 33
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -852,7 +852,6 @@ Nothing is closed without a regression test named after it.
 | `STATE-071` | invariant | Group-based and time-based splits BYPASS the lockbox and must say so out loud. | `pages/06 lines 395-404 (two 🔓 st.warning blocks) and lines 250-254 (caption when the slider is not…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_branch_priority_is_group_then_time_then_lockbox` — Closed in the way that makes it survive a view rewrite… |
 | `STATE-078` | invariant | Applying a feature selection preserves the selection and its record while destroying everything built on the previous feature set. | `pages/04 lines 447-448 and 494-495: reset_downstream_results(clear_feature_engineering=False…` | **test:** `tests/integration/test_cascade_dag_equivalence.py::test_keeping_a_stage_does_not_keep_its_descendants` — The asymmetry is preserved and now has a test that asserts the… |
 | `STATE-085` | invariant | When two runs analyze different cohorts, the lockbox is drawn BEFORE the filter, so every cohort inherits its slice of one split. | `utils/cohorts.py module docstring invariant #1; pages/01 draws it from get_data(full_study=True)…` | **test:** `tests/test_cohort_lockbox_invariant.py::test_engineering_inside_a_run_cannot_redraw_the_lockbox` — The invariant is implemented and the test file exists for this… |
-| `STATE-086` | invariant | A cohort switch throws away every model, split, pipeline and figure — decisions replay, fits do not. | `utils/cohorts.py docstring invariant #2; utils/cohort_ui.py:_switch_to and :_advance_to both call…` | **test:** `tests/test_cohort_runs.py` — Both cohort entry points reset, and they do more than the invariant strictly requires, which is the healthy sign: each also pops… |
 | `STATE-091` | invariant | Stratification is decided AFTER the grouped attempt resolves, so a group column with too few subjects still yields a stratified split. | `utils/test_lockbox.py:193-210 with an explicit six-line comment naming the bug this ordering fixed. Test…` | **test:** `tests/test_cohorts.py::test_stratification_survives_a_grouped_split_falling_back` — The ordering is load-bearing and the test asserts the exact conjunction that proves… |
 | `STATE-092` | invariant | Session files never carry executable content: no pickle, joblib, dill or cloudpickle is ever loaded from user input; trained models and pipelines are regenerated, not deserialized. | `utils/session_manager.py module docstring lines 4-16; _NEVER_PERSIST (all fitted objects)…` | **test:** `tests/test_session_manager.py::test_rejects_pickle_file` — A security property with a test on both sides of the migration. The refusal is by MAGIC BYTES rather than by… |
 | `STATE-093` | invariant | A workflow gate can never auto-acknowledge a BLOCKER — passing a gate is not evidence the user reviewed the worst findings. | `utils/insight_ledger.InsightLedger.auto_acknowledge_gate:789-794 with an explicit comment. Test…` | **test:** `tests/test_review_fixes.py::TestLedgerInvalidation::test_gate_never_acknowledges_blockers` — Duplicate of COACH-024 from the state pass, and closed the same way: the… |
@@ -883,7 +882,7 @@ Nothing is closed without a regression test named after it.
 | `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |
 
-### Other — 10
+### Other — 11
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -894,7 +893,8 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-010` | high | Table 1 prints a p-value per row by default with no multiplicity correction and no way to request one | `ml/table_one.py:20,48,167,200,219 show_pvalues default True; ml/multiplicity.py…` | **test:** `tests/test_the_arithmetic_reaches_for_what_exists.py::test_a_baseline_table_corrects_its_family_and_names_the_method` — FIXED at L32-C, with AUDIT-009, per section 02's… |
 | `MISC-014` | high | DOMAIN_SCIENCE section 03 asserts that the sensitivity fork is currently absent from the app entirely, and it is not: the capability ships in Classic, is listed as shared by FEATURE_PARITY, and is… | `docs/turbotab/DOMAIN_SCIENCE.md:263 primitive 4; ml/sensitivity.py 132 lines with…` | **test:** `turbotab/test_the_fork_is_run_both_ways.py (21 tests, two target shapes, route driven against the real API)` — ADJUDICATOR REVIEW OF THE DESIGN DOCS, requested by the… |
 | `MISC-015` | high | Four of DOMAIN_SCIENCE's seven primitives have zero ledger rows: hard stops, the sensitivity fork, the checklist engine and the generalized leakage detector are tracked only in a prose line inside an… | `ROADMAP.md D1 line reads 'hard stops, sensitivity fork, checklist engine, generalized leakage detector…` | **test:** `tests/test_a_specification_is_a_claim.py::test_every_specified_primitive_has_a_ledger_row (7 parametrizations) and ::test_the_primitive_inventory_is_not_stale`… |
-| `MISC-018` | high | ml/physiology_reference.get_reference_interval returns a p01/p99 pair, and a reference interval is a defined quantity that is not that - the central 95 percent per CLSI EP28-A3c - so the core's… | `ml/physiology_reference.py:176 get_reference_interval returns (p01, p99, unit); the table comment at line 44…` | **test:** `turbotab/test_the_record_does_not_describe_a_split_it_did_not_draw.py` — CLOSED AT L42-A2 BY RENAMING IN CORE, not by adding a Guided alias beside it - GUIDED-120 and… |
+| `MISC-018` | high | ml/physiology_reference.get_reference_interval returns a p01/p99 pair, and a reference interval is a defined quantity that is not that - the central 95 percent per CLSI EP28-A3c - so the core's… | `ml/physiology_reference.py:176 get_reference_interval returns (p01, p99, unit); the table comment at line 44…` | **test:** `turbotab/test_the_improbability_band_is_never_called_a_reference_interval.py::test_no_shipped_surface_calls_the_band_a_reference_interval` — CLOSED AT L42-A2 BY… |
+| `MISC-019` | high | DEFECT CLASS - a row is marked FIXED and its fix reached a fraction of the surfaces its own item describes, and ledger.py check cannot see it because it verifies that a test is NAMED rather than that… | `the instance is GUIDED-049, critical, FIXED, whose fix reached three call sites out of ten shipped surfaces…` | **test:** `turbotab/test_the_improbability_band_is_never_called_a_reference_interval.py::test_no_shipped_surface_calls_the_band_a_reference_interval` — FILED BY THE ADJUDICATOR AT… |
 | `AUDIT-004` | medium | The quick baseline drops every row with any missing feature and reports no N cascade, so the number the user reads is about a subset nobody named | `ml/eda_actions.py:1209-1211; research/NUTRITION_PACK.md section 06 anti-patterns` | **test:** `tests/test_the_manuscript_does_not_assert_an_uncorrected_count.py::test_the_quick_baseline_reports_what_it_dropped` — FIXED at L30-B, alongside AUDIT-001 because a… |
 | `MISC-016` | medium | The feature register has no rows for two shipped Classic pages and nothing gates its coverage, so a capability can be absent from the register without any check noticing | `docs/turbotab/FEATURE_REGISTER.md: 132 rows, zero matching pages/08_Sensitivity_Analysis (568 lines) and zero…` | **test:** `tests/test_a_specification_is_a_claim.py::test_every_classic_page_has_a_register_row_or_a_written_exemption (11 parametrizations) and… |
 

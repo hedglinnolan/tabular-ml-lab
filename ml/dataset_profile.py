@@ -537,7 +537,8 @@ def generate_warnings(profile: DatasetProfile) -> List[DataWarning]:
             level=WarningLevel.CAUTION,
             short_message=f"{len(profile.physio_plausibility_flags)} physiologic flags",
             detailed_message=(
-                "Empirical plausibility checks found values outside NHANES reference intervals. "
+                "Empirical plausibility checks found values outside the NHANES "
+                "improbability band (p01\u2013p99), which is not a reference interval. "
                 "These checks are based on population distributions, not clinical guidance."
             ),
             affected_models=["All Models"],

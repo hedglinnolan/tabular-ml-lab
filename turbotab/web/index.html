@@ -2004,7 +2004,7 @@
         label: b.column,
         note: b.n_flagged.toLocaleString() + " entr" +
               (b.n_flagged === 1 ? "y" : "ies") +
-              " outside the NHANES reference interval (" + num(b.low, 2) + "–" +
+              " outside the NHANES improbability band (" + num(b.low, 2) + "–" +
               num(b.high, 2) + " " + b.unit + ")",
         body: entryTable(b)
       };

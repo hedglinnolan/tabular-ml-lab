@@ -111,7 +111,11 @@ def plausibility_check(
 
                     empirical_ranges.append({
                         'Column': col,
-                        'Reference Interval (NHANES p01–p99)': f"{improbable_low}-{improbable_high} {improbable_unit}",
+                        # `MISC-018`. Was 'Reference Interval (NHANES p01–p99)',
+                        # which names the central 95% and then prints the
+                        # central 98% beside it. The label was the defect and
+                        # the parenthesis was the proof.
+                        'Improbability band (NHANES p01–p99)': f"{improbable_low}-{improbable_high} {improbable_unit}",
                         'Min (canonical)': f"{converted.min():.1f}",
                         'Max (canonical)': f"{converted.max():.1f}",
                         'Out of Range %': f"{out_rate:.1%}" if total_out > 0 else "0%"
@@ -119,7 +123,7 @@ def plausibility_check(
 
                     if out_rate > 0.05:
                         warnings.append(
-                            f"{col}: {out_rate:.1%} values outside NHANES reference interval "
+                            f"{col}: {out_rate:.1%} values outside the NHANES improbability band "
                             f"({improbable_low}-{improbable_high} {improbable_unit}) after conversion from {inferred_unit_info['inferred_unit']}"
                         )
 
@@ -191,7 +195,11 @@ def plausibility_check(
         num_flags = len(signals.physio_plausibility_flags) if signals.physio_plausibility_flags else 0
         num_out_of_range = len(out_of_range) if out_of_range else 0
         insight_finding = f"Physiologic plausibility: {num_flags} empirical flags, {num_out_of_range} columns with out-of-range values"
-        insight_implication = "Review units and validate values against NHANES reference intervals. Clinical thresholds are informational only."
+        insight_implication = ("Review units and validate values against the NHANES improbability "
+                               "band (p01\u2013p99). That band is not a reference interval — a "
+                               "reference interval is the central 95% of a healthy reference "
+                               "population, and a value outside this one is unusual rather than "
+                               "abnormal. Clinical thresholds are informational only.")
         try:
             import streamlit as st
             from utils.storyline import add_insight
