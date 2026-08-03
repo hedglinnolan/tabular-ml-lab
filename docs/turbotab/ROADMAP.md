@@ -557,6 +557,34 @@ ran four, finished four, and its best find — a declared figure companion that 
 and had been silently removing the flagship clinical figure for six loops — came from having room
 to look properly.
 
+### `research/INTERACTION_PACK.md` is scheduled — the product owner's ruling, 2026-08-03
+
+`DESIGN_LANGUAGE.md` §05.2 proposed it and left it unscheduled. **It is now next**, ahead of the
+missing capabilities and L10, and the reason is that condition 7's third half kept producing
+questions nothing in this repository can answer.
+
+**Three of them are already on the board**, and two were decided without it: whether animating a
+transformation actually helps a viewer follow it (§05.2's item 4, the one load-bearing design
+assertion in `PRODUCT_VISION.md` that resolves to no evidence), whether a one-card affordance is
+worse than the card (`GUIDED-149`), and whether a promoted card is disorienting (`GUIDED-154`).
+
+**So the pack arrives after the decisions it would have informed, and that is the better test of
+it.** Its first job is not a greenfield question — it is to check two rulings already made and say
+whether the literature agrees. A pack that can only confirm is not doing work; this one can come
+back and say a shipped decision is wrong, which is the strongest form of what a pack is for.
+
+Built under the discipline of the four science packs and no other: sourced claims resolving to file
+and section, **SETTLED / CONVENTION / DISPUTED** on every recommendation, and `[verify-at-build]` on
+anything not read in primary text. §05.2 names Heer & Robertson, *InfoVis* 2007 as the anchor it
+would start from **and records that it has not been read in primary** — so that is the first thing
+the pack either reads or marks.
+
+**And the same governing rule binds it that binds the science packs.** This project does not let a
+vitamin conversion factor ship on intuition, and §05.2 says explicitly that it should not make an
+exception for interaction. The risk specific to this pack is the inverse of the science packs': the
+temptation is not to invent a threshold but to dress taste as evidence. A design claim with no
+source is `DISPUTED` at best and prose at worst — never a `SETTLED` badge.
+
 ### Why the front of the journey is where the depth belongs — the product owner's ruling
 
 Recorded here because it is a sequencing decision with evidence behind it, and it was made in
