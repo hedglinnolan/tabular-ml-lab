@@ -63,6 +63,34 @@ CASES = [
      "this repository produces."),
 ]
 
+#: THE POPULATION THE BOUND WAS MEASURED ON — every CSV in
+#: `turbotab/sample_data/`, driven the same way, so the median in
+#: `attention.BOUND_BECAUSE` is re-derivable rather than quoted. A fixture whose
+#: companion names a lens is driven under it; the four with no companion are
+#: driven with no lens, which is a state a real project reaches (the lens
+#: question is answerable with *none of these*). A target is set where one is
+#: named, and the Explore stack does not depend on it.
+#:
+#: `(fixture, lens, target)`
+POPULATION = [
+    ("clinical_labs.csv", "clinical", "readmitted"),
+    ("clinic_visits.csv", "clinical", "outcome"),
+    ("clinical_risk.csv", "clinical", None),
+    ("clinical_longitudinal.csv", "clinical", None),
+    ("leaky_sepsis.csv", "clinical", None),
+    ("nhanes_kilojoules.csv", "dietary", "DR1TKCAL"),
+    ("nhanes_dietary.csv", "dietary", None),
+    ("nhanes_partial_design.csv", "dietary", None),
+    ("dietary_recalls.csv", "dietary", None),
+    ("metabolomics_untargeted.csv", "metabolomics", "responder"),
+    ("survey_sentinels.csv", "survey", "sought_support"),
+    ("survey_instrument.csv", "survey", None),
+    ("genomics_expression.csv", "genomics", "condition"),
+    ("multiclass_stage.csv", None, None),
+    ("wide_assay.csv", None, None),
+    ("longitudinal_visits.csv", None, "outcome"),
+]
+
 #: SAID OUT LOUD, because a substitution nobody mentions reads as a set that
 #: covered everything. The loop prompt asks for "a table with two" and no
 #: fixture in `turbotab/sample_data/` produces exactly two Explore findings —
@@ -136,7 +164,43 @@ def main() -> int:
         "bound_because": A.BOUND_BECAUSE,
         "not_captured": NOT_CAPTURED,
         "cases": [],
+        "population": [],
     }
+
+    # THE MEASUREMENT ITSELF, not a quotation of it. The bound's whole
+    # justification is a median over these sixteen tables, and a prototype that
+    # asserted the median while showing five of them would be asking the product
+    # owner to take the load-bearing number on trust.
+    for fixture, lens, target in POPULATION:
+        case = _drive(client, fixture, lens, target)
+        payload["population"].append({
+            "fixture": fixture,
+            "lens": lens or "",
+            "n": len(case["cards"]),
+            "n_gating": sum(1 for c in case["cards"]
+                            if c["severity"] in A.NEVER_COLLAPSED),
+            "collapsed_at_ships": len(
+                case["stacks"][str(A.BOUND)]["collapsed"])
+            if str(A.BOUND) in case["stacks"] else None,
+        })
+    sizes = sorted(row["n"] for row in payload["population"])
+    mid = len(sizes) // 2
+    median = (sizes[mid] if len(sizes) % 2
+              else (sizes[mid - 1] + sizes[mid]) / 2)
+    # An integral median renders as an integer. "median 5.0" on the page would
+    # be the page saying something slightly untrue about its own arithmetic.
+    payload["median"] = int(median) if float(median).is_integer() else median
+    payload["sizes"] = sizes
+    payload["n_collapsing"] = sum(1 for row in payload["population"]
+                                  if row["collapsed_at_ships"])
+    print(f"  population: {len(sizes)} tables, sizes {sizes}, "
+          f"median {payload['median']}, "
+          f"{payload['n_collapsing']} collapse anything at bound {A.BOUND}")
+    if str(A.BOUND) not in [str(b) for b in BOUNDS]:
+        print(f"! the shipping bound {A.BOUND} is not among {BOUNDS}; "
+              f"the page would default to a bound the build does not use")
+        return 2
+
     for fixture, lens, target, why in CASES:
         case = _drive(client, fixture, lens, target)
         case["why"] = why

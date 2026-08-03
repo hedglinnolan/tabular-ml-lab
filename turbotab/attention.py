@@ -50,12 +50,16 @@ and *we could not tell*. `complete` and its sentence cost one muted line.
 ## The bound is five, and the reason is a measurement
 
 Not a preference and not the prototype's two. Across the sixteen tables in
-`turbotab/sample_data/`, driven through the API under the lens each companion
-file names, the Explore stack runs
+`turbotab/sample_data/`, driven through the API under the lens each fixture's
+companion names — and with no lens where there is no companion, which is a state
+a real project reaches, since the lens question is answerable with *none of
+these* — the Explore stack runs
 
     1 · 3 · 3 · 3 · 3 · 4 · 4 · 5 · 5 · 5 · 5 · 6 · 6 · 6 · 8 · 13
 
-— **median five.** A bound at the median collapses something on three of the
+— **median five.** `docs/turbotab/prototypes/capture_explore_stack.py` re-derives
+that list every time it runs, and the prototype prints it, so the number behind
+this constant is checkable rather than quoted. A bound at the median collapses something on three of the
 sixteen and nothing on the other thirteen, so it fires on the tail rather than on
 the typical table. That is the property being bought, and `PRODUCT_VISION.md`
 already states it about a different surface: *"a resolution statement that fires
@@ -111,12 +115,15 @@ BOUND = 5
 #: nobody can argue with. Quoted by the prototype and by the ledger row.
 BOUND_BECAUSE = (
     "Five is the median Explore stack across the sixteen tables in "
-    "turbotab/sample_data/ (1·3·3·3·3·4·4·5·5·5·5·6·6·6·8·13). A bound at the "
-    "median collapses something on three of them and nothing on thirteen, so it "
-    "fires on the tail rather than on the typical table — a collapse that fires "
-    "on every dataset has stopped being judgment and become a cap. It is not the "
-    "prototype's two: two is the interruption budget, and a stack is not an "
-    "interruption."
+    "turbotab/sample_data/, driven through the API under the lens each fixture's "
+    "companion names and with no lens where there is no companion: "
+    "1·3·3·3·3·4·4·5·5·5·5·6·6·6·8·13. A bound at the median collapses something "
+    "on three of them and nothing on thirteen, so it fires on the tail rather "
+    "than on the typical table — a collapse that fires on every dataset has "
+    "stopped being judgment and become a cap. It is not the prototype's two: two "
+    "is the interruption budget, and a stack is not an interruption. The "
+    "measurement is re-derived, not quoted, by "
+    "docs/turbotab/prototypes/capture_explore_stack.py."
 )
 
 #: What each stream's chip says. The profile speaks about the table and the pack
