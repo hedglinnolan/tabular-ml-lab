@@ -725,7 +725,8 @@ def rank_findings(
 
 def draw_holdout(df: pd.DataFrame, target: str, task_type: str,
                  grain: Dict[str, Any], fraction: float = 0.15,
-                 seed: int = 42) -> Dict[str, Any]:
+                 seed: int = 42, time_col: Optional[str] = None,
+                 temporal: bool = False) -> Dict[str, Any]:
     """Choose the rows to seal, using the grain answer the user gave.
 
     Returns the labels plus the disclosure the seal has to carry. Three of the
@@ -766,7 +767,84 @@ def draw_holdout(df: pd.DataFrame, target: str, task_type: str,
     labels: List[Any] = []
     n_test_groups = None
 
-    if basis == "grouped" and group_col and group_col in df.columns:
+    chronological = False
+
+    # ── `GUIDED-143` · the chronological grouped draw ────────────────────────
+    #
+    # **It refuses; it does not fall back.** If the user said the task is
+    # predicting a later outcome from earlier measurements and this draw cannot
+    # honor that, drawing at random and reporting `grouped` would be the false
+    # assertion L42 just removed, arriving through the splitter instead of
+    # through the sentence. `EngineRefusal` is the app's refuse branch and the
+    # governing rule permits it; a silent fallback is the branch it forbids.
+    # **REFUSE WHEN A COLUMN WAS NAMED AND CANNOT BE USED; DISCLOSE WHEN NONE
+    # WAS NAMED.** The distinction is the whole of this block and it took a
+    # correction to get right.
+    #
+    # The first version refused whenever `temporal` was set and no time column
+    # was recorded — which is stronger than the rule asks and is wrong. L42
+    # built the honest three-state disclosure for exactly that case:
+    # `chronological_requested_not_drawn`, `honored: False`, the sentence in
+    # the seal, `exploratory: True`. That is not a *silent* fallback, it is a
+    # loud one, and it was accepted. Refusing there would delete a path a user
+    # with no clean date column needs — the shelf being shortened.
+    #
+    # What must never happen is the app being told *which column is time* and
+    # then drawing at random anyway. That is the silent fallback, and it is
+    # the false assertion L42 removed arriving through the splitter instead of
+    # through the sentence. So: named-and-unusable refuses.
+    if temporal and time_col:
+        if basis != "grouped" or not group_col or group_col not in df.columns:
+            raise EngineRefusal(
+                "A temporal validation holds out the LATEST people, so it "
+                "needs to know who a row belongs to. This table's grain is "
+                f"recorded as {basis!r}"
+                + (" with no identifier column" if not group_col else "")
+                + ". Record the repeated-measures grain first, or clear the "
+                  "time column and the split will be drawn at random within "
+                  "people and described as that.")
+        if time_col not in df.columns:
+            raise EngineRefusal(
+                f"No column named '{time_col}' in this table, so the temporal "
+                f"validation you asked for cannot be drawn.")
+        when = pd.to_datetime(df.loc[eligible, time_col],
+                              errors="coerce", format="mixed")
+        if when.isna().all():
+            raise EngineRefusal(
+                f"'{time_col}' was recorded as the time column and none of its "
+                f"values parse as a date, so the held-out set cannot be the "
+                f"latest one.")
+        unreadable = int(when.isna().sum())
+        if unreadable and unreadable > len(when) * 0.10:
+            raise EngineRefusal(
+                f"{unreadable} of {len(when)} rows have no readable date in "
+                f"'{time_col}'. Ordering people by their last observation "
+                f"would put those people somewhere arbitrary, and the seal "
+                f"would report a chronology it did not draw.")
+
+    if temporal and time_col:
+        # WHOLE PEOPLE, ORDERED BY THEIR LAST OBSERVATION. A person split
+        # across the boundary is the grain violation the seal exists to
+        # prevent, so a chronological split that broke grouping would trade
+        # one leak for another. Ordering by `max` rather than by `min` or by
+        # the mean is the choice that makes the held-out people the ones whose
+        # LAST visit is latest — anything else can hold out a person whose
+        # follow-up runs past the training data.
+        groups = df.loc[eligible, group_col]
+        last_seen = when.groupby(groups.values).max()
+        # `NaT` last-seen means every row of that person was unreadable; those
+        # people sort last under pandas' default and would be held out for
+        # being unparseable rather than for being late. Dropped from the draw
+        # and reported, never silently placed.
+        ordered = list(last_seen.dropna().sort_values().index)
+        undated = [g for g in pd.unique(groups.dropna()) if g not in set(ordered)]
+        n_hold = max(1, int(round(len(ordered) * fraction)))
+        held = set(ordered[-n_hold:])                      # THE TAIL, not a draw
+        labels = [lbl for lbl in eligible if groups.loc[lbl] in held]
+        n_test_groups = len(held)
+        chronological = True
+
+    elif basis == "grouped" and group_col and group_col in df.columns:
         # Whole people, so nobody is on both sides. Drawn over GROUPS, which is
         # why the achieved row fraction below is reported rather than assumed.
         groups = df.loc[eligible, group_col]
@@ -809,6 +887,16 @@ def draw_holdout(df: pd.DataFrame, target: str, task_type: str,
             "n_total": int(len(eligible)),
             "n_test_groups": n_test_groups,
             "exploratory": basis == "undetermined",
+            # `GUIDED-143`. What the draw ACTUALLY did, reported by the thing
+            # that did it — so the seal states its basis from the draw rather
+            # than from the question's answer. The two disagreeing is the
+            # defect this row is about.
+            "chronological": chronological,
+            "time_col": str(time_col) if chronological else None,
+            "n_undated_groups": len(undated) if chronological else 0,
+            "boundary": (str(pd.Timestamp(min(
+                last_seen[g] for g in held)).date())
+                if chronological and held else None),
         },
     }
 

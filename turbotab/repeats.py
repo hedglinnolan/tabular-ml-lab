@@ -577,10 +577,11 @@ SPLIT_BASES = (GROUPED, CHRONOLOGICAL_GROUPED, CHRONOLOGICAL_NOT_DRAWN)
 #: structural. `test_the_capability_flag_matches_what_the_draw_can_do` asserts
 #: the two agree, so the flag cannot be flipped without the draw arriving —
 #: which is the failure mode a bare boolean otherwise has.
-DRAWS_CHRONOLOGICALLY = False
+DRAWS_CHRONOLOGICALLY = True
 
 
-def split_strategy(temporal: bool, unit: str) -> Dict[str, Any]:
+def split_strategy(temporal: bool, unit: str,
+                   time_col: Optional[str] = None) -> Dict[str, Any]:
     """What question 7's answer selects, and whether the draw can honor it.
 
     **Three states, never two** (`GUIDED-143`). The middle field is `honored`,
@@ -589,7 +590,13 @@ def split_strategy(temporal: bool, unit: str) -> Dict[str, Any]:
     downstream — the manuscript, the page, the validator — reads the payload.
     """
     if temporal and unit == UNIT_RECORD:
-        if DRAWS_CHRONOLOGICALLY:
+        # `GUIDED-143`, Part C. THE DRAW EXISTS NOW, and the third basis is
+        # still first-class: a temporal task with no time column recorded is
+        # `chronological_requested_not_drawn` and says so, because the seal
+        # must state what was DRAWN rather than what was asked. The draw
+        # itself refuses in that case rather than falling back — this is the
+        # sentence for a state the user can still leave by answering.
+        if DRAWS_CHRONOLOGICALLY and time_col:
             # Reachable when the chronological grouped draw is built. Left in
             # rather than deferred to that loop, so the honorable state is
             # named in the same table as the dishonorable one.

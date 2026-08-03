@@ -567,6 +567,14 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
             raise HTTPException(400, str(exc)) from exc
         return _payload(project)
 
+    if decision.kind == "set_time_column":
+        try:
+            project.set_time_column(
+                str((decision.payload or {}).get("column") or decision.subject))
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return _payload(project)
+
     if decision.kind in ("set_repeat_kind", "set_unit_of_analysis",
                          "set_aggregation", "set_temporal_prediction"):
         payload = decision.payload or {}
@@ -853,11 +861,17 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
                      "which rows the held-out set is drawn from. Answering "
                      "'the study is about everyone here' settles it.")
         try:
+            # `GUIDED-143`, Part C. The recorded temporal objective reaches
+            # the draw. It did not before — that gap is the whole of this row,
+            # and `repeats.split_strategy` had exactly one caller, the setter
+            # that wrote the sentence.
+            _temporal = bool((project.temporal_prediction or {}).get("temporal"))
             drawn = engine.draw_holdout(
                 project.df, project.target, project.task_type or "regression",
                 project.grain,
                 fraction=float(decision.payload.get("fraction", 0.15)),
-                seed=int(decision.payload.get("seed", 42)))
+                seed=int(decision.payload.get("seed", 42)),
+                time_col=project.time_column, temporal=_temporal)
             project.seal_lockbox(drawn["labels"], **drawn["disclosure"])
         except engine.EngineRefusal as exc:
             raise HTTPException(400, str(exc)) from exc

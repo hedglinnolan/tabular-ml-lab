@@ -132,14 +132,27 @@ def test_the_basis_set_names_the_state_the_app_cannot_reach():
     """
     assert set(R.SPLIT_BASES) == {R.GROUPED, R.CHRONOLOGICAL_GROUPED,
                                   R.CHRONOLOGICAL_NOT_DRAWN}
-    assert R.DRAWS_CHRONOLOGICALLY is False
-    reached = {R.split_strategy(t, u)["strategy"]
+
+    # **L43-C BUILT THE DRAW, AND THE THIRD STATE DID NOT BECOME DEAD.** That
+    # is the property this test now guards, and it is the more interesting
+    # one. `chronological_requested_not_drawn` was written at L42 for an app
+    # that could not draw chronologically at all; the temptation on building
+    # the draw is to delete it. It stays, because the app still cannot draw
+    # chronologically when no time column has been recorded — and a user who
+    # has no clean date column must still be able to seal.
+    reached = {R.split_strategy(t, u, time_col=c)["strategy"]
                for t in (True, False)
-               for u in (R.UNIT_RECORD, R.UNIT_PERSON, R.UNIT_NOT_DESCRIBED)}
-    assert R.CHRONOLOGICAL_GROUPED not in reached, (
-        "the honored branch is reachable, so either the draw was built and "
-        "GUIDED-143 should close, or the flag is lying")
-    assert reached == {R.GROUPED, R.CHRONOLOGICAL_NOT_DRAWN}
+               for u in (R.UNIT_RECORD, R.UNIT_PERSON, R.UNIT_NOT_DESCRIBED)
+               for c in (None, "visit_date")}
+    assert reached == {R.GROUPED, R.CHRONOLOGICAL_GROUPED,
+                       R.CHRONOLOGICAL_NOT_DRAWN}, (
+        f"the basis set has a dead state: {sorted(set(R.SPLIT_BASES) - reached)} "
+        f"is named and unreachable. Three states, never two — and never two "
+        f"dressed as three.")
+    assert R.split_strategy(True, R.UNIT_RECORD, time_col=None)["strategy"] \
+        == R.CHRONOLOGICAL_NOT_DRAWN, (
+        "a temporal task with no time column recorded reports the honorable "
+        "basis, which is the assertion GUIDED-143 was filed for")
 
 
 def test_the_capability_flag_matches_what_the_draw_can_do():
@@ -318,21 +331,42 @@ def test_the_consumer_sentence_says_what_actually_happens():
         assert lie not in R.TEMPORAL_CONSUMER
 
 
-def test_guided_143_is_still_open_because_the_draw_does_not_exist():
-    """**The ruling is explicit that this part does not close the row.** The
-    false assertion stops here; the chronological grouped draw is a later
-    part, and a row closed before its `act` is satisfied is worse than an open
-    one."""
-    import json
+def test_guided_143_closed_only_because_the_draw_exists():
+    """L42 pinned this row OPEN; L43-C built the draw and it closes.
 
-    rows = json.load(open("docs/turbotab/data/findings.json"))
-    row = next(r for r in rows if r["id"] == "GUIDED-143")
-    assert row["status"] == "OPEN", (
-        "GUIDED-143 was closed and its act asks for a draw that does not "
-        "exist; the record would be claiming a capability again")
+    **The successor, not the deletion.** The property worth keeping is the
+    same one in both directions: the row's status and the app's capability are
+    one fact. L42 asserted *open, because the draw does not exist*; this
+    asserts *closed, and the draw exists* — so closing it again on a tree
+    where the draw was removed fails here rather than passing quietly.
+    """
+    import inspect
+    import json as _json
 
+    from turbotab import engine
 
-# ═══════════ A2 · THE NAME IN CORE ═══════════
+    ledger = (Path(__file__).resolve().parents[1]
+              / "docs" / "turbotab" / "data" / "findings.json")
+    row = next(r for r in _json.loads(ledger.read_text(encoding="utf-8"))
+               if r["id"] == "GUIDED-143")
+
+    takes_time = bool(set(inspect.signature(engine.draw_holdout).parameters)
+                      & {"time_col", "datetime_col", "temporal"})
+    if row["status"] in ("OPEN", "PARTIAL"):
+        assert not takes_time, (
+            "GUIDED-143 is open and `draw_holdout` takes a time argument — "
+            "either the draw landed and the row should close, or the "
+            "signature is asserting a capability that is not wired")
+        return
+
+    assert takes_time, (
+        "GUIDED-143 is closed and `draw_holdout` has no time parameter, so "
+        "the record is claiming a capability again — which is the defect this "
+        "row is about, arriving through the ledger instead of the manuscript")
+    assert R.DRAWS_CHRONOLOGICALLY is True, (
+        "the row is closed and the composer still says the app cannot draw "
+        "chronologically")
+    assert row.get("test"), "a FIXED row with no named regression test"
 
 def test_the_false_name_is_gone_from_core_and_has_no_alias():
     """**Renamed, not aliased.** An alias leaves the false name importable and
@@ -456,8 +490,12 @@ def test_the_unreachable_basis_is_asserted_unreachable_and_not_annotated():
 
     from turbotab import engine
 
+    # Two conditions now, not one: the draw has to EXIST and a time column
+    # has to be recorded. L43-C flipped the first; the second is per-project
+    # and is what keeps the not-drawn basis alive.
     reachable = R.DRAWS_CHRONOLOGICALLY
-    drawn = R.split_strategy(temporal=True, unit=R.UNIT_RECORD)
+    drawn = R.split_strategy(temporal=True, unit=R.UNIT_RECORD,
+                             time_col="visit_date")
 
     if not reachable:
         assert drawn["strategy"] == R.CHRONOLOGICAL_NOT_DRAWN, (
@@ -504,7 +542,8 @@ def test_the_honorable_branch_is_executed_rather_than_excused():
     import unittest.mock as _mock
 
     with _mock.patch.object(R, "DRAWS_CHRONOLOGICALLY", True):
-        got = R.split_strategy(temporal=True, unit=R.UNIT_RECORD)
+        got = R.split_strategy(temporal=True, unit=R.UNIT_RECORD,
+                               time_col="visit_date")
 
     assert got["strategy"] == R.CHRONOLOGICAL_GROUPED
     assert got["honored"] is True, (

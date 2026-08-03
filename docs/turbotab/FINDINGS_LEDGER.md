@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**285 of 754 closed.**
+**286 of 754 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 418 |
+| `OPEN` | 417 |
 | `PARTIAL` | 51 |
-| `FIXED` | 281 |
+| `FIXED` | 282 |
 | `NOT-A-DEFECT` | 4 |
 
 ---
 
-## OPEN — 418
+## OPEN — 417
 
 
 ### Application state / lockbox — 66
@@ -222,7 +222,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-264` | low | HUNT stack-blank-file-blocks-with-wrong-advice: one zero-column file blocks the entire stack and the message tells the researcher to consider joining instead | `utils/combine.py plan_stack - the no-shared-columns blocker and its message; measured at HEAD` | REPRODUCES AT HEAD. Two well-formed cycles sharing SEQN and age, plus one zero-column frame, give blocking: 'These files have no column names in common, so stacking them would… |
 | `IMPORT-265` | low | HUNT stack-duplicate-column-label-crash: does not reproduce on this pandas, and there is no guard - recorded as environment-dependent rather than fixed | `utils/combine.py execute_stack - the copy, rename and pd.concat path, which contains no duplicate-label…` | DOES NOT REPRODUCE AT HEAD, AND IS NOT CLOSED - the distinction is the point. Two frames with columns [1, '1'] give plan_stack no blocking and no warnings (so the recorded… |
 
-### Guided-door drive feedback — 44
+### Guided-door drive feedback — 43
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -237,7 +237,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-110` | high | Figure tiering and companions is specified and unbuilt, and it is the primitive MISC-015 did not count: zero ledger rows mention it at all | `docs/turbotab/DOMAIN_SCIENCE.md section 03 primitive 5 - EXPLORATORY vs CONFIRMATORY and the admissibility…` | FOUND BY THE MISC-015 GATE RATHER THAN BY MISC-015. That finding named four primitives with no rows; measuring all seven found a fifth, which is the argument for the gate over the… |
 | `GUIDED-112` | high | The generalized leakage detector is specified and unbuilt: any parameter estimated from data must be inside the loop, and the app checks this per known transform rather than as a rule | `docs/turbotab/DOMAIN_SCIENCE.md section 03 primitive 7 and section 06, which places it outside the pack order…` | FILED BY THE MISC-015 GATE. WHAT IS ALREADY TRUE AND IS NOT THE SAME THING: pipeline_plan builds preprocessing INSIDE the estimator, so a step that goes through it cannot leak.… |
 | `GUIDED-118` | high | The app cannot represent a time-to-event outcome at all, so Kaplan-Meier and every survival figure and model is unreachable: set_task_type accepts classification and regression only and there is no… | `turbotab/project.py:505 rejects any task_type other than classification or regression; searching turbotab/…` | L38-D1, AND THE REFUSAL IS THE RESULT. The loop prompt said to expect this figure to refuse and to let it, and it does: a curve drawn from a column the app believes is an ordinary… |
-| `GUIDED-143` | high | Answering the temporal-prediction question records - and the manuscript states - that the held-out rows are the latest ones, and engine.draw_holdout never reads temporal_prediction, so the split is… | `driven at L41-D on clinical_longitudinal.csv through the API: set_target sbp, purpose prediction, grain…` | L42-A1: THE FALSE ASSERTION IS GONE AND THE ROW STAYS OPEN, per the ruling - this half does not close it, and the row closes when the chronological grouped draw exists.… |
 | `AUDIT-016` | high | The calibration figure's caption tells the reader the curve is a loess estimate with a pointwise 95% band; it is a 10-equal-width-bin plot with no band — the exact anti-pattern §A4.3 names | `turbotab/figure_specs.py:245-255 (caption), 192-193 (layers), with ml/calibration.py:81-95 — CALIBRATION's…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `AUDIT-019` | high | The seal's methods sentence states a candidate-parameter count that includes the identifier columns the app refuses to give the model — 344 instead of 45 on the repo's own survey fixture | `turbotab/resolution.py:112 (and the assertion it feeds, turbotab/resolution.py:376)…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `AUDIT-034` | high | The recorded reverse-coding sentence promises a flip and a scoring step the app never performs, and it is exported into the manuscript | `turbotab/api.py:538-543 — On set_reverse_coding the dispatcher records text="{n} item(s) were declared…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
@@ -641,10 +640,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 281
+## FIXED — 282
 
 
-### Guided-door drive feedback — 93
+### Guided-door drive feedback — 94
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -716,6 +715,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-134` | high | DEFECT CLASS - a guard satisfies a production dependency with a fixture stand-in the real registry can never supply, so the guard proves the mechanism and cannot see that nothing feeds it | `the instance is GUIDED-128 and it is exact: turbotab/test_a_figure_carries_its_checklist_and_its_companions.py…` | **test:** `turbotab/test_a_stand_in_resolves_in_the_real_registry.py` — CLOSED AT L41-D as a detector over the class rather than as a fix to the instance - the instance was… |
 | `GUIDED-136` | high | The reverse-coding question is asked, dispatched and recorded, and nothing scores the answer - the one question the survey pack is allowed to add is a recorded decision with no consumer | `api.py dispatches set_reverse_coding and records it with a methods sentence; packs.py carries the…` | **test:** `turbotab/test_the_survey_block_is_audited.py` — CLOSED AT L41-C2. turbotab/survey.audit is the table, served at GET /project/{id}/evidence/reverse-coding and rendered… |
 | `GUIDED-141` | high | recorded_kinds() reads two of the API dispatcher's three forms, so set_temporal_prediction was outside the denominator every count in the decision probe is computed against and had never been probed | `found at L41-D by the stand-in sweep, which reuses recorded_kinds() as its decision registry and reported…` | **test:** `turbotab/test_a_recorded_decision_changes_something.py::test_every_recorded_kind_is_probed_allow_listed_or_named` — THIS IS THE SAME DEFECT recorded_kinds() WAS WRITTEN… |
+| `GUIDED-143` | high | Answering the temporal-prediction question records - and the manuscript states - that the held-out rows are the latest ones, and engine.draw_holdout never reads temporal_prediction, so the split is… | `driven at L41-D on clinical_longitudinal.csv through the API: set_target sbp, purpose prediction, grain…` | **test:** `turbotab/test_the_chronological_split_is_drawn.py::test_the_held_out_people_are_the_latest_ones` — L42-A1: THE FALSE ASSERTION IS GONE AND THE ROW STAYS OPEN, per the… |
 | `GUIDED-145` | high | DEFECT CLASS - a test whose NAME asserts a consequence its assertions never check, so a green guard pins the false claim it was written to protect | `the instance is GUIDED-143 and it is exact: test_temporal_prediction_routes_to_the_chronological_strategy…` | **test:** `turbotab/test_the_repeated_measures_chain_fires_only_when_it_should.py::test_temporal_prediction_records_the_objective_and_says_it_was_not_drawn` — FILED AT L42-A1 AS… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |

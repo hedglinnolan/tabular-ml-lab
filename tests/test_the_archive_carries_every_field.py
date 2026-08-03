@@ -71,6 +71,13 @@ PERSISTED = {
     # (`GUIDED-108`). Losing it would silently re-exclude a column the user
     # deliberately put back, and the models would change with no record of why.
     "kept_identifiers",
+    # `time_column` is a DECISION and the sharpest kind: the user was ASKED
+    # which column orders the study, because a table can carry an enrollment
+    # date, a visit date and a lab-draw date and only they know which one the
+    # outcome comes after. A restored project that lost it would re-seal at
+    # random within people while its transcript says the split was drawn
+    # chronologically (`GUIDED-143`).
+    "time_column",
     # `orientation` is the sharpest field in this set after `aggregation`, for
     # the same reason: answering it TRANSPOSED the frame, and the parquet in the
     # archive holds the turned-around table. A restored project that lost the
@@ -160,6 +167,12 @@ def _fully_populated() -> AnalysisProject:
         "age": rng.integers(20, 80, n).astype(float),
         "glucose": rng.normal(95, 12, n),
         "outcome": rng.integers(0, 2, n),
+        # `GUIDED-143` L43-C. A real date column, so `time_column` can be
+        # ANSWERED rather than assigned — `set_time_column` parses before it
+        # accepts, and a fixture that set the attribute directly would round-
+        # trip a value the app itself would have refused.
+        "visit_date": pd.to_datetime("2023-01-01")
+        + pd.to_timedelta(rng.integers(0, 400, n), unit="D"),
     })
     p = AnalysisProject.from_dataframe(df, "everything")
     # Detected regression, overridden to classification — so `task_overridden`
@@ -191,6 +204,10 @@ def _fully_populated() -> AnalysisProject:
     # CHANGES things: a project restored as `prediction` by default would pass
     # a round trip that never exercised the field.
     p.set_purpose("inference")
+    # Which column orders the study, asked. A restored project that lost it
+    # would re-seal at random within people while its transcript says the
+    # split was drawn chronologically.
+    p.set_time_column("visit_date")
     p.set_grain(G.PEOPLE_REPEAT, "SUBJ")
     # Questions 4 to 7. The unit is the RECORD rather than the person, so the
     # rows survive and the seal below still has 60 of them to draw from — and

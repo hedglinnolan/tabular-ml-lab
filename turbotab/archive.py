@@ -366,6 +366,14 @@ def build_members(project) -> Dict[str, bytes]:
         # would re-exclude them and the models would quietly change.
         "kept_identifiers": [str(c) for c in (project.kept_identifiers or [])],
         "preprocess_settled": bool(project.preprocess_settled),
+        # `GUIDED-143` L43-C. WHICH COLUMN ORDERS THE STUDY, and it is a
+        # DECISION rather than a derivative: the user was asked, several
+        # columns parse as dates, and nothing recomputes which one the
+        # outcome comes after. A restored project that lost it would
+        # re-seal at random within people while its own transcript says a
+        # chronological split was drawn.
+        "time_column": (str(project.time_column)
+                        if project.time_column else None),
     }
     members["config.json"] = json.dumps(config, indent=2, default=str).encode("utf-8")
     saved.append("config")
@@ -442,6 +450,29 @@ def build_members(project) -> Dict[str, bytes]:
                                  if lb.get("temporal_honored") is not None
                                  else None),
             "temporal_sentence": str(lb.get("temporal_sentence") or ""),
+            # `GUIDED-143` L43-C. WHAT THE DRAW ACTUALLY DID, as opposed to
+            # what was asked — and that distinction is the whole row, so
+            # losing this half on save would restore a project that can say
+            # the user wanted a chronological split and not whether it got
+            # one. `chronological` is a tri-state for the same reason
+            # `temporal_honored` is: None means sealed before this existed.
+            "chronological": (bool(lb["chronological"])
+                              if lb.get("chronological") is not None else None),
+            "time_col": (str(lb["time_col"]) if lb.get("time_col") else None),
+            "n_undated_groups": (int(lb["n_undated_groups"])
+                                 if lb.get("n_undated_groups") is not None
+                                 else None),
+            # The date the split falls on. A person reading a restored project
+            # can check it against the table; recomputing it would recompute
+            # from whatever frame the project now holds.
+            "boundary": (str(lb["boundary"]) if lb.get("boundary") else None),
+            # And the reconciliation itself: what the DRAW said, beside what
+            # the answer said. `temporal_basis` is already the reconciled
+            # verdict; this is the input that produced it, so a restored
+            # project can show its working rather than only its conclusion.
+            "temporal_drawn": (bool(lb["temporal_drawn"])
+                               if lb.get("temporal_drawn") is not None
+                               else None),
         }, indent=2).encode("utf-8")
         saved.append("test_lockbox")
 
@@ -577,6 +608,10 @@ def from_bytes(raw: bytes):
     project.kept_identifiers = [str(c) for c in
                                 (config.get("kept_identifiers") or [])]
     project.preprocess_settled = bool(config.get("preprocess_settled", False))
+    # `GUIDED-143` L43-C. `or None` rather than `str(...)`: an archive written
+    # before this field existed has no key, and coercing that to "" would make
+    # a restored project claim a time column named the empty string.
+    project.time_column = config.get("time_column") or None
     project.engineered = list(config.get("engineered") or [])
     project.deferred_transforms = list(config.get("deferred_transforms") or [])
     project.selection_spec = config.get("selection_spec") or None

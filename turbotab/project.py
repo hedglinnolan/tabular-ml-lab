@@ -258,6 +258,11 @@ class AnalysisProject:
     unit_of_analysis: Optional[str] = None
     aggregation: Optional[Dict[str, Any]] = None
     temporal_prediction: Optional[Dict[str, Any]] = None
+    # `GUIDED-143`. Which column orders the study in time. Asked, never
+    # inferred — `repeats._date_columns` offers the candidates and the user
+    # picks, because a table can carry an enrollment date, a visit date and a
+    # lab-draw date and only the user knows which one the outcome comes after.
+    time_column: Optional[str] = None
     # The answer to "is your study restricted to part of this data?", recorded
     # with its participant-flow numbers (constitution §04). `None` means not yet
     # asked, and the seal cannot be drawn on `None` — clause §01 puts
@@ -1171,7 +1176,8 @@ class AnalysisProject:
                 "This question only applies when the time points survive as "
                 "rows. Combining each person's records into one leaves nothing "
                 "to split chronologically.")
-        strategy = _rep.split_strategy(bool(temporal), self.unit_of_analysis)
+        strategy = _rep.split_strategy(bool(temporal), self.unit_of_analysis,
+                                       time_col=self.time_column)
         self.temporal_prediction = {"temporal": bool(temporal), **strategy}
         return self.record(
             kind="set_temporal_prediction", subject=strategy["strategy"],
@@ -1180,6 +1186,47 @@ class AnalysisProject:
                    "The task is not predicting across time. ")
                   + strategy["sentence"]),
             payload=dict(self.temporal_prediction))
+
+    def set_time_column(self, column: str) -> Decision:
+        """Which column is time. `GUIDED-143`, Part C.
+
+        **Asked, never inferred.** `repeats._date_columns` can already tell
+        which columns parse as dates and it is used to OFFER the candidates —
+        but which one orders the study is a domain fact, and the lockbox
+        constitution's own rule for grain is that the domain question is asked
+        rather than inferred. A table can carry an enrollment date, a visit
+        date and a lab-draw date, and only the user knows which one the
+        outcome comes after.
+
+        Pre-seal only, on `set_temporal_prediction`'s own precedent: after the
+        seal the split was drawn under whatever was recorded then, and
+        changing this would describe a chronology that was not drawn.
+        """
+        if self.barrier_raised:
+            raise ProjectError(
+                "The test set is already sealed and was drawn under the time "
+                "column recorded at the time. Changing it now would describe "
+                "a split that was not drawn this way.")
+        col = str(column)
+        if col not in self.df.columns:
+            raise ProjectError(f"No column named {col!r} in this table.")
+        import pandas as _pd
+        parsed = _pd.to_datetime(self.df[col], errors="coerce", format="mixed")
+        if parsed.isna().all():
+            raise ProjectError(
+                f"None of {col!r}'s values parse as a date, so it cannot order "
+                f"the study. The app refuses rather than ordering by whatever "
+                f"the values sort as.")
+        self.time_column = col
+        unreadable = int(parsed.isna().sum())
+        return self.record(
+            kind="set_time_column", subject=col,
+            text=(f"`{col}` is the column that orders this study in time"
+                  + (f", and {unreadable} of {len(parsed)} rows have no "
+                     f"readable date in it" if unreadable else "")
+                  + "."),
+            payload={"column": col, "n_unreadable": unreadable,
+                     "n_rows": int(len(parsed))})
 
     def set_eligibility(self, answer: str, column: Optional[str] = None,
                         minimum: Optional[float] = None,
@@ -1861,10 +1908,44 @@ class AnalysisProject:
         # chronology it does not have.
         temporal = dict(self.temporal_prediction or {})
         if temporal:
-            self.lockbox["temporal_basis"] = temporal.get("strategy")
+            # **THE DRAW OUTRANKS THE ANSWER, AND THAT IS THE WHOLE OF
+            # `GUIDED-143`.** L42 wrote this block reading `temporal_prediction`
+            # — the record of what was ASKED — because at the time nothing
+            # else could say. L43-C gave the draw a voice: `draw_holdout`
+            # reports `chronological` in its own disclosure, from the branch it
+            # actually took.
+            #
+            # A REVERT PROBE CAUGHT THIS. Removing the `temporal=` argument
+            # from the seal's call to `draw_holdout` — so the draw went back to
+            # random — left the lockbox still reporting
+            # `chronological_grouped`, because the basis came from the
+            # question's answer. That is the exact defect this row is about,
+            # reintroduced by the fix for it, and the check for it came back
+            # GREEN because it was reading the wrong source.
+            #
+            # So: when the disclosure says what it drew, the disclosure wins.
+            drew_chronologically = disclosure.get("chronological")
+            strategy = temporal.get("strategy")
+            honored = bool(temporal.get("honored"))
+            sentence = temporal.get("sentence") or ""
+            # ONLY WHEN TEMPORAL WAS ASKED. A user who answered *no* honestly
+            # drew `grouped` and it IS honored — downgrading that would
+            # report an unhonored temporal objective on a project that
+            # never had one, which is the same class of false claim in the
+            # opposite direction.
+            if (temporal.get("temporal")
+                    and drew_chronologically is False and honored):
+                from turbotab import repeats as _rep
+                strategy = _rep.CHRONOLOGICAL_NOT_DRAWN
+                honored = False
+                sentence = _rep.split_strategy(
+                    True, self.unit_of_analysis, time_col=None)["sentence"]
+            self.lockbox["temporal_basis"] = strategy
             self.lockbox["temporal_requested"] = bool(temporal.get("temporal"))
-            self.lockbox["temporal_honored"] = bool(temporal.get("honored"))
-            self.lockbox["temporal_sentence"] = temporal.get("sentence") or ""
+            self.lockbox["temporal_honored"] = honored
+            self.lockbox["temporal_sentence"] = sentence
+            self.lockbox["temporal_drawn"] = drew_chronologically
+            temporal["honored"] = honored
 
         unhonored = bool(temporal) and temporal.get("honored") is False
         return self.record(
