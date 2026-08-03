@@ -9843,5 +9843,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "reported by the L43 agent as its fourth divergence: the pragma check flagged the comment recording the pragma's removal; the registry check would have flagged its own docstring; and the independence check wrote the DJB2 constant as a literal and then asserted that literal was absent from itself. Each was fixed as it appeared and none reached a commit, which is why this is low"
+ },
+ {
+  "id": "GUIDED-149",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The Explore findings list is unbounded and uncapped, so making five packs visible at GUIDED-142 turned a two-card interruption budget into twenty cards on one clinical table - the wall of plots rebuilt inside the door that exists to replace it",
+  "detail": "",
+  "ev": "turbotab/web/index.html renders the list as pf.concat(packf).map(findingCard).join('') with no cap and no sort - bySource is a bare filter over P.findings. Driven by the adjudicator on clinical_labs.csv under the clinical lens: 20 findings served, 8 of them from packs, all 20 rendered. PRODUCT_VISION.md section 08's first open question states the budget: `How many noticings may a step raise at once? The prototype settled on two. Unbounded, push the notable collapses back into the wall of plots.` The server does rank - findings carry a rank field - so arrival order carries judgment, but nothing bounds the list",
+  "act": "Bound what is PUSHED and keep everything reachable, which is the shelf rule applied to attention rather than to models: judgment renders as ranking and disclosure, never as absence. The rest belongs behind an affordance that says how many are there and what kind - a count a reader can act on, not a truncation. Do NOT solve it by dropping findings, and do not solve it by ranking alone: twenty ranked cards is still twenty cards. The prototype's two is a starting point rather than a constant, and whatever number ships states its reason.",
+  "status": "OPEN",
+  "note": "FILED AT THE L43 ADJUDICATION, AFTER THE PRODUCT OWNER'S `correct, surfaced, beautiful` RULING - PRODUCT_VISION.md section 06b, recorded the same turn. THE POINT IS THE TIMING: this defect arrived WITH the fix for GUIDED-142 and in the same commit. Surfacing five packs' findings was correct and necessary and it created the third condition's first live failure, which is why condition three is not a later polish phase - it binds hardest exactly where the domain work is succeeding. PRODUCT_VISION section 01 names combinatorial pathway explosion as the root cause the whole product exists to fix and says the answer is more opinionation rather than more flexibility; an unbounded card list is the opposite of opinionation, and breadth of domain content is the force that rebuilds the wall. WHY HIGH: three of the five design principles are engaged at once - push the notable is the one being violated, the shelf is never shortened is the one that constrains the fix, and never assert falsely is why the hidden remainder must be counted rather than dropped. RELATED: GUIDED-148, the /recipes payload that reaches nobody, is the same ruling's second condition failing where this is its third.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "turbotab/web/index.html renders the list as pf.concat(packf).map(findingCard).join('') with no cap and no sort - bySource is a bare filter over P.findings. Driven by the adjudicator on clinical_labs.csv under the clinical lens: 20 findings served, 8 of them from packs, all 20 rendered. PRODUCT_VISION.md section 08's first open question states the budget: `How many noticings may a step raise at once? The prototype settled on two. Unbounded, push the notable collapses back into the wall of plots.` The server does rank - findings carry a rank field - so arrival order carries judgment, but nothing bounds the list"
  }
 ]
