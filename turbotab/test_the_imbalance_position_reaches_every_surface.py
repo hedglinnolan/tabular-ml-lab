@@ -135,6 +135,32 @@ def _prose(path: pathlib.Path) -> str:
     return "\n".join(out)
 
 
+def test_every_surface_this_check_reads_actually_parses():
+    """**This check reads source as TEXT, and a file that does not parse is
+    still text.**
+
+    L43-B shipped an `IndentationError` in `ml/eda_actions.py` — my own edit,
+    committed green. The five pre-commit gates do not parse that file, and
+    `_prose()` reads it with `read_text`, so nothing in the loop that touched
+    it noticed. `tests/` caught it three commits later at collection.
+
+    A guard that reads a file as a string owes an assertion that the string is
+    a program. Cheap, and it turns a class of edit mistake into a fast failure
+    at the place the edit was made.
+    """
+    import ast
+
+    broken = {}
+    for path in SHIPPED:
+        try:
+            ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
+        except SyntaxError as exc:
+            broken[str(path.relative_to(ROOT))] = f"line {exc.lineno}: {exc.msg}"
+    assert not broken, (
+        f"these do not parse: {broken}. Every check in this file reads them as "
+        f"text, so its verdict over them means nothing.")
+
+
 def test_no_shipped_surface_recommends_rebalancing():
     """The standing check, and it is the whole of §A5.2 as a behavior.
 
