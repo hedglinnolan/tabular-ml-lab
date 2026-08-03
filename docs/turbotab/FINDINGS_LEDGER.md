@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**287 of 761 closed.**
+**290 of 764 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 420 |
 | `PARTIAL` | 54 |
-| `FIXED` | 282 |
+| `FIXED` | 285 |
 | `NOT-A-DEFECT` | 5 |
 
 ---
@@ -222,7 +222,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-264` | low | HUNT stack-blank-file-blocks-with-wrong-advice: one zero-column file blocks the entire stack and the message tells the researcher to consider joining instead | `utils/combine.py plan_stack - the no-shared-columns blocker and its message; measured at HEAD` | REPRODUCES AT HEAD. Two well-formed cycles sharing SEQN and age, plus one zero-column frame, give blocking: 'These files have no column names in common, so stacking them would… |
 | `IMPORT-265` | low | HUNT stack-duplicate-column-label-crash: does not reproduce on this pandas, and there is no guard - recorded as environment-dependent rather than fixed | `utils/combine.py execute_stack - the copy, rename and pd.concat path, which contains no duplicate-label…` | DOES NOT REPRODUCE AT HEAD, AND IS NOT CLOSED - the distinction is the point. Two frames with columns [1, '1'] give plan_stack no blocking and no warnings (so the recorded… |
 
-### Guided-door drive feedback — 45
+### Guided-door drive feedback — 46
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -240,7 +240,6 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-016` | high | The calibration figure's caption tells the reader the curve is a loess estimate with a pointwise 95% band; it is a 10-equal-width-bin plot with no band — the exact anti-pattern §A4.3 names | `turbotab/figure_specs.py:245-255 (caption), 192-193 (layers), with ml/calibration.py:81-95 — CALIBRATION's…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `AUDIT-019` | high | The seal's methods sentence states a candidate-parameter count that includes the identifier columns the app refuses to give the model — 344 instead of 45 on the repo's own survey fixture | `turbotab/resolution.py:112 (and the assertion it feeds, turbotab/resolution.py:376)…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `AUDIT-034` | high | The recorded reverse-coding sentence promises a flip and a scoring step the app never performs, and it is exported into the manuscript | `turbotab/api.py:538-543 — On set_reverse_coding the dispatcher records text="{n} item(s) were declared…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
-| `GUIDED-149` | high | The Explore findings list is unbounded and uncapped, so making five packs visible at GUIDED-142 turned a two-card interruption budget into twenty cards on one clinical table - the wall of plots… | `turbotab/web/index.html renders the list as pf.concat(packf).map(findingCard).join('') with no cap and no…` | FILED AT THE L43 ADJUDICATION, AFTER THE PRODUCT OWNER'S `correct, surfaced, beautiful` RULING - PRODUCT_VISION.md section 06b, recorded the same turn. THE POINT IS THE TIMING… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
@@ -266,11 +265,13 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-028` | medium | Every imputation declaration writes 'within each training fold' into the recorded methods sentence, in a door that fits once over the training rows | `turbotab/missingness.py:522 — `sentence()` appends ' within each training fold' for any strategy whose…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `AUDIT-035` | medium | The purpose question tells the user its answer decides whether a scale is scored or used item by item; nothing in the app reads it for that | `turbotab/purpose.py:71 — purpose.CONSUMER (purpose.py:66-75) is rendered on the state_purpose card and names…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `GUIDED-150` | medium | The field sweep reports unread per journey position and cannot express that a payload is GATED on a decision the drive has not made, so a surface whose consumer is one step further along reads as… | `L44-C. /recipes measured at two positions on two lenses: at the seal, 50 fields (survey) and 45 (clinical)…` | FILED AT L44-C FROM THE MEASUREMENT THAT WITHDREW GUIDED-148. The sweep did not malfunction - it answered the question it was asked, at the position it was run, and the report… |
+| `GUIDED-153` | medium | No pack finding carries a deferral destination, so every pack card's button reads `Decide later` instead of naming a step, and pressing it records `deferred to the step where it belongs` with a… | `turbotab/engine.py rank_findings applies _with_deferral to the structural and profile streams and then…` | FOUND AT L45 WHILE READING THE PACK PAYLOAD FOR GUIDED-149's SOURCE CHIP - LOOP.md section 08's fifth adjudication question answering itself: a sweep terminates where the… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 | `GUIDED-121` | low | A near-unique column is neither flagged nor asked about: the identifier rule is exactly one level per row, so a column at 95 percent distinct is treated as an ordinary predictor | `turbotab/identifiers.py UNIQUE_PER_ROW = 1.0, stated as a constant and reported in the receipt's rule…` | DELIBERATELY NOT GUESSED AT, and the threshold is not lowered because there is no honest number to lower it to. A column at 0.95 distinct-per-row is either an identifier with a… |
 | `GUIDED-146` | low | The project payload carries n_rows, n_columns and name at the top level AND inside `profile`, and the page prefers the profile copy - so the top-level trio is a fallback branch the server's own… | `found at L42-B by the field sweep, which reported top-level n_rows, n_columns and row_identity unread while…` | FILED AT L42-B AS THE FIRST THING THE FIELD SWEEP FOUND, and it is worth keeping for what it says about the granularity rather than for its own size. The ROUTE check cannot see… |
 | `AUDIT-036` | low | The item-correlation figure's caption tells the reader that loadings and reliability appear 'below'; the app produces neither | `turbotab/figure_specs.py:2786-2788 — The shared `method_note` composed by _correlations reads "…Pearson…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
+| `GUIDED-151` | low | engine.SEVERITY_RANK has no `blocker` key and ml/router.py's has one at 0, so a finding carrying that severity would rank LAST in the list the app presents and first in the Router - the two rank… | `turbotab/engine.py:195 SEVERITY_RANK = {'critical': 0, 'warning': 1, 'caution': 2, 'info': 3} and…` | FOUND AT L45-B WHILE BUILDING attention.NEVER_COLLAPSED, which holds both words because ml/router.py:77 holds both and a set that knew only one would be a rule depending on which… |
 
 ### Silent-failure landmines — 37
 
@@ -505,13 +506,12 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-013` | medium | The Preprocess page reads capabilities.requires_scaled_numeric directly instead of resolving through the recipe table, so a pack's override cannot reach it | `pages/05_Preprocess.py:498,835; turbotab/recipes.py resolve() and the caps:requires_scaled_numeric selector` | L31-A AUDIT-008 sweep, capability 8 (the recipe table's resolve). pages/05 twice reads spec.capabilities.requires_scaled_numeric to decide whether a model needs scaling.… |
 | `MISC-017` | low | utils/insight_ledger._display_names docstring says it falls back to the previous hand-written table if the registry cannot be imported, and the code falls back to seven aliases - so the failure path… | `utils/insight_ledger.py _display_names sets names = {} in its except branch and returns {**aliases, **names}…` | FOUND WHILE ADJUDICATING GUIDED-124, whose derivation is otherwise correct and accepted. The docstring is a claim like any other and this one is false about its own function - the… |
 
-### Page-layer extraction — 8
+### Page-layer extraction — 7
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
 | `AUDIT-017` | high | The Classic methods section says calibration was assessed with reliability diagrams, Brier score and ECE on regression projects, where none of the three is computed | `ml/publication.py:1216 (with pages/10_Report_Export.py:1838-1839 and pages/06_Train_and_Compare.py:2147-2160)…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `AUDIT-024` | high | The Classic Feature Selection page offers univariable p-value screening and RFE-CV, both ON BY DEFAULT, and states none of the [SETTLED] objection anywhere in shipped code | `/Users/nhedglin/tabular-ml-lab/pages/04_Feature_Selection.py:170-178 (controls); :61-73 (the only…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
-| `AUDIT-030` | high | The primary model is chosen by comparing HELD-OUT TEST metrics, and the record and manuscript state the criterion was "validation" | `pages/06_Train_and_Compare.py:1541-1557 and :1574-1580; pages/10_Report_Export.py:281-305…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `AUDIT-032` | high | Running the leakage diagnostic marks the leakage BLOCKER resolved; the report then calls it "addressed" and the manuscript drops the caveat, while the column is still a model feature | `pages/02_EDA.py:1575-1589 (_resolve_insights_from_eda_result) called at :1639…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `AUDIT-018` | medium | The Classic landing page lists decision curve analysis as a shipped evaluation metric; no Classic page computes net benefit at all | `app.py:253 — app.py's 'Full Capabilities & Technical Details' expander lists, under **Evaluation Metrics**…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `AUDIT-022` | medium | The generated manuscript lists the sample size as a Strength for every N, with no criterion — and can print it as a strength and a limitation in the same section | `pages/10_Report_Export.py:1722 — generate_report builds the Discussion's 'Strengths and Limitations' block at…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
@@ -646,10 +646,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 282
+## FIXED — 285
 
 
-### Guided-door drive feedback — 93
+### Guided-door drive feedback — 95
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -722,6 +722,8 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-141` | high | recorded_kinds() reads two of the API dispatcher's three forms, so set_temporal_prediction was outside the denominator every count in the decision probe is computed against and had never been probed | `found at L41-D by the stand-in sweep, which reuses recorded_kinds() as its decision registry and reported…` | **test:** `turbotab/test_a_recorded_decision_changes_something.py::test_every_recorded_kind_is_probed_allow_listed_or_named` — THIS IS THE SAME DEFECT recorded_kinds() WAS WRITTEN… |
 | `GUIDED-143` | high | Answering the temporal-prediction question records - and the manuscript states - that the held-out rows are the latest ones, and engine.draw_holdout never reads temporal_prediction, so the split is… | `driven at L41-D on clinical_longitudinal.csv through the API: set_target sbp, purpose prediction, grain…` | **test:** `turbotab/test_the_chronological_split_is_drawn.py::test_the_held_out_people_are_the_latest_ones` — L42-A1: THE FALSE ASSERTION IS GONE AND THE ROW STAYS OPEN, per the… |
 | `GUIDED-145` | high | DEFECT CLASS - a test whose NAME asserts a consequence its assertions never check, so a green guard pins the false claim it was written to protect | `the instance is GUIDED-143 and it is exact: test_temporal_prediction_routes_to_the_chronological_strategy…` | **test:** `turbotab/test_the_repeated_measures_chain_fires_only_when_it_should.py::test_temporal_prediction_records_the_objective_and_says_it_was_not_drawn` — FILED AT L42-A1 AS… |
+| `GUIDED-149` | high | The Explore findings list is unbounded and uncapped, so making five packs visible at GUIDED-142 turned a two-card interruption budget into twenty cards on one clinical table - the wall of plots… | `turbotab/web/index.html renders the list as pf.concat(packf).map(findingCard).join('') with no cap and no…` | **test:** `turbotab/test_the_bounded_stack_holds_at_its_edges.py (whole file: 39 partition cases x 6 bounds = 102 partitions, plus 25 page drives across three lenses) and… |
+| `GUIDED-152` | high | The Explore list was composed as two filtered views concatenated, which destroys the ranking the server computed - so on clinical_labs.csv the five least consequential findings rendered above the… | `turbotab/web/index.html rendered bySource('profile').concat(bySource('pack')) and nothing anywhere sorted.…` | **test:** `turbotab/test_the_bounded_stack_holds_at_its_edges.py::test_the_page_shows_exactly_what_the_stack_says_it_shows` — THE CLASS, not the instance: A RENDERER THAT… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
 | `GUIDED-005` | medium | Explore flags skew without showing a distribution, and offers no boilerplate EDA for small feature spaces | `turbotab explore step; ml/eda_recommender.py; screenshot skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_gallery_and_the_matrix_are_gated_on_feature_count` — Fixed. Every shape claim embeds the distribution it is about, and two pull… |
 | `GUIDED-007` | medium | Coach ledger and manuscript panel are not expandable, and a coach item renders the literal internal label 'not built yet' in production UI | `turbotab/web; screenshot coach_manuscript_ledger` | **test:** `turbotab/test_guided_drive.py::test_the_draft_is_prose_with_the_gaps_left_open` — Fixed. Both docks expand. The manuscript dock became the read-as-draft panel… |
@@ -1000,6 +1002,12 @@ Nothing is closed without a regression test named after it.
 |---|---|---|---|---|
 | `T0-BUILD-004` | critical | clinical_units.infer_unit matches by substring and decides the conversion factor actually applied to the data | `ml/clinical_units.py:139-142 (`if var_name in col_lower`); ml/pipeline.py:60 build_unit_harmonization_config…` | **test:** `tests/test_no_column_inherits_a_unit_conversion.py::test_a_resembling_name_earns_no_conversion` — Fixed with ruling 4's discipline, applied where it bites hardest.… |
 | `T0-BUILD-003` | high | physiology_reference.match_variable_key matches by substring, so any column whose name contains a reference key is measured against that variable's intervals | `ml/physiology_reference.py match_variable_key (`if key in col_lower`); ml/card_evidence.py…` | **test:** `tests/test_doubt_the_reading_not_the_data.py::test_an_unknown_suffix_yields_silence_rather_than_inherited_bounds` — Fixed on the adjudicator's ruling: exact key or… |
+
+### Page-layer extraction — 1
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `AUDIT-030` | high | The primary model is chosen by comparing HELD-OUT TEST metrics, and the record and manuscript state the criterion was "validation" | `pages/06_Train_and_Compare.py:1541-1557 and :1574-1580; pages/10_Report_Export.py:281-305…` | **test:** `tests/test_the_methods_section_names_the_set_it_compared_on.py (seven tests) and tests/test_narrative_engine.py::TestNarrativeEngineGeneration::test_model_development_do… |
 
 ---
 
