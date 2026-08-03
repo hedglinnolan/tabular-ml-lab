@@ -1219,8 +1219,13 @@ to the collinear subspace.
             "The <strong>EDA</strong> page computes pairwise correlations and flags highly "
             "correlated pairs (|r| > 0.8). The coaching layer only raises collinearity "
             "as an issue for linear model families, since tree-based and other models "
-            "are unaffected. The <strong>Feature Selection</strong> page offers VIF-based "
-            "filtering as one of its selection methods."
+            "are unaffected. VIF itself lives on the <strong>EDA</strong> page as a read-only "
+            "diagnostic: it reports the variance inflation factor of each numeric feature and "
+            "flags those above 10, and it drops nothing. No page in this app filters features by "
+            "VIF — the <strong>Feature Selection</strong> page's four methods are LASSO path, "
+            "RFE-CV, univariate screening and stability selection, and the other route to "
+            "collinearity is shrinkage at training time (Ridge or ElasticNet on the "
+            "<strong>Train &amp; Compare</strong> page)."
         )
 
         with st.expander("Deep Dive: Condition Number"):
@@ -1955,6 +1960,20 @@ tests) but still controls the expected proportion of false discoveries.
 features that are only predictive *in combination* (e.g., an interaction between
 age and sex where neither alone predicts the outcome). It can also retain redundant
 features that carry the same signal.
+
+**Where it is contraindicated:** for a clinical prediction or association model,
+univariable pre-screening of predictors by p-value is one of PROBAST's explicit
+high-risk-of-bias signals — the isolation problem above, plus the fact that it
+invalidates the p-values of the model you fit on the survivors, because those
+p-values take no account of the screen that produced the candidate list. The same
+objection applies to stepwise selection, which produces unstable variable sets,
+biased coefficients and confidence intervals with wrong coverage. Pre-specify
+predictors on clinical grounds, or use a penalized fit that shrinks rather than
+testing and dropping. The filter remains the right tool for high-dimensional
+discovery, where what survives is a set of hypotheses rather than a final predictor
+set — which is why the **Feature Selection** page still offers it, but no longer
+ticks it for you. (PROBAST: Wolff et al., *Ann Intern Med* 2019; Harrell,
+*Regression Modeling Strategies*, 2nd ed.)
 """)
         section("Stability Selection (Bootstrap Method)")
         st.markdown(f"""

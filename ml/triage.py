@@ -75,15 +75,29 @@ def detect_task_type(df: pd.DataFrame, target: str) -> Dict:
             reasons.append("Target is binary (0/1) - classification")
         elif n_unique <= 10:
             # Low-cardinality integers are AMBIGUOUS: class codes read this
-            # way, but so do counts and 0-10 ratings, which are regression
-            # targets. Never assert this confidently — the UI prompts the
-            # user to verify or override when confidence is not 'high'.
+            # way, and so do counts and ordinal scores. AUDIT-033: this branch
+            # used to say ordinal scores "should be treated as regression",
+            # which is the one thing §B6 marks SETTLED against — an ordered
+            # outcome wants a cumulative link (proportional odds) model, and
+            # `ml/model_registry.py` has no such family. So the reason names
+            # the method, says the app does not fit it, states how EACH offered
+            # family is wrong, and recommends neither. The ≤10 gate keeps this
+            # out of §B4's genuinely disputed regime: a summated multi-item
+            # scale score has far more than ten distinct values, and §B4's
+            # "metric defensible" row is about those.
             detected = 'classification'
             confidence = 'low'
             reasons.append(
-                f"Target has {n_unique} unique integer values (≤10) — this often means "
-                f"classification, but counts or ordinal scores should be treated as "
-                f"regression. Verify or override below."
+                f"Target has {n_unique} unique integer values (≤10). Class codes, "
+                f"a count, and an ordinal score (a 0–5 mRS, a 1–5 Likert item, a "
+                f"0–10 rating) all look like this, and the numbers cannot tell them "
+                f"apart. If it is an ordinal score, neither offer here is the right "
+                f"one: an ordered outcome wants a cumulative link (proportional "
+                f"odds) model, which this app does not fit — statsmodels' "
+                f"OrderedModel or R's ordinal::clm does. Regression treats the gaps "
+                f"between the categories as equal and can report the ordering of "
+                f"group means backwards; classification discards the ordering "
+                f"altogether. Verify or override below."
             )
         elif unique_ratio < 0.02:
             detected = 'classification'

@@ -704,9 +704,11 @@ NOT_IN_THE_FIT = {
         "it: the pack's own `scale: pareto` and `power: log1p` are in the "
         "plan under the metabolomics lens and absent under `other`."),
     "set_reverse_coding": (
-        "Records which survey items are reverse-coded so the scale can be "
-        "scored. Nothing scores a scale yet — the consumer is the survey "
-        "pack's scoring step, which is not built."),
+        "Records which survey items are reverse-coded, per the scoring key. "
+        "Its consumer is the reverse-coding audit (GUIDED-136), an evidence "
+        "endpoint rather than a pipeline step, and the methods section. No "
+        "scale score is computed anywhere in this app, so nothing about this "
+        "answer reaches the fitted pipeline."),
 }
 
 

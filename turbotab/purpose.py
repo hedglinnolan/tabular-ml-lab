@@ -67,11 +67,15 @@ CONSUMER = (
     "The missing-data route reads it first: a was-it-missing indicator carries "
     "the clinician's judgment and is observable at deployment, which makes it "
     "useful for prediction and a known source of bias for an association "
-    "estimate. Beyond that it changes what repeated measurements may be "
-    "averaged into, whether a scale is scored or used item by item, and "
-    "whether class weighting is contraindicated. It is asked once and read "
-    "everywhere; answering wrongly does not raise an error, it produces a "
-    "complete set of numbers optimized for a claim you are not making."
+    "estimate. Three more places read it: whether a value below the limit of "
+    "detection may be substituted, whether the outcome may sit inside the "
+    "imputation model, and whether class weighting is contraindicated. Those "
+    "four are the whole list today. The research names further forks this "
+    "answer would decide — which repeated measurements may be averaged, and "
+    "whether a survey instrument enters as a scale score or item by item — "
+    "and this app implements neither, so those calls stay yours. Answering "
+    "wrongly does not raise an error, it produces a complete set of numbers "
+    "optimized for a claim you are not making."
 )
 
 OPTIONS: List[Dict[str, str]] = [

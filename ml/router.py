@@ -708,14 +708,16 @@ def plan(
                  f"them are worded so that agreeing means the opposite, they "
                  f"have to be flipped before the scale means anything."),
             consumer=(
-                "Scoring reads this to decide which items to reverse before "
-                "combining them, and the methods section carries the list. "
+                "The reverse-coding audit reads this: it recomputes each item's "
+                "correlation with the rest of its scale with your declared "
+                "reversals applied, and warns where an item is still negative "
+                "afterwards — which means it was already reversed in the source "
+                "or does not belong to this scale. The methods section carries "
+                "the list, which is what a reviewer asks for. This app computes "
+                "no scale score, so nothing else is scored from your answer. "
                 "Nothing here is inferred: the app can see that some items "
                 "correlate negatively with the rest, and that is the same "
-                "evidence two subscales measuring opposing constructs produce. "
-                "Answering wrongly does not raise an error — it produces a "
-                "scale score that means nothing, with every downstream number "
-                "computed from it."),
+                "evidence two subscales measuring opposing constructs produce."),
             options=list(lens_block["columns"]), multi_select=True))
 
     # ── the Features step, constitution §06 ─────────────────────────────────

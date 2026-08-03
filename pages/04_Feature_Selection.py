@@ -66,10 +66,24 @@ Feature selection helps you:
 
 1. **Remove redundant features** (e.g., BMI and Weight are highly correlated — keep one)
 2. **Identify the most predictive variables** (focus your analysis)  
-3. **Reduce overfitting** (fewer features = simpler, more generalizable models)
+3. **Reduce model complexity** (fewer features = simpler models — though choosing them from these same rows adds optimism of its own, which is why selection belongs inside the validation loop)
 4. **Improve interpretability** (explain 5 key predictors vs. explaining 50)
 
 This step uses multiple methods (LASSO, RFE-CV, Stability Selection) to find consensus features.
+
+**What the clinical-prediction literature says about selecting predictors from your own data.**
+Univariable pre-screening by p-value is contraindicated: it is one of PROBAST's explicit
+high-risk-of-bias signals, it discards variables that matter only in combination, and it
+invalidates the p-values of the model you fit on the survivors. Stepwise selection draws the same
+objection — unstable variable sets, biased coefficients, and confidence intervals with wrong
+coverage. The preferred routes are pre-specifying predictors on clinical grounds, or a penalized
+fit (LASSO, ridge, elastic net) that shrinks rather than testing and dropping — and LASSO is
+itself unstable in small samples, which is what Stability Selection is here to show you.
+(PROBAST: Wolff et al., *Ann Intern Med* 2019. Harrell, *Regression Modeling Strategies*, 2nd ed.)
+
+Nothing here is taken away by that: these methods are the right tool for high-dimensional
+discovery, where what survives is a set of hypotheses rather than a final predictor set. What
+changed is that univariate screening is no longer ticked for you.
 """)
 
 # ============================================================================
@@ -157,6 +171,18 @@ elif df.loc[mask, numeric_features].isna().any().any():
 
 st.header("Select Methods")
 st.caption("Run multiple methods and compare which features are consistently selected.")
+# `AUDIT-024` · CLINICAL_SURVEY_PACK.md §A5.5 [SETTLED]. Every method on this
+# panel is data-driven selection, and the panel used to state only what that is
+# good for. The objection is stated here once, beside the controls.
+st.caption(
+    "All of these choose predictors from your rows, so the set they return is unstable across "
+    "resamples and the p-values and confidence intervals of a model refitted on it are not valid "
+    "as printed. For a clinical prediction or association model the literature's preference is "
+    "pre-specification on clinical grounds, or a penalized fit that shrinks rather than selecting "
+    "abruptly; stepwise selection in particular produces unstable variable sets, biased "
+    "coefficients and confidence intervals with wrong coverage (Harrell, *Regression Modeling "
+    "Strategies*, 2nd ed.)."
+)
 
 # RFE with step=1 fits ~p models over shrinking feature sets — measured
 # ~80s at 3000 features on this hardware, so default it off on wide data.
@@ -174,8 +200,27 @@ with col1:
                    "— recursive elimination takes minutes at this width. "
                    "Enable it if you need it.")
 with col2:
-    run_univariate = st.checkbox("Univariate Screening (FDR-corrected)", value=True,
-                                 help="Tests each feature individually against the target. FDR correction controls false discovery rate.")
+    # `AUDIT-024` · CLINICAL_SURVEY_PACK.md §A5.5 [SETTLED]: "Avoid univariable
+    # pre-screening of predictors by p-value. It is one of PROBAST's explicit
+    # high-risk-of-bias signals." The method is NOT removed — it is offered with
+    # the objection stated and is no longer pre-ticked, on the `GUIDED-049`
+    # pattern (`ml/imbalance_advice.py`): keep it, stop recommending it, say what
+    # the literature says. It stays the right tool for high-dimensional
+    # discovery, and `ml.feature_selection.univariate_screening` is untouched.
+    run_univariate = st.checkbox("Univariate Screening (FDR-corrected)", value=False,
+                                 help="Tests each feature individually against the target and keeps those surviving "
+                                      "Benjamini-Hochberg FDR correction. Off by default: univariable pre-screening by "
+                                      "p-value is one of PROBAST's explicit high-risk-of-bias signals for a clinical "
+                                      "prediction or association model — it discards variables that matter only in "
+                                      "combination, and it invalidates the p-values of the model fitted on the survivors.")
+    st.caption(
+        "⚠️ Univariable pre-screening by p-value is a PROBAST high-risk-of-bias signal: it discards "
+        "variables that matter only in combination, and it invalidates the p-values of the model you "
+        "fit afterwards. Instead: pre-specify predictors on clinical grounds, or use a penalized fit "
+        "(LASSO, ridge, elastic net). It is kept here — and it is the standard tool for "
+        "high-dimensional discovery, where the survivors are hypotheses rather than a predictor set — "
+        "so tick it if that is what you are doing (Wolff et al., *Ann Intern Med* 2019)."
+    )
     run_stability = st.checkbox("Stability Selection", value=False,
                                 help="Runs LASSO on many random subsamples. Features selected consistently are most robust. Slower but very reliable.")
 

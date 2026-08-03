@@ -1226,7 +1226,18 @@ def generate_methods_section(
             "permutation_importance": "Permutation importance was computed to assess feature contributions by measuring the decrease in model performance when each feature was randomly shuffled.",
             "shap": "SHapley Additive exPlanations (SHAP) values were computed to quantify the contribution of each feature to individual predictions.",
             "partial_dependence": "Partial dependence plots were generated to visualize the marginal effect of individual features on the predicted outcome.",
-            "calibration": "Model calibration was assessed using reliability diagrams, Brier score, and expected calibration error (ECE).",
+            "calibration": (
+                "Model calibration was assessed using reliability diagrams, "
+                "Brier score, and expected calibration error (ECE)."
+                if str(task_type).lower().startswith("classif") else
+                "Model calibration was assessed by regressing the observed "
+                "outcome on the predicted value; the calibration slope (1.0 "
+                "indicates perfect calibration), the calibration intercept "
+                "(0.0 indicates no systematic bias) and R² are reported. "
+                "Reliability diagrams, the Brier score and the expected "
+                "calibration error are defined for predicted probabilities "
+                "and were not computed for this continuous outcome."
+            ),
             "subgroup": "Subgroup analysis was performed to evaluate model performance across clinically relevant subgroups.",
             "decision_curve": "Decision curve analysis was performed to assess the clinical utility of the model at various probability thresholds.",
             "bland_altman": "Bland-Altman analysis was performed to assess agreement between model predictions.",
@@ -1372,39 +1383,48 @@ def generate_methods_section(
         "for transparency and reproducibility.\n\n"
     )
 
-    # 1. CV on pre-transformed data
-    if cv_folds or cv_to_use:
-        _has_pca = False
+    # 1. What the cross-validation loop enclosed. `AUDIT-029`.
+    #
+    # This paragraph told the reader CV was "performed on data that had already
+    # been preprocessed using the full training set", and hung an optimistic-bias
+    # rider on PCA. Both have been false since STATE-059:
+    # pages/06_Train_and_Compare.py:1481-1487 passes make_cv_pipeline the RAW
+    # training partition, and ml/eval.py:182-197 clones the preprocessing into
+    # the composite, so imputer, scaler, encoder AND PCA are re-fit inside every
+    # fold. The manuscript is the one artifact where the description IS the
+    # deliverable; it was describing a leak the code structurally prevents, and
+    # in doing so it left the real out-of-loop steps undisclosed.
+    #
+    # §A5.5 asks for the ENTIRE pipeline inside the loop. Preprocessing is;
+    # feature selection (page 04, before training) and hyperparameter tuning
+    # (pages/06:1260/:1318, on a separate validation split) are not, and no
+    # optimism correction is applied. That is the caveat this paragraph owes.
+    #
+    # Gated on cv_models_run (AUDIT-026): a paragraph describing a fold
+    # structure must not print for a run that cross-validated nothing.
+    if (cv_folds or cv_to_use) and cv_models_run:
         _has_feature_selection = feature_selection_logged or feature_selection_method is not None
-        try:
-            import streamlit as st
-            _preproc_configs = st.session_state.get('preprocessing_config_by_model', {})
-            for _mc in _preproc_configs.values():
-                if isinstance(_mc, dict) and _mc.get('use_pca'):
-                    _has_pca = True
-                    break
-        except ImportError:
-            pass
 
         cv_num = cv_to_use if cv_to_use else cv_folds
         sections.append(
-            f"**Cross-validation and preprocessing:** {cv_num}-fold cross-validation was performed "
-            f"on data that had already been preprocessed using the full training set. "
-            f"In a strict nested cross-validation framework, preprocessing would be re-fit within "
-            f"each fold to avoid information leakage. For scale-invariant models (tree-based ensembles), "
-            f"this has no practical effect. For scale-sensitive models (linear, SVM, neural networks), "
-            f"the impact of this choice on reported cross-validation metrics is expected to be minimal "
-            f"for imputation and scaling operations"
+            f"**What the cross-validation loop enclosed:** {cv_num}-fold cross-validation was "
+            f"performed on the raw training partition, with the preprocessing pipeline "
+            f"(imputation, scaling, encoding, and any dimensionality reduction) re-fit inside "
+            f"each fold, so no fold's held-out rows contributed to the statistics used to "
+            f"transform it. The loop did not enclose the entire model-building procedure: "
+            f"feature selection and hyperparameter tuning, where used, were performed before it "
+            f"rather than inside it, and no optimism correction (bootstrap or nested resampling) "
+            f"was applied, so the cross-validated estimates are not corrected for the optimism "
+            f"those steps introduce"
         )
-        if _has_pca or _has_feature_selection:
+        if _has_feature_selection:
             sections.append(
-                f", though it may introduce optimistic bias for dimensionality reduction "
-                f"{'(PCA was applied)' if _has_pca else ''}"
-                f"{' (feature selection was applied)' if _has_feature_selection else ''}"
+                " — feature selection was applied in this workflow, on the training "
+                "partition, before cross-validation began"
             )
         sections.append(
-            ". Held-out test set performance, which uses a strict train/test separation "
-            "for preprocessing, remains unaffected by this consideration.\n\n"
+            ". Held-out test set performance is computed with preprocessing fit on the training "
+            "partition only and is unaffected by the fold structure described here.\n\n"
         )
 
     # 2. Feature dropout methodology

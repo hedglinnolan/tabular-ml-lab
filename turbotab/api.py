@@ -535,12 +535,17 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
                 400, f"No column named '{unknown[0]}' in this table.")
         project.record(
             "set_reverse_coding", subject=",".join(columns),
-            text=(f"{len(columns)} item(s) were declared reverse-coded and will "
-                  f"be flipped before the scale is scored: "
-                  + ", ".join(f"`{c}`" for c in columns) + "."
+            text=(f"{len(columns)} item(s) were declared reverse-coded, per the "
+                  f"scoring key: "
+                  + ", ".join(f"`{c}`" for c in columns) + ". "
+                  "The reverse-coding audit recomputes each item's correlation "
+                  "with the rest of its scale with the reversal applied. This "
+                  "app computes no scale score, so the declaration is not "
+                  "applied to the table any other analysis reads."
                   if columns else
-                  "No items were declared reverse-coded; the scale is scored "
-                  "with every item in the direction it was recorded."),
+                  "No items were declared reverse-coded, per the scoring key. "
+                  "This app computes no scale score; the declaration is "
+                  "recorded so the methods section can state it."),
             payload={"columns": columns, "source": "declared"})
         return _payload(project)
 

@@ -744,11 +744,11 @@ def test_a_low_confidence_detection_can_be_overridden(client, raw: bytes):
     """Found by writing the parity register against `pages/01`, which has this
     control and which Guided did not.
 
-    `ml/triage.py:53-64` returns `low` confidence for a low-cardinality integer
-    target and says in its own words that counts and ordinal scores should be
-    treated as regression — *"Verify or override below."* Reporting that verdict
-    with no way to contradict it is the app deciding, at a tier
-    `PRODUCT_VISION.md` §07.1 reserves for the user.
+    `ml/triage.py`'s low-cardinality integer branch returns `low` confidence and
+    says in its own words that class codes, counts and ordinal scores all look
+    alike and that the app fits no cumulative link model — *"Verify or override
+    below."* Reporting that reading with no way to contradict it is the app
+    deciding, at a tier `PRODUCT_VISION.md` §07.1 reserves for the user.
     """
     pid = client.post("/project",
                       files={"file": ("clinic_visits.csv", raw, "text/csv")}).json()["id"]

@@ -6024,8 +6024,11 @@
     },
     set_reverse_coding: function(p){
       var n = ((p || {}).columns || []).length;
-      return n ? "Records " + n + " item(s) as reverse-coded, to be flipped before the scale is scored."
-               : "Records that no items are reverse-coded.";
+      return n ? "Records " + n + " item(s) as reverse-coded, per your scoring key. The "
+               + "reverse-coding audit recomputes each item's correlation with the rest of "
+               + "its scale with the reversal applied; no scale score is computed anywhere "
+               + "in this app."
+               : "Records that no items are reverse-coded, per your scoring key.";
     },
     set_repeat_kind: function(p){
       return (p || {}).kind === "repeats"

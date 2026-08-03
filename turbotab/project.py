@@ -506,9 +506,10 @@ class AnalysisProject:
         """Let the user disagree with the detection, and record that they did.
 
         Required, not optional. `ml/triage.py` returns `low` confidence for a
-        low-cardinality integer target and says so in its own words — *"counts
-        or ordinal scores should be treated as regression. Verify or override
-        below."* An interface that reports that verdict and offers no way to
+        low-cardinality integer target and says so in its own words — it names
+        the ordinal reading, says the app fits no cumulative link model, and
+        ends *"Verify or override below."* An interface that reports that
+        reading and offers no way to
         contradict it has made the choice itself, at a confidence tier the
         governing rule reserves for the user (`PRODUCT_VISION.md` §07.1).
         Classic has this control; Guided has to as well.

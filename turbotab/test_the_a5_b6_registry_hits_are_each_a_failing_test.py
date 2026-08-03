@@ -58,9 +58,6 @@ def test_every_row_this_file_names_is_open_and_every_open_one_is_named():
 
 
 MARKED = [
-    "AUDIT-016",
-    "AUDIT-017",
-    "AUDIT-018",
     "AUDIT-019",
     "AUDIT-020",
     "AUDIT-021",
@@ -77,46 +74,9 @@ MARKED = [
     "AUDIT-032",
     "AUDIT-033",
     "AUDIT-034",
-    "AUDIT-035",
-    "AUDIT-036"
+    "AUDIT-035"
 ]
 
-
-@pytest.mark.xfail(strict=True, reason="AUDIT-016 — filed at L43-B, not fixed this loop")
-def test_audit_016_the_calibration_figure_s_caption_tells_the_reader_the_curve_is_a_loess():
-    """The calibration figure's caption tells the reader the curve is a loess estimate with a pointwise 95% band; it is a 10-equal-width-bin plot with no band — the exact anti-pattern §A4.3 names
-
-    Where: `turbotab/figure_specs.py:245-255`
-    Registry: §A4.3, the source this very figure cites in CALIBRATION_EVIDENCE: publication-grade item 3 is 'Flexible (loess/spline) curve with a shaded 95% pointwise band', and the anti-patterns section says '10-decile binned calibration plots — better than nothing, worse than a smooth curve, sensitive to bin ch
-    """
-    row = _ledger()["AUDIT-016"]
-    assert row["status"] in ("OPEN", "PARTIAL")
-    pytest.fail(
-        "AUDIT-016 is still open: " + row["item"][:160])
-
-@pytest.mark.xfail(strict=True, reason="AUDIT-017 — filed at L43-B, not fixed this loop")
-def test_audit_017_the_classic_methods_section_says_calibration_was_assessed_with_reliabi():
-    """The Classic methods section says calibration was assessed with reliability diagrams, Brier score and ECE on regression projects, where none of the three is computed
-
-    Where: `ml/publication.py:1216`
-    Registry: §A5.3 [SETTLED]: 'Report: C-statistic with CI, calibration intercept and slope with CIs, the flexible calibration curve, O:E ratio, Brier score (and scaled Brier), and net benefit…'. §A5.1: 'either report the calibration curve honestly or apply post-hoc recalibration…'. Naming a reliability diagram,
-    """
-    row = _ledger()["AUDIT-017"]
-    assert row["status"] in ("OPEN", "PARTIAL")
-    pytest.fail(
-        "AUDIT-017 is still open: " + row["item"][:160])
-
-@pytest.mark.xfail(strict=True, reason="AUDIT-018 — filed at L43-B, not fixed this loop")
-def test_audit_018_the_classic_landing_page_lists_decision_curve_analysis_as_a_shipped_ev():
-    """The Classic landing page lists decision curve analysis as a shipped evaluation metric; no Classic page computes net benefit at all
-
-    Where: `app.py:253`
-    Registry: §A5.3 [SETTLED]: 'Report: … and net benefit over a clinically-motivated threshold range.' §A5.2 reinforces it: 'If what you actually want is to classify at a particular operating point… that is what decision curve analysis is for.' Not building it is silence; advertising it as an evaluation metric t
-    """
-    row = _ledger()["AUDIT-018"]
-    assert row["status"] in ("OPEN", "PARTIAL")
-    pytest.fail(
-        "AUDIT-018 is still open: " + row["item"][:160])
 
 @pytest.mark.xfail(strict=True, reason="AUDIT-019 — filed at L43-B, not fixed this loop")
 def test_audit_019_the_seal_s_methods_sentence_states_a_candidate_parameter_count_that_in():
@@ -322,14 +282,3 @@ def test_audit_035_the_purpose_question_tells_the_user_its_answer_decides_whethe
     pytest.fail(
         "AUDIT-035 is still open: " + row["item"][:160])
 
-@pytest.mark.xfail(strict=True, reason="AUDIT-036 — filed at L43-B, not fixed this loop")
-def test_audit_036_the_item_correlation_figure_s_caption_tells_the_reader_that_loadings_a():
-    """The item-correlation figure's caption tells the reader that loadings and reliability appear 'below'; the app produces neither
-
-    Where: `turbotab/figure_specs.py:2786-2788`
-    Registry: §B6 [SETTLED for a single mismeasured predictor]: "An unreliable predictor scale attenuates its estimated effect by approximately its reliability… REPORT RELIABILITY ALONGSIDE THE MODEL so readers can interpret the coefficient." Not computing reliability is permitted silence. Printing a caption that
-    """
-    row = _ledger()["AUDIT-036"]
-    assert row["status"] in ("OPEN", "PARTIAL")
-    pytest.fail(
-        "AUDIT-036 is still open: " + row["item"][:160])

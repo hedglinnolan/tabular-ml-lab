@@ -20,7 +20,7 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**286 of 759 closed.**
+**287 of 760 closed.**
 
 
 | Status | Count |
@@ -28,7 +28,7 @@ Nothing is closed without a regression test named after it.
 | `OPEN` | 419 |
 | `PARTIAL` | 54 |
 | `FIXED` | 282 |
-| `NOT-A-DEFECT` | 4 |
+| `NOT-A-DEFECT` | 5 |
 
 ---
 
@@ -240,7 +240,6 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-016` | high | The calibration figure's caption tells the reader the curve is a loess estimate with a pointwise 95% band; it is a 10-equal-width-bin plot with no band — the exact anti-pattern §A4.3 names | `turbotab/figure_specs.py:245-255 (caption), 192-193 (layers), with ml/calibration.py:81-95 — CALIBRATION's…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `AUDIT-019` | high | The seal's methods sentence states a candidate-parameter count that includes the identifier columns the app refuses to give the model — 344 instead of 45 on the repo's own survey fixture | `turbotab/resolution.py:112 (and the assertion it feeds, turbotab/resolution.py:376)…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `AUDIT-034` | high | The recorded reverse-coding sentence promises a flip and a scoring step the app never performs, and it is exported into the manuscript | `turbotab/api.py:538-543 — On set_reverse_coding the dispatcher records text="{n} item(s) were declared…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
-| `GUIDED-148` | high | The /recipes payload reaches no person at all - 50 fields, 16 path shapes, every one of them unread - and it is the per-model preprocessing table the Preprocess step is built around | `measured at L43-A1 by turbotab/fieldsweep on survey_sentinels.csv sealed, the survey lens, target age.…` | FOUND AT L43-A1, SWEEPING THE THREE PAYLOADS L42-B NAMED AND SKIPPED. That report called the omission a cost decision rather than a shape-of-the-problem decision and named it the… |
 | `GUIDED-149` | high | The Explore findings list is unbounded and uncapped, so making five packs visible at GUIDED-142 turned a two-card interruption budget into twenty cards on one clinical table - the wall of plots… | `turbotab/web/index.html renders the list as pf.concat(packf).map(findingCard).join('') with no cap and no…` | FILED AT THE L43 ADJUDICATION, AFTER THE PRODUCT OWNER'S `correct, surfaced, beautiful` RULING - PRODUCT_VISION.md section 06b, recorded the same turn. THE POINT IS THE TIMING… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
@@ -266,6 +265,7 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-027` | medium | The 'Rank them for me' panel tells the user that what is actually selected is refitted inside each training fold — this door selects once over the training rows | `turbotab/selection.py:202 — `evidence()` returns note = 'Ranked on training rows only, and not applied. What…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `AUDIT-028` | medium | Every imputation declaration writes 'within each training fold' into the recorded methods sentence, in a door that fits once over the training rows | `turbotab/missingness.py:522 — `sentence()` appends ' within each training fold' for any strategy whose…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `AUDIT-035` | medium | The purpose question tells the user its answer decides whether a scale is scored or used item by item; nothing in the app reads it for that | `turbotab/purpose.py:71 — purpose.CONSUMER (purpose.py:66-75) is rendered on the state_purpose card and names…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
+| `GUIDED-150` | medium | The field sweep reports unread per journey position and cannot express that a payload is GATED on a decision the drive has not made, so a surface whose consumer is one step further along reads as… | `L44-C. /recipes measured at two positions on two lenses: at the seal, 50 fields (survey) and 45 (clinical)…` | FILED AT L44-C FROM THE MEASUREMENT THAT WITHDREW GUIDED-148. The sweep did not malfunction - it answered the question it was asked, at the position it was run, and the report… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 | `GUIDED-121` | low | A near-unique column is neither flagged nor asked about: the identifier rule is exactly one level per row, so a column at 95 percent distinct is treated as an ordinary predictor | `turbotab/identifiers.py UNIQUE_PER_ROW = 1.0, stated as a constant and reported in the receipt's rule…` | DELIBERATELY NOT GUESSED AT, and the threshold is not lowered because there is no honest number to lower it to. A column at 0.95 distinct-per-row is either an identifier with a… |
@@ -1002,7 +1002,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## NOT-A-DEFECT — 4
+## NOT-A-DEFECT — 5
 
 
 ### Multi-file / JSON import — 3
@@ -1013,8 +1013,9 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-218` | low | Stale fix parameters: a fix computed against the pre-repair frame being applied to the post-repair frame, so positional params point at the wrong rows | `utils/import_ui.py:153-155 (current = repaired_frame(...); findings = diagnose(current))…` | NOT-A-DEFECT: not reachable at HEAD. render_import_doctor recomputes findings from `current` - the already-repaired frame - on every render, and apply_fix is called with that same… |
 | `IMPORT-221` | low | Stale structural repairs surviving a corrected re-upload, because the frame signature ignores content or falls back to shape alone | `utils/import_ui.py:_frame_signature and its fallback chain; utils/import_ui.py:147-151 (the reset on…` | NOT-A-DEFECT: already hardened, and the code documents both the original defect and the trap in its first fix. _frame_signature hashes CONTENT via hash_pandas_object, and its… |
 
-### Guided-door drive feedback — 1
+### Guided-door drive feedback — 2
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
+| `GUIDED-148` | high | The /recipes payload reaches no person at all - 50 fields, 16 path shapes, every one of them unread - and it is the per-model preprocessing table the Preprocess step is built around | `measured at L43-A1 by turbotab/fieldsweep on survey_sentinels.csv sealed, the survey lens, target age.…` | MEASURED AT BOTH LENSES AND BOTH JOURNEY POSITIONS AT L44-C, AND THE ROW IS WRONG. AT THE SEALED STEP, which is where L43-A1 swept: survey 50 fields / 0 reaching / 16 shapes all… |
 | `GUIDED-129` | medium | The calibration plot fails its own annotation_box checklist item: calibration_render does not produce all seven of intercept, slope, C-statistic, E:avg, E:max, n and events | `driven at L40 once GUIDED-128 made the figure admissible for the first time…` | NOT-A-DEFECT — THE PREMISE IS WRONG, AND IT WAS CHECKED BY DRIVING RATHER THAN BY READING. The row says calibration_render does not produce all seven of intercept, slope… |

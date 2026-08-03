@@ -189,8 +189,7 @@ CALIBRATION = register(FigureSpec(
     tier=CONFIRMATORY,
     when_applicable=lambda s: (
         s.get("task_type") == "classification" and bool(s.get("has_predictions"))),
-    layers=("identity_line", "flexible_curve", "confidence_band",
-            "risk_spike_histogram"),
+    layers=("identity_line", "binned_curve", "risk_spike_histogram"),
     annotations=(
         Annotation("calibration_intercept", "Calibration intercept (95% CI)",
                    "ml.calibration"),
@@ -229,8 +228,9 @@ CALIBRATION = register(FigureSpec(
             "no_truncation",
             "The axis is not truncated to hide the sparse tail",
             "Truncating hides the region where the model is least reliable, "
-            "which is the region a reader most needs to see. Show it and let "
-            "the confidence band widen.",
+            "which is the region a reader most needs to see. Show it, and "
+            "let the histogram underneath show how few observations the "
+            "sparse bins hold.",
             lambda p: (p.get("x_range_drawn", [1, 0])[0]
                        <= p.get("x_range_observed", [0, 1])[0]
                        and p.get("x_range_drawn", [0, 0])[1]
@@ -245,8 +245,14 @@ CALIBRATION = register(FigureSpec(
     caption=lambda p: (
         f"Calibration of {p.get('model_name', 'the model')} on "
         f"{p.get('n', 0):,} observations with {p.get('events', 0):,} events. "
-        f"The dashed 45° line is ideal calibration; the solid curve is the "
-        f"flexible (loess) estimate with a pointwise 95% band. Calibration "
+        f"The dashed 45° line is ideal calibration; the solid curve joins "
+        f"the observed event rate within each of "
+        f"{len(p.get('curve', {}).get('predicted') or [])} equal-width bins "
+        f"of predicted risk. It is a binned curve, not the smooth (loess or "
+        f"spline) curve with a pointwise 95% band that a publication-grade "
+        f"calibration plot calls for: it carries no interval, and its shape "
+        f"depends on the bin count, so read its wiggles against the "
+        f"histogram below before reading them as miscalibration. Calibration "
         f"intercept {_fmt(p.get('calibration_intercept'))} and slope "
         f"{_fmt(p.get('calibration_slope'))} (a slope below 1 indicates "
         f"predictions that are too extreme); C-statistic "
@@ -2783,10 +2789,13 @@ def _correlations(frame: pd.DataFrame) -> Dict[str, Any]:
         "method_note": (
             "Computed with Pearson correlations. The field's recommendation "
             "for Likert items is polychoric, which this app cannot compute; "
-            "Pearson attenuates the associations, so the loadings and "
-            "reliability below are understated rather than overstated, and a "
+            "Pearson attenuates the associations, so every correlation here "
+            "is nearer zero than its polychoric counterpart would be, and a "
             "parallel analysis on this matrix retains fewer factors than one "
-            "on a polychoric matrix would."),
+            "on a polychoric matrix would. This app computes no factor "
+            "loadings and no reliability coefficient; the reliability the "
+            "research asks you to report alongside the model has to come "
+            "from elsewhere."),
         "positive_definite": bool(np.all(eigenvalues > -1e-9)),
         "n": int(len(frame)),
     }
