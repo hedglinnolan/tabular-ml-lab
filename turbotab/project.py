@@ -93,6 +93,18 @@ def _copy(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     return None if value is None else dict(value)
 
 
+def _attention_stack(findings: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    """The Explore stack partition, imported at call time.
+
+    Deferred for the reason every other `turbotab` import in this file is: the
+    package imports back into the project model, and a module-scope import here
+    is a cycle waiting for the next module to grow one.
+    """
+    from turbotab import attention as _att
+
+    return _att.stack(findings)
+
+
 def _label(value: Any) -> Any:
     """Coerce one index label to something JSON can carry.
 
@@ -2226,10 +2238,21 @@ class AnalysisProject:
         on the producers: two of them are frozen modules that know nothing about
         scopes, and a finding whose scope was never set would default to
         `columns` and render the empty chip row the shape exists to prevent.
+
+        **And its provenance label** (`GUIDED-149`), at the same door and for the
+        same reason. L42 rendered the profile stream above the pack stream
+        because *the profile speaks about the table and the pack speaks about the
+        field, and a reader who cannot tell which is which has lost the thing the
+        lens was for.* That reason is sound and grouping was the wrong remedy —
+        `ROADMAP.md` Decision B makes ordering part of the gate, so ranking wins
+        and the distinction becomes a chip on the card instead of a position in
+        the list.
         """
+        from turbotab import attention as _att
         from turbotab import cohort_findings as _cf
 
-        findings = [dict(f, shape=_cf.render_shape(f)) for f in findings]
+        findings = [dict(f, shape=_cf.render_shape(f),
+                         source_label=_att.source_label(f)) for f in findings]
         self.findings = list(findings)
         if profile is not None:
             self.profile = profile
@@ -2279,6 +2302,14 @@ class AnalysisProject:
             "decisions": [d.to_dict() for d in self.decisions],
             "findings": list(self.findings),
             "findings_stale": self.findings_stale,
+            # `GUIDED-149`. What the Explore stack pushes and what it collapses,
+            # decided once here rather than in the page. The bound and the rule
+            # that a finding gating a decision is never collapsed are rules, and
+            # a page holding its own copy of a rule is the shape this project has
+            # already paid for at `cohort_findings`, at `repairs.group` and at
+            # the missingness timing. Ids rather than findings: the page resolves
+            # them against `findings` above, so nothing travels twice.
+            "explore_stack": _attention_stack(self.findings),
             "applied_fixes": self.applied_fixes,
             "engineered": list(self.engineered),
             "deferred_transforms": list(self.deferred_transforms),

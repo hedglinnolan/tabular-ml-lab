@@ -993,6 +993,34 @@
               text-transform:none;color:var(--muted);
               background:var(--surface-2);border-color:var(--line-soft)}
 
+  /* ——— the provenance chip, and the collapsed remainder (GUIDED-149) ———
+     L42 put the profile stream above the pack stream because the profile
+     speaks about the table and the pack speaks about the field, and a reader
+     who cannot tell which is which has lost the thing the lens was for. The
+     reason was sound; the remedy put the five least consequential findings
+     above the eight most. `ROADMAP.md` Decision B — *ordering is part of the
+     gate* — so ranking wins and the distinction becomes a CHIP.
+
+     Quiet on purpose: it is data about the claim, not the claim, so it takes
+     the mono chip already in the vocabulary and the faintest ink. No new hue
+     (§02), no new component (§04).
+
+     `.more` is a ROW and deliberately not a card. §04's vocabulary is eight
+     components and a collapsed group is not a ninth — it borrows the pull
+     palette's silhouette because it is the same gesture: everything is still
+     here, quietly. */
+  .chip.src{color:var(--faint)}
+  .more{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+        padding:13px 0 3px;border-top:1px solid var(--line-soft);margin-top:4px}
+  .more-detail{font-family:var(--mono);font-size:10px;color:var(--faint);
+               letter-spacing:.02em}
+  /* "All 13 shown." — the recorded-absence rule (§09). A reader who sees no
+     affordance cannot tell "this is everything" from "this is the top few",
+     and those are two different claims. One muted line answers it. */
+  .more-all{font-family:var(--mono);font-size:10px;color:var(--faint);
+            letter-spacing:.02em;padding:13px 0 3px;
+            border-top:1px solid var(--line-soft);margin-top:4px}
+
   /* ——— the evidence badge (§11) ———
      A TOKEN, not a component: no silhouette, no mood, no verb, and no new hue.
      Mono because it is data ABOUT the claim rather than the app's voice (§03).
@@ -1220,6 +1248,15 @@
             <p class="why" id="edaWhy"></p>
             <div class="tblwrap"><table class="data" id="profTable"></table></div>
             <div class="findlist" id="profList" style="margin-top:6px;"></div>
+
+            <!-- GUIDED-149 · the counted remainder, and the list it opens.
+                 The shelf is never shortened: everything served is here, and
+                 the bound decides only what is PUSHED. The count and its
+                 typing are the server's sentence, quoted — a page composing
+                 its own could disagree with what is behind the affordance,
+                 which is the one thing a count must never do. -->
+            <div id="profMore"></div>
+            <div class="findlist" id="profRest"></div>
 
             <!-- Missingness, named per feature and routed by dtype. -->
             <div id="missBox" style="margin-top:14px;"></div>
@@ -1758,10 +1795,28 @@
            esc(deferLabel(f)) + "</button>";
   }
 
-  function findingCard(f){
+  /* `withSource` is passed by the Explore stack alone, and the asymmetry is
+     deliberate. That list MERGES two streams, so which one is speaking is the
+     thing a reader has to be able to see (`GUIDED-149`, and it is L42's reason
+     kept after its remedy was overturned). The structural list is one stream, so
+     the same chip on every card there would assert a distinction that is not
+     being drawn — §02's rule that if a mark appears the user may rely on what it
+     claims, read the other way round.
+
+     The label is the SERVER'S (`source_label`), never composed here: a page that
+     decided for itself what a finding's provenance is called would hold a second
+     copy of the rule, which is `cohort_findings`' own argument one field over. */
+  function findingCard(f, withSource){
     var st = statusOf(f.id);
     var cls = "find no-thumb" + (st.deferred ? " deferred" : "") + (st.dismissed ? " gone" : "");
-    var chips = '<span class="chip">' + esc(f.severity) + '</span>';
+    var chips = "";
+    /* FIRST, and in a fixed position. A provenance chip that moves with the
+       length of the severity word cannot be scanned down a column, and scanning
+       is the whole job it took over from the grouping. */
+    if (withSource && f.source_label){
+      chips += '<span class="chip src">' + esc(f.source_label) + '</span>';
+    }
+    chips += '<span class="chip">' + esc(f.severity) + '</span>';
     if (f.confidence) chips += '<span class="chip">confidence: ' + esc(f.confidence) + '</span>';
     /* THE SUBJECT, AND NEVER AN EMPTY SPACE WHERE ONE BELONGS (`GUIDED-053`).
        Every card answers "what is this about?" with a row of mono column chips.
@@ -4223,16 +4278,25 @@
        callers, so every finding a LENS produces — the Atwater reconstruction,
        the pooled-QC rows, the mixed-unit analyte, the sentinel codes — was
        computed, served on `/project/{id}`, and invisible to a person. Five
-       packs, eighteen detectors. The domain track's whole claim is that
-       answering the lens buys you findings a generic tool would never raise,
-       and none of them reached the page.
+       packs, eighteen detectors.
 
-       Rendered SECOND rather than interleaved: the profile speaks about the
+       GUIDED-149 · AND THE ORDER THAT FIX SHIPPED WITH WAS WRONG.
+       It rendered `bySource("profile").concat(bySource("pack"))`, which sorts
+       nothing. On `clinical_labs.csv` under the clinical lens the server ranks
+       the one `critical` — `glucose` holds two populations a factor of 18
+       apart — at rank 0 of twenty-one, and the five profile findings carry
+       ranks 13, 17, 18, 19 and 20. So the five least consequential findings
+       rendered above the eight most and the only `critical` landed at card six
+       of thirteen. `ROADMAP.md` Decision B: *"Blockers rank first. A blocker
+       third in a list of nine is a blocker in name only. Ordering is part of
+       the gate."* That is a constitution violation, not a layout preference.
+
+       The reason L42 grouped is still sound — the profile speaks about the
        table and the pack speaks about the field, and a reader who cannot tell
-       which is which has lost the thing the lens was for. */
-    var pf = bySource("profile");
-    var packf = bySource("pack");
-    $("profList").innerHTML = pf.concat(packf).map(findingCard).join("");
+       which is which has lost the thing the lens was for. So the distinction
+       survives as a CHIP on each card, which is the design language's own move,
+       and the ORDER goes back to the server's. */
+    renderExploreStack();
     sectState("eda", "live", P.findings_stale ? "stale" : "open");
     setMap("eda", P.findings_stale ? "stale" : "now");
 
@@ -4242,6 +4306,80 @@
       .catch(function(){ /* no reference match is a real answer, not an error */ });
     attachSkewPlots();
     renderMissingness();
+  }
+
+  /* ═════════ THE EXPLORE STACK ═════════ `GUIDED-149`
+     The bound, the never-collapse rule and the remainder's arithmetic are all
+     the SERVER'S — `turbotab/attention.py`. Nothing here decides how many cards
+     to show, which findings may be collapsed, or what the affordance says. A
+     page holding its own copy of a rule is the shape this project has paid for
+     at `cohort_findings`, at `repairs.group` and at the missingness timing, and
+     a count composed here could disagree with what is actually behind the
+     affordance — which is the one thing a count must never do.
+
+     THE EXPAND IS INSTANT, and that is ruled rather than convenient.
+     `DESIGN_LANGUAGE.md` §05.2 closed the identity-continuity list at four and
+     answered this question directly: an expand is *disclosure, not consequence*,
+     §05 rule 5 governs — only consequences move — and the app has no mechanism
+     for animating a change of content anyway. No `startViewTransition`, no
+     fifth motion slot, no fetch: everything the group holds is already in `P`. */
+
+  /* The user's disclosure choice is theirs and survives a re-render. A decision
+     taken elsewhere on the page must not quietly fold back a list they opened —
+     which is `PRODUCT_VISION.md` §07's fourth principle read at its smallest
+     scale. */
+  var STACK_OPEN = false;
+
+  function stackCards(ids){
+    return (ids || []).map(function(id){
+      var f = findingById(id);
+      return f ? findingCard(f, true) : "";
+    }).join("");
+  }
+
+  function renderExploreStack(){
+    var list = $("profList"), more = $("profMore"), rest = $("profRest");
+    if (!list || !more || !rest) return;
+    var st = P ? P.explore_stack : null;
+
+    /* NO PARTITION SERVED IS NOT "SHOW NOTHING". A page that invented a bound
+       here would be the second copy of the rule arriving through the back door,
+       and a page that showed nothing would shorten the shelf on a server that
+       never asked it to. So it shows everything, in the server's rank order. */
+    if (!st || !st.pushed){
+      var all = bySource("profile").concat(bySource("pack")).sort(function(a, b){
+        return (a.rank === undefined ? 0 : a.rank) - (b.rank === undefined ? 0 : b.rank);
+      });
+      list.innerHTML = all.map(function(f){ return findingCard(f, true); }).join("");
+      more.className = "";
+      more.innerHTML = "";
+      rest.innerHTML = "";
+      return;
+    }
+
+    list.innerHTML = stackCards(st.pushed);
+
+    if (st.complete){
+      /* The recorded-absence rule (§09): "All 13 shown." is an answer. Without
+         it the reader cannot tell this from a list that has been trimmed. */
+      more.className = "more-all";
+      more.innerHTML = esc(st.affordance);
+      rest.innerHTML = "";
+      return;
+    }
+
+    more.className = "more";
+    more.innerHTML =
+      '<button class="pill" type="button" data-stack-more="1" ' +
+      'aria-expanded="' + (STACK_OPEN ? "true" : "false") + '" ' +
+      'aria-controls="profRest" title="' + esc(st.affordance_title || "") + '">' +
+      esc(STACK_OPEN ? st.affordance_open : st.affordance) + "</button>" +
+      '<span class="more-detail">' + esc(st.affordance_detail || "") + "</span>";
+    /* Built on demand rather than rendered hidden. A hidden card is in the DOM,
+       so `fieldsweep` would report its fields as READ while no person can see
+       them — condition seven's second half passing on content that fails its
+       third. Nothing here is in the page until the user asks for it. */
+    rest.innerHTML = STACK_OPEN ? stackCards(st.collapsed) : "";
   }
 
   /* ═════════ THE INTERVIEW ═════════
@@ -5281,6 +5419,7 @@
       "[data-impossible],[data-keep-impossible],[data-miss-choose]," +
       "[data-miss-mech-for],[data-miss-preview]," +
       "[data-hist-page],[data-pg-step],[data-copy-rows]," +
+      "[data-stack-more]," +
       "[data-rg-show],[data-rg-defer],[data-rg-pick],[data-rg-apply]," +
       "[data-rg-decline]") : null;
     if (!t || t.disabled) return;
@@ -5760,6 +5899,14 @@
       // Choosing the event opens the before/after for that choice. It is still
       // not applied: the human confirms, as every CHOICE card requires.
       openPanel(t.dataset.eventFor, t.dataset.event);
+      return;
+    }
+    /* GUIDED-149 · the collapsed remainder opens. No fetch — the group is
+       already in `P` — and no motion, because §05.2 ruled an expand to be
+       disclosure rather than consequence and §05 rule 5 governs it. */
+    if (t.hasAttribute("data-stack-more")){
+      STACK_OPEN = t.getAttribute("aria-expanded") !== "true";
+      renderExploreStack();
       return;
     }
     if (t.hasAttribute("data-panel")){ openPanel(t.dataset.panel); return; }

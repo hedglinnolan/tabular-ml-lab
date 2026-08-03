@@ -241,17 +241,44 @@ def test_every_pack_finding_reaches_a_person_and_carries_its_badge(lens):
         f"/project/{pid}/capabilities":
             client.get(f"/project/{pid}/capabilities").json(),
     }
+    # THE STACK IS BOUNDED SINCE `GUIDED-149`, so "reaches a person" is no
+    # longer "is in `profList`". A finding that ranked below the bound reaches a
+    # person THROUGH THE COUNTED AFFORDANCE, and the honest form of this claim is
+    # to press it — which makes the assertion stronger than it was, because a
+    # collapsed group whose expand did not work would now fail here rather than
+    # pass on a card nobody can open.
+    #
+    # `LOOP.md` trap #3c in the direction it is usually not read: this test went
+    # red against a correct change, its NAME states the property worth keeping,
+    # and what had to move was the locus of the assertion rather than the claim.
     out = PH.run(
-        "__emit({html: (__harness.html('profList') || '').slice(0, 90000)});",
+        "var shut = (__harness.html('profList') || '');\n"
+        "__harness.dispatch('click', __harness.target("
+        "{'data-stack-more':'1','aria-expanded':'false'}));\n"
+        "__emit({shut: shut.slice(0, 90000),"
+        " open: ((__harness.html('profList') || '') +"
+        "        (__harness.html('profRest') || '')).slice(0, 200000),"
+        " more: (__harness.html('profMore') || '')});",
         routes=routes, search=f"?project={pid}")
-    html = out["html"]
-    assert html, "the Explore findings list rendered nothing at all"
+    html = out["open"]
+    assert out["shut"], "the Explore findings list rendered nothing at all"
 
     missing = [f["id"] for f in served if f["title"][:28] not in html]
     assert not missing, (
-        f"the {lens} pack computes {missing} and the page never shows them. "
-        f"Server-composed and never rendered is the class this door has "
-        f"already paid for at six surfaces.")
+        f"the {lens} pack computes {missing} and the page never shows them, "
+        f"pushed or collapsed. Server-composed and never rendered is the class "
+        f"this door has already paid for at six surfaces.")
+
+    # AND THE BOUND MAY NOT SWALLOW ONE SILENTLY. If any pack finding is only
+    # reachable behind the affordance, the affordance has to have said so — the
+    # count it states is the count behind it, which is the property `GUIDED-149`
+    # turns on and the one an off-by-one would break invisibly.
+    stack = project["explore_stack"]
+    behind = [f["id"] for f in served if f["id"] in stack["collapsed"]]
+    if behind:
+        assert str(stack["remainder"]["n"]) in out["more"], (
+            f"{len(behind)} {lens} findings are behind an affordance that does "
+            f"not state its count: {out['more'][:200]}")
 
     # THE BADGE, because a pack claim without one is the app being uniformly
     # confident — and the finding's is NESTED, so a renderer written for the

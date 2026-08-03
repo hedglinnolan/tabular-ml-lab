@@ -213,6 +213,36 @@ HAND: List[Dict[str, Any]] = [
          copy="{n} column(s) with missing values have not been answered yet.",
          source="turbotab/missingness.py",
          probe="with missing values have not been"),
+    # ── Explore · the bounded findings stack (`GUIDED-149`) ─────────────────
+    # Four states, and the fourth is the one that is easy to leave out. The
+    # sentences are composed by the SERVER and quoted by the page (§05.1 rule
+    # 3), so a count on screen cannot disagree with what is behind it.
+    dict(step="Explore", state="findings stack · more than the bound was found",
+         trigger="`attention.stack` collapses anything — the affordance's own "
+                 "sentence, counted and typed by severity",
+         copy="{n} more — 3 warnings, 4 cautions",
+         source="turbotab/attention.py", probe='headline = f"{n} more — "'),
+    dict(step="Explore", state="findings stack · the remainder, typed by stream",
+         trigger="the line beneath the affordance; the profile speaks about the "
+                 "table and a pack speaks about the field",
+         copy="2 from the clinical lens · 5 about this table",
+         source="turbotab/attention.py", probe='return f"from the {label}"'),
+    dict(step="Explore", state="findings stack · the affordance's stated effect",
+         trigger="hover and screen reader, per §05.1 — the control states what "
+                 "it will do, and never as a bare verb",
+         copy="Adds {n} more findings to this list. They ranked below the top "
+              "{bound}; nothing is out of the record either way.",
+         source="turbotab/attention.py",
+         probe="nothing is out of the record either way"),
+    dict(step="Explore", state="findings stack · nothing was collapsed",
+         trigger="`attention.stack` collapses nothing. §09's recorded-absence "
+                 "rule: without this a reader cannot tell *this is everything* "
+                 "from *this is the top few*, which is two claims rendering as "
+                 "one",
+         copy="All {n} shown.  ·  Nothing stood out in the profile or under the lens.",
+         source="turbotab/attention.py",
+         probe="Nothing stood out in the profile or under the lens"),
+
     dict(step="Explore", state="trim · the label saying what it is NOT",
          trigger="every successful `trim_training_rows`; §04's two objects look "
                  "identical in a spreadsheet, so the trim says which one it is",
