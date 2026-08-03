@@ -429,7 +429,16 @@ above.
 **Surfacing created the beauty problem in the same commit.** `GUIDED-142` made five packs' worth of
 findings visible at once, and the page renders them as `pf.concat(packf).map(findingCard)` — every
 profile finding, then every pack finding, **unbounded and uncapped**. Measured on `clinical_labs.csv`
-under the clinical lens: **twenty finding cards.** The prototype settled on two.
+under the clinical lens: **thirteen finding cards in one list.** The prototype settled on two.
+
+*(This paragraph said **twenty**, and twenty was the number of findings **served**, not the number of
+cards on the Explore list. Re-measured at L45 by driving the page: 21 served today — 5 profile, 8
+pack, 8 structural — and the Explore list renders the first two streams, so thirteen. The eight
+structural ones reach the user at the **Data** step, and on this fixture `structList` renders **zero**
+of them because the bulk repair groups take all eight. The correction does not weaken the finding —
+thirteen unbounded cards is the same wall — but a ruling document asserting a measurement it cannot
+reproduce is the governing rule failing in the record layer, which is a mistake this project has made
+before and written down twice.)*
 
 §08's first open question — *"the coach's interruption budget… unbounded, push-the-notable collapses
 back into the wall of plots"* — is therefore no longer open in practice. It has been answered by
