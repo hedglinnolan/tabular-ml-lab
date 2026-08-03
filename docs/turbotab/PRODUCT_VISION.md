@@ -460,6 +460,17 @@ Five commitments, ordered. When two collide, the earlier wins.
 
 - **The coach's interruption budget.** How many noticings may a step raise at once? The prototype
   settled on two. Unbounded, "push the notable" collapses back into the wall of plots.
+
+  **Split at L45, because it was two questions wearing one.** An **interruption** arrives at a
+  decision point and takes the user off what they were doing; two is right for that, and §04's
+  deferral machinery is the answer. A **stack** is the section opening already answered — it
+  interrupts nothing, it *is* the content, and capping it at two on `clinical_labs.csv` would
+  collapse ten of thirteen findings including five of the eight the clinical lens exists to
+  produce. The stack half is answered: `turbotab/attention.py`, bound five, with the median of
+  this repository's sixteen fixtures as the reason, everything reachable behind a counted and
+  typed affordance, and nothing that gates a decision ever collapsed (`GUIDED-149`).
+  **The interruption half is still open**, and it is the one this bullet was about.
+  `prototypes/explore-stack.html` is where the number gets looked at.
 - **Recompute depth.** The prototype restates invalidated *numbers*. It does not re-derive *which
   findings the coach would raise* against changed data. In a real implementation that is the
   invalidation cascade doing genuine work, and it is the piece most worth prototyping against the

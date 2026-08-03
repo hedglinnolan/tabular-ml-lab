@@ -55,6 +55,12 @@ Static HTML, no build step, no network. Open directly in a browser.
 - **`design-language.html`** — the written design system: palette, the three-voice type
   rule (app speaks serif, user acts sans, data speaks mono), component vocabulary, motion
   and voice rules. Includes a live slice of the feed.
+- **`explore-stack.html`** — `GUIDED-149`'s question, for the product owner to rule on:
+  **how many findings should the Explore section push before it collapses the rest?** Five
+  real tables at three bounds, captured from the API by `capture_explore_stack.py` and
+  partitioned by the real `turbotab/attention.py`, so nothing on it is typed by hand. It
+  shows the three things a screenshot would hide — where the `critical` sits, what the
+  collapsed remainder says, and the panel where the affordance hides exactly one card.
 - **`train-compare-mockup.html`** — the first static mockup, showing the hierarchy fixes
   applied to the existing Train & Compare page. Superseded by the feed prototype but kept
   because it isolates the hierarchy argument from the interaction argument.
