@@ -1666,17 +1666,30 @@ if task_type_final == 'classification':
         severity = profile.target_profile.imbalance_severity
         ratio = profile.target_profile.class_balance_ratio
 
+        # `GUIDED-049`. THE SHELF IS NOT SHORTENED — the toggle stays, because
+        # rebalancing is defensible for a classifier read at a fixed operating
+        # point and this app cannot yet tell one from a risk model. What
+        # changes is that it is OFFERED WITH THE CITATION rather than
+        # recommended, and it no longer defaults on. The removed text said
+        # "Without correction, models will favor the majority class", which
+        # asserts the thing the cited replication disproves.
+        from ml import imbalance_advice as _imbalance
+        _adv = _imbalance.advice(st.session_state.get("model_purpose"))
+
         st.warning(f"""
         **{severity.title()} class imbalance detected** (ratio: {ratio:.1f}:1).
-        Without correction, models will favor the majority class. Enable class weighting
-        to give minority classes proportionally higher importance during training.
+        {_adv["advisory"]}
         """)
+        st.caption("Instead: " + " · ".join(_adv["instead"]))
 
         use_class_weight = st.toggle(
-            "Enable class weighting (recommended)",
-            value=True,
+            "Apply class weighting anyway",
+            value=False,
             key="use_class_weight",
-            help="Sets class_weight='balanced' for supported models. Unsupported models (kNN, Naive Bayes, LDA, Neural Net) are unaffected."
+            help=("Sets class_weight='balanced' for supported models. "
+                  + _adv["offered_note"]
+                  + " Unsupported models (kNN, Naive Bayes, LDA, Neural Net) "
+                    "are unaffected.")
         )
 
         if use_class_weight:
@@ -2452,7 +2465,11 @@ if st.session_state.get('trained_models'):
                                 'issue': 'Severe Class Imbalance',
                                 'severity': 'HIGH',
                                 'description': f'Minority class is only {minority_pct:.1f}% of data',
-                                'action': 'Use stratified splits (already done), consider class weights, or collect more minority samples.'
+                                # `GUIDED-049`: "consider class weights" was the contraindicated
+                # half; penalization is the registry's named remedy and was absent.
+                'action': ('Use stratified splits (already done), penalize the fit '
+                           '(ridge/LASSO), or collect more minority samples. '
+                           'Rebalancing is contraindicated for a risk model.')
                             })
                     except Exception:
                         pass  # Skip if class imbalance check fails

@@ -1032,10 +1032,23 @@ def generate_methods_section(
                 break
 
     if _class_weight_used:
-        sections.append(
-            " To address class imbalance, class_weight='balanced' was applied to supported classifiers, "
-            "weighting each class inversely proportional to its frequency in the training data."
-        )
+        # `GUIDED-049`, and this is the SECOND methods generator — the one its
+        # fix did not reach. `ml/narrative_engine.py` was corrected; this file
+        # kept shipping the removed sentence verbatim, and
+        # `pages/10_Report_Export.py` falls through to here whenever the
+        # provenance singleton is empty. So the app went on endorsing
+        # rebalancing in the artifact that *is* the product, by a second route.
+        #
+        # One sentence, one owner. `imbalance_advice.manuscript_sentence`
+        # still says what was done — the reader has to know — and says it
+        # without approval, with the limitation and the citation attached.
+        # `model_purpose` is the key `narrative_engine` reads for the same
+        # call, so the two generators resolve the purpose identically. Absent,
+        # `manuscript_sentence` returns the unqualified-purpose form, which
+        # still carries the limitation — the sentence is never approving.
+        from ml import imbalance_advice as _imbalance
+        sections.append(" " + _imbalance.manuscript_sentence(
+            (manuscript_context or {}).get("model_purpose")))
 
     # Add hyperparameter details if available
     if model_hyperparameters:

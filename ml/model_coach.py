@@ -420,8 +420,11 @@ def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], Li
         _ratio = tp.class_balance_ratio
         headline = (f"Dominant constraint: class imbalance "
                     f"({minority:,} minority events{f', {_ratio:.0f}:1 ratio' if _ratio else ''}). "
-                    f"Enable class weighting and judge models by AUROC/F1 — accuracy "
-                    f"will look deceptively good.")
+                    f"Judge models by AUROC and calibration rather than accuracy, "
+                    f"which will look deceptively good. Rebalancing is NOT the "
+                    f"remedy — it overestimates minority-class probability without "
+                    f"improving discrimination ({_imbalance.CITATION}); set the "
+                    f"decision threshold from the costs of the two errors instead.")
     elif small_n:
         headline = (f"Dominant constraint: {n} rows. Model rankings will vary "
                     f"fold-to-fold — report CV spread, not just the mean, and "
@@ -475,8 +478,9 @@ def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], Li
                           f"logistic regression is the defensible core model — expect "
                           f"wide confidence intervals on the coefficients.")
         elif imbalanced:
-            linear_why = ("Interpretable log-odds baseline. Enable class weighting; "
-                          "evaluate with AUROC and F1 rather than accuracy.")
+            linear_why = ("Interpretable log-odds baseline. Evaluate with AUROC "
+                          "and calibration rather than accuracy, and penalize the "
+                          "fit rather than rebalancing the outcome.")
         elif minority is not None and minority >= 100:
             linear_why = (f"Interpretable baseline; with {minority:,} events per class, "
                           f"its probability calibration is checkable on the Train page.")
@@ -492,8 +496,11 @@ def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], Li
             pp_parts.append("impute")
         if has_skew:
             pp_parts.append("transform skewed features")
+        # `GUIDED-049`: penalization is the registry's named remedy for a rare
+        # outcome; rebalancing is the contraindicated one. This line used to
+        # append "class weights".
         if task_type == "classification" and imbalanced:
-            pp_parts.append("class weights")
+            pp_parts.append("penalize")
         if (_signal and _gain is not None and _gain < 0.02):
             linear_why += (f" An evidence probe measured trees ≈ linear on this "
                            f"data (Δ{probe.metric_name} = {_gain:+.2f}) — the "
@@ -528,7 +535,9 @@ def select_top_picks(profile: Any, probe: Any = None) -> Tuple[List[TopPick], Li
             tree_why += (f" At n={n}, expect fold-to-fold variability — judge it by CV "
                          f"spread, not the single best score.")
         if tree_key and task_type == "classification" and imbalanced:
-            tree_why += " Enable class weighting here too."
+            tree_why += (" Trees are the worst case for rebalancing — they are "
+                         "already poorly calibrated out of the box, so report the "
+                         "calibration curve rather than reweighting the classes.")
 
     if tree_key and tree_key in model_info:
         info = model_info[tree_key]

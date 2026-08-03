@@ -197,6 +197,13 @@ _mark("Investigate if missingness is random (MAR) or informative (MNAR)",
       "This is the mechanism question, and Preprocess asks it directly rather "
       "than leaving it as advice. Answering it there is answering this.")
 
+# `GUIDED-049`. The two rebalancing earmarks below are OFFERED, not
+# recommended, and they carry the contraindication where the user reads it.
+# The citation comes from the module that owns the position rather than
+# being restated here, because six surfaces drifted from one fix by
+# restating it.
+from ml.imbalance_advice import CITATION as _IMBALANCE_CITATION
+
 # ── earmarks for a STEP that owns the decision ───────────────────────────────
 
 for _phrase, _key in (
@@ -230,11 +237,18 @@ _mark("Consider robust models (Huber loss)", "prefer_robust_loss",
 _mark("Use class weights in training", "class_weights",
       "Weight the classes", "train",
       "Set where the models are fitted. Not built in the Guided door yet, and "
-      "the earmark says so rather than the card pretending otherwise.")
+      "the earmark says so rather than the card pretending otherwise. "
+      "Contraindicated for a risk model: it overestimates minority-class "
+      "probability without improving discrimination, and the apparent "
+      "sensitivity gain is reproducible by moving the threshold instead "
+      f"({_IMBALANCE_CITATION}).")
 _mark("Consider SMOTE or other resampling (with caution)", "resampling",
       "Resample the minority class", "train",
       "Resampling changes what the training rows ARE, so it belongs beside "
-      "fitting. Not built in the Guided door yet.")
+      "fitting. Not built in the Guided door yet. Contraindicated for a risk "
+      "model for the same reason class weighting is, and more strongly — "
+      "SMOTE was the specific method measured "
+      f"({_IMBALANCE_CITATION}).")
 # `GUIDED-049`. Two actions that replaced "use class weights" and "consider
 # SMOTE" when the rebalancing advice was routed behind the purpose question.
 # Both are earmarks to Train rather than operations here: neither is something

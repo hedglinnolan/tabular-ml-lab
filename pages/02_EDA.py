@@ -490,7 +490,14 @@ def _auto_generate_insights():
                     f"should be interpreted alongside AUROC and F1"
                 ),
                 affected_features=[target_col],
-                recommended_action="Use class weighting or stratified sampling",
+                # `GUIDED-049`. Was "Use class weighting or stratified sampling" —
+            # the one field that tells the user what to DO named the
+            # contraindicated step, and pointed at the two pages that do it.
+            recommended_action=(
+                "Report PR-AUC and calibration alongside discrimination, and "
+                "choose the decision threshold from the costs of the two "
+                "errors. Rebalancing is contraindicated for a risk model"
+            ),
                 relevant_pages=["05_Preprocess", "06_Train_and_Compare"],
                 # model_scope=[] → all models affected
                 metadata={"imbalance_ratio": float(imbalance)},

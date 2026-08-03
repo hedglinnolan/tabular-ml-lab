@@ -451,7 +451,13 @@ def target_profile(
             
             imbalance_ratio = signals.target_stats.get('class_imbalance_ratio', 1.0)
             if imbalance_ratio < 0.5:
-                warnings.append(f"Class imbalance detected (ratio: {imbalance_ratio:.2f}) - consider class weighting")
+                # `GUIDED-049`. Was "consider class weighting", which is the step the
+    # registry says damages the property clinical prediction cares about most.
+    warnings.append(
+        f"Class imbalance detected (ratio: {imbalance_ratio:.2f}) - report "
+        f"PR-AUC and calibration alongside accuracy, and choose the decision "
+        f"threshold explicitly. Rebalancing is contraindicated for a risk model"
+    )
     
     return {
         'findings': findings,

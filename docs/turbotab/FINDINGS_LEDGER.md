@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**283 of 731 closed.**
+**284 of 732 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 397 |
 | `PARTIAL` | 51 |
-| `FIXED` | 279 |
+| `FIXED` | 280 |
 | `NOT-A-DEFECT` | 4 |
 
 ---
@@ -615,7 +615,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 279
+## FIXED — 280
 
 
 ### Guided-door drive feedback — 93
@@ -895,6 +895,18 @@ Nothing is closed without a regression test named after it.
 | `COACH-028` | invariant | Every model key in ml/model_registry.get_registry() has a viability verdict. | `tests/test_coach_intelligence.py::TestModelViability::test_covers_full_registry — `missing = registry_keys…` | **test:** `tests/test_coach_intelligence.py::TestModelViability::test_covers_full_registry` — The healthiest invariant in this domain, and it is intact: adding a model to the… |
 | `COACH-029` | invariant | The probe is seeded and reproducible. | `ml/coach_probe.py SEED=42 threaded through np.random.default_rng, KFold/StratifiedKFold(random_state=SEED)…` | **test:** `tests/test_coach_intelligence.py::test_seeded_and_deterministic` — Determinism is real and structural: the probe is the one place in the engine that uses… |
 
+### Models / training / eval — 7
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `AUDIT-014` | critical | GUIDED-049 is marked FIXED and its fix reached three call sites; seven other shipped surfaces went on recommending class-imbalance correction, including the exact endorsing manuscript sentence it… | `ml/publication.py:1034 shipped "To address class imbalance, class_weight='balanced' was applied to supported…` | **test:** `turbotab/test_the_imbalance_position_reaches_every_surface.py::test_no_shipped_surface_recommends_rebalancing` — FOUND AT L43-B BY RUNNING… |
+| `MODELS-001` | landmine | SklearnCompatibleNNRegressor.fit() and SklearnCompatibleNNClassifier.fit() do not train. They set is_fitted_=True, record n_features_in_ (and classes_), and return self. Any sklearn utility that… | `models/nn_whuber.py:115-128 (regressor) and 174-188 (classifier); reachable through…` | **test:** `tests/test_the_pretrained_mark_does_not_survive_a_clone.py::test_the_pretrained_mark_does_not_survive_a_clone` — Closed at L19 against a guard that RUNS in this… |
+| `MODELS-005` | landmine | The 'Cancel Training' button is decorative — st.session_state.cancel_training is written and NEVER read anywhere in the codebase. | `pages/06_Train_and_Compare.py:1252-1253 (init), 1263-1264 (set to True). grep for 'cancel_training' across…` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Closed by removal plus an honest replacement, which is the right shape. The decorative… |
+| `GUIDED-114` | high | The bootstrap draws ROWS, so on a grouped or repeated-measures table it breaks the person-level independence the seal was drawn to respect - the correct draw is a cluster bootstrap over the grain's… | `turbotab/instability.py run() draws rng.integers(0, len(rows)) with no reference to grain group_col, while…` | **test:** `turbotab/test_the_whole_pipeline_is_refitted.py::test_a_grouped_table_draws_whole_groups, ::test_the_draw_takes_every_row_of_each_chosen_group… |
+| `MODELS-017` | invariant | ModelCapabilities.requires_scaled_numeric determines each model's preprocessing pipeline; a model that needs scaling must not be trained on an unscaled pipeline. | `pages/05_Preprocess.py:487, 801, 847, 1059 read spec.capabilities.requires_scaled_numeric to build per-model…` | **test:** `tests/workflow/test_per_model_pipelines.py::test_scaled_vs_unscaled_outputs_differ` — The invariant holds on both sides of the migration and has a test that would catch… |
+| `MODELS-022` | invariant | Degenerate bootstrap resamples are DROPPED, never substituted with the point estimate, and a run with too few valid replicates returns a NaN CI rather than a narrow one. | `ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot =…` | **test:** `tests/test_review_fixes.py::TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples` — The invariant is implemented with the reasoning in the… |
+| `GUIDED-103` | medium | Genuinely fold-local selection needs the training step to resample: this door fits each model once, so scope=train_folds is recorded and train_rows is what happens | `turbotab/training.py train() fits each pipeline once on the training partition; turbotab/pipeline_plan.py…` | **test:** `turbotab/test_the_whole_pipeline_is_refitted.py (17 tests, two target shapes, the page surface driven), especially… |
+
 ### DRIVE — 7
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -928,17 +940,6 @@ Nothing is closed without a regression test named after it.
 | `T0-BUILD-005` | high | The routing harness diagnosed without a target while the API diagnosed with one, so it measured a door that no longer existed - and a composition change in the inventory moves no metric, so nothing… | `tests/integration/test_routing_value_check.py _run_guided; tests/integration/test_routing_baseline.py…` | **test:** `tests/integration/test_routing_baseline.py::test_both_doors_are_scored_against_one_inventory` — Found at L9c while implementing the target-question ruling. Both halves… |
 | `TEST-040` | high | Four job-polling sites spin a bounded loop with NO WAIT and then assert status == done, so under machine load the suite reports a timing fact as an app fact - and the turbotab/ pass count stops being… | `measured at the L42 adjudication: a full turbotab/ run on the accepted tree returned 1 failed, 1422 passed…` | **test:** `turbotab/test_a_job_is_waited_for_against_a_clock.py::test_no_test_polls_a_job_by_counting_iterations` — CLOSED AT L43-A4 BY POLLING AGAINST A CLOCK.… |
 | `GUIDED-100` | medium | The propagation probe itself: for each recorded decision kind, two projects identical except for that answer, and something downstream must differ | `turbotab/test_a_recorded_decision_changes_something.py; 41 kinds recorded, 23 probed (24 flips), 6 asserted…` | **test:** `turbotab/test_a_recorded_decision_changes_something.py::test_a_decision_about_the_analysis_reaches_the_fitted_pipeline` — BUILT AT L35-E as the instrument that would… |
-
-### Models / training / eval — 6
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `MODELS-001` | landmine | SklearnCompatibleNNRegressor.fit() and SklearnCompatibleNNClassifier.fit() do not train. They set is_fitted_=True, record n_features_in_ (and classes_), and return self. Any sklearn utility that… | `models/nn_whuber.py:115-128 (regressor) and 174-188 (classifier); reachable through…` | **test:** `tests/test_the_pretrained_mark_does_not_survive_a_clone.py::test_the_pretrained_mark_does_not_survive_a_clone` — Closed at L19 against a guard that RUNS in this… |
-| `MODELS-005` | landmine | The 'Cancel Training' button is decorative — st.session_state.cancel_training is written and NEVER read anywhere in the codebase. | `pages/06_Train_and_Compare.py:1252-1253 (init), 1263-1264 (set to True). grep for 'cancel_training' across…` | **test:** `turbotab/test_jobs.py::test_classic_no_longer_offers_a_cancel_it_cannot_honor` — Closed by removal plus an honest replacement, which is the right shape. The decorative… |
-| `GUIDED-114` | high | The bootstrap draws ROWS, so on a grouped or repeated-measures table it breaks the person-level independence the seal was drawn to respect - the correct draw is a cluster bootstrap over the grain's… | `turbotab/instability.py run() draws rng.integers(0, len(rows)) with no reference to grain group_col, while…` | **test:** `turbotab/test_the_whole_pipeline_is_refitted.py::test_a_grouped_table_draws_whole_groups, ::test_the_draw_takes_every_row_of_each_chosen_group… |
-| `MODELS-017` | invariant | ModelCapabilities.requires_scaled_numeric determines each model's preprocessing pipeline; a model that needs scaling must not be trained on an unscaled pipeline. | `pages/05_Preprocess.py:487, 801, 847, 1059 read spec.capabilities.requires_scaled_numeric to build per-model…` | **test:** `tests/workflow/test_per_model_pipelines.py::test_scaled_vs_unscaled_outputs_differ` — The invariant holds on both sides of the migration and has a test that would catch… |
-| `MODELS-022` | invariant | Degenerate bootstrap resamples are DROPPED, never substituted with the point estimate, and a run with too few valid replicates returns a NaN CI rather than a narrow one. | `ml/bootstrap.py:136-149 — boot_stats initialized to NaN, failures left as NaN, `valid_boot =…` | **test:** `tests/test_review_fixes.py::TestBootstrapDegenerateResamples::test_ci_reports_nan_when_too_few_valid_resamples` — The invariant is implemented with the reasoning in the… |
-| `GUIDED-103` | medium | Genuinely fold-local selection needs the training step to resample: this door fits each model once, so scope=train_folds is recorded and train_rows is what happens | `turbotab/training.py train() fits each pipeline once on the training partition; turbotab/pipeline_plan.py…` | **test:** `turbotab/test_the_whole_pipeline_is_refitted.py (17 tests, two target shapes, the page surface driven), especially… |
 
 ### Silent-failure landmines — 5
 
