@@ -271,16 +271,50 @@ stack decision, which is deliberately unbuilt.
 Recorded here rather than in the loop prompt so the next reader meets the ruling where the list is,
 not where one build happened to need it.
 
-**One thing this section cannot yet source, stated rather than papered over.** Item 4 is the single
-load-bearing design assertion in `PRODUCT_VISION.md` that resolves to no evidence — an empirical
-claim about whether animating a transformation improves a viewer's ability to follow it, asserted
-because it is intuitive. This project does not let a vitamin conversion factor ship on intuition and
-should not make an exception here. The literature exists (animated transitions in statistical
-graphics; Heer & Robertson, InfoVis 2007, is the anchor I would start from and have not read in
-primary). **Proposed and unscheduled: `research/INTERACTION_PACK.md`**, built under the same
-discipline as the four science packs — sourced claims, SETTLED / CONVENTION / DISPUTED,
-`[verify-at-build]` on anything not read from primary text. It is D-track work, and it has nothing
-to attach to until the journey has an end, so it sits behind Explain and Report.
+**Asked again at L46, for the promoted card, and the answer is the same for a different reason.**
+`GUIDED-154` makes a dismissal free a slot and promote the next collapsed finding, and a card
+arriving where the user just acted **is** a decision and its consequence — so unlike the expand it
+*does* meet this list's criterion. **The list still stays closed at four**, because the mechanics
+have not moved: the app has no way to animate a change of content, and a fifth slot pulls in
+`GUIDED-073`. The promoted card is therefore **marked where it stands**, with a chip carrying the
+server's sentence.
+
+**And `research/INTERACTION_PACK.md` §04.1 says that is the right constraint and the wrong
+preference.** The nearest published analogue — Huhtala et al., INTERACT 2009, icons appearing and
+disappearing in a twelve-icon grid menu, n = 40 — found animated transitions gave *"significantly
+better user performance"* than instant ones, and reported change blindness **in the instant
+condition**. So the honest reading is: marking is what this app can do, it is not what the
+literature prefers, and whether a marker is sufficient has not been measured by anyone.
+
+**One thing this section could not source — and `research/INTERACTION_PACK.md` now has.** Item 4 was
+the single load-bearing design assertion in `PRODUCT_VISION.md` resolving to no evidence, and Heer &
+Robertson, InfoVis 2007 was named as the anchor *and recorded as not read in primary*. **Built at
+L46. The anchor has been read.** §01.4 of that pack is the answer and it is narrower than the
+assertion:
+
+- **Supported at the identity level**, on one experiment (n = 24, 2007, never replicated), whose
+  dependent measure is post-mask recall rather than live tracking.
+- **Bounded at one to two identities.** Chevalier, Dragicevic & Franconeri 2014 measure identity
+  tracking at ~1–2 objects against ~3–4 positions. A reshape animation can carry *this row became
+  those two*; it cannot carry a table.
+- **Constrained by semantic correspondence.** The anchor rules that animation is appropriate only
+  where a data dimension survives the change, *"without a shared structure… animation may be
+  ill-defined or misleadingly convey false relations."* Read against this project's governing rule:
+  **an animation implying a row correspondence that does not exist is a false assertion in motion.**
+- **And "which animation" matters more than "whether".** Rodrigues et al. 2024, preregistered,
+  n = 170: the spread between transition techniques was significant and, for clusters, no technique
+  beat any other.
+- **The word *only* is unsupported.** No source says a static before/after fails.
+
+**Three sentences elsewhere in this document the pack contradicts, recorded here and not yet
+applied** — applying them is a loop prompt's decision, not this file's:
+
+1. §05's durations (250 ms, 300 ms, ≤150 ms) have **no source**, and specifically may not be
+   attributed to Heer & Robertson, which compared no two durations.
+2. §05 rule 3's **Propagate is a stagger**, and staggering has no demonstrated tracking benefit in
+   either study usually cited for it — including, per Heer's own 2019 paper, the anchor's.
+3. *"An object that is destroyed and replaced teaches nothing"* is too strong: the anchor requires
+   removal-and-addition precisely where identity does **not** survive.
 
 **On Apple's HIG specifically**, since it was asked and the answer should not be re-derived: perhaps
 a fifth of it transfers to a research tool in a browser, and this document has already derived most

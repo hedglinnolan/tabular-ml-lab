@@ -76,7 +76,11 @@ work that is already scoped.**
 - `PRODUCT_VISION.md`, **"The export, and what a marked figure means"**.
 - `PRODUCT_VISION.md`, **"The shelf is never shortened"** and its three-rung ladder.
 
-**The four research files in `docs/turbotab/research/` are 3,602 lines and are authoritative.**
+**The five research files in `docs/turbotab/research/` are 4,247 lines and are authoritative.**
+The fifth, `INTERACTION_PACK.md`, was built at L46 and is different in one way that matters:
+**egress worked, so 100 of its 105 claims were read in primary text, and every one was then
+adversarially refuted.** It is also the only pack whose job is partly to say *do not cite this* —
+its §07 is a list of citations it refuses to supply.
 Read them **by section, when your prompt cites one — never wholesale.** Where a research file and
 your recollection disagree, **the file wins**: the files were built under a blocked egress proxy
 and say so, and a threshold in the file is a recorded, checkable claim while one from memory is

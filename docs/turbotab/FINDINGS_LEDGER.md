@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**292 of 765 closed.**
+**292 of 766 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 419 |
+| `OPEN` | 420 |
 | `PARTIAL` | 54 |
 | `FIXED` | 287 |
 | `NOT-A-DEFECT` | 5 |
 
 ---
 
-## OPEN — 419
+## OPEN — 420
 
 
 ### Application state / lockbox — 66
@@ -222,7 +222,7 @@ Nothing is closed without a regression test named after it.
 | `IMPORT-264` | low | HUNT stack-blank-file-blocks-with-wrong-advice: one zero-column file blocks the entire stack and the message tells the researcher to consider joining instead | `utils/combine.py plan_stack - the no-shared-columns blocker and its message; measured at HEAD` | REPRODUCES AT HEAD. Two well-formed cycles sharing SEQN and age, plus one zero-column frame, give blocking: 'These files have no column names in common, so stacking them would… |
 | `IMPORT-265` | low | HUNT stack-duplicate-column-label-crash: does not reproduce on this pandas, and there is no guard - recorded as environment-dependent rather than fixed | `utils/combine.py execute_stack - the copy, rename and pd.concat path, which contains no duplicate-label…` | DOES NOT REPRODUCE AT HEAD, AND IS NOT CLOSED - the distinction is the point. Two frames with columns [1, '1'] give plan_stack no blocking and no warnings (so the recorded… |
 
-### Guided-door drive feedback — 45
+### Guided-door drive feedback — 46
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -265,6 +265,7 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-028` | medium | Every imputation declaration writes 'within each training fold' into the recorded methods sentence, in a door that fits once over the training rows | `turbotab/missingness.py:522 — `sentence()` appends ' within each training fold' for any strategy whose…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `AUDIT-035` | medium | The purpose question tells the user its answer decides whether a scale is scored or used item by item; nothing in the app reads it for that | `turbotab/purpose.py:71 — purpose.CONSUMER (purpose.py:66-75) is rendered on the state_purpose card and names…` | FILED AT L43-B FROM THE SECTION A5 / SECTION B6 ANTI-PATTERN AUDIT, one of 28 hits that survived adversarial refutation out of 40 candidates over 132 checked requirements. NOT… |
 | `GUIDED-150` | medium | The field sweep reports unread per journey position and cannot express that a payload is GATED on a decision the drive has not made, so a surface whose consumer is one step further along reads as… | `L44-C. /recipes measured at two positions on two lenses: at the seal, 50 fields (survey) and 45 (clinical)…` | FILED AT L44-C FROM THE MEASUREMENT THAT WITHDREW GUIDED-148. The sweep did not malfunction - it answered the question it was asked, at the position it was run, and the report… |
+| `GUIDED-155` | medium | DESIGN_LANGUAGE section 05's three motion durations - 250ms Settle, 300ms Arrive, 150ms-per-section Propagate - have no source, and Propagate's form is a stagger, which has no demonstrated tracking… | `research/INTERACTION_PACK.md section 06.2, built at L46. The 200-500ms practitioner band cites no study…` | FILED AT L46-B BY THE PACK ITSELF, which is the thing a pack is for. The loop prompt said a pack that can only confirm is not doing work; this is one of the three places it came… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 | `GUIDED-121` | low | A near-unique column is neither flagged nor asked about: the identifier rule is exactly one level per row, so a column at 95 percent distinct is treated as an ordinary predictor | `turbotab/identifiers.py UNIQUE_PER_ROW = 1.0, stated as a constant and reported in the receipt's rule…` | DELIBERATELY NOT GUESSED AT, and the threshold is not lowered because there is no honest number to lower it to. A column at 0.95 distinct-per-row is either an identifier with a… |

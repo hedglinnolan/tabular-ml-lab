@@ -154,14 +154,14 @@ paid for twice, in two different places.
 
 ## 04 · Loops that build a domain pack
 
-The four research threads in `docs/turbotab/research/` are **3,602 lines and are the authoritative
+The five research threads in `docs/turbotab/research/` are **4,247 lines and are the authoritative
 source** for every pack detector, coaching sentence, threshold and figure specification. They are
 not background reading. A loop that builds pack content without citing them has invented its
 content, which is the failure this whole apparatus exists to prevent.
 
 Three problems, solved differently.
 
-**Volume.** Nobody holds 3,602 lines. **The task block names the file and the section**, and the
+**Volume.** Nobody holds 4,247 lines. **The task block names the file and the section**, and the
 agent reads that slice. A task block that says *"build the nutrition detectors"* without section
 pointers is malformed.
 
