@@ -419,3 +419,90 @@ def test_no_finding_class_is_entirely_dark(swept):
             f"{label}: these findings are served and no field of them reaches "
             f"a person: "
             + str([project["findings"][int(p[9:-1])]["id"] for p in dark]))
+
+
+# ═══════════ `GUIDED-147` IS A LIST, AND THE LIST IS THE ROW'S CONTENT ═══════
+
+def test_the_class_row_counts_exactly_the_families_filed_against_it():
+    """`GUIDED-147`'s condition 2, mechanically.
+
+    The row's whole content is *these families, and nobody has looked at
+    them*. So the count in the row and the number of `FILED` entries pointing
+    at it are one fact written twice, and this is what keeps them one fact.
+
+    It was already wrong once. The row said sixteen while the table filed
+    fifteen to it, because `project.n_working_rows` moved to `GUIDED-146` — a
+    duplicated summary count rather than an unexamined field — and the `ev`
+    list was not re-cut. In a row whose entire content is a count, that is the
+    whole content being wrong, and it survived a loop.
+
+    **The splitting rule this enforces**: a family leaves `GUIDED-147` the
+    moment it gets a disposition, and the row closes when the list is empty —
+    never on a verdict over the class. A row closed by judging fifteen
+    unexamined things in aggregate is the shrug arriving one loop later.
+    """
+    import json as _json
+    import re as _re
+
+    ledger = (Path(__file__).resolve().parents[1]
+              / "docs" / "turbotab" / "data" / "findings.json")
+    rows = _json.loads(ledger.read_text(encoding="utf-8"))
+    row = next(r for r in rows if r["id"] == "GUIDED-147")
+
+    filed_here = sorted(f for f, r in FILED.items() if r.startswith("GUIDED-147"))
+    assert filed_here, "nothing is filed against GUIDED-147; the table moved"
+
+    # The count, written as a word because the row is prose. If the row is
+    # ever closed this test should not be the thing that fails, so a closed
+    # row is out of scope rather than an offense.
+    if row["status"] not in ("OPEN", "PARTIAL"):
+        assert not filed_here, (
+            f"GUIDED-147 is {row['status']} and {len(filed_here)} families are "
+            f"still filed against it: {filed_here}. The row closes when the "
+            f"list is empty, not on a verdict over the class.")
+        return
+
+    words = {9: "nine", 10: "ten", 11: "eleven", 12: "twelve", 13: "thirteen",
+             14: "fourteen", 15: "fifteen", 16: "sixteen", 17: "seventeen"}
+    n = len(filed_here)
+    said = words.get(n, str(n))
+
+    # BOTH PLACES, SEPARATELY, and that is the point. The first version of
+    # this check asked whether the right word appeared *anywhere* in
+    # `item + ev`, and a revert probe put `THESE SIXTEEN DO NOT` back into the
+    # evidence and came back GREEN — because `item` still said "Fifteen" and
+    # the word was therefore present. A check for the presence of the true
+    # count cannot see a false one sitting beside it.
+    #
+    # Anchored on the two phrases that carry the claim rather than on a
+    # word-count over the prose, because the evidence legitimately contains
+    # other numerals — "six payloads", "two lenses", and the sentence
+    # recording that the FILED table has sixteen entries against two rows.
+    leading = _re.match(r"\s*(\w+)\s+families", row["item"], _re.I)
+    assert leading, (
+        f"GUIDED-147's item no longer opens with '<count> families', so the "
+        f"count cannot be checked: {row['item'][:80]!r}")
+    assert leading.group(1).lower() == said, (
+        f"{n} families are filed against GUIDED-147 and its item says "
+        f"'{leading.group(1)} families'. The row's whole content is a count.")
+
+    claim = _re.search(r"THESE\s+(\w+)\s+DO NOT", row["ev"])
+    assert claim, (
+        "GUIDED-147's evidence no longer carries its 'THESE <count> DO NOT' "
+        "sentence, which is where the list is introduced")
+    assert claim.group(1).lower() == said, (
+        f"{n} families are filed against GUIDED-147 and its evidence says "
+        f"'THESE {claim.group(1)} DO NOT'. This is exactly how the row went "
+        f"wrong the first time: a family left for GUIDED-146 and the evidence "
+        f"list was not re-cut. Filed: {filed_here}")
+
+    # And every family the row NAMES is one the table still files here — the
+    # other direction, which is what went stale last time.
+    named = set(_re.findall(r"\b(?:project|plausibility|capabilities)\.(\w+)",
+                            row["ev"]))
+    filed_leaves = {f[1] for f in filed_here}
+    moved_on = sorted(named - filed_leaves - {"n_working_rows"})
+    assert not moved_on, (
+        f"GUIDED-147's evidence still lists {moved_on}, and the FILED table no "
+        f"longer files them here. A family that got a disposition has to leave "
+        f"the row's list, or the list stops being the row's content.")

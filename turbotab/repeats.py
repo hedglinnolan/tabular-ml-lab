@@ -589,10 +589,22 @@ def split_strategy(temporal: bool, unit: str) -> Dict[str, Any]:
     downstream — the manuscript, the page, the validator — reads the payload.
     """
     if temporal and unit == UNIT_RECORD:
-        if DRAWS_CHRONOLOGICALLY:                       # pragma: no cover
+        if DRAWS_CHRONOLOGICALLY:
             # Reachable when the chronological grouped draw is built. Left in
             # rather than deferred to that loop, so the honorable state is
             # named in the same table as the dishonorable one.
+            #
+            # THE `# pragma: no cover` THAT USED TO SIT HERE IS GONE
+            # (`GUIDED-143`, L43-A3). A pragma is a claim with no guard, and
+            # this project has already been bitten by one — `GUIDED-134`'s sat
+            # on a line its own test executed. The claim it was making is now
+            # two assertions in
+            # `test_the_record_does_not_describe_a_split_it_did_not_draw`:
+            # that the flag agrees with what `draw_holdout` can actually do,
+            # and that this branch is unreachable for exactly as long as it
+            # does. And the branch is *executed* by that file rather than
+            # excused — an unreachable state that no test has ever run is a
+            # second unverified claim sitting behind the first.
             return {
                 "strategy": CHRONOLOGICAL_GROUPED, "honored": True,
                 "sentence": (

@@ -430,3 +430,115 @@ def test_the_pack_card_is_unchanged_and_still_says_which_band_it_counted():
         "the count moved; MISC-018 is a rename and GUIDED-144's ruling is that "
         "the number moves only when a real reference interval is added")
     assert sbp["normal_band"] == [90.0, 200.0]
+
+
+# ═══════ `GUIDED-143` · A PRAGMA IS A CLAIM WITH NO GUARD (L43-A3) ═══════════
+
+def test_the_unreachable_basis_is_asserted_unreachable_and_not_annotated():
+    """`GUIDED-143`, ruled at the L42 adjudication.
+
+    `chronological_grouped` stays: the lockbox constitution §03 is *three
+    states, never two*, and `chronological_requested_not_drawn` is only
+    meaningful against an honorable state that exists as a value — a basis set
+    omitting it cannot say the app is *missing* it.
+
+    What does not stay is the `# pragma: no cover` that used to excuse the
+    branch. **A pragma is a claim with no guard**, and this project has been
+    bitten by one already: `GUIDED-134`'s sat on a line its own test executed,
+    so the annotation asserted something false about the code beside it.
+
+    So the claim gets a test. This one, and it is deliberately written to stop
+    being true the moment the draw lands rather than to pin `False` forever —
+    a guard that has to be edited by the loop that fixes the thing is a guard
+    that gets edited without being read.
+    """
+    import inspect
+
+    from turbotab import engine
+
+    reachable = R.DRAWS_CHRONOLOGICALLY
+    drawn = R.split_strategy(temporal=True, unit=R.UNIT_RECORD)
+
+    if not reachable:
+        assert drawn["strategy"] == R.CHRONOLOGICAL_NOT_DRAWN, (
+            "the flag says the chronological draw does not exist and the "
+            "composer returned something other than the not-drawn basis")
+        assert drawn["honored"] is False
+        # And the flag is not free-floating: it agrees with the draw's own
+        # signature, which is what stops it being flipped without the
+        # capability arriving.
+        assert not (set(inspect.signature(engine.draw_holdout).parameters)
+                    & {"datetime_col", "time_col", "temporal", "order_by"}), (
+            "`draw_holdout` takes a time argument but DRAWS_CHRONOLOGICALLY "
+            "is False — the flag is understating what the draw can do")
+        # THE ROW IS THE DATED REASON. §05's second clause: an unreachable
+        # state ships with a test that names the row keeping it open.
+        import json as _json
+        ledger = (Path(__file__).resolve().parents[1]
+                  / "docs" / "turbotab" / "data" / "findings.json")
+        row = next(r for r in _json.loads(ledger.read_text(encoding="utf-8"))
+                   if r["id"] == "GUIDED-143")
+        assert row["status"] in ("OPEN", "PARTIAL"), (
+            f"GUIDED-143 is {row['status']} and `DRAWS_CHRONOLOGICALLY` is "
+            f"still False. Either the draw landed and the flag was not "
+            f"flipped, or the row was closed without the draw.")
+    else:
+        assert drawn["strategy"] == R.CHRONOLOGICAL_GROUPED, (
+            "the flag says the chronological draw exists and the composer "
+            "still returns the not-drawn basis")
+        assert drawn["honored"] is True
+
+
+def test_the_honorable_branch_is_executed_rather_than_excused():
+    """The other half, and the reason the pragma had to go rather than move.
+
+    A state that is unreachable *and never executed* is two unverified claims
+    stacked: that it cannot happen, and that it would be right if it did. The
+    first is asserted above. This one runs the branch — by setting the flag,
+    which is the only thing standing in front of it — and checks the payload
+    it produces is the one the seal, the manuscript and the page would read.
+
+    When the draw lands and the flag flips for real, this test does not
+    change. That is the point of writing it this way.
+    """
+    import unittest.mock as _mock
+
+    with _mock.patch.object(R, "DRAWS_CHRONOLOGICALLY", True):
+        got = R.split_strategy(temporal=True, unit=R.UNIT_RECORD)
+
+    assert got["strategy"] == R.CHRONOLOGICAL_GROUPED
+    assert got["honored"] is True, (
+        "the honorable basis reports itself unhonored, so the disclosure "
+        "would fire on a split that was drawn correctly")
+    assert "latest ones" in got["sentence"], got["sentence"]
+    assert "not drawn" not in got["sentence"].lower(), (
+        "the honorable branch is carrying the dishonorable sentence")
+
+    # And the value is in the declared basis set — trap #3's rule, that a
+    # stand-in must resolve in the real registry.
+    assert got["strategy"] in R.SPLIT_BASES, (
+        f"{got['strategy']!r} is not in SPLIT_BASES, so the seal would carry "
+        f"a basis nothing downstream can interpret")
+
+
+def test_no_pragma_excuses_a_branch_in_the_split_composer():
+    """The standing form. `GUIDED-134` is the precedent: its `# pragma: no
+    cover` sat on a line its own test executed, which is an annotation
+    asserting something false about the code it annotates.
+
+    Scoped to this module rather than the tree, because a blanket ban is a
+    different and larger argument — several pragmas in this repository sit on
+    genuinely defensive `except` arms and are correct.
+    """
+    source = (Path(__file__).resolve().parents[1]
+              / "turbotab" / "repeats.py").read_text(encoding="utf-8")
+    # A line that *starts* with `#` is prose about the pragma, not a pragma:
+    # coverage only honors it as a trailing annotation on a statement. Without
+    # this the check flags the comment in `repeats.py` that records why the
+    # pragma was removed, which is the guard failing on its own documentation.
+    offenders = [ln.strip() for ln in source.splitlines()
+                 if "pragma: no cover" in ln and not ln.strip().startswith("#")]
+    assert not offenders, (
+        f"`repeats.py` excuses a branch with a pragma rather than asserting "
+        f"what it claims: {offenders}. GUIDED-143's ruling is that the "
+        f"unreachable basis value stays and the pragma does not.")
