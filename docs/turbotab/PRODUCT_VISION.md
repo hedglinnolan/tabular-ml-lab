@@ -395,6 +395,51 @@ attributes as chips, warnings attached to what they warn about, a primary action
 primary — is achievable today and transfers to any future frontend because it is design decisions,
 not code. It was worth doing first to prove the interaction model before paying for the rewrite.
 
+## 06b · Correct, surfaced, beautiful — the product owner's ruling, 2026-08-03
+
+Recorded the turn it was made, in his words:
+
+> *"The whole point of this app is to be a beautiful expression of how to conduct informed math
+> modeling in the researcher's specific domain, with real tradecraft and results to back up their
+> decisions, all presented to the user in a dynamic, easily digestible manner. **In addition to being
+> correct, the engine must surface and it must be beautiful.**"*
+
+**Three conditions, ordered, and all three required.** Correct is first and does not become optional;
+what the ruling adds is that it was never sufficient. A capability that is right and unreachable has
+not shipped, and a capability that is reachable and unreadable has not either.
+
+**Why this needed saying now.** The three preceding loops found the same defect three times, at
+increasing depth: the pull palette threw on every click, no pack finding from any of five packs had
+ever been rendered, and `/recipes` — fifty fields — reaches nobody still. That is condition two,
+measured for the first time, and `LOOP.md` §05's rule about capabilities and consumers is the
+instrument for it.
+
+**Condition three has no instrument at all, and this is the honest gap.** `DESIGN_LANGUAGE.md`
+specifies the palette, the three-voice type rule, the component vocabulary, motion and the question
+grammar — and nothing checks any of it. `pageharness.py` says so in its own docstring: it proves what
+the controller renders and **cannot prove visibility** — that a card is on screen, unclipped, above
+the fold, in a section that is not hidden. Nothing without layout can. The one measured fact we hold
+about condition three is `DESIGN_LANGUAGE.md` §05.2's: the app has **no mechanism for animating a
+change of content** — 92 `innerHTML` assignments against 22 node-owning writes, zero
+`startViewTransition`, zero FLIP, zero WAAPI — which is precisely the *dynamic* half of the sentence
+above.
+
+### The consequence that is already live, and it arrived with the fix
+
+**Surfacing created the beauty problem in the same commit.** `GUIDED-142` made five packs' worth of
+findings visible at once, and the page renders them as `pf.concat(packf).map(findingCard)` — every
+profile finding, then every pack finding, **unbounded and uncapped**. Measured on `clinical_labs.csv`
+under the clinical lens: **twenty finding cards.** The prototype settled on two.
+
+§08's first open question — *"the coach's interruption budget… unbounded, push-the-notable collapses
+back into the wall of plots"* — is therefore no longer open in practice. It has been answered by
+accident, and the answer is *all of them*. That is §01's root cause reassembled inside the new door:
+the wall of plots was the thing this product exists to replace, and breadth of domain content is the
+force that rebuilds it.
+
+**So condition three is not a later polish phase.** It binds now, it binds hardest exactly where the
+domain work is succeeding, and `GUIDED-149` is the row.
+
 ## 07 · Design principles
 
 Five commitments, ordered. When two collide, the earlier wins.

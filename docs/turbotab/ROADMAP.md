@@ -12,7 +12,7 @@ hard," it is "autonomous between checkpoints, and here are the checkpoints."
 
 ## Definition of done
 
-TurboTab is finished when all four are true:
+TurboTab is finished when all seven are true:
 
 1. **Parity, permanently.** For the same CSV and the same choices, both front doors produce the
    same numbers — same splits, same metrics, same lockbox rows, same manuscript claims. Enforced
@@ -33,7 +33,28 @@ TurboTab is finished when all four are true:
    three guards in `DOMAIN_PACKS.md` §03 — no new card types, no firing on non-matching data, every
    pre-selected default states its reason.
 
-Anything short of all six is a milestone, not a finish.
+7. **Every capability the app holds reaches a person, and reaches them readably.** A rule the
+   engine computes and no surface renders has not shipped, and a surface that renders everything at
+   once has not shipped either. Enforced at two granularities that already exist — the route check
+   and `fieldsweep`'s field check — and at a third that does not: **nothing measures whether what
+   arrives is legible.** `pageharness.py` states that limit in its own docstring and it is honest;
+   the gap is real and is condition 7's unbuilt half.
+
+Anything short of all seven is a milestone, not a finish.
+
+**Condition 7 is the product owner's ruling of 2026-08-03**, recorded in full at
+`PRODUCT_VISION.md` §06b: *"In addition to being correct, the engine must surface and it must be
+beautiful."* It was added because three consecutive loops found the same defect at increasing depth
+— the pull palette threw on every click, no pack finding from any of five packs had ever been
+rendered, and `/recipes` reaches nobody still — and **the first six conditions cannot see any of
+it.** They measure whether the app is consistent, whether it knows anything, and whether its
+invariants hold. None of them asks what a person gets.
+
+Note the ordering the ruling keeps: **correct is still first and does not become optional.** What
+the condition adds is that correct was never sufficient. And note the trap it names — `GUIDED-149`
+was created *by* the fix for `GUIDED-142`, in the same commit, because surfacing five packs' worth
+of findings at once turned a two-card interruption budget into twenty. **Condition 7's two halves
+pull against each other**, and that tension is the condition rather than a flaw in it.
 
 **Condition 6 was added after the domain research.** Without it the definition permits shipping with
 zero packs and calling it done, which the first five conditions cannot see — they measure whether the
