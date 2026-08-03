@@ -220,7 +220,98 @@ class FigureSpec:
 # The registry
 # ─────────────────────────────────────────────────────────────────────────────
 
-REGISTRY: Dict[str, FigureSpec] = {}
+class _SelfPopulating(dict):
+    """A registry that cannot be observed empty. `TEST-041`.
+
+    **The defect this removes.** `REGISTRY` was a plain dict filled as an
+    *import side effect* of `turbotab.figure_specs`, whose module body is a
+    run of `register(...)` calls. So a reader's answer depended on whether
+    something else had imported the populator first — and
+    `test_the_companion_rule_reaches_the_document` asserted a count over it in
+    its first test, which takes no fixture. Alone the file said
+    ``assert 0 >= 4``; inside the full suite it was green. **The full-suite
+    green was the false one**: a different file's import made the assertion
+    true, not the code under test.
+
+    That is the third face of one property. `TEST-030` is ordering in
+    `tests/workflow`; `TEST-040` was its load-dependent twin, where a bounded
+    poll reported *the app had not answered yet* as *the app answered wrong*.
+    **A count that moves with something other than the code is not a count.**
+
+    L43 fixed the four readers and added a static guard that every registry
+    reader imports a populator. That is a convention with a check, and the
+    check is static where the property is behavioral. This is the structure:
+    the first read *is* the population, so no reader can observe an unfilled
+    registry and no new reader has to remember anything.
+
+    **Why a `dict` subclass rather than a `registry()` accessor.** Callers
+    read it as a mapping — ``.values()``, ``.get(id)``, ``id in REGISTRY``,
+    ``len()`` — in three shipped modules and a dozen test files. An accessor
+    would rewrite every one of those call sites for no behavioral gain; this
+    keeps them and removes the hazard underneath.
+    """
+
+    #: Set BEFORE the import rather than after, and the reason is narrower
+    #: than it looks.
+    #:
+    #: `register()` writes into this dict while `figure_specs`'s module body
+    #: runs, and it asks `spec.id in REGISTRY` first — which populates. So the
+    #: obvious story is that a flag set afterwards would re-enter `_populate`
+    #: and recurse. **That story is false and a revert probe caught it**:
+    #: moving the assignment after the import comes back
+    #: `GREEN — NOT LOAD-BEARING`, because Python's `sys.modules` already
+    #: returns the partially-initialized module on re-entry and the nested
+    #: `import` is a no-op. Measured on a cold interpreter with the
+    #: recursion limit at 200: 17 specs, no error.
+    #:
+    #: It stays before the import anyway, and the honest reason is that this
+    #: class should not depend on the import system's re-entrancy behavior to
+    #: terminate. `test_a_read_during_population_does_not_loop` pins the
+    #: property directly rather than through that coincidence.
+    _populated = False
+
+    def _populate(self) -> None:
+        if self._populated:
+            return
+        self._populated = True
+        import turbotab.figure_specs                    # noqa: F401
+
+    # Every read triggers it; writes do not, because a write is `register`
+    # doing the populating.
+    def __getitem__(self, key):
+        self._populate()
+        return dict.__getitem__(self, key)
+
+    def __contains__(self, key):
+        self._populate()
+        return dict.__contains__(self, key)
+
+    def __len__(self):
+        self._populate()
+        return dict.__len__(self)
+
+    def __iter__(self):
+        self._populate()
+        return dict.__iter__(self)
+
+    def get(self, key, default=None):
+        self._populate()
+        return dict.get(self, key, default)
+
+    def keys(self):
+        self._populate()
+        return dict.keys(self)
+
+    def values(self):
+        self._populate()
+        return dict.values(self)
+
+    def items(self):
+        self._populate()
+        return dict.items(self)
+
+
+REGISTRY: Dict[str, FigureSpec] = _SelfPopulating()
 
 
 def register(spec: FigureSpec) -> FigureSpec:
@@ -276,7 +367,9 @@ class Pending:
 REGISTERED_STATUS = "registered"
 PENDING_STATUS = "pending"
 
-PENDING: Dict[str, Pending] = {}
+#: Filled by the same import as `REGISTRY` and read the same way, so it
+#: carries the same hazard and the same fix.
+PENDING: Dict[str, Pending] = _SelfPopulating()
 
 
 def register_pending(entry: Pending) -> Pending:

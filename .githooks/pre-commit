@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The three gates, enforced structurally rather than remembered.
+# The six gates, enforced structurally rather than remembered.
 #
 # LOOP.md said "run these before every commit and stop if it fails". That
 # enforces nothing: commit 8127101 went out with the spelling test RED because
@@ -50,6 +50,20 @@ run() {
 }
 
 printf 'pre-commit gates:\n'
+# `TEST-042`. THE ONLY GATE HERE THAT READS PYTHON AS PYTHON. The other five
+# read JSON, generated markdown, strings and badges — so L43-B committed an
+# `IndentationError` in `ml/eda_actions.py` and all five stayed green, and the
+# loop's own new guard swept that file for a phrase with `read_text` and a
+# regex and passed over it too. A file that does not parse is still text.
+#
+# The generalization, and it is the reason this is first rather than last:
+# A CHECK WHOSE INPUT IS A SERIALIZATION OF THE THING IT CARES ABOUT WILL PASS
+# ON A BROKEN INPUT.
+#
+# It is NOT a substitute for the suite and nothing about it should read as one
+# — it answers `does this compile` and nothing else, at the moment the mistake
+# is made rather than three commits downstream. 363 files in 0.45s.
+run "python parses"      "$PY" docs/turbotab/tools/parsecheck.py
 run "ledger schema"      "$PY" docs/turbotab/tools/ledger.py check
 run "register schema"    "$PY" docs/turbotab/tools/register.py check
 run "American spelling"  "$PY" -m pytest tests/test_american_spelling.py -q --no-header
@@ -64,6 +78,9 @@ if [ "$FAILED" -ne 0 ]; then
 
 COMMIT REFUSED — a gate is red.
 
+  `python parses` is `ast.parse` over every tracked .py file; it names the
+  file and the line. It is the only gate here that reads Python AS PYTHON,
+  and it says nothing about whether the code is CORRECT — run the suite.
   ledger/register `check` regenerate nothing; if the markdown is stale run
       python docs/turbotab/tools/ledger.py regen
   the copy deck is half generated: if a user-facing string changed, run

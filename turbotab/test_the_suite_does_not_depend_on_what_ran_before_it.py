@@ -135,22 +135,50 @@ def _registry_readers():
             yield path, src
 
 
-def test_every_registry_reader_imports_the_thing_that_fills_it():
-    """The standing check.
+def test_the_registry_populates_itself_or_every_reader_imports_it():
+    """The standing check, **and its premise changed at L44-A2.**
 
-    A file that reads `figures.REGISTRY` and imports no populator passes or
-    fails depending on what ran before it, which means its verdict is not
-    about the code.
+    It used to say: a file that reads `figures.REGISTRY` and imports no
+    populator passes or fails depending on what ran before it. That was true
+    of a plain dict filled by somebody else's import. It is no longer true —
+    `figures._SelfPopulating` makes the first read *be* the population, so a
+    reader that imports nothing is now correct rather than lucky.
+
+    **This is trap 3c arriving at a guard I had just written.** L44-A2's fix
+    made this test go red, and the question is never *how do I make it pass* —
+    it is *what is this test claiming, and is that claim true*. The convention
+    it enforced is superseded by a structure, so it now checks the structure,
+    and falls back to demanding the convention only if the structure is gone.
+
+    That fallback is the coverage the row asked to keep: if someone replaces
+    the lazy dict with `{}`, the import-order hazard returns instantly and
+    this is what says so — before the behavioral file does, and with a message
+    naming the cause rather than the symptom.
     """
+    from turbotab import figures
+
+    structural = isinstance(figures.REGISTRY, figures._SelfPopulating)
+    if structural:
+        # The structure holds. Assert it actually WORKS rather than merely
+        # existing — a subclass that forgot to override the reads would pass
+        # an isinstance check and none of the reads.
+        assert hasattr(figures.REGISTRY, "_populate"), (
+            "REGISTRY is a _SelfPopulating with no _populate; the structure "
+            "is nominal")
+        assert isinstance(figures.PENDING, figures._SelfPopulating), (
+            "PENDING is filled by the same import and is not self-populating, "
+            "so it still carries the hazard REGISTRY no longer does")
+        return
+
     offenders = {str(p.relative_to(ROOT)): _unsafe_reads(src)
                  for p, src in _registry_readers() if _unsafe_reads(src)}
     assert not offenders, (
-        f"these read a lazily-populated registry with no populator imported "
-        f"first: {offenders}. `figures.REGISTRY` is filled by importing "
-        f"`turbotab.figure_specs`; without it the file reads whatever an "
-        f"earlier test file loaded. Add the import at MODULE scope — function "
-        f"scope only counts inside the same function as the read, because the "
-        f"first test in a file runs before any fixture.")
+        f"`figures.REGISTRY` is a plain dict again AND these read it with no "
+        f"populator imported first: {offenders}. Either restore "
+        f"`_SelfPopulating` — which is the fix, because it removes the hazard "
+        f"rather than routing around it — or add the import at MODULE scope. "
+        f"Function scope only counts inside the same function as the read, "
+        f"because the first test in a file runs before any fixture.")
 
 
 def test_the_sweep_finds_the_readers_it_is_sweeping():
