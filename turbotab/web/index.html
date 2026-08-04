@@ -1025,6 +1025,17 @@
   .cb-head{font-family:var(--serif);font-size:14.5px;font-weight:700;margin:0 0 2px}
   .cb-why{font-family:var(--mono);font-size:10px;color:var(--warn);
           letter-spacing:.02em;margin:0}
+  /* GUIDED-167 · the response, at the control. Not a new component (§04): it is
+     the `pv-note` register — the quietest thing the vocabulary has — placed
+     beside the button rather than in a panel. `--warn` because a refusal is the
+     coach's voice, and `--ok` because a receipt is a recorded fact; no new hue
+     (§02) and no motion (§05 rule 5), so it appears instantly. */
+  .at-ctl:empty{display:none}
+  .at-ctl{display:block;flex-basis:100%;margin-top:6px}
+  .at-ctl-msg{font-size:12px;line-height:1.45;display:inline-block;
+              border-left:2px solid var(--line);padding-left:8px}
+  .at-ctl-msg.warn{color:var(--warn);border-left-color:var(--warn-line)}
+  .at-ctl-msg.ok{color:var(--ok);border-left-color:var(--ok)}
   .chip.arrived{font-family:var(--sans);font-style:italic;letter-spacing:0;
                 text-transform:none;color:var(--muted);
                 background:var(--surface-2);border-color:var(--line)}
@@ -1718,8 +1729,67 @@
       });
     });
   }
+  /* ═════════ A RESPONSE RENDERS AT THE CONTROL ═════════ `GUIDED-167`, and it
+     is L47's design ruling rather than a convenience.
+
+     The drive produced five presses with no visible response, from five
+     different causes, and TWO OF THEM WERE THE APP ANSWERING CORRECTLY, OUT OF
+     SIGHT. A user cannot distinguish *the control is not wired* from *the app
+     refused and did not tell me*, and this drive produced both.
+
+     THE ANSWER IS NOT TO MOVE THE VIEWPORT. `DESIGN_LANGUAGE.md` §05: the page
+     never scrolls on the user's behalf, `DRIVE-006` deleted the nudge, and
+     `test_the_page_never_moves_the_viewport.py` pins it. Reversing that is trap
+     #3c — and `PRODUCT_VISION.md` §09 described the deleted nudge in the present
+     tense for two loops, which is how this became confusing in the first place.
+
+     THE RULE: a response to a press renders AT THE CONTROL — adjacent to the
+     button pressed, not merely somewhere in the same card. *In the card* is what
+     the feature receipt already did, six levels up and a sibling hop away, and
+     it is still off-screen because the card is long.
+
+     Three reasons it is right rather than convenient:
+
+     · IT HAS NO FREE PARAMETER. That is exactly why the middle nudge rule
+       failed — it was tuned to dataset size and could not tell which case it was
+       in. *Where the button is* does not move when the data does.
+     · IT MOVES NOBODY. `DRIVE-006` survives untouched and so do its tests.
+     · THE LITERATURE SUPPORTS IT. `research/INTERACTION_PACK.md` §04.1 records,
+       [SETTLED] for the specification, that a layout shift within 500 ms of user
+       input sets `hadRecentInput` and is excluded from CLS entirely — *because
+       temporal proximity makes the causality legible*. A response appearing
+       where the user just pressed is the case the spec carves out.
+
+     THE MECHANISM IS THE HOUSE ONE. `offerRow` already emits a per-row slot
+     (`data-offer-pv`) that its handler writes into, and that is the pattern:
+     the function that emits a control emits its receipt slot beside it, and the
+     slot is addressable by id. Nothing walks the DOM — the shim `pageharness`
+     runs under has no parent pointers, so a DOM-walking version would be
+     untestable, which is its own argument. */
+  var AT_CONTROL = "";
+
+  function atControlSlot(key){
+    return '<span class="at-ctl" id="ac-' + esc(key) + '"></span>';
+  }
+
+  function atControl(key, html, tone){
+    var node = key ? $("ac-" + key) : null;
+    if (!node) return false;
+    node.innerHTML = html
+      ? '<span class="at-ctl-msg ' + (tone || "warn") + '">' + html + "</span>"
+      : "";
+    return true;
+  }
+
   function setErr(msg){
     $("upErr").textContent = msg || "";
+    /* THE SAME SENTENCE, AT THE CONTROL. `#upErr` stays the canonical sink and
+       is the right one during upload, when `#sub-upload` is still on screen —
+       `renderData()` adds `is-hidden` to that subtree on every render after,
+       so from the first successful upload the canonical sink is inside
+       `display:none` and this is the only copy a person can see. Quoted rather
+       than composed (§05.1 rule 3): one string, two places. */
+    if (msg) atControl(AT_CONTROL, esc(msg), "warn");
     if (!msg) clearRefusal();
   }
   function clearRefusal(){
@@ -1762,6 +1832,12 @@
     h += "</div>";
     band.innerHTML = h;
     band.classList.remove("is-hidden");
+    /* AND AT THE CONTROL. The band keeps the full treatment — the exits, the
+       retry buttons, the typed-attestation panels — because moving it would
+       break three claims that read `__harness.html('refusal')` and those claims
+       are correct about what they assert. What goes to the control is the
+       REASON, which is the part a user needs where they pressed. */
+    atControl(AT_CONTROL, esc(detail.message || detail.reason || ""), "warn");
   }
 
   /* ═════════ THE RECORD, FOLDED ═════════
@@ -1927,8 +2003,14 @@
     h += '<div class="f-row">';
     h += '<button class="f-act preview" data-panel="' + esc(f.id) + '" type="button">Show me what this means</button>';
     h += deferButton(f);
-    h += '<button class="f-act dismiss" data-dismiss="' + esc(f.id) + '" type="button">Dismiss</button>';
+    h += '<button class="f-act dismiss" data-dismiss="' + esc(f.id) +
+         '" data-ac="find-' + esc(f.id) + '" type="button">Dismiss</button>';
     h += '<span class="fstat s-def">deferred</span>';
+    /* GUIDED-167. Every control in this row posts, and every one of their
+       failures went to `#upErr` — inside `#sub-upload`, which `renderData()`
+       hides on every render. This is the highest-traffic action row in the door
+       and it had no way to answer where it was pressed. */
+    h += atControlSlot("find-" + f.id);
     h += '<button class="flag" data-flag="' + esc(f.id) + '" aria-pressed="' + (st.flagged ? "true" : "false") +
          '" type="button">⚑ ' + (st.flagged ? "Marked" : "Mark") + ' for manuscript</button>';
     h += '</div>';
@@ -2292,8 +2374,13 @@
       '<div style="margin-top:4px;font-size:12px;color:var(--muted);">' + esc(e.why) + "</div>" +
       "</div>" +
       '<div><button class="f-act" type="button" data-earmark="' + esc(e.key) +
+      '" data-ac="earmark-' + esc(e.key) +
       '" data-earmark-step="' + esc(e.target_step) + '" data-earmark-label="' +
       esc(e.label) + '">Earmark it</button></div>' +
+      /* GUIDED-161. `offerRow` two functions up already emits a per-row slot
+         (`data-offer-pv`) and this row had none — which is most of why an
+         earmark looked like it did nothing. */
+      atControlSlot("earmark-" + e.key) +
       "</div>";
   }
 
@@ -3455,6 +3542,29 @@
   }
 
   function featRowHTML(row, kind){
+    /* GUIDED-173 · THE RECEIPT RENDERS WHERE THE CONTROL WAS.
+       The full record of what the table now holds stays in `#featDecided`,
+       which is the right home for a list. What was missing is the answer to
+       *did my press land* at the place the press happened — `#featDecided` is
+       six levels up and a sibling hop away, past every other transform row, and
+       on a long catalogue it is well below the fold.
+
+       The shape is `prepColHTML`'s and `selBuildHTML`'s, verbatim: an
+       `answered-card` REPLACING the control's own render, at the control's own
+       position. Nothing is invented and nothing moves. */
+    var landed = ((FEAT && FEAT.engineered) || []).filter(function(e){
+      return e.key === row.key || e.transform === row.key; })[0]
+      || ((FEAT && FEAT.deferred_transforms) || []).filter(function(e){
+        return e.key === row.key || e.transform === row.key; })[0];
+    if (landed){
+      return '<div class="answered-card">' +
+             esc(landed.sentence || landed.column || row.label) +
+             '<p class="feat-note" style="margin:4px 0 0;">' +
+             (kind === "deferred"
+                ? "Recorded — fitted inside each training fold."
+                : "In the table now.") +
+             " It is listed with everything else below.</p></div>";
+    }
     var ready = (FEAT_PICK[row.key] || []).filter(function(c){ return !!c; })
                   .length === (row.n_inputs || 1);
     var h = '<div class="feat-head"><span class="feat-lab">' + esc(row.label) + "</span>" +
@@ -3470,8 +3580,16 @@
       h += '<button class="pill" type="button" data-feat-preview="' + esc(row.key) +
            '">Show me what it does</button>';
       h += '<button class="answer primary" type="button" data-feat-add="' +
-           esc(row.key) + '" data-feat-kind="' + esc(kind) + '">' +
+           esc(row.key) + '" data-ac="feat-add-' + esc(row.key) +
+           '" data-feat-kind="' + esc(kind) + '">' +
            (kind === "deferred" ? "Record it" : "Add it") + "</button>";
+      /* GUIDED-173. The receipt for this press lives in `#featDecided`, which
+         is six levels up and then a sibling hop — outside the card that holds
+         the button, past the per-row preview and past every other transform row.
+         The full receipt stays there, because that list is the record of what
+         the table now holds; what arrives here is the acknowledgment that the
+         press landed. */
+      h += atControlSlot("feat-add-" + row.key);
     }
     h += "</div>";
     return h;
@@ -5187,16 +5305,33 @@
   var STEP_WORDS = { data: "Data", explore: "Explore", preprocess: "Preprocess",
                      features: "Features", train: "Train" };
 
+  /* GUIDED-161 · AN EARMARK IS A THING YOU SET ASIDE, and the dock says so.
+     `#ledgerEmpty` promises *"Anything you set aside waits here, and each item
+     says which step it comes back at"* and this function returned early on
+     `d.kind !== "defer"`, so an earmark left the count at 0 and the promise
+     unkept. It is not one line: an earmark's `target_step` can legally be
+     `"you"` (`turbotab/actions.py:81`) — the app saying out loud that it cannot
+     do this — and `STEP_WORDS` has no such key, so the label has to branch. */
   function deferrals(){
     var out = [];
     (P.decisions || []).forEach(function(d){
-      if (d.kind !== "defer") return;
+      if (d.kind !== "defer" && d.kind !== "earmark") return;
       var step = (d.payload || {}).target_step || "explore";
       out.push({
         subject: d.subject,
         text: d.text,
         step: step,
-        label: STEP_WORDS[step] || step
+        kind: d.kind,
+        /* AN EARMARK'S SUBJECT IS AN OFFER KEY, NOT A FINDING ID, so
+           `findingTitle` falls through to `String(id)` and the dock renders
+           `verify_units` at a person. The payload carries the label the row was
+           drawn with; it is used here rather than re-derived. */
+        title: (d.payload || {}).label || "",
+        /* `you` is not a step and must not be rendered as one. An earmark for a
+           person is the one item in this dock that never comes back — it is
+           carried to the manuscript as a stated limitation instead, and saying
+           "comes back at you" would be the dock asserting something false. */
+        label: step === "you" ? "yours to do" : (STEP_WORDS[step] || step)
       });
     });
     // A later dismissal or application settles a deferral; the ledger shows what
@@ -5205,7 +5340,11 @@
     (P.decisions || []).forEach(function(d){
       if (d.kind === "apply" || d.kind === "dismiss") settled[d.subject] = true;
     });
-    return out.filter(function(x){ return !settled[x.subject]; });
+    /* An earmark's subject is an OFFER KEY, not a finding id, so the settling
+       pass above cannot address it — and an earmark for a person is never
+       settled by anything the app does. Both are left standing deliberately. */
+    return out.filter(function(x){
+      return x.kind === "earmark" || !settled[x.subject]; });
   }
 
   function renderDocks(){
@@ -5217,15 +5356,21 @@
 
     $("ledgerList").innerHTML = waiting.map(function(x){
       return '<li><span class="to">→ ' + esc(x.label) + "</span>" +
-             esc(findingTitle(x.subject)) + "</li>";
+             esc(x.title || findingTitle(x.subject)) + "</li>";
     }).join("");
     $("ledgerCt").textContent = String(waiting.length);
     $("ledgerEmpty").style.display = waiting.length ? "none" : "block";
 
     $("ledgerPanel").innerHTML = waiting.length
       ? waiting.map(function(x){
-          return '<div class="dock-item"><span class="dest">comes back at ' + esc(x.label) +
-                 "</span>" + esc(findingTitle(x.subject)) + "</div>";
+          /* "comes back at yours to do" is not a sentence, and an earmark for a
+             person never comes back at all — it is carried to the manuscript as
+             a stated limitation. So the two say different things. */
+          return '<div class="dock-item"><span class="dest">' +
+                 (x.label === "yours to do"
+                    ? "yours to do — it reaches the methods section"
+                    : "comes back at " + esc(x.label)) +
+                 "</span>" + esc(x.title || findingTitle(x.subject)) + "</div>";
         }).join("")
       : '<div class="dock-item">Nothing is waiting. Anything you set aside appears here with ' +
         "the step it comes back at.</div>";
@@ -5535,6 +5680,11 @@
       "[data-rg-show],[data-rg-defer],[data-rg-pick],[data-rg-apply]," +
       "[data-rg-decline]") : null;
     if (!t || t.disabled) return;
+    /* WHICH CONTROL THIS RESPONSE BELONGS TO. Read off the element rather than
+       inferred, so a control with no slot simply gets no at-control copy and the
+       canonical sink still carries it. */
+    AT_CONTROL = t.getAttribute("data-ac") || "";
+    atControl(AT_CONTROL, "");
 
     /* ── the bulk repair card (`DRIVE-002`) ── */
     if (t.hasAttribute("data-rg-show")){
@@ -5929,17 +6079,26 @@
     }
 
     /* ── impossible entries: a CHOICE, never applied on our own ── */
+    /* GUIDED-165. THE SENTENCE IS THE SERVER'S NOW, and that is the fix rather
+       than a tidy-up. These two posted `kind:"note"` with a sentence composed
+       HERE — so the page asserted "entries were set to missing" and the generic
+       note handler recorded it, called no engine function, and set nothing to
+       missing. 125 flagged before the press and 125 after.
+
+       Two kinds rather than one, because both used to post the same `kind` and
+       the same `subject` and only the prose differed: nothing machine-readable
+       could tell a repair from a refusal to repair. And no `text` travels — the
+       record composes it from what actually happened, with the count in the
+       payload, which is §05.1 rule 3 applied where it was most needed. */
     if (t.hasAttribute("data-impossible")){
-      decide("note", "impossible__" + t.dataset.impossible,
-             { text: "Entries of " + t.dataset.impossible +
-                     " outside the impossibility band were set to missing." },
-             "Recording that decision…");
+      decide("set_impossible_missing", t.dataset.impossible,
+             { column: t.dataset.impossible },
+             "Setting those entries to missing…");
       return;
     }
     if (t.hasAttribute("data-keep-impossible")){
-      decide("note", "impossible__" + t.dataset.keepImpossible,
-             { text: "Entries of " + t.dataset.keepImpossible +
-                     " outside the impossibility band were kept as recorded." },
+      decide("keep_impossible", t.dataset.keepImpossible,
+             { column: t.dataset.keepImpossible },
              "Recording that decision…");
       return;
     }
@@ -6316,6 +6475,15 @@
       return (p || {}).temporal
         ? "Records that the task is predicting a later outcome. The held-out set is still drawn at random within whole people — this app cannot yet hold out the latest rows and keep people together — and the seal says so in its own words."
         : "Records a non-temporal task. Whole people are held out and the order of rows does not matter.";
+    },
+    set_impossible_missing: function(p){
+      return "Sets " + (p.n_set || 0) + " entries of " + (p.column || "the column") +
+             " outside the impossibility band to missing, on the working table, " +
+             "now. Undoable.";
+    },
+    keep_impossible: function(p){
+      return "Records that the " + (p.n_flagged || 0) + " flagged entries of " +
+             (p.column || "the column") + " stay as recorded. Nothing changes.";
     },
     route_missingness: function(p){
       return "Records how the blanks in this column are handled. Nothing is filled in now.";
