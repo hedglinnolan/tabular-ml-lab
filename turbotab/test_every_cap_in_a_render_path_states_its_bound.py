@@ -416,6 +416,23 @@ def test_every_slice_in_the_page_states_its_bound_or_is_named(capsys):
         print("  DRIVEN here: `explainHTML` only, on two target shapes.")
         print("  The other five caps are checked in the FILE, not in a DOM.")
 
+    # THE POSITIVE CONTROL, and it is the same rule this file enforces one
+    # level up. `GUIDED-045`: a gate whose every assertion is an absence claim
+    # passes hardest on an empty file, so *zero silent caps* would be the
+    # output for a page with no caps, a page with no script, and a page that
+    # does not exist. `test_an_absence_assertion_carries_a_positive_control`
+    # caught this on the merge — a truncation-audit that could not tell "we
+    # looked and found none" from "we did not look" would be the defect it
+    # audits for, in the auditor.
+    assert len(found) > 8, (
+        f"only {len(found)} `slice(` sites were enumerated in the page. The "
+        f"assertions below are absence claims and would all pass on an empty "
+        f"file; this is what makes them mean something")
+    assert len(caps) >= 6, (
+        f"only {len(caps)} numeric caps were found, and six are known to exist. "
+        f"Either the extractor stopped seeing them or the page lost them")
+    assert stating, "no cap in the page states its bound, which was the defect"
+
     assert not silent, (
         "these caps truncate a rendered list and nothing on the surface says "
         "so — a truncation nobody records reads as a complete answer:\n  "

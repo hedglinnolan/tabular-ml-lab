@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**325 of 828 closed.**
+**327 of 828 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 447 |
+| `OPEN` | 445 |
 | `PARTIAL` | 56 |
-| `FIXED` | 319 |
+| `FIXED` | 321 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
 
-## OPEN — 447
+## OPEN — 445
 
 
-### Guided-door drive feedback — 69
+### Guided-door drive feedback — 68
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -56,7 +56,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-160` | high | DESIGN_LANGUAGE section 10 specifies four education layers and the app ships two - the side panel that teaches on the user's own columns does not exist, so its content has been pushed into the… | `RAISED BY THE PRODUCT OWNER DRIVING: `even when hovering over the blurbs explaining each one, I am not sure I…` | HIS INSTINCT AND THE SPECIFICATION AGREE, AND THE SPEC NAMED THE FAILURE MODE BY NAME BEFORE IT HAPPENED. Section 10 attaches a cognitive-load reason to each layer: layer 1 cites… |
 | `GUIDED-189` | high | A built pull chip opens onto zero cards, because the gate that RAISES it and the gate that FILLS it disagree by a factor of four | `L48-B, found while fixing GUIDED-168. ml/eda_recommender.py:120 raises the missingness recommendation - and…` | Held as xfail(strict=True) at turbotab/test_a_pull_chip_does_not_borrow_the_cores_title.py::test_a_built_chip_can_still_open_onto_no_cards, so the day the thresholds agree it… |
 | `GUIDED-193` | high | POST set_task_type with regression on a two-level STRING target raises an uncaught TypeError out of pandas nanmean - a 500 with no body, not a refusal | `L48-B. ml/dataset_profile.compute_target_profile calls nanmean on a string column. Reproduced on…` | Held as an xfail(strict=True, raises=TypeError) at turbotab/test_ask_me_anyway_reopens_the_question.py::test_overriding_a_string_target_to_regression_refuses_rather_than_crashing.… |
-| `GUIDED-197` | high | The L43-A1 late sweep enumerates /features, /recipes and /preprocess and gates NOTHING - 39 unread fields and 4 fully-dark path shapes printed into captured stdout behind zero assertions | `L48-B, found while fixing GUIDED-171 by reading the exemption before building. Two exemptions exist and the…` | Class: a sweep that reports without gating is a count, not a guard. The same shape as GUIDED-180 one surface over - a table consulted with .get() that skips what it does not… |
 | `GUIDED-208` | high | A reopened missingness_settled:: block can never be answered - no fold produces that key and the answer delegate returns early on it, so it stays asked on every render whatever the user does | `L49-D, found while building GUIDED-192's consumer and filed rather than fixed. api.py's answered fold has no…` | This is why GUIDED-192's fix renders no option buttons on the new surface: a rendered option would be a solid button that silently does nothing, which is GUIDED-006 and… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
@@ -338,7 +337,7 @@ Nothing is closed without a regression test named after it.
 | `MINE-043` | low | pages/06 defines fallback plotting stubs that shadow visualizations.py on ImportError | `pages/06_Train_and_Compare.py:66-90; visualizations.py:53-88, 91-126` | Unchanged at HEAD. visualizations.py is a first-party module in the repository root and cannot legitimately be missing, so the fallback can only fire on an unrelated ImportError… |
 | `MINE-044` | low | visualizations.plot_residuals will pandas-align if handed two Series with different indexes | `visualizations.py:91-126 vs 141-142; pages/06_Train_and_Compare.py:2604, 2623` | Unchanged at HEAD, and the inconsistency inside one file is the tell: plot_bland_altman coerces both arguments and plot_residuals does not, so the safe idiom was known and applied… |
 
-### Migration safety net — 34
+### Migration safety net — 33
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -365,7 +364,6 @@ Nothing is closed without a regression test named after it.
 | `TEST-038` | high | models/nn_whuber.py imports torch unguarded at module scope while utils/seed.py guards the identical import, so a 1.1 GB dependency is mandatory for a user who never trains a neural net | `models/nn_whuber.py:5 (unguarded `import torch`); utils/seed.py:7-10 (the same import, guarded, with a…` | A PRINCIPLE-LOCALITY INSTANCE, which is why it is filed here rather than left as a packaging note. The rule - torch is optional, guard it - is stated once, correctly, in… |
 | `TEST-039` | high | Every Makefile test target exits 4 without running a single test: PYTEST_OPTS passes --timeout=60 and pytest-timeout is not installed in venv/, so the documented command and the CI target are both… | `Makefile:18,24,44; requirements-dev.txt:25` | Makefile:18 sets PYTEST_OPTS := --timeout=60 -q and every target interpolates it, so 'make test' produces 'error: unrecognized arguments: --timeout=60' and 'make: *** [test] Error… |
 | `TEST-044` | high | A FIXED row can name a regression test that exercises a DIFFERENT module than the row is about, and ledger.py check is satisfied - so the gate passes on a test that could not have failed if the fix… | `the instance is IMPORT-109, found at L44-D by the MISC-019 sweep and re-verified by the adjudicator: the row…` | FILED BY THE ADJUDICATOR AT L44. THIS IS MISC-019'S CLASS AT A SHARPER GRANULARITY AND IT IS THE MECHANICALLY DETECTABLE ONE. MISC-019 asks whether a fix reached every surface the… |
-| `TEST-048` | high | pageharness's document.querySelector returns null for selectors that DO match the markup, so setMap was a total no-op under the harness for the whole life of the analysis map | `L48-B. turbotab/pageharness.py:431 querySelector returns null unconditionally and querySelectorAll returns…` | Found by chunk 5 while building GUIDED-159's test. The general form: an instrument that abstains and an instrument that denies are different claims, and this one rendered them as… |
 | `TEST-049` | high | revertprobe.py mutates the shared working tree, so it is unsafe whenever a second agent is writing that tree - and the same is true of any tree-wide git operation a subagent might reach for | `docs/turbotab/tools/revertprobe.py - the harness reverts a fix, runs a test and restores, all in the live…` | FILED BY THE ADJUDICATOR AT L48, and it is section 06's most common gap firing in the ordinary way: the class was named in the report's own prose, correctly and unprompted, and 16… |
 | `TEST-027` | medium | utils/persistence.py is dead code — zero importers — yet contains the reproducibility manifest the new Project layer needs | `utils/persistence.py:1-158; zero import sites repo-wide` | Unchanged at HEAD - verified unreachable, not merely uncovered. The trap the row names is the one to record: it is tempting to adopt this wholesale as the Project serializer, and… |
 | `TEST-028` | medium | visualizations.py returns figures nobody inspects — the safest module to move and the easiest to break unnoticed | `visualizations.py:12,53,91,129,170; consumers pages/06_Train_and_Compare.py:69…` | Unchanged at HEAD: the module is genuinely pure and genuinely untested - the two tests that name it check that it imports, not what it draws. That combination is the row's point… |
@@ -675,10 +673,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 319
+## FIXED — 321
 
 
-### Guided-door drive feedback — 126
+### Guided-door drive feedback — 127
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -772,6 +770,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-184` | high | The two REVISE-shaped resolve exits render disabled, because the page enables an exit on retry.payload and a revise exit honestly has no payload to carry | `L48-E, found while fixing GUIDED-183. Five resolve exits exist. grain._RESOLVE and packs._LENS_RESOLVE are…` | **test:** `turbotab/test_a_revise_exit_is_a_way_out_too.py::test_the_lens_contradictions_revise_exit_renders_live AND ::test_both_revise_exits_describe_how_they_are_taken`… |
 | `GUIDED-191` | high | The app writes a value into the working table and files no record that it did, so a later question cannot tell its own output from the user's data - the class behind GUIDED-166 | `L48-B. set_impossible_missing is now the only writer that files provenance (made_blanks/rows).…` | **test:** `turbotab/test_every_writer_that_can_blank_a_cell_files_it.py::test_coerce_numeric_files_the_cells_it_blanked_and_the_survey_says_so` — L49-C. ONE MECHANISM, and the… |
 | `GUIDED-192` | high | Two of the three skippable question families render NOWHERE in either state, because the page never fetches the interview step they are served at | `L48-B, GUIDED-156's class. ml/router.py sets status='skipped' at exactly three sites (619, 1141, 1218)…` | **test:** `turbotab/test_ask_me_anyway_reopens_the_question.py::test_a_reopened_settled_missingness_block_renders_somewhere AND… |
+| `GUIDED-197` | high | The L43-A1 late sweep enumerates /features, /recipes and /preprocess and gates NOTHING - 39 unread fields and 4 fully-dark path shapes printed into captured stdout behind zero assertions | `L48-B, found while fixing GUIDED-171 by reading the exemption before building. Two exemptions exist and the…` | **test:** `turbotab/test_the_three_unswept_payloads_are_swept.py::test_every_dark_family_here_names_a_reader_or_a_row` — L49-A2. The late sweep enumerated /features, /recipes and… |
 | `GUIDED-198` | high | Six of eighteen feature transforms are unreachable from the Guided door: the page never reads Transform.needs and never composes params, so every press 400s | `L48-B, driven on clinical_labs.csv. featPickerHTML reads row.n_inputs and renders the column selects but…` | **test:** `turbotab/test_the_transform_that_needs_a_parameter_gets_a_control_for_it.py::test_the_press_carries_the_parameter_the_row_rendered_a_control_for` — L49-B. RE-DERIVED… |
 | `GUIDED-204` | high | L48's blank-provenance block was composed, served on two routes and read by no surface on the page for a whole loop - trap #6 inside the fix for a trap #6 | `L49-C, found while wiring the general mechanism. missingness.provenance was built at L48, served on…` | **test:** `turbotab/test_every_writer_that_can_blank_a_cell_files_it.py::test_the_page_actually_renders_the_provenance_sentence` — The general lesson is the one A3 is about: a… |
 | `GUIDED-003` | medium | 'What the engine found' renders generic bulleted advice while the engine holds the specific evidence - the card does not show the flagged features, values, or rows | `ml/dataset_profile.py; turbotab/web; screenshots physiologic_check, skewed_features` | **test:** `turbotab/test_guided_drive.py::test_the_plausibility_card_shows_the_entries_it_counted` — Fixed. ml/card_evidence.py returns the entries behind a claim - row label… |
@@ -945,7 +944,7 @@ Nothing is closed without a regression test named after it.
 | `T0-PREREG-001` | medium | The pre-registration was ambiguous at an edge it did not anticipate: deferral_closes on data with nothing deferrable | `VALUE_CHECK_PREREG.md (frozen at e14af90); data/routing-value-check.json verdict block…` | **test:** `data/routing-value-check.json dual-verdict fields (the adverse reading is preserved in data)` — Process note: this is the pre-registration discipline working, not… |
 | `T0-ENV-001` | med | Missing plotting dependencies produced a misleading test baseline, not a legible gap | `requirements-dev.txt` | **test:** `requirements-dev.txt (documentation fix; no behavior to regress)` — Kept as a finding because the lesson is procedural: before adopting any failure set as a baseline… |
 
-### Migration safety net — 11
+### Migration safety net — 12
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -955,6 +954,7 @@ Nothing is closed without a regression test named after it.
 | `T0-BUILD-005` | high | The routing harness diagnosed without a target while the API diagnosed with one, so it measured a door that no longer existed - and a composition change in the inventory moves no metric, so nothing… | `tests/integration/test_routing_value_check.py _run_guided; tests/integration/test_routing_baseline.py…` | **test:** `tests/integration/test_routing_baseline.py::test_both_doors_are_scored_against_one_inventory` — Found at L9c while implementing the target-question ruling. Both halves… |
 | `TEST-040` | high | Four job-polling sites spin a bounded loop with NO WAIT and then assert status == done, so under machine load the suite reports a timing fact as an app fact - and the turbotab/ pass count stops being… | `measured at the L42 adjudication: a full turbotab/ run on the accepted tree returned 1 failed, 1422 passed…` | **test:** `turbotab/test_a_job_is_waited_for_against_a_clock.py::test_no_test_polls_a_job_by_counting_iterations` — CLOSED AT L43-A4 BY POLLING AGAINST A CLOCK.… |
 | `TEST-042` | high | None of the five pre-commit gates parses Python, so a file that does not compile commits green - and the guards that read source as TEXT keep passing over it | `L43-B committed an IndentationError in ml/eda_actions.py and all five gates passed it: ledger schema…` | **test:** `turbotab/test_the_sixth_gate_reads_python_as_python.py::test_it_refuses_a_deliberately_broken_file` — FOUND BY THE LOOP AGENT AND REPORTED AS ITS FIRST DIVERGENCE, and… |
+| `TEST-048` | high | pageharness's document.querySelector returns null for selectors that DO match the markup, so setMap was a total no-op under the harness for the whole life of the analysis map | `L48-B. turbotab/pageharness.py:431 querySelector returns null unconditionally and querySelectorAll returns…` | **test:** `turbotab/test_the_harness_answers_about_elements_that_exist.py::test_the_selector_finds_the_dots_that_made_this_necessary AND… |
 | `TEST-050` | high | pageharness.matches evaluated as it parsed and broke on the first failing token, so its own selector-parser guard fired on selectors it understands - a second defect inside TEST-048, unreachable… | `L49-A1. matches() consumed tokens in the same loop that evaluated them and broke on the first token that did…` | **test:** `turbotab/test_the_harness_answers_about_elements_that_exist.py::test_a_multi_token_selector_does_not_throw_on_a_non_match AND… |
 | `TEST-051` | high | pageharness.__emit wrote through process.stdout.write in an exit handler, so no answer above the 64 KB pipe buffer could be reported at all - and it surfaced as a JSON decode error, blaming the page… | `L49-B, found because a render grew. stdout on a pipe is asynchronous and process.exit discards what has not…` | **test:** `turbotab/test_the_harness_does_not_truncate_what_it_emits.py::test_a_long_list_arrives_with_every_entry` — sibling-of: TEST-048. THE PROBE CORRECTED THE AGENT AND IT IS… |
 | `GUIDED-100` | medium | The propagation probe itself: for each recorded decision kind, two projects identical except for that answer, and something downstream must differ | `turbotab/test_a_recorded_decision_changes_something.py; 41 kinds recorded, 23 probed (24 flips), 6 asserted…` | **test:** `turbotab/test_a_recorded_decision_changes_something.py::test_a_decision_about_the_analysis_reaches_the_fitted_pipeline` — BUILT AT L35-E as the instrument that would… |

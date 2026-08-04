@@ -74,8 +74,14 @@ STEPS = ("data", "target", "eda", "features", "preprocess", "train",
 TARGETS = {"clinic_visits.csv": "outcome",           # two-level string
            "metabolomics_untargeted.csv": "bmi"}     # continuous
 
+# `interview?step=preprocess` joined the list at L49-D: `renderPreprocessPlan`
+# fetches it so the two skippable families `GUIDED-192` names have a surface.
+# A route the render asks for and this helper does not answer is read as an
+# EMPTY body, which is the false-negative the guard below exists to catch —
+# and it caught it, on the merge rather than a loop later.
 _PATHS = ("interview?step=data", "interview?step=explore",
-          "interview?step=features", "capabilities", "features", "recipes",
+          "interview?step=features", "interview?step=preprocess",
+          "capabilities", "features", "recipes",
           "preprocess", "figures", "draft", "manuscript", "models", "training",
           "instability", "explain", "sensitivity", "evidence/plausibility",
           "evidence/missingness")

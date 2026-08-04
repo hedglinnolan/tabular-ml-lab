@@ -351,7 +351,13 @@ def test_the_picker_says_which_value_becomes_one_for_every_feature_offered():
 
     program = "\n".join([
         _page_function("esc"), _page_function("atControlSlot"),
-        _page_function("miniTable"), "var PICKED = {};", renderer,
+        _page_function("miniTable"),
+        # `RG_PICKED` since L49-E: `var PICKED` was declared TWICE in one
+        # scope — the training shelf and this picker sharing one binding
+        # (`GUIDED-200`) — and the bulk-repair one was renamed. A lifted
+        # function carries its free variables with it or it is a
+        # `ReferenceError`, which is what this list is for.
+        "var RG_PICKED = {};", renderer,
         "process.stdout.write(repairGroupPanel(" + _json.dumps(group) + "));"])
     with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False,
                                      encoding="utf-8") as handle:

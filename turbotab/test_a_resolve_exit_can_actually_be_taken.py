@@ -229,16 +229,28 @@ def test_the_sweep_names_every_resolve_exit_and_what_it_can_do(capsys):
     `LOOP.md` §10: a sweep that reports only what it fixed has not reported its
     coverage. Five resolve exits, two fixed, three named with reasons.
     """
-    import re
-
     from turbotab import clinical, exits, grain, missingness, packs, purpose
 
-    src = {name: Path(mod.__file__).read_text(encoding="utf-8")
-           for name, mod in (("grain", grain), ("packs", packs),
-                             ("clinical", clinical), ("purpose", purpose),
-                             ("missingness", missingness))}
-    found = sum(len(re.findall(r'"kind":\s*"resolve"', text))
-                for text in src.values())
+    # COUNTED AS COMPOSED OBJECTS, NOT AS A SOURCE PATTERN — and the change is
+    # `TEST-048`'s lesson at a much smaller scale. This counted
+    # `"kind": "resolve"` with a regex over five modules, which is a grep
+    # answering *does this text appear* when the question is *how many resolve
+    # exits does this app compose* (trap #5). L49-E moved two of them from
+    # literal dicts to `exits.revise()` calls and the count dropped from five
+    # to three with nothing about the app having changed — a sweep reporting a
+    # refactor as a disappearance.
+    composed = [("grain._RESOLVE", grain._RESOLVE),
+                ("packs._LENS_RESOLVE", packs._LENS_RESOLVE),
+                ("purpose.INDICATOR_EXITS[0]", purpose.INDICATOR_EXITS[0]),
+                ("clinical.substitution_blocker",
+                 [e for e in clinical.substitution_blocker("hs_crp", 0.19)["exits"]
+                  if e["kind"] == exits.RESOLVE][0]),
+                ("missingness.blocker_exits",
+                 [e for e in missingness.blocker_exits("categorical")
+                  if e["kind"] == exits.RESOLVE][0])]
+    for where, row in composed:
+        assert row["kind"] == exits.RESOLVE, where
+    found = len(composed)
 
     with capsys.disabled():
         print("\n  ── L48-E · every resolve exit in the app ──")
@@ -255,13 +267,23 @@ def test_the_sweep_names_every_resolve_exit_and_what_it_can_do(capsys):
         f"{found} resolve exits are composed and {len(RESOLVE_EXITS)} are "
         f"named here. A sweep whose list has drifted from the code is worse "
         f"than no list")
+    assert {w for w, _ in composed} == set(RESOLVE_EXITS), (
+        "the composed exits and the named ones are the same COUNT and not the "
+        "same SET, which is the drift this assertion was meant to catch "
+        "passing on arithmetic")
     # The two revise-shaped ones are asserted as they are, so that giving one a
     # payload without revisiting this table fails here rather than silently.
     assert not grain._RESOLVE.get("retry"), (
-        "grain's revise exit now carries a retry — the REVISE row above is "
-        "stale and the page's disabled rule has to be revisited with it")
+        "grain's revise exit now carries a retry — a revise exit is not a "
+        "request, and inventing one would re-post what was just refused")
     assert not packs._LENS_RESOLVE.get("retry")
-    # And the predicate whose premise this contradicts.
+    # L49-E: both now describe how they ARE taken, which is what let the page
+    # stop greying them out. `GUIDED-184`.
+    for where, row in composed:
+        if not (row.get("retry") or {}).get("payload"):
+            assert (row.get("takes") or {}).get("action") or \
+                   where == "clinical.substitution_blocker", (
+                f"{where} carries neither a retry payload nor a described "
+                f"action, so `showRefusal` renders it disabled")
     assert exits.is_actionable(grain._RESOLVE), (
-        "`is_actionable` says a resolve exit needs nothing, which is the "
-        "premise the page stopped holding when it started reading `retry`")
+        "`is_actionable` and the page disagree again about the same exit")
