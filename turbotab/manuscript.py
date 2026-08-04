@@ -79,6 +79,7 @@ as agreement.
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional
 
 from turbotab import draft as _draft
@@ -590,6 +591,241 @@ def promoted_without_companion(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
     return out
 
 
+# ══ `GUIDED-179` · A CHECK THAT CANNOT RUN SAYS WHICH QUANTITY IS MISSING ══
+#
+# `AGENT_ONBOARD.md` §00 gives the app three branches: it may assert truly, it
+# may be **silent**, and it may **refuse**. *"Expected analysis N=None, abstract
+# N=None, study design N=None"* is a **FOURTH**, and nobody authorized it. It is
+# not silence — a sentence is on the screen. It is not an assertion — `None`
+# claims nothing. It is not a refusal — it does not say what is missing or why.
+# It is a Python repr rendered to a researcher, and the researcher's only
+# available reading is *the app is broken*.
+#
+# The vocabulary for the third branch already exists here and is not reinvented.
+# `figures.NOT_ESTIMABLE` (`figures.py:430`) is this project's token for a
+# number **not shown because there is not one**, and `figure_specs.py:171-178`
+# pairs it with a `why` naming the cause. The closing sentence below is borrowed
+# verbatim from `figures._ABSENT` (`figures.py:432-434`) so the checklist and the
+# annotation box say the absence in one voice.
+
+#: `label=None` inside a validator `Detail`. The label is the quantity's own
+#: name in the check's words, and the char class excludes `,` so a detail
+#: carrying three of them yields three labels rather than one greedy run.
+_MISSING_VALUE_RE = re.compile(
+    r"(?P<label>[A-Za-z][A-Za-z0-9 _:'()-]*?)\s*=\s*"
+    r"(?P<value>None|nan|NaN|NaT)(?![A-Za-z0-9_])")
+
+#: The validator's label, lowercased → (what a researcher would call it, and
+#: WHO was supposed to supply it). Three kinds, because they have three
+#: different causes and an author can act on only one of them:
+#:
+#: - `app` — a number `_counts` builds from the run or the lockbox.
+#: - `prose` — a number the validator reads back out of the drafted manuscript.
+#: - `unheld` — a key of Classic's export context that Guided's `_counts` never
+#:   writes at all (`ml/latex_report.py:111-113` supplies both of these). Saying
+#:   *the manuscript states none* about one of those would be false: nothing
+#:   asked the manuscript for it.
+#:
+#: Collapsing the three would tell an author their draft is silent when the
+#: truth is that nothing was fitted. An unknown label keeps its own name rather
+#: than being renamed by a guess.
+_QUANTITY_NAMES = {
+    "expected analysis n": ("the analysis population", "app"),
+    "analysis_total": ("the analysis population", "app"),
+    "abstract n": ("the N stated in the abstract", "prose"),
+    "study design n": ("the N stated in Study Design", "prose"),
+    "expected predictors": ("the final predictor count", "app"),
+    "abstract": ("the predictor count stated in the abstract", "prose"),
+    "predictor section": (
+        "the predictor count stated in Predictor Variables", "prose"),
+    "table 1 overall n": ("Table 1's overall N", "app"),
+    "best_metric_name": ("the metric the model was selected on", "unheld"),
+    "manuscript_primary_model": ("the model named as primary", "unheld"),
+}
+
+#: WHY the number is absent. Which one is true is read off the document rather
+#: than assumed: `_counts` returns an empty `population_counts` both when there
+#: is no run AND when a run recorded no split, and those are not one sentence.
+_NO_RUN_CAUSE = ("no model has been fitted in this project and its sealed "
+                 "lockbox carries no row total")
+_RUN_CAUSE = "the fitted run did not record it"
+_PROSE_CAUSE = "the drafted manuscript states no such number"
+_UNHELD_CAUSE = ("nothing in this project's manuscript context records one — "
+                 "it is a field the Classic export door supplies and this door "
+                 "does not")
+
+#: Borrowed verbatim from `figures._ABSENT`. One voice for one absence.
+_RENDER_IS_NOT_THE_FAULT = (
+    "A number is not shown because there is not one, rather than because it "
+    "failed to render.")
+
+#: THE MECHANISM, SAID TO THE AUTHOR. `validate` takes `table1` as its own
+#: parameter, independent of `run` (`manuscript.py:594-602`, `:646`), and
+#: `api.get_manuscript` builds it from `project.working_table` rather than from
+#: a fitted model. So Table 1 knows its N on a project that has never been
+#: trained while `_counts` has none — one side of the comparison exists and the
+#: other does not, and a reviewer reading `N=None` beside `N=288` would conclude
+#: the app lost a number it never had.
+_TABLE1_ASYMMETRY = (
+    "Table 1 itself was built and describes {n:,} rows: it is generated from "
+    "this project's working table, not from a run, which is why one side of "
+    "this comparison exists and the other does not.")
+
+
+def _and_list(items: List[str]) -> str:
+    """`a`, `a and b`, `a, b and c`. No serial comma — the rest of this file
+    does not use one."""
+    if len(items) <= 1:
+        return items[0] if items else ""
+    return f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def _rows_that_say_what_is_missing(rows: List[Dict[str, Any]],
+                                   doc: Dict[str, Any],
+                                   table1: Optional[Any]
+                                   ) -> List[Dict[str, Any]]:
+    """Rewrite every `Detail` carrying a `None` into a sentence.
+
+    **The check's own words and every real number it found are kept.** Each
+    `label=None` becomes `label not estimable`, so *"Expected analysis N=None,
+    Table 1 overall N=288"* keeps the 288 — that number is the informative half
+    and a scrub that dropped it would trade one silence for another. The WHY is
+    appended, naming the quantities in a researcher's words and the cause in the
+    app's.
+
+    Applied to PASS rows too, and the lead sentence differs. A passing check
+    that mentions an absent quantity **did run and did pass** — *"selection
+    metric language matches task type"* passes because no invalid metric term
+    appears, not because a metric exists — so it gets the absence without the
+    claim. Saying *this check has nothing to compare* over a PASS would be the
+    fourth branch again with better grammar.
+    """
+    from turbotab.figures import NOT_ESTIMABLE
+
+    run = doc.get("run")
+    table1_n = None
+    if table1 is not None:
+        # No `or []` — a pandas Index has no truth value, and the validator's
+        # own `_extract_table1_overall_n` iterates it exactly this way.
+        for column in getattr(table1, "columns", []):
+            match = re.search(r"Overall\s+\(N=([\d,]+)\)", str(column))
+            if match:
+                table1_n = int(match.group(1).replace(",", ""))
+                break
+
+    out: List[Dict[str, Any]] = []
+    for source in rows:
+        row = dict(source)
+        detail = str(row.get("Detail") or "")
+        found = list(_MISSING_VALUE_RE.finditer(detail))
+        row["missing_quantities"] = []
+        row["cannot_run"] = False
+        if not found:
+            out.append(row)
+            continue
+
+        names: List[str] = []
+        kinds = set()
+        for match in found:
+            label = match.group("label").strip()
+            name, kind = _QUANTITY_NAMES.get(label.lower(), (label, "app"))
+            if name not in names:
+                names.append(name)
+            kinds.add(kind)
+
+        rewritten = _MISSING_VALUE_RE.sub(
+            lambda m: f"{m.group('label').strip()} {NOT_ESTIMABLE}", detail)
+
+        causes: List[str] = []
+        if "app" in kinds:
+            # A run that recorded no split is a different failure from no run at
+            # all, and the author can act on only one of them.
+            causes.append(_NO_RUN_CAUSE if not run else _RUN_CAUSE)
+        if "prose" in kinds:
+            causes.append(_PROSE_CAUSE)
+        if "unheld" in kinds:
+            causes.append(_UNHELD_CAUSE)
+
+        cannot_run = row.get("Status") == "FAIL"
+        verb = "is" if len(names) == 1 else "are"
+        body = (f"{_and_list(names)} {verb} {NOT_ESTIMABLE}, because "
+                f"{', and because '.join(causes)}.")
+        sentence = (f"This check has nothing to compare: {body}" if cannot_run
+                    # A PASS row opens the sentence itself, so the quantity name
+                    # is capitalized rather than arriving mid-sentence after a
+                    # full stop.
+                    else body[:1].upper() + body[1:])
+        parts = [rewritten.rstrip(), sentence]
+        if row.get("Location") == "Table 1" and table1_n is not None:
+            parts.append(_TABLE1_ASYMMETRY.format(n=table1_n))
+        parts.append(_RENDER_IS_NOT_THE_FAULT)
+
+        row["Detail"] = " ".join(p for p in parts if p)
+        row["missing_quantities"] = names
+        row["cannot_run"] = cannot_run
+        out.append(row)
+    return out
+
+
+def _checklist_counts(rows: List[Dict[str, Any]],
+                      unsourced: List[Dict[str, Any]],
+                      promoted: List[Dict[str, Any]],
+                      orphaned: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """**The header and the list count different populations, and both are
+    right.** `GUIDED-179`, second half.
+
+    The panel's header is `rows.length + " checks, " + failed.length + " unmet"`
+    (`web/index.html:2770-2773`) and its body then renders the failed checks
+    **plus** the unsourced sections, the promoted EXPLORATORY figures and the
+    promoted figures missing a companion (`:2782-2812`). On a project with no
+    run that reads *"13 checks, 4 unmet"* above **six** items.
+
+    Neither number is wrong. 13 and 4 are exact about the validator's checks;
+    the six is exact about what a reviewer will notice. What is missing is the
+    sentence saying they are different populations — and reconciling them by
+    making the header count the list would erase a distinction this file already
+    holds deliberately: *"a section the draft cannot source is not the same as a
+    check that failed, and rendering them alike would let a structural gap read
+    as a formatting slip."*
+
+    So the payload SAYS which. It is served rather than rendered: `index.html`
+    is outside this part's edit boundary, so the panel still shows the bare
+    header and this sentence reaches no screen yet. That is a stated limit, not
+    a claim of completion.
+    """
+    failed = [r for r in rows if r.get("Status") == "FAIL"]
+    beyond = [
+        (len(unsourced), "section(s) the draft cannot source at all"),
+        (len(promoted), "promoted EXPLORATORY figure(s)"),
+        (len(orphaned), "promoted figure(s) missing a validation companion"),
+    ]
+    n_beyond = sum(n for n, _ in beyond)
+    named = [f"{n} {what}" for n, what in beyond if n]
+    if n_beyond:
+        because = (
+            f"The header counts the validator's checks and the list shows more "
+            f"than checks; both counts are right. There are {len(rows)} checks "
+            f"and {len(failed)} of them are unmet. The list shows those "
+            f"{len(failed)} and {n_beyond} further item(s) that are not "
+            f"validator checks at all: {_and_list(named)}. A section the draft "
+            f"cannot source is a structural gap the validator has no check for, "
+            f"so it is listed here and not counted there, because rendering "
+            f"them alike would let a structural gap read as a formatting slip.")
+    else:
+        because = (
+            f"The header and the list count the same {len(failed)} item(s) "
+            f"here: of {len(rows)} validator checks {len(failed)} are unmet, "
+            f"and nothing beyond the checks was found to list beside them.")
+    return {
+        "n_checks": len(rows),
+        "n_unmet_checks": len(failed),
+        "n_items_listed": len(failed) + n_beyond,
+        "n_listed_that_are_not_checks": n_beyond,
+        "header_and_list_count_the_same_population": n_beyond == 0,
+        "because": because,
+    }
+
+
 def validate(project_dict: Dict[str, Any], *,
              run: Optional[Dict[str, Any]] = None,
              figures: Optional[List[Dict[str, Any]]] = None,
@@ -644,7 +880,13 @@ def validate(project_dict: Dict[str, Any], *,
         # the state L38 named for the LaTeX checks and L39 closed.
         table1_df=table1)
 
-    rows = report.to_rows()
+    # `GUIDED-179`. THE REPR NEVER LEAVES THIS FUNCTION. `to_rows` renders the
+    # validator's details with f-strings, so an absent quantity arrives as the
+    # literal `None` — see the check composed at
+    # `ml/manuscript_validator.py:174-184`. This is the boundary that serves the
+    # checklist to a researcher, so it is the boundary that owes them a
+    # sentence; `ml/` keeps its own vocabulary for its own callers.
+    rows = _rows_that_say_what_is_missing(report.to_rows(), doc, table1)
     # THE VALIDATOR'S FAILURES ARE NOT ALL THE SAME KIND, and reporting them as
     # one list would let a structural gap read as a formatting slip. A check
     # that cannot pass because its section does not exist is separated out and
@@ -663,6 +905,10 @@ def validate(project_dict: Dict[str, Any], *,
         "n_failed_for_a_missing_section": sum(
             1 for r in rows
             if r["Status"] == "FAIL" and r["blocked_by_missing_section"]),
+        # `GUIDED-179`. WHAT THE HEADER COUNTS AND WHAT THE LIST SHOWS, and the
+        # sentence saying they are not the same population.
+        "checklist_counts": _checklist_counts(
+            rows, doc["unsourced_sections"], promoted, orphaned),
         # `GUIDED-131`. `orphaned` joins the conjunction rather than being
         # served beside a `passed: True`, which is the exact state the finding
         # was filed about: the document carried a held CONFIRMATORY figure and

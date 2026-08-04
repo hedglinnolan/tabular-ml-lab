@@ -42,6 +42,7 @@ what clause §06 asks for and is also why this module stays dependency-free.
 from __future__ import annotations
 
 import math
+import string
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
@@ -454,15 +455,106 @@ def _compute(df: pd.DataFrame, t: Transform, columns: Sequence[str],
     return t._fn(*args)
 
 
+_ABSENT = object()
+
+
+def _unfilled(template: str, fields: Dict[str, Any]) -> List[str]:
+    """The placeholders this template needs and `fields` cannot honestly fill.
+
+    In template order, deduplicated. Read with the same parser `str.format`
+    uses rather than with a regex, so `{{` escapes and any future `{n:.1f}`
+    format spec stay the formatter's business instead of drifting away from a
+    hand-written pattern.
+
+    A field supplied as `None` or as blank text counts as unfilled: rendering
+    it produces `The ratio `weight` /  was computed`, which is the same defect
+    with the braces removed.
+    """
+    out: List[str] = []
+    for _, name, _, _ in string.Formatter().parse(template):
+        if not name:                    # literal text, or a positional `{}`
+            continue
+        key = name.split(".")[0].split("[")[0]
+        value = fields.get(key, _ABSENT)
+        if (value is _ABSENT or value is None
+                or (isinstance(value, str) and not value.strip())):
+            if key not in out:
+                out.append(key)
+    return out
+
+
 def _sentence(t: Transform, columns: Sequence[str],
               params: Dict[str, Any]) -> str:
+    """The methods sentence, fully substituted — or a refusal. Never the template.
+
+    `GUIDED-175`. This was:
+
+        try: return t.sentence.format(**fields)
+        except KeyError: return t.sentence
+
+    so a transform whose parameter had not been supplied shipped its TEMPLATE.
+    The product owner drove it and read, on screen, *"`{a}` will be grouped
+    into {n_bins} clustered bins."* — and that string is the decision sentence,
+    which is the manuscript's methods line at a different level of formality.
+
+    **The class is a fourth branch nobody authorized.** The governing rule
+    gives three: the app may assert truly, it may be silent, and it may refuse.
+    Template syntax on screen is none of them — not false, not silent, not a
+    refusal, but noise where a sentence was promised. The old handler is also
+    the project's silent-degradation shape: a `except: return something of the
+    right type` that no test notices because a `str` came back.
+
+    **The second half, which is easy to miss:** a `KeyError` on `n_bins`
+    discarded the substitution of `{a}` as well, so the column the user HAD
+    chosen was thrown away with the parameter they had not. Whatever this
+    function does when it cannot compose the sentence, it does not lose what it
+    knows — the refusal below names the column.
+
+    **Option (a), refuse, is what this does**, and the refusal states which
+    parameter is outstanding. Three reasons over the alternatives:
+
+    * The refusal is the branch the rule already authorizes, and it is already
+      wired at every one of the four call sites — `preview` and `apply` and
+      `declare` all raise `FeatureRefusal` into handlers that exist
+      (`api.preview_feature`, `project.defer_feature`, `api._decision`). No new
+      sentence kind has to be rendered anywhere.
+    * This module already answers a missing parameter this way for the OTHER
+      half of the same split pair: `_compute` refuses `bin_fixed` without its
+      `edges` and `ordinal_declared` without its `order`. The deferred half
+      returning a template was the inconsistency, not the refusal.
+    * A sentence is a decision's own claim about itself. `declare` writes one
+      into the record, so any composed-anyway sentence becomes a decision the
+      user never made and has to be un-made later.
+
+    **(b), drop the clause that needs the value, was rejected as impossible for
+    one entry and untrue for three.** For `pca` the missing `{n_components}` is
+    the sentence's grammatical SUBJECT — dropping it leaves *"principal
+    components will be computed"*, which asserts an unstated number. For the
+    three binning entries dropping the token gives *"grouped into equal-sized
+    bins"*, which reads as *the app chose for you* — and `pipeline_plan` then
+    fits `n_bins=4`, so the silence would sit directly on top of an undisclosed
+    default.
+
+    **(c), return a sentence naming the outstanding parameter, was rejected as
+    the RETURN value and kept as the refusal's content.** The returned string is
+    recorded and exported; a methods line reading "the number of bins is
+    outstanding" is a decision recorded before it was made. The same words are
+    honest as a refusal, which is why they are in the message below.
+    """
     fields = {"a": str(columns[0]) if columns else "x",
               "b": str(columns[1]) if len(columns) > 1 else "",
               **{k: v for k, v in params.items()}}
-    try:
-        return t.sentence.format(**fields)
-    except KeyError:
-        return t.sentence
+    outstanding = _unfilled(t.sentence, fields)
+    if outstanding:
+        named = ", ".join(f"`{k}`" for k in outstanding)
+        on = (" on " + ", ".join(f"`{c}`" for c in columns)) if columns else ""
+        raise FeatureRefusal(
+            f"'{t.label}'{on} cannot be described yet: "
+            f"{named} {'has' if len(outstanding) == 1 else 'have'} not been "
+            f"supplied. The sentence this step writes is the methods sentence, "
+            f"so it is refused rather than shipped with the parameter still "
+            f"unfilled. Supply {named} and it reads in full.")
+    return t.sentence.format(**fields)
 
 
 def _deferred_preview(df: pd.DataFrame, t: Transform, columns: Sequence[str],
