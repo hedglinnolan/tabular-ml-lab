@@ -616,6 +616,13 @@ ACTION_CONTRACT: Dict[str, _Expected] = {
     # A read served through the decision endpoint. Records nothing on purpose.
     "eligibility_evidence":  _Expected(touches_table=False, stale=0, records=False),
     # Executed now, because they are row-local under constitution §06.
+    # `GUIDED-165`: setting a physiologically impossible entry to missing uses
+    # nothing but that row's own cell, so it executes and posts a receipt. It
+    # needed its own kind precisely because it used to be a `note`, and `note`
+    # is declared `touches_table=False` two blocks up — the contract that would
+    # have caught the defect was correct and the kind was wrong.
+    "set_impossible_missing": _Expected(touches_table=True, stale=1),
+    "keep_impossible":       _Expected(touches_table=False, stale=0),
     "add_feature":           _Expected(touches_table=True, stale=1),
     "remove_feature":        _Expected(touches_table=True, stale=1),
     "apply":                 _Expected(touches_table=True, stale=None),

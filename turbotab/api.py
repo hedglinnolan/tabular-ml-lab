@@ -691,6 +691,29 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
             raise HTTPException(400, str(exc)) from exc
         return _payload(project)
 
+    if decision.kind in ("set_impossible_missing", "keep_impossible"):
+        # `GUIDED-165`. Both of these used to post `kind="note"`, which falls
+        # through to the generic tail at the bottom of this function: it records
+        # a sentence, calls no engine function and does not `_recompute`. So the
+        # transcript said *"entries were set to missing"* and the plausibility
+        # endpoint reported the same count before and after — `AUDIT-001`'s shape
+        # at the decision layer, escalated into the manuscript by the draft.
+        #
+        # TWO KINDS RATHER THAN ONE, because with one the record could not tell
+        # them apart: both buttons posted the same `kind` and the same `subject`,
+        # and only the free-text prose differed. A consumer had to string-match a
+        # sentence to know whether a repair happened.
+        column = str(decision.payload.get("column") or decision.subject or "")
+        try:
+            if decision.kind == "set_impossible_missing":
+                project.set_impossible_missing(column)
+            else:
+                project.keep_impossible(column)
+        except ProjectError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        _recompute(project)
+        return _payload(project)
+
     if decision.kind == "route_missingness":
         from turbotab import missingness as _miss
         col = decision.payload.get("column") or decision.subject
@@ -1661,6 +1684,33 @@ async def get_grain(project_id: str) -> Dict[str, Any]:
     }
 
 
+def offer_caption(defers: bool) -> str:
+    """What an offer's preview panel says a press would do. `GUIDED-162`.
+
+    It used to say *"this is what pressing apply would do"* for a non-deferring
+    offer, **and there is no apply to press.** `data-offer-key` appears exactly
+    twice in the page — emitted on the button, read to build the preview URL —
+    and the `apply` decision is keyed to a structural finding's `fix_kind`, a
+    different mechanism entirely, on a branch `openPanel` reaches only when
+    `fix_kind` is absent or `"none"`. The caption named a control that cannot
+    exist by construction.
+
+    **The caption was wrong, not the panel.** The preview is real and computed,
+    and the shelf is never shortened — so the affordance and its content stay,
+    and the sentence stops promising a button and starts naming the exit that
+    does exist. Both branches now have the same shape: what this would do, and
+    where you take it.
+
+    Its own function because a caption asserted in one place and tested in
+    another is two strings, and the first version of the test read this module's
+    SOURCE and matched the comment explaining the old wording — which is
+    `LOOP.md` trap #5 in miniature, a grep answering the wrong question.
+    """
+    return ("preview, not applied — this one is fitted inside each training fold"
+            if defers else
+            "preview, not applied — earmark it to record it")
+
+
 @app.get("/project/{project_id}/finding/{finding_id}/offers")
 async def finding_offers(project_id: str, finding_id: str) -> Dict[str, Any]:
     """What this finding offers to DO — options and earmarks (`GUIDED-031`).
@@ -1713,8 +1763,7 @@ async def offer_preview(project_id: str, finding_id: str,
     body = {k: found[k] for k in ("key", "label", "sentence", "because",
                                   "defers", "columns", "catalogue")}
     body["applied"] = False
-    body["label_note"] = ("preview, not applied" if found["defers"]
-                          else "this is what pressing apply would do")
+    body["label_note"] = offer_caption(bool(found["defers"]))
 
     # A FEATURE binding previews through the catalogue that owns it, which
     # already draws the before/after and already refuses to fit a deferred

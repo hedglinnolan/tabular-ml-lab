@@ -1414,6 +1414,134 @@ class AnalysisProject:
             kind="route_missingness", subject=str(column),
             text=record["sentence"], payload=dict(record))
 
+    def set_impossible_missing(self, column: str) -> Decision:
+        """Set physiologically impossible entries in `column` to missing.
+
+        **`GUIDED-165`.** The card said *"Entries of `bp_di` outside the
+        impossibility band were set to missing"* and set nothing to missing: the
+        control posted a `note`, and `api.py`'s generic tail records a note and
+        calls no engine function at all. The plausibility endpoint reported 125
+        flagged before the press and 125 after. `AUDIT-001`'s shape at the
+        decision layer, and the draft escalated it into the manuscript.
+
+        **Row-local, so it executes now**, which is what constitution clause 06
+        already prescribes and what the card's own text quotes: setting an
+        impossible value to missing uses nothing but that row's own cell. The
+        shape is `route_missingness`'s, verbatim — push undo, copy, mutate,
+        reassign, mark stale, record — because that is the precedent for a
+        row-local repair in this model and a second shape would be a second
+        thing to keep true.
+
+        **THE BAND IS THE IMPOSSIBILITY BAND AND THAT IS THE WHOLE CARE HERE.**
+        `ml/preprocess_operators.PlausibilityGate` is the operator that does
+        this, and it takes bounds rather than fetching them — so it is reusable
+        and its *caller* is where the mistake lives. `ml/pipeline.py:86` builds
+        those bounds from `get_improbability_band`, the p01/p99 pair, which is
+        exactly what `get_impossibility_band`'s docstring forbids:
+
+            Returns None rather than falling back to the improbability band. A
+            missing band means the tier is unknown for that variable, and
+            answering "unknown" with the weaker bound would silently promote
+            improbable values to impossible ones and propose deleting real data.
+
+        That is `MISC-018`'s class, and shipping it at a second site would take
+        a repair that removes four entry errors and make it remove sixty-four
+        real measurements. So this reads the report the card was drawn from —
+        `ml.card_evidence.plausibility_report`, which flags against `floor` and
+        `ceiling` at `card_evidence.py:413` — rather than re-deriving a band.
+
+        Returns the recorded decision. Raises `ProjectError` when the column has
+        no impossible tier, because a repair with nothing to repair that reports
+        success is the defect this method exists to remove.
+        """
+        from ml import card_evidence as _cards
+        from ml.preprocess_operators import PlausibilityGate
+
+        name = str(column)
+        if name not in self.df.columns:
+            raise ProjectError(f"'{name}' is not a column in this table.")
+        report = _cards.plausibility_report(self.working_table)
+        block = next((b for b in report.get("impossible", [])
+                      if str(b["column"]) == name), None)
+        if block is None:
+            raise ProjectError(
+                f"No entry in '{name}' is outside the impossibility band, so "
+                f"there is nothing to set to missing. Reporting a repair that "
+                f"changed nothing is the thing this refuses to do.")
+        if block.get("whole_column_suspect"):
+            raise ProjectError(
+                f"'{name}' reads as a whole-column unit or coding problem "
+                f"rather than as entry errors, so setting individual values to "
+                f"missing would delete real data and leave the reading wrong. "
+                f"The column's reading is the question, not its outliers.")
+
+        # THE OPERATOR, WITH THE RIGHT BAND. One column, so a one-element bounds
+        # pair — `PlausibilityGate` is positional over the matrix it is handed.
+        gate = PlausibilityGate([block["low"]], [block["high"]]).fit(None)
+        before = pd.to_numeric(self.df[name], errors="coerce")
+        gated = gate.transform(before.to_numpy(dtype=float).reshape(-1, 1))[:, 0]
+        n_set = int(((~before.isna()) & pd.isna(gated)).sum())
+        if not n_set:
+            raise ProjectError(
+                f"The impossibility band for '{name}' flagged "
+                f"{block['n_flagged']} entries and setting them to missing "
+                f"changed nothing, which means the band and the report "
+                f"disagree. Refusing rather than recording a repair that did "
+                f"not happen.")
+
+        self._history.append((f"impossible::{name}", self.df))
+        out = self.df.copy()
+        out[name] = pd.Series(gated, index=self.df.index)
+        self.df = out
+        self.findings_stale = True
+        self._mark_stale(f"impossible entries in `{name}` were set to missing")
+
+        # THE COLUMN IS BACKTICKED AND THE COUNT IS IN THE PAYLOAD, and both are
+        # required rather than tidy. `devchecks.numbers_in` strips backticked
+        # spans before counting, so an unbackticked name carrying a digit —
+        # `bp_1`, `hba1c` — reads as an unsupported number and trips
+        # `a_decision_sentence_carries_a_number_its_payload_does_not`. And a
+        # count in the sentence with no count in the payload trips the same
+        # check from the other side.
+        return self.record(
+            kind="set_impossible_missing", subject=name,
+            text=(f"{n_set} entries of `{name}` outside the impossibility band "
+                  f"of {block['low']}–{block['high']} {block['unit']} were set "
+                  f"to missing."),
+            payload={"column": name, "n_set": n_set,
+                     "n_flagged": int(block["n_flagged"]),
+                     "low": block["low"], "high": block["high"],
+                     "unit": block["unit"], "tier": "impossible",
+                     "band": "impossibility"})
+
+    def keep_impossible(self, column: str) -> Decision:
+        """Record that the impossible entries in `column` stay as recorded.
+
+        The other half of `GUIDED-165`, and it needs its own kind for a reason
+        the drive made concrete: both buttons posted `kind="note"` with the same
+        `subject`, so **nothing machine-readable distinguished them** and a
+        consumer had to string-match the prose to tell "I repaired this" from "I
+        left it alone". The record is what the manuscript reads.
+
+        Touches nothing, by design and by contract — `devchecks.ACTION_CONTRACT`
+        carries it as `touches_table=False`.
+        """
+        from ml import card_evidence as _cards
+
+        name = str(column)
+        if name not in self.df.columns:
+            raise ProjectError(f"'{name}' is not a column in this table.")
+        report = _cards.plausibility_report(self.working_table)
+        block = next((b for b in report.get("impossible", [])
+                      if str(b["column"]) == name), None)
+        n_flagged = int(block["n_flagged"]) if block else 0
+        return self.record(
+            kind="keep_impossible", subject=name,
+            text=(f"{n_flagged} entries of `{name}` outside the impossibility "
+                  f"band were kept as recorded."),
+            payload={"column": name, "n_flagged": n_flagged,
+                     "tier": "impossible", "kept": True})
+
     def earmark(self, key: str, target_step: str, label: str,
                 subject: str = "") -> Decision:
         """Record a decision that lives somewhere else (`GUIDED-031`).

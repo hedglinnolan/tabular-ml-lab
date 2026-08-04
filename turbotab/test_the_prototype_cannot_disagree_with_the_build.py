@@ -72,7 +72,7 @@ def test_the_prototype_quotes_the_bound_the_build_ships(capture):
         f"{A.BOUND}. Re-run docs/turbotab/prototypes/capture_explore_stack.py.")
     assert str(A.BOUND) in [str(b) for b in capture["bounds"]], (
         f"the shipping bound {A.BOUND} is not among the bounds the page "
-        f"compares ({capture['bounds']}), so the panel labelled 'the build ships "
+        f"compares ({capture['bounds']}), so the panel labeled 'the build ships "
         f"this one' shows a partition the build does not produce")
 
 
