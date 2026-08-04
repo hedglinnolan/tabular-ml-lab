@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**292 of 775 closed.**
+**292 of 776 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 429 |
+| `OPEN` | 430 |
 | `PARTIAL` | 54 |
 | `FIXED` | 287 |
 | `NOT-A-DEFECT` | 5 |
 
 ---
 
-## OPEN — 429
+## OPEN — 430
 
 
 ### Application state / lockbox — 66
@@ -166,7 +166,7 @@ Nothing is closed without a regression test named after it.
 | `CONTRACT-067` | low | RFWrapper defines predict_proba and supports_proba twice | `models/rf.py:75-97` | Unchanged at HEAD. Behaviorally harmless because the bodies are identical, and that is exactly why it is worth recording: it is direct evidence the file was edited by paste and… |
 | `CONTRACT-068` | low | visualizations.py is already clean and can move to engine unchanged | `visualizations.py:12,53,91,129,170` | Accurate at HEAD: structurally portable as-is, and the row's own last clause is the condition - add tests BEFORE the port, not after. Two live defects in this file argue the point… |
 
-### Guided-door drive feedback — 54
+### Guided-door drive feedback — 55
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -190,6 +190,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-160` | high | DESIGN_LANGUAGE section 10 specifies four education layers and the app ships two - the side panel that teaches on the user's own columns does not exist, so its content has been pushed into the… | `RAISED BY THE PRODUCT OWNER DRIVING: `even when hovering over the blurbs explaining each one, I am not sure I…` | HIS INSTINCT AND THE SPECIFICATION AGREE, AND THE SPEC NAMED THE FAILURE MODE BY NAME BEFORE IT HAPPENED. Section 10 attaches a cognitive-load reason to each layer: layer 1 cites… |
 | `GUIDED-161` | high | `Earmark it` records the decision and nothing anywhere reads it - deferred_noticings stays empty, the Coach Ledger count stays 0, and nothing comes back at the step the card named | `REPORTED BY THE PRODUCT OWNER DRIVING A REAL NHANES EXPORT: `I decide to earmark tree models but it appears…` | THE DOCK PRINTS A PROMISE THE APP DOES NOT KEEP, and that is what makes this high rather than medium. Its copy reads `Anything you set aside waits here, and each item says which… |
 | `GUIDED-163` | high | The high-missingness panel lists median fill under `What the app can do` for a column whose missingness the app has already read as informative - a pairing missingness.blocks() returns True for, and… | `measured on the product owner's NHANES export while he drove it. meds_hbp observed values are {True: 5527…` | THE PANEL'S TWO HEADINGS ARE THE DEFECT. `What the app can do` and `Decisions that live elsewhere` sort by WHERE the decision is made and not by whether the app thinks it is a… |
+| `GUIDED-164` | high | A finding over 15 columns renders 3 plots and 5 chips with no statement of either cap - while the paged histogram browser that would show all 26 features, six at a time over five pages, already… | `REPORTED BY THE PRODUCT OWNER DRIVING: `Why show only 3 plots here? ... perhaps they would not be bad if I…` | TWO DEFECTS IN ONE CARD AND THE SECOND EXPLAINS HIS CONFUSION. The cap is the no-silent-caps rule, user-visible this time: GUIDED-133 is the same shape one surface over, where the… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
