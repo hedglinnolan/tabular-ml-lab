@@ -346,12 +346,27 @@ def test_a_nutrient_name_is_matched_exactly_and_never_by_substring():
     assert registry.match("Dietary Fibre", N.AI_ONLY) == "fiber"
     assert registry.match("DR1TFIBE", N.AI_ONLY) == "fiber"
 
-    # And the refusal follows the registry rather than the spelling: a column
-    # merely CONTAINING a name is computed, not refused.
-    result = N.prevalence_of_inadequacy("fiber_supplement_user",
-                                        basis=N.USUAL_INTAKE,
-                                        reference_kind="EAR")
-    assert result["method"] == "cut_point"
+    # And the refusal follows the registry rather than the spelling — but the
+    # CONSEQUENCE of a miss changed at L47 and this assertion changed with it.
+    #
+    # It used to read: *a column merely CONTAINING a name is computed, not
+    # refused*, and asserted `method == "cut_point"` for `fiber_supplement_user`.
+    # That was `GUIDED-170` on a column that looks less absurd than `SEQN`:
+    # computing a prevalence of inadequacy for a subject the pack holds no
+    # reference intake for is the same false claim either way, and the substring
+    # question is orthogonal to it.
+    #
+    # **The property in this test's name survives intact** — the miss must not
+    # produce fiber's AI-specific refusal, which is what a substring match would
+    # have caused. What it must produce is the subject refusal, and the two are
+    # told apart by `forbidden`.
+    with pytest.raises(N.PrevalenceRefusal) as caught:
+        N.prevalence_of_inadequacy("fiber_supplement_user",
+                                   basis=N.USUAL_INTAKE, reference_kind="EAR")
+    assert caught.value.offer["forbidden"] == "prevalence_for_a_non_nutrient", (
+        "a column merely containing 'fiber' drew fiber's own AI refusal, which "
+        "is the substring match this test exists to forbid")
+    assert "Adequate Intake" not in str(caught.value)
 
 
 def test_the_valid_case_computes_and_says_which_method():

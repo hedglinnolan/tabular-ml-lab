@@ -3239,12 +3239,19 @@
 
   var PREV_STATE = { nutrient: "", basis: "usual_intake", kind: "EAR" };
 
+  /* GUIDED-170. This offered every numeric column that was not the target, so
+     on an NHANES export it offered `SEQN` and the four survey-design columns as
+     nutrients — and `SEQN` is column zero, so it was the pre-selected default
+     and the product owner pressed Ask on it. The app answered "Prevalence of
+     inadequacy for `SEQN` is computed by the EAR cut-point method", with a
+     SETTLED badge and a resolving citation.
+
+     THE SERVER SAYS WHICH COLUMNS ARE NUTRIENTS. A page deciding that for
+     itself would hold a second copy of the rule and drift from the refusal that
+     now backs it — the dropdown and `prevalence_of_inadequacy` have to agree,
+     and the only way to guarantee that is one implementation. */
   function prevalenceColumns(){
-    var cols = [];
-    (P && P.columns ? P.columns : []).forEach(function(c){
-      if (c.dtype && /int|float/.test(c.dtype) && c.name !== P.target) cols.push(c.name);
-    });
-    return cols;
+    return (P && P.nutrient_columns) ? P.nutrient_columns.slice() : [];
   }
 
   function prevalenceControls(cols){

@@ -110,6 +110,13 @@ def _attention_stack(findings: Sequence[Dict[str, Any]],
     return _att.stack(findings, spent=_att.spent_ids(decisions))
 
 
+def _nutrient_columns(columns) -> List[str]:
+    """Deferred for the same cycle reason as every other `turbotab` import."""
+    from turbotab import nutrition as _nut
+
+    return _nut.nutrient_columns(columns)
+
+
 def _deferred_noticings(findings: Sequence[Dict[str, Any]],
                         decisions: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     """What comes back where, imported at call time for the same reason."""
@@ -2466,6 +2473,13 @@ class AnalysisProject:
             "features_settled": self.features_settled,
             "stale_downstream": list(self.stale_downstream),
             "lens": list(self.lens) if self.lens is not None else None,
+            # `GUIDED-170`. Which columns the dietary pack recognizes as a
+            # nutrient, so the prevalence dropdown offers those and nothing else.
+            # The page used to offer every numeric column that was not the
+            # target, which on an NHANES export meant `SEQN` and the four
+            # survey-design columns — and `SEQN` was column zero, so it was the
+            # pre-selected default.
+            "nutrient_columns": _nutrient_columns(self.df.columns),
             "orientation": _copy(self.orientation),
             "purpose": _copy(self.purpose),
             "grain": _copy(self.grain),

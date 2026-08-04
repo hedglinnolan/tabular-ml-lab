@@ -990,6 +990,113 @@ SKEWED_REQUIREMENT = registry.build({
     "iron": ("DR1TIRON", "DR2TIRON", "fe"),
 })
 
+# ── The subject axis: is this a nutrient at all? `GUIDED-170` ───────────────
+#
+# **The product owner selected `SEQN` from the nutrient dropdown and the app
+# answered "Prevalence of inadequacy for `SEQN` is computed by the EAR cut-point
+# method" — with a SETTLED badge, `may_preselect: true`, and a resolving
+# citation.** On the surface the entire domain-track ordering was justified by:
+# `LOOP.md` §04 put nutrition first *"because it is the one pack that forces a
+# refusal."*
+#
+# The three existing refusals are complete along the axes they know — whether
+# the nutrient has only an AI, whether the reference asked for is the RDA,
+# whether the basis is a usual-intake distribution. **None of them asks whether
+# the subject is a nutrient**, so every one of them fell through and the settled
+# tail answered.
+#
+# WHAT THIS REGISTRY IS, AND THE WEAKER CLAIM IT MAKES ON PURPOSE. It is not a
+# list of nutrients that have an EAR — that is the DRI table, it is
+# `GUIDED-067`, and it is deliberately unbuilt because those numbers must be
+# read from NASEM rather than recollected. It is a list of names **this pack
+# recognizes as a nutrient**, and the refusal says exactly that: the app does not
+# hold a reference intake for the subject. That is a statement about the app's
+# own knowledge, which is always checkable, and it is the honest form of a
+# refusal whose alternative is asserting a nutritional fact about a row
+# identifier.
+#
+# A NAME REGISTRY, not a substring list, for the reason `AI_ONLY`'s comment
+# already gives: `"iron" in "environment"` is True.
+NUTRIENT_NAMES = registry.build({
+    # The macronutrients, from `_NAME_PATTERNS` above — the same five this module
+    # already matches by role.
+    "energy": ("kcal", "calories", "kilocalories", "DR1TKCAL", "DR2TKCAL"),
+    "protein": ("DR1TPROT", "DR2TPROT"),
+    "carbohydrate": ("carbohydrates", "carbs", "DR1TCARB", "DR2TCARB"),
+    "fat": ("total fat", "DR1TTFAT", "DR2TTFAT"),
+    "alcohol": ("DR1TALCO", "DR2TALCO"),
+    # Named in `research/NUTRITION_PACK.md` §07-§08 as nutrients the pack draws
+    # or reasons about. Every one appears in that file; none is recollected.
+    "calcium": ("DR1TCALC", "DR2TCALC"),
+    "folate": ("folic acid", "DR1TFOLA", "DR2TFOLA"),
+    "magnesium": ("DR1TMAGN",),
+    "niacin": ("DR1TNIAC",),
+    "riboflavin": ("DR1TVB2",),
+    "sodium": ("DR1TSODI", "DR2TSODI"),
+    "thiamin": ("thiamine", "DR1TVB1"),
+    "vitamin a": ("retinol", "rae", "DR1TVARA"),
+    "vitamin c": ("ascorbic acid", "DR1TVC"),
+    "vitamin d": ("DR1TVD",),
+    "vitamin e": ("DR1TATOC",),
+    "zinc": ("DR1TZINC",),
+})
+
+# The columns an NHANES export carries that are NOT nutrients, so the refusal can
+# name what the subject actually is rather than only what it is not. Every one is
+# already a constant in this module — the design variables at §01 and the
+# respondent sequence number §01 names beside them — and the refusal reuses them
+# rather than growing a second list.
+RESPONDENT_ID = "SEQN"
+
+
+def nutrient_columns(columns) -> list:
+    """Which of these column names the pack recognizes as a nutrient.
+
+    `GUIDED-170`'s other half. The dropdown offered every numeric column that was
+    not the target — `prevalenceColumns()` in the page — so on an NHANES export
+    it offered `SEQN` and the four survey-design columns as nutrients, and `SEQN`
+    was column zero and therefore the pre-selected default.
+
+    Composed here rather than in the page for the reason every other
+    classification in this project is: a page deciding for itself what counts as
+    a nutrient would hold a second copy of the rule, and the copy is what drifts
+    from the refusal.
+    """
+    out = []
+    for column in (() if columns is None else columns):
+        name = str(column)
+        if (registry.match(name, NUTRIENT_NAMES)
+                or registry.match(name, AI_ONLY)
+                or registry.match(name, SKEWED_REQUIREMENT)):
+            out.append(name)
+    return out
+
+
+def _subject_kind(nutrient: str) -> str:
+    """What the app recognizes this subject as. `""` when it recognizes nothing.
+
+    Deliberately narrow: it answers only from names this module already holds, so
+    it can be specific about a survey-design column and honest about everything
+    else. It does **not** consult `identifiers.detect` — that needs a DataFrame,
+    and on the product owner's real export `SEQN` is `float64` and is NOT flagged
+    as an identifier (`DRIVE_PREREG_NHANES.md` §1). **A refusal built on
+    identifier detection would pass on every fixture in this repository and fail
+    on his file**, which is trap #4 waiting on the exact row it would flatter.
+    """
+    name = str(nutrient or "").strip()
+    lowered = name.lower()
+    if lowered == RESPONDENT_ID.lower():
+        return "a respondent identifier"
+    if name.upper() in (EXAM_WEIGHT, INTERVIEW_WEIGHT) or \
+            name.upper() in DIETARY_WEIGHTS:
+        return "a survey sampling weight"
+    if name.upper() in (STRATA, PSU):
+        return "a survey design variable"
+    if name.upper() == SURVEY_CYCLE:
+        return "the survey cycle"
+    return ""
+
+
 USUAL_INTAKE = "usual_intake"
 SINGLE_DAY = "single_day"
 NAIVE_MEAN = "naive_mean"
@@ -1043,8 +1150,39 @@ def prevalence_of_inadequacy(nutrient: str, *, basis: str,
     has a skewed requirement distribution, so the cut-point method does not
     apply and the probability approach does.
     """
+    # ── THE SUBJECT AXIS, FIRST. `GUIDED-170`. ──────────────────────────────
+    # Before any question about which reference or which basis, the one nobody
+    # asked: is this a nutrient? It runs first because "this is not a nutrient"
+    # dominates "the RDA is the wrong reference for it" — answering the second
+    # about `SEQN` would still be a nutritional claim about a row identifier.
+    #
+    # The route's basis check (`api.py`, a 400 on a malformed parameter) still
+    # fires before this, and should: a malformed request is malformed whatever
+    # its subject.
     canonical_ai = registry.match(nutrient, AI_ONLY)
     canonical_skewed = registry.match(nutrient, SKEWED_REQUIREMENT)
+    if not (canonical_ai or canonical_skewed
+            or registry.match(nutrient, NUTRIENT_NAMES)):
+        kind = _subject_kind(nutrient)
+        raise PrevalenceRefusal(
+            f"`{nutrient}` is not a nutrient this pack recognizes"
+            + (f" — it is {kind}." if kind else ".")
+            + f" A prevalence of inadequacy is the proportion of a population "
+              f"whose usual intake of a NUTRIENT falls below that nutrient's "
+              f"Estimated Average Requirement, so it needs a subject with a "
+              f"reference intake, and this app holds none for `{nutrient}`. "
+              f"Answering anyway would put a SETTLED nutritional claim on "
+              f"whatever column was selected.",
+            evidence=PREVALENCE_EVIDENCE,
+            offer={
+                "draw": "per_nutrient_distribution",
+                "label": f"The observed distribution of {nutrient}",
+                "caption_note": (
+                    "Plotted as the column it is. No reference intake is drawn "
+                    "on it and no proportion of it is called a prevalence of "
+                    "inadequacy."),
+                "forbidden": "prevalence_for_a_non_nutrient",
+            })
 
     if canonical_ai:
         raise PrevalenceRefusal(
