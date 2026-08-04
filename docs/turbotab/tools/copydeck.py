@@ -272,6 +272,45 @@ HAND: List[Dict[str, Any]] = [
          source="turbotab/attention.py",
          probe="That is a defect rather than a state"),
 
+    # ── Explore · the impossibility repair, which now happens (`GUIDED-165`) ──
+    dict(step="Explore", state="impossible entries · set to missing",
+         trigger="the repair executes row-locally on the working table. The "
+                 "sentence is the SERVER's now — it used to be composed in the "
+                 "page and asserted a repair that never ran",
+         copy="{n} entries of `{column}` outside the impossibility band of "
+              "{low}–{high} {unit} were set to missing.",
+         source="turbotab/project.py",
+         probe="outside the impossibility band "),
+    dict(step="Explore", state="impossible entries · kept as recorded",
+         trigger="its own decision kind, because both buttons used to post "
+                 "`note` with the same subject and only the prose differed",
+         copy="{n} entries of `{column}` outside the impossibility band were "
+              "kept as recorded.",
+         source="turbotab/project.py", probe="were kept as recorded"),
+
+    # ── Explore · the prevalence refusal for a non-nutrient (`GUIDED-170`) ────
+    dict(step="Explore", state="prevalence · the subject is not a nutrient",
+         trigger="`prevalence_of_inadequacy` is asked about a column the "
+                 "dietary pack does not recognize. Runs BEFORE the reference "
+                 "and basis branches: *this is not a nutrient* dominates *the "
+                 "RDA is the wrong reference for it*",
+         copy="`{name}` is not a nutrient this pack recognizes — it is a "
+              "respondent identifier. … this app holds none for `{name}`. "
+              "Answering anyway would put a SETTLED nutritional claim on "
+              "whatever column was selected.",
+         source="turbotab/nutrition.py",
+         probe="is not a nutrient this pack recognizes"),
+
+    # ── Cross-step · a response at the control (`GUIDED-167`) ────────────────
+    dict(step="Explore", state="any control · the server refused the press",
+         trigger="`setErr` or `showRefusal` with a control that carries a "
+                 "`data-ac` slot. The canonical `#upErr` still carries it — it "
+                 "is the visible sink DURING upload, and `#sub-upload` is "
+                 "`display:none` from the first render after",
+         copy="(the server's own reason, quoted — never composed here)",
+         source="turbotab/web/index.html",
+         probe="if (msg) atControl(AT_CONTROL, esc(msg), \"warn\");"),
+
     dict(step="Explore", state="trim · the label saying what it is NOT",
          trigger="every successful `trim_training_rows`; §04's two objects look "
                  "identical in a spreadsheet, so the trim says which one it is",
