@@ -353,25 +353,35 @@ def test_the_page_shows_exactly_what_the_stack_says_it_shows(
                    explore_stack=A.stack(findings))
     st = project["explore_stack"]
 
+    # IDS, NOT MARKUP. `pageharness.py`'s own docstring warns that the DOM runs
+    # to hundreds of kilobytes and the harness emits over a pipe — "the first
+    # version truncated the JSON and the sweep died on its own output". At L47
+    # the finding card grew an at-control slot, twenty-one cards crossed the
+    # line, and this test started failing with `Unterminated string` rather than
+    # with anything about the stack. The assertions only ever wanted the ids and
+    # the affordance, so only those cross.
     out = PH.run(
-        "var shut = {list: __harness.html('profList'),"
-        "            more: __harness.html('profMore'),"
-        "            rest: __harness.html('profRest'),"
+        "function ids(h){ var m, r = [], x = /<article class=\"[^\"]*\" "
+        "id=\"find-([^\"]+)\"/g; while ((m = x.exec(h || '')) !== null) "
+        "r.push(m[1]); return r; }\n"
+        "var shut = {list: ids(__harness.html('profList')),"
+        "            more: (__harness.html('profMore') || '').slice(0, 400),"
+        "            rest: ids(__harness.html('profRest')),"
         "            calls: __harness.calls().length};\n"
         "__harness.dispatch('click', __harness.target("
         "{'data-stack-more':'1','aria-expanded':'false'}));\n"
         "__emit({shut: shut,"
-        " open: {list: __harness.html('profList'),"
-        "        rest: __harness.html('profRest'),"
-        "        more: __harness.html('profMore'),"
+        " open: {list: ids(__harness.html('profList')),"
+        "        rest: ids(__harness.html('profRest')),"
+        "        more: (__harness.html('profMore') || '').slice(0, 400),"
         "        calls: __harness.calls().length}});",
         routes=_routes(run, project), search=f"?project={run['pid']}")
 
-    pushed = _CARD.findall(out["shut"]["list"] or "")
+    pushed = out["shut"]["list"]
     assert pushed == st["pushed"], (
         f"{label} @ {n}/{n_gating}: the page pushed {pushed}, the server said "
         f"{st['pushed']}")
-    assert not _CARD.findall(out["shut"]["rest"] or ""), (
+    assert not out["shut"]["rest"], (
         f"{label} @ {n}/{n_gating}: the collapsed group is in the DOM before "
         f"anyone opened it — hidden content probes as READ while no person can "
         f"see it")
@@ -390,7 +400,7 @@ def test_the_page_shows_exactly_what_the_stack_says_it_shows(
     said = re.search(r">(\d+) more", out["shut"]["more"] or "")
     assert said, (f"{label} @ {n}/{n_gating}: no count in the affordance: "
                   f"{out['shut']['more']!r}")
-    opened = _CARD.findall(out["open"]["rest"] or "")
+    opened = out["open"]["rest"]
     assert int(said.group(1)) == len(opened) == len(st["collapsed"]), (
         f"{label} @ {n}/{n_gating}: the affordance says {said.group(1)}, the "
         f"expand rendered {len(opened)}, the server collapsed "

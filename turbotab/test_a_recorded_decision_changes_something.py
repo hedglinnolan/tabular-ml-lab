@@ -156,6 +156,29 @@ ALLOWED_NO_EFFECT = {
 #: Kinds this probe could not construct a flip for, each with the reason.
 #: **A fourth count, not a silent omission.**
 NOT_CONSTRUCTED = {
+    # `GUIDED-165` L47-B2. Both halves of the impossibility decision.
+    "set_impossible_missing": (
+        "The flip this probe wants is the SAME project with one answer "
+        "changed, and the two answers here are 'set them to missing' and "
+        "'keep them' — which are two different KINDS, not two values of one "
+        "answer. That was the fix: they used to be one kind (`note`) with two "
+        "sentences, and nothing machine-readable told a repair from a refusal "
+        "to repair. WHAT IS PROBED INSTEAD, in "
+        "`test_the_impossible_entries_are_actually_set_to_missing.py`: the "
+        "endpoint the card is drawn from reports 14 flagged before the press "
+        "and 10 after, the record carries the count and the band, the "
+        "improbability band is asserted NOT to have been inherited, and the "
+        "sentence reaches the draft. Four downstream effects, driven end to "
+        "end. The effect is measured; it is the two-arm shape this probe "
+        "requires that the decision's own design does not have."),
+    "keep_impossible": (
+        "The other half, and the same reason inverted: this kind's whole "
+        "content is that NOTHING changes, and `devchecks.ACTION_CONTRACT` "
+        "declares it `touches_table=False` so that is a contract rather than "
+        "an accident. A probe demanding a flip would be demanding the defect. "
+        "`test_keeping_them_is_a_different_kind_and_touches_nothing` asserts "
+        "the table is byte-identical after it and that the record can tell it "
+        "from its sibling, which is the property that was missing."),
     # `GUIDED-143` L43-C.
     "set_time_column": (
         "The flip needs two columns that both parse as dates, and the app "

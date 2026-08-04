@@ -974,7 +974,7 @@ PREVALENCE_EVIDENCE = Evidence(
 # alias; an unrecognized name yields `None`, which is an answer.
 AI_ONLY = registry.build({
     "fiber": ("fibre", "dietary fiber", "dietary fibre", "total fiber",
-              "DR1TFIBE", "DR2TFIBE"),
+              "fiber_g", "fibre_g", "DR1TFIBE", "DR2TFIBE"),
     "potassium": ("DR1TPOTA", "DR2TPOTA", "K"),
     "vitamin k": ("vitamin_k", "phylloquinone", "DR1TVK"),
     "chromium": (),
@@ -1020,11 +1020,22 @@ SKEWED_REQUIREMENT = registry.build({
 NUTRIENT_NAMES = registry.build({
     # The macronutrients, from `_NAME_PATTERNS` above — the same five this module
     # already matches by role.
-    "energy": ("kcal", "calories", "kilocalories", "DR1TKCAL", "DR2TKCAL"),
-    "protein": ("DR1TPROT", "DR2TPROT"),
-    "carbohydrate": ("carbohydrates", "carbs", "DR1TCARB", "DR2TCARB"),
-    "fat": ("total fat", "DR1TTFAT", "DR2TTFAT"),
-    "alcohol": ("DR1TALCO", "DR2TALCO"),
+    # THE UNIT-SUFFIXED SPELLINGS ARE DECLARED ALIASES, not a substring rule.
+    # `dietary_recalls.csv` — this repository's own dietary fixture — writes
+    # `energy_kcal`, `protein_g`, `fiber_g`, `sodium_mg`, and the first version of
+    # this registry recognized none of them, so it refused a real nutrient on a
+    # shipped fixture. `test_the_page_says_what_the_record_says`'s refusal claim
+    # caught it, which is the existing suite doing exactly its job. Declared one
+    # by one rather than matched by prefix, because `"iron" in "environment"` is
+    # the hazard this whole registry exists to avoid and a prefix rule reopens
+    # it one character at a time.
+    "energy": ("kcal", "calories", "kilocalories", "energy_kcal",
+               "DR1TKCAL", "DR2TKCAL"),
+    "protein": ("protein_g", "protein_pct_kcal", "DR1TPROT", "DR2TPROT"),
+    "carbohydrate": ("carbohydrates", "carbs", "carbohydrate_g",
+                     "carbohydrate_pct_kcal", "DR1TCARB", "DR2TCARB"),
+    "fat": ("total fat", "fat_g", "fat_pct_kcal", "DR1TTFAT", "DR2TTFAT"),
+    "alcohol": ("alcohol_pct_kcal", "DR1TALCO", "DR2TALCO"),
     # Named in `research/NUTRITION_PACK.md` §07-§08 as nutrients the pack draws
     # or reasons about. Every one appears in that file; none is recollected.
     "calcium": ("DR1TCALC", "DR2TCALC"),
@@ -1032,7 +1043,7 @@ NUTRIENT_NAMES = registry.build({
     "magnesium": ("DR1TMAGN",),
     "niacin": ("DR1TNIAC",),
     "riboflavin": ("DR1TVB2",),
-    "sodium": ("DR1TSODI", "DR2TSODI"),
+    "sodium": ("sodium_mg", "DR1TSODI", "DR2TSODI"),
     "thiamin": ("thiamine", "DR1TVB1"),
     "vitamin a": ("retinol", "rae", "DR1TVARA"),
     "vitamin c": ("ascorbic acid", "DR1TVC"),

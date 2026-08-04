@@ -222,7 +222,15 @@ def test_a_deferred_option_previews_as_a_simulation_labeled_not_applied(client):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["applied"] is False
-    assert body["label_note"] == "preview, not applied"
+    # `GUIDED-162`, L47-C. This was an equality against the whole caption, and
+    # the caption grew a second clause naming where the offer GOES — because the
+    # non-deferring branch used to say "this is what pressing apply would do"
+    # and there is no apply to press. The property this test's name carries is
+    # *labeled not applied*, and that is what is asserted; the equality was
+    # pinning a sentence rather than a claim.
+    assert body["label_note"].startswith("preview, not applied"), body["label_note"]
+    assert "training fold" in body["label_note"], (
+        "a deferred option's caption no longer says where it is fitted")
 
     rows = body["preview"]["rows"]
     assert rows and rows[0]["column"] == "sbp"
