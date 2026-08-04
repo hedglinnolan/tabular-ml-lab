@@ -490,11 +490,35 @@ Five commitments, ordered. When two collide, the earlier wins.
 - **Router gating.** The coach can order questions but cannot gate them (see `TRANSITION_PLAN.md`
   §02.5). What gating is legitimate, given that pre-selection requires `high` confidence?
 
-## 09 · Revision to a stated rule
+## 09 · Revision to a stated rule — and the revision was itself revised
 
-The design language originally said *"the viewport never auto-scrolls; the user's scroll position
-is theirs."* Building the prototype proved that wrong: when a new question arrives below the fold,
-not moving is disorienting.
+**The current rule is the original one: the page never moves the viewport, under any condition.**
+`DESIGN_LANGUAGE.md` §05 is authoritative and carries the full history; `turbotab/web/index.html`
+has no nudge, `DRIVE-006` deleted it, and
+`turbotab/test_the_page_never_moves_the_viewport.py` pins it.
 
-**Revised rule:** new content is nudged into view *only when it sits below the viewport*, so the
-page never yanks a user who has scrolled up to read. The prototype implements the revision.
+**This section said otherwise until L47**, and it said so in the present tense — *"new content is
+nudged into view only when it sits below the viewport… The prototype implements the revision"* —
+while the app deliberately had no nudge at all and three green tests held it that way. Nothing in
+the repository resolved the disagreement: there was no supersession note in either direction. Two
+loops reasoned from the wrong one, `GUIDED-173`'s note among them.
+
+**The three positions, kept because the middle one is the part that generalizes:**
+
+1. *The viewport never auto-scrolls; the user's scroll position is theirs.*
+2. *New content is nudged into view only when it sits below the viewport.* Adopted after the
+   prototype, where a section held two or three cards, so "below the viewport" meant "the next
+   card" and the nudge landed on the thing that had just appeared.
+3. **Back to (1), with no condition.** `metabolomics_untargeted.csv` produces nine structural
+   findings, and revealing the Explore section scrolled the user *past the card they were reading*,
+   every time.
+
+**Why (2) failed is the lesson, and it is not "the threshold was wrong."** The revised rule had a
+**size-dependent condition** in it, so it was correct at one dataset size and incorrect at another,
+and **nothing in the interface could tell which one it was in.** Prefer a rule with no free
+parameter over a rule with a tuned one — and treat a lesson learned on synthetic data as a
+hypothesis until a real dataset has seen it.
+
+**What replaces the nudge is `DESIGN_LANGUAGE.md` §05's placement rule, ruled at L47**: a response
+to a press renders **at the control**. That has no free parameter either — where the button is does
+not move when the data does.

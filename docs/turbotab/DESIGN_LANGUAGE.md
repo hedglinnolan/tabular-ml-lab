@@ -115,8 +115,47 @@ disclosure.
 5. **Nothing else moves.** No ambient animation, no hover theatrics beyond elevation, and
    `prefers-reduced-motion` collapses everything to instant state changes.
 
+### 05.0 · The three durations above are unsourced, and two clauses of rule 5 are misdescribed
+
+**`GUIDED-155`, from `research/INTERACTION_PACK.md` §06.1–§06.2.** Recorded here rather than in a
+ledger row alone, because this is where the numbers are and this is where the next reader will
+reach for a citation.
+
+**250 ms, 300 ms and ≤150 ms have no source.** The 200–500 ms band they sit inside is practitioner
+convention, and Nielsen Norman Group's duration recommendations cite no study for the numbers.
+**They must not be attributed to Heer & Robertson (InfoVis 2007)**, which is the citation nearest to
+hand and which **compared no two durations**: easing was constant, duration was fixed at 1.25 s in
+Experiment 1 and 2 s in Experiment 2, and the "around one second" figure the paper is usually cited
+for is imported from Robertson et al. 2002 and then revised *upward* on subject comments. Where
+duration *has* been studied on this task family the figure is around a second — three to four times
+these — and in no case is it a measured optimum.
+
+**This is not a finding that the numbers are wrong.** A 250 ms collapse of one element is not a
+1.25 s eight-element chart morph, and the tasks are not comparable. It is a finding that they are
+**unsourced**, and that the honest thing is to say so where they are specified rather than to let
+the next reader assume otherwise.
+
+**And rule 5's two accessibility clauses are misdescribed in the same direction:**
+
+- **WCAG SC 2.3.3 *Animation from Interactions* is Level AAA**, not AA. A tool asserting that WCAG
+  *requires* reduced-motion support at the level almost every project targets would be stating
+  something false. The decision may still be right; the justification is not conformance.
+- **`prefers-reduced-motion: reduce` asks for an interface that "removes *or replaces*"
+  motion-based animation.** Collapsing to instant state changes is **a conforming choice, not the
+  specified one** — a cross-fade is equally conformant. The spec's normative rationale also names
+  **two** populations, *"vestibular motion sensitivity"* and *"distraction for those with attention
+  deficits"*, and the clinical standard of care for the first is graded **exposure**, not avoidance.
+  Honor the preference because it is a preference; do not justify it as harm prevention.
+
+**Rule 3's *form* is a separate open question and is deliberately not answered here.** Propagate is
+a stagger, and staggering has no demonstrated tracking benefit in either study usually cited for it.
+Whoever takes it decides first whether Propagate is a tracking task at all — `GUIDED-155` carries
+that half and it is not scheduled.
+
 **Scroll: the page never moves the viewport.** Cards build downward and the user's scroll follows
 them. There is no condition under which the interface scrolls on the user's behalf.
+**`PRODUCT_VISION.md` §09 described the middle rule in the present tense until L47**; this section
+is authoritative and §09 now says so.
 
 **This section implies a rendering requirement, and it was measured rather than asserted.** Rule 1
 says the settle *is* the receipt that a choice was recorded. A renderer that rebuilds the page
@@ -204,17 +243,24 @@ survives with it. An object that is destroyed and replaced teaches nothing, howe
 fades.
 
 **None of the three can currently execute, and the reason is mechanical rather than aesthetic.**
-Measured on `turbotab/web/index.html` at `58bab10`:
+Measured on `turbotab/web/index.html`, **re-measured at L47** — the first column is `58bab10`, where
+this table was written, and the second is HEAD. **The repaint count has grown and the behavioral
+zeros have not moved**, which is the finding: the door keeps acquiring surfaces and none of them
+acquires a mechanism.
 
-| | |
-|---|---|
-| `innerHTML =` assignments | **92** |
-| node-owning writes (`ownChild` / `appendChild`) | **22** |
-| `startViewTransition` | **0** |
-| `getBoundingClientRect` (FLIP) | **0** |
-| `.animate()` (Web Animations) | **0** |
-| `transitionend` listeners | **0** |
-| CSS `transition:` / `@keyframes` | 15 / 3 |
+| | `58bab10` | HEAD |
+|---|---|---|
+| `innerHTML =` assignments | 92 | **106** |
+| node-owning writes (`ownChild` / `appendChild`) | 22 | **22** |
+| `startViewTransition` | 0 | **0** ¹ |
+| `getBoundingClientRect` (FLIP) | 0 | **0** |
+| `.animate()` (Web Animations) | 0 | **0** |
+| `transitionend` listeners | 0 | **0** |
+| CSS `transition:` / `@keyframes` | 15 / 3 | 15 / 3 |
+
+¹ A grep for `startViewTransition` returns **one** hit on HEAD and it is a comment added at L45
+saying the app does not use it. Zero call sites. Recorded here so the next person to grep does not
+read their own guardrail as a violation.
 
 So the app has hover-and-state motion and **no mechanism at all for animating a change of
 content.** Settle needs the answered question's node to survive its own collapse; a repaint destroys

@@ -248,10 +248,41 @@ renderers that each decline a question, a decision that records the columns but 
 detector whose repair is right and whose sentence is wrong, a blocker that fires perfectly into
 silence, a label borrowed from the analysis next door.
 
-**Fifteen findings, two critical, in roughly two hours.** Four granularities of automated sweep —
+**Twenty-four findings, two critical, in roughly two hours.** Four granularities of automated sweep —
 route, field, name, stand-in — had run over this door in the four preceding loops and found none of
 them, because not one is a thing that is *absent*. That is the connective tissue the product owner
 named as the actual product, measured for the first time by walking it.
+
+*(This line read **fifteen** until L47, and fifteen is the number of findings this narrative
+describes. `GUIDED-171` through `GUIDED-179` were filed after the last edit to this file and live
+only in the ledger; they are listed below rather than narrated, because the narrative was written
+against the drive as it happened and back-filling it would be composing a session that did not
+occur in that order. A record that names a count is a claim like any other, and this one had
+decayed — the same way the README once said "nothing here has been implemented" for months after it
+was false.)*
+
+### The nine filed after this narrative was written
+
+Ledger rows carry the full evidence; these are one line each so the count above resolves to
+something a reader can check.
+
+| Row | Sev | |
+|---|---|---|
+| `GUIDED-171` | high | The feature-engineering before/after shows only the **first** operand, so a two-input transform previews as one. |
+| `GUIDED-172` | medium | Feature engineering is a static list of formula templates with no ranking. |
+| `GUIDED-173` | high | The feature receipt renders at the bottom of a long card, below the viewport. |
+| `GUIDED-174` | medium | The working table is never on screen beside the decisions being made about it. |
+| `GUIDED-175` | high | `_sentence` falls back to the **raw template** on a missing parameter, so `{n_bins}` reaches the user — in the methods sentence. |
+| `GUIDED-176` | medium | *"Show me what it does"* renders nothing for the user-supplied cut-point branch. |
+| `GUIDED-177` | high | The feature-selection evidence table always ranks by absolute Pearson correlation whatever method was chosen. |
+| `GUIDED-178` | medium | The right panel becomes a deck of per-model before/after tables at Preprocess. |
+| `GUIDED-179` | high | The reviewer checklist renders Python `None`, and its header count disagrees with the list beneath it. |
+
+**Three of the nine are the same class as the first fifteen** — `GUIDED-171`, `GUIDED-176` and
+`GUIDED-177` are each a seam between two correct things. **Two are a class the first fifteen did not
+contain**: `GUIDED-175` and `GUIDED-179` render a value the app does not have as its Python repr,
+which is neither an assertion, nor silence, nor a refusal — **a fourth branch of the governing rule
+that nobody authorized.**
 
 **And the adjudicator was corrected twice by the drive**: once by the agent's report (`AUDIT-030`'s
 struck premise) and once by its own bad reproduction (`GUIDED-165`). Both are recorded where they
