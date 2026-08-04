@@ -2293,10 +2293,16 @@ def _clinical_columns(df: pd.DataFrame) -> List[str]:
 _MIN_BLANKS_TO_READ = 10
 
 
-_LENS_RESOLVE = {
-    "id": "revise", "kind": "resolve", "label": "Change my answer",
-    "detail": "Go back to the question and describe the table differently.",
-}
+def _lens_revise():
+    # `GUIDED-184`, same shape as `grain._RESOLVE`: a resolve exit that is not
+    # a request, so it carried no `retry` and the page greyed it out.
+    from turbotab import exits as _exits
+    return _exits.revise(
+        "Change my answer",
+        "Go back to the question and describe the table differently.")
+
+
+_LENS_RESOLVE = _lens_revise()
 
 
 def _lens_attest(what: str) -> Dict[str, Any]:

@@ -1926,7 +1926,20 @@
          blocker rendered greyed out beside a live "do it anyway", which is the
          opposite of the choice §09 intends. The condition now reads the
          payload rather than the kind, and the RESOLVE is the primary. */
-      var take = (x.retry || {}).payload;
+      /* AND A REVISE EXIT IS A WAY TO TAKE IT. `GUIDED-184`.
+         This read `retry.payload` alone, so the two resolve exits that are not
+         REQUESTS — grain's and the lens's, both meaning *go back and answer
+         differently* — had nothing to carry and rendered `disabled` beside a
+         live "continue anyway". That is §09's choice inverted, on three more
+         surfaces than `GUIDED-183` named.
+
+         The page still invents nothing: `takes.action` is the SERVER'S
+         description of how the exit is taken, built by `exits.revise`, and
+         `revise` is the one verb this page implements. An action it does not
+         recognize stays disabled, which is the same refusal as before for
+         anything the server has not described. */
+      var take = (x.retry || {}).payload ||
+                 ((x.takes || {}).action === "revise");
       h += '<button class="answer' + (take && x.kind === "resolve" ? " primary" : "") +
            '" type="button" data-refusal-i="' + i + '" data-ac="refusal"' +
            (take ? "" : " disabled") + ">" + esc(x.label || x.id) + "</button>";
@@ -5102,7 +5115,14 @@
      members is the thing that does not scale. A repair group is small by
      construction — the columns one detector claimed — and *"`sex` is binary text
      but leave it alone"* is a real and common judgment. */
-  var PICKED = {};      /* fix_kind -> finding ids selected; absent = "all" */
+  /* `GUIDED-200`. This was a SECOND `var PICKED` in the same function scope —
+     one variable, declared twice, initialized twice, shared between the
+     training shelf (model key -> selected) and the bulk-repair picker
+     (fix_kind -> finding ids). `var` redeclaration is not two bindings, so the
+     second `= {}` reset the first at load and the two features have shared a
+     namespace ever since. Benign only while no `fix_kind` matched a model key,
+     which is a property of today's data and not of the code. */
+  var RG_PICKED = {};   /* fix_kind -> finding ids selected; absent = "all" */
   var RG_OPEN = {};     /* fix_kind -> the group payload, while its panel is open */
 
   function renderRepairGroups(plan){
@@ -5136,7 +5156,7 @@
 
   function repairGroupPanel(g){
     var kind = g.fix_kind;
-    var chosen = PICKED[kind] || g.members.map(function(m){ return m.id; });
+    var chosen = RG_PICKED[kind] || g.members.map(function(m){ return m.id; });
     var ex = g.example || {};
     var first = (g.members[0] || {}).columns || [];
     var h = '<div class="pv-head"><span class="pv-title">What it does to ' +
@@ -6101,9 +6121,9 @@
     if (t.hasAttribute("data-rg-pick")){
       var pkk = t.dataset.rgPick, g0 = RG_OPEN[pkk];
       if (!g0) return;
-      var cur = PICKED[pkk] || g0.members.map(function(m){ return m.id; });
+      var cur = RG_PICKED[pkk] || g0.members.map(function(m){ return m.id; });
       var id = t.dataset.rgId, ix = cur.indexOf(id);
-      PICKED[pkk] = ix === -1 ? cur.concat([id])
+      RG_PICKED[pkk] = ix === -1 ? cur.concat([id])
                               : cur.filter(function(x){ return x !== id; });
       /* Re-rendered from the selection rather than toggled in place, for the
          same reason the advisory pager is: the Apply button's label and its
@@ -6116,7 +6136,7 @@
     if (t.hasAttribute("data-rg-apply")){
       var ak = t.dataset.rgApply, ga = RG_OPEN[ak];
       if (!ga) return;
-      var picks = PICKED[ak] || ga.members.map(function(m){ return m.id; });
+      var picks = RG_PICKED[ak] || ga.members.map(function(m){ return m.id; });
       if (!picks.length) return;
       decide("apply_bulk", ak, { findings: picks },
              "Applying it to " + picks.length + " feature(s)…");
@@ -6416,7 +6436,20 @@
     if (t.hasAttribute("data-refusal-i")){
       if (!LAST_REFUSAL) return;
       var rx = (LAST_REFUSAL.detail.exits || [])[parseInt(t.dataset.refusalI, 10)];
-      if (!rx || !(rx.retry || {}).payload) return;
+      if (!rx) return;
+      /* TAKING A REVISE EXIT IS CLEARING THE REFUSAL. `GUIDED-184`.
+         There is no request to re-post — the control that asked the question is
+         still on screen, which is what the server's own `takes.how` says — so
+         the whole action is to get the band out of the way and let the user
+         answer again. Anything more would be the page inventing a mechanism,
+         and anything less leaves a button that is enabled and does nothing,
+         which is `GUIDED-006`'s sentence. */
+      if ((rx.takes || {}).action === "revise"){
+        clearRefusal();
+        setErr("");
+        return;
+      }
+      if (!(rx.retry || {}).payload) return;
       var again = JSON.parse(JSON.stringify(LAST_REFUSAL.request));
       again.payload = Object.assign({}, again.payload || {}, rx.retry.payload);
       clearRefusal();

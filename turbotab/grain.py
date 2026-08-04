@@ -193,12 +193,18 @@ def suggestion(df: pd.DataFrame) -> Dict[str, Any]:
 #
 # Both are carried on the refusal itself so the interface cannot render one
 # without the other.
-_RESOLVE = {
-    "id": "revise",
-    "kind": "resolve",
-    "label": "Change my answer",
-    "detail": "Go back to the question and answer it differently.",
-}
+def _revise_exit():
+    # `GUIDED-184`. This was a hand-written dict with no way to be taken, so
+    # `showRefusal` — which enables on `retry.payload` — rendered the SAFE way
+    # out `disabled` beside a live attestation. `exits.revise` describes the
+    # action instead of inventing a payload for a request that does not exist.
+    from turbotab import exits as _exits
+    return _exits.revise(
+        "Change my answer",
+        "Go back to the question and answer it differently.")
+
+
+_RESOLVE = _revise_exit()
 
 
 def _attest(what: str) -> Dict[str, Any]:
