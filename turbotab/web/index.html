@@ -879,6 +879,12 @@
   .skip .again{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);
                color:var(--muted);border-radius:7px;padding:4px 10px;font-size:12px;font-weight:600}
   .skip .again:hover{border-color:var(--accent);color:var(--accent-ink)}
+  /* GUIDED-192 · a reopened question the app has no control for. `.nb` already
+     means "the server can serve this and this build cannot perform it" on an
+     answer button; this is the same meaning in a row that has no button to
+     put it on, and it takes the position the reopen affordance would have. */
+  .skip .nb{flex:0 0 auto;max-width:44%;font-size:11px;line-height:1.45;
+            color:var(--faint);text-align:right}
 
   /* ——— CHOICE: outcome-labeled, symmetric ——— */
   .choice-acts{display:flex;gap:9px;flex-wrap:wrap;align-items:center;padding:12px 14px;
@@ -1522,6 +1528,12 @@
             <details class="whyask"><summary>Why we ask</summary>
               <p class="ans" id="prepConsumer"></p></details>
             <div id="prepCols"></div>
+            <!-- GUIDED-192 · The Preprocess-step plan's own surface: the skips
+                 the Router serves here with their "Ask me anyway", and any
+                 question it is asking that no other surface on this page
+                 holds. Two of the three skippable families were served only at
+                 this step and the page never fetched it. -->
+            <div class="dnote" id="prepPlan"></div>
           </div>
         </div>
         <div id="prepReceipt"></div>
@@ -1639,6 +1651,37 @@
     return (Math.round(v * Math.pow(10, digits||2)) / Math.pow(10, digits||2)).toLocaleString();
   }
   function pct(v){ return v === null || v === undefined ? "—" : (v * 100).toFixed(1) + "%"; }
+
+  /* ═════════ A CAP THAT SAYS SO ═════════ `GUIDED-195`.
+
+     §09's recorded-absence rule, in the direction `GUIDED-164` named: **a
+     truncation nobody records reads as a complete answer.** L48 fixed two
+     `slice(0, N)` sites by hand and the sweep that found them found four more,
+     so the answer here is a helper rather than a sixth hand-written sentence —
+     a cap the page cannot draw without also stating what it capped.
+
+     BOTH BRANCHES, and the second one is not decoration. A list that was NOT
+     cut has to say it was not cut, or the reader is inferring completeness
+     from a silence and the two render identically.
+
+     BOTH COUNTS, IN THE ATTRIBUTES AS WELL AS THE PROSE. Trap 7 is the
+     machine-readable form ending up lossier than the sentence beside it, and a
+     count is data (§03) before it is a phrase. `data-cap-for` names WHICH cap,
+     because a page with six of them and one anonymous attribute pair is a
+     count nobody downstream can attribute.
+
+     WHAT IT DOES NOT DO: it does not offer the rest. Where the remainder is
+     reachable the caller says so in its own words beside this (`GUIDED-164`'s
+     gallery press is the model); where it is not, saying "and N more are not
+     shown" is the honest end of it and inventing a route to them is not this
+     helper's business. */
+  function capSaid(kind, shown, total, noun){
+    return '<span class="said" data-cap-for="' + esc(kind) +
+           '" data-cap-showing="' + shown + '" data-cap-of="' + total + '">' +
+           (total > shown
+             ? "Showing " + num(shown, 0) + " of " + num(total, 0) + " " + esc(noun)
+             : "All " + num(total, 0) + " " + esc(noun)) + "</span>";
+  }
 
   /* P is the project exactly as the API last returned it. There is no second
      copy of the analysis state in the browser — the record on the server is the
@@ -3054,13 +3097,41 @@
     h += '<p class="feat-note">' + esc(r.narrative).replace(
            /\*\*([^*]+)\*\*/g, function(_, m){
              return "<b>" + esc(m) + "</b>"; }) + "</p>";
+    /* GUIDED-195 · FIFTEEN ROWS OF A RANKING, AND NOTHING SAYING FIFTEEN.
+
+       This is the sharpest of the six silent caps and it is sharper than the
+       chip row `GUIDED-164` fixed, because of what the surface is: a table
+       headed "Permutation importance", carrying the model, the row count, the
+       shuffle count and a methods sentence, is a METHODS-SECTION FIGURE. A
+       reader who scrolls to its last row and finds fifteen columns has been
+       told, by the absence of anything saying otherwise, that fifteen columns
+       is what the ranking found — that the sixteenth column's drop was not
+       worth printing because there was no sixteenth column.
+
+       `explain.py` ranks EVERY column of the held-out design matrix, so on a
+       46-feature assay this table asserted a top-fifteen was the whole story.
+       That is the governing rule failing at the one surface whose output goes
+       into a paper.
+
+       No pager is offered because there is no per-page endpoint to reach for
+       — `/explain` serves the ranking whole — so the honest end of it is the
+       remainder counted and named as not shown. */
+    var ranked = r.ranked || [];
+    var topRows = ranked.slice(0, 15);
     h += '<table class="data"><tr><th>column</th><th>drop in the metric</th>' +
          "<th>±sd over shuffles</th></tr>";
-    (r.ranked || []).slice(0, 15).forEach(function(row){
+    topRows.forEach(function(row){
       h += "<tr><td>" + esc(row.feature) + "</td><td>" +
            num(row.importance, 4) + "</td><td>" + num(row.sd, 4) + "</td></tr>";
     });
     h += "</table>";
+    h += '<p class="feat-note">' +
+         capSaid("permutation-ranking", topRows.length, ranked.length,
+                 "columns, ordered by drop in the metric") +
+         (ranked.length > topRows.length
+           ? " The other " + num(ranked.length - topRows.length, 0) +
+             " were scored the same way and are not shown here."
+           : "") + "</p>";
     h += '<p class="feat-note">' + esc(r.methods_sentence) + "</p></div>";
     return h + shapHTML();
   }
@@ -4100,13 +4171,42 @@
       h += '<table class="data"><tr><th>row</th>';
       ins.forEach(function(c){ h += "<th>" + esc(c) + "</th>"; });
       h += "<th>" + esc(body.new_column || "after") + "</th></tr>";
-      body.rows.slice(0, 5).forEach(function(r){
+      /* GUIDED-195 · FIVE ROWS, AND THE TABLE THAT SAYS "row" ON IT.
+         The header column is literally labeled `row` and carries real index
+         labels, so five of them under a sentence describing the transform
+         reads as *this is what the transform does to your table* rather than
+         *these are five of its rows*. The server sends six (`features.preview`
+         `n=6`) and the page draws five; `n_rows` is the length of the real
+         column, which is the number the reader is actually inferring. */
+      var prevRows = body.rows.slice(0, 5);
+      prevRows.forEach(function(r){
         var vals = (r.operands && r.operands.length) ? r.operands : [r.before];
         h += "<tr><td>" + esc(r.label) + "</td>";
         ins.forEach(function(_c, i){ h += "<td>" + num(vals[i], 4) + "</td>"; });
         h += "<td>" + num(r.after, 4) + "</td></tr>";
       });
       h += "</table>";
+      /* Silence rather than a guess where the payload does not carry the
+         total: "All 5 rows" would be the app asserting a five-row table (§09,
+         and trap 9 one layer up — a wrong number where none is known).
+
+         AND THIS ONE SITE DOES NOT CALL `capSaid`, deliberately.
+         `test_a_two_column_formula_previews_both_of_its_columns.py` lifts
+         `featPreviewHTML` OUT of this file by name and runs it in node beside
+         a hand-listed `esc` and `num` — so a call to any other helper is a
+         `ReferenceError` there rather than a rendering difference here. It
+         went red exactly that way, which is worth more than the shared call:
+         the markup is the same shape and the gate reads the attribute pair,
+         and the alternative was editing a test to accommodate the page. */
+      if (typeof body.n_rows === "number")
+        h += '<p class="feat-note"><span class="said" ' +
+             'data-cap-for="preview-rows" data-cap-showing="' + prevRows.length +
+             '" data-cap-of="' + body.n_rows + '">' +
+             (body.n_rows > prevRows.length
+               ? "Showing " + num(prevRows.length, 0) + " of " +
+                 num(body.n_rows, 0) + " rows, computed on a copy"
+               : "All " + num(body.n_rows, 0) + " rows, computed on a copy") +
+             "</span></p>";
     }
     if (body.n_undefined){
       h += '<p class="feat-note">' + num(body.n_undefined, 0) + " of " +
@@ -4579,10 +4679,19 @@
             "<p>" + esc(p.sentence) + "</p>";
     var rows = p.rows || [];
     if (rows.length && p.rows_known !== false){
+      /* THE CAP STATES ITSELF, through the same helper every other cap uses.
+         This shipped in the same loop as `GUIDED-195`'s gate and the gate
+         caught it within the hour — a twelve-row list with an *"and N more"*
+         tail, which says how many are hidden and never how many there are, so
+         the two counts a reader needs were one. `capSaid` carries both, as
+         attributes and as prose (trap #7), and it is the helper rather than a
+         thirteenth hand-written sentence for the reason `GUIDED-090`, `091`
+         and `098` each cost a loop. */
+      var provShown = rows.slice(0, 12);
       h += '<p class="feat-note">Row' + (rows.length === 1 ? " " : "s ") +
-           esc(rows.slice(0, 12).join(", ")) +
-           (rows.length > 12 ? " and " + num(rows.length - 12, 0) + " more" : "") +
-           ".</p>";
+           esc(provShown.join(", ")) + ". " +
+           capSaid("blank-provenance-rows", provShown.length, rows.length,
+                   "rows named") + "</p>";
     } else if (p.n_created_by_the_app && p.rows_known === false){
       h += '<p class="feat-note">Which rows is not recorded: the pass that ' +
            "made them rebuilt the row index.</p>";
@@ -4775,17 +4884,24 @@
        was recorded" and renders nothing; an empty list would be a selector
        that kept nothing, and the two must not look alike. */
     if (r.selected_features){
-      h += '<p class="d-now">Selection kept ' + r.selected_features.length +
+      /* GUIDED-195 · THE ONE SITE OF THE SIX THAT ALREADY SAID IT IN PROSE,
+         and it is here for trap 7 rather than for the sentence. "kept 40 of
+         96 … and 28 more" is complete to a person and invisible to everything
+         downstream that reads attributes, which is the machine-readable form
+         being lossier than the words beside it. The prose is untouched. */
+      var sel = r.selected_features, selShown = sel.slice(0, 12);
+      h += '<p class="d-now">Selection kept ' + sel.length +
            " of " + esc(String(r.n_candidates)) + " candidate column(s)" +
            (r.n_passthrough
               ? ", and " + r.n_passthrough +
                 " column(s) were not offered to selection"
               : "") + ": " +
-           r.selected_features.slice(0, 12).map(function(c){
+           selShown.map(function(c){
              return '<span class="v">' + esc(c) + "</span>"; }).join(", ") +
-           (r.selected_features.length > 12
-              ? ", and " + (r.selected_features.length - 12) + " more" : "") +
-           ".</p>";
+           (sel.length > 12
+              ? ", and " + (sel.length - 12) + " more" : "") +
+           ". " + capSaid("selected-features", selShown.length, sel.length,
+                          "kept columns named here") + "</p>";
     }
     h += '<details class="snip"><summary>What was fitted (' + lines.length +
          " step" + (lines.length === 1 ? "" : "s") + ")</summary><ul>";
@@ -4960,6 +5076,16 @@
     api("/project/" + P.id + "/preprocess")
       .then(function(body){ PREP = body; renderPreprocess(); })
       .catch(function(){ /* the step is a surface, not a gate on Features */ });
+    /* GUIDED-192 · THE FETCH THAT WAS NOT BEING MADE. The Router serves two of
+       its three skippable families only at this step, and no `api()` call in
+       this file asked for it — so no surface could know those questions
+       existed, however correct every surface's own predicate was. */
+    api("/project/" + P.id + "/interview?step=preprocess")
+      .then(function(plan){
+        LAST_PREPROCESS_PLAN = plan;
+        renderPreprocessPlan(plan);
+      })
+      .catch(function(){ /* the plan is an overlay on the step, not a gate */ });
   }
 
   function renderFeatureStep(){
@@ -5626,24 +5752,140 @@
   /* A rendered skip is a muted provenance row, not a decision. Green means a
      human recorded something, and nobody recorded this (§09). Skips group so
      their density reads as machine work at a glance. */
+  /* ONE ROW BUILDER, TWO SURFACES. `GUIDED-192`. The Data step is not the only
+     step the Router serves skips at, and a second hand-written copy of this
+     markup on the Preprocess surface is two things to drift — the reason
+     `test_every_field_the_server_composes_has_a_reader` reuses `READERS`
+     rather than restating it. */
+  function skipRowHTML(q){
+    return '<div class="skip"><span class="clause"><b>' + esc(q.title) + "</b> — " +
+           esc(q.skip_reason || "") + evidenceBadge(q) + "</span>" +
+           '<button class="again" data-unskip="' + esc(q.key) + '" ' +
+           'data-ac="unskip-' + esc(q.key) + '" ' +
+           'data-unskip-title="' + esc(q.title) + '" ' +
+           'data-tip="' + esc(effectOf("unskip", null)) + '" ' +
+           'aria-label="Ask me anyway — ' + esc(effectOf("unskip", null)) +
+           '" type="button">Ask me anyway</button>' +
+           atControlSlot("unskip-" + q.key) + "</div>";
+  }
+
+  function skipsHTML(skipped){
+    return '<div class="skips"><div class="skips-lab">Not asked — settled from ' +
+           "the file</div>" + skipped.map(skipRowHTML).join("") + "</div>";
+  }
+
   function renderSkips(plan){
     var skipped = plan.questions.filter(function(q){ return q.status === "skipped"; });
     var note = $("skipNote");
     note.className = "";
     if (!skipped.length){ note.innerHTML = ""; return; }
-    note.innerHTML =
-      '<div class="skips"><div class="skips-lab">Not asked — settled from the file</div>' +
-      skipped.map(function(q){
-        return '<div class="skip"><span class="clause"><b>' + esc(q.title) + "</b> — " +
-               esc(q.skip_reason || "") + evidenceBadge(q) + "</span>" +
-               '<button class="again" data-unskip="' + esc(q.key) + '" ' +
-               'data-ac="unskip-' + esc(q.key) + '" ' +
-               'data-unskip-title="' + esc(q.title) + '" ' +
-               'data-tip="' + esc(effectOf("unskip", null)) + '" ' +
-               'aria-label="Ask me anyway — ' + esc(effectOf("unskip", null)) +
-               '" type="button">Ask me anyway</button>' +
-               atControlSlot("unskip-" + q.key) + "</div>";
-      }).join("") + "</div>";
+    note.innerHTML = skipsHTML(skipped);
+  }
+
+  /* ═════════ THE PREPROCESS-STEP PLAN, WHICH NOTHING WAS READING ═════════
+     `GUIDED-192`, and it is `GUIDED-156`'s class rather than a second instance
+     of it.
+
+     `ml/router.py` sets `status = "skipped"` at exactly three sites, producing
+     three families: `confirm_task_type`, `missingness_settled::<branch>` and
+     `missingness::<col>`. All three are matched by `handledElsewhere`, so
+     `renderAsked` refuses all three by design and each is supposed to have a
+     dedicated surface. `confirm_task_type` got one at L48. The other two are
+     served ONLY at `interview?step=preprocess`, and the page fetched
+     `step=data`, `step=explore` and `step=features` — never `preprocess`.
+
+     So for two of the three families the skip row was never drawn at all: not
+     the provenance sentence, not the badge, and not *"Ask me anyway"*. Driven
+     at L48 on `metabolomics_untargeted.csv`, the key
+     `missingness_settled::numeric::metabolomics` — one skip standing for 306
+     columns — appeared in none of `#skipNote`, `#askedQuestions` or `#missBox`
+     across 338,463 characters, before or after `unskip`. `GUIDED-041`'s claim
+     that *every rendered skip the Router serves is reopenable the day it
+     exists* was true on the wire and false in the interface.
+
+     WHAT THIS DRAWS, AND WHAT IT REFUSES TO DRAW. The skip rows, so the reopen
+     affordance exists. And, for a question the Router says is being asked that
+     NO other surface holds, a row saying it is open — with the options NOT
+     rendered as controls, because pressing one would reach
+     `if (!spec) return;` in the answer delegate and do nothing at all. That is
+     `GUIDED-006` and `DRIVE-001`: a solid-bordered button that silently no-ops
+     asserts a capability that does not exist, and is worse than a sentence
+     saying the capability is missing. The sentence is `openReasonHTML`'s, and
+     it is checked against the record rather than composed hopefully. */
+  var LAST_PREPROCESS_PLAN = { questions: [] };
+
+  /* Does some OTHER surface already hold this question? Asked of the surfaces
+     rather than re-derived from a rule — `askedInPlan`'s lesson one layer up:
+     where a condition is a second copy of a rule another component applies,
+     the two answers drift and the question renders nowhere. */
+  function drawnElsewhere(q){
+    /* `renderAsked`'s own predicate. */
+    if (q.status === "asked" && !handledElsewhere(q.key)) return true;
+    /* A dedicated section claims it by exact key — `confirm_task_type` is the
+       target card's, and it is in this plan too because the Router serves the
+       Data-step questions alongside the Preprocess ones. */
+    if (HANDLED_QUESTION_KEYS.indexOf(q.key) !== -1) return true;
+    /* `renderMissingness` holds a per-column question only where the server
+       served a card for that column. `MISS_CARDS` is what it drew from, so
+       this reads the drawn state rather than assuming the panel is complete —
+       it is not: `/evidence/missingness` served 115 cards on a project whose
+       settled block names 306 columns. */
+    if (q.key.indexOf("missingness::") === 0){
+      var col = q.key.slice("missingness::".length);
+      return MISS_CARDS.filter(function(c){ return c.column === col; }).length > 0;
+    }
+    return false;
+  }
+
+  /* WHY THIS QUESTION HAS NO CONTROL, in the app's own words and true of this
+     build. Silence would be the honest fallback and a hopeful sentence would
+     not, so the default says the least. */
+  function openReasonHTML(q){
+    if (q.key.indexOf("missingness_settled::") === 0)
+      return "Your asking is recorded. This build has no control that answers " +
+             "a settled block as one thing — nothing here, and nothing below, " +
+             "records an answer to the block itself.";
+    if (q.key.indexOf("missingness::") === 0)
+      return "The missingness panel has no card for this column in this " +
+             "build, so there is nothing on this page to answer it with.";
+    return "This build has no control that records an answer to this question.";
+  }
+
+  function openRowHTML(q){
+    return '<div class="skip" data-reopened="' + esc(q.key) + '">' +
+           '<span class="clause"><b>' + esc(q.title) + "</b> — " +
+           esc(q.why || "") + evidenceBadge(q) + "</span>" +
+           '<span class="nb">' + esc(openReasonHTML(q)) + "</span></div>";
+  }
+
+  function renderPreprocessPlan(plan){
+    var host = $("prepPlan");
+    if (!host) return;
+    /* THIS STEP'S QUESTIONS, by the Router's own `step` field rather than by a
+       rule composed here. The Preprocess plan carries the Data-step questions
+       alongside its own — `confirm_task_type` is in it, skipped, on a
+       regression target — and drawing those here would render one skip twice
+       on one page while `renderSkips` is already drawing it from
+       `LAST_DATA_PLAN`. Reading `step` avoids an ordering dependency on which
+       of the two fetches lands first, which a "is it in the other plan" test
+       would have. */
+    var qs = ((plan || {}).questions || []).filter(function(q){
+      return q.step === "preprocess";
+    });
+    /* EVERY skip at this step, unconditionally: `renderSkips` is only ever
+       called with the Data plan, so no skip served here is drawn anywhere
+       else. */
+    var skipped = qs.filter(function(q){ return q.status === "skipped"; });
+    var open = qs.filter(function(q){
+      return q.mode === "push" && q.status === "asked" && !drawnElsewhere(q);
+    });
+    if (!skipped.length && !open.length){ host.innerHTML = ""; return; }
+    host.innerHTML =
+      (skipped.length ? skipsHTML(skipped) : "") +
+      (open.length
+        ? '<div class="skips"><div class="skips-lab">Asked, because you asked ' +
+          "to be asked</div>" + open.map(openRowHTML).join("") + "</div>"
+        : "");
   }
 
   /* ═════════ THE EVIDENCE BADGE ═════════ §11, `GUIDED-047`.
@@ -5745,6 +5987,13 @@
       .then(function(body){
         var cards = body.cards || [];
         MISS_CARDS = cards;
+        /* AND THE PREPROCESS PLAN AGAIN, for the reason `renderInterview`
+           re-renders the target card: `drawnElsewhere` asks whether THIS panel
+           holds a per-column question, and the answer is only true once the
+           cards have landed. Two async fetches with no ordering between them,
+           and the one that resolves first would otherwise decide. */
+        if (LAST_PREPROCESS_PLAN.questions.length)
+          renderPreprocessPlan(LAST_PREPROCESS_PLAN);
         if (!cards.length){ box.innerHTML = ""; return; }
         box.innerHTML = cards.map(missCard).join("");
         cards.forEach(function(c){
@@ -7318,19 +7567,34 @@
       h += '<div class="pv-head" style="margin:12px 0 4px;"><span class="pv-title">' +
            "On your own rows</span></div>" +
            '<p class="sentence">' + esc(t.worked_example.sentence) + "</p>";
-    if (t.comparability)
+    if (t.comparability){
+      /* GUIDED-195 · THE ONE WITH A CAP ON TOP OF A CAP.
+         `n_varying` is the true count, `varying_columns` is ALREADY cut to
+         twelve by `turbotab/teaching.py`, and this then draws six of those.
+         So a subject whose rows differ in forty columns rendered "40 column(s)
+         differ within a subject: a b c d e f" — a number and six names, with
+         the reader left to decide whether the six ARE the forty. The row now
+         says how many of how many it named; the twelve in between is the
+         server's cut and is reported one surface over rather than papered over
+         here, because a page that claimed to know the full list would be
+         asserting something the payload cannot support. */
+      var vcols = t.comparability.varying_columns || [];
+      var vshown = vcols.slice(0, 6);
       h += '<div class="pv-head" style="margin:12px 0 4px;"><span class="pv-title">' +
            "Are these comparable?</span></div>" +
            '<p class="sentence">' + esc(t.comparability.detail) + "</p>" +
            (t.comparability.n_varying
              ? '<p class="pv-note">' + t.comparability.n_varying +
                " column(s) differ within a subject" +
-               (t.comparability.varying_columns.length
-                 ? ": " + t.comparability.varying_columns.slice(0, 6)
+               (vshown.length
+                 ? ": " + vshown
                      .map(function(c){ return '<span class="v">' + esc(c) + "</span>"; })
-                     .join(" ")
+                     .join(" ") + " · " +
+                   capSaid("varying-columns", vshown.length,
+                           t.comparability.n_varying, "named here")
                  : "") + "</p>"
              : "");
+    }
     /* The refusal, at full weight. A teaching panel that answered this would be
        the app deciding on the user's behalf. */
     h += '<div class="pv-head" style="margin:12px 0 4px;"><span class="pv-title">' +

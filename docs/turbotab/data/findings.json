@@ -10510,10 +10510,10 @@
   "detail": "",
   "ev": "L48-B, GUIDED-156's class. ml/router.py sets status='skipped' at exactly three sites (619, 1141, 1218), producing confirm_task_type, missingness_settled::<branch> and missingness::<col> - and handledElsewhere matches all three, the first exactly and the other two by prefix. But the last two are served ONLY at interview?step=preprocess, and the page fetches step=data, step=explore and step=features - never preprocess. Driven on metabolomics_untargeted.csv: missingness_settled::numeric::metabolomics appears in NONE of #skipNote, #askedQuestions or #missBox (338,463 characters) before OR after unskip. So GUIDED-041's claim that every rendered skip the Router serves is reopenable is true on the wire and false in the interface for two of three families - you cannot press 'Ask me anyway' on them because the row is never drawn.",
   "act": "A renderer for the preprocess-step plan, which is the missing consumer. GUIDED-156 fixed the family whose surface exists; these two have no surface at all.",
-  "status": "OPEN",
-  "note": "sibling-of: GUIDED-156. Held as an xfail(strict=True) at turbotab/test_ask_me_anyway_reopens_the_question.py::test_a_reopened_settled_missingness_block_renders_somewhere.",
+  "status": "FIXED",
+  "note": "L49-D. Re-derived: ml/router.py sets status='skipped' at 619, 1141 and 1218, and the page's interview?step= fetches were at 4762 (features), 5008 (data) and 5031 (explore) - no preprocess. So two of the three skippable families were served only at a step the page never asked for, and their skip row, their evidence badge and 'Ask me anyway' rendered nowhere. renderPreprocessPlan plus a fourth fetch plus #prepPlan is the missing consumer, with skipRowHTML extracted so the two skip surfaces cannot drift - which is the defect one level up from the one being fixed. DRIVEN on metabolomics_untargeted.csv, one block standing for 306 columns: before, the key appeared in none of #skipNote, #askedQuestions or #missBox; now #prepPlan draws the skip row, the affordance is present, the press posts unskip and the real server accepts it, and after the reopen the row renders carrying data-reopened. The xfail(strict=True) L48 left is removed. THE NEW SURFACE DELIBERATELY RENDERS NO OPTION BUTTONS and says why - see GUIDED-208, the reopened block cannot be answered by anything this build has, and a rendered option would be a solid button that silently no-ops. NOT COVERED: the third family, missingness::<col> AS A SKIP - no shipped fixture produces one, because a per-column skip needs a derived prior on a column no settled group covers and where a pack prior exists the priors group; and whether a person can SEE #prepPlan, which sits inside #card-preprocess and is revealed by a different fetch. Both target shapes come from one file, because it is the only fixture carrying the left-censoring prior that makes a settled block exist at all.",
   "verified_against": "",
-  "test": "",
+  "test": "turbotab/test_ask_me_anyway_reopens_the_question.py::test_a_reopened_settled_missingness_block_renders_somewhere AND ::test_a_settled_missingness_block_draws_a_skip_row_that_can_be_reopened",
   "verified_ev": "L48-B, GUIDED-156's class. ml/router.py sets status='skipped' at exactly three sites (619, 1141, 1218), producing confirm_task_type, missingness_settled::<branch> and missingness::<col> - and handledElsewhere matches all three, the first exactly and the other two by prefix. But the last two are served ONLY at interview?step=preprocess, and the page fetches step=data, step=explore and step=features - never preprocess. Driven on metabolomics_untargeted.csv: missingness_settled::numeric::metabolomics appears in NONE of #skipNote, #askedQuestions or #missBox (338,463 characters) before OR after unskip. So GUIDED-041's claim that every rendered skip the Router serves is reopenable is true on the wire and false in the interface for two of three families - you cannot press 'Ask me anyway' on them because the row is never drawn."
  },
  {
@@ -10552,10 +10552,10 @@
   "detail": "",
   "ev": "L48-B, GUIDED-164's class, swept over the whole page. Six sites: finding-card column chips cap 5 (fixed at L48), skew/outlier distribution plots cap 3 (fixed at L48), PERMUTATION-IMPORTANCE TABLE cap 15 with nothing saying how many columns were permuted, feature-preview before/after rows cap 5 with no number, selected features named cap 12 which DOES say 'kept N of M' with a remainder branch, and the teaching panel's varying columns cap 6 which prints n_varying but gives the six-name list no remainder branch. Line 2864 is the sharpest survivor: a permutation-importance table silently truncated to 15 is a methods-section claim rendering as a complete ranking.",
   "act": "Every truncated list says what it is showing out of what, in both directions, as attributes as well as prose. The selected-features site is the model - it already does it.",
-  "status": "OPEN",
-  "note": "sibling-of: GUIDED-164. This is 08 check 5 answered - what the same lens finds one surface over - and the answer was four more surfaces.",
+  "status": "FIXED",
+  "note": "L49-D. THE PROMPT'S LINE NUMBERS WERE STALE and the sites were re-derived from the file: findingCard 2155 cap 5, attachSkewPlots 2516 cap 3, explainHTML 3088 cap 15, featPreviewHTML 4004 cap 5, planRow 4676 cap 12, teachHTML 7277 cap 6. Four were silent; all six state their bound now, in data-cap-showing and data-cap-of AND in prose (trap #7), through one capSaid helper rather than a seventh hand-written sentence. The sharpest was the permutation-importance table cut at 15 with nothing said - an importance ranking that asserts a top-15 is the whole story, which is a methods claim rather than a cosmetic one. DRIVEN on two target shapes and BOTH BRANCHES of the cap: wide_assay.csv/responder ranks 45 columns and the table draws 15 under 'Showing 15 of 45 columns' plus 'The other 30 were scored the same way and are not shown here'; clinic_visits.csv/hba1c ranks 12 and reads 'All 12 columns' with no remainder sentence. GATED: 14 slice( sites enumerated from the file every run, 6 numeric caps all stating their bound, 8 exempted by name with a reason, 0 silent and 0 unclassified. THE GATE CAUGHT ITS FIRST SITE WITHIN THE HOUR, TWICE: drawnElsewhere, written for GUIDED-192 in the same worktree, came back UNCLASSIFIED on the first probe run; and prepProvHTML, written for GUIDED-191 in a DIFFERENT worktree, came back SILENT when the two were merged - a twelve-row list with an 'and N more' tail, which says how many are hidden and never how many there are. Neither is a case a hand list can see. NOT COVERED: a multiclass target (no shipped fixture has a 3+-level outcome and permutation_importance would need a different scorer), and four of the six caps are checked in the FILE rather than in a rendered DOM - planRow needs a run with a recorded selection step and teachHTML renders behind a data-teach disclosure on a repeated-measures project.",
   "verified_against": "",
-  "test": "",
+  "test": "turbotab/test_every_cap_in_a_render_path_states_its_bound.py::test_every_slice_in_the_page_states_its_bound_or_is_named",
   "verified_ev": "L48-B, GUIDED-164's class, swept over the whole page. Six sites: finding-card column chips cap 5 (fixed at L48), skew/outlier distribution plots cap 3 (fixed at L48), PERMUTATION-IMPORTANCE TABLE cap 15 with nothing saying how many columns were permuted, feature-preview before/after rows cap 5 with no number, selected features named cap 12 which DOES say 'kept N of M' with a remainder branch, and the teaching panel's varying columns cap 6 which prints n_varying but gives the six-name list no remainder branch. Line 2864 is the sharpest survivor: a permutation-importance table silently truncated to 15 is a methods-section claim rendering as a complete ranking."
  },
  {
@@ -10781,5 +10781,47 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "L49-B. Transform.needs served the bare strings edges, order, n_bins, n_components. A name is not renderable, so nothing read it, so the six controls it stood for could never be satisfied - and the suite stayed green because the SERVER was correct throughout. This is trap #1 at FIELD granularity: not a module with no caller, but a field with no possible reader. Its detector is not 'does anything import this' but 'could an interface build a control from this alone'. One surface over, answering 08 check 5: selection.declare accepts consensus_min_methods, records it in the spec, and nothing can ever send it - selection.METHODS has no consensus method and consensus_min_methods occurs zero times in index.html, while the register row feat-selection-consensus exists."
+ },
+ {
+  "id": "GUIDED-208",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "A reopened missingness_settled:: block can never be answered - no fold produces that key and the answer delegate returns early on it, so it stays asked on every render whatever the user does",
+  "detail": "",
+  "ev": "L49-D, found while building GUIDED-192's consumer and filed rather than fixed. api.py's answered fold has no case producing a missingness_settled:: key - route_missingness produces missingness::<col> and route_missingness_bulk produces missingness_bulk::<branch> - and the page's answer delegate hits 'if (!spec) return;' for a key with no ANSWERABLE entry. So pressing 'Ask me anyway' on a settled block reopens a question with no control that can close it.",
+  "act": "Either give the settled block an answerable key of its own, or have the reopen route to the per-column cards it stands for. Until then the new surface says this build has no control that answers a settled block as one thing, which is the honest form.",
+  "status": "OPEN",
+  "note": "This is why GUIDED-192's fix renders no option buttons on the new surface: a rendered option would be a solid button that silently does nothing, which is GUIDED-006 and DRIVE-001's shape. The reopen affordance is real; the answer is not built.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "L49-D, found while building GUIDED-192's consumer and filed rather than fixed. api.py's answered fold has no case producing a missingness_settled:: key - route_missingness produces missingness::<col> and route_missingness_bulk produces missingness_bulk::<branch> - and the page's answer delegate hits 'if (!spec) return;' for a key with no ANSWERABLE entry. So pressing 'Ask me anyway' on a settled block reopens a question with no control that can close it."
+ },
+ {
+  "id": "GUIDED-209",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "A server-side list cut to a literal bound before it is served, with nothing saying so - 43 payload keys, and the sharpest is in the exported manuscript",
+  "detail": "",
+  "ev": "L49-D, answering 08 check 5 by looking one surface over from GUIDED-195. An AST walk over every non-test module in turbotab/ and ml/ finds 43 payload keys whose value is cut to a literal bound before it is served; read by hand, about 19 cut a COLLECTION and about 24 truncate a string or a diagnostic. turbotab/manuscript.py:444 'top_features': ranked[:5] is GUIDED-195's exact defect IN THE ARTIFACT THAT LEAVES THE BUILDING. turbotab/teaching.py:243 and :453 cut varying_columns server-side to 6 and to 12, then the page cuts it again to 6, with only n_varying surviving whole. turbotab/api.py:233 already does it right - value[:8] + [{'_truncated': ...}] - and is the shape the rest should have.",
+  "act": "Sweep and disposition per site, because the right answer differs: a payload budget is a legitimate cut that should carry a marker, and a claim to a reader is a truncation that must state its bound. api.py:233 is the model for the first and capSaid for the second.",
+  "status": "OPEN",
+  "note": "sibling-of: GUIDED-195. Not swept in L49 because the disposition differs per site and a single rule applied to all 43 would be wrong for about half of them.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "L49-D, answering 08 check 5 by looking one surface over from GUIDED-195. An AST walk over every non-test module in turbotab/ and ml/ finds 43 payload keys whose value is cut to a literal bound before it is served; read by hand, about 19 cut a COLLECTION and about 24 truncate a string or a diagnostic. turbotab/manuscript.py:444 'top_features': ranked[:5] is GUIDED-195's exact defect IN THE ARTIFACT THAT LEAVES THE BUILDING. turbotab/teaching.py:243 and :453 cut varying_columns server-side to 6 and to 12, then the page cuts it again to 6, with only n_varying surviving whole. turbotab/api.py:233 already does it right - value[:8] + [{'_truncated': ...}] - and is the shape the rest should have."
+ },
+ {
+  "id": "GUIDED-210",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "route_missingness_bulk is a capability with no consumer - the server answers it and no attribute in the page posts it",
+  "detail": "",
+  "ev": "L49-D. project.route_missingness_bulk exists, api.py:768 handles it, L48-C drove it and gave it an ACTION_CONTRACT row - and nothing in index.html posts that kind. Trap #1 in its ordinary form, on a path that rewrites the working table over N columns at once.",
+  "act": "Route it from the settled-block surface GUIDED-192 just built, which is the natural consumer and is currently the reason GUIDED-208 exists, or file it as deliberately server-only with the reason.",
+  "status": "OPEN",
+  "note": "Found while building GUIDED-192's consumer. Related to GUIDED-208: the missing answer for a settled block and the unrouted bulk kind may be the same hole from two sides.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "L49-D. project.route_missingness_bulk exists, api.py:768 handles it, L48-C drove it and gave it an ACTION_CONTRACT row - and nothing in index.html posts that kind. Trap #1 in its ordinary form, on a path that rewrites the working table over N columns at once."
  }
 ]

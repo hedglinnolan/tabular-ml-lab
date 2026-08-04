@@ -59,11 +59,39 @@ from the confidence tier. `_skip_is_permitted` is the one place that rule lives;
 the tier test in the page was a second copy of it, and the two copies disagreeing
 is what opened the hole.
 
-**The class is bigger than this instance and is not closed here.** Every key the
-Router can serve as `status="skipped"` is also matched by `handledElsewhere` —
-three families, three of three: `confirm_task_type` (an exact key),
-`missingness_settled::` and `missingness::` (prefixes). The last test in this
-file is the strict `xfail` naming the consumer the other two still do not have.
+**The class is bigger than this instance.** Every key the Router can serve as
+`status="skipped"` is also matched by `handledElsewhere` — three families,
+three of three: `confirm_task_type` (an exact key), `missingness_settled::`
+and `missingness::` (prefixes).
+
+## `GUIDED-192` — and the two families that had no surface at all
+
+L48 closed the instance and named the class in a strict `xfail`. The class was
+worse than "the reopened question has nowhere to render": the other two
+families are served **only** at `interview?step=preprocess`, and the page
+fetched `step=data`, `step=explore` and `step=features` and never `preprocess`.
+So the skip row itself was never drawn — not the provenance sentence, not the
+evidence badge, and not *"Ask me anyway"*. There was nothing to reopen from.
+
+Re-derived rather than quoted forward: `ml/router.py` sets `status = "skipped"`
+at lines 619, 1141 and 1218, and the page's three `interview?step=` fetches
+were at lines 4762, 5008 and 5031. Driven on `metabolomics_untargeted.csv`,
+`missingness_settled::numeric::metabolomics` — one skip standing for **306
+columns** — appeared in none of `#skipNote`, `#askedQuestions` or `#missBox`.
+
+The consumer is `renderPreprocessPlan`, fed by a fourth fetch, drawing the
+step's skips through the same `skipRowHTML` the Data step uses.
+
+**And a second defect it exposes, filed rather than fixed here.** A reopened
+`missingness_settled::` block cannot be ANSWERED. `api.py`'s `answered` fold
+has no case that produces a `missingness_settled::` key — `route_missingness`
+yields `missingness::<col>` and `route_missingness_bulk` yields
+`missingness_bulk::<branch>` — so the block stays `asked` on every subsequent
+render no matter what the user does, and there is no page control for it
+either. The new surface therefore renders the question **without** option
+buttons and says why: the answer delegate's `if (!spec) return;` means a
+rendered option would be a solid control that silently does nothing, which is
+`GUIDED-006` and is worse than the sentence.
 """
 from __future__ import annotations
 
@@ -307,9 +335,16 @@ SHAPES_NOT_COVERED = (
     "A target the engine reads at LOW confidence, for the same reason: no "
     "skip, so nothing to reopen. The two runs below are both `high`, which is "
     "the only tier `_skip_is_permitted` admits.",
-    "The other two skippable families — `missingness_settled::` and "
-    "`missingness::`. They are the strict `xfail` at the bottom of this file, "
-    "not a covered case.",
+    "The third skippable family, `missingness::<col>` as a SKIP. No shipped "
+    "fixture produces one: a per-column skip needs a column carrying exactly "
+    "one derived prior that no settled GROUP already covers, and on every "
+    "fixture with a pack prior the priors group. So `renderPreprocessPlan` is "
+    "driven against `missingness_settled::` skips only, and the per-column "
+    "family is covered by the same code path rather than by an observation.",
+    "Whether a person can SEE the new Preprocess surface. It renders inside "
+    "`#card-preprocess`, which `renderPreprocess` reveals only once "
+    "`/preprocess` has answered; the plan fetch does not reveal the section "
+    "itself, and `pageharness` knows nothing about visibility either way.",
 )
 
 #: Two fixtures of different target shape (`GUIDED-097`). Both must produce
@@ -332,7 +367,8 @@ def _routes(client, pid):
     """
     out = {f"/project/{pid}": client.get(f"/project/{pid}").json()}
     for path in ("interview?step=data", "interview?step=explore",
-                 "interview?step=features", "capabilities", "features",
+                 "interview?step=features", "interview?step=preprocess",
+                 "capabilities", "features",
                  "recipes", "preprocess", "figures", "draft", "manuscript",
                  "models", "training", "instability", "explain", "sensitivity",
                  "evidence/plausibility", "evidence/missingness"):
@@ -518,50 +554,158 @@ def test_overriding_a_string_target_to_regression_refuses_rather_than_crashing()
         f"the server neither refused nor crashed; it returned {r.status_code}")
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "GUIDED-156's CLASS, which this loop did not close. Every key the Router "
-    "can serve as `status=skipped` is also matched by `handledElsewhere` — "
-    "three of three. `confirm_task_type` is fixed above; the other two "
-    "families, `missingness_settled::` and `missingness::`, are served at "
-    "step=preprocess and THE PAGE NEVER FETCHES THAT STEP. So the skip row "
-    "never renders, `Ask me anyway` never renders, and the reopened question "
-    "has no surface either. The missing consumer is named rather than left in "
-    "prose: a renderer for the preprocess-step plan."))
-def test_a_reopened_settled_missingness_block_renders_somewhere():
-    """The consumer that does not exist, named and failing (`AGENT_ONBOARD` §07.1).
+#: `GUIDED-192`'s two fixtures of different target shape (`GUIDED-097`). One
+#: file, because the settled block needs the metabolomics left-censoring prior
+#: and no second shipped fixture carries one — the shape that varies is the
+#: TARGET, which is what the rule is about. `bmi` also puts a SECOND skip
+#: (`confirm_task_type`, step `data`) into the same preprocess plan, which is
+#: the case that made the step filter necessary.
+SETTLED_FIXTURES = [
+    ("responder", "classification"),
+    ("bmi", "regression"),
+]
 
-    `test_a_pack_settled_missingness_block_is_reopenable_too` above asserts the
-    server half and is correct. This is the half it does not reach: one skip
-    standing for 306 columns, reopened, and rendered by nothing at all. Driven,
-    because *does a surface exist* is a behavior question and a grep would only
-    answer *does the string appear*.
+#: The surfaces that existed before `GUIDED-192` and drew none of this. Kept as
+#: a list so the assertions below say WHERE they looked rather than asserting
+#: against one host and calling it "nowhere".
+_HOSTS = ("skipNote", "askedQuestions", "missBox", "prepPlan")
 
-    Strict, so the day somebody builds the surface this stops passing quietly
-    and reports that the row can be closed.
-    """
-    if not H.available():
-        pytest.skip("no JS engine on this machine")
+#: Read the hosts, and emit SIZES rather than markup for all but the new one.
+#:
+#: `#missBox` holds 115 cards on this fixture and emitting it whole overflows
+#: the harness's single-line sentinel — the JSON came back unterminated and
+#: pytest reported a `JSONDecodeError`, which reads like a broken drive rather
+#: than like a test asking for too much. So each host contributes a length and
+#: a membership test, and only `#prepPlan` — the surface under test, and a
+#: couple of rows — is returned as markup.
+_READ_HOSTS = (
+    "var H = %s;\n"
+    "var seen = {}, sizes = {};\n"
+    "H.forEach(function(id){\n"
+    "  var h = __harness.html(id) || '';\n"
+    "  seen[id] = h; sizes[id] = h.length;\n"
+    "});\n"
+) % list(_HOSTS)
 
+
+def _settled_project(target):
     client = _client()
     project = _upload(client, "metabolomics_untargeted")
     pid = project["id"]
-    client.post(f"/project/{pid}/decision",
-                json={"kind": "set_target", "payload": {"column": "responder"}})
+    r = client.post(f"/project/{pid}/decision",
+                    json={"kind": "set_target", "payload": {"column": target}})
+    assert r.status_code == 200, r.text
     client.post(f"/project/{pid}/decision",
                 json={"kind": "set_lens", "payload": {"lens": ["metabolomics"]}})
     settled = [k for k in _skipped(client, pid, "preprocess")
                if k.startswith("missingness_settled::")]
-    assert settled, "no pack-settled missingness block on this fixture"
-    key = settled[0]
+    assert settled, (
+        f"no pack-settled missingness block on metabolomics_untargeted:"
+        f"{target}; the left-censoring prior is what makes this meaningful")
+    return client, pid, settled[0]
+
+
+@pytest.mark.parametrize("target,shape", SETTLED_FIXTURES,
+                         ids=["classification target", "regression target"])
+def test_a_settled_missingness_block_draws_a_skip_row_that_can_be_reopened(
+        target, shape):
+    """`GUIDED-192` · the half that came BEFORE the reopen, and was missing too.
+
+    `GUIDED-041` built *"Ask me anyway"* and `GUIDED-156` made the reopened
+    question render. Both were about a skip the user can already see. For this
+    family the skip was never drawn at all, because the only step that serves
+    it was the one step the page did not fetch — so there was no button to
+    press and the reopen path was unreachable from the interface entirely.
+
+    Driven, and the press is built from the row the page actually emitted
+    (trap #3): a hand-written `{'data-unskip': key}` would drive the
+    document-level delegate whether or not anything ever rendered the control,
+    which is the defect supplied by the fixture.
+    """
+    if not H.available():
+        pytest.skip("no JS engine on this machine")
+
+    client, pid, key = _settled_project(target)
+    assert client.get(f"/project/{pid}").json()["task_type"] == shape, (
+        f"metabolomics_untargeted:{target} is no longer read as {shape}")
+
+    out = H.run(
+        _READ_HOSTS +
+        "var K = %r;\n"
+        "var host = seen['prepPlan'];\n"
+        "var re = new RegExp('data-unskip=\"' + K.replace(/[.*+?^${}()|[\\]\\\\]/g,"
+        "                    '\\\\$&') + '\"');\n"
+        "var m = re.exec(host);\n"
+        "var posted = null;\n"
+        "if (m){\n"
+        "  __harness.dispatch('click', __harness.target(\n"
+        "    {'data-unskip': K, 'data-unskip-title': 'x'}, ['again']));\n"
+        "  var ps = __harness.posts();\n"
+        "  posted = ps.length ? ps[ps.length - 1].body : null;\n"
+        "}\n"
+        "__emit({sizes: sizes, panel: seen['prepPlan'], drew: !!m,\n"
+        "        posted: posted,\n"
+        "        steps: __harness.calls().map(function(c){ return c.path; })\n"
+        "                 .filter(function(p){ return p.indexOf('interview') !== -1; })});"
+        % key,
+        routes=_routes(client, pid), search=f"?project={pid}")
+
+    assert any("step=preprocess" in p for p in out["steps"]), (
+        "the page never asks for the preprocess-step plan, so no surface on it "
+        f"can know this skip exists: {out['steps']}")
+    assert out["drew"], (
+        f"{key} — one stated fact standing for hundreds of columns — draws no "
+        f"skip row and no reopen affordance. Host sizes: {out['sizes']}")
+    assert "Ask me anyway" in out["panel"], (
+        "the row rendered without the reopen affordance, so the skip is "
+        "visible and irreversible — which is the half of Decision B that makes "
+        "a skip permissible at all")
+    assert out["posted"], "pressing the rendered reopen sent nothing"
+    assert out["posted"]["kind"] == "unskip", (
+        f"the reopen affordance on this surface sends something other than a "
+        f"reopen: {out['posted']}")
+    assert out["posted"]["payload"]["key"] == key
+
+    # And the real server accepts exactly that body, from this surface.
+    replay = client.post(f"/project/{pid}/decision", json=out["posted"])
+    assert replay.status_code == 200, replay.text
+    assert key in _asked(client, pid, "preprocess")
+
+
+@pytest.mark.parametrize("target,shape", SETTLED_FIXTURES,
+                         ids=["classification target", "regression target"])
+def test_a_reopened_settled_missingness_block_renders_somewhere(target, shape):
+    """`GUIDED-156`'s class, closed. Driven, because *does a surface exist* is
+    a behavior question and a grep only answers *does the string appear*.
+
+    `test_a_pack_settled_missingness_block_is_reopenable_too` above asserts the
+    server half and is correct. This is the half it does not reach: one skip
+    standing for 306 columns, reopened, and — before `GUIDED-192` — rendered by
+    nothing at all.
+
+    The last assertion is the uncomfortable one and it is deliberate. The
+    reopened block gets a surface that says the question is open and that this
+    build has no control that answers it, and NO option buttons: `api.py`'s
+    `answered` fold never produces a `missingness_settled::` key, and the
+    page's answer delegate returns early for a key with no `ANSWERABLE` entry.
+    A rendered option would be a control that silently does nothing, and this
+    file exists because a reopen that looked like it worked was worse than none.
+    """
+    if not H.available():
+        pytest.skip("no JS engine on this machine")
+
+    client, pid, key = _settled_project(target)
     client.post(f"/project/{pid}/decision",
                 json={"kind": "unskip", "payload": {"key": key}})
     assert key in _asked(client, pid, "preprocess")
+    assert key not in _skipped(client, pid, "preprocess")
 
     out = H.run(
+        _READ_HOSTS +
         "var K = %r;\n"
-        "__emit({skip: (__harness.html('skipNote') || '').indexOf(K) !== -1,\n"
-        "        generic: (__harness.html('askedQuestions') || '').indexOf(K) !== -1,\n"
-        "        miss: (__harness.html('missBox') || '').indexOf(K) !== -1,\n"
+        "__emit({sizes: sizes, panel: seen['prepPlan'],\n"
+        "        anywhere: H.filter(function(id){\n"
+        "          return seen[id].indexOf(K) !== -1; }),\n"
         "        steps: __harness.calls().map(function(c){ return c.path; })\n"
         "                 .filter(function(p){ return p.indexOf('interview') !== -1; })});"
         % key,
@@ -570,5 +714,19 @@ def test_a_reopened_settled_missingness_block_renders_somewhere():
     assert any("step=preprocess" in p for p in out["steps"]), (
         "the page never asks for the preprocess-step plan, so no surface in it "
         f"can know this question exists: {out['steps']}")
-    assert out["skip"] or out["generic"] or out["miss"], (
-        f"{key} renders nowhere after the reopen")
+    assert out["anywhere"], (
+        f"{key} renders nowhere after the reopen. Host sizes: {out['sizes']}")
+
+    panel = out["panel"]
+    assert 'data-reopened="%s"' % key in panel, (
+        "the reopened question is drawn, but not as a question that is open — "
+        "so a user who pressed *Ask me anyway* sees the same page they saw "
+        f"before pressing it: {panel[:400]!r}")
+    assert "no control that answers a settled block" in panel, (
+        "the surface does not say why there is nothing to press, which leaves "
+        "a reopened question looking like a rendering bug rather than a stated "
+        f"limit: {panel[:400]!r}")
+    assert 'data-answer-key="%s"' % key not in panel, (
+        "an option control was rendered for a key the answer delegate returns "
+        "early on and the record cannot fold back — a solid button that "
+        "silently no-ops, which is `GUIDED-006` and `DRIVE-001`")
