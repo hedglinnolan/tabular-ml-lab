@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**299 of 795 closed.**
+**301 of 796 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 440 |
-| `PARTIAL` | 56 |
-| `FIXED` | 294 |
+| `PARTIAL` | 55 |
+| `FIXED` | 296 |
 | `NOT-A-DEFECT` | 5 |
 
 ---
@@ -547,7 +547,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## PARTIAL — 56
+## PARTIAL — 55
 
 
 ### Application state / lockbox — 11
@@ -566,7 +566,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-087` | invariant | reset_downstream_results is the SINGLE source of truth for downstream invalidation; any page that introduces a new result key must add it there. | `utils/session_state.py:288-291 docstring; tests/test_review_fixes.py::TestDownstreamReset::test_reset_clears_e…` | Duplicate of STATE-066 / STATE-074 from the invariant pass. The first of the row's two breakages is closed - pages/03's competing 21-key cascade is gone and an AST guard fails if… |
 | `STATE-095` | invariant | set_data distinguishes three cases: schema change (full reset), same-schema content change (results cleared, config kept), identical content (no-op) — because page 01 re-sets the same working table… | `utils/session_state.set_data:266-280 with the _raw_data_fingerprint comparison. Tests…` | The three cases are implemented and well tested - including the subtle one, that re-setting the SAME frame on every page-01 visit must not end a cohort run - and four tests cover… |
 
-### Guided-door drive feedback — 11
+### Guided-door drive feedback — 10
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -575,7 +575,6 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-053` | high | A finding whose subject is the cohort rendered an empty chip row inside a full card frame, which reads as a card that failed to load | `turbotab/web/index.html findingCard; ml/import_doctor.py:954` | **test:** `turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_a_real_fixture_already_produces_a_cohort_finding` — NOT HYPOTHETICAL: clinic_visits.csv already… |
 | `GUIDED-055` | high | The nutrition pack had structure and no content: nothing in the app could infer an energy unit or read an NHANES survey design | `research/NUTRITION_PACK.md section 01; turbotab/nutrition.py` | **test:** `turbotab/test_the_nutrition_pack_carries_real_content.py::test_the_drift_gate_runs_before_any_factor_is_proposed` — THE ATWATER RECONSTRUCTION: E_hat = 4P + 4C + 9F +… |
 | `GUIDED-122` | high | Guided builds no Table 1, so the participant-characteristics table every reporting standard in the four packs asks for is absent from the manuscript and two validator checks that read it are inert | `turbotab/manuscript.to_latex passes no table1_df; ml/manuscript_validator.py has 'Table 1 population matches…` | **test:** `turbotab/test_the_manuscript_is_checked.py::test_table_one_is_built_from_the_shared_core, ::test_table_one_carries_smds_and_no_p_values… |
-| `GUIDED-167` | high | The missingness blocker and the eligibility refusal are both correct, specific and server-side, and the user pressing the button sees nothing - the app's best behavior is its most invisible | `REPORTED BY THE PRODUCT OWNER: `it appears the app does nothing when I click those buttons, including if I…` | **test:** `turbotab/test_a_response_renders_at_the_control.py::test_a_refusal_lands_beside_the_control_that_caused_it (two fixtures of different target shape)` — REOPENED BY THE… |
 | `GUIDED-030` | medium | Four pack priors still have no consumer - GUIDED-024's defect surviving for a subset, now declared and counted rather than noticed | `turbotab/packs.py PACKS priors; test_every_prior_has_a_consumer_or_is_declared_unconsumed lists the four with…` | Four priors had no consumer at L21 and three still do. THE ONE REAL DEFECT IS FIXED as GUIDED-033: qc_rows_excluded stated at derived confidence that pooled QC rows are not… |
 | `GUIDED-052` | medium | No artifact stated whether its content may become model input, so promotion had no field to read and label-blindness was standing in for the rule | `docs/turbotab/PRODUCT_VISION.md artifact promotion; turbotab/figures.py FigureSpec` | **test:** `turbotab/test_a_figure_carries_its_checklist_and_its_companions.py::test_pca_is_promotable_and_calibration_is_not` — THE RULE IS RE-EXECUTABILITY, NOT LABEL-BLINDNESS… |
 | `GUIDED-101` | medium | The Explain step has no research backing and no parity register row: the four packs contain zero explainability content, so the one journey step left to build is the only one whose method choice… | `grep for SHAP, permutation importance, variable importance and explainab across the 3,602 lines of…` | SCOPING INSTRUCTION HONORED AT L36-B, and the row stays open because the research it asks for is still absent. WHAT WAS BUILT: permutation importance on the held-out rows via… |
@@ -668,10 +667,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 294
+## FIXED — 296
 
 
-### Guided-door drive feedback — 104
+### Guided-door drive feedback — 105
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -749,6 +748,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-149` | high | The Explore findings list is unbounded and uncapped, so making five packs visible at GUIDED-142 turned a two-card interruption budget into twenty cards on one clinical table - the wall of plots… | `turbotab/web/index.html renders the list as pf.concat(packf).map(findingCard).join('') with no cap and no…` | **test:** `turbotab/test_the_bounded_stack_holds_at_its_edges.py (64 tests: 39 partition cases x 6 bounds = 102 partitions, plus 25 page drives across three lenses) and… |
 | `GUIDED-152` | high | The Explore list was composed as two filtered views concatenated, which destroys the ranking the server computed - so on clinical_labs.csv the five least consequential findings rendered above the… | `turbotab/web/index.html rendered bySource('profile').concat(bySource('pack')) and nothing anywhere sorted.…` | **test:** `turbotab/test_the_bounded_stack_holds_at_its_edges.py::test_the_page_shows_exactly_what_the_stack_says_it_shows` — THE CLASS, not the instance: A RENDERER THAT… |
 | `GUIDED-161` | high | `Earmark it` records the decision and nothing anywhere reads it - deferred_noticings stays empty, the Coach Ledger count stays 0, and nothing comes back at the step the card named | `REPORTED BY THE PRODUCT OWNER DRIVING A REAL NHANES EXPORT: `I decide to earmark tree models but it appears…` | **test:** `turbotab/test_a_response_renders_at_the_control.py::test_an_earmark_reaches_the_dock_that_promises_to_hold_it` — ACT — THREE CONSUMERS AND ONLY ONE WORKED - the row is… |
+| `GUIDED-167` | high | The missingness blocker and the eligibility refusal are both correct, specific and server-side, and the user pressing the button sees nothing - the app's best behavior is its most invisible | `REPORTED BY THE PRODUCT OWNER: `it appears the app does nothing when I click those buttons, including if I…` | **test:** `turbotab/test_the_reopened_row_reaches_its_own_evidence.py::test_the_typed_409_lands_at_the_control_that_caused_it AND… |
 | `GUIDED-173` | high | The feature receipt renders at the bottom of a long card, below the viewport, so pressing `Add it` at the top produces nothing visible - and PRODUCT_VISION section 09's own rule says content arriving… | `REPORTED BY THE PRODUCT OWNER DRIVING: `I clicked add it on one of those options but I did not get…` | **test:** `turbotab/test_a_response_renders_at_the_control.py::test_the_feature_receipt_renders_where_the_control_was` — ACT — THE ROW'S ev AND act WERE STALE AND ITS NOTE SAID SO… |
 | `GUIDED-175` | high | _sentence falls back to the RAW TEMPLATE on a missing parameter, so unsubstituted placeholders reach the user in the decision sentence - `{a}` will be grouped into {n_bins} clustered bins - and that… | `VISIBLE IN THE PRODUCT OWNER'S SCREENSHOT and confirmed in the source. turbotab/features.py:462-465 is `try…` | **test:** `turbotab/test_a_sentence_with_a_missing_parameter_does_not_ship_its_template.py (52 cases over the whole catalogue and every door that composes a sentence)` — ACT… |
 | `GUIDED-179` | high | The reviewer checklist renders Python `None` to the user and its header count disagrees with what it lists - `13 checks, 4 unmet` above six unmet items, each reading `Expected analysis N=None… | `VISIBLE IN THE PRODUCT OWNER'S FINAL SCREENSHOT of the Report step. Under `WHAT A REVIEWER WILL NOTICE 13…` | **test:** `turbotab/test_a_check_that_cannot_run_says_which_quantity_is_missing.py (11 tests, two fixtures of different target shape)` — ACT - The vocabulary is reused, not… |
@@ -946,7 +946,7 @@ Nothing is closed without a regression test named after it.
 | `SWEEP-024` | high | INVARIANT — reconcile_pipeline_columns: drift must self-heal loudly, never crash cryptically; its sibling reconcile_state_with_df is imported but never called | `CODE_REVIEW.md 2026-07 'Backstop'; CODE_REVIEW.md C7; utils/reconcile.py` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_reconcile_leaves_a_gated_pipeline_alone_when_nothing_drifted` — Both halves closed. The dormant-reconciler half was… |
 | `SWEEP-025` | high | INVARIANT — CV strategy is bound to the SPLIT strategy, and cv_strategy/cv_groups_train are cleared WITH the split | `CODE_REVIEW.md 2026-07 'Strategy-aware cross-validation' and 'Test-set slider guardrail'…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_grouped_split_matches_the_page` — Both halves of the invariant are implemented and tested. The CV scheme is… |
 
-### Migration safety net — 8
+### Migration safety net — 9
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -958,6 +958,7 @@ Nothing is closed without a regression test named after it.
 | `TEST-042` | high | None of the five pre-commit gates parses Python, so a file that does not compile commits green - and the guards that read source as TEXT keep passing over it | `L43-B committed an IndentationError in ml/eda_actions.py and all five gates passed it: ledger schema…` | **test:** `turbotab/test_the_sixth_gate_reads_python_as_python.py::test_it_refuses_a_deliberately_broken_file` — FOUND BY THE LOOP AGENT AND REPORTED AS ITS FIRST DIVERGENCE, and… |
 | `GUIDED-100` | medium | The propagation probe itself: for each recorded decision kind, two projects identical except for that answer, and something downstream must differ | `turbotab/test_a_recorded_decision_changes_something.py; 41 kinds recorded, 23 probed (24 flips), 6 asserted…` | **test:** `turbotab/test_a_recorded_decision_changes_something.py::test_a_decision_about_the_analysis_reaches_the_fitted_pipeline` — BUILT AT L35-E as the instrument that would… |
 | `TEST-041` | medium | Four turbotab test files read figures.REGISTRY, which is populated only as an import side effect of figure_specs, and one of them asserted a count over it before anything had imported the populator… | `turbotab/figures.py:REGISTRY is an empty dict filled by turbotab/figure_specs.py's module body…` | **test:** `turbotab/test_the_registry_cannot_be_observed_empty.py::test_a_cold_import_of_figures_alone_sees_the_specs` — FOUND WHILE FIXING TEST-040 AND IT IS THE SAME PROPERTY… |
+| `TEST-046` | medium | A test docstring that names a page control its body never presses is trap #3b in its page-control form, and nothing detected it - the standing answer was to read docstrings against bodies by hand | `L48-A2. AGENT_ONBOARD.md 07 names trap #3b and the standing answer found GUIDED-145 once and nothing for five…` | **test:** `turbotab/test_a_test_that_names_a_control_presses_it.py::test_no_test_names_a_control_its_body_never_touches` — Both instances fixed rather than declared. NOT COVERED… |
 
 ### Coach to Router — 7
 

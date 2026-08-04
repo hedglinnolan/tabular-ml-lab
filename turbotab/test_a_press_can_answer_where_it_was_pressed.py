@@ -129,13 +129,37 @@ def _posters(script: str) -> List[str]:
     return sorted(set(out))
 
 
+_ELEMENT = re.compile(r"<(?:button|option|select|input|a)\b")
+
+
 def _slots(script: str) -> List[str]:
-    """Attributes that emit an at-control slot beside themselves."""
+    """Attributes emitted on an element that also carries `data-ac`.
+
+    **The derivation is per-ELEMENT, not per-window**, and that changed at L48.
+    The first version scanned 400 characters backwards from each `data-ac="` and
+    credited every `data-*` it found there — which credits a neighbour's
+    attribute to a slot that is not its own. It happened not to be wrong on the
+    page it was written against (re-measured under both readings, L47's three
+    are the same three either way, and the loose reading additionally credited
+    `data-panel`, which is not a poster and so never reached the number). But a
+    gate is about to rest on this count, and a heuristic that is right by
+    coincidence is not a gate.
+
+    Each `<button`/`<option`/`<select`/`<input`/`<a` opens a chunk that runs to
+    the next such opener or to the element's own close tag, whichever comes
+    first. Attributes inside one chunk belong to one control.
+    """
     out = set()
-    for match in re.finditer(r'data-ac="', script):
-        window = script[max(0, match.start() - 400):match.start()]
-        for attr in re.findall(r"data-[a-z-]+=", window):
-            out.add(attr.rstrip("="))
+    starts = [m.start() for m in _ELEMENT.finditer(script)]
+    for i, start in enumerate(starts):
+        end = starts[i + 1] if i + 1 < len(starts) else len(script)
+        close = script.find("</", start)
+        if close != -1 and close < end:
+            end = close
+        chunk = script[start:end]
+        attrs = set(re.findall(r"data-[a-z-]+(?==)", chunk))
+        if "data-ac" in attrs:
+            out |= attrs - {"data-ac"}
     return sorted(out)
 
 
@@ -194,6 +218,65 @@ def test_the_sweep_reports_its_own_coverage(capsys):
     assert at_control, (
         "no posting control can answer where it was pressed, so L47-C shipped "
         "nothing")
+
+
+#: Posting controls that deliberately carry no slot, each with the reason.
+#: A control listed here is a DECISION; a control silently absent is a hole.
+#: Empty today: at L48-A every posting control got one, so the gate below reads
+#: thirty of thirty. The dict stays because the next control added to the page
+#: is the one this file exists for, and *"declare it or slot it"* is the choice
+#: it should force.
+NO_SLOT_BY_DESIGN: Dict[str, str] = {}
+
+
+def test_every_posting_control_can_answer_where_it_was_pressed(capsys):
+    """L48-A1's gate. `GUIDED-167`, as an invariant rather than a number.
+
+    L47 shipped the mechanism and wired three of thirty consumers, which is trap
+    #1 — a capability ahead of its consumers — with the capability's own sweep
+    publishing the shortfall. The row was marked `FIXED` on a test that pressed
+    a finding card while the row's own evidence is a `data-miss-choose`, and the
+    adjudicator reopened it to `PARTIAL` for exactly that. This is the version
+    that cannot close on the wrong instance: **every** posting control, or a
+    named exception carrying its reason.
+
+    The count is a floor and never a ceiling — a control added next loop with no
+    slot fails here, which is the whole point of deriving the enumeration rather
+    than listing it.
+    """
+    script = _script()
+    attrs = _delegated()
+    posters = [a for a in _posters(script) if a in attrs]
+    slots = _slots(script)
+
+    missing = sorted(a for a in posters
+                     if a not in slots and a not in NO_SLOT_BY_DESIGN)
+    declared = sorted(a for a in posters if a in NO_SLOT_BY_DESIGN)
+
+    # The row's own instance, named rather than left to the aggregate. A count
+    # of thirty can be reached while the one control the finding was filed about
+    # is still missing, which is precisely how the row closed on the wrong
+    # instance last loop.
+    assert "data-miss-choose" in slots, (
+        "`data-miss-choose` still carries no slot. That is the press in "
+        "`GUIDED-167`'s own evidence, and the row was reopened for closing "
+        "without it")
+
+    with capsys.disabled():
+        print("\n  ── L48-A1 · the gate ──")
+        print(f"  posting controls                    {len(posters)}")
+        print(f"    with a slot                       "
+              f"{len([a for a in posters if a in slots])}")
+        print(f"    declared as having none           {len(declared)}")
+        for a in declared:
+            print(f"        {a:<22} {NO_SLOT_BY_DESIGN[a]}")
+        print(f"    neither                           {len(missing)}")
+
+    assert not missing, (
+        f"{len(missing)} posting control(s) can neither answer where they were "
+        f"pressed nor say why not: {missing}. Add `data-ac` and an "
+        f"`atControlSlot` beside the control, or declare it in "
+        f"NO_SLOT_BY_DESIGN with the reason.")
 
 
 def test_every_unconstructible_guard_is_really_in_the_page():

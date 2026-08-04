@@ -1823,12 +1823,16 @@
          payload rather than the kind, and the RESOLVE is the primary. */
       var take = (x.retry || {}).payload;
       h += '<button class="answer' + (take && x.kind === "resolve" ? " primary" : "") +
-           '" type="button" data-refusal-i="' + i + '"' +
+           '" type="button" data-refusal-i="' + i + '" data-ac="refusal"' +
            (take ? "" : " disabled") + ">" + esc(x.label || x.id) + "</button>";
     });
     exits.forEach(function(x){
       if (x.detail) h += '<span class="hint">' + esc(x.detail) + "</span>";
     });
+    /* The band's own slot. A retry that is itself refused would otherwise write
+       to `#upErr` — the retry is a press like any other and answers where it
+       was pressed (`GUIDED-167`). */
+    h += atControlSlot("refusal");
     h += "</div>";
     band.innerHTML = h;
     band.classList.remove("is-hidden");
@@ -1919,9 +1923,15 @@
       ? "Decide at " + f.defer_target_label
       : "Decide later";
   }
-  function deferButton(f, extraClass){
+  /* `ac` names the at-control slot this button answers into, and it defaults to
+     the finding card's own — every call site of this function is inside one, and
+     a card has exactly one slot however many of its rows can post (`GUIDED-167`).
+     A caller outside a finding card passes its own key rather than inheriting a
+     slot that is not on screen. */
+  function deferButton(f, extraClass, ac){
     return '<button class="f-act defer' + (extraClass || "") + '" data-defer="' + esc(f.id) +
-           '" data-defer-to="' + esc(f.defer_target || "") + '" type="button">' +
+           '" data-defer-to="' + esc(f.defer_target || "") + '" data-ac="' +
+           esc(ac || ("find-" + f.id)) + '" type="button">' +
            esc(deferLabel(f)) + "</button>";
   }
 
@@ -2011,7 +2021,8 @@
        hides on every render. This is the highest-traffic action row in the door
        and it had no way to answer where it was pressed. */
     h += atControlSlot("find-" + f.id);
-    h += '<button class="flag" data-flag="' + esc(f.id) + '" aria-pressed="' + (st.flagged ? "true" : "false") +
+    h += '<button class="flag" data-flag="' + esc(f.id) + '" data-ac="find-' + esc(f.id) +
+         '" aria-pressed="' + (st.flagged ? "true" : "false") +
          '" type="button">⚑ ' + (st.flagged ? "Marked" : "Mark") + ' for manuscript</button>';
     h += '</div>';
     h += '<div class="ev-slot" id="ev-' + esc(f.id) + '"></div>';
@@ -2021,7 +2032,8 @@
     if (st.dismissed){
       h += '<div class="dnote on"><span>Dismissed: <em>' + esc(f.title) +
            '</em>. Still in the record, out of your way.</span>' +
-           '<button data-undismiss="' + esc(f.id) + '" type="button">Undo</button></div>';
+           '<button data-undismiss="' + esc(f.id) + '" data-ac="find-' + esc(f.id) +
+           '" type="button">Undo</button></div>';
     }
     return h;
   }
@@ -2192,10 +2204,12 @@
            'border-radius:0 0 10px 10px;margin-top:-1px;">' +
            '<span class="said">These cannot be measurements. Setting them to missing records ' +
            'them as absent rather than as a value.</span>' +
-           '<button class="cbtn" data-impossible="' + esc(b.column) + '" type="button">' +
+           '<button class="cbtn" data-impossible="' + esc(b.column) + '" data-ac="imp-' +
+           esc(b.column) + '" type="button">' +
            'Set these entries to missing</button>' +
-           '<button class="cbtn" data-keep-impossible="' + esc(b.column) + '" type="button">' +
-           'Keep as is</button></div>';
+           '<button class="cbtn" data-keep-impossible="' + esc(b.column) + '" data-ac="imp-' +
+           esc(b.column) + '" type="button">' +
+           'Keep as is</button>' + atControlSlot("imp-" + b.column) + "</div>";
     });
     /* ═════════ ONE CARD, PAGED SIDEWAYS ═════════ `DRIVE-005`.
        Ten features with improbable values produced ten stacked blocks with no
@@ -2429,7 +2443,8 @@
          '<span class="said"></span>' +
          '<button class="f-act" data-pv-close="' + esc(f.id) + '" type="button">Close</button>' +
          deferButton(f) +
-         '<button class="f-act dismiss" data-dismiss="' + esc(f.id) + '" type="button">Dismiss</button>' +
+         '<button class="f-act dismiss" data-dismiss="' + esc(f.id) + '" data-ac="find-' +
+         esc(f.id) + '" type="button">Dismiss</button>' +
          "</div>";
     return h;
   }
@@ -2476,7 +2491,7 @@
        legitimate an answer as accepting it, and the buttons have to look it. */
     h += '<div class="choice-acts">' +
          '<span class="said">' + esc(pv.description) + " Nothing has happened yet.</span>" +
-         '<button class="cbtn" data-apply="' + esc(f.id) + '"' +
+         '<button class="cbtn" data-apply="' + esc(f.id) + '" data-ac="find-' + esc(f.id) + '"' +
          (choice ? ' data-choice="' + esc(choice) + '"' : "") + ' type="button">' +
          esc(pv.fix_label || "Apply repair") + "</button>" +
          '<button class="cbtn" data-pv-close="' + esc(f.id) + '" type="button">Keep as is</button>' +
@@ -2517,6 +2532,7 @@
     var payload = JSON.stringify((x.retry || {}).payload || null);
     var h = '<button class="stopbtn" type="button" data-exit-for="' + esc(q.key) +
             '" data-exit-i="' + i + '" data-exit-kind="' + esc(x.kind || "") +
+            '" data-ac="blk-' + esc(q.key) +
             '" data-exit-id="' + esc(x.id || "") + '" data-exit-payload="' +
             esc(payload) + '">' + esc(x.label || x.id || "Continue") + "</button>";
     if (x.detail) h += '<span class="hint">' + esc(x.detail) + "</span>";
@@ -2530,6 +2546,7 @@
         'placeholder="Type the sentence above">' +
         '<div class="row"><button class="stopbtn" data-att-send="' + id +
         '" data-exit-for="' + esc(q.key) + '" data-exit-i="' + i +
+        '" data-ac="blk-' + esc(q.key) +
         '" type="button" disabled>Record and continue</button>' +
         '<span class="hint">Pasting is fine. Nothing about this is a test.' +
         "</span></div></div>"
@@ -2556,7 +2573,8 @@
         acts += built.button;
         panels += built.typedPanel;
       });
-      h += '<div class="blocker-acts">' + acts + "</div>" + panels;
+      h += '<div class="blocker-acts">' + acts + atControlSlot("blk-" + q.key) +
+           "</div>" + panels;
     }
     h += "</section>";
     return h;
@@ -2967,7 +2985,8 @@
       var live = sentences.slice(reverted ? 0 : 0, sentences.length).slice(-applied.length);
       box.innerHTML = '<div class="dnote on" style="border-style:solid;border-color:var(--ok);">' +
         "<span>" + live.map(function(d){ return esc(d.text); }).join(" ") + "</span>" +
-        '<button data-revert="1" type="button">Undo the last change</button></div>';
+        '<button data-revert="1" data-ac="revert" type="button">Undo the last change</button>' +
+        atControlSlot("revert") + "</div>";
     } else {
       box.innerHTML = "";
     }
@@ -3016,10 +3035,17 @@
         ? "Two columns share this name — rename them before it can be a target"
         : c.dtype + " · " + c.n_unique + " unique · " + c.n_missing + " missing";
       return '<button class="answer' + (chosen ? " primary" : "") + '" type="button" ' +
-             'data-target-col="' + esc(c.name) + '"' + (c.duplicated ? " disabled" : "") +
+             'data-target-col="' + esc(c.name) + '" data-ac="target"' +
+             (c.duplicated ? " disabled" : "") +
              ' data-tip="' + esc(title) + '">' + esc(c.name) +
              '<span class="chip">' + esc(c.dtype) + '</span></button>';
-    }).join("");
+    }).join("") + atControlSlot("target");
+    /* ONE SLOT FOR THE WHOLE COLUMN LIST, not one per column. The list is a
+       single-answer control rendered as N buttons — twenty-nine slots would be
+       twenty-eight empty spans in a wrapped grid, and the response to any press
+       belongs in the same place because only one of them can be answered at a
+       time. `data-ac` is what binds a control to a slot, so sharing a key is the
+       mechanism working rather than a special case (`GUIDED-167`). */
 
     if (P.target){
       var conf = P.task_confidence;
@@ -3051,10 +3077,12 @@
           '<div class="pull" style="margin-top:6px;">' +
           '<span><span class="fact-mark" aria-hidden="true"></span>' +
           "Is that right? It is your call, not the engine's.</span>" +
-          '<button class="pill" aria-pressed="true" data-task="' + esc(P.task_type) + '" type="button">' +
+          '<button class="pill" aria-pressed="true" data-task="' + esc(P.task_type) +
+          '" data-ac="task" type="button">' +
           "Yes — " + esc(P.task_type) + "</button>" +
-          '<button class="pill" aria-pressed="false" data-task="' + esc(other) + '" type="button">' +
-          "No — treat it as " + esc(other) + "</button></div>";
+          '<button class="pill" aria-pressed="false" data-task="' + esc(other) +
+          '" data-ac="task" type="button">' +
+          "No — treat it as " + esc(other) + "</button>" + atControlSlot("task") + "</div>";
         fillConsumers();
       } else {
         ov.innerHTML = "";
@@ -3116,10 +3144,12 @@
       var promoted = (P && (P.promoted_figures || []).indexOf(row.id) >= 0);
       h += '<div class="fig-promote"><button class="answer' +
            (promoted ? " primary" : "") + '" type="button" data-promote="' +
-           esc(row.id) + '" data-promote-on="' + (promoted ? "0" : "1") + '">' +
+           esc(row.id) + '" data-ac="promote-' + esc(row.id) +
+           '" data-promote-on="' + (promoted ? "0" : "1") + '">' +
            (promoted ? "In the results" : "Put in the results") + "</button>" +
            (promoted ? '<span class="fig-promoted">This figure appears in ' +
-                       "your manuscript.</span>" : "") + "</div>";
+                       "your manuscript.</span>" : "") +
+           atControlSlot("promote-" + row.id) + "</div>";
       var annos = row.annotations || [];
       if (annos.length){
         h += '<div class="annos">' + annos.map(figAnnoHTML).join("") + "</div>";
@@ -3638,7 +3668,8 @@
       eng.forEach(function(e){
         h += '<p class="disc-v">' + esc(e.sentence || e.column) +
              ' <button class="chg" type="button" data-feat-remove="' +
-             esc(e.column) + '">remove</button></p>';
+             esc(e.column) + '" data-ac="feat-rm-' + esc(e.column) + '">remove</button>' +
+             atControlSlot("feat-rm-" + e.column) + "</p>";
       });
       h += "</div>";
     }
@@ -3692,8 +3723,9 @@
       h += "</select>";
     }
     h += '<button class="pill" type="button" data-sel-rank="1">Rank them for me</button>';
-    h += '<button class="answer primary" type="button" data-sel-set="1">' +
+    h += '<button class="answer primary" type="button" data-sel-set="1" data-ac="sel-set">' +
          (SEL_PICK.method ? "Record this method" : "Use every column") + "</button>";
+    h += atControlSlot("sel-set");
     h += "</div>";
     return h;
   }
@@ -3740,9 +3772,11 @@
       var kept = (ids.kept || []).indexOf(c.column) >= 0;
       h += '<p class="d-now">' + esc(c.sentence) +
            ' <button class="answer" type="button" data-keep-id="' +
-           esc(c.column) + '" data-keep-on="' + (kept ? "0" : "1") + '">' +
+           esc(c.column) + '" data-ac="keep-id-' + esc(c.column) +
+           '" data-keep-on="' + (kept ? "0" : "1") + '">' +
            (kept ? "Leave `" + esc(c.column) + "` out again"
-                 : "Put `" + esc(c.column) + "` back") + "</button></p>";
+                 : "Put `" + esc(c.column) + "` back") + "</button>" +
+           atControlSlot("keep-id-" + c.column) + "</p>";
     });
     h += '<p class="d-now">' + esc(ids.rule) + "</p>";
     return h + "</div>";
@@ -3808,8 +3842,9 @@
       sectState("features", "live", "open");
       terminal.innerHTML =
         '<div class="feat-ctl" style="margin-top:12px;">' +
-        '<button class="answer" type="button" data-feat-settle="1">' +
-        "Nothing else — settle this step</button></div>";
+        '<button class="answer" type="button" data-feat-settle="1" data-ac="feat-settle">' +
+        "Nothing else — settle this step</button>" +
+        atControlSlot("feat-settle") + "</div>";
     }
   }
 
@@ -4042,10 +4077,14 @@
                       : "applied now, to the working table") + "</span></div>" +
            '<p class="prep-because">' + esc(st.because) + "</p>" +
            '<button class="answer primary" type="button" data-prep-route="' +
-           esc(col.column) + '" data-prep-strategy="' + esc(key) + '">' +
+           esc(col.column) + '" data-ac="prep-' + esc(col.column) +
+           '" data-prep-strategy="' + esc(key) + '">' +
            (st.defers ? "Record this" : "Apply this now") + "</button></div>";
     });
-    return h + "</div>";
+    /* One slot per COLUMN card rather than per strategy: the strategies are
+       mutually exclusive answers to one question, so at most one of them can
+       have been pressed. */
+    return h + atControlSlot("prep-" + col.column) + "</div>";
   }
 
   function prepColHTML(col){
@@ -4121,8 +4160,8 @@
       sectState("preprocess", "live", "open");
       terminal.innerHTML =
         '<div class="feat-ctl" style="margin-top:14px;">' +
-        '<button class="answer" type="button" data-prep-settle="1">' +
-        "Settle preprocessing</button></div>";
+        '<button class="answer" type="button" data-prep-settle="1" data-ac="prep-settle">' +
+        "Settle preprocessing</button>" + atControlSlot("prep-settle") + "</div>";
     }
   }
 
@@ -4167,7 +4206,8 @@
              '<div class="bar"><i style="width:' +
              Math.round((TRAIN_JOB.progress || 0) * 100) + '%"></i></div>' +
              '<button class="f-act" type="button" data-train-cancel="' +
-             esc(TRAIN_JOB.id) + '">Stop this</button></div>';
+             esc(TRAIN_JOB.id) + '" data-ac="train-cancel">Stop this</button>' +
+             atControlSlot("train-cancel") + "</div>";
     }
     if (TRAIN && TRAIN.blocked_by){
       return '<div class="refused-card"><p class="r-reason">' +
@@ -4298,7 +4338,8 @@
                "been run yet.") + "</p>";
       h += '<div class="feat-ctl">' + picked.map(function(r){
         return '<button class="answer" type="button" data-instab="' +
-               esc(r.key) + '">Resample ' + esc(r.name) + "</button>";
+               esc(r.key) + '" data-ac="instab-' + esc(r.key) + '">Resample ' +
+               esc(r.name) + "</button>" + atControlSlot("instab-" + r.key);
       }).join("") + "</div>";
       return h + "</div>";
     }
@@ -4332,7 +4373,8 @@
     if (!any){
       h += '<div class="feat-ctl">' + picked.map(function(r){
         return '<button class="answer" type="button" data-instab="' +
-               esc(r.key) + '">Resample ' + esc(r.name) + "</button>";
+               esc(r.key) + '" data-ac="instab-' + esc(r.key) + '">Resample ' +
+               esc(r.name) + "</button>" + atControlSlot("instab-" + r.key);
       }).join("") + "</div>";
     }
     return h + "</div>";
@@ -4350,10 +4392,11 @@
     var act = ownChild(box, "shelfAct", "feat-ctl");
     var picked = Object.keys(PICKED).filter(function(k){ return PICKED[k]; });
     act.innerHTML =
-      '<button class="answer primary" type="button" data-train-start="1"' +
+      '<button class="answer primary" type="button" data-train-start="1" ' +
+      'data-ac="train-start"' +
       (picked.length ? "" : " disabled") + ">Fit " +
       (picked.length ? picked.length + " model(s)" : "the models you pick") +
-      " on the held-out split</button>";
+      " on the held-out split</button>" + atControlSlot("train-start");
 
     $("trainRun").innerHTML = trainRunHTML() + instabilityHTML();
     sectState("train", TRAIN && TRAIN.run ? "recorded" : "live",
@@ -4772,8 +4815,9 @@
              'and lets you choose which to run it on. Nothing changes until you ' +
              'apply it.">Show me what changes</button>' +
              '<button class="answer ghost" type="button" data-rg-defer="' + esc(kind) + '" ' +
+             'data-ac="rg-' + esc(kind) + '" ' +
              'data-tip="Sets the whole group aside and brings it back at ' +
-             'Explore.">Decide later</button></div>' +
+             'Explore.">Decide later</button>' + atControlSlot("rg-" + kind) + "</div>" +
              '<div class="rg-body" data-rg-body="' + esc(kind) + '"></div>' +
              "</div></div>";
     }).join("");
@@ -4826,14 +4870,17 @@
     h += '<div class="choice-acts" style="margin-top:11px;">' +
          '<span class="said">' + esc(g.effect) + "</span>" +
          '<button class="cbtn" type="button" data-rg-apply="' + esc(kind) + '"' +
+         ' data-ac="rgp-' + esc(kind) + '"' +
          (chosen.length && !g.example_error ? "" : " disabled") +
          ' data-tip="Rewrites ' + chosen.length + ' column(s) now, in one step, ' +
          'and records one decision covering the whole group. It can be undone.">' +
          "Apply to the " + chosen.length + " selected</button>" +
          '<button class="cbtn" type="button" data-rg-decline="' + esc(kind) + '" ' +
+         'data-ac="rgp-' + esc(kind) + '" ' +
          'data-tip="Records that all ' + g.members.length + ' were considered ' +
          'and left as they are. That is an answer, and it goes in the ' +
          'transcript.">Leave all ' + g.members.length + " as they are</button>" +
+         atControlSlot("rgp-" + kind) +
          "</div>";
     return h;
   }
@@ -4952,6 +4999,7 @@
            (why ? " notbuilt" : "") + '" type="button" ' +
            (why ? "disabled aria-disabled=\"true\" " : "") +
            'data-answer-key="' + esc(q.key) + '" ' +
+           'data-ac="ans-' + esc(q.key) + '" ' +
            'data-answer-value="' + esc(value) + '" ' +
            'data-answer-multi="' + (multi ? "1" : "0") + '" ' +
            'data-tip="' + esc(sentence) + '" ' +
@@ -4961,6 +5009,10 @@
     });
     h += "</div>";
     if (multi) h += commitRow(q, picked);
+    /* ONE SLOT PER QUESTION, shared by its options and its commit — the same
+       argument as the target column list: the options are alternative answers to
+       one question, and only one of them was pressed. */
+    h += atControlSlot("ans-" + q.key);
     h += "</div></div>";
     return h;
   }
@@ -5010,6 +5062,7 @@
     return '<div class="answers"><button class="answer primary" type="button" ' +
            (blocked ? 'disabled aria-disabled="true" ' : "") +
            'data-answer-commit="' + esc(q.key) + '" ' +
+           'data-ac="ans-' + esc(q.key) + '" ' +
            'data-tip="' + esc(sentence) + '" ' +
            'aria-label="' + esc(short + " — " + sentence) + '">' +
            esc(short) + "</button></div>";
@@ -5044,10 +5097,12 @@
         return '<div class="skip"><span class="clause"><b>' + esc(q.title) + "</b> — " +
                esc(q.skip_reason || "") + evidenceBadge(q) + "</span>" +
                '<button class="again" data-unskip="' + esc(q.key) + '" ' +
+               'data-ac="unskip-' + esc(q.key) + '" ' +
                'data-unskip-title="' + esc(q.title) + '" ' +
                'data-tip="' + esc(effectOf("unskip", null)) + '" ' +
                'aria-label="Ask me anyway — ' + esc(effectOf("unskip", null)) +
-               '" type="button">Ask me anyway</button></div>';
+               '" type="button">Ask me anyway</button>' +
+               atControlSlot("unskip-" + q.key) + "</div>";
       }).join("") + "</div>";
   }
 
@@ -5272,7 +5327,8 @@
              return '<span class="v">' + esc(m) + "</span>"; }) + "</p>" +
            '<p class="conseq">' + esc(o.consequence) + "</p>" +
            '<div class="oacts">' +
-           '<button class="cbtn" data-miss-choose="' + esc(c.column) + '" data-miss-opt="' +
+           '<button class="cbtn" data-miss-choose="' + esc(c.column) + '" data-ac="miss-' +
+           esc(c.column) + '" data-miss-opt="' +
            esc(o.key) + '" data-miss-mech="' + esc(mech) + '" ' +
            'data-tip="' + esc(o.timing === "immediate"
              ? "Rewrites this column in the working table now, and it can be undone."
@@ -5290,10 +5346,18 @@
            "</div>";
     });
     h += "</div>";
+    /* GUIDED-167'S OWN EVIDENCE. `route_missingness` with an informative
+       mechanism and a median fill returns a typed 409 naming the column and
+       counting the blanks, and `drop_rows` a 400 with the complete-case
+       explanation. Both were exactly right on the wire and neither reached a
+       person: `#upErr` is inside `#sub-upload`, which `renderData()` hides on
+       every render after the first. One slot per COLUMN card — the options are
+       alternative answers to one question. */
     h += '<div class="f-row" style="margin-top:11px;">' +
          '<button class="f-act defer" data-defer="' + esc(c.id) + '" data-defer-to="' +
-         esc(c.target_step) + '" type="button">Decide at ' + esc(c.target_step_label) +
-         "</button></div>";
+         esc(c.target_step) + '" data-ac="miss-' + esc(c.column) +
+         '" type="button">Decide at ' + esc(c.target_step_label) +
+         "</button>" + atControlSlot("miss-" + c.column) + "</div>";
     h += "</article>";
     return h;
   }

@@ -119,10 +119,16 @@ def test_the_page_defines_the_slot_and_the_rule_it_serves():
 def test_a_refusal_lands_beside_the_control_that_caused_it(fixture, lens, target):
     """`GUIDED-167`, driven — the class, not one instance.
 
-    Two fixtures of different target shape (`GUIDED-097`). The press is a
-    `data-feat-add` whose server call is made to fail, because that is a control
+    Two fixtures of different target shape (`GUIDED-097`). **The press is a
+    `data-dismiss`** whose server call is made to fail, because that is a control
     whose entire error path went to `setErr` and therefore into the hidden
-    subtree.
+    subtree, and because a finding card is the one action row every fixture
+    renders without further setup.
+
+    This docstring named the feature-add control for one loop while the body
+    dispatched `data-dismiss` — trap #3b, in the file whose subject is the trap
+    next door. `test_a_test_that_names_a_control_presses_it.py` is the detector
+    that would have caught it, and it did.
     """
     from turbotab import pageharness as PH
 
@@ -261,6 +267,20 @@ def test_the_offer_caption_does_not_name_a_control_that_does_not_exist():
     checked directly.
     """
     from turbotab import api
+
+    # THE DOCSTRING'S OWN PREMISE, ASSERTED. "`data-offer-key` appears exactly
+    # twice" is the whole argument for "there is no apply path", and for one
+    # loop it was a sentence in prose with no record behind it — the same trap
+    # #3b as the sibling test above, one notch weaker. Counted here so the
+    # premise fails loudly if an apply path is ever added without this row
+    # being revisited.
+    page = (Path(__file__).resolve().parent / "web" / "index.html").read_text(
+        encoding="utf-8")
+    assert page.count("data-offer-key") == 2, (
+        f"`data-offer-key` appears {page.count('data-offer-key')} times, not "
+        f"twice. This finding's premise is that there is no apply path for an "
+        f"offer key; a third mention means there may now be one, and the "
+        f"caption below has to be revisited rather than kept")
 
     for defers in (True, False):
         said = api.offer_caption(defers)

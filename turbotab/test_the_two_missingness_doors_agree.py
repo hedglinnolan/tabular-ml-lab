@@ -330,14 +330,23 @@ def test_clause_07s_blocker_is_reachable_from_the_explore_door(client):
           // an element from what it is handed, so composing the mechanism here
           // would be this test supplying the very thing GUIDED-091 is about.
           // It is read off the render instead.
-          var html = __harness.html('missBox');
-          var m = new RegExp('data-miss-choose="' + COLUMN +
-                             '" data-miss-opt="impute_median" ' +
-                             'data-miss-mech="([^"]*)"').exec(html);
-          if (!m) throw new Error('no impute_median control rendered');
-          __harness.dispatch('click', __harness.target(
-            {'data-miss-choose': COLUMN, 'data-miss-opt': 'impute_median',
-             'data-miss-mech': m[1]}, ['cbtn']));
+          //
+          // PARSED, NOT PATTERN-MATCHED ON ADJACENCY. This read a single regex
+          // requiring `data-miss-choose`, `data-miss-opt` and `data-miss-mech`
+          // to be adjacent in that order, and L48-A1 inserting a `data-ac`
+          // between the first two turned it red — a true claim broken by an
+          // unrelated attribute. The whole button is parsed now and every
+          // attribute travels, which is also more faithful to a press.
+          var html = __harness.html('missBox') || '';
+          var re = /<button\\b([^>]*)>/g, hit = null, mm;
+          while ((mm = re.exec(html))){
+            var attrs = {}, a = /([a-zA-Z-]+)="([^"]*)"/g, kv;
+            while ((kv = a.exec(mm[1]))) attrs[kv[1]] = kv[2];
+            if (attrs['data-miss-choose'] === COLUMN &&
+                attrs['data-miss-opt'] === 'impute_median'){ hit = attrs; break; }
+          }
+          if (!hit) throw new Error('no impute_median control rendered');
+          __harness.dispatch('click', __harness.target(hit, ['cbtn']));
           return settle(10);
         }).then(function(){
           var posts = __harness.posts();
