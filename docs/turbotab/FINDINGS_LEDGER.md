@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**292 of 782 closed.**
+**292 of 784 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 436 |
+| `OPEN` | 438 |
 | `PARTIAL` | 54 |
 | `FIXED` | 287 |
 | `NOT-A-DEFECT` | 5 |
 
 ---
 
-## OPEN — 436
+## OPEN — 438
 
 
 ### Application state / lockbox — 66
@@ -106,7 +106,7 @@ Nothing is closed without a regression test named after it.
 | `STATE-094` | invariant | An invalidated resolution is rolled back (the finding survives, the claim does not), and an auto-generated insight whose producer will re-detect is deleted outright — absent is better than false. | `utils/session_state.py:389-410 + InsightLedger.rollback_resolutions / prune_auto_generated. Tests…` | The behavior is correct and tested - a rolled-back resolution leaves the FINDING standing and drops only the CLAIM, and auto-generated insights whose producer re-detects are… |
 | `STATE-105` | medium | Lockbox constitution clause 05's FIRING half - the extrapolation blocker at export - has nowhere to live: the Report step does not exist | `ROADMAP.md lockbox constitution 05; turbotab/test_the_trim_arms_the_obligation.py covers the arming half…` | SPLIT DELIBERATELY, and the product owner named the reason: a clause whose obligation fires at a different step from the action arming it is the one most likely to go unbuilt, and… |
 
-### Guided-door drive feedback — 61
+### Guided-door drive feedback — 63
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -136,6 +136,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-166` | high | Setting impossible values to missing manufactures blanks that the missingness machinery cannot distinguish from the original ones, so a mechanism the user declared for real missingness is silently… | `RAISED BY THE PRODUCT OWNER MID-DRIVE, unprompted: `Didn't we just settle how to handle missingness as…` | THE PRODUCT OWNER FOUND THE SEAM BY WALKING IT, WHICH IS THE ONLY WAY IT IS VISIBLE. Each card is right on its own: the mechanism question is clause 07's and belongs at Explore… |
 | `GUIDED-167` | high | The missingness blocker and the eligibility refusal are both correct, specific and server-side, and the user pressing the button sees nothing - the app's best behavior is its most invisible | `REPORTED BY THE PRODUCT OWNER: `it appears the app does nothing when I click those buttons, including if I…` | THE MOST FRUSTRATING SHAPE IN THE DRIVE, because the app is RIGHT and the user is told nothing. Clause 07's blocker with typed acknowledgment is one of this project's load-bearing… |
 | `GUIDED-168` | high | The pull affordance labeled `Missingness Pattern Analysis` borrows the core recommender's title for a pattern analysis and serves a per-column mechanism questionnaire instead - which is also a second… | `RAISED BY THE PRODUCT OWNER DRIVING: `Missingness pattern analysis to me would mean show me the…` | HE DETECTED IT BY EXPECTATION AND THE EXPECTATION WAS THE SPECIFICATION'S. The name is not loose page copy - it is the core recommender's own title for an analysis whose stated… |
+| `GUIDED-171` | high | The feature-engineering before/after shows only the FIRST operand, so a two-input transform cannot be checked - `age x waist` renders `39 -> 3,931.2` and never shows waist | `REPORTED BY THE PRODUCT OWNER DRIVING: `I think the before/after table could do better to essentially show…` | THE PREVIEW DOCTRINE'S OWN PURPOSE, MISSED BY ONE INDEX. PRODUCT_VISION.md section 04: `in a pipelined app you cannot earn trust by asking for blind consent`, which is why every… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
@@ -165,6 +166,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-158` | medium | The binary-text detector titles every hit `is a binary variable written as text` including columns whose dtype is bool, so on a real table the app asserted that eight of nine columns were text when… | `measured on the product owner's NHANES export while he drove it. The nine columns the detector grouped…` | THE GOVERNING RULE, at the smallest scale this project has caught it: the app may be silent and it may refuse but it must never assert something false, and `written as text` is… |
 | `GUIDED-162` | medium | The offer preview is captioned `this is what pressing apply would do` and the panel has no apply - so the two operations under `What the app can do` can be previewed and not done | `reported by the product owner: `if I want to do a was-it-missing indicator or fill in the blank I would not…` | GUIDED-080's CLASS INVERTED. That row named the door's dominant defect - the server composes a user-facing string and the interface never renders it. Here the interface DOES… |
 | `GUIDED-169` | medium | The Guided pull palette renders the core EDA recommender's catalogue and wires four of ten - six render NOT BUILT - and the exploratory analyses Classic ships (clusters, relationships, dose-response… | `ROADMAP INPUT FROM THE PRODUCT OWNER MID-DRIVE: `We should probably wire in those other EDA scripts we have…` | THE PALETTE IS ALREADY HONEST, WHICH IS WHY THIS IS MEDIUM. NOT BUILT is rendered on every unwired entry rather than the entry being hidden, which is the recorded-absence rule… |
+| `GUIDED-172` | medium | Feature engineering is a static list of formula templates with no ranking, and the mutual-information machinery that could suggest which candidate features are worth building already ships in this… | `PRODUCT OWNER, DRIVING: `there has to be a more dynamic way of presenting the feature engineering options out…` | HIS PROPOSAL IS RIGHT AND ITS DANGER IS THE PROJECT'S OWN FLAGSHIP LEAK. Ranking candidate features by mutual information with the target, computed on the whole table, is… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 | `GUIDED-121` | low | A near-unique column is neither flagged nor asked about: the identifier rule is exactly one level per row, so a column at 95 percent distinct is treated as an ordinary predictor | `turbotab/identifiers.py UNIQUE_PER_ROW = 1.0, stated as a constant and reported in the receipt's rule…` | DELIBERATELY NOT GUESSED AT, and the threshold is not lowered because there is no honest number to lower it to. A column at 0.95 distinct-per-row is either an identifier with a… |
