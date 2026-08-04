@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**292 of 789 closed.**
+**292 of 790 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 443 |
+| `OPEN` | 444 |
 | `PARTIAL` | 54 |
 | `FIXED` | 287 |
 | `NOT-A-DEFECT` | 5 |
 
 ---
 
-## OPEN — 443
+## OPEN — 444
 
 
-### Guided-door drive feedback — 68
+### Guided-door drive feedback — 69
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -101,6 +101,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-172` | medium | Feature engineering is a static list of formula templates with no ranking, and the mutual-information machinery that could suggest which candidate features are worth building already ships in this… | `PRODUCT OWNER, DRIVING: `there has to be a more dynamic way of presenting the feature engineering options out…` | HIS PROPOSAL IS RIGHT AND ITS DANGER IS THE PROJECT'S OWN FLAGSHIP LEAK. Ranking candidate features by mutual information with the target, computed on the whole table, is… |
 | `GUIDED-174` | medium | The working table is never on screen beside the decisions being made about it - the product owner's proposal is a right-hand panel carrying it through upload, explore, features and preprocess, and… | `HIS PROPOSAL, VERBATIM: `Maybe we could use the extra space on the right of the web page to show something…` | HE PROPOSED, INDEPENDENTLY, THE COLUMN THE DESIGN LANGUAGE ALREADY RESERVES - and for a different purpose, which is the useful part. Section 10 gives the right panel to education… |
 | `GUIDED-176` | medium | `Show me what it does` renders nothing for the user-supplied cut-point binning transform | `REPORTED BY THE PRODUCT OWNER DRIVING: `show me doesn't work for bin-by-cut points I supply... bin-by-cut did…` | THE APP ALREADY HAS THE RIGHT BEHAVIOR ONE CARD OVER. In the Preprocess missingness panel the MICE option renders an explicit `NOTHING TO DRAW` block naming the strategy and the… |
+| `GUIDED-178` | medium | The right panel becomes a deck of per-model before/after tables at Preprocess - one card per model, paged like a deck, updating when that model's pipeline changes - and the thing it can honestly show… | `PRODUCT OWNER'S PROPOSAL, VERBATIM: `Pre-processing is also the moment where we can make that right hand viz…` | THE CONSTRAINT THAT DECIDES THE DESIGN, AND IT IS ALREADY WRITTEN DOWN. `what exactly will be fed into the model` is not a thing the app can show before training, and saying it… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 | `GUIDED-121` | low | A near-unique column is neither flagged nor asked about: the identifier rule is exactly one level per row, so a column at 95 percent distinct is treated as an ordinary predictor | `turbotab/identifiers.py UNIQUE_PER_ROW = 1.0, stated as a constant and reported in the receipt's rule…` | DELIBERATELY NOT GUESSED AT, and the threshold is not lowered because there is no honest number to lower it to. A column at 0.95 distinct-per-row is either an identifier with a… |
