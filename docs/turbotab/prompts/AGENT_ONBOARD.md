@@ -181,6 +181,20 @@ stayed green, but **the subject line of a commit is a claim about its contents**
 assert something false about themselves — the governing rule failing in the record layer instead of
 in the app.
 
+**And never run a tree-wide git operation — no `stash`, no `checkout`, no `clean`, no `reset`, no
+`restore` — while anything else may be writing the tree.** This sits beside the rule above because
+it is the same rule one degree worse. `git add -A` makes a commit **assert something false**, and a
+diffstat catches it; a `stash` **destroys another writer's uncommitted work and leaves no record at
+all**. `TEST-049`, and it was broken at L48: a subagent stashed four shared modules and popped them
+twenty seconds later while four other agents were writing that tree. It popped clean — **and nothing
+would have said so if it had not.**
+
+The same hazard reaches the certifying instrument. `revertprobe.py` reverts a fix, runs a test and
+restores, **in the live tree**, and L48 ran twenty-four probes while five chunks wrote in parallel.
+The failure mode is not a probe that fails — it is a probe whose revert races another writer's edit
+and goes red **for that writer's reason**, which reads exactly like a probe certifying a fix. **Do
+not run a probe, or a suite you intend to quote, while a subagent is writing.**
+
 **You are the only writer** to `findings.json`, `register.json` and their generated markdown while
 your loop runs.
 

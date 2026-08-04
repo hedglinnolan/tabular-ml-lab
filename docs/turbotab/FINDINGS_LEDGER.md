@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**314 of 817 closed.**
+**315 of 819 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 446 |
+| `OPEN` | 447 |
 | `PARTIAL` | 57 |
-| `FIXED` | 308 |
+| `FIXED` | 309 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
 
-## OPEN — 446
+## OPEN — 447
 
 
-### Guided-door drive feedback — 68
+### Guided-door drive feedback — 69
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -101,6 +101,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-196` | medium | The boot's terminal .catch swallows a controller-wide ReferenceError and the page still looks like it loaded - an upload step with one error line | `L48-B, observed live. During the loop index.html was transiently in a state where renderTarget called a…` | Reported by a subagent that hit it, not manufactured. sibling-of: GUIDED-006. |
 | `GUIDED-199` | medium | The single (non-bulk) apply decision's payload carries no mapping - the structured form is lossier than the prose beside it | `L48-B, sibling of GUIDED-157. project.apply_fix records {title, row_identity_preserved, reverts_to}; for a…` | sibling-of: GUIDED-157. |
 | `GUIDED-200` | medium | var PICKED is declared twice in one function scope in index.html - two features sharing one namespace, and neither reader knows about the other | `L48-B. index.html declares var PICKED = {} at two sites, commented 'model key -> selected' and 'fix_kind ->…` | Found by a subagent reading the file for GUIDED-157. Not fixed because renaming a variable read in two features is a change whose blast radius wants its own targeted tests, and… |
+| `GUIDED-202` | medium | The /recipes payload is composed in full and read by nothing at the sealed step - five families fully dark, including the operations list the precedence lattice is supposedly built from | `L49-A2, found by giving the L43-A1 late sweep the gate it never had. At the sealed step on…` | Filed rather than excused, which is the rule the gate enforces - L42-B's words, a reason I cannot substantiate is the shrug the table exists to stop. Referenced from… |
 | `GUIDED-062` | low | The shrinkage plot's narrowing_is_visible checklist item says the modeled density is narrower than the observed ones and checks only one of the two | `turbotab/figure_specs.py:568` | The item reads spread_usual_intake <= spread_single_day. The caption and the figure's whole argument are a narrowing ACROSS THREE series - one day, mean of available days, modeled… |
 | `GUIDED-066` | low | The PCA scores plot's qc_overlaid checklist item fails on every table that has no pooled QC rows, so a dietary or clinical table scores a permanent red on a metabolomics requirement | `turbotab/figure_specs.py PCA_SCORES checklist qc_overlaid` | Found at L28-B, the first time a scores plot was rendered for a project rather than for a test. The item is 'pooled QCs overlaid in a distinct color, never dropped' and it checks… |
 | `GUIDED-121` | low | A near-unique column is neither flagged nor asked about: the identifier rule is exactly one level per row, so a column at 95 percent distinct is treated as an ordinary predictor | `turbotab/identifiers.py UNIQUE_PER_ROW = 1.0, stated as a constant and reported in the receipt's rule…` | DELIBERATELY NOT GUESSED AT, and the threshold is not lowered because there is no honest number to lower it to. A column at 0.95 distinct-per-row is either an identifier with a… |
@@ -675,7 +676,7 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 308
+## FIXED — 309
 
 
 ### Guided-door drive feedback — 117
@@ -952,6 +953,21 @@ Nothing is closed without a regression test named after it.
 | `AUDIT-004` | medium | The quick baseline drops every row with any missing feature and reports no N cascade, so the number the user reads is about a subset nobody named | `ml/eda_actions.py:1209-1211; research/NUTRITION_PACK.md section 06 anti-patterns` | **test:** `tests/test_the_manuscript_does_not_assert_an_uncorrected_count.py::test_the_quick_baseline_reports_what_it_dropped` — FIXED at L30-B, alongside AUDIT-001 because a… |
 | `MISC-016` | medium | The feature register has no rows for two shipped Classic pages and nothing gates its coverage, so a capability can be absent from the register without any check noticing | `docs/turbotab/FEATURE_REGISTER.md: 132 rows, zero matching pages/08_Sensitivity_Analysis (568 lines) and zero…` | **test:** `tests/test_a_specification_is_a_claim.py::test_every_classic_page_has_a_register_row_or_a_written_exemption (11 parametrizations) and… |
 
+### Migration safety net — 10
+
+| ID | Sev | Finding | Evidence | Action / Note |
+|---|---|---|---|---|
+| `TEST-001` | critical | The invalidation DAG has NO test that calls the production function — three separate re-implementations test themselves | `utils/session_state.py:283 vs tests/workflow/test_state_invalidation.py:40-51 and…` | **test:** `tests/integration/test_characterization_cascade.py::test_full_reset_clears_every_downstream_key` — The production function is now called by a test, which is the whole… |
+| `TEST-003` | critical | PlausibilityGate violates sklearn's clone() contract — cross-validation raises RuntimeError whenever plausibility bounds are configured | `ml/preprocess_operators.py:49-55; ml/pipeline.py:185; ml/eval.py:161; contrast ml/preprocess_operators.py:13` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_cross_validation_runs_with_plausibility_bounds_configured` — Fixed with STATE-002 - same defect, same edit, and this… |
+| `TEST-013` | high | tests/integration/test_lockbox_split.py is the ONLY integration test that exercises real behavior end-to-end — it must be ported, not dropped | `tests/integration/test_lockbox_split.py:45-112` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page` — Ported before the cut, exactly as this row instructed, and strengthened… |
+| `T0-BUILD-005` | high | The routing harness diagnosed without a target while the API diagnosed with one, so it measured a door that no longer existed - and a composition change in the inventory moves no metric, so nothing… | `tests/integration/test_routing_value_check.py _run_guided; tests/integration/test_routing_baseline.py…` | **test:** `tests/integration/test_routing_baseline.py::test_both_doors_are_scored_against_one_inventory` — Found at L9c while implementing the target-question ruling. Both halves… |
+| `TEST-040` | high | Four job-polling sites spin a bounded loop with NO WAIT and then assert status == done, so under machine load the suite reports a timing fact as an app fact - and the turbotab/ pass count stops being… | `measured at the L42 adjudication: a full turbotab/ run on the accepted tree returned 1 failed, 1422 passed…` | **test:** `turbotab/test_a_job_is_waited_for_against_a_clock.py::test_no_test_polls_a_job_by_counting_iterations` — CLOSED AT L43-A4 BY POLLING AGAINST A CLOCK.… |
+| `TEST-042` | high | None of the five pre-commit gates parses Python, so a file that does not compile commits green - and the guards that read source as TEXT keep passing over it | `L43-B committed an IndentationError in ml/eda_actions.py and all five gates passed it: ledger schema…` | **test:** `turbotab/test_the_sixth_gate_reads_python_as_python.py::test_it_refuses_a_deliberately_broken_file` — FOUND BY THE LOOP AGENT AND REPORTED AS ITS FIRST DIVERGENCE, and… |
+| `TEST-050` | high | pageharness.matches evaluated as it parsed and broke on the first failing token, so its own selector-parser guard fired on selectors it understands - a second defect inside TEST-048, unreachable… | `L49-A1. matches() consumed tokens in the same loop that evaluated them and broke on the first token that did…` | **test:** `turbotab/test_the_harness_answers_about_elements_that_exist.py::test_a_multi_token_selector_does_not_throw_on_a_non_match AND… |
+| `GUIDED-100` | medium | The propagation probe itself: for each recorded decision kind, two projects identical except for that answer, and something downstream must differ | `turbotab/test_a_recorded_decision_changes_something.py; 41 kinds recorded, 23 probed (24 flips), 6 asserted…` | **test:** `turbotab/test_a_recorded_decision_changes_something.py::test_a_decision_about_the_analysis_reaches_the_fitted_pipeline` — BUILT AT L35-E as the instrument that would… |
+| `TEST-041` | medium | Four turbotab test files read figures.REGISTRY, which is populated only as an import side effect of figure_specs, and one of them asserted a count over it before anything had imported the populator… | `turbotab/figures.py:REGISTRY is an empty dict filled by turbotab/figure_specs.py's module body…` | **test:** `turbotab/test_the_registry_cannot_be_observed_empty.py::test_a_cold_import_of_figures_alone_sees_the_specs` — FOUND WHILE FIXING TEST-040 AND IT IS THE SAME PROPERTY… |
+| `TEST-046` | medium | A test docstring that names a page control its body never presses is trap #3b in its page-control form, and nothing detected it - the standing answer was to read docstrings against bodies by hand | `L48-A2. AGENT_ONBOARD.md 07 names trap #3b and the standing answer found GUIDED-145 once and nothing for five…` | **test:** `turbotab/test_a_test_that_names_a_control_presses_it.py::test_no_test_names_a_control_its_body_never_touches` — Both instances fixed rather than declared. NOT COVERED… |
+
 ### Completeness sweep — 9
 
 | ID | Sev | Finding | Evidence | Action / Note |
@@ -965,20 +981,6 @@ Nothing is closed without a regression test named after it.
 | `SWEEP-018` | high | The EDA cache fingerprint is SCHEMA-only while set_data() invalidation is CONTENT-based — a same-shape cleaning action resets results but not the profile | `pages/02_EDA.py:125 vs utils/session_state.py:220-226,259-263` | **test:** `tests/test_eda_caches_follow_the_data.py::test_no_cache_on_the_page_keys_on_shape_alone` — Closed - the two notions of invalidation are now one. The page's fingerprint… |
 | `SWEEP-024` | high | INVARIANT — reconcile_pipeline_columns: drift must self-heal loudly, never crash cryptically; its sibling reconcile_state_with_df is imported but never called | `CODE_REVIEW.md 2026-07 'Backstop'; CODE_REVIEW.md C7; utils/reconcile.py` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_reconcile_leaves_a_gated_pipeline_alone_when_nothing_drifted` — Both halves closed. The dormant-reconciler half was… |
 | `SWEEP-025` | high | INVARIANT — CV strategy is bound to the SPLIT strategy, and cv_strategy/cv_groups_train are cleared WITH the split | `CODE_REVIEW.md 2026-07 'Strategy-aware cross-validation' and 'Test-set slider guardrail'…` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_grouped_split_matches_the_page` — Both halves of the invariant are implemented and tested. The CV scheme is… |
-
-### Migration safety net — 9
-
-| ID | Sev | Finding | Evidence | Action / Note |
-|---|---|---|---|---|
-| `TEST-001` | critical | The invalidation DAG has NO test that calls the production function — three separate re-implementations test themselves | `utils/session_state.py:283 vs tests/workflow/test_state_invalidation.py:40-51 and…` | **test:** `tests/integration/test_characterization_cascade.py::test_full_reset_clears_every_downstream_key` — The production function is now called by a test, which is the whole… |
-| `TEST-003` | critical | PlausibilityGate violates sklearn's clone() contract — cross-validation raises RuntimeError whenever plausibility bounds are configured | `ml/preprocess_operators.py:49-55; ml/pipeline.py:185; ml/eval.py:161; contrast ml/preprocess_operators.py:13` | **test:** `tests/test_every_transformer_can_be_cloned.py::test_cross_validation_runs_with_plausibility_bounds_configured` — Fixed with STATE-002 - same defect, same edit, and this… |
-| `TEST-013` | high | tests/integration/test_lockbox_split.py is the ONLY integration test that exercises real behavior end-to-end — it must be ported, not dropped | `tests/integration/test_lockbox_split.py:45-112` | **test:** `tests/integration/test_split_extraction_equivalence.py::test_lockbox_split_matches_the_page` — Ported before the cut, exactly as this row instructed, and strengthened… |
-| `T0-BUILD-005` | high | The routing harness diagnosed without a target while the API diagnosed with one, so it measured a door that no longer existed - and a composition change in the inventory moves no metric, so nothing… | `tests/integration/test_routing_value_check.py _run_guided; tests/integration/test_routing_baseline.py…` | **test:** `tests/integration/test_routing_baseline.py::test_both_doors_are_scored_against_one_inventory` — Found at L9c while implementing the target-question ruling. Both halves… |
-| `TEST-040` | high | Four job-polling sites spin a bounded loop with NO WAIT and then assert status == done, so under machine load the suite reports a timing fact as an app fact - and the turbotab/ pass count stops being… | `measured at the L42 adjudication: a full turbotab/ run on the accepted tree returned 1 failed, 1422 passed…` | **test:** `turbotab/test_a_job_is_waited_for_against_a_clock.py::test_no_test_polls_a_job_by_counting_iterations` — CLOSED AT L43-A4 BY POLLING AGAINST A CLOCK.… |
-| `TEST-042` | high | None of the five pre-commit gates parses Python, so a file that does not compile commits green - and the guards that read source as TEXT keep passing over it | `L43-B committed an IndentationError in ml/eda_actions.py and all five gates passed it: ledger schema…` | **test:** `turbotab/test_the_sixth_gate_reads_python_as_python.py::test_it_refuses_a_deliberately_broken_file` — FOUND BY THE LOOP AGENT AND REPORTED AS ITS FIRST DIVERGENCE, and… |
-| `GUIDED-100` | medium | The propagation probe itself: for each recorded decision kind, two projects identical except for that answer, and something downstream must differ | `turbotab/test_a_recorded_decision_changes_something.py; 41 kinds recorded, 23 probed (24 flips), 6 asserted…` | **test:** `turbotab/test_a_recorded_decision_changes_something.py::test_a_decision_about_the_analysis_reaches_the_fitted_pipeline` — BUILT AT L35-E as the instrument that would… |
-| `TEST-041` | medium | Four turbotab test files read figures.REGISTRY, which is populated only as an import side effect of figure_specs, and one of them asserted a count over it before anything had imported the populator… | `turbotab/figures.py:REGISTRY is an empty dict filled by turbotab/figure_specs.py's module body…` | **test:** `turbotab/test_the_registry_cannot_be_observed_empty.py::test_a_cold_import_of_figures_alone_sees_the_specs` — FOUND WHILE FIXING TEST-040 AND IT IS THE SAME PROPERTY… |
-| `TEST-046` | medium | A test docstring that names a page control its body never presses is trap #3b in its page-control form, and nothing detected it - the standing answer was to read docstrings against bodies by hand | `L48-A2. AGENT_ONBOARD.md 07 names trap #3b and the standing answer found GUIDED-145 once and nothing for five…` | **test:** `turbotab/test_a_test_that_names_a_control_presses_it.py::test_no_test_names_a_control_its_body_never_touches` — Both instances fixed rather than declared. NOT COVERED… |
 
 ### Coach to Router — 7
 

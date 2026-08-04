@@ -10669,5 +10669,33 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "docs/turbotab/tools/revertprobe.py - the harness reverts a fix, runs a test and restores, all in the live tree. L48 ran 24 revert probes while five subagent chunks wrote the same tree in parallel. Named by the L48 execution agent in its own report, in prose, after a subagent ran 'git stash push' on four shared modules and popped it about twenty seconds later while four other agents were writing: 'It popped clean and nothing was lost, but four other agents were writing that tree and their work was inside the blast radius. The revert harness is not safe under a second writer, and neither is a stash.' Nothing was lost on either occasion; the hazard is that nothing would have said so if it had been."
+ },
+ {
+  "id": "GUIDED-202",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "The /recipes payload is composed in full and read by nothing at the sealed step - five families fully dark, including the operations list the precedence lattice is supposedly built from",
+  "detail": "",
+  "ev": "L49-A2, found by giving the L43-A1 late sweep the gate it never had. At the sealed step on survey_sentinels.csv, five /recipes families are fully dark by sentinel: operations (because, determinacy, key, label, origin, pushed_alternatives, scope, variants), pack_defaults (operation, origin, reason, selector, variant), n_choices_suppressed, n_rows_seen and n_rows_withheld. n_rows_seen and n_rows_withheld are the seal's own arithmetic - how much of the table the recipe was allowed to look at - and nothing renders either. Note this is measured AT THE SEALED STEP with the lattice's own section not yet opened, so part of it may be a journey-position artifact rather than a missing reader; that distinction is what the row needs next and is why this is medium rather than high.",
+  "act": "Drive the lattice section itself and re-measure, then either name the reader for each family in the sweep's DECLARED table or wire the ones that have none. n_rows_seen and n_rows_withheld are the two to start with: they are a disclosure about what the recommendation was computed from.",
+  "status": "OPEN",
+  "note": "Filed rather than excused, which is the rule the gate enforces - L42-B's words, a reason I cannot substantiate is the shrug the table exists to stop. Referenced from turbotab/test_the_three_unswept_payloads_are_swept.py::FILED.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "L49-A2, found by giving the L43-A1 late sweep the gate it never had. At the sealed step on survey_sentinels.csv, five /recipes families are fully dark by sentinel: operations (because, determinacy, key, label, origin, pushed_alternatives, scope, variants), pack_defaults (operation, origin, reason, selector, variant), n_choices_suppressed, n_rows_seen and n_rows_withheld. n_rows_seen and n_rows_withheld are the seal's own arithmetic - how much of the table the recipe was allowed to look at - and nothing renders either. Note this is measured AT THE SEALED STEP with the lattice's own section not yet opened, so part of it may be a journey-position artifact rather than a missing reader; that distinction is what the row needs next and is why this is medium rather than high."
+ },
+ {
+  "id": "TEST-050",
+  "area": "TEST",
+  "sev": "high",
+  "item": "pageharness.matches evaluated as it parsed and broke on the first failing token, so its own selector-parser guard fired on selectors it understands - a second defect inside TEST-048, unreachable while querySelector never called it",
+  "detail": "",
+  "ev": "L49-A1. matches() consumed tokens in the same loop that evaluated them and broke on the first token that did not match, leaving the rest of the token unconsumed - so the rest.trim() guard below then threw 'harness: selector token not understood' for a perfectly ordinary selector. It fires only on a MULTI-TOKEN selector against a NON-MATCHING element, which is every element but one in any real search. It was unreachable while querySelector returned null without ever calling matches, so repairing querySelector ALONE would have turned a silent wrong answer into a crash. Found by doing exactly that: the first drive of the repaired engine threw on .map-step[data-map].",
+  "act": "Parse the whole token first, then evaluate. And refuse a combinator explicitly - .map-step .md was being read as an element carrying both classes, which is a different question answered confidently, so a token containing whitespace or > + ~ outside brackets now throws rather than being reinterpreted.",
+  "status": "FIXED",
+  "note": "sibling-of: TEST-048. The general form is worth keeping: a blind spot can have a blind spot, and repairing the outer one first would have replaced a false negative with a crash. This is why A3 - re-running what the instrument blessed - is the half that matters.",
+  "verified_against": "",
+  "test": "turbotab/test_the_harness_answers_about_elements_that_exist.py::test_a_multi_token_selector_does_not_throw_on_a_non_match AND ::test_a_selector_it_cannot_answer_throws_rather_than_saying_no",
+  "verified_ev": "L49-A1. matches() consumed tokens in the same loop that evaluated them and broke on the first token that did not match, leaving the rest of the token unconsumed - so the rest.trim() guard below then threw 'harness: selector token not understood' for a perfectly ordinary selector. It fires only on a MULTI-TOKEN selector against a NON-MATCHING element, which is every element but one in any real search. It was unreachable while querySelector returned null without ever calling matches, so repairing querySelector ALONE would have turned a silent wrong answer into a crash. Found by doing exactly that: the first drive of the repaired engine threw on .map-step[data-map]."
  }
 ]
