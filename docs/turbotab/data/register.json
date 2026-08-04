@@ -373,7 +373,7 @@
   "capability": "EDA recommendation card: Missingness Pattern Analysis",
   "classic": "ml/eda_recommender.py:290 (already engine)",
   "state": "both",
-  "reason": "Already engine code; the page only rendered it. Guided offers it as a pull affordance in the Explore palette — present, and never counted as a question."
+  "reason": "L48-B, GUIDED-168. The capability's name is the CORE's - 'Missingness Pattern Analysis', ml/eda_recommender.py:292 - and it stays that here because this row is about the Classic card. The Guided chip no longer borrows it: it reads 'Missingness by feature', the server's own capability-table title, because the two doors run different analyses. Of the core's three stated deliverables, the rate per column is delivered on both; the per-column target-association test is BUILT IN THE CORE (ml/eda_actions.py:217, reached from pages/02_EDA.py:1771) and UNROUTED in Guided, where the user is asked instead; and the MCAR vs MAR vs MNAR reading is ABSENT FROM BOTH DOORS - nothing under ml/ computes one, and pages/11_Theory_Reference.py explains Little's test without running it. The core card still promises it and that is filed rather than edited here."
  },
  {
   "id": "explore-rec-r3-cohort-structure",
