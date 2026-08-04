@@ -20,19 +20,19 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**292 of 778 closed.**
+**292 of 779 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 432 |
+| `OPEN` | 433 |
 | `PARTIAL` | 54 |
 | `FIXED` | 287 |
 | `NOT-A-DEFECT` | 5 |
 
 ---
 
-## OPEN — 432
+## OPEN — 433
 
 
 ### Application state / lockbox — 66
@@ -106,11 +106,11 @@ Nothing is closed without a regression test named after it.
 | `STATE-094` | invariant | An invalidated resolution is rolled back (the finding survives, the claim does not), and an auto-generated insight whose producer will re-detect is deleted outright — absent is better than false. | `utils/session_state.py:389-410 + InsightLedger.rollback_resolutions / prune_auto_generated. Tests…` | The behavior is correct and tested - a rolled-back resolution leaves the FINDING standing and drops only the CLAIM, and auto-generated insights whose producer re-detects are… |
 | `STATE-105` | medium | Lockbox constitution clause 05's FIRING half - the extrapolation blocker at export - has nowhere to live: the Report step does not exist | `ROADMAP.md lockbox constitution 05; turbotab/test_the_trim_arms_the_obligation.py covers the arming half…` | SPLIT DELIBERATELY, and the product owner named the reason: a clause whose obligation fires at a different step from the action arming it is the one most likely to go unbuilt, and… |
 
-### Guided-door drive feedback — 57
+### Guided-door drive feedback — 58
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
-| `GUIDED-165` | critical | The impossible-values decision changes nothing and both of its buttons record indistinguishably - `Set these entries to missing` and `Keep as is` produce decisions whose rendered text is the same… | `REPORTED BY THE PRODUCT OWNER DRIVING A REAL NHANES EXPORT: `clicking 'set these entries to missing' does…` | THE ONE OPERATION THE CONSTITUTION NAMES BY NAME IN THE PRE-SEAL SEQUENCE IS INERT. Clause 01 fixes the order lens -> structural repairs and THE IMPOSSIBILITY PASS -> target ->… |
+| `GUIDED-165` | critical | The impossible-values decision records that entries `were set to missing` and sets nothing to missing - the frame is unchanged and the transcript asserts an operation that did not happen | `REPORTED BY THE PRODUCT OWNER DRIVING A REAL NHANES EXPORT: `clicking 'set these entries to missing' does…` | THE ONE OPERATION THE CONSTITUTION NAMES BY NAME IN THE PRE-SEAL SEQUENCE IS INERT. Clause 01 fixes the order lens -> structural repairs and THE IMPOSSIBILITY PASS -> target ->… |
 | `GUIDED-012` | high | Lockbox constitution clause 06 - declaration and execution are separate - has no implementation in either door: nothing applies the row-local vs stateful litmus test | `No module classifies transforms by the litmus test at L14. Classic's pages/03 applies feature engineering to…` | Filed at the start of L14 rather than after building it, deliberately: the check found the clause untracked, and the honest record of an unbuilt clause is an open finding, not a… |
 | `GUIDED-014` | high | DESIGN QUESTION for the product owner: does the exploratory labeling on an undetermined seal read as honest, or as the app giving up? | `docs/turbotab/COPY_DECK.md, 'Data & Target - what the user reads after answering' and 'what the user reads…` | NOT SELF-ASSESSED, deliberately. I wrote this copy at L15; asking the author whether their own prose reads well is the finder-judge problem in a different costume, and this… |
 | `GUIDED-067` | high | No Dietary Reference Intake table ships anywhere in the repository, so every figure and every prevalence claim that needs an EAR, an RDA, an AI or a UL is unbuildable | `docs/turbotab/research/NUTRITION_PACK.md section 07 figure E; docs/turbotab/DOMAIN_SCIENCE.md section 04…` | Filed at L28-D as the blocker the two pending figures name. research/NUTRITION_PACK.md section 07 figure E specifies vertical lines at the EAR, RDA or AI and the UL for the… |
@@ -133,6 +133,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-163` | high | The high-missingness panel lists median fill under `What the app can do` for a column whose missingness the app has already read as informative - a pairing missingness.blocks() returns True for, and… | `measured on the product owner's NHANES export while he drove it. meds_hbp observed values are {True: 5527…` | THE PANEL'S TWO HEADINGS ARE THE DEFECT. `What the app can do` and `Decisions that live elsewhere` sort by WHERE the decision is made and not by whether the app thinks it is a… |
 | `GUIDED-164` | high | A finding over 15 columns renders 3 plots and 5 chips with no statement of either cap - while the paged histogram browser that would show all 26 features, six at a time over five pages, already… | `REPORTED BY THE PRODUCT OWNER DRIVING: `Why show only 3 plots here? ... perhaps they would not be bad if I…` | TWO DEFECTS IN ONE CARD AND THE SECOND EXPLAINS HIS CONFUSION. The cap is the no-silent-caps rule, user-visible this time: GUIDED-133 is the same shape one surface over, where the… |
 | `GUIDED-166` | high | Setting impossible values to missing manufactures blanks that the missingness machinery cannot distinguish from the original ones, so a mechanism the user declared for real missingness is silently… | `RAISED BY THE PRODUCT OWNER MID-DRIVE, unprompted: `Didn't we just settle how to handle missingness as…` | THE PRODUCT OWNER FOUND THE SEAM BY WALKING IT, WHICH IS THE ONLY WAY IT IS VISIBLE. Each card is right on its own: the mechanism question is clause 07's and belongs at Explore… |
+| `GUIDED-167` | high | The missingness blocker and the eligibility refusal are both correct, specific and server-side, and the user pressing the button sees nothing - the app's best behavior is its most invisible | `REPORTED BY THE PRODUCT OWNER: `it appears the app does nothing when I click those buttons, including if I…` | THE MOST FRUSTRATING SHAPE IN THE DRIVE, because the app is RIGHT and the user is told nothing. Clause 07's blocker with typed acknowledgment is one of this project's load-bearing… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
