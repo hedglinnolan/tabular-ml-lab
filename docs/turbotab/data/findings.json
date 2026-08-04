@@ -10342,10 +10342,10 @@
   "detail": "",
   "ev": "turbotab/actions.py:404 sets previewable=bool(columns). Driven on clinical_labs.csv (clinical), metabolomics_untargeted.csv (metabolomics), clinical_longitudinal.csv (clinical) and nhanes_kilojoules.csv (dietary): every finding, every offers payload, ZERO previewable offers on all four. So data-offer-preview, offerPreviewHTML and the whole offer_preview endpoint are exercised by no fixture-driven test.",
   "act": "Ship a fixture that produces one, or state that the branch is unreachable pre-seal and say why. The four granularities of sweep built at L42-L44 all ask 'is this field read' or 'is this route fetched' and this branch answers yes to both - the endpoint is fetched by a test with a hand-built payload - while no user path in any fixture reaches it. That is a fifth gap and it is the reason GUIDED-162's caption survived four loops of sweeps.",
-  "status": "OPEN",
-  "note": "FOUND AT L47-C WHILE CLOSING GUIDED-162. The caption 'this is what pressing apply would do' named a control that cannot exist, and the reason nobody caught it is here: the branch has no fixture. The GUIDED-162 test therefore asserts on api.offer_caption directly and says so in its docstring rather than skipping quietly, which is what the first version did.",
+  "status": "NOT-A-DEFECT",
+  "note": "REFUTED, and the row was mine. L48-E. The claim was that no shipped fixture produces a previewable offer, which made GUIDED-162's caption uncheckable end to end and was offered as the reason four loops of sweeps missed it. The check read previewable off GET /project/<id>, where findings carry suggested_actions and no offers at all - actions.offers runs behind GET /project/<id>/finding/<fid>/offers, which the check never called. Called: 35 options across the shipped fixtures, 29 of them previewable, and the preview endpoint answers 200 with a real before/after on every one. Trap #5, a grep answering the wrong question, in a row filed by the agent that named the trap. The branch is now driven on two fixtures of different target shape and the L47 test's stated limit has been removed rather than left standing.",
   "verified_against": "",
-  "test": "",
+  "test": "turbotab/test_a_response_renders_at_the_control.py::test_the_offer_preview_branch_is_reachable_and_says_so",
   "verified_ev": "turbotab/actions.py:404 sets previewable=bool(columns). Driven on clinical_labs.csv (clinical), metabolomics_untargeted.csv (metabolomics), clinical_longitudinal.csv (clinical) and nhanes_kilojoules.csv (dietary): every finding, every offers payload, ZERO previewable offers on all four. So data-offer-preview, offerPreviewHTML and the whole offer_preview endpoint are exercised by no fixture-driven test."
  },
  {
@@ -10356,10 +10356,10 @@
   "detail": "",
   "ev": "turbotab/purpose.py:157-160 INDICATOR_EXITS[0] has no 'retry'. turbotab/web/index.html showRefusal computes var take = (x.retry || {}).payload and emits ' disabled' when it is absent. So the resolve button is dead and the attestation button is live. test_the_page_says_what_the_record_says.py asserts 'disabled' not in out['band'] ONLY for the missingness blocker, so nothing covers this path.",
   "act": "Give the exit a retry payload, the way every other RESOLVE exit carries one. GUIDED-087 is the same shape and has its own build; this is a second instance on a path nothing tests, so the fix should land with a claim that covers the purpose-contraindication path rather than only the missingness one.",
-  "status": "OPEN",
-  "note": "REPORTED BY THE ADJUDICATOR'S OWN RECON IN THE L47 PROMPT section 03 and filed here rather than fixed, per the prompt's deliberately-unbuilt clause. It is GUIDED-087's exact shape: a refusal whose safe exit is disabled while its acknowledgment is live, which inverts the three-rung ladder at the moment it matters most.",
+  "status": "FIXED",
+  "note": "L48-E. FIXED, and TWO OF THE ROW'S OWN PREMISES DID NOT SURVIVE DRIVING. (1) 'the way every other RESOLVE exit carries one' - ONE of five does. grain._RESOLVE and packs._LENS_RESOLVE are revise-shaped and have no request to re-post, clinical.substitution_blocker has no consumer at all; see GUIDED-184 and GUIDED-185. (2) THE ONE EXIT THAT DID CARRY A RETRY DID NOT OPEN: from the Explore door, merging retry.payload into the refused request the way showRefusal does returned a SECOND 409 naming the same refused strategy, because api.py:729 reads card_option in preference to strategy and the retry named only strategy. That is GUIDED-072's defect alive inside the fix built for it. Both fixed: missingness.card_option_for_strategy inverts CARD_STRATEGY and returns None rather than an old spelling (trap #9), and both blockers' resolve retries now carry card_option as well as strategy. Driven: clinic_visits/notes/impute_mode and metabolomics_untargeted/mz_0022/impute_median both 409 then 200 on the retry; purpose contraindication on not_informative and not_sure both 200. NOT COVERED and filed as GUIDED-186: informative+inference+indicator, where the purpose blocker's resolve is impute_median and clause 07 refuses exactly that - two correct rules colliding. BLOCKER_EXITS moved to the foot of missingness.py because blocker_exits now reads a function defined beside CARD_STRATEGY.",
   "verified_against": "",
-  "test": "",
+  "test": "turbotab/test_a_resolve_exit_can_actually_be_taken.py::test_the_purpose_contraindications_resolve_opens AND ::test_clause_07s_resolve_opens_from_the_door_that_posts_card_options AND ::test_the_page_renders_a_resolve_with_a_retry_as_live",
   "verified_ev": "turbotab/purpose.py:157-160 INDICATOR_EXITS[0] has no 'retry'. turbotab/web/index.html showRefusal computes var take = (x.retry || {}).payload and emits ' disabled' when it is absent. So the resolve button is dead and the attestation button is live. test_the_page_says_what_the_record_says.py asserts 'disabled' not in out['band'] ONLY for the missingness blocker, so nothing covers this path."
  },
  {
@@ -10375,5 +10375,61 @@
   "verified_against": "",
   "test": "turbotab/test_a_test_that_names_a_control_presses_it.py::test_no_test_names_a_control_its_body_never_touches",
   "verified_ev": "L48-A2. AGENT_ONBOARD.md 07 names trap #3b and the standing answer found GUIDED-145 once and nothing for five loops. Two live instances at L48, both in turbotab/test_a_response_renders_at_the_control.py: test_a_refusal_lands_beside_the_control_that_caused_it said 'the press is a data-feat-add' and dispatched data-dismiss (every assertion true), and test_the_offer_caption_does_not_name_a_control_that_does_not_exist rested its whole premise on 'data-offer-key appears exactly twice in the page' with no assertion behind it. Scope measured: 5 test docstrings across 98 files name a page control at all."
+ },
+ {
+  "id": "GUIDED-184",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "The two REVISE-shaped resolve exits render disabled, because the page enables an exit on retry.payload and a revise exit honestly has no payload to carry",
+  "detail": "",
+  "ev": "L48-E, found while fixing GUIDED-183. Five resolve exits exist. grain._RESOLVE and packs._LENS_RESOLVE are both 'Change my answer - go back to the question and answer it differently'. There is no request to re-post, so no retry.payload is possible without inventing one. index.html showRefusal computes var take = (x.retry || {}).payload and emits ' disabled' when it is absent, so BOTH render greyed out - the safe way out disabled beside a live attest, which is GUIDED-183's own complaint on two more surfaces. The page's stated rule is that it will not invent a mechanism for a way out the server did not describe, and that rule is right; what is missing is the server DESCRIBING this way out.",
+  "act": "The server describes taking a revise exit - e.g. an action field naming the question to return to - and the page enables an exit that carries either a retry payload or an action it implements. This is a page mechanism and a design decision, so it is not folded into GUIDED-183's fix. Do NOT give these exits a fake retry payload: a retry that re-posts the same refused request is exactly what GUIDED-183 found on the built exit.",
+  "status": "OPEN",
+  "note": "sibling-of: GUIDED-183. Pinned as current behavior by turbotab/test_a_resolve_exit_can_actually_be_taken.py::test_the_sweep_names_every_resolve_exit_and_what_it_can_do, which asserts both exits still carry no retry so that giving one a payload without revisiting the page rule fails there.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "L48-E, found while fixing GUIDED-183. Five resolve exits exist. grain._RESOLVE and packs._LENS_RESOLVE are both 'Change my answer - go back to the question and answer it differently'. There is no request to re-post, so no retry.payload is possible without inventing one. index.html showRefusal computes var take = (x.retry || {}).payload and emits ' disabled' when it is absent, so BOTH render greyed out - the safe way out disabled beside a live attest, which is GUIDED-183's own complaint on two more surfaces. The page's stated rule is that it will not invent a mechanism for a way out the server did not describe, and that rule is right; what is missing is the server DESCRIBING this way out."
+ },
+ {
+  "id": "GUIDED-185",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "clinical.substitution_blocker has no consumer anywhere outside its own test - a whole constitutional blocker composed and never raised",
+  "detail": "",
+  "ev": "L48-E. grep across turbotab/ and ml/ finds exactly two mentions: the definition at turbotab/clinical.py:375 and turbotab/test_the_clinical_detectors_reach_an_upload.py:449. Nothing calls blocks_substitution at a decision either. Its sibling purpose.blocks_indicator IS consumed, at project.py:1373, and clinical.py's own docstring says the block is 'in the shape purpose.indicator_blocker already established' - so the shape was copied and the wiring was not. Trap #1, and it is why the keep_censored resolve exit has no retry: there is no refused request to retry because nothing refuses.",
+  "act": "Route it at the decision where a substitution is declared, beside the purpose contraindication, or ship an xfail(strict=True) naming the missing consumer. GUIDED-119 is the model.",
+  "status": "OPEN",
+  "note": "Found while sweeping every resolve exit for GUIDED-183. Reported rather than acted on - wiring a constitutional blocker is a decision about when the app interrupts, not a payload fix.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "L48-E. grep across turbotab/ and ml/ finds exactly two mentions: the definition at turbotab/clinical.py:375 and turbotab/test_the_clinical_detectors_reach_an_upload.py:449. Nothing calls blocks_substitution at a decision either. Its sibling purpose.blocks_indicator IS consumed, at project.py:1373, and clinical.py's own docstring says the block is 'in the shape purpose.indicator_blocker already established' - so the shape was copied and the wiring was not. Trap #1, and it is why the keep_censored resolve exit has no retry: there is no refused request to retry because nothing refuses."
+ },
+ {
+  "id": "GUIDED-186",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "Two constitutional blockers collide: on informative + inference + indicator the purpose blocker's only resolve is impute_median and clause 07 refuses exactly that, so neither exit is takeable",
+  "detail": "",
+  "ev": "L48-E, driven. clinic_visits.csv, target outcome, purpose inference, column 'Unnamed: 0', card_option indicator: first POST 409 indicator_under_inference offering resolve=impute_median; taking that resolve the way showRefusal takes it returns a SECOND 409, kind=blocker, because missingness.blocks(informative, impute_median) is True. On not_informative and not_sure the same retry returns 200, so this is the intersection and not the path. Each rule is right on its own. AND THE EXIT CONTRADICTS ITS OWN MESSAGE: INDICATOR_UNDER_INFERENCE says 'Multiple imputation, or a model that states its missingness mechanism, is what an association estimate wants' and the resolve it offers is impute_median, which is SINGLE imputation.",
+  "act": "Decide what the way through is when both fire - most likely impute_mice or explicit_category - and make the purpose blocker's resolve depend on the mechanism the user has already answered, the way missingness._RESOLVE_BY_BRANCH depends on the branch. Domain science from research/, by section, not from recollection.",
+  "status": "OPEN",
+  "note": "Pinned as current behavior by turbotab/test_a_resolve_exit_can_actually_be_taken.py::test_the_two_blockers_collide_and_this_says_so, which asserts the second 409 so the collision cannot be resolved in one direction without somebody deciding it.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "L48-E, driven. clinic_visits.csv, target outcome, purpose inference, column 'Unnamed: 0', card_option indicator: first POST 409 indicator_under_inference offering resolve=impute_median; taking that resolve the way showRefusal takes it returns a SECOND 409, kind=blocker, because missingness.blocks(informative, impute_median) is True. On not_informative and not_sure the same retry returns 200, so this is the intersection and not the path. Each rule is right on its own. AND THE EXIT CONTRADICTS ITS OWN MESSAGE: INDICATOR_UNDER_INFERENCE says 'Multiple imputation, or a model that states its missingness mechanism, is what an association estimate wants' and the resolve it offers is impute_median, which is SINGLE imputation."
+ },
+ {
+  "id": "GUIDED-187",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "exits.is_actionable states a premise the page stopped holding - it returns True for every non-attest exit on the grounds that a resolve 'needs nothing', while showRefusal enables on retry.payload regardless of kind",
+  "detail": "",
+  "ev": "L48-E. turbotab/exits.py:100 is_actionable: 'a resolve exit sends the user back to the question and needs nothing; an attest exit is a request the client must construct'. index.html showRefusal was changed to read the payload rather than the kind - its own comment says so - so a resolve with no retry.payload renders disabled and is_actionable calls it actionable. The predicate is the unifying test for GUIDED-064 and GUIDED-072 and it now passes on exits the interface will not let a user take. It is asserted true for grain._RESOLVE in test_a_resolve_exit_can_actually_be_taken.py so the divergence is recorded rather than latent.",
+  "act": "Decide together with GUIDED-184: once the server describes how a revise exit is taken, is_actionable reads that description. Changing the predicate before the mechanism exists would only move the wrong answer.",
+  "status": "OPEN",
+  "note": "sibling-of: GUIDED-184. A predicate whose docstring states an assumption its consumer no longer holds - the same class as trap #3b one layer down, in production code rather than in a test name.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "L48-E. turbotab/exits.py:100 is_actionable: 'a resolve exit sends the user back to the question and needs nothing; an attest exit is a request the client must construct'. index.html showRefusal was changed to read the payload rather than the kind - its own comment says so - so a resolve with no retry.payload renders disabled and is_actionable calls it actionable. The predicate is the unifying test for GUIDED-064 and GUIDED-072 and it now passes on exits the interface will not let a user take. It is asserted true for grain._RESOLVE in test_a_resolve_exit_can_actually_be_taken.py so the divergence is recorded rather than latent."
  }
 ]

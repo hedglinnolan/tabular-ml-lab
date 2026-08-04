@@ -158,10 +158,18 @@ def blocker_exits(branch: str) -> tuple:
     resolve = _RESOLVE_BY_BRANCH.get(branch)
     exits = []
     if resolve is not None:
+        # BOTH SPELLINGS, because the handler prefers `card_option` and the
+        # Explore door sends one. A payload naming only `strategy` is merged
+        # into a request that already carries the refused `card_option`, and
+        # the refused one wins — see `card_option_for_strategy`.
+        payload = {"strategy": resolve["id"]}
+        card = card_option_for_strategy(resolve["id"])
+        if card:
+            payload["card_option"] = card
         exits.append({
             "id": resolve["id"], "kind": "resolve", "label": resolve["label"],
             "detail": resolve["detail"],
-            "retry": {"payload": {"strategy": resolve["id"]},
+            "retry": {"payload": payload,
                       "how": "Sent again with this strategy in place of the "
                              "one that would erase the blanks.",
                       "typed": None}})
@@ -173,7 +181,12 @@ def blocker_exits(branch: str) -> tuple:
     return tuple(exits)
 
 
-BLOCKER_EXITS = blocker_exits("categorical")
+# `BLOCKER_EXITS` is bound at the FOOT of this module, not here.
+# `blocker_exits` now reads `card_option_for_strategy`, which is defined beside
+# its inverse further down — and a module-level call at this point runs before
+# either that function or `CARD_STRATEGY` exists. Moving the binding is a
+# two-line change; moving the join table up past six hundred lines of prose is
+# not, and the join belongs with its inverse.
 
 # ── the outcome inside an imputation scope · one question, two answers ───────
 #
@@ -389,6 +402,125 @@ def blocks(mechanism: Optional[str], strategy_key: str) -> bool:
     return mechanism == INFORMATIVE and strategy_key in _FILLERS
 
 
+# ── an option the constitution can refuse is not an equal peer ───────────────
+#
+# `GUIDED-163`. `blocks('informative', 'impute_median')` has always returned
+# `True` and the 409 has always been correct on the wire. What was wrong is
+# what a person READ: on the NHANES drive `meds_hbp` is observed
+# `{True: 5527, False: 770}` with 15,552 blanks, the median is 1, and *"fill
+# with the median"* was offered third on a flat list of peers — so the route
+# that assigns every person of unknown medication status to being ON blood
+# pressure medication sat beside the routes that keep the signal, with the same
+# weight, under a heading that reads as a list of things you may do.
+#
+# **The shelf is never shortened.** The option is not removed and is not made
+# unclickable: the user may know something the app does not, and §09's
+# resolve-or-attest exit is how they say so. What changes is that the app
+# **orders** it and **states its own concern beside it** — the two moves
+# `PRODUCT_VISION.md` names as the alternatives to deletion.
+#
+# The three functions below are the only place that decision is made, and each
+# one is DERIVED from `blocks` rather than restating it. A second hand-written
+# list of which fills are refused is a second thing to drift, and this module
+# has already paid for that twice (`GUIDED-090`, `GUIDED-098`).
+
+#: Stated when the mechanism is ANSWERED informative. Definite, and it names
+#: the exit rather than reading as a wall: the blocker resolves or is attested.
+BLOCKED_CONCERN = (
+    "You said a blank in `{column}` means something, so clause §07 refuses "
+    "this one: filling those {n_missing:,} blanks with {filler} would take the "
+    "fact that they were blank out of the data, and no model can recover it "
+    "afterward. It is offered after the choices that keep the signal, and "
+    "taking it needs a typed acknowledgment that the loss was deliberate.")
+
+#: Stated when the mechanism is NOT YET ANSWERED. The app cannot say this is
+#: refused, because it does not know — so it says what would refuse it, which
+#: is the recorded-absence rule rather than either a warning or a silence.
+BLOCKABLE_CONCERN = (
+    "This one is refused if you answer that a blank in `{column}` means "
+    "something: filling those {n_missing:,} blanks with {filler} would take "
+    "the fact that they were blank out of the data, and no model can recover "
+    "it afterward. That is why it is offered after the choices that keep the "
+    "signal.")
+
+
+def blocked_under(strategy_key: str) -> tuple:
+    """Every mechanism answer under which clause §07 refuses this strategy.
+
+    Asked of `blocks` rather than written out, so there is exactly one
+    statement of which pairings are refused and this is a reading of it. An
+    empty tuple means no answer to the mechanism question refuses this option —
+    which is a stronger claim than "not refused right now" and is the one the
+    shelf order is built on.
+    """
+    return tuple(m for m in MECHANISMS if blocks(m, strategy_key))
+
+
+def shelf_rank(strategy_key: str) -> int:
+    """Where this option sits: `0` above, `1` below.
+
+    `1` for any option there is an answer to the mechanism question under
+    which the constitution refuses it; `0` for the rest.
+
+    **Keyed on the STRATEGY and not on the answer, deliberately.** An order
+    that re-sorted itself when the user answered would move a control out from
+    under the cursor, and — worse — would make *"the app put this last"* mean
+    something different on two readings of the same card. The claim the order
+    makes is the durable one: this fill CAN be refused here and those cannot,
+    so it is not their peer. Which of them is refused *right now* is `blocked`,
+    and what to say about it is `concern`.
+    """
+    return 1 if blocked_under(strategy_key) else 0
+
+
+def concern(column: str, strategy_key: str, mechanism: Optional[str],
+            n_missing: int) -> Optional[str]:
+    """The server's own sentence about this option, or **nothing**.
+
+    `None` in three cases and each is deliberate silence rather than an
+    omission: an option no answer refuses, an answer of `not_informative`
+    (the user has said the blanks are accidents, and a second uncalibrated
+    layer of caution over a settled answer makes a real concern and a
+    reflexive one read the same), and `not_sure` — which `blocks` already
+    declines to block on, because turning an admission of uncertainty into a
+    wall teaches people to stop admitting it.
+    """
+    if not blocked_under(strategy_key):
+        return None
+    template = (BLOCKED_CONCERN if blocks(mechanism, strategy_key)
+                else BLOCKABLE_CONCERN if mechanism not in MECHANISMS
+                else None)
+    if template is None:
+        return None
+    return template.format(column=column, n_missing=int(n_missing),
+                           filler=_FILLERS[strategy_key])
+
+
+def reading(column: str, strategy_key: str, mechanism: Optional[str],
+            n_missing: int) -> Dict[str, Any]:
+    """What one offered option is, constitutionally — the whole of it.
+
+    Trap #7 is the reason this is one object rather than a sentence plus a
+    boolean: the machine-readable form beside a true sentence has twice been
+    the lossier of the two, and the structured payload is what everything
+    downstream reads.
+
+    `blocked` is **three-valued on purpose**. `None` is *the mechanism question
+    has not been answered, so this cannot be answered yet* — not `False`.
+    Returning `False` there would assert the constitution permits a fill it may
+    well refuse, which is trap #9 at the field level: return nothing rather
+    than a wrong value.
+    """
+    under = blocked_under(strategy_key)
+    return {
+        "blocked": (blocks(mechanism, strategy_key)
+                    if mechanism in MECHANISMS else None),
+        "blocked_under": list(under),
+        "concern": concern(column, strategy_key, mechanism, n_missing),
+        "shelf_rank": shelf_rank(strategy_key),
+    }
+
+
 def blocker(column: str, mechanism: Optional[str], strategy_key: str,
             n_missing: int, branch: str = "categorical") -> Optional[Dict[str, Any]]:
     """The interruption, with both terminal exits attached.
@@ -595,6 +727,29 @@ NOT_A_STRATEGY: Dict[str, str] = {
 }
 
 
+def card_option_for_strategy(strategy: str) -> Optional[str]:
+    """The card spelling that records this declaration, or `None`.
+
+    **The inverse of `CARD_STRATEGY`, and it exists because an exit's retry was
+    being shadowed.** `api.py`'s `route_missingness` reads `card_option` in
+    PREFERENCE to `strategy` — the join `DRIVE-008` added — so a retry payload
+    carrying only `strategy` is silently overridden when it is merged into a
+    request that came from the Explore door, which posts `card_option`. Driven
+    at L48: the blocker's own resolve exit, merged the way `showRefusal` merges
+    it, re-posted the refused strategy and produced a **second 409**. That is
+    `GUIDED-072`'s defect — an exit that renders as a way through and opens
+    nothing — alive inside the fix built for it.
+
+    `None`, never a guess (trap #9). Several card spellings map to one
+    declaration and two of them are the card's OLD spellings; a caller that got
+    an old spelling back would be handed a key the current page does not emit.
+    The canonical spelling is the one identical to the declaration, which is
+    true of every strategy a resolve exit names today and is asserted in
+    `test_a_resolve_exit_can_actually_be_taken.py` rather than assumed.
+    """
+    return strategy if CARD_STRATEGY.get(strategy) == strategy else None
+
+
 def strategy_for_card_option(key: str) -> str:
     """The declaration a card option records, or a refusal saying why not."""
     if key in NOT_A_STRATEGY:
@@ -682,3 +837,8 @@ def plan_receipt(declared: Sequence[Dict[str, Any]],
             f"{unanswered} column(s) with missing values have not been "
             f"answered yet." if unanswered else ""),
     }
+
+
+#: The categorical blocker's exits, bound after `card_option_for_strategy`.
+#: See the note where this used to sit.
+BLOCKER_EXITS = blocker_exits("categorical")

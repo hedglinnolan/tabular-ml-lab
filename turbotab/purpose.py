@@ -157,7 +157,22 @@ INDICATOR_EXITS = (
     {"id": "impute_median", "kind": "resolve",
      "label": "Impute instead, inside the training folds",
      "detail": "The value is filled from the training folds only, and the "
-               "estimate is not conditioned on whether it was recorded."},
+               "estimate is not conditioned on whether it was recorded.",
+     # `GUIDED-183`. This carried no `retry`, and `showRefusal` emits
+     # ` disabled` for an exit with no `retry.payload` — so **the SAFE way out
+     # rendered greyed out beside a live "keep it anyway"**, which is the exact
+     # inversion §09 forbids. `GUIDED-087` is the same shape and its build is
+     # `missingness.blocker_exits`; this is that build, on the path nothing
+     # tested.
+     #
+     # Both spellings, for the reason `missingness.card_option_for_strategy`
+     # gives: `api.py` reads `card_option` in preference to `strategy`, and the
+     # request this is merged into came from a door that posts `card_option`.
+     "retry": {"payload": {"strategy": "impute_median",
+                           "card_option": "impute_median"},
+               "how": "Sent again with a training-fold median in place of the "
+                      "was-it-missing indicator.",
+               "typed": None}},
     _exits.attest(
         "Keep the indicator — I know what this absence is",
         "Recorded as a stated limitation: the association estimate is "

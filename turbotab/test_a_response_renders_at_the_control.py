@@ -258,13 +258,15 @@ def test_the_offer_caption_does_not_name_a_control_that_does_not_exist():
     `fix_kind` is absent or `"none"`. So the caption named a control that cannot
     exist, and the shelf is not shortened to make the sentence true.
 
-    **Asserted on the composer rather than end to end, and that is a stated
-    limit.** No fixture in `turbotab/sample_data/` produces a previewable offer
-    at all — `actions.offers` sets `previewable: bool(columns)` and every finding
-    on all four fixtures driven here yields none — so this whole branch is
-    unreachable from a shipped fixture, which is why nobody caught the caption
-    in four loops of sweeps. Filed as its own row; here the composed strings are
-    checked directly.
+    **The stated limit that used to be here was wrong and is now driven.**
+    L47 recorded, and `GUIDED-182` filed, that *no fixture produces a previewable
+    offer at all*. That check read `previewable` off the project payload, where
+    findings carry `suggested_actions` and no offers — the offers live behind
+    `GET /project/<id>/finding/<fid>/offers`, which it never called. Called:
+    **35 options across the shipped fixtures, 29 of them previewable**, and the
+    preview endpoint answers 200 with a real before/after. The branch is
+    reachable and it is driven in
+    `test_the_offer_preview_branch_is_reachable_and_says_so` below.
     """
     from turbotab import api
 
@@ -292,6 +294,71 @@ def test_the_offer_caption_does_not_name_a_control_that_does_not_exist():
         "the non-deferring branch names no way to take the offer, so the panel "
         "is a dead end rather than a preview of something")
     assert "training fold" in api.offer_caption(True)
+
+
+@pytest.mark.parametrize("fixture,target", [
+    ("clinic_visits.csv", "outcome"),
+    ("metabolomics_untargeted.csv", "bmi"),
+], ids=["classification target", "regression target"])
+def test_the_offer_preview_branch_is_reachable_and_says_so(fixture, target):
+    """`GUIDED-182`, and it is NOT a defect — the row was mine and it was wrong.
+
+    The claim was that the offer-preview branch is unreachable from any shipped
+    fixture, which made `GUIDED-162`'s caption uncheckable end to end and was
+    offered as the reason four loops of sweeps missed it. The claim came from
+    reading `previewable` off `GET /project/<id>` — where findings carry
+    `suggested_actions` and no offers at all — instead of from
+    `GET /project/<id>/finding/<fid>/offers`, which is where `actions.offers`
+    runs. **A grep answering the wrong question, trap #5, in a row I filed.**
+
+    Driven here on two fixtures of different target shape (`GUIDED-097`): every
+    previewable option the fixture produces is previewed over HTTP, and the
+    caption under test is the one the endpoint actually serves.
+
+    NOT COVERED: whether the preview renders on screen — the page path is
+    `data-offer-preview` → `offerPreviewHTML` into the row's own
+    `data-offer-pv` slot, and that slot's existence is what `GUIDED-161` was
+    about; visibility needs layout.
+    """
+    from fastapi.testclient import TestClient
+
+    from turbotab import api
+
+    client = TestClient(api.app)
+    with (DATA / fixture).open("rb") as handle:
+        pid = client.post("/project", files={
+            "file": (fixture, handle, "text/csv")}).json()["id"]
+    client.post(f"/project/{pid}/decision",
+                json={"kind": "set_target", "payload": {"column": target}})
+
+    previewed = 0
+    for finding in client.get(f"/project/{pid}").json()["findings"]:
+        offers = client.get(f"/project/{pid}/finding/{finding['id']}/offers")
+        if offers.status_code != 200:
+            continue
+        for option in offers.json().get("options") or []:
+            if not option.get("previewable"):
+                continue
+            got = client.get(f"/project/{pid}/finding/{finding['id']}"
+                             f"/offer/{option['key']}/preview")
+            assert got.status_code == 200, (
+                f"{finding['id']}/{option['key']} is offered as previewable and "
+                f"the preview refuses it ({got.status_code}): "
+                f"{str(got.json())[:200]}")
+            body = got.json()
+            assert body["applied"] is False, (
+                "a preview reports itself as applied, which is the one thing "
+                "the panel promises it is not")
+            assert body["label_note"] == api.offer_caption(bool(body["defers"])), (
+                f"the served caption is not the composed one: "
+                f"{body['label_note']!r}")
+            previewed += 1
+
+    assert previewed >= 3, (
+        f"only {previewed} previewable offers were reachable on {fixture}. "
+        f"`GUIDED-182` claimed zero and the number is what refutes it, so a "
+        f"drop to zero means the row was right after all and this test is now "
+        f"asserting a fiction")
 
 
 def test_the_viewport_still_never_moves():

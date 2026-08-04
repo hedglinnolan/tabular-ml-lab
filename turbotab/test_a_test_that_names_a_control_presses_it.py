@@ -54,8 +54,20 @@ _ATTR = re.compile(r"data-[a-z][a-z0-9-]*")
 #: Docstrings that name a control they deliberately do not touch, each with the
 #: reason. An entry here is a DECISION; a test silently absent is a hole — the
 #: same distinction `GUIDED-180` draws one layer down for unlisted decision
-#: kinds. Empty today, and that is the state the gate below wants.
-NAMED_BUT_NOT_PRESSED: Dict[str, str] = {}
+#: kinds.
+#:
+#: **The one entry is the honest form of the trap, not an exemption from it.** A
+#: `NOT COVERED` paragraph naming the page path a server-side test does not
+#: reach is exactly the disclosure `LOOP.md` §10 asks for, and a detector of
+#: overstatement that punished understatement would be pushing prose in the
+#: wrong direction. The distinction is whether the docstring claims the body
+#: does something or says plainly that it does not.
+NAMED_BUT_NOT_PRESSED: Dict[str, str] = {
+    "test_the_offer_preview_branch_is_reachable_and_says_so":
+        "names `data-offer-preview` and `data-offer-pv` inside its NOT COVERED "
+        "paragraph, to say which page path it does not reach — a disclosure, "
+        "not a claim about the body",
+}
 
 
 def _real_attributes() -> set:
