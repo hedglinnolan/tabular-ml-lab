@@ -105,26 +105,6 @@
   .map-step.now .md{border-color:var(--accent);background:var(--accent);box-shadow:0 0 0 3.5px var(--accent-tint)}
   .map-step.stale{color:var(--warn)}
   .map-step.stale .md{border-color:var(--warn);background:var(--warn-tint)}
-  /* GUIDED-159 · THE FOURTH STATE, which was specified and never built.
-     §04 names four — `done · now · waiting · stale` — and three existed, so a
-     step NOBODY HAS REACHED YET wore the bare `--faint` hollow default. The
-     product owner read that default as a verdict about availability: greyed
-     out, not for you. §09's recorded-absence rule is the general form — an
-     absence must be legible AS AN ABSENCE, never as a verdict — so `waiting`
-     says "not yet" in its own treatment instead of being the absence of one.
-
-     IT TAKES NO HUE. §02 is that every hue is a claim, and "not yet" is not a
-     claim about recording, currency or staleness; borrowing `--ok`, `--accent`
-     or `--warn` would make it assert one. So the whole distinction is carried
-     on the neutral plane and by SHAPE — readable `--muted` ink rather than the
-     disabled-looking `--faint`, and a DASHED ring, an outline waiting to be
-     filled, which survives color being removed (§09's register rule).
-
-     STATIC. §05.2 holds a closed list of four motion slots and `GUIDED-073` is
-     deliberately unbuilt, so a state is a treatment and never a motion. */
-  .map-step.waiting{color:var(--muted)}
-  .map-step.waiting .md{border-style:dashed;border-color:var(--muted);
-                        background:var(--ground)}
   .map-step:hover{background:var(--surface-2)}
 
   .dock{border:1px solid var(--line);border-radius:11px;background:var(--surface);
@@ -507,6 +487,48 @@
     .sa-row .nm{flex-basis:100%}
     .manuscript{padding:20px 18px}
   }
+</style>
+<style>
+  /* ═════════ ADDED BY THE BUILD, NEVER BY EDITING THE PROTOTYPE ═════════
+
+     `test_the_stylesheet_is_the_prototype_stylesheet_verbatim` compares the
+     prototype's `<style>` block against this file BYTE FOR BYTE, and it caught
+     both rules below sitting inside it — two L48 chunks each added a rule where
+     the rule it sat next to lived, which is the natural place and the wrong
+     one. The guard's own docstring is why: *"Keep the design language exactly;
+     only the data source changes"*, and a stylesheet you can edit in place is
+     one where a color gets nudged and nobody hears about it three screens
+     later.
+
+     So the prototype block is carried, untouched, and everything the build adds
+     lives here where the diff is legible. A rule here that belongs in the
+     design language belongs in the PROTOTYPE first. */
+  /* GUIDED-159 · THE FOURTH STATE, which was specified and never built.
+     §04 names four — `done · now · waiting · stale` — and three existed, so a
+     step NOBODY HAS REACHED YET wore the bare `--faint` hollow default. The
+     product owner read that default as a verdict about availability: greyed
+     out, not for you. §09's recorded-absence rule is the general form — an
+     absence must be legible AS AN ABSENCE, never as a verdict — so `waiting`
+     says "not yet" in its own treatment instead of being the absence of one.
+
+     IT TAKES NO HUE. §02 is that every hue is a claim, and "not yet" is not a
+     claim about recording, currency or staleness; borrowing `--ok`, `--accent`
+     or `--warn` would make it assert one. So the whole distinction is carried
+     on the neutral plane and by SHAPE — readable `--muted` ink rather than the
+     disabled-looking `--faint`, and a DASHED ring, an outline waiting to be
+     filled, which survives color being removed (§09's register rule).
+
+     STATIC. §05.2 holds a closed list of four motion slots and `GUIDED-073` is
+     deliberately unbuilt, so a state is a treatment and never a motion. */
+  .map-step.waiting{color:var(--muted)}
+  .map-step.waiting .md{border-style:dashed;border-color:var(--muted);
+                        background:var(--ground)}
+  /* WHICH VALUE BECOMES 1, on a bulk repair's per-feature picker (GUIDED-157).
+     Quieter than the column name and beside it rather than under it, because
+     the column is what you are choosing and the direction is what choosing it
+     means. Mono, because it is a value out of the file rather than prose. */
+  .answer .rg-map{font-family:var(--mono);font-size:10px;margin-left:7px;
+                  color:var(--muted);font-weight:500}
 </style>
 <style>
   /* ═════════ UPLOAD — the only rule added to the prototype's stylesheet.
@@ -951,12 +973,6 @@
   .answer.notbuilt:hover{border-color:var(--line-soft);background:var(--surface)}
   .answer.notbuilt .nb{font-family:var(--mono);font-size:9px;letter-spacing:.05em;
                        text-transform:uppercase;margin-left:6px;color:var(--faint)}
-  /* WHICH VALUE BECOMES 1, on a bulk repair's per-feature picker (GUIDED-157).
-     Quieter than the column name and beside it rather than under it, because
-     the column is what you are choosing and the direction is what choosing it
-     means. Mono, because it is a value out of the file rather than prose. */
-  .answer .rg-map{font-family:var(--mono);font-size:10px;margin-left:7px;
-                  color:var(--muted);font-weight:500}
   .answer[disabled]{opacity:.6;cursor:not-allowed}
   .answer.primary[disabled]{background:var(--surface);color:var(--muted);
                             border-color:var(--line);filter:none}

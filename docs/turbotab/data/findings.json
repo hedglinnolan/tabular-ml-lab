@@ -10641,5 +10641,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "L48-B. index.html declares var PICKED = {} at two sites, commented 'model key -> selected' and 'fix_kind -> finding ids selected'. var redeclaration is ONE variable, so the second initializer resets it at load and the two features have shared a namespace since. Benign today only because the key spaces happen not to overlap - a model key and a fix_kind that collided would silently cross-wire the training shelf and the bulk-repair picker."
+ },
+ {
+  "id": "GUIDED-201",
+  "area": "GUIDED",
+  "sev": "low",
+  "item": "Two L48 chunks each added a CSS rule inside the prototype stylesheet that a guard compares byte for byte - the natural place to put a rule is the one place it may not go",
+  "detail": "",
+  "ev": "L48. test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim asserts the prototype's whole style block appears verbatim in index.html. GUIDED-159's .map-step.waiting and GUIDED-157's .answer .rg-map were each written next to the rule they extend, which is inside that block, and the guard went red on the full suite - the only failure in 1893. Neither agent could have known: the rule they sat beside was the right neighbour and the wrong container, and nothing in the file says the block is frozen.",
+  "act": "The prototype block is carried untouched and a SECOND style block, immediately after it, holds everything the build adds - with a comment saying why, so the next rule goes in the right place by reading rather than by failing.",
+  "status": "FIXED",
+  "note": "No revert probe: the guard predates this loop and is itself the probe - it went red on the real defect and green on the fix, which is the same evidence a plant would produce. A rule that belongs in the design language belongs in the PROTOTYPE first; the new block is for build-side rules only, and its comment says so.",
+  "verified_against": "",
+  "test": "turbotab/test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim",
+  "verified_ev": "L48. test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim asserts the prototype's whole style block appears verbatim in index.html. GUIDED-159's .map-step.waiting and GUIDED-157's .answer .rg-map were each written next to the rule they extend, which is inside that block, and the guard went red on the full suite - the only failure in 1893. Neither agent could have known: the rule they sat beside was the right neighbour and the wrong container, and nothing in the file says the block is frozen."
  }
 ]

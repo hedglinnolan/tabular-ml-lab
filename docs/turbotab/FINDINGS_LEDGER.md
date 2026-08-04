@@ -20,14 +20,14 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**313 of 815 closed.**
+**314 of 816 closed.**
 
 
 | Status | Count |
 |---|---:|
 | `OPEN` | 445 |
 | `PARTIAL` | 57 |
-| `FIXED` | 307 |
+| `FIXED` | 308 |
 | `NOT-A-DEFECT` | 6 |
 
 ---
@@ -674,10 +674,10 @@ Nothing is closed without a regression test named after it.
 
 ---
 
-## FIXED — 307
+## FIXED — 308
 
 
-### Guided-door drive feedback — 116
+### Guided-door drive feedback — 117
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -797,6 +797,7 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-162` | medium | The offer preview is captioned `this is what pressing apply would do` and the panel has no apply - so the two operations under `What the app can do` can be previewed and not done | `reported by the product owner: `if I want to do a was-it-missing indicator or fill in the blank I would not…` | **test:** `turbotab/test_a_response_renders_at_the_control.py::test_the_offer_caption_does_not_name_a_control_that_does_not_exist` — ACT — DELETION OR BUILD, AND IT WAS NEITHER… |
 | `GUIDED-176` | medium | `Show me what it does` renders nothing for the user-supplied cut-point binning transform | `REPORTED BY THE PRODUCT OWNER DRIVING: `show me doesn't work for bin-by-cut points I supply... bin-by-cut did…` | **test:** `turbotab/test_show_me_what_it_does_says_why_it_cannot.py::test_the_cut_point_refusal_lands_at_the_control_that_asked_for_it` — L48-B, decision (b), page-side, without… |
 | `GUIDED-183` | medium | INDICATOR_EXITS[0] - the impute_median RESOLVE at purpose.py:157-160 - carries no retry key, so on the purpose-contraindication path the SAFE way out renders disabled beside a live attest | `turbotab/purpose.py:157-160 INDICATOR_EXITS[0] has no 'retry'. turbotab/web/index.html showRefusal computes…` | **test:** `turbotab/test_a_resolve_exit_can_actually_be_taken.py::test_the_purpose_contraindications_resolve_opens AND… |
+| `GUIDED-201` | low | Two L48 chunks each added a CSS rule inside the prototype stylesheet that a guard compares byte for byte - the natural place to put a rule is the one place it may not go | `L48. test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim asserts the prototype's whole…` | **test:** `turbotab/test_skeleton.py::test_the_stylesheet_is_the_prototype_stylesheet_verbatim` — No revert probe: the guard predates this loop and is itself the probe - it went… |
 
 ### Multi-file / JSON import — 68
 
