@@ -728,8 +728,42 @@ globalThis.__emit = function(v){
   __emitted = v;
   process.exit(0);
 };
+// AND IT WRITES SYNCHRONOUSLY, WHICH IS NOT HYGIENE — `TEST-050`.
+//
+// `process.stdout.write` on a PIPE is asynchronous in node, and `process.exit`
+// discards whatever has not drained. `run()` captures through a pipe, so an
+// emit larger than the pipe buffer — 64 KB on this platform — arrived CUT IN
+// HALF, and there was **no size above that this harness could report at all.**
+//
+// The failure is a `JSONDecodeError` out of `run()`, and it is a raise rather
+// than a wrong value: a truncated JSON document is never a complete one, so
+// this cannot return a shortened answer that parses. That was checked rather
+// than assumed, because the silent version would have been far worse and the
+// first draft of this comment claimed it. What it IS is misattribution — an
+// instrument limit that presents as *the page's controller produced something
+// unparseable*, one level away from the docstring's own rule.
+//
+// It was reachable the whole time and became reachable in practice at
+// `GUIDED-198`, when the Features catalogue grew a parameter control per row
+// and one existing claim's `__harness.html('featBuild')` crossed 64 KB.
+//
+// `fs.writeSync(1, …)` is synchronous even on a pipe. The loop is required
+// twice over: a short write returns fewer bytes than asked, and a non-blocking
+// pipe throws `EAGAIN` when the reader is behind — both of which look like
+// truncation if the return value is ignored.
 process.on("exit", function(){
-  process.stdout.write("\n__SENTINEL__" + JSON.stringify(__emitted === undefined ? null : __emitted) + "\n");
+  var fs = require("fs");
+  var payload = "\n__SENTINEL__" +
+                JSON.stringify(__emitted === undefined ? null : __emitted) + "\n";
+  var buf = Buffer.from(payload, "utf8");
+  var off = 0;
+  while (off < buf.length){
+    try {
+      off += fs.writeSync(1, buf, off, buf.length - off);
+    } catch (e) {
+      if (e.code !== "EAGAIN") throw e;
+    }
+  }
 });
 """
 

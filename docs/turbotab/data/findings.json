@@ -10118,10 +10118,10 @@
   "detail": "",
   "ev": "RAISED BY THE PRODUCT OWNER MID-DRIVE, unprompted: `Didn't we just settle how to handle missingness as informative or not? What's the real correct decision here?` The sequence is the evidence. Explore asks the mechanism question for meds_hbp and meds_chol - informative, or not - and the impossibility card two cards later proposes to CREATE blanks in bp_di and kcal. Nothing marks the provenance of a blank, so a declaration made about `this person was never asked` is the declaration that governs `the app deleted a corrupt reading`, and the two have opposite correct handling: the first may be informative and worth an indicator, the second is missing-completely-at-random by construction and an indicator on it encodes only the instrument's failure",
   "act": "A blank the app created carries its provenance, and the mechanism question is asked per source rather than per column. The record already has what this needs - the impossibility decision names the column and the rows - so the work is that missingness.declare reads it and does not offer `could a blank here mean something?` about values the app itself removed. AND ROUTE THE THIRD OPTION HE ASKED FOR. His own answer was to exclude the rows, and the app agrees with him somewhere else: api.py:654 returns `Offered, never applied. An exclusion changes N and is reported in participant flow, so it is a criterion you state.` That is clause 04's eligibility route and it is correct for 125 impossible diastolics. The impossibility card does not mention it exists.",
-  "status": "PARTIAL",
-  "note": "L48-B. Server half done and driven, page half landed in the same commit; PARTIAL because the third route is named as unbuilt rather than built. set_impossible_missing now records the row labels it blanked (made_blanks/rows); missingness.blanks_the_app_made + provenance compose one reading both the Preprocess survey and the Explore card carry. Driven on clinical_labs.csv/readmitted: sbp goes 0 -> 4 blanks and the survey says all 4 are the app's, rows [75,183,226,243], quoting the decision's OWN sentence rather than composing a second one. All three of the product owner's instincts now sit on the impossible block with the decision that takes each: set-to-missing (clause 06, built), exclude-the-rows (clause 04's set_eligibility, built - driven 288 -> 284 rows with participant flow recorded, and posting it with an empty reason is a 400 because the app will not write the reason participant flow reports), mark-the-column-corrupted (GUIDED-096, named as unbuilt rather than omitted). MISC-014 respected: ml/pipeline.apply_plausibility_filter is the Streamlit door's route and is NOT reported as missing; a second implementation was not built. WHAT IS NOT CLAIMED: the remainder of a column's blanks is reported as 'not recorded as made here', never 'blank in the file', because engine.apply_fix's coerce_numeric also makes NaNs and files no provenance - the field is named n_not_recorded_as_made_here for that reason. NOT COVERED: a multiclass target, and the mixed-provenance branch (a column holding both app-made and file blanks), which is exercised by a direct call because no fixture produces that state.",
+  "status": "FIXED",
+  "note": "L49-C, closed against the one mechanism GUIDED-191 built rather than separately - the two were one design and the ledger note for GUIDED-191 carries the enumeration. n_not_recorded_as_made_here is renamed n_blank_in_the_file, which L48 could not honestly claim because coerce_numeric filed nothing; every writer files now, so the hedge moved to the branch that earns it - a pass that REBUILT THE ROW INDEX, where the field is None rather than a number. set_impossible_missing no longer computes its own row list; it reads off the same door as everyone else, which is what makes this one mechanism instead of two. TWO OF THE BUILDING AGENT'S OWN FIRST-PASS EXPECTATIONS WERE WRONG AND IT CHANGED THE TEST RATHER THAN THE CODE, with the reasoning recorded in the test body: a melt's new value column IS attributable, because the labels name real rows of the frame the user now has; and a pure row-drop IS attributable, so a content-confirmed subset path was added - treating 'index changed' as opaque would have erased provenance on every column the first time anyone set an eligibility criterion. The second is the load-bearing judgment and is flagged as worth re-checking. One existing test file was edited because the rename forces it, and one of its assertions flipped from 'not recorded as made here' to 'came with the file' - trap #3c, a green test whose claim became false, with the reasoning recorded.",
   "verified_against": "",
-  "test": "turbotab/test_a_blank_the_app_made_says_which_pass_made_it.py::test_the_survey_counts_the_blanks_the_impossibility_pass_created AND ::test_the_page_renders_the_routes_the_server_composes",
+  "test": "turbotab/test_every_writer_that_can_blank_a_cell_files_it.py::test_a_reshaped_column_that_survives_the_pass_refuses_to_decompose",
   "verified_ev": "RAISED BY THE PRODUCT OWNER MID-DRIVE, unprompted: `Didn't we just settle how to handle missingness as informative or not? What's the real correct decision here?` The sequence is the evidence. Explore asks the mechanism question for meds_hbp and meds_chol - informative, or not - and the impossibility card two cards later proposes to CREATE blanks in bp_di and kcal. Nothing marks the provenance of a blank, so a declaration made about `this person was never asked` is the declaration that governs `the app deleted a corrupt reading`, and the two have opposite correct handling: the first may be informative and worth an indicator, the second is missing-completely-at-random by construction and an indicator on it encodes only the instrument's failure"
  },
  {
@@ -10482,10 +10482,10 @@
   "detail": "",
   "ev": "L48-B. set_impossible_missing is now the only writer that files provenance (made_blanks/rows). engine.apply_fix's coerce_numeric is a live sibling: it turns unparseable values into NaN with no made_blanks in the payload, so those blanks are exactly as indistinguishable as set_impossible_missing's were before this loop. It is the reason GUIDED-166's provenance sentence has to say 'not recorded as made here' rather than 'blank in the file' - the stronger sentence would be false the moment coerce_numeric ran first.",
   "act": "Every writer that can create a blank files the rows it blanked, in the payload, in the shape set_impossible_missing established. Then the survey can say 'blank in the file' and mean it.",
-  "status": "OPEN",
-  "note": "sibling-of: GUIDED-166. The governing rule at the record layer: the app may be silent about a blank's origin, but the survey must not assert one it did not check.",
+  "status": "FIXED",
+  "note": "L49-C. ONE MECHANISM, and the adjudicator's question is answered plainly: recorder is missingness.blanks_made(before, after, pass_name); door is project.Project._install(new_df, tag, pass_name), the ONLY place self.df is assigned or _history grows, enforced by a test; reader is blanks_the_app_made, which accepts exactly one payload shape - a test asserts L48's legacy single-column payload is now REJECTED, so there is no second form to drift. ENUMERATION DERIVED BY DRIVING ALL 17 FIXTURES rather than by reading: 12 passes install a working table, 7 can blank (recode_missing 20/20 applications and 189 cells; coerce_numeric 2/8 and 55 cells - troponin 41, wbc 14; melt_repeated 4,388; add_feature log/log1p/sqrt/ratio/bin_fixed 136/136/136/28/4; set_impossible_missing; turn_the_table_around; combine_rows), and 5 cannot, each dismissed with a reason. DRIVEN: clinical_labs.csv troponin goes 0 blanks in the file to 41 after coerce_numeric, and the survey reports n_created_by_the_app 41, n_blank_in_the_file 0, 41 row labels, and by:[(apply, coerce_numeric, 41)] - with the recorded row set verified equal BOTH to the cells actually blank in the working table AND to the 41 unparseable values. THE BRIEF'S PREMISE WAS WRONG AND WAS VERIFIED RATHER THAN ASSUMED: clinic_visits.csv weight holds '107 kg' and _clean_numeric_text strips the unit, so it blanks nothing; the real coerce_numeric writer is clinical_labs.csv troponin. TRANSITION_PLAN.md 05 blocked nothing because nothing needed it - zero lines changed in ml/import_doctor.py or ml/join_doctor.py, because _install observes the frame swap directly rather than threading a channel through a frozen signature. NOT COVERED: a multiclass target - multiclass_stage.csv is the only one, setting stage as target returns 400, and it has zero impossible blocks and zero blank-making repairs.",
   "verified_against": "",
-  "test": "",
+  "test": "turbotab/test_every_writer_that_can_blank_a_cell_files_it.py::test_coerce_numeric_files_the_cells_it_blanked_and_the_survey_says_so",
   "verified_ev": "L48-B. set_impossible_missing is now the only writer that files provenance (made_blanks/rows). engine.apply_fix's coerce_numeric is a live sibling: it turns unparseable values into NaN with no made_blanks in the payload, so those blanks are exactly as indistinguishable as set_impossible_missing's were before this loop. It is the reason GUIDED-166's provenance sentence has to say 'not recorded as made here' rather than 'blank in the file' - the stronger sentence would be false the moment coerce_numeric ran first."
  },
  {
@@ -10608,10 +10608,10 @@
   "detail": "",
   "ev": "L48-B, driven on clinical_labs.csv. featPickerHTML reads row.n_inputs and renders the column selects but never reads row.needs; the data-feat-preview handler fetches with NO params at all and data-feat-add posts params: {}. bin_fixed needs ['edges'] -> 400; ordinal_declared needs ['order'] -> 400; bin_quantile, bin_uniform, bin_kmeans need ['n_bins'] -> 400; pca needs ['n_components'] -> 400; and defer_feature bin_quantile with params={} -> 400. The strings n_bins, edges and n_components occur ZERO times in index.html. The page renders these six cards and every press refuses - GUIDED-175's refusal doing its job in front of a control that can never satisfy it.",
   "act": "The page reads needs and renders an input per parameter, or the six say what they need and why they cannot be taken yet. THE SHELF IS NEVER SHORTENED - do not remove the cards.",
-  "status": "OPEN",
-  "note": "This is the consumer half of GUIDED-175, which L47 closed on the server side by refusing honestly. GUIDED-176 fixed the INVISIBILITY of that refusal at L48; this row is why there is a refusal to see.",
+  "status": "FIXED",
+  "note": "L49-B. RE-DERIVED, NOT TRUSTED: both fixtures verified to serve all 18 transforms (12 row_local, 6 deferred) before anything was claimed. Driven with exactly what the page sent - preview with NO params at all, decision with a literal params:{}. BEFORE 12/18 preview and 12/18 decision; AFTER 18/18 and 18/18, identical on clinical_labs.csv/readmitted (classification) and clinic_visits.csv/hba1c (regression), same six, same reasons, both doors. n_bins, edges and n_components occurred zero times in index.html; confirmed. THE FIX: needs grew into features.Parameter - name, kind, label, because, minimum, hint, from_column - served on the wire, and the page branches on kind and renders what it is told. _compute's own refusals were hoisted to features.EDGES_REFUSAL / ORDER_REFUSAL and are the because VERBATIM, one copy, asserted equal to what _compute raises. ORDER: the levels are SERVED rather than the precondition merely stated - /features carries column_levels, every column gets either its distinct levels or the sentence saying why an order cannot be stated over it, and the ordinal_declared picker was numeric-only (unsatisfiable on everything it listed) and now offers every column. The precondition is MET, not announced, and no xfail was needed. The buttons are deliberately NOT gated on the parameters: gating them would make GUIDED-176's refusal unreachable, so the press stays available, now succeeds, and still refuses legibly when unfilled. Two sentences a user can still see are column-level and each carries a route - a 96-distinct-value column is told that stating 96 levels by hand is not something the control can honestly ask for, and pointed at ordinal_frequency; a one-level column is told there is no order to state. NOT COVERED: a multiclass target (the Features step does not read target shape, which is why that was not the axis), a table with no orderable column at all, per-keystroke input on the edges box (the page reads change), and what a real browser does with the min attribute.",
   "verified_against": "",
-  "test": "",
+  "test": "turbotab/test_the_transform_that_needs_a_parameter_gets_a_control_for_it.py::test_the_press_carries_the_parameter_the_row_rendered_a_control_for",
   "verified_ev": "L48-B, driven on clinical_labs.csv. featPickerHTML reads row.n_inputs and renders the column selects but never reads row.needs; the data-feat-preview handler fetches with NO params at all and data-feat-add posts params: {}. bin_fixed needs ['edges'] -> 400; ordinal_declared needs ['order'] -> 400; bin_quantile, bin_uniform, bin_kmeans need ['n_bins'] -> 400; pca needs ['n_components'] -> 400; and defer_feature bin_quantile with params={} -> 400. The strings n_bins, edges and n_components occur ZERO times in index.html. The page renders these six cards and every press refuses - GUIDED-175's refusal doing its job in front of a control that can never satisfy it."
  },
  {
@@ -10711,5 +10711,75 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "L49-A2, found by the gate the late sweep never had. At the sealed step on survey_sentinels.csv, /features identifiers has 13 leaves and four are dark by sentinel AND by name - identifiers.columns[*].core_says_id_like, identifiers.columns[*].distinct_per_row, identifiers.columns[*].n_levels and identifiers.parameters_saved appear ZERO times in turbotab/web/index.html. identifiersHTML renders headline, columns[].sentence, kept and rule and nothing else. parameters_saved is the sharpest: it is the count of model parameters not spent because a high-cardinality column was left out, which is the whole argument for leaving it out, and no user has ever seen it. distinct_per_row and n_levels are the arithmetic the sentence rests on - GUIDED-108's own principle is that the app states the arithmetic and the user decides."
+ },
+ {
+  "id": "TEST-051",
+  "area": "TEST",
+  "sev": "high",
+  "item": "pageharness.__emit wrote through process.stdout.write in an exit handler, so no answer above the 64 KB pipe buffer could be reported at all - and it surfaced as a JSON decode error, blaming the page for an instrument limit",
+  "detail": "",
+  "ev": "L49-B, found because a render grew. stdout on a pipe is asynchronous and process.exit discards what has not flushed, so an emit larger than the pipe buffer arrived truncated and run() raised JSONDecodeError. test_claim[the features step reaches its end] crossed the limit the moment the parameter controls made each catalogue row longer. The failure mode is MISATTRIBUTION rather than silence: the harness said the page produced something unparseable, which is a claim about the page, and the truth was a claim about the harness.",
+  "act": "fs.writeSync(1, ...) with a short-write and EAGAIN loop, so the write completes before exit. A synchronous write to fd 1 is the only form that survives process.exit.",
+  "status": "FIXED",
+  "note": "sibling-of: TEST-048. THE PROBE CORRECTED THE AGENT AND IT IS WORTH RECORDING: the first attempt claimed truncation could land where the JSON stays valid and return a silently smaller answer. That is FALSE - a truncated JSON document is never complete, so it always raises - and the probe came back RED FOR THE WRONG REASON until the claim was corrected to the true, milder one. An instrument limit presenting as a defect in the thing measured is the same class as TEST-048, one layer out.",
+  "verified_against": "",
+  "test": "turbotab/test_the_harness_does_not_truncate_what_it_emits.py::test_a_long_list_arrives_with_every_entry",
+  "verified_ev": "L49-B, found because a render grew. stdout on a pipe is asynchronous and process.exit discards what has not flushed, so an emit larger than the pipe buffer arrived truncated and run() raised JSONDecodeError. test_claim[the features step reaches its end] crossed the limit the moment the parameter controls made each catalogue row longer. The failure mode is MISATTRIBUTION rather than silence: the harness said the page produced something unparseable, which is a claim about the page, and the truth was a claim about the harness."
+ },
+ {
+  "id": "GUIDED-204",
+  "area": "GUIDED",
+  "sev": "high",
+  "item": "L48's blank-provenance block was composed, served on two routes and read by no surface on the page for a whole loop - trap #6 inside the fix for a trap #6",
+  "detail": "",
+  "ev": "L49-C, found while wiring the general mechanism. missingness.provenance was built at L48, served on /preprocess and on the Explore missingness card, and index.html rendered it nowhere. The L48 report claimed the survey and the card carry it, which was true of the PAYLOAD and false of the interface - measured at six surfaces in AGENT_ONBOARD 07 as trap #6, and committed here inside the fix built to close it.",
+  "act": "prepProvHTML renders the provenance sentence at the column card, driven under pageharness rather than asserted on the composer.",
+  "status": "FIXED",
+  "note": "The general lesson is the one A3 is about: a capability and its consumer shipped one loop apart, and the loop in between reported it as done. sibling-of: GUIDED-166.",
+  "verified_against": "",
+  "test": "turbotab/test_every_writer_that_can_blank_a_cell_files_it.py::test_the_page_actually_renders_the_provenance_sentence",
+  "verified_ev": "L49-C, found while wiring the general mechanism. missingness.provenance was built at L48, served on /preprocess and on the Explore missingness card, and index.html rendered it nowhere. The L48 report claimed the survey and the card carry it, which was true of the PAYLOAD and false of the interface - measured at six surfaces in AGENT_ONBOARD 07 as trap #6, and committed here inside the fix built to close it."
+ },
+ {
+  "id": "GUIDED-205",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "A receipt computed at the writer and spent only on prose - the same shape at three surfaces, and the class behind GUIDED-191",
+  "detail": "",
+  "ev": "L49-C. coerce_numeric computed lost and put it in the sentence and nowhere else; features.apply computes n_undefined and puts it in a receipt no consumer keys on; binary_text reports n_missing in prose that is the TOTAL rather than the CREATED count, which is a different number wearing the same word. Trap #7 - the machine-readable form lossier than the sentence - three times, each in a different module, each correct in prose.",
+  "act": "Where a writer computes a count in order to say it, the count travels in the payload beside the sentence. GUIDED-191's blanks_made is the shape.",
+  "status": "OPEN",
+  "note": "sibling-of: GUIDED-191. Filed as the CLASS rather than as three instances.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "L49-C. coerce_numeric computed lost and put it in the sentence and nowhere else; features.apply computes n_undefined and puts it in a receipt no consumer keys on; binary_text reports n_missing in prose that is the TOTAL rather than the CREATED count, which is a different number wearing the same word. Trap #7 - the machine-readable form lossier than the sentence - three times, each in a different module, each correct in prose."
+ },
+ {
+  "id": "GUIDED-206",
+  "area": "GUIDED",
+  "sev": "low",
+  "item": "Project.set_orientation assigns self.df with no undo-stack entry - the only installer that did not",
+  "detail": "",
+  "ev": "L49-C, found by routing all twelve installers through one door. Every other pass that swaps the working table pushes onto _history so the change can be taken back; set_orientation did not, so turning the table around is the one repair a user cannot undo. Preserved exactly through the refactor (remember=False) rather than changed under cover of a different brief.",
+  "act": "Decide whether turning the table around is undoable. If it is, remember=True is a one-word change; if it is not, the card should say so before the press rather than after.",
+  "status": "OPEN",
+  "note": "Not fixed in L49 because changing what is undoable is a product decision, and the loop that found it was building a provenance mechanism.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "L49-C, found by routing all twelve installers through one door. Every other pass that swaps the working table pushes onto _history so the change can be taken back; set_orientation did not, so turning the table around is the one repair a user cannot undo. Preserved exactly through the refactor (remember=False) rather than changed under cover of a different brief."
+ },
+ {
+  "id": "GUIDED-207",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "A payload field that NAMES what an interface must construct instead of DESCRIBING it - a field with no possible reader, and the class behind GUIDED-198",
+  "detail": "",
+  "ev": "L49-B. Transform.needs served the bare strings edges, order, n_bins, n_components. A name is not renderable, so nothing read it, so the six controls it stood for could never be satisfied - and the suite stayed green because the SERVER was correct throughout. This is trap #1 at FIELD granularity: not a module with no caller, but a field with no possible reader. Its detector is not 'does anything import this' but 'could an interface build a control from this alone'. One surface over, answering 08 check 5: selection.declare accepts consensus_min_methods, records it in the spec, and nothing can ever send it - selection.METHODS has no consensus method and consensus_min_methods occurs zero times in index.html, while the register row feat-selection-consensus exists.",
+  "act": "Sweep the served payloads for fields that are NAMES of things rather than descriptions of them, and for each either describe it the way features.Parameter now does or file it. consensus_min_methods is the first instance to disposition.",
+  "status": "OPEN",
+  "note": "sibling-of: GUIDED-198. Filed as the CLASS, per 08 check 1 - GUIDED-198 is the instance and this is what the same lens finds one surface over.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "L49-B. Transform.needs served the bare strings edges, order, n_bins, n_components. A name is not renderable, so nothing read it, so the six controls it stood for could never be satisfied - and the suite stayed green because the SERVER was correct throughout. This is trap #1 at FIELD granularity: not a module with no caller, but a field with no possible reader. Its detector is not 'does anything import this' but 'could an interface build a control from this alone'. One surface over, answering 08 check 5: selection.declare accepts consensus_min_methods, records it in the spec, and nothing can ever send it - selection.METHODS has no consensus method and consensus_min_methods occurs zero times in index.html, while the register row feat-selection-consensus exists."
  }
 ]

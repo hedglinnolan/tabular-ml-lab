@@ -35,11 +35,13 @@ corrupted` is `GUIDED-096`'s split and is **not built**; it is named on the card
 with its reason rather than left off, because a shelf silently holding two of
 three tells the user the third is not a thing one may want.
 
-**What is NOT claimed.** The remainder of a column's blanks is reported as *not
-recorded as made here*, never as *blank in the file*. `coerce_numeric` also
-turns values into `NaN` and files no provenance, so the stronger sentence would
-be false the moment that path ran first. See the note on
-`missingness.PROVENANCE_MIXED`.
+**What is NOT claimed** *(superseded at L49-C — kept because the reason it was
+written is the reason it could be retired)*. The remainder of a column's blanks
+was reported as *not recorded as made here*, never as *blank in the file*,
+because `coerce_numeric` also turned values into `NaN` and filed no provenance.
+Every writer files now, through `project._install`, so the field is
+`n_blank_in_the_file` and the hedge moved to the case that earns it — a pass
+that rebuilt the row index. See `test_every_writer_that_can_blank_a_cell_files_it.py`.
 
 `GUIDED-097`: two target shapes — `clinical_labs.csv` / `readmitted` (binary
 classification) and `clinical_longitudinal.csv` / `hba1c` (continuous). The
@@ -140,7 +142,7 @@ def test_the_survey_counts_the_blanks_the_impossibility_pass_created(
         f"row says nothing about where they came from — so the mechanism "
         f"question is about to be asked of blanks the app made")
     assert prov["n_created_by_the_app"] == n_flagged
-    assert prov["n_not_recorded_as_made_here"] == 0
+    assert prov["n_blank_in_the_file"] == 0
     assert len(prov["rows"]) == n_flagged, (
         "the count and the row list disagree, so one of them is derived and "
         "not recorded")
@@ -246,10 +248,11 @@ def test_the_reading_refuses_to_decompose_what_it_cannot(client):
     that would assert the app made every blank in the column."""
     made = {"column": "sbp", "n": 4, "rows": [1, 2, 3, 4],
             "by": [{"kind": "set_impossible_missing", "n": 4,
+                    "pass": "set_impossible_missing",
                     "sentence": "4 entries of `sbp` were set to missing."}]}
     reading = M.provenance("sbp", 1, made)
     assert reading["n_created_by_the_app"] == 4
-    assert reading["n_not_recorded_as_made_here"] is None, (
+    assert reading["n_blank_in_the_file"] is None, (
         "a negative remainder was reported as a number")
     assert "cannot be reconciled" in reading["sentence"]
     assert M.provenance("sbp", 0, None) is None
@@ -259,13 +262,20 @@ def test_the_reading_refuses_to_decompose_what_it_cannot(client):
     # because no fixture in `sample_data` produces a column that both arrives
     # with blanks and gets more from the impossibility pass. Said out loud
     # rather than left as coverage nobody counted.
+    #
+    # **The claim flipped at L49-C and that is the finding, not a relaxation.**
+    # This asserted `"not recorded as made here"` and `"came with the file" not
+    # in …`, because one writer filed provenance and the remainder could only
+    # be described by what the record had failed to see. Every writer files
+    # now, so the weaker sentence would be the app under-claiming. The hedge
+    # did not go away — `test_every_writer_that_can_blank_a_cell_files_it.py`
+    # holds it on the branch that still earns it.
     mixed = M.provenance("sbp", 10, made)
     assert mixed["n_created_by_the_app"] == 4
-    assert mixed["n_not_recorded_as_made_here"] == 6
-    assert "not recorded as made here" in mixed["sentence"], (
-        "the remainder is described as blank in the file, which the record "
-        "cannot support — `coerce_numeric` also makes blanks and files none")
-    assert "came with the file" not in mixed["sentence"]
+    assert mixed["n_blank_in_the_file"] == 6
+    assert "came with the file" in mixed["sentence"]
+    assert "set_impossible_missing" in mixed["sentence"], (
+        "the note does not say which pass made the blanks")
 
 
 # ═══════════ (b) all three instincts, and which are built ═══════════════════

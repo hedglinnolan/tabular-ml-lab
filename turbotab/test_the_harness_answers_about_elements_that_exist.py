@@ -157,18 +157,20 @@ def test_a_node_declared_by_assigned_markup_is_findable_and_writable():
     out = PH.run(
         "var host = document.getElementById('missBox');\n"
         "host.innerHTML = '<div data-rg-body=\"recode\"></div>"
+        "<div class=\"offer-pv\" data-offer-pv=\"winsorize\"></div>"
         "<input data-plaus-reason=\"sbp\">';\n"
         "var body = document.querySelector('[data-rg-body=\"recode\"]');\n"
+        "var pv = document.querySelector('[data-offer-pv=\"winsorize\"]');\n"
         "var box = document.querySelector('[data-plaus-reason=\"sbp\"]');\n"
         "if (body) body.innerHTML = 'a panel';\n"
         "var after_repaint;\n"
-        "__emit({found_body: !!body, found_input: !!box,\n"
+        "__emit({found_body: !!body, found_input: !!box, found_pv: !!pv,\n"
         "        tag: box && box.tagName, wrote: body && body.innerHTML,\n"
         "        gone_after_repaint: (function(){\n"
         "          host.innerHTML = '';\n"
         "          return document.querySelector('[data-rg-body=\"recode\"]');\n"
         "        })()});")
-    assert out["found_body"] and out["found_input"], (
+    assert out["found_body"] and out["found_input"] and out["found_pv"], (
         "a node declared by assigned markup is still unfindable, so the "
         "per-row panels the controller writes into remain invisible")
     assert out["tag"] == "INPUT", out["tag"]

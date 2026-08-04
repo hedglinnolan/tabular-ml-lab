@@ -59,6 +59,137 @@ class FeatureRefusal(Exception):
     """The catalogue was asked for something it cannot honestly do."""
 
 
+# ── the refusals `_compute` raises, hoisted so there is ONE copy ─────────────
+#
+# `GUIDED-198`. These two sentences are the reason the app cannot derive the
+# parameter, stated in the engine's own words, and the interface has to be able
+# to SHOW that reason beside the control it renders. Hoisting them out of
+# `_compute` is what makes "quote it" possible without a second copy drifting
+# from the first — the alternative is a `because` on the descriptor that says
+# roughly the same thing, which is this project's most-repeated defect one layer
+# over.
+#
+# The text is unchanged from where it was written, and `COPY_DECK.md` carries
+# both with `source="turbotab/features.py"`.
+EDGES_REFUSAL = (
+    "Binning by supplied cut-points needs at least two edges. "
+    "Without them the edges would have to come from the data, "
+    "which is a different transform and defers.")
+ORDER_REFUSAL = (
+    "Encoding in a stated order needs the order. Deriving it from "
+    "the data is a different transform and defers.")
+
+#: The most levels an order can be STATED over, and it is a routing answer
+#: rather than a cap. An order is supplied one level at a time — that is what
+#: makes it a statement of the researcher's knowledge rather than a reading of
+#: the data — and past this many the control is a list nobody fills by hand. The
+#: transform that derives the order from the data already exists and is named in
+#: the refusal, so the column is still reachable; what is refused is pretending
+#: an unfillable control is an offer.
+ORDER_MAX_LEVELS = 12
+
+
+@dataclass(frozen=True)
+class Parameter:
+    """One value a transform needs, the user supplies, and the app cannot derive.
+
+    **`GUIDED-198`, and the finding is what `needs` USED to be.** It was a tuple
+    of NAMES — `("n_bins",)` — and a name is not renderable. The page read
+    `n_inputs` and never `needs`, so six of eighteen transforms offered a button
+    whose only possible answer was a 400, on every fixture, for the life of the
+    step.
+
+    A name would have forced the page to invent the control: *"n_bins is a whole
+    number from 2 to 10"* written in `index.html` is a second copy of a rule that
+    lives here, which is the defect this codebase repeats most. So the SERVER
+    describes the parameter and the page renders what it is told:
+
+    * `kind` — `integer`, `numbers` or `levels`. The only vocabulary the page
+      knows, and each maps to one control.
+    * `label` — what goes beside the control.
+    * `because` — **why the app cannot derive it**, and for `edges` and `order`
+      this is `_compute`'s own `FeatureRefusal`, quoted rather than rewritten.
+      A control that appears without its reason is a demand; one that carries it
+      is a question the researcher can answer.
+    * `minimum` / `min_items` — the bound, HERE and enforced here
+      (`_check_params`). A bound the interface renders and nothing keeps is a
+      rule the app states falsely.
+    * `from_column` — the legitimate values are the CHOSEN COLUMN's own distinct
+      levels, so they are unknowable until a column is picked. `order` is the
+      only one, and it is the one that tests whether "state the precondition"
+      generalizes: `/features` serves the levels, so the precondition is met
+      rather than announced.
+    """
+
+    name: str
+    kind: str                                # integer | numbers | levels
+    label: str
+    because: str
+    minimum: Optional[float] = None          # `integer`: the smallest value
+    min_items: Optional[int] = None          # `numbers`/`levels`: fewest entries
+    hint: str = ""
+    from_column: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        """What an interface can RENDER. `min_items` deliberately stays here.
+
+        `minimum` goes out because the page puts it on the control as `min` and
+        the browser keeps it. `min_items` has no such rendering — the count it
+        requires is already stated to the user inside `hint` and `because`, and
+        it is enforced in `_check_params`. Shipping it anyway would be a field
+        the server composes and nothing reads, which is §07.1 at payload
+        granularity and exactly what `fieldsweep` exists to find.
+        """
+        return {"name": self.name, "kind": self.kind, "label": self.label,
+                "because": self.because, "minimum": self.minimum,
+                "hint": self.hint, "from_column": self.from_column}
+
+
+#: Keyed by parameter NAME rather than by transform, because three transforms
+#: need `n_bins` and one rule for it is the point. A `needs` entry with no row
+#: here raises at import through `_PARAMETER_FOR`, so a transform cannot ship a
+#: parameter the interface has no way to render.
+PARAMETERS: Dict[str, Parameter] = {p.name: p for p in [
+    Parameter(
+        "edges", "numbers", "The cut-points, lowest first",
+        EDGES_REFUSAL, min_items=2,
+        hint="Two or more numbers, separated by commas, in increasing order."),
+    Parameter(
+        "order", "levels", "The order, lowest first",
+        ORDER_REFUSAL, min_items=2, from_column=True),
+    Parameter(
+        "n_bins", "integer", "How many bins",
+        # `_sentence`'s own argument, not a new one: dropping the token gives
+        # "grouped into equal-sized bins", which reads as THE APP CHOSE FOR YOU
+        # — and `pipeline_plan` then fits four, so the silence would sit
+        # directly on top of an undisclosed default.
+        "How many groups to make is a question about the resolution you want, "
+        "not a property of the column. If it is left unstated the pipeline "
+        "fits four, and a number the app picked silently is a decision you "
+        "did not make.",
+        minimum=2),
+    Parameter(
+        "n_components", "integer", "How many components",
+        # Also `_sentence`'s: for `pca` the missing value is the sentence's
+        # grammatical SUBJECT.
+        "How many components to keep is the methods sentence's subject: "
+        "without it the line reads \"principal components will be computed\", "
+        "which asserts a number nobody stated. If it is left unstated the "
+        "pipeline fits two.",
+        minimum=1),
+]}
+
+
+def _PARAMETER_FOR(name: str) -> Parameter:
+    param = PARAMETERS.get(name)
+    if param is None:                                    # pragma: no cover
+        raise FeatureRefusal(
+            f"'{name}' is declared in a transform's `needs` and has no "
+            f"descriptor, so no interface can render a control for it. "
+            f"Known: {', '.join(sorted(PARAMETERS))}.")
+    return param
+
+
 @dataclass(frozen=True)
 class Transform:
     """One catalogue entry, carrying its own clause-§06 classification.
@@ -89,11 +220,25 @@ class Transform:
     def defers(self) -> bool:
         return self.scope != ROW_LOCAL
 
+    @property
+    def parameters(self) -> List[Parameter]:
+        """`needs`, resolved to the descriptors an interface can render.
+
+        `needs` stays the names — `_unfilled` compares against them and so do
+        three tests — and this is the same list one level up. One source, two
+        readings, rather than two lists to drift.
+        """
+        return [_PARAMETER_FOR(n) for n in self.needs]
+
     def to_dict(self) -> Dict[str, Any]:
+        # `needs` GOES OUT AS DESCRIPTORS. On the wire it was a list of bare
+        # names that nothing read; a name cannot be rendered, which is why
+        # nothing read it (`GUIDED-198`). Trap #7 in reverse — the structured
+        # form was lossier than the reason sitting beside it in this module.
         return {"key": self.key, "label": self.label, "scope": self.scope,
                 "because": self.because, "sentence": self.sentence,
                 "defers": self.defers, "n_inputs": self.n_inputs,
-                "needs": list(self.needs),
+                "needs": [p.to_dict() for p in self.parameters],
                 "explainability_cost": self.explainability_cost}
 
 
@@ -227,6 +372,67 @@ CATALOGUE: Dict[str, Transform] = {t.key: t for t in [
 ]}
 
 
+def column_levels(df: pd.DataFrame,
+                  exclude: Sequence[str] = ()) -> List[Dict[str, Any]]:
+    """Each column's distinct values, or the reason an order cannot be stated.
+
+    **This is `GUIDED-198`'s hard half.** `ordinal_declared` needs an `order`,
+    and the legitimate values of an order are the CHOSEN COLUMN's own levels —
+    unknowable until a column is picked, which is why the parameter had no
+    control and the transform 400'd on every press. The row's brief gives two
+    admissible answers: serve the levels once a column is known, or state the
+    precondition and leave it refusing. **This serves the levels**, because a
+    control that states a precondition nothing can satisfy has moved the defect
+    rather than fixed it, and the levels are one `unique()` away.
+
+    **Every column appears, and that is the point.** The shelf is never
+    shortened: the picker used to offer `ordinal_declared` the NUMERIC columns
+    only — which is both too narrow (a category is usually text) and too wide (a
+    496-level identifier has no statable order), and it could not succeed on
+    either. So every column gets a row, and a row is one of two things:
+
+    * `levels` — the distinct values, sorted, and an order can be stated.
+    * `refusal` — the sentence saying why not, naming the count and, where the
+      count is the problem, the transform that derives the order from the data
+      instead. A routing answer rather than an omission (`_NOT_OFFERED`'s rule).
+
+    Sorted by their string form and NOT by a guessed semantic order: the whole
+    premise of `ordinal_declared` is that the app does not know the order. An
+    alphabetical list is a list; a list the app arranged would be an assertion.
+
+    Missing values are excluded — a blank is not a level, and `_compute`'s
+    `.map()` leaves an unlisted value as missing either way.
+    """
+    skip = {str(c) for c in exclude}
+    out: List[Dict[str, Any]] = []
+    for column in df.columns:
+        name = str(column)
+        if name in skip:
+            continue
+        present = df[column].dropna()
+        distinct = sorted({str(v) for v in present.unique()})
+        row: Dict[str, Any] = {"column": name, "n_levels": len(distinct)}
+        if len(distinct) < 2:
+            row["refusal"] = (
+                f"`{name}` has {len(distinct)} distinct "
+                f"{'value' if len(distinct) == 1 else 'values'} in this table, "
+                f"so there is no order to state. An order is a statement about "
+                f"how two levels rank, and there are not two levels.")
+        elif len(distinct) > ORDER_MAX_LEVELS:
+            row["refusal"] = (
+                f"`{name}` has {len(distinct)} distinct values. An order is "
+                f"stated one level at a time, and stating {len(distinct)} of "
+                f"them by hand is not a thing this control can honestly ask "
+                f"for. If the ranking you want is by how common each value is, "
+                f"that is 'Encode categories by how common they are', which "
+                f"derives it from the data and is recorded as a deferred "
+                f"decision.")
+        else:
+            row["levels"] = distinct
+        out.append(row)
+    return out
+
+
 def row_local_keys() -> List[str]:
     return [k for k, t in CATALOGUE.items() if not t.defers]
 
@@ -352,6 +558,7 @@ def preview(df: pd.DataFrame, key: str, columns: Sequence[str],
     """
     t = get(key)
     params = dict(params or {})
+    _check_params(t, params)
     _require_columns(df, columns, t)
 
     if t.defers:
@@ -401,6 +608,7 @@ def apply(df: pd.DataFrame, key: str, columns: Sequence[str],
             f"It is recorded as a decision and fitted inside each training "
             f"fold instead. {t.because}")
     params = dict(params or {})
+    _check_params(t, params)
     _require_columns(df, columns, t)
 
     name = new_column_name(key, columns, params)
@@ -437,6 +645,7 @@ def declare(key: str, columns: Sequence[str],
             f"'{t.label}' is row-local, so it executes immediately rather than "
             f"being declared. Use apply().")
     params = dict(params or {})
+    _check_params(t, params)
     return {
         "key": key, "scope": STATEFUL, "columns": [str(c) for c in columns],
         "params": params,
@@ -448,6 +657,89 @@ def declare(key: str, columns: Sequence[str],
 
 
 # ── internals ────────────────────────────────────────────────────────────────
+
+def _check_params(t: Transform, params: Dict[str, Any]) -> None:
+    """Every SUPPLIED parameter against the descriptor the catalogue publishes.
+
+    **Absence is deliberately not checked here.** `_compute` refuses a missing
+    `edges` and a missing `order`, and `_sentence` refuses a missing `n_bins` or
+    `n_components` — in the words `GUIDED-175` settled and `COPY_DECK.md`
+    records. Duplicating that here would give one condition two sentences.
+
+    What this is for is the other half, and it only became reachable at
+    `GUIDED-198`: **once the page can send a parameter, it can send a wrong
+    one.** `Parameter` publishes `minimum`, `min_items` and — for `edges` —
+    an order the values have to be in, and a bound an interface renders while
+    nothing enforces it is a rule the app states falsely.
+
+    `pd.cut` is the sharp case rather than a hypothetical: `bins=[10, 5]` raises
+    a bare `ValueError` that no handler in `api.py` catches, so a user typing
+    two cut-points backwards would have got a 500 with a traceback where a
+    sentence belongs.
+    """
+    for name in t.needs:
+        param = _PARAMETER_FOR(name)
+        if name not in params or params[name] is None:
+            continue                                    # absence, refused above
+        value = params[name]
+
+        if param.kind == "integer":
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                raise FeatureRefusal(
+                    f"`{param.name}` has to be a whole number and "
+                    f"{value!r} is not one. {param.because}") from None
+            if number != int(number):
+                raise FeatureRefusal(
+                    f"`{param.name}` has to be a whole number; {value!r} is "
+                    f"not. {param.because}")
+            if param.minimum is not None and number < param.minimum:
+                raise FeatureRefusal(
+                    f"`{param.name}` has to be at least "
+                    f"{int(param.minimum)}; {int(number)} was supplied. "
+                    f"{param.because}")
+            continue
+
+        if not isinstance(value, (list, tuple)):
+            raise FeatureRefusal(
+                f"`{param.name}` is a list of values and {value!r} is not a "
+                f"list. {param.because}")
+        if param.min_items is not None and len(value) < param.min_items:
+            raise FeatureRefusal(
+                f"`{param.name}` needs at least {param.min_items} entries and "
+                f"{len(value)} were supplied. {param.because}")
+
+        if param.kind == "numbers":
+            for entry in value:
+                try:
+                    float(entry)
+                except (TypeError, ValueError):
+                    raise FeatureRefusal(
+                        f"`{param.name}` is a list of numbers and {entry!r} is "
+                        f"not one. {param.because}") from None
+            ordered = [float(e) for e in value]
+            if any(b <= a for a, b in zip(ordered, ordered[1:])):
+                raise FeatureRefusal(
+                    f"`{param.name}` has to increase, and {list(value)} does "
+                    f"not. Cut-points out of order describe no bins at all, so "
+                    f"they are refused rather than reordered — the order you "
+                    f"typed is part of what you are stating.")
+            continue
+
+        # `levels`. A repeated level is the one that returns a WRONG value
+        # rather than refusing: `_compute` builds `{str(v): i}`, so a duplicate
+        # silently keeps the last position and every row at the level it
+        # displaced is encoded as the wrong rank.
+        seen = [str(v) for v in value]
+        if len(set(seen)) != len(seen):
+            repeated = sorted({v for v in seen if seen.count(v) > 1})
+            raise FeatureRefusal(
+                f"`{param.name}` names {', '.join(repr(r) for r in repeated)} "
+                f"more than once. Each level holds one position in an order, "
+                f"and a repeat would encode every row at the displaced level "
+                f"with the wrong rank.")
+
 
 def _require_columns(df: pd.DataFrame, columns: Sequence[str],
                      t: Transform) -> None:
@@ -464,18 +756,13 @@ def _compute(df: pd.DataFrame, t: Transform, columns: Sequence[str],
     if t.key == "bin_fixed":
         edges = params.get("edges")
         if not edges or len(edges) < 2:
-            raise FeatureRefusal(
-                "Binning by supplied cut-points needs at least two edges. "
-                "Without them the edges would have to come from the data, "
-                "which is a different transform and defers.")
+            raise FeatureRefusal(EDGES_REFUSAL)
         return pd.cut(df[columns[0]], bins=list(edges),
                       labels=False, include_lowest=True)
     if t.key == "ordinal_declared":
         order = params.get("order")
         if not order:
-            raise FeatureRefusal(
-                "Encoding in a stated order needs the order. Deriving it from "
-                "the data is a different transform and defers.")
+            raise FeatureRefusal(ORDER_REFUSAL)
         lookup = {str(v): i for i, v in enumerate(order)}
         return df[columns[0]].astype(str).map(lookup).astype("float64")
     args = [df[c] for c in columns[:t.n_inputs]]

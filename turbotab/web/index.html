@@ -654,6 +654,19 @@
   .feat-ctl{ display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
   .feat-ctl select{ font:inherit; font-size:13px; padding:5px 8px; border-radius:7px;
                     border:1px solid var(--line); background:var(--surface); color:var(--ink); }
+  /* GUIDED-198 · the parameter a transform needs, rendered from the server's
+     descriptor. A full-width block inside the flex row, so the `because` reads
+     as a paragraph rather than as a caption squeezed beside a picker. */
+  .feat-param{ flex:1 0 100%; margin:6px 0 0; padding:8px 0 0;
+               border-top:1px dashed var(--line); }
+  .feat-param .feat-why{ margin:0 0 7px; }
+  .feat-param select{ font:inherit; font-size:13px; padding:5px 8px; border-radius:7px;
+                      border:1px solid var(--line); background:var(--surface);
+                      color:var(--ink); margin:0 6px 5px 0; }
+  .feat-plab{ display:block; font-size:12px; color:var(--muted); margin:0 0 4px; }
+  .feat-pval{ font:inherit; font-size:13px; padding:5px 8px; border-radius:7px;
+              border:1px solid var(--line); background:var(--surface);
+              color:var(--ink); min-width:min(34ch, 100%); }
   .feat-prev:empty{ display:none; }
   .feat-prevbox{ margin-top:10px; border-left:3px solid var(--line);
                  padding:8px 0 4px 11px; }
@@ -732,6 +745,12 @@
               letter-spacing:.05em; color:var(--faint); }
   .prep-because{ font-size:12.5px; color:var(--muted); margin:4px 0 7px; max-width:74ch; }
   .prep-done{ margin:0 0 5px; font-size:13.5px; }
+  /* The provenance note sits ABOVE the mechanism question and is deliberately
+     quiet: it is a fact the record already holds, not a new thing to answer. */
+  .prep-prov{ margin:0 0 9px; padding:8px 10px; border-radius:7px;
+              background:var(--surface-2); border-left:3px solid var(--line);
+              font-size:13px; }
+  .prep-prov p{ margin:0; }
   /* The Train step. */
   .shelf-group{ margin-bottom:13px; }
   .shelf-lab{ font-size:11px; text-transform:uppercase; letter-spacing:.06em;
@@ -3811,15 +3830,59 @@
      stop being true. */
   var FEAT_Q = {};
   var FEAT_PICK = {};                    /* transform key -> chosen columns */
+  var FEAT_PARAM = {};                   /* transform key -> parameter name -> value */
   var FEAT_STATE = {};                   /* transform key -> last rendered body */
   var SEL_PICK = { method: "", n_features: 10 };
 
+  /* ═════════ GUIDED-198 · THE PAGE READS `needs` ═════════
+     Six of eighteen transforms answered a press with a 400 on every fixture,
+     for the life of this step, because this file read `row.n_inputs` and never
+     `row.needs`: `n_bins`, `edges` and `n_components` appeared ZERO times in
+     it. The preview fetched with no params and the add posted `params: {}`, so
+     `bin_fixed`, `ordinal_declared`, the three binning entries and `pca` had a
+     button whose only possible answer was a refusal.
+
+     The fix is NOT a control written here. A `<select>` offering 2 to 10 bins
+     would be a second copy of a rule that lives in `features.py`, which is this
+     project's most-repeated defect. `needs` now carries a DESCRIPTOR per
+     parameter — `name`, a `kind` this file knows how to render, a `label`, the
+     `because` saying why the app cannot derive the value, and the bound — and
+     everything below renders what it was told. */
+
+  function featRowFor(key){
+    var all = ((FEAT && FEAT.row_local) || [])
+                .concat((FEAT && FEAT.deferred) || []);
+    for (var i = 0; i < all.length; i++) if (all[i].key === key) return all[i];
+    return null;
+  }
+
+  /* A column's own distinct levels, or the server's sentence saying why an
+     order cannot be stated over it. `features.column_levels` decides both. */
+  function featLevelsFor(column){
+    var rows = (FEAT && FEAT.column_levels) || [];
+    for (var i = 0; i < rows.length; i++){
+      if (rows[i].column === column) return rows[i];
+    }
+    return null;
+  }
+
   function featColumnsFor(row){
-    /* A transform's inputs are numeric unless the catalogue says otherwise.
-       `needs` is the engine's own statement of what a transform requires, so
-       an offer the data cannot satisfy is not made. */
-    var cols = (FEAT && FEAT.numeric_columns) || [];
-    return cols;
+    /* A transform's inputs are numeric unless the catalogue says otherwise —
+       and until `GUIDED-198` this said exactly that in a docstring while the
+       body returned `numeric_columns` for every entry. Trap #3b, in the page
+       rather than in a test.
+
+       A parameter defined over the CHOSEN COLUMN's own levels is the catalogue
+       saying otherwise: `ordinal_declared` encodes categories, which are almost
+       never numeric, so the numeric-only offer could not be satisfied on any
+       column it listed. Every column the server served levels-or-a-reason for
+       is offered, and picking one that has no statable order renders that
+       reason instead of a control. The shelf is widened, never shortened. */
+    var byLevel = (row.needs || []).filter(function(p){ return p && p.from_column; });
+    if (byLevel.length){
+      return ((FEAT && FEAT.column_levels) || []).map(function(c){ return c.column; });
+    }
+    return (FEAT && FEAT.numeric_columns) || [];
   }
 
   function featPickerHTML(row){
@@ -3837,6 +3900,100 @@
       h += "</select>";
     }
     return h;
+  }
+
+  /* ONE CONTROL PER DESCRIPTOR, AND THE REASON ABOVE IT.
+     `p.because` is the engine's own sentence — for `edges` and `order` it is
+     literally the `FeatureRefusal` the server raises when they are missing, so
+     the reason a user reads before filling the control and the reason they read
+     if they do not are the same words. */
+  function featParamHTML(row){
+    var needs = row.needs || [];
+    if (!needs.length) return "";
+    var chosen = FEAT_PICK[row.key] || [];
+    var held = FEAT_PARAM[row.key] || {};
+    var h = "";
+    needs.forEach(function(p){
+      h += '<div class="feat-param">';
+      h += '<p class="feat-why">' + esc(p.because) + "</p>";
+      if (p.from_column){
+        /* THE PRECONDITION IS MET, NOT ANNOUNCED. The legitimate values are the
+           chosen column's levels, so the control cannot exist before a column
+           does — and once one does, the server has already served them. */
+        var col = chosen[0];
+        if (!col){
+          h += '<p class="feat-note">' + esc(p.label) +
+               " — the values are the column's own levels, so pick a column " +
+               "first.</p>";
+        } else {
+          var entry = featLevelsFor(col);
+          if (!entry){
+            h += '<p class="feat-note">The levels of `' + esc(col) +
+                 "` were not served with this catalogue, so there is nothing " +
+                 "to offer here.</p>";
+          } else if (entry.refusal){
+            h += '<p class="feat-note">' + esc(entry.refusal) + "</p>";
+          } else {
+            var picked = held[p.name] || [];
+            h += '<p class="feat-note">' + esc(p.label) + " — " +
+                 esc(entry.levels.length) + " levels in `" + esc(col) + "`.</p>";
+            entry.levels.forEach(function(_v, i){
+              h += '<select data-feat-param="' + esc(row.key) +
+                   '" data-feat-pname="' + esc(p.name) +
+                   '" data-feat-pkind="levels" data-feat-pslot="' + i + '">';
+              h += '<option value="">position ' + (i + 1) + "…</option>";
+              entry.levels.forEach(function(v){
+                h += '<option value="' + esc(v) + '"' +
+                     (picked[i] === v ? " selected" : "") + ">" + esc(v) +
+                     "</option>";
+              });
+              h += "</select>";
+            });
+          }
+        }
+      } else if (p.kind === "integer"){
+        h += '<label class="feat-plab">' + esc(p.label) + "</label>";
+        h += '<input class="feat-pval" type="number" step="1"' +
+             (p.minimum === null || p.minimum === undefined
+                ? "" : ' min="' + esc(p.minimum) + '"') +
+             ' data-feat-param="' + esc(row.key) +
+             '" data-feat-pname="' + esc(p.name) +
+             '" data-feat-pkind="integer" value="' +
+             (held[p.name] === undefined || held[p.name] === null
+                ? "" : esc(held[p.name])) + '">';
+      } else {
+        /* `numbers` — a list the user types. The separator and the ORDER are
+           the server's statement (`p.hint`), not a convention invented here. */
+        h += '<label class="feat-plab">' + esc(p.label) + "</label>";
+        h += '<input class="feat-pval" type="text" data-feat-param="' +
+             esc(row.key) + '" data-feat-pname="' + esc(p.name) +
+             '" data-feat-pkind="numbers" placeholder="' + esc(p.hint) +
+             '" value="' + esc((held[p.name] || []).join(", ")) + '">';
+      }
+      h += "</div>";
+    });
+    return h;
+  }
+
+  /* The parameters this row can HONESTLY send — a half-filled order is not an
+     order, and sending one would put a wrong value on the wire where nothing at
+     all belongs. What is dropped here the server refuses in its own words, which
+     is the branch the rule already authorizes. */
+  function featParamsFor(row){
+    var held = FEAT_PARAM[row.key] || {};
+    var out = {};
+    (row.needs || []).forEach(function(p){
+      var v = held[p.name];
+      if (v === undefined || v === null || v === "") return;
+      if (Object.prototype.toString.call(v) === "[object Array]"){
+        if (!v.length) return;
+        for (var i = 0; i < v.length; i++){
+          if (v[i] === undefined || v[i] === null || v[i] === "") return;
+        }
+      }
+      out[p.name] = v;
+    });
+    return out;
   }
 
   function featRowHTML(row, kind){
@@ -3863,6 +4020,13 @@
                 : "In the table now.") +
              " It is listed with everything else below.</p></div>";
     }
+    /* COLUMNS ONLY, AND THE PARAMETERS DELIBERATELY NOT. `GUIDED-198` made the
+       parameter controls exist; gating the buttons on them as well would have
+       made the row's refusal unreachable, and that refusal is `GUIDED-176`'s
+       own evidence — *Show me what it does* on `bin_fixed` with no cut-points
+       is a 400 that has to land at the control. The shelf is never shortened:
+       the press stays available, it now CAN succeed, and when it cannot the
+       server says why in the same words the control carries. */
     var ready = (FEAT_PICK[row.key] || []).filter(function(c){ return !!c; })
                   .length === (row.n_inputs || 1);
     var h = '<div class="feat-head"><span class="feat-lab">' + esc(row.label) + "</span>" +
@@ -3873,7 +4037,7 @@
        difference between "this one is deferred" and a reader who can check
        whether the classification is right. */
     h += '<p class="feat-why">' + esc(row.because) + "</p>";
-    h += '<div class="feat-ctl">' + featPickerHTML(row);
+    h += '<div class="feat-ctl">' + featPickerHTML(row) + featParamHTML(row);
     if (ready){
       /* ═════════ AND IT NAMES A SLOT ═════════ `GUIDED-176`.
          This control is a GET rather than a post, so L48-A's sweep over the
@@ -4396,6 +4560,36 @@
     return h + atControlSlot("prep-" + col.column) + "</div>";
   }
 
+  /* WHERE THIS COLUMN'S BLANKS CAME FROM, ABOVE THE QUESTION ABOUT THEM.
+     GUIDED-166 / GUIDED-191. The server has composed `provenance` since L48
+     and nothing on this page read it — trap #6, the sentence correct on the
+     wire and invisible to a person — so the app went on asking *"could a blank
+     in `troponin` mean something?"* over 41 blanks it had written itself two
+     cards earlier.
+
+     The sentence is the SERVER'S, never composed here: one composer, which is
+     what GUIDED-090/091/098 each cost a loop. This renders it and adds the row
+     labels the payload carries, and it says so when the payload knows a count
+     but not which rows — a short list beside a larger count would otherwise
+     read as the whole set. */
+  function prepProvHTML(col){
+    var p = col.provenance;
+    if (!p) return "";
+    var h = '<div class="prep-prov" data-prep-prov="' + esc(col.column) + '">' +
+            "<p>" + esc(p.sentence) + "</p>";
+    var rows = p.rows || [];
+    if (rows.length && p.rows_known !== false){
+      h += '<p class="feat-note">Row' + (rows.length === 1 ? " " : "s ") +
+           esc(rows.slice(0, 12).join(", ")) +
+           (rows.length > 12 ? " and " + num(rows.length - 12, 0) + " more" : "") +
+           ".</p>";
+    } else if (p.n_created_by_the_app && p.rows_known === false){
+      h += '<p class="feat-note">Which rows is not recorded: the pass that ' +
+           "made them rebuilt the row index.</p>";
+    }
+    return h + "</div>";
+  }
+
   function prepColHTML(col){
     var done = (PREP.declared || []).filter(function(d){
       return d.column === col.column; })[0];
@@ -4409,7 +4603,7 @@
              (done.acknowledged_signal_loss
                 ? " · recorded as a stated limitation" : "") + "</p></div>";
     }
-    return prepMechHTML(col) + prepStrategyHTML(col);
+    return prepProvHTML(col) + prepMechHTML(col) + prepStrategyHTML(col);
   }
 
   function prepReceiptHTML(){
@@ -5920,6 +6114,55 @@
       var slot = Number(t.getAttribute("data-feat-slot") || 0);
       FEAT_PICK[key] = FEAT_PICK[key] || [];
       FEAT_PICK[key][slot] = t.value;
+      /* A parameter whose values ARE the old column's levels is not a value
+         about the new one. Held over, it would post `['mild','severe']` against
+         a column with neither — a wrong value where nothing at all belongs. */
+      var crow = featRowFor(key);
+      if (crow && FEAT_PARAM[key]){
+        (crow.needs || []).forEach(function(p){
+          if (p && p.from_column) delete FEAT_PARAM[key][p.name];
+        });
+      }
+      renderFeatures();
+      return;
+    }
+    if (t.hasAttribute("data-feat-param")){
+      /* THE COERCION IS THE DESCRIPTOR'S, NOT THIS FILE'S. `data-feat-pkind`
+         was written by `featParamHTML` from the server's `kind`, so the branch
+         taken here is the one the engine named. What lands in `FEAT_PARAM` is
+         never validated against a bound written in this page — the server owns
+         the bound and refuses in its own sentence. */
+      var pkey = t.getAttribute("data-feat-param");
+      var pname = t.getAttribute("data-feat-pname");
+      var pkind = t.getAttribute("data-feat-pkind");
+      FEAT_PARAM[pkey] = FEAT_PARAM[pkey] || {};
+      var store = FEAT_PARAM[pkey];
+      if (pkind === "integer"){
+        if (t.value === "" || t.value === null || t.value === undefined){
+          delete store[pname];
+        } else {
+          store[pname] = Number(t.value);
+        }
+      } else if (pkind === "numbers"){
+        var typed = String(t.value === null || t.value === undefined ? "" : t.value)
+                      .split(",")
+                      .map(function(s){ return s.trim(); })
+                      .filter(function(s){ return s !== ""; });
+        var nums = typed.map(Number);
+        /* Text that is not a number is DROPPED rather than coerced. `Number("")`
+           is 0 and `Number("a")` is NaN, and either one on the wire is a
+           cut-point the user did not type. */
+        if (!typed.length || nums.some(function(n){ return isNaN(n); })){
+          delete store[pname];
+        } else {
+          store[pname] = nums;
+        }
+      } else {
+        var pslot = Number(t.getAttribute("data-feat-pslot") || 0);
+        var order = store[pname] || [];
+        order[pslot] = t.value;
+        store[pname] = order;
+      }
       renderFeatures();
       return;
     }
@@ -6372,8 +6615,20 @@
     if (t.hasAttribute("data-feat-preview")){
       var pk = t.getAttribute("data-feat-preview");
       var pcols = (FEAT_PICK[pk] || []).filter(function(c){ return !!c; });
-      api("/project/" + P.id + "/feature/preview?transform=" +
-          encodeURIComponent(pk) + "&columns=" + encodeURIComponent(pcols.join(",")))
+      /* `GUIDED-198`. This fetched with NO params, so the preview of a
+         transform that needs one was a 400 on every press. The parameter is
+         appended only when the row can send a complete one — an empty
+         `&params={}` would change the URL of the refusal path `GUIDED-176`
+         closed while asking the server exactly the same question. */
+      var prow = featRowFor(pk);
+      var pvals = prow ? featParamsFor(prow) : {};
+      var purl = "/project/" + P.id + "/feature/preview?transform=" +
+                 encodeURIComponent(pk) + "&columns=" +
+                 encodeURIComponent(pcols.join(","));
+      if (Object.keys(pvals).length){
+        purl += "&params=" + encodeURIComponent(JSON.stringify(pvals));
+      }
+      api(purl)
         .then(function(body){
           var box = $("featprev-" + pk);
           if (box) box.innerHTML = featPreviewHTML(body);
@@ -6388,9 +6643,17 @@
          the catalogue's `scope` did, and clause §06 is why. `add_feature`
          changes the working table; `defer_feature` changes nothing until a
          training fold exists. */
+      /* `GUIDED-198`. This posted a literal `params: {}`, so `bin_fixed`,
+         `ordinal_declared`, the three binning entries and `pca` recorded
+         nothing and answered 400 — `defer_feature bin_quantile params={}` is
+         the row's own reproduction. What goes out now is what the row's
+         controls hold, and `featParamsFor` drops anything half-filled rather
+         than sending a value the user did not finish stating. */
+      var arow = featRowFor(ak);
       decide(t.getAttribute("data-feat-kind") === "deferred"
                ? "defer_feature" : "add_feature",
-             ak, { transform: ak, columns: acols, params: {} },
+             ak, { transform: ak, columns: acols,
+                   params: arow ? featParamsFor(arow) : {} },
              "Recording that…");
       return;
     }

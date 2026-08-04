@@ -44,6 +44,71 @@ LATE_ROUTES = ("/features", "/recipes", "/preprocess")
 FIXTURE, LENS, TARGET = "survey_sentinels.csv", "survey", "age"
 
 
+def _family(route: str, shape: str) -> tuple:
+    """`(route tail, top-level shape)` — L42-B's own function, not a second one.
+
+    Two vocabularies for one question are two things to drift, which is the
+    argument L42-B makes for reusing `READERS`. This reuses its grouping.
+    """
+    tail = route.rsplit("/", 1)[-1].split("?")[0]
+    return (tail, shape.split("[")[0].split(".")[0])
+
+
+#: Families that are fully dark here and have a KNOWN reader, with the reason.
+#: `GUIDED-197`.
+DECLARED = {
+    ("preprocess", "columns"): (
+        "`prepStrategyHTML` reads `col.strategies` on every render — it is the "
+        "list the strategy buttons are built from. It reports dark for the "
+        "reason L42-B's own `explore_stack` entry gives: this instrument "
+        "detects a read by stamping a SENTINEL VALUE and looking for it in the "
+        "DOM, and these entries are used as LOOKUP KEYS — `prepStrategy(branch, "
+        "key)` — so a sentinel key resolves to nothing and renders nothing. A "
+        "field read as a key is invisible to a sweep that watches for values."),
+    ("features", "column_levels"): (
+        "`GUIDED-198`'s new payload, and **the gate caught it on the first run "
+        "after it landed** — which is what this file exists for. "
+        "`featParamHTML` reads `FEAT.column_levels` to build the "
+        "`ordinal_declared` order control, and `featColumnsFor` reads it again "
+        "to decide which columns that transform may be offered over. It reports "
+        "dark for the reason `preprocess.columns` does: the entries are read as "
+        "LOOKUP KEYS and as `<option value=…>`, so a sentinel value resolves to "
+        "nothing and renders nothing. The reader is named, known and tested — "
+        "`test_the_transform_that_needs_a_parameter_gets_a_control_for_it.py"
+        "::test_the_order_offered_is_the_chosen_columns_own_levels`."),
+    ("preprocess", "receipt"): (
+        "`receipt.n_applied_now`, `n_attested`, `n_deferred`, `n_left`, "
+        "`n_mixed` and `n_unanswered` are the arithmetic the server composes "
+        "`receipt.headline` FROM, and `prepReceiptHTML` renders the headline. "
+        "They travel beside the sentence so a consumer never has to parse "
+        "prose for a count — trap #7's rule kept, which is the opposite of a "
+        "gap. The sentence is read; the numbers under it are its structured "
+        "form."),
+}
+
+#: Families that are fully dark and for which NO reader was found. Filed, not
+#: excused. L42-B's words: *a reason I cannot substantiate is the shrug the
+#: table exists to stop.*
+FILED = {
+    # `/features`, and the four the gate found on its very first run — which is
+    # the whole argument for the gate. `row_local` and `deferred` are dark on
+    # ONE leaf each, `needs`: the parameter descriptor no control reads, which
+    # is `GUIDED-198` exactly. When that lands they stop being dark and the
+    # `stale` half of the gate below says so, rather than letting this table go
+    # on excusing something that has since been wired.
+    ("features", "row_local"): "GUIDED-198",
+    ("features", "deferred"): "GUIDED-198",
+    ("features", "all_columns"): "GUIDED-198",
+    ("features", "identifiers"): "GUIDED-203",
+    ("preprocess", "strategies"): "GUIDED-190",
+    ("recipes", "operations"): "GUIDED-202",
+    ("recipes", "pack_defaults"): "GUIDED-202",
+    ("recipes", "n_choices_suppressed"): "GUIDED-202",
+    ("recipes", "n_rows_seen"): "GUIDED-202",
+    ("recipes", "n_rows_withheld"): "GUIDED-202",
+}
+
+
 @pytest.fixture(scope="module")
 def swept_late():
     """The journey through the seal, then the sweep."""
@@ -184,3 +249,82 @@ def test_the_instrument_still_distinguishes_read_from_unread_here(swept_late):
     _routes, _pid, _ids, sweep = swept_late
     assert sweep.reaching, "nothing at all reaches a person at the sealed step"
     assert sweep.unread, "everything reaches a person, which is not credible"
+
+
+# ═══════════ THE GATE, WHICH THIS FILE DID NOT HAVE ═══════════════════════════
+
+def test_every_dark_family_here_names_a_reader_or_a_row(swept_late, capsys):
+    """`GUIDED-197`. A sweep that reports rather than fails is a document.
+
+    This file enumerated three payloads, printed 226 fields and 39 unread for
+    `/features` alone, and **asserted nothing about any of them** — so
+    `GUIDED-171` (a two-column formula previewing one operand, with `inputs`
+    and `all_columns` served and unread) sat inside its output for four loops
+    and the file stayed green the whole time. L42-B's
+    `test_every_unread_family_names_a_reader_or_a_row` is the pattern this was
+    missing, and it is applied here rather than reinvented: three dispositions
+    and no fourth.
+
+    **A count is not a guard.** The distinction is `GUIDED-180`'s exactly, one
+    surface over — `unchecked` and `checked and found to be fine` were rendering
+    as the same output, which was *a number printed to stdout*.
+    """
+    _routes, _pid, _ids, sweep = swept_late
+    dark = {_family(route, shape)
+            for (route, shape), v in sweep.shapes().items()
+            if v["verdict"] == "none"
+            and any(route.endswith(t) for t in LATE_ROUTES)}
+    undeclared = sorted(f for f in dark if f not in DECLARED and f not in FILED)
+    stale = sorted((set(DECLARED) | set(FILED)) - dark)
+
+    with capsys.disabled():
+        print("\n  ── L49-A2 · the late sweep is a gate now ──")
+        print(f"  families fully dark at this step    {len(dark)}")
+        print(f"    with a named reader (DECLARED)    "
+              f"{len([f for f in dark if f in DECLARED])}")
+        print(f"    filed against a row (FILED)       "
+              f"{len([f for f in dark if f in FILED])}")
+        print(f"    neither                           {len(undeclared)}")
+        print(f"  table entries no longer dark        {len(stale)}")
+        for f in stale:
+            print(f"      {f}")
+        # THE LEAVES, not only the families. A family is dark because of a
+        # particular field, and a reader who gets only the family name has to
+        # re-run a twelve-minute sweep to learn which — which is most of why
+        # the counts this file printed for four loops were never acted on.
+        print("  the dark leaves, per family:")
+        for (route, shape), v in sorted(sweep.shapes().items()):
+            if v["verdict"] != "none":
+                continue
+            if not any(route.endswith(t) for t in LATE_ROUTES):
+                continue
+            print(f"      {_family(route, shape)[0]:<12} {shape}")
+
+    assert not undeclared, (
+        "these families are composed by the server at the sealed step and read "
+        "by nothing in the Guided door, and neither a reader nor a row is "
+        f"named for them:\n  {undeclared}\n"
+        "Name the reader in DECLARED, or file a row and put it in FILED. A "
+        "printed count is not a disposition.")
+    assert not stale, (
+        f"{stale} are named in DECLARED/FILED and are no longer dark. A table "
+        f"that keeps excusing what has since been wired reports coverage "
+        f"nothing provides — remove them.")
+
+
+def test_the_gate_has_something_to_gate(swept_late):
+    """The positive control, and this file is the reason it is written down.
+
+    An empty `dark` set makes the gate above pass on any page, including an
+    emptied one. It is the same failure the gate exists to fix, one level up.
+    """
+    _routes, _pid, _ids, sweep = swept_late
+    verdicts = [v["verdict"] for (route, _s), v in sweep.shapes().items()
+                if any(route.endswith(t) for t in LATE_ROUTES)]
+    assert verdicts, "the sweep produced no verdicts at all for the late routes"
+    assert "all" in verdicts, (
+        "nothing at these three routes reaches a person, which is not credible "
+        "and means the instrument is reporting darkness rather than measuring it")
+    assert "none" in verdicts, (
+        "every field at these three routes reaches a person. That would be a "
+        "remarkable result and it is more likely the sentinel stopped working")

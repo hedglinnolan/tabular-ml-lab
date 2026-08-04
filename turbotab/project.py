@@ -128,21 +128,11 @@ def _deferred_noticings(findings: Sequence[Dict[str, Any]],
 def _label(value: Any) -> Any:
     """Coerce one index label to something JSON can carry.
 
-    Labels are scalars — ints, strings, occasionally timestamps. Anything with
-    an `item()` is a numpy scalar hiding as a Python one.
+    One implementation, in `missingness`, because that module now composes the
+    row lists this one is compared against — see `missingness._row_label`.
     """
-    if isinstance(value, (str, bool)) or value is None:
-        return value
-    if hasattr(value, "isoformat"):
-        return value.isoformat()
-    if hasattr(value, "item"):
-        try:
-            return value.item()
-        except (ValueError, AttributeError):
-            return str(value)
-    if isinstance(value, (int, float)):
-        return value
-    return str(value)
+    from turbotab.missingness import _row_label
+    return _row_label(value)
 
 
 @dataclass(frozen=True)
@@ -467,6 +457,50 @@ class AnalysisProject:
         self.decisions.append(d)
         return d
 
+    # ── the one door the working table changes through ──────────────────────
+
+    def _install(self, new_df: pd.DataFrame, *, tag: str, pass_name: str,
+                 remember: bool = True) -> Dict[str, Any]:
+        """Push the current frame onto the undo stack, install `new_df`, and
+        **return the provenance of whatever blanks the swap created.**
+
+        `GUIDED-191`: *the app writes a value into the working table and files
+        no record that it did.* This is the door. Every `self._history.append`
+        / `self.df = …` pair in this class became a call to this, which is what
+        makes the answer to *how many provenance mechanisms are there* be one.
+
+        The alternative — each writer computing its own record — is the same
+        defect with more places to forget it, and it is how the codebase got
+        here: `set_impossible_missing` grew a hand-rolled `made_blank` list at
+        L48 and stayed the only writer with one for a whole loop while
+        `recode_missing` blanked 189 cells across the fixture set and
+        `coerce_numeric` put its count in a sentence and nowhere else.
+
+        The caller merges the returned fragment into its own decision's
+        payload, so the receipt lands on the decision that caused it rather
+        than on a decision of this method's own. A pass that blanks nothing
+        gets `{}` and its payload is unchanged — a `made_blanks: false` on
+        every decision in the transcript would be the noise the `None` in
+        `provenance` already refuses.
+
+        Returning it rather than storing it is deliberate: a fragment parked on
+        the project would be a second place the record lives, and the one that
+        got read would be whichever the consumer reached first.
+
+        `remember=False` is for the one installer that never had an undo entry
+        — turning the table around, which happens before anything downstream
+        exists and is refused outright once the barrier is up. It keeps that
+        behavior exactly as it was rather than granting it a stack entry as a
+        side effect of routing it through here; the provenance is taken either
+        way, because that is the part this method is for.
+        """
+        from turbotab import missingness as _miss
+        before = self.df
+        if remember:
+            self._history.append((tag, before))
+        self.df = new_df
+        return _miss.blanks_made(before, new_df, pass_name=pass_name)
+
     def unskip(self, key: str, title: str = "") -> Decision:
         """Reopen a question the Router settled from the file. `GUIDED-041`.
 
@@ -616,8 +650,18 @@ class AnalysisProject:
             raise ProjectError(str(exc)) from exc
 
         receipt = result["receipt"]
-        self._history.append((f"feature::{receipt['column']}", self.df))
-        self.df = result["frame"]
+        # A ROW-LOCAL TRANSFORM IS A BLANK WRITER, and five of the eleven are.
+        # `log`, `log1p` and `sqrt` are undefined outside their domain, `ratio`
+        # at a zero denominator, and `bin_fixed` outside its outermost edges —
+        # measured on `clinic_visits.csv`: 136, 136, 136, 28 and 4 cells. The
+        # receipt has always carried `n_undefined` and the sentence has always
+        # said *"values at or below zero are undefined and become missing"*,
+        # and neither reached the missingness survey, which two steps later
+        # asked what a blank in `log_age` MEANS.
+        blanks = self._install(result["frame"],
+                               tag=f"feature::{receipt['column']}",
+                               pass_name=f"add_feature::{key}")
+        receipt = {**receipt, **blanks}
         self.engineered.append(receipt)
         # A new column changes the modeling problem, so everything computed
         # under the old one is stale. Marked, never dropped.
@@ -634,8 +678,12 @@ class AnalysisProject:
             raise ProjectError(
                 f"'{column}' was not created here, so removing it is not this "
                 f"step's to do. Only engineered columns can be removed.")
-        self._history.append((f"feature::-{column}", self.df))
-        self.df = self.df.drop(columns=[column])
+        # Routed through the one door although dropping a column can only
+        # remove blanks. Routed rather than exempted because "this one cannot
+        # blank anything" is a claim, and a claim that lives in a comment is
+        # the thing that goes stale — here it is measured on every call.
+        self._install(self.df.drop(columns=[column]),
+                      tag=f"feature::-{column}", pass_name="remove_feature")
         self.engineered = [e for e in self.engineered if e["column"] != column]
         self.findings_stale = True
         self._mark_stale(f"the column `{column}` was removed")
@@ -939,7 +987,14 @@ class AnalysisProject:
             except _orient.OrientationError as exc:
                 raise ProjectError(str(exc)) from exc
             detail = {k: v for k, v in turned.items() if k != "df"}
-            self.df = turned["df"]
+            # `orientation.transpose` coerces each turned-around row back to
+            # numeric and installs the coercion when at least 90% of it parses
+            # — so up to a tenth of a column can become blank here. Every
+            # column is new (the frame is the other axis) and the index is
+            # rebuilt, so this lands as counted-but-rows-unknown.
+            detail.update(self._install(turned["df"], tag="orientation",
+                                        pass_name="turn_the_table_around",
+                                        remember=False))
             # Everything computed on the old frame described a different table.
             # Marked stale rather than dropped, and the caller recomputes —
             # the same treatment a changed lens gets, for a larger reason.
@@ -1173,9 +1228,15 @@ class AnalysisProject:
         except _rep.RepeatsError as exc:
             raise ProjectError(str(exc)) from exc
 
-        self._history.append((f"aggregate::{method}", self.df))
-        self.df = result["frame"]
+        # Combining a person's rows rebuilds the index by construction — 600
+        # rows became 200 on `clinical_longitudinal.csv` — so every column that
+        # survives is UNATTRIBUTABLE and the survey says so rather than
+        # differencing two blank counts across frames whose rows are not the
+        # same rows.
+        blanks = self._install(result["frame"], tag=f"aggregate::{method}",
+                               pass_name=f"combine_rows::{method}")
         self.aggregation = {k: v for k, v in result.items() if k != "frame"}
+        self.aggregation.update(blanks)
         self.aggregation["group_col"] = group_col
         self.aggregation["order_col"] = order_col
         self.findings_stale = True
@@ -1306,8 +1367,15 @@ class AnalysisProject:
             raise ProjectError(str(exc)) from exc
 
         if record["n_excluded"]:
-            self._history.append(("eligibility", self.df))
-            self.df = self.df.loc[record["labels"]]
+            # Excluding rows removes blanks with the rows and creates none, but
+            # it does not preserve the index, so this is the one place the door
+            # will report `unattributable` for a pass that provably blanked
+            # nothing. Correct rather than convenient: after an exclusion the
+            # app genuinely cannot compare a surviving cell with the cell that
+            # preceded it, and the alternative is a rule that says *trust this
+            # one* — which is how a mechanism becomes two.
+            self._install(self.df.loc[record["labels"]], tag="eligibility",
+                          pass_name="eligibility_criterion")
             self.findings_stale = True
             self._mark_stale(
                 f"{record['n_excluded']} row(s) were excluded by an eligibility "
@@ -1421,13 +1489,13 @@ class AnalysisProject:
         if strategy == _miss.EXPLICIT_CATEGORY:
             # Row-local, so it executes now and posts its receipt — a blank
             # becomes a literal token using nothing but that row's own cell.
-            self._history.append((f"missing::{column}", self.df))
             out = self.df.copy()
             col = out[column]
             if isinstance(col.dtype, pd.CategoricalDtype):
                 col = col.cat.add_categories([_miss.MISSING_LEVEL])
             out[column] = col.fillna(_miss.MISSING_LEVEL)
-            self.df = out
+            record.update(self._install(out, tag=f"missing::{column}",
+                                        pass_name=f"missingness::{strategy}"))
         elif strategy in (_miss.INDICATOR, _miss.INDICATOR_AND_IMPUTE):
             # The ROW-LOCAL HALF of both, and for the compound one that is only
             # half: the fill under the indicator is stateful and is fitted
@@ -1437,10 +1505,10 @@ class AnalysisProject:
                 raise ProjectError(
                     f"'{name}' already exists in this table. Remove it first, "
                     f"or the indicator would silently replace it.")
-            self._history.append((f"missing::{column}", self.df))
             out = self.df.copy()
             out[name] = self.df[column].isna().astype(int)
-            self.df = out
+            record.update(self._install(out, tag=f"missing::{column}",
+                                        pass_name=f"missingness::{strategy}"))
             record["new_column"] = name
 
         self.missingness = [d for d in self.missingness
@@ -1532,15 +1600,18 @@ class AnalysisProject:
         # provenance, so a blank this app wrote — because 300 mmHg cannot be a
         # measurement — was indistinguishable from a blank the clinic never
         # recorded, and the mechanism question was being asked about both at
-        # once. The labels are read off the same comparison `n_set` counts, so
-        # the count and the list cannot disagree.
-        made_blank = [_label(l) for l in
-                      self.df.index[(~before.isna()) & pd.isna(gated)]]
-
-        self._history.append((f"impossible::{name}", self.df))
+        # once.
+        #
+        # **L49-C: THE LIST IS NO LONGER COMPUTED HERE.** It was, and being the
+        # only writer with its own copy of the computation is exactly what kept
+        # the other eleven from having one. It comes off `_install` now, from
+        # the same comparison every other pass is measured by — so `n_set`, the
+        # sentence and the row list are three readings of one event instead of
+        # two implementations that happen to agree today.
         out = self.df.copy()
         out[name] = pd.Series(gated, index=self.df.index)
-        self.df = out
+        blanks = self._install(out, tag=f"impossible::{name}",
+                               pass_name="set_impossible_missing")
         self.findings_stale = True
         self._mark_stale(f"impossible entries in `{name}` were set to missing")
 
@@ -1561,12 +1632,10 @@ class AnalysisProject:
                      "low": block["low"], "high": block["high"],
                      "unit": block["unit"], "tier": "impossible",
                      "band": "impossibility",
-                     # The provenance of every blank this decision created.
-                     # `rows` is the list; `made_blanks` is the flag anything
-                     # reading decisions keys on, so a future kind that also
-                     # creates blanks joins the same reader rather than needing
-                     # a second one.
-                     "made_blanks": True, "rows": made_blank})
+                     # The provenance of every blank this decision created, from
+                     # the one door — `made_blanks` is the flag every reader
+                     # keys on and `blanks_made` carries the per-column cells.
+                     **blanks})
 
     def keep_impossible(self, column: str) -> Decision:
         """Record that the impossible entries in `column` stay as recorded.
@@ -1729,15 +1798,16 @@ class AnalysisProject:
             records.append(record)
 
         # The two row-local strategies execute, once each, over the whole set.
+        blanks: Dict[str, Any] = {}
         if strategy == _miss.EXPLICIT_CATEGORY:
-            self._history.append((f"missing::bulk::{branch}", self.df))
             out = self.df.copy()
             for column in wanted:
                 col = out[column]
                 if isinstance(col.dtype, pd.CategoricalDtype):
                     col = col.cat.add_categories(["Missing"])
                 out[column] = col.fillna("Missing")
-            self.df = out
+            blanks = self._install(out, tag=f"missing::bulk::{branch}",
+                                   pass_name=f"missingness_bulk::{strategy}")
         elif strategy == _miss.INDICATOR:
             clashes = [f"{c}_was_missing" for c in wanted
                        if f"{c}_was_missing" in self.df.columns]
@@ -1745,11 +1815,11 @@ class AnalysisProject:
                 raise ProjectError(
                     f"'{clashes[0]}' already exists in this table. Remove it "
                     f"first, or the indicator would silently replace it.")
-            self._history.append((f"missing::bulk::{branch}", self.df))
             out = self.df.copy()
             for column in wanted:
                 out[f"{column}_was_missing"] = self.df[column].isna().astype(int)
-            self.df = out
+            blanks = self._install(out, tag=f"missing::bulk::{branch}",
+                                   pass_name=f"missingness_bulk::{strategy}")
             for record in records:
                 record["new_column"] = f"{record['column']}_was_missing"
 
@@ -1774,7 +1844,8 @@ class AnalysisProject:
                      "strategy": strategy, "n_columns": len(wanted),
                      "columns": sorted(wanted), "rule": group.rule,
                      "defers": spec["defers"],
-                     "acknowledged_signal_loss": bool(acknowledged)})
+                     "acknowledged_signal_loss": bool(acknowledged),
+                     **blanks})
 
     # ── model selection and per-model preparation (L18) ─────────────────────
 
@@ -2013,9 +2084,10 @@ class AnalysisProject:
         drop &= pd.Series([_label(l) not in sealed for l in self.df.index],
                           index=self.df.index)
 
-        self._history.append((f"trim::{column}", self.df))
-        self.df = self.df.loc[~drop]
+        blanks = self._install(self.df.loc[~drop], tag=f"trim::{column}",
+                               pass_name="trim_training_rows")
         self.assert_identity_intact()
+        obligation = {**obligation, **blanks}
         self.obligations.append(obligation)
         self.findings_stale = True
         self._mark_stale(
@@ -2361,7 +2433,8 @@ class AnalysisProject:
         return h.hexdigest()
 
     def apply_fix(self, new_df: pd.DataFrame, finding_id: str, title: str,
-                  description: str, row_identity_preserved: bool) -> Decision:
+                  description: str, row_identity_preserved: bool,
+                  fix_kind: str = "") -> Decision:
         """Install a repaired frame, keeping the one it replaced.
 
         The previous frame is pushed onto a stack rather than dropped, because
@@ -2375,19 +2448,29 @@ class AnalysisProject:
         label stored earlier stops naming the same row. The skeleton has no
         lockbox to invalidate yet, so the honest thing is to write down that it
         happened; the step that seals a test set will need to read this.
+
+        **`fix_kind` is what makes this decision's blanks legible.** The kind
+        recorded is `apply` for all nine repairs, so a survey reading the
+        record could say *a repair blanked this cell* and not WHICH — and two
+        of the nine are the blank writers `GUIDED-191` is about. It defaults to
+        empty rather than to a guess: a repair whose caller did not say which
+        kind it was gets a record with no kind, not a record with the wrong
+        one.
         """
-        self._history.append((finding_id, self.df))
-        self.df = new_df
+        blanks = self._install(new_df, tag=finding_id,
+                               pass_name=str(fix_kind or "apply"))
         self.findings_stale = True
         return self.record(
             kind="apply", subject=finding_id, text=description,
-            payload={"title": title,
+            payload={"title": title, "fix_kind": str(fix_kind or ""),
                      "row_identity_preserved": bool(row_identity_preserved),
-                     "reverts_to": len(self._history) - 1},
+                     "reverts_to": len(self._history) - 1,
+                     **blanks},
         )
 
     def apply_fix_quietly(self, new_df: pd.DataFrame, finding_id: str,
-                          row_identity_preserved: bool) -> None:
+                          row_identity_preserved: bool,
+                          fix_kind: str = "") -> Dict[str, Any]:
         """Install a repaired frame and record NOTHING. `DRIVE-002`.
 
         The undo stack still gets its entry, because reversibility is per frame
@@ -2402,10 +2485,19 @@ class AnalysisProject:
         Named `quietly` rather than `_apply_fix` because the quiet part is the
         contract: a reader of a call site has to see that this one does not
         record, or the missing receipt reads as an oversight.
+
+        **What it is not quiet about is the blanks**, and that is the one thing
+        that changed. It RETURNS its provenance fragment for the caller to fold
+        into the single `apply_bulk` decision. Silence about which decision a
+        repair belongs to is a deliberate shape; silence about a value the app
+        wrote into the table is `GUIDED-191`, and *this* is the writer where it
+        bit hardest — nine columns repaired under one decision, none of them
+        recording a cell.
         """
-        self._history.append((finding_id, self.df))
-        self.df = new_df
+        blanks = self._install(new_df, tag=finding_id,
+                               pass_name=str(fix_kind or "apply_bulk"))
         self.findings_stale = True
+        return blanks
 
     def revert_last_fix(self) -> Decision:
         """Undo the most recent applied fix. Appends; never erases the record."""

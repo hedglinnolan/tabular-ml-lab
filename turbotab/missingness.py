@@ -306,6 +306,177 @@ def outcome_in_scope(target: Optional[str],
 #: joins this reader instead of needing its own branch here.
 MADE_BLANKS = "made_blanks"
 
+#: The per-column blocks beside the flag: `[{column, n, rows, rows_known}, …]`.
+#: A LIST rather than the single `column`/`rows` pair L48 shipped, because the
+#: writers enumerated at L49 are not one-column-at-a-time — `apply_bulk`
+#: installs nine frames under one decision and `melt_repeated` blanks a column
+#: that did not exist a moment earlier.
+BLANKS_MADE = "blanks_made"
+
+#: Columns where a pass MAY have blanked cells and the app cannot say whether
+#: it did. Recorded rather than omitted: an omission and a refusal must not look
+#: the same, and this one is load-bearing — it is what stops `n_blank_in_the_file`
+#: from being asserted over a frame whose rows were reshaped underneath it.
+BLANKS_UNATTRIBUTABLE = "blanks_unattributable"
+
+#: Why a pass could not attribute. Both are properties of the frame swap, not of
+#: the pass, so they are detected rather than declared per writer.
+ROWS_RESHAPED = "the pass rebuilt the row index, so no cell in this column can "\
+                "be compared with the cell that preceded it"
+ROWS_NOT_UNIQUE = "the row labels are not unique on both sides of the pass, so "\
+                  "a cell cannot be matched to the one it replaced"
+
+
+def blanks_made(before: pd.DataFrame, after: pd.DataFrame, *,
+                pass_name: str) -> Dict[str, Any]:
+    """**THE ONE RECORDER.** What a frame swap did to the blanks, as a payload.
+
+    Every pass that installs a working table calls this and merges the result
+    into its own decision's payload; nothing else composes a provenance record.
+    `GUIDED-191` is the class where a writer changes the table and files no
+    receipt, and one recorder is the only shape that closes it — a second copy
+    per writer is the same defect with more places to forget it.
+
+    **This observes; it does not guess.** The distinction matters because
+    `blanks_the_app_made` refuses to read the table at all. That refusal is
+    about the READER: reconstructing months later which of a column's blanks
+    came from where is an invention. Comparing the frame a pass was handed with
+    the frame it produced, at the instant it produced them, is the same
+    measurement `set_impossible_missing` has always made against its own gate
+    output — it is how the record gets written, not a substitute for having one.
+
+    Returns **`{}`** when the pass blanked nothing and could see that it blanked
+    nothing. Three states, never two:
+
+    * **attributed** — the cells are named. Rows are labels.
+    * **counted, rows unknown** — a column the pass CREATED. Every blank in it
+      is one this pass wrote whatever happened to the index, so the count is
+      exact and the labels are not available.
+    * **unattributable** — a column that existed on both sides while the row
+      index was rebuilt. `melt_repeated`, `promote_header`, `drop_empty_rows`,
+      `drop_rows` and aggregation all do this. A net difference of blank counts
+      would be a number here, and it would be the wrong number the moment a
+      pass both fills and blanks; trap #9 says return nothing instead.
+    """
+    made: List[Dict[str, Any]] = []
+    unattributable: List[Dict[str, Any]] = []
+
+    before_cols = {str(c) for c in before.columns}
+    # Duplicated labels make `.loc` return a frame, so the comparison below
+    # would be comparing something other than a cell.
+    unique = (not before.index.has_duplicates
+              and not after.index.has_duplicates)
+    identity = bool(unique and after.index.equals(before.index))
+    kept = None                       # the surviving labels, where rows dropped
+    if unique and not identity:
+        # A PASS THAT ONLY DROPPED ROWS IS STILL ATTRIBUTABLE, and treating it
+        # as opaque would have made an eligibility criterion — the single most
+        # ordinary thing this app does — erase the provenance of every column
+        # in the table. The surviving labels are a subset of the old ones and
+        # they still name the same rows.
+        #
+        # A subset of labels is NOT enough on its own to conclude that, because
+        # `.reset_index(drop=True)` also produces a subset of a `RangeIndex`
+        # while every label now names a different row. So it is confirmed by
+        # content, the same way `engine.preview_fix` confirms
+        # `row_identity_preserved`: if the surviving rows are byte-for-byte the
+        # rows that carried those labels, no renumbering happened. A pass that
+        # dropped rows AND edited cells fails this and lands as unattributable,
+        # which is the right answer — the two are indistinguishable from here.
+        try:
+            if len(after) < len(before) and after.index.isin(before.index).all():
+                shared = [c for c in after.columns if c in set(before.columns)]
+                aligned = before.loc[after.index, shared]
+                same = aligned.astype(str).eq(after[shared].astype(str))
+                both_na = aligned.isna() & after[shared].isna()
+                if bool((same | both_na).to_numpy().all()):
+                    kept = after.index
+        except (KeyError, ValueError, IndexError, TypeError):
+            kept = None
+    why_not = (ROWS_NOT_UNIQUE if not unique else ROWS_RESHAPED)
+
+    for col in after.columns:
+        name = str(col)
+        series = after[col]
+        if isinstance(series, pd.DataFrame):          # duplicated column label
+            continue
+        if name not in before_cols:
+            # A COLUMN THAT DID NOT EXIST. Every blank in it was written here,
+            # by definition — there was no earlier value for one to have come
+            # from. `add_feature`'s `log`/`sqrt`/`ratio` and `melt_repeated`'s
+            # value column are both this case, and the count is exact even
+            # where the index was rebuilt.
+            n = int(series.isna().sum())
+            if n:
+                # THE LABELS COME OFF THE FRAME THE USER NOW HAS, so they are
+                # nameable whenever that frame's labels are unique — a reshape
+                # that rebuilt the index does not make them unnameable, it just
+                # means they are new names for new rows, which is what the
+                # table downstream is keyed by anyway. What genuinely defeats
+                # this is a duplicated label, where a name picks out more than
+                # one row and so names none of them.
+                nameable = not after.index.has_duplicates
+                made.append({
+                    "column": name, "n": n, "pass": str(pass_name),
+                    "rows": ([_row_label(i) for i in series.index[series.isna()]]
+                             if nameable else []),
+                    "rows_known": nameable,
+                    "new_column": True})
+            continue
+        prior = before[col]
+        if isinstance(prior, pd.DataFrame):
+            continue
+        if not identity and kept is None:
+            # ONLY WHERE THERE IS SOMETHING TO BE UNCERTAIN ABOUT. A column
+            # holding no blanks after the pass raises no provenance question,
+            # so recording a refusal over it would put a *"cannot say"* on
+            # every column of every reshaped table — the same noise a
+            # zero-filled block would be, wearing a more alarming word.
+            if int(series.isna().sum()):
+                unattributable.append({"column": name, "pass": str(pass_name),
+                                       "because": why_not})
+            continue
+        prior = prior if identity else prior.loc[kept]
+        turned = prior.notna() & series.isna()
+        n = int(turned.sum())
+        if n:
+            made.append({"column": name, "n": n, "pass": str(pass_name),
+                         "rows": [_row_label(i) for i in series.index[turned]],
+                         "rows_known": True, "new_column": False})
+
+    frag: Dict[str, Any] = {}
+    if made:
+        frag[MADE_BLANKS] = True
+        frag[BLANKS_MADE] = made
+    if unattributable:
+        frag[BLANKS_UNATTRIBUTABLE] = unattributable
+    return frag
+
+
+def _row_label(value: Any) -> Any:
+    """Coerce one index label to something JSON can carry.
+
+    Labels are scalars — ints, strings, occasionally timestamps. Anything with
+    an `item()` is a numpy scalar hiding as a Python one.
+
+    Lives here rather than in `project.py` because the row list is composed
+    here now, and `project._label` delegates to it. Two coercions would
+    eventually disagree about a timestamp label, and the row lists they build
+    are compared to each other by every consumer of `provenance`.
+    """
+    if isinstance(value, (str, bool)) or value is None:
+        return value
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except (ValueError, AttributeError):
+            return str(value)
+    if isinstance(value, (int, float)):
+        return value
+    return str(value)
+
 
 def blanks_the_app_made(decisions: Sequence[Any]) -> Dict[str, Dict[str, Any]]:
     """Per column: which blanks this app wrote, and the decision that wrote them.
@@ -314,31 +485,48 @@ def blanks_the_app_made(decisions: Sequence[Any]) -> Dict[str, Dict[str, Any]]:
     `payload` and `text`, or the dicts they serialize to. Reads nothing from
     the table: this is the RECORD's answer, and a table-derived guess about
     which blank came from where is exactly the invention it exists to replace.
+
+    Reads only what `blanks_made` writes. There is no second accepted payload
+    shape — a legacy branch beside it would be the two mechanisms this loop
+    exists to collapse into one, and it would go stale silently because the
+    survey would still render.
     """
     out: Dict[str, Dict[str, Any]] = {}
+
+    def _get(decision, field, default=None):
+        return (decision.get(field, default) if isinstance(decision, dict)
+                else getattr(decision, field, default))
+
+    def _entry(column: str) -> Dict[str, Any]:
+        return out.setdefault(str(column), {
+            "column": str(column), "n": 0, "rows": [], "rows_known": True,
+            "by": [], "unattributable": []})
+
     for decision in decisions or ():
-        payload = (getattr(decision, "payload", None)
-                   if not isinstance(decision, dict) else decision.get("payload"))
-        payload = payload or {}
+        payload = _get(decision, "payload") or {}
+        text = _get(decision, "text", "") or ""
+        kind = _get(decision, "kind", "") or ""
+        for block in (payload.get(BLANKS_UNATTRIBUTABLE) or []):
+            entry = _entry(block.get("column", ""))
+            entry["unattributable"].append(
+                {"kind": kind, "pass": block.get("pass", ""),
+                 "because": block.get("because", ""), "sentence": text})
         if not payload.get(MADE_BLANKS):
             continue
-        column = str(payload.get("column")
-                     or (decision.get("subject") if isinstance(decision, dict)
-                         else getattr(decision, "subject", "")))
-        text = (decision.get("text") if isinstance(decision, dict)
-                else getattr(decision, "text", "")) or ""
-        kind = (decision.get("kind") if isinstance(decision, dict)
-                else getattr(decision, "kind", "")) or ""
-        rows = [r for r in (payload.get("rows") or [])]
-        entry = out.setdefault(column, {"column": column, "n": 0, "rows": [],
-                                        "by": []})
-        entry["n"] += int(payload.get("n_set") or len(rows))
-        entry["rows"].extend(rows)
-        # The decision's OWN sentence, quoted rather than paraphrased. One
-        # composer, and this is not it — a second sentence about the same event
-        # is the drift `GUIDED-098` cost a loop.
-        entry["by"].append({"kind": kind, "sentence": text,
-                            "n": int(payload.get("n_set") or len(rows))})
+        for block in (payload.get(BLANKS_MADE) or []):
+            entry = _entry(block.get("column", ""))
+            n = int(block.get("n") or 0)
+            entry["n"] += n
+            entry["rows"].extend(block.get("rows") or [])
+            if not block.get("rows_known", True):
+                entry["rows_known"] = False
+            # The decision's OWN sentence, quoted rather than paraphrased. One
+            # composer, and this is not it — a second sentence about the same
+            # event is the drift `GUIDED-098` cost a loop. `pass` is beside it
+            # because a decision `kind` of `apply` covers nine operations and
+            # WHICH ONE blanked the cell is the thing the survey has to say.
+            entry["by"].append({"kind": kind, "pass": block.get("pass", ""),
+                                "sentence": text, "n": n})
     return out
 
 
@@ -347,17 +535,20 @@ def blanks_the_app_made(decisions: Sequence[Any]) -> Dict[str, Dict[str, Any]]:
 #: the user's behalf, which is `GUIDED-091`'s rule and the reason this is a
 #: provenance note rather than a fourth mechanism.
 #
-#: **The wording of the remainder is deliberately weak, and that is a claim
-#: about what the record can support.** *"The other 6 were blank in the file"*
-#: would be false the moment any other path creates a blank without recording
-#: that it did — `coerce_numeric` turns unparseable text into `NaN` and files no
-#: `made_blanks`, so it is exactly that path. What this knows is which blanks
-#: are recorded as the app's; everything else is *not recorded as made here*,
-#: which is a smaller and true statement.
+#: **THE REMAINDER IS NOW NAMED, AND THE RENAME IS THE FIX.** L48 shipped this
+#: saying *"the other 6 are not recorded as made here"*, and said in its own
+#: comment why: *"would be false the moment any other path creates a blank
+#: without recording that it did — `coerce_numeric` turns unparseable text into
+#: `NaN` and files no `made_blanks`, so it is exactly that path."* That is a
+#: hedge with a named cause, which makes it a to-do rather than a limit.
+#: `coerce_numeric` now files, through `blanks_made`, along with every other
+#: pass that installs a working table — so the stronger sentence is the true
+#: one and the weaker one would now be the app under-claiming what it knows.
+#: The hedge is kept exactly where it is still earned: `PROVENANCE_OPAQUE`.
 PROVENANCE_MIXED = (
     "{n_created:,} of the {n_missing:,} blanks in `{column}` are ones this app "
-    "wrote — {why} The other {n_original:,} are not recorded as made here. The "
-    "question below is about both, and they did not get there the same way.")
+    "wrote — {why} The other {n_original:,} came with the file. The question "
+    "below is about both, and they did not get there the same way.")
 
 #: Where the record accounts for EVERY blank in the column, the stronger
 #: sentence is available and is used: nothing is left over to be wrong about.
@@ -374,48 +565,105 @@ PROVENANCE_DISAGREES = (
     "count this app is responsible for is the recorded one; how many of "
     "today's blanks are those is not something this can answer.")
 
+#: **WHERE THE HEDGE IS STILL EARNED.** A pass that rebuilds the row index —
+#: reshaping wide to long, promoting a header, combining a person's rows —
+#: leaves no cell that can be compared with the cell it replaced, so how many
+#: of this column's blanks it made is not answerable. The count is withheld
+#: rather than estimated, and the sentence says which pass took the answer
+#: away. This is the branch `n_blank_in_the_file: None` belongs to.
+PROVENANCE_OPAQUE = (
+    "`{column}` holds {n_missing:,} blanks and how many of them this app made "
+    "is not something the record can say: {why} So the question below is "
+    "about blanks of at least two kinds, and this app cannot tell you the "
+    "split rather than guess at it.")
+
+#: Both at once: some blanks are attributed and a later pass then reshaped the
+#: rows, so the attributed count stands and the remainder cannot be named.
+PROVENANCE_PARTLY_OPAQUE = (
+    "At least {n_created:,} of the {n_missing:,} blanks in `{column}` are ones "
+    "this app wrote — {why} How many of the rest came with the file is not "
+    "something the record can say, because {because}")
+
 
 def provenance(column: str, n_missing: int,
                made: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     """How many of `column`'s blanks this app made, and the sentence for it.
 
-    `None` — not a zero-filled block — where the app made none. A labeled
-    region saying *"0 of these blanks are ours"* on every column in the table
-    is noise on the 99% of columns the impossibility pass never touched, and
-    the survey row's own `n_missing` already says the rest.
+    `None` — not a zero-filled block — where the app made none and could see
+    that it made none. A labeled region saying *"0 of these blanks are ours"*
+    on every column in the table is noise on the 99% of columns no pass ever
+    touched, and the survey row's own `n_missing` already says the rest.
 
-    `n_not_recorded_as_made_here` is `None` rather than a negative number when
-    the record and the table cannot be reconciled. That happens if something filled blanks
-    after the impossibility pass made them, and the honest report is that the
-    decomposition does not hold — not a clamped zero, which would assert the
-    app made every blank in the column.
+    **`n_blank_in_the_file` is the field this loop renamed**, and the rename is
+    the finding. It was `n_not_recorded_as_made_here` because exactly one
+    writer filed provenance, so the remainder could only be described by what
+    the record had failed to see. Every writer files now, so the remainder is
+    the file's own blanks and the field says so.
+
+    It is **`None`**, never a number, in the two cases where that claim is not
+    the record's to make:
+
+    * the record and the table cannot be reconciled — something filled blanks
+      after a pass made them, and `n_missing - n_created` is negative. A
+      clamped zero would assert the app made every blank in the column.
+    * a pass rebuilt the row index over this column, so what it did to the
+      blanks is unattributable. This is the honest heir to the old field name:
+      the hedge did not disappear, it moved to the case that earns it.
     """
-    if not made or not made.get("n"):
+    made = made or {}
+    n_created = int(made.get("n") or 0)
+    opaque = list(made.get("unattributable") or [])
+    if not n_created and not opaque:
         return None
-    n_created = int(made["n"])
     n_missing = int(n_missing)
-    why = " ".join(b["sentence"] for b in made["by"] if b["sentence"]).strip()
-    if n_created > n_missing:
+    # `the \`coerce_numeric\` pass: <the decision's own sentence>`. A colon
+    # rather than a dash because the surrounding sentence already spends one,
+    # and the quoted half has to survive verbatim — the note quotes the
+    # decision rather than paraphrasing it, which is the rule `GUIDED-098`
+    # cost a loop to learn.
+    why = " ".join(f"the `{b['pass']}` pass: {b['sentence']}".strip()
+                   if b.get("pass") else b.get("sentence", "")
+                   for b in made.get("by") or () if b.get("sentence")).strip()
+    because = " ".join(
+        f"{o.get('because', '')} (`{o.get('pass', '')}`)."
+        for o in opaque).strip()
+
+    if opaque and not n_created:
+        sentence = PROVENANCE_OPAQUE.format(
+            column=column, n_missing=n_missing, why=because)
+        n_in_file = None
+    elif opaque:
+        sentence = PROVENANCE_PARTLY_OPAQUE.format(
+            column=column, n_created=n_created, n_missing=n_missing, why=why,
+            because=because)
+        n_in_file = None
+    elif n_created > n_missing:
         sentence = PROVENANCE_DISAGREES.format(
             column=column, n_created=n_created, n_missing=n_missing)
-        n_original = None
+        n_in_file = None
     elif n_created == n_missing:
         sentence = PROVENANCE_ALL.format(
             column=column, n_missing=n_missing, why=why)
-        n_original = 0
+        n_in_file = 0
     else:
-        n_original = n_missing - n_created
+        n_in_file = n_missing - n_created
         sentence = PROVENANCE_MIXED.format(
             column=column, n_created=n_created, n_missing=n_missing,
-            n_original=n_original, why=why)
+            n_original=n_in_file, why=why)
     return {
         "column": str(column),
         "n_created_by_the_app": n_created,
-        # NOT `n_in_the_file`, which is what this was first called and is a
-        # claim the record cannot make — see the note on PROVENANCE_MIXED.
-        "n_not_recorded_as_made_here": n_original,
+        # The rename. See the docstring: `None` is the refusal, and it is the
+        # only thing this field is allowed to say when it cannot say a number.
+        "n_blank_in_the_file": n_in_file,
         "rows": list(made.get("rows") or []),
+        # A pass that created a column while rebuilding the index knows HOW
+        # MANY it blanked and not WHICH — so `rows` is short and must not be
+        # read as the whole set. Said in the payload rather than left for a
+        # consumer to infer from a length that happens to match.
+        "rows_known": bool(made.get("rows_known", True)),
         "by": [dict(b) for b in made.get("by") or []],
+        "unattributable": [dict(o) for o in opaque],
         "sentence": sentence,
     }
 

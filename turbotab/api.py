@@ -1031,8 +1031,13 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
                 raise HTTPException(
                     400, "That finding has no automatic repair — it needs a human decision.")
             new_df, description = engine.apply_fix(project.df, live, choice=choice)
+            # `live.fix_kind` travels so the record can say WHICH repair blanked
+            # a cell. `recode_missing` and `coerce_numeric` both do — measured
+            # across the fixture set at 189 and 55 cells — and both arrive here
+            # as `kind="apply"`, which names nine operations at once.
             project.apply_fix(new_df, live.id, live.title, description,
-                              prev["row_identity_preserved"])
+                              prev["row_identity_preserved"],
+                              fix_kind=live.fix_kind)
         except engine.EngineRefusal as exc:
             raise HTTPException(400, str(exc)) from exc
         except ProjectError as exc:
@@ -1062,6 +1067,11 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         return _payload(project)
 
     if decision.kind == "apply_bulk":
+        # Imported locally, as every other branch in this function does. A
+        # module-level alias would be shadowed for the WHOLE function body by
+        # the `route_missingness` branch's local import of the same name — the
+        # binding is function-scoped, so the shadow reaches backwards.
+        from turbotab import missingness as _miss
         # `DRIVE-002`. One preview, a selectable set, ONE apply, ONE decision
         # covering N features.
         #
@@ -1095,6 +1105,13 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         # apply, because afterwards the column is 0/1 and the levels it came
         # from are gone from the table entirely.
         encodings: Dict[str, Dict[str, Any]] = {}
+        # THE BLANKS, ACCUMULATED ACROSS THE N APPLIES THAT SHARE ONE DECISION.
+        # `apply_fix_quietly` records nothing by design, so its provenance has
+        # to be carried up here or it is lost — which is what `GUIDED-191`
+        # looks like on this path: nine frames installed, one sentence, and no
+        # receipt for any cell any of them blanked.
+        bulk_blanks: List[Dict[str, Any]] = []
+        bulk_opaque: List[Dict[str, Any]] = []
         try:
             for finding_id in wanted:
                 # RE-DIAGNOSED PER COLUMN, because each apply replaces the
@@ -1116,8 +1133,11 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
                              f"inside a bulk one.")
                 encoding = engine.fix_encoding(project.df, live)
                 new_df, _description = engine.apply_fix(project.df, live)
-                project.apply_fix_quietly(new_df, live.id,
-                                          prev["row_identity_preserved"])
+                made = project.apply_fix_quietly(
+                    new_df, live.id, prev["row_identity_preserved"],
+                    fix_kind=live.fix_kind)
+                bulk_blanks.extend(made.get(_miss.BLANKS_MADE) or [])
+                bulk_opaque.extend(made.get(_miss.BLANKS_UNATTRIBUTABLE) or [])
                 applied_columns.extend(str(c) for c in (live.affected_columns or []))
                 if encoding:
                     encodings[encoding["column"]] = encoding
@@ -1156,7 +1176,14 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
                      "encodings": encodings,
                      "declined": [m["id"] for m in declined],
                      "declined_columns": declined_columns,
-                     "n_selected": len(wanted), "n_offered": n_offered})
+                     "n_selected": len(wanted), "n_offered": n_offered,
+                     # The same two keys every other blank writer files, in the
+                     # same shape, so `blanks_the_app_made` needs no branch for
+                     # the bulk path. Absent entirely when nothing was blanked.
+                     **({_miss.MADE_BLANKS: True,
+                         _miss.BLANKS_MADE: bulk_blanks} if bulk_blanks else {}),
+                     **({_miss.BLANKS_UNATTRIBUTABLE: bulk_opaque}
+                        if bulk_opaque else {})})
         _recompute(project)
         return _payload(project)
 
@@ -1196,7 +1223,8 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
             prev = engine.preview_fix(project.df, drop)
             new_df, description = engine.apply_fix(project.df, drop)
             project.apply_fix(new_df, drop.id, drop.title, description,
-                              prev["row_identity_preserved"])
+                              prev["row_identity_preserved"],
+                              fix_kind=drop.fix_kind)
         except engine.EngineRefusal as exc:
             raise HTTPException(400, str(exc)) from exc
         except ProjectError as exc:
@@ -2196,6 +2224,15 @@ async def get_features(project_id: str) -> Dict[str, Any]:
         "deferred": [feat_mod.get(k).to_dict() for k in feat_mod.deferred_keys()],
         "numeric_columns": numeric,
         "all_columns": [str(c) for c in project.df.columns],
+        # `GUIDED-198`. `ordinal_declared` needs an `order`, and the legitimate
+        # values of an order are the chosen column's own distinct levels — so
+        # the parameter has no renderable control until they are served. Every
+        # column carries either its levels or the sentence saying why an order
+        # cannot be stated over it; `features.column_levels` owns both, because
+        # a page that decided which columns are orderable would be holding a
+        # second copy of a rule that lives in the engine.
+        "column_levels": feat_mod.column_levels(
+            project.df, exclude=[project.target] if project.target else []),
         "engineered": project.engineered,
         "deferred_transforms": project.deferred_transforms,
         "selection": project.selection_spec,
