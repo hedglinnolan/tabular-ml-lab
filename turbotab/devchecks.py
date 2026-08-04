@@ -92,6 +92,12 @@ class Session:
     root: Path
     started_at: str
     violations: List[Dict[str, Any]] = field(default_factory=list)
+    #: Transitions whose kind is declared UNCLASSIFIED — not a violation, and
+    #: not silence either. `GUIDED-180`: `ACTION_CONTRACT.get(kind)` returning
+    #: `None` made *unchecked* and *declared as touching nothing* render as one
+    #: thing, which is the seal's `group_col: None` exactly. This is the
+    #: recorded-absence rule (`DESIGN_LANGUAGE.md` §09) applied to a guard.
+    unclassified: List[Dict[str, Any]] = field(default_factory=list)
     swallows: List[Dict[str, Any]] = field(default_factory=list)
     actions: List[Dict[str, Any]] = field(default_factory=list)
     console: List[Dict[str, Any]] = field(default_factory=list)
@@ -588,9 +594,16 @@ def decision_sentences_match_their_records(after: Dict[str, Any]) -> List[Violat
 # the action's effect depends on data the table cannot state in advance.
 @dataclass(frozen=True)
 class _Expected:
-    touches_table: bool
+    touches_table: Optional[bool]
     stale: Optional[int]
     records: bool = True
+    #: WHY a `None` is a `None`. `None` means *the effect depends on data the
+    #: table cannot state in advance*, and the three consumers then skip that
+    #: half of the check — so an undeclared `None` and a shrug are the same
+    #: object. Naming the dependence makes it a recorded absence rather than a
+    #: gap, and makes it checkable: if the reason stops being true the row is
+    #: wrong in a way somebody can see (`GUIDED-180`).
+    because: str = ""
 
 
 ACTION_CONTRACT: Dict[str, _Expected] = {
@@ -625,15 +638,169 @@ ACTION_CONTRACT: Dict[str, _Expected] = {
     "keep_impossible":       _Expected(touches_table=False, stale=0),
     "add_feature":           _Expected(touches_table=True, stale=1),
     "remove_feature":        _Expected(touches_table=True, stale=1),
-    "apply":                 _Expected(touches_table=True, stale=None),
-    "revert":                _Expected(touches_table=True, stale=None),
-    "resolve_blocker":       _Expected(touches_table=True, stale=None),
+    # The three `None`s that predate L48-C. Their reasons are READ OFF THE CODE
+    # and were not driven this loop — said here rather than implied, because a
+    # reason nobody measured is still better than a bare `None` and still worse
+    # than a drive. Each is due with the sixteen in `UNCLASSIFIED`.
+    "apply":                 _Expected(
+        touches_table=True, stale=None,
+        because="a repair that changes the column set stales a recorded "
+                "selection and one that rewrites values in place does not; "
+                "the same argument `apply_bulk` was driven for, not "
+                "re-driven here"),
+    "revert":                _Expected(
+        touches_table=True, stale=None,
+        because="it undoes the last change, so its cascade is whatever that "
+                "change's was — not a property of this kind at all"),
+    "resolve_blocker":       _Expected(
+        touches_table=True, stale=None,
+        because="resolving a blocker performs the resolve exit's own "
+                "operation, so the effect is that operation's and varies by "
+                "which exit was taken"),
     # Data-dependent: two of the strategies are row-local and the rest are not;
     # an eligibility criterion that excludes nobody changes nothing.
-    "route_missingness":     _Expected(touches_table=None, stale=1),
-    "set_eligibility":       _Expected(touches_table=None, stale=None),
+    "route_missingness":     _Expected(
+        touches_table=None, stale=1,
+        because="two strategies are row-local under §06 and the rest are "
+                "fitted in the fold, so whether the table moves is the "
+                "strategy's property and not the kind's"),
+    "set_eligibility":       _Expected(
+        touches_table=None, stale=None,
+        because="an eligibility criterion that excludes nobody changes "
+                "nothing, and one that excludes rows changes everything "
+                "downstream of the cohort"),
     "trim_training_rows":    _Expected(touches_table=True, stale=1),
+    # ── L48-C · the two bulk mutators, DERIVED BY DRIVING ──────────────────
+    #
+    # `GUIDED-180`: eighteen live kinds had no row, and these two rewrite the
+    # working table with all three guards inert on them. Both rows below were
+    # measured rather than reasoned — the input was changed, the table and the
+    # stale list were watched, and what actually moved is what is written here.
+    #
+    # `apply_bulk` · driven on `clinic_visits.csv` (target `outcome`), both
+    # groups the fixture offers: `recode_missing` over 4 findings and
+    # `coerce_numeric` over 2. The content hash moved on both, the record grew
+    # by exactly one decision covering the group — which is `DRIVE-002`'s whole
+    # design — and the stale list grew by zero on three runs, including one
+    # with a selection already recorded.
+    #
+    # `stale=None` rather than `stale=0`, and the three runs are the reason
+    # rather than the counter-argument: none of them changed the COLUMN SET,
+    # and a bulk repair that drops or renames a column is the case that would
+    # stale a recorded selection. Declaring 0 from three runs that could not
+    # have produced anything else would be a measurement dressed as a contract.
+    # It is `apply`'s bulk form and it inherits `apply`'s `None` for `apply`'s
+    # stated reason.
+    "apply_bulk":            _Expected(
+        touches_table=True, stale=None,
+        because="a bulk repair that changes the column set stales a recorded "
+                "selection and one that rewrites values in place does not; "
+                "driven three times on groups that do not, so 0 is what was "
+                "observed and not what can be promised"),
+    # `route_missingness_bulk` · driven on `clinic_visits.csv`/`outcome` and
+    # `metabolomics_untargeted.csv`/`bmi`, on both branches and on both sides
+    # of the §06 litmus. `indicator` (numeric, 1 column) and
+    # `explicit_category` (categorical, 1 column) both moved the content hash;
+    # `impute_median` over 3 numeric columns left it byte-identical. Every run
+    # added exactly one stale entry and exactly one decision.
+    #
+    # So it is `route_missingness`'s contract exactly, which is the answer the
+    # singular row already gives for the same reason — the bulk form ranges
+    # over columns and changes nothing about the litmus.
+    "route_missingness_bulk": _Expected(
+        touches_table=None, stale=1,
+        because="the same §06 litmus as `route_missingness`, over N columns "
+                "instead of one: row-local strategies move the table and "
+                "fitted ones do not, and the cascade fires once for the group"),
 }
+
+
+#: Live decision kinds with **no contract row and a stated reason**, each with
+#: the loop it is due at. `GUIDED-180`.
+#:
+#: **This list is the point of L48-C and the two rows above are the other half.**
+#: Sixteen guesses would have been worse than sixteen holes: each row is a claim
+#: about whether a kind touches the working table and how many things it makes
+#: stale, and a wrong claim in `ACTION_CONTRACT` turns a guard into a
+#: false alarm, which is how a guard gets switched off.
+#:
+#: A kind here is **reported on every transition** through `note_unclassified`
+#: and is NOT a violation — a drive that uses one is a correct drive, and a
+#: check that fires on a correct drive gets switched off within a day. A kind in
+#: neither table IS a violation: that means a kind was added and nobody
+#: dispositioned it, which is the hole this closes.
+UNCLASSIFIED: Dict[str, str] = {
+    # The interview's own answers. None touches the table; the open question is
+    # the exact cascade each fires, which needs driving per kind.
+    "set_lens": "L49 — cascade unmeasured",
+    "set_orientation": "L49 — cascade unmeasured",
+    "set_purpose": "L49 — cascade unmeasured",
+    "set_unit_of_analysis": "L49 — cascade unmeasured",
+    "set_repeat_kind": "L49 — cascade unmeasured",
+    "set_time_column": "L49 — cascade unmeasured",
+    "set_temporal_prediction": "L49 — cascade unmeasured",
+    "set_aggregation": "L49 — cascade unmeasured",
+    "set_reverse_coding": "L49 — cascade unmeasured",
+    # Records and marks. `earmark` and `promote_figure` are near-certainly
+    # `touches_table=False, stale=0`, and *near-certainly* is exactly what a
+    # contract row may not be built on.
+    "earmark": "L49 — near-certainly (False, 0); needs one drive to say so",
+    "promote_figure": "L49 — near-certainly (False, 0); needs one drive",
+    "unskip": "L49 — reopens a question; GUIDED-156 is about what it renders",
+    "keep_identifier": "L49 — puts a column back, so it may move the column set",
+    # Reads and group answers whose effect depends on the group.
+    "eligibility_candidates": "L50 — a read; needs `records=False` confirmed",
+    "decline_bulk": "L50 — records an answer over a group that changed nothing",
+    "except_from_bulk": "L50 — carves rows out of a group answer",
+}
+
+
+def classification(kind: str) -> str:
+    """`declared`, `unclassified`, or `undispositioned`.
+
+    Three states rather than two, because *unchecked* and *checked and found
+    to touch nothing* were rendering as one value — `ACTION_CONTRACT.get(kind)`
+    returning `None`, which is the seal's `group_col: None` one layer down.
+    """
+    if kind in ACTION_CONTRACT:
+        return "declared"
+    if kind in UNCLASSIFIED:
+        return "unclassified"
+    return "undispositioned"
+
+
+def note_unclassified(kind: str, action: Dict[str, Any]) -> None:
+    """Write down that a transition ran with no contract watching it.
+
+    Not a violation and not silence. Never raises.
+    """
+    s = session()
+    if s is None or classification(kind) != "unclassified":
+        return
+    row = {"at": _now(), "kind": kind, "due": UNCLASSIFIED[kind],
+           "action": action}
+    s.unclassified.append(row)
+    s.append("unclassified.jsonl", row)
+
+
+def every_decision_kind_has_a_disposition(
+        kind: str, before: Dict[str, Any], after: Dict[str, Any]) -> List[Violation]:
+    """A kind in NEITHER table means nobody decided, and that is the hole.
+
+    The three contract consumers all `.get(kind)` and return `[]`, so a kind
+    added without a row is not flagged as missing — it is silently unchecked,
+    and the suite stays green over an unknown. This is the one case that is a
+    violation: `UNCLASSIFIED` is a decision and an absence from both tables is
+    not.
+    """
+    if not kind or classification(kind) != "undispositioned":
+        return []
+    return [Violation(
+        "a_decision_kind_has_no_disposition",
+        f"{kind} is in neither ACTION_CONTRACT nor UNCLASSIFIED, so all three "
+        f"contract checks skipped it and nothing says whether that is right",
+        {"kind": kind, "declared": len(ACTION_CONTRACT),
+         "unclassified": len(UNCLASSIFIED)})]
 
 
 def a_deferred_transform_leaves_the_table_byte_identical(
@@ -806,7 +973,15 @@ def check_transition(project, before: Optional[Dict[str, Any]],
     vs += _guard(no_post_seal_operation_changes_a_surviving_rows_label, project, before, after)
     vs += _guard(a_finding_claiming_n_features_names_n, after)
     vs += _guard(every_decision_taken_appears_in_the_record, kind, before, after)
+    vs += _guard(every_decision_kind_has_a_disposition, kind, before, after)
     record_violations(vs, action)
+    # AND THE THIRD STATE, recorded rather than raised. A kind declared
+    # UNCLASSIFIED ran with no contract watching it, and that fact belongs in
+    # the drive's own record — see `UNCLASSIFIED`'s note.
+    try:
+        note_unclassified(kind, action)
+    except Exception:                                   # pragma: no cover
+        pass
     return vs
 
 
@@ -953,6 +1128,24 @@ def write_index() -> Optional[Path]:
                   "Every check passed on every transition in this drive. That is "
                   "a statement about the checks as much as about the app — see "
                   "the coverage line below.", ""]
+
+    # WHAT RAN WITH NOTHING WATCHING IT. Placed immediately under the violation
+    # count because *"no violations"* over a drive of unclassified kinds is the
+    # sentence `GUIDED-180` is about, and the reader has to be able to see the
+    # difference from the same screen.
+    if s.unclassified:
+        by_kind: Dict[str, int] = {}
+        for row in s.unclassified:
+            by_kind[row["kind"]] = by_kind.get(row["kind"], 0) + 1
+        lines += [f"## {len(s.unclassified)} transition(s) with no contract "
+                  f"watching, {len(by_kind)} distinct kind(s)", "",
+                  "These are **declared** unclassified, not undetected — each "
+                  "has a row in `devchecks.UNCLASSIFIED` with the loop it is "
+                  "due at. Unchecked and *checked and found to touch nothing* "
+                  "are different claims and this is which one applies.", ""]
+        for kind, n in sorted(by_kind.items(), key=lambda kv: -kv[1]):
+            lines.append(f"- `{kind}` — {n} · due {UNCLASSIFIED.get(kind, '?')}")
+        lines.append("")
 
     if s.swallows:
         by_where: Dict[str, int] = {}
