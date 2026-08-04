@@ -20,22 +20,22 @@ Nothing is closed without a regression test named after it.
 
 ## Progress
 
-**292 of 788 closed.**
+**292 of 789 closed.**
 
 
 | Status | Count |
 |---|---:|
-| `OPEN` | 442 |
+| `OPEN` | 443 |
 | `PARTIAL` | 54 |
 | `FIXED` | 287 |
 | `NOT-A-DEFECT` | 5 |
 
 ---
 
-## OPEN — 442
+## OPEN — 443
 
 
-### Guided-door drive feedback — 67
+### Guided-door drive feedback — 68
 
 | ID | Sev | Finding | Evidence | Action / Note |
 |---|---|---|---|---|
@@ -66,8 +66,9 @@ Nothing is closed without a regression test named after it.
 | `GUIDED-167` | high | The missingness blocker and the eligibility refusal are both correct, specific and server-side, and the user pressing the button sees nothing - the app's best behavior is its most invisible | `REPORTED BY THE PRODUCT OWNER: `it appears the app does nothing when I click those buttons, including if I…` | THE MOST FRUSTRATING SHAPE IN THE DRIVE, because the app is RIGHT and the user is told nothing. Clause 07's blocker with typed acknowledgment is one of this project's load-bearing… |
 | `GUIDED-168` | high | The pull affordance labeled `Missingness Pattern Analysis` borrows the core recommender's title for a pattern analysis and serves a per-column mechanism questionnaire instead - which is also a second… | `RAISED BY THE PRODUCT OWNER DRIVING: `Missingness pattern analysis to me would mean show me the…` | HE DETECTED IT BY EXPECTATION AND THE EXPECTATION WAS THE SPECIFICATION'S. The name is not loose page copy - it is the core recommender's own title for an analysis whose stated… |
 | `GUIDED-171` | high | The feature-engineering before/after shows only the FIRST operand, so a two-input transform cannot be checked - `age x waist` renders `39 -> 3,931.2` and never shows waist | `REPORTED BY THE PRODUCT OWNER DRIVING: `I think the before/after table could do better to essentially show…` | THE PREVIEW DOCTRINE'S OWN PURPOSE, MISSED BY ONE INDEX. PRODUCT_VISION.md section 04: `in a pipelined app you cannot earn trust by asking for blind consent`, which is why every… |
-| `GUIDED-173` | high | `Add it` on a feature produces no acknowledgment - the ACK_LABEL table that drives the answered-row acknowledgment carries only the nine `set_*` question kinds, and neither add_feature nor… | `REPORTED BY THE PRODUCT OWNER DRIVING: `I clicked add it on one of those options but I did not get…` | THE APP NAMED THIS PROBLEM, SOLVED IT, BUILT A TABLE TO DRIVE THE SOLUTION, AND THE FEATURE CONTROLS ARE NOT IN THE TABLE. The comment sitting directly above ACK_LABEL says it… |
+| `GUIDED-173` | high | The feature receipt renders at the bottom of a long card, below the viewport, so pressing `Add it` at the top produces nothing visible - and PRODUCT_VISION section 09's own rule says content arriving… | `REPORTED BY THE PRODUCT OWNER DRIVING: `I clicked add it on one of those options but I did not get…` | THE APP NAMED THIS PROBLEM, SOLVED IT, BUILT A TABLE TO DRIVE THE SOLUTION, AND THE FEATURE CONTROLS ARE NOT IN THE TABLE. The comment sitting directly above ACK_LABEL says it… |
 | `GUIDED-175` | high | _sentence falls back to the RAW TEMPLATE on a missing parameter, so unsubstituted placeholders reach the user in the decision sentence - `{a}` will be grouped into {n_bins} clustered bins - and that… | `VISIBLE IN THE PRODUCT OWNER'S SCREENSHOT and confirmed in the source. turbotab/features.py:462-465 is `try…` | THE GOVERNING RULE HAS THREE BRANCHES AND THIS IS A FOURTH NOBODY AUTHORIZED. The app may be silent, and it may refuse, and it must never assert something false - and here it… |
+| `GUIDED-177` | high | The feature-selection evidence table always ranks by absolute Pearson correlation whatever method the user chose, so a mutual-information selection is previewed with a correlation ranking - and for… | `VISIBLE IN THE PRODUCT OWNER'S SCREENSHOT and confirmed in the source. The decision sentence reads `The top 5…` | THE EVIDENCE DOES NOT VARY WITH THE CHOICE IT IS EVIDENCE FOR, which is a quiet way for a preview to mislead. DESIGN_LANGUAGE section 09's rule is that a finding carries its… |
 | `GUIDED-013` | medium | User-facing copy lives at ~105 raise sites and 51 markup literals, so the copy deck can only be half generated and its hand-assembled half is protected by probes rather than by construction | `docs/turbotab/tools/copydeck.py (the split, and the measurement table in its docstring); the 30 HAND entries…` | FILED RATHER THAN WORKED AROUND, which was the instruction and is also the right call: the difficulty is a fact about where copy lives, and a deck assembled quietly by hand would… |
 | `GUIDED-016` | medium | DESIGN QUESTION for the product owner: do the two contradiction exits read as a real choice, or does 'My answer is right' read as the discouraged option? | `docs/turbotab/COPY_DECK.md, 'the contradiction interruption'; turbotab/grain.py _RESOLVE and _attest` | NOT SELF-ASSESSED, same reasoning as GUIDED-014. What is verified rather than judged: both exits EXIST, both are reachable over HTTP, and the attest path is pinned by… |
 | `GUIDED-017` | medium | DESIGN QUESTION for the product owner: does the transform catalogue's `because` prose explain the row-local versus deferred split, or does it read as the app explaining its own internals? | `docs/turbotab/COPY_DECK.md, 'Features - the transform catalogue', both tables; turbotab/features.py CATALOGUE…` | NOT SELF-ASSESSED. Filed with the other two so the three copy questions the drive was going to answer are all on the record and none is answered by their author. What is verified… |
