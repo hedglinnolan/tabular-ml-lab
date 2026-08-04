@@ -10431,5 +10431,19 @@
   "verified_against": "",
   "test": "",
   "verified_ev": "L48-E. turbotab/exits.py:100 is_actionable: 'a resolve exit sends the user back to the question and needs nothing; an attest exit is a request the client must construct'. index.html showRefusal was changed to read the payload rather than the kind - its own comment says so - so a resolve with no retry.payload renders disabled and is_actionable calls it actionable. The predicate is the unifying test for GUIDED-064 and GUIDED-072 and it now passes on exits the interface will not let a user take. It is asserted true for grain._RESOLVE in test_a_resolve_exit_can_actually_be_taken.py so the divergence is recorded rather than latent."
+ },
+ {
+  "id": "GUIDED-188",
+  "area": "GUIDED",
+  "sev": "medium",
+  "item": "findingById reads P.findings.length with no guard, so any project payload without a findings array crashes the whole controller on the first press",
+  "detail": "",
+  "ev": "L48-D, found by the sweep's first press. turbotab/web/index.html findingById: 'for (var i = 0; i < P.findings.length; i++)'. Its neighbour statusOf guards with 'if (!P) return st'. When the harness served a decision POST whose body had no findings key, openPanel -> findingById threw TypeError: Cannot read properties of undefined (reading 'length') and every subsequent render was dead. NOT reproducible against the real server today - _payload always includes findings - so this is latent rather than live, and it is filed at medium for that reason.",
+  "act": "Guard the same way statusOf does: an absent findings array is 'no finding with that id', which is a real answer and is what the function already returns for an unknown id. Trap #9 read from the other side - the function currently cannot return nothing, it can only throw.",
+  "status": "OPEN",
+  "note": "Found by an instrument rather than by a drive, which is the point of Part D. Not fixed in L48 because the sweep is what noticed it and fixing the thing your own instrument tripped over in the same commit makes the instrument's report unfalsifiable.",
+  "verified_against": "",
+  "test": "",
+  "verified_ev": "L48-D, found by the sweep's first press. turbotab/web/index.html findingById: 'for (var i = 0; i < P.findings.length; i++)'. Its neighbour statusOf guards with 'if (!P) return st'. When the harness served a decision POST whose body had no findings key, openPanel -> findingById threw TypeError: Cannot read properties of undefined (reading 'length') and every subsequent render was dead. NOT reproducible against the real server today - _payload always includes findings - so this is latent rather than live, and it is filed at medium for that reason."
  }
 ]
