@@ -328,6 +328,27 @@ def preview(df: pd.DataFrame, key: str, columns: Sequence[str],
     preview must be the real computation rather than a description of one —
     otherwise it is a claim about what would happen, which is the thing this
     project keeps finding to be wrong.
+
+    **`GUIDED-171`: EVERY OPERAND, not the first one.** This used to compute
+    `before = df[columns[0]]`, so a two-column formula previewed as one:
+    `ratio` on `weight_kg` and `height_cm` returned `before: 95.8, after:
+    0.5682` and never showed the 168.6 the division used. The `after` was
+    right and unexplainable — a before/after table whose *before* is missing
+    half of what the *after* was computed from is not a preview of that
+    transform, and it is the surface where the user consents to it.
+
+    The payload said nothing at all about the second column, either: the
+    `sentence` read *"The ratio `weight_kg / height_cm` was computed row by
+    row"* while the structured form beside it named no columns whatsoever.
+    Trap #7 — the machine-readable form lossier than the sentence — so
+    `inputs` is the columns the computation consumed, in the order it consumed
+    them, and `operands` is each row's value for each of them.
+
+    `before` stays, and stays the first operand. It is `operands[0]` by
+    construction rather than a second computation of the same value, and it is
+    kept because it has shipped consumers — the shelf is never shortened, and a
+    field removed from a payload is a reader broken somewhere the removal
+    cannot see.
     """
     t = get(key)
     params = dict(params or {})
@@ -341,15 +362,23 @@ def preview(df: pd.DataFrame, key: str, columns: Sequence[str],
         return _deferred_preview(df, t, columns, params, n)
 
     out = _compute(df, t, columns, params)
-    before = df[columns[0]].head(n)
+    # `columns[:t.n_inputs]` is `_compute`'s own slice, not a second opinion
+    # about which columns this transform reads. A preview naming operands the
+    # computation did not use would be the same defect pointing the other way.
+    inputs = [str(c) for c in columns[:t.n_inputs]]
+    operands = [df[c] for c in inputs]
+    shown = operands[0].head(n).index
     return {
         "key": key, "scope": t.scope, "applied": False,
         "new_column": new_column_name(key, columns, params),
         "sentence": _sentence(t, columns, params),
         "explainability_cost": t.explainability_cost,
         "because": t.because,
-        "rows": [{"label": _plain(i), "before": _plain(before.loc[i]),
-                  "after": _plain(out.loc[i])} for i in before.index],
+        "inputs": inputs,
+        "rows": [{"label": _plain(i),
+                  "operands": [_plain(s.loc[i]) for s in operands],
+                  "before": _plain(operands[0].loc[i]),
+                  "after": _plain(out.loc[i])} for i in shown],
         "n_undefined": int(out.isna().sum() - df[list(columns)].isna().any(axis=1).sum()),
         "n_rows": int(len(out)),
     }

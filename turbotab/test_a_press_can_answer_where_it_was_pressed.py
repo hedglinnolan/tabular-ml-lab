@@ -220,13 +220,51 @@ def test_the_sweep_reports_its_own_coverage(capsys):
         "nothing")
 
 
-#: Posting controls that deliberately carry no slot, each with the reason.
-#: A control listed here is a DECISION; a control silently absent is a hole.
-#: Empty today: at L48-A every posting control got one, so the gate below reads
-#: thirty of thirty. The dict stays because the next control added to the page
-#: is the one this file exists for, and *"declare it or slot it"* is the choice
-#: it should force.
-NO_SLOT_BY_DESIGN: Dict[str, str] = {}
+#: Response-producing controls that deliberately carry no `data-ac`, each with
+#: the reason. A control listed here is a DECISION; a control silently absent is
+#: a hole — the same distinction `GUIDED-180` draws one layer down.
+#:
+#: **All three are the mechanism under a different id.** Each writes BOTH its
+#: answer and its failure into a dedicated per-row panel it addresses by name —
+#: `missprev-<col>-<opt>`, `[data-rg-body]`, `[data-teach-body]` — which is
+#: adjacency by the same argument `ac-<key>` is, and predates it. Giving them a
+#: second slot would put two receipts on one press.
+NO_SLOT_BY_DESIGN: Dict[str, str] = {
+    "data-miss-preview": "writes success AND `.catch` into `missprev-<col>-"
+                         "<opt>`, its own per-option panel",
+    "data-rg-show": "writes success AND `.catch` into `[data-rg-body]`, its "
+                    "own per-group panel",
+    "data-teach": "writes success AND `.catch` into `[data-teach-body]`, its "
+                  "own per-question panel",
+}
+
+#: Attributes whose handler reaches a GET but never a POST.
+#:
+#: **L48-A's gate said "posting controls" and that was too narrow**, which the
+#: `GUIDED-176` work found: `data-feat-preview` is a GET, its 400 carries a
+#: string `detail`, and its whole failure path went to `setErr` — the exact
+#: defect the posting sweep was built for, on a control the sweep did not look
+#: at. A press produces a response or it does not; whether the verb is GET or
+#: POST is not a property of what a user sees.
+_FETCH = re.compile(r"\bapi\(|\bjob\(")
+
+
+def _fetchers(script: str) -> List[str]:
+    """Attributes whose handler reaches a GET and no POST.
+
+    Derived the same way `_posters` is, and for the same reason: a hand list is
+    how the control added next loop goes unmeasured.
+    """
+    hits = [(m.start(), m.group(1) or m.group(2))
+            for m in _HANDLER.finditer(script)]
+    out = []
+    for i, (start, attr) in enumerate(hits):
+        end = hits[i + 1][0] if i + 1 < len(hits) else len(script)
+        body = script[start:end]
+        if _FETCH.search(body) and not re.search(
+                r"\bdecide\(|\bpost\(|method\s*:\s*\"POST\"", body):
+            out.append(attr)
+    return sorted(set(out))
 
 
 def test_every_posting_control_can_answer_where_it_was_pressed(capsys):
@@ -247,11 +285,13 @@ def test_every_posting_control_can_answer_where_it_was_pressed(capsys):
     script = _script()
     attrs = _delegated()
     posters = [a for a in _posters(script) if a in attrs]
+    fetchers = [a for a in _fetchers(script) if a in attrs]
+    responders = sorted(set(posters) | set(fetchers))
     slots = _slots(script)
 
-    missing = sorted(a for a in posters
+    missing = sorted(a for a in responders
                      if a not in slots and a not in NO_SLOT_BY_DESIGN)
-    declared = sorted(a for a in posters if a in NO_SLOT_BY_DESIGN)
+    declared = sorted(a for a in responders if a in NO_SLOT_BY_DESIGN)
 
     # The row's own instance, named rather than left to the aggregate. A count
     # of thirty can be reached while the one control the finding was filed about
@@ -264,12 +304,17 @@ def test_every_posting_control_can_answer_where_it_was_pressed(capsys):
 
     with capsys.disabled():
         print("\n  ── L48-A1 · the gate ──")
-        print(f"  posting controls                    {len(posters)}")
+        print("  SCOPE: every control that PRODUCES A RESPONSE, post or GET.")
+        print("  L48-A said `posting` and that was too narrow — see the note on")
+        print("  NO_SLOT_BY_DESIGN; a GET refuses exactly as a post does.")
+        print(f"  controls that post                  {len(posters)}")
+        print(f"  controls that GET and never post    {len(fetchers)}")
+        print(f"  response-producing, together        {len(responders)}")
         print(f"    with a slot                       "
-              f"{len([a for a in posters if a in slots])}")
+              f"{len([a for a in responders if a in slots])}")
         print(f"    declared as having none           {len(declared)}")
         for a in declared:
-            print(f"        {a:<22} {NO_SLOT_BY_DESIGN[a]}")
+            print(f"        {a:<22} {NO_SLOT_BY_DESIGN[a][:52]}")
         print(f"    neither                           {len(missing)}")
 
     assert not missing, (

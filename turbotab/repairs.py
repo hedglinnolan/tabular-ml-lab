@@ -51,7 +51,7 @@ several unrelated decisions.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 # Below this a repair is offered on its own card. One member is not a set, and a
 # bulk affordance over a single column is a column with extra words in front of
@@ -188,13 +188,63 @@ def grouped_ids(findings: Sequence[Dict[str, Any]]) -> set:
     return out
 
 
+def encoding_phrase(encoding: Dict[str, Any]) -> str:
+    """`` `Male` = 1, `Female` = 0 `` — the mapping, in the file's own spelling.
+
+    `GUIDED-157`. Every spelling that maps to a side is named, not just the
+    first: a column holding `Male` and `male` has two of them, and *"`Male` = 1"*
+    over a column where half the positive rows say `male` is a sentence that is
+    right about half the data.
+
+    Backticked, and that is required rather than tidy. `devchecks.numbers_in`
+    strips backticked spans before counting, so an unbackticked level carrying a
+    digit — `T1`, `0`, `B2` — reads as an unsupported number and trips
+    `a_decision_sentence_carries_a_number_its_payload_does_not`. The `1` and the
+    `0` themselves are supported by the `mapping` the payload carries beside
+    this.
+    """
+    pos = ", ".join(f"`{v}`" for v in (encoding.get("positive_values")
+                                       or [encoding.get("positive")]))
+    neg = ", ".join(f"`{v}`" for v in (encoding.get("negative_values")
+                                       or [encoding.get("negative")]))
+    return f"{pos} = 1, {neg} = 0"
+
+
+def _named(columns: Sequence[str],
+           encodings: Optional[Dict[str, Dict[str, Any]]] = None) -> Tuple[str, str]:
+    """The column list for a sentence, and the separator it needs.
+
+    A repair with no encoding to state reads exactly as it always did —
+    ``` `a`, `b`, `c` ``` — because `read_as_binary` is the only kind that has a
+    per-column mapping and giving every other kind a semicolon list would be
+    punctuation invented for a distinction that does not exist there.
+    """
+    enc = encodings or {}
+    if not any(str(c) in enc for c in columns):
+        return ", ".join(f"`{c}`" for c in columns), ", "
+    parts = []
+    for c in columns:
+        e = enc.get(str(c))
+        parts.append(f"`{c}`: {encoding_phrase(e)}" if e else f"`{c}`")
+    return "; ".join(parts), "; "
+
+
 def sentence(label: str, columns: Sequence[str],
-             declined: Sequence[str] = ()) -> str:
+             declined: Sequence[str] = (),
+             encodings: Optional[Dict[str, Dict[str, Any]]] = None) -> str:
     """The one sentence the record keeps for a bulk repair.
 
     It names the count, the operation and the columns — the columns, because a
     reader of the methods section has to be able to check it, and *"nine columns
     were converted"* without saying which is a claim nobody can verify.
+
+    **And for a repair that rewrites values, it names what they became**
+    (`GUIDED-157`). `read_as_binary` turns `gender ∈ {female, male}` into 0/1,
+    and a record naming the column without naming the direction leaves *"is the
+    coefficient on `male` or on `female`"* unanswerable — a reported number made
+    uninterpretable by a record that is complete about columns and silent about
+    values. `encodings` maps column name → `engine.fix_encoding`'s block; a kind
+    that has no mapping passes none and its sentence is unchanged.
 
     **And it names the ones that were left alone.** A user who applied seven of
     nine made a decision about the other two, and the decision was *not this*.
@@ -215,7 +265,7 @@ def sentence(label: str, columns: Sequence[str],
         return (f"{len(declined)} feature"
                 f"{'' if len(declined) == 1 else 's'} ({left}) could have been "
                 f"{label} and were deliberately left as recorded.")
-    named = ", ".join(f"`{c}`" for c in columns)
+    named, _sep = _named(columns, encodings)
     head = (f"{n} feature{'' if n == 1 else 's'} ({named}) were "
             f"{label}." if n != 1 else
             f"1 feature ({named}) was {label}.")

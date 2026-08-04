@@ -94,6 +94,62 @@ def method(key: str) -> Method:
     return m
 
 
+#: `evidence` takes a parameter named `method` — the name the query string and
+#: the recorded spec both already use — so the lookup gets a name the parameter
+#: cannot shadow.
+_method_or_refuse = method
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# What each method can honestly PREVIEW, which is not the same as what it ranks
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# `GUIDED-177`. The evidence table used to compute `abs(pearson)` whatever the
+# user had chosen, and head the table *absolute correlation with the outcome*
+# under a sentence reading *the top 5 features by mutual information*. The
+# evidence did not vary with the choice it was evidence for.
+#
+# The line that decides whether a preview is possible is whether the method's
+# score is a property of ONE COLUMN against the outcome, or a property of a
+# FITTED SET:
+#
+#   mutual_info · univariate   a per-column statistic. Previewable, and the
+#                              preview is the real quantity the fold will rank
+#                              by — `pipeline_plan._selector` uses the same two
+#                              sklearn scorers.
+#   lasso · rfe · stability    ranked by what survives a fit over all
+#                              candidates at once. RFE does expose `ranking_`
+#                              and stability a survival frequency, but getting
+#                              either means RUNNING THE SELECTOR — which is a
+#                              selection, and this panel ranks and does not
+#                              choose.
+#
+# THE SHELF IS NOT SHORTENED BY THIS. All five methods stay offered and stay
+# fitted inside the fold; the three that cannot be previewed say what was not
+# computed instead of borrowing a number from a different method.
+_NO_PER_FEATURE_SCORE: Dict[str, str] = {
+    "lasso": ("LASSO ranks nothing column by column: it fits one penalized "
+              "model over all the candidates together and keeps the "
+              "coefficients that survive."),
+    "rfe": ("Recursive elimination ranks nothing column by column: it drops "
+            "the weakest feature of the current fit and refits, repeatedly."),
+    "stability": ("Stability selection's score is how often a column survives "
+                  "a resample, and producing it means running the selector."),
+}
+
+#: Fewer complete pairs than this and there is no statistic, only a number.
+#: `pandas.Series.corr` returns `nan` below 2 and the sklearn scorers raise, so
+#: the floor is stated here rather than left to whichever one was called.
+MIN_PAIRS = 3
+
+#: Fixed, and on purpose. `mutual_info_classif`/`_regression` add noise to break
+#: ties in the nearest-neighbour estimate, so an unseeded preview returns
+#: different numbers each time the user presses the button — which reads as the
+#: data changing. `pipeline_plan._selector` seeds for the same reason and takes
+#: the run's seed; a preview has no run, so it gets a constant.
+PREVIEW_SEED = 0
+
+
 def declare(method_key: str, target: str, candidates: Sequence[str],
             n_features: Optional[int] = None,
             consensus_min_methods: Optional[int] = None,
@@ -145,9 +201,87 @@ def declare(method_key: str, target: str, candidates: Sequence[str],
     }
 
 
+def _preview_measure(m: Optional[Method],
+                     task_type: Optional[str]) -> Dict[str, Any]:
+    """Which statistic this method's preview may honestly show, and its name.
+
+    Returns `kind` — the branch `evidence` scores by — together with the one
+    string that heads the table and the sentence that says what was or was not
+    computed. `kind == "none"` is the refusal: the columns are still listed,
+    and no number is invented for them.
+    """
+    if m is None:
+        return {"kind": "correlation",
+                "measure": "absolute correlation with the outcome",
+                "sentence": ("No method is chosen yet, so this is the plain "
+                             "linear association between each column and the "
+                             "outcome.")}
+    if m.key in _NO_PER_FEATURE_SCORE:
+        return {"kind": "none",
+                "measure": (f"not computed here — {m.label} has no per-column "
+                            f"score"),
+                "sentence": (
+                    f"{_NO_PER_FEATURE_SCORE[m.key]} So there is no column-by-"
+                    f"column number to show you, and the columns below are "
+                    f"your candidates in table order rather than a ranking. "
+                    f"{m.label} is still offered and is still fitted inside "
+                    f"each training fold — what is missing is the preview, "
+                    f"not the method.")}
+    if task_type not in ("classification", "regression"):
+        return {"kind": "none",
+                "measure": ("not computed — the outcome's task type is not "
+                            "recorded"),
+                "sentence": (
+                    f"{m.label} scores a column against a classification "
+                    f"outcome differently than against a regression one, and "
+                    f"this project has not recorded which this is. Rather than "
+                    f"pick one, nothing is scored.")}
+    classify = task_type == "classification"
+    if m.key == "mutual_info":
+        return {"kind": "mutual_info",
+                "measure": "mutual information with the outcome",
+                "sentence": ("Scored with "
+                             + ("mutual_info_classif" if classify
+                                else "mutual_info_regression")
+                             + ", the same estimator the fold will rank by.")}
+    return {"kind": "f_test",
+            "measure": ("ANOVA F statistic against the outcome" if classify
+                        else "univariate linear F statistic against the "
+                             "outcome"),
+            "sentence": ("Scored with " + ("f_classif" if classify
+                                           else "f_regression")
+                         + ", the same estimator the fold will rank by.")}
+
+
+def _sklearn_score(kind: str, x: pd.Series, y: pd.Series,
+                   classify: bool, seed: int) -> Optional[float]:
+    """One column against the outcome, on the rows where both are present.
+
+    PAIRWISE-COMPLETE, matching what `Series.corr` already did on this path:
+    the sklearn scorers raise on a `NaN` anywhere, and dropping every row that
+    is blank in ANY candidate would silently rank a different set of columns on
+    a different set of rows than the sentence above the table claims.
+    """
+    from sklearn.feature_selection import (f_classif, f_regression,
+                                           mutual_info_classif,
+                                           mutual_info_regression)
+
+    X = x.to_frame()
+    if kind == "mutual_info":
+        fn = mutual_info_classif if classify else mutual_info_regression
+        out = fn(X, y, random_state=seed)
+    else:
+        out = (f_classif if classify else f_regression)(X, y)[0]
+    v = float(out[0])
+    return None if pd.isna(v) else v
+
+
 def evidence(df: pd.DataFrame, target: str, candidates: Sequence[str],
              train_mask: Optional[pd.Series] = None,
-             top: int = 12) -> Dict[str, Any]:
+             top: int = 12, *,
+             method: Optional[str] = None,
+             task_type: Optional[str] = None,
+             seed: int = PREVIEW_SEED) -> Dict[str, Any]:
     """The evidence a selection CHOICE is shown beside, on training rows only.
 
     `DESIGN_LANGUAGE.md` §09: a finding carries its evidence — a proposed
@@ -159,12 +293,22 @@ def evidence(df: pd.DataFrame, target: str, candidates: Sequence[str],
     is stored, and the returned scores are marked `preview_not_applied`. The
     distinction is the same one clause §06 draws for a deferred transform's
     preview.
+
+    **`method` is the choice this is evidence FOR** (`GUIDED-177`). Without it
+    the ranking was `abs(pearson)` for all five methods, headed *absolute
+    correlation with the outcome* under a recorded sentence that said *by
+    mutual information* — the evidence not varying with the choice it was
+    evidence for, and closest to wrong exactly where the user chose to look
+    past correlation. A method with no per-column score returns `score: None`
+    and a `measure` naming what was not computed; it never borrows another
+    method's number.
     """
     if target not in df.columns:
         raise SelectionRefusal(f"No column named '{target}' in this table.")
     cols = [c for c in candidates if c in df.columns]
     if not cols:
         raise SelectionRefusal("None of those candidates are in this table.")
+    m = _method_or_refuse(method) if method else None
 
     frame = df if train_mask is None else df.loc[train_mask.reindex(df.index, fill_value=False)]
     n_seen = int(len(frame))
@@ -176,32 +320,88 @@ def evidence(df: pd.DataFrame, target: str, candidates: Sequence[str],
     # actually withheld cannot say that.
     n_held_out = int(len(df)) - n_seen
     y = frame[target]
+    plan = _preview_measure(m, task_type)
+    kind = plan["kind"]
+    classify = task_type == "classification"
+    # The correlation branch is the only one that needs a numeric OUTCOME; the
+    # sklearn classification scorers take a string label happily. The old code
+    # attributed the refusal to the FEATURE either way — every column of a
+    # string-outcome project came back `not numeric — not ranked here`, which
+    # is false of a column of floats.
+    if kind == "correlation" and not pd.api.types.is_numeric_dtype(y):
+        kind = "none"
+        plan = {**plan,
+                "measure": f"'{target}' is not numeric — correlation not computed",
+                "sentence": (
+                    f"A correlation needs two numbers and '{target}' holds "
+                    f"labels, so none was computed. Choosing a selection "
+                    f"method gives this table a statistic that can read a "
+                    f"label outcome.")}
     scored: List[Dict[str, Any]] = []
     for c in cols:
         s = frame[c]
-        if not pd.api.types.is_numeric_dtype(s) or not pd.api.types.is_numeric_dtype(y):
+        if not pd.api.types.is_numeric_dtype(s):
             scored.append({"feature": str(c), "score": None,
                            "measure": "not numeric — not ranked here"})
             continue
+        if kind == "none":
+            scored.append({"feature": str(c), "score": None,
+                           "measure": plan["measure"]})
+            continue
+        pair = pd.concat([s, y], axis=1).dropna()
+        if len(pair) < MIN_PAIRS:
+            scored.append({"feature": str(c), "score": None,
+                           "measure": (f"only {len(pair)} rows have both "
+                                       f"values — not computed")})
+            continue
+        xs, ys = pair.iloc[:, 0], pair.iloc[:, 1]
+        if kind == "correlation":
+            try:
+                r = float(xs.corr(ys))
+            except Exception:
+                r = float("nan")
+            scored.append({"feature": str(c),
+                           "score": None if pd.isna(r) else round(abs(r), 4),
+                           "signed": None if pd.isna(r) else round(r, 4),
+                           "measure": plan["measure"]})
+            continue
         try:
-            r = float(s.corr(y))
-        except Exception:
-            r = float("nan")
+            v = _sklearn_score(kind, xs, ys, classify, seed)
+        except Exception as exc:
+            # NO NUMBER RATHER THAN A NUMBER FROM SOMEWHERE ELSE (trap 9). The
+            # reason travels with the row so the table can show it.
+            scored.append({"feature": str(c), "score": None,
+                           "measure": (f"not computed — "
+                                       f"{type(exc).__name__}")})
+            continue
         scored.append({"feature": str(c),
-                       "score": None if pd.isna(r) else round(abs(r), 4),
-                       "signed": None if pd.isna(r) else round(r, 4),
-                       "measure": "absolute correlation with the outcome"})
+                       "score": None if v is None else round(v, 4),
+                       "measure": plan["measure"]})
     scored.sort(key=lambda d: (d["score"] is None, -(d["score"] or 0)))
+    note = ("Ranked on training rows only, and not applied. What is "
+            "actually selected is refitted inside each training fold, so "
+            "this ordering is indicative rather than the answer."
+            if n_held_out else
+            "Nothing was withheld from this ranking, so it saw every row "
+            "in the table. Treat it as exploratory.")
+    if kind == "none":
+        # A sentence about an ordering, over a list that is not ordered, would
+        # be the same class of false claim this finding is about.
+        note = ("Nothing here is ranked. " + plan["sentence"] + " "
+                + ("Nothing was withheld." if not n_held_out
+                   else "Only training rows were read."))
     return {
         "preview_not_applied": True,
         "n_rows_seen": n_seen,
         "n_rows_withheld": n_held_out,
         "scope": TRAIN_ROWS if n_held_out else "all rows",
+        # WHAT THIS IS EVIDENCE FOR, on the wire and not only in the prose
+        # (trap 7). The page heads the table from `measure` rather than from
+        # whichever row happened to sort first.
+        "method": m.key if m else None,
+        "method_label": m.label if m else None,
+        "measure": plan["measure"],
+        "is_ranked": kind != "none",
         "ranked": scored[:top],
-        "note": ("Ranked on training rows only, and not applied. What is "
-                 "actually selected is refitted inside each training fold, so "
-                 "this ordering is indicative rather than the answer."
-                 if n_held_out else
-                 "Nothing was withheld from this ranking, so it saw every row "
-                 "in the table. Treat it as exploratory."),
+        "note": note + " " + plan["sentence"] if kind != "none" else note,
     }

@@ -280,6 +280,146 @@ def outcome_in_scope(target: Optional[str],
             "evidence_status": "SETTLED"}
 
 
+# ── where a blank came from ──────────────────────────────────────────────────
+#
+# `GUIDED-166`. Explore asks the user what a blank MEANS — §07's mechanism
+# question, the fork this whole module is built on. The impossibility card two
+# cards later **makes blanks**: `project.set_impossible_missing` is real since
+# L47, and on `clinical_labs.csv` it turns 4 entries of `sbp` outside 40–300
+# mmHg into 4 NaNs. The column had **zero** blanks before that press and has 4
+# after, and the Preprocess survey then asked *"could a blank in `sbp` mean
+# something?"* about four blanks the app itself had written.
+#
+# Every honest answer to that question is wrong for those cells. They do not
+# mean *not asked*, they do not mean *not applicable*, and they are not an
+# accident of collection — they mean *this app judged the recorded value
+# impossible and removed it*, which is a fact the record holds and the question
+# never saw. Asking it anyway is the app forgetting what it did.
+#
+# **The fix is provenance, not a fourth mechanism answer.** A blank the app made
+# is not a new kind of missingness; it is a blank whose cause is already
+# written down. So this reads the decisions and says how many, and which, and
+# quotes the decision's own sentence for why.
+
+#: The payload flag a decision sets when it turns values into blanks. Keyed on
+#: rather than on the decision KIND, so a second kind that also creates blanks
+#: joins this reader instead of needing its own branch here.
+MADE_BLANKS = "made_blanks"
+
+
+def blanks_the_app_made(decisions: Sequence[Any]) -> Dict[str, Dict[str, Any]]:
+    """Per column: which blanks this app wrote, and the decision that wrote them.
+
+    Takes the project's decision list — objects with `kind`, `subject`,
+    `payload` and `text`, or the dicts they serialize to. Reads nothing from
+    the table: this is the RECORD's answer, and a table-derived guess about
+    which blank came from where is exactly the invention it exists to replace.
+    """
+    out: Dict[str, Dict[str, Any]] = {}
+    for decision in decisions or ():
+        payload = (getattr(decision, "payload", None)
+                   if not isinstance(decision, dict) else decision.get("payload"))
+        payload = payload or {}
+        if not payload.get(MADE_BLANKS):
+            continue
+        column = str(payload.get("column")
+                     or (decision.get("subject") if isinstance(decision, dict)
+                         else getattr(decision, "subject", "")))
+        text = (decision.get("text") if isinstance(decision, dict)
+                else getattr(decision, "text", "")) or ""
+        kind = (decision.get("kind") if isinstance(decision, dict)
+                else getattr(decision, "kind", "")) or ""
+        rows = [r for r in (payload.get("rows") or [])]
+        entry = out.setdefault(column, {"column": column, "n": 0, "rows": [],
+                                        "by": []})
+        entry["n"] += int(payload.get("n_set") or len(rows))
+        entry["rows"].extend(rows)
+        # The decision's OWN sentence, quoted rather than paraphrased. One
+        # composer, and this is not it — a second sentence about the same event
+        # is the drift `GUIDED-098` cost a loop.
+        entry["by"].append({"kind": kind, "sentence": text,
+                            "n": int(payload.get("n_set") or len(rows))})
+    return out
+
+
+#: What the survey row says when some of a column's blanks are the app's own.
+#: It states the split and then STOPS — it does not answer §07's question on
+#: the user's behalf, which is `GUIDED-091`'s rule and the reason this is a
+#: provenance note rather than a fourth mechanism.
+#
+#: **The wording of the remainder is deliberately weak, and that is a claim
+#: about what the record can support.** *"The other 6 were blank in the file"*
+#: would be false the moment any other path creates a blank without recording
+#: that it did — `coerce_numeric` turns unparseable text into `NaN` and files no
+#: `made_blanks`, so it is exactly that path. What this knows is which blanks
+#: are recorded as the app's; everything else is *not recorded as made here*,
+#: which is a smaller and true statement.
+PROVENANCE_MIXED = (
+    "{n_created:,} of the {n_missing:,} blanks in `{column}` are ones this app "
+    "wrote — {why} The other {n_original:,} are not recorded as made here. The "
+    "question below is about both, and they did not get there the same way.")
+
+#: Where the record accounts for EVERY blank in the column, the stronger
+#: sentence is available and is used: nothing is left over to be wrong about.
+PROVENANCE_ALL = (
+    "Every one of the {n_missing:,} blanks in `{column}` is one this app "
+    "wrote — {why} None of them came with the file.")
+
+#: The record and the table disagree, and the app says so instead of doing
+#: arithmetic that would come out negative. Trap #9 at the sentence layer.
+PROVENANCE_DISAGREES = (
+    "The record says this app set {n_created:,} entries of `{column}` to "
+    "missing and the column now holds {n_missing:,} blanks, so the two cannot "
+    "be reconciled here — something filled blanks after they were made. The "
+    "count this app is responsible for is the recorded one; how many of "
+    "today's blanks are those is not something this can answer.")
+
+
+def provenance(column: str, n_missing: int,
+               made: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """How many of `column`'s blanks this app made, and the sentence for it.
+
+    `None` — not a zero-filled block — where the app made none. A labeled
+    region saying *"0 of these blanks are ours"* on every column in the table
+    is noise on the 99% of columns the impossibility pass never touched, and
+    the survey row's own `n_missing` already says the rest.
+
+    `n_not_recorded_as_made_here` is `None` rather than a negative number when
+    the record and the table cannot be reconciled. That happens if something filled blanks
+    after the impossibility pass made them, and the honest report is that the
+    decomposition does not hold — not a clamped zero, which would assert the
+    app made every blank in the column.
+    """
+    if not made or not made.get("n"):
+        return None
+    n_created = int(made["n"])
+    n_missing = int(n_missing)
+    why = " ".join(b["sentence"] for b in made["by"] if b["sentence"]).strip()
+    if n_created > n_missing:
+        sentence = PROVENANCE_DISAGREES.format(
+            column=column, n_created=n_created, n_missing=n_missing)
+        n_original = None
+    elif n_created == n_missing:
+        sentence = PROVENANCE_ALL.format(
+            column=column, n_missing=n_missing, why=why)
+        n_original = 0
+    else:
+        n_original = n_missing - n_created
+        sentence = PROVENANCE_MIXED.format(
+            column=column, n_created=n_created, n_missing=n_missing,
+            n_original=n_original, why=why)
+    return {
+        "column": str(column),
+        "n_created_by_the_app": n_created,
+        # NOT `n_in_the_file`, which is what this was first called and is a
+        # claim the record cannot make — see the note on PROVENANCE_MIXED.
+        "n_not_recorded_as_made_here": n_original,
+        "rows": list(made.get("rows") or []),
+        "by": [dict(b) for b in made.get("by") or []],
+        "sentence": sentence,
+    }
+
+
 def survey(df: pd.DataFrame, target: Optional[str] = None) -> List[Dict[str, Any]]:
     """Which columns have missing values, and which branch each one is on.
 

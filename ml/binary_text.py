@@ -121,6 +121,102 @@ def read_as_binary_plan(s: pd.Series) -> Optional[Dict[str, Any]]:
     }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# HOW THE COLUMN IS WRITTEN — `GUIDED-158`
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Every hit used to be titled *"'<col>' is a binary variable written as text"*.
+# Measured on the product owner's NHANES export: **nine hits, and eight of the
+# nine were not text.** Six were dtype `bool`; two were `object` holding Python
+# `True`/`False`; only `gender` held strings.
+#
+# Nothing downstream was wrong — the repair is right for all nine and the frame
+# it produces is what the user wanted — so this is cosmetic in effect and not in
+# kind. It is the first card on the file, it makes nine assertions, and eight of
+# them are false about something the reader checks in one glance at their own
+# CSV. **The repair is the same for all of them and the CLAIM is not, and the
+# claim is the part that has to be true.**
+#
+# The composer already holds the series, so the sentence is DERIVED from it
+# rather than assumed. Where the values are not all of one type the shape is
+# `mixed` and the title falls back to the weaker sentence that is certainly
+# true — the same instinct as returning `None` rather than a number nobody
+# computed.
+BOOL_DTYPE = "bool_dtype"
+OBJECT_BOOLS = "object_bools"
+OBJECT_TEXT = "object_text"
+OBJECT_NUMBERS = "object_numbers"
+MIXED_WRITING = "mixed"
+
+
+def value_shape(s: pd.Series) -> str:
+    """What this column's two values actually ARE, read off the series.
+
+    `bool_dtype` is pandas' own boolean typing — including the nullable
+    `boolean` extension dtype, which `is_bool_dtype` covers. The rest are
+    `object` columns told apart by the Python type of the values inside them,
+    because that is the distinction a reader can check and the one the old
+    sentence got wrong.
+    """
+    if pd.api.types.is_bool_dtype(s):
+        return BOOL_DTYPE
+    values = [v for v in s.dropna().tolist()]
+    if not values:
+        return MIXED_WRITING
+    if all(isinstance(v, (bool, np.bool_)) for v in values):
+        return OBJECT_BOOLS
+    if all(isinstance(v, str) for v in values):
+        return OBJECT_TEXT
+    if all(isinstance(v, (int, float, np.integer, np.floating))
+           and not isinstance(v, (bool, np.bool_)) for v in values):
+        return OBJECT_NUMBERS
+    return MIXED_WRITING
+
+
+def written_as(column: str, shape: str, n_missing: int = 0) -> Dict[str, str]:
+    """The title and the closing detail sentence for one written-as shape.
+
+    Separated from `binary_text_finding` so the phrasing can be asserted
+    directly against a shape, rather than only through a frame that happens to
+    produce one.
+    """
+    if shape == BOOL_DTYPE:
+        return {
+            "title": f"'{column}' is already a true/false column",
+            # A `bool` column is binary ALREADY. Calling the repair a repair
+            # would be the second false claim on the same card: what it does
+            # here is re-type true/false to 1/0.
+            "detail": ("Its values are already true and false, so reading it "
+                       "as binary re-types the column to 1 and 0 rather than "
+                       "repairing anything."),
+        }
+    if shape == OBJECT_BOOLS:
+        detail = "Its values are true and false, not text."
+        if n_missing:
+            # Only claimed where there ARE blanks, because "blanks are why"
+            # is an explanation and an explanation of something that is not
+            # there is the same class of false sentence this row is about.
+            detail += (" The blanks are why pandas left the column untyped "
+                       "rather than reading it as a boolean.")
+        return {"title": f"'{column}' is a binary variable written as "
+                         f"true/false",
+                "detail": detail}
+    if shape == OBJECT_NUMBERS:
+        return {"title": f"'{column}' is a binary variable written as two "
+                         f"numbers",
+                "detail": ("Its two values are numbers, in a column pandas "
+                           "left untyped.")}
+    if shape == OBJECT_TEXT:
+        return {"title": f"'{column}' is a binary variable written as text",
+                "detail": "It is a binary variable, not a number stored as text."}
+    return {
+        "title": f"'{column}' is a binary variable, written more than one way",
+        "detail": ("Its two values are not all of one type in this table, so "
+                   "nothing more specific is claimed about how they are "
+                   "written."),
+    }
+
+
 def _original_labels(s: pd.Series, token: str) -> List[str]:
     """The values as the file spells them, for a token we matched normalized."""
     seen: List[str] = []
@@ -218,12 +314,18 @@ def binary_text_finding(column: str, s: pd.Series) -> Optional[ShapeFinding]:
     n_pos = plan["counts"][plan["positive"]]
     n_neg = plan["counts"][plan["negative"]]
 
+    # `GUIDED-158`. WHAT THE COLUMN ACTUALLY IS, read off the series rather
+    # than assumed. Everything below that used to say `written as text` now
+    # says what `value_shape` found.
+    shape = value_shape(s)
+    said = written_as(column, shape, int(plan["n_missing"]))
+
     detail = (f"'{column}' holds two values — {', '.join(map(repr, pos_spellings))} "
               f"({n_pos:,} rows) and {', '.join(map(repr, neg_spellings))} "
               f"({n_neg:,} rows)")
     if plan["n_missing"]:
         detail += f", with {plan['n_missing']:,} blank"
-    detail += ". It is a binary variable, not a number stored as text."
+    detail += ". " + said["detail"]
 
     if plan["positive_known"]:
         why = (f"Read as binary, {pos_spellings[0]} becomes 1 and "
@@ -244,14 +346,16 @@ def binary_text_finding(column: str, s: pd.Series) -> Optional[ShapeFinding]:
     return ShapeFinding(
         id=f"binary_text__{column}",
         severity="warning",
-        title=f"'{column}' is a binary variable written as text",
+        title=said["title"],
         detail=detail,
         why_it_matters=why,
         fix_label=(f"Read '{column}' as binary "
                    f"({pos_spellings[0]} = 1, {neg_spellings[0]} = 0)"),
         fix_kind="read_as_binary",
         confidence="high" if plan["positive_known"] else "medium",
-        params={"column": column, **plan},
+        # `written_as` is the record beside the sentence, so anything reading
+        # the payload rather than the prose gets the same answer (trap #7).
+        params={"column": column, "written_as": shape, **plan},
         affected_columns=[column],
     )
 

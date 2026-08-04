@@ -1089,6 +1089,12 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
         label = the_group.label
 
         applied_columns: List[str] = []
+        # WHICH ORIGINAL VALUE BECAME 1, per column (`GUIDED-157`). Read off the
+        # frame the apply is about to run on, so the record and the rewrite are
+        # the same plan rather than two readings of it — and read BEFORE the
+        # apply, because afterwards the column is 0/1 and the levels it came
+        # from are gone from the table entirely.
+        encodings: Dict[str, Dict[str, Any]] = {}
         try:
             for finding_id in wanted:
                 # RE-DIAGNOSED PER COLUMN, because each apply replaces the
@@ -1108,10 +1114,13 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
                         400, f"'{finding_id}' has no automatic repair — it "
                              f"needs a human decision, so it cannot travel "
                              f"inside a bulk one.")
+                encoding = engine.fix_encoding(project.df, live)
                 new_df, _description = engine.apply_fix(project.df, live)
                 project.apply_fix_quietly(new_df, live.id,
                                           prev["row_identity_preserved"])
                 applied_columns.extend(str(c) for c in (live.affected_columns or []))
+                if encoding:
+                    encodings[encoding["column"]] = encoding
         except engine.EngineRefusal as exc:
             raise HTTPException(400, str(exc)) from exc
         except ProjectError as exc:
@@ -1134,9 +1143,17 @@ async def add_decision(project_id: str, decision: DecisionIn) -> Dict[str, Any]:
                             for c in (m.get("affected_columns") or [])]
         project.record(
             kind="apply_bulk", subject=decision.subject or "",
-            text=_repairs.sentence(label, applied_columns, declined_columns),
+            text=_repairs.sentence(label, applied_columns, declined_columns,
+                                   encodings),
             payload={"fix_kind": decision.subject, "label": label,
                      "findings": wanted, "columns": applied_columns,
+                     # THE MAPPING, MACHINE-READABLE, beside the sentence that
+                     # states it. `GUIDED-157`: the payload is what the draft,
+                     # the manuscript and the archive read, and a payload that
+                     # names the columns and not the direction is the structured
+                     # form lossier than the prose — trap #7, and here the prose
+                     # did not carry it either.
+                     "encodings": encodings,
                      "declined": [m["id"] for m in declined],
                      "declined_columns": declined_columns,
                      "n_selected": len(wanted), "n_offered": n_offered})
@@ -1319,6 +1336,50 @@ PULL_CAPABILITIES: Dict[str, Dict[str, Any]] = {
         "label": "Missingness by feature",
         "title": "Missingness by feature",
         "why": "Which columns are blank, how often, and in which rows.",
+        # `GUIDED-168`. THE TITLE THIS CHIP CARRIED WAS THE CORE'S, AND IT
+        # PROMISED A DIFFERENT ANALYSIS. `ml/eda_recommender.py:292` names its
+        # card *Missingness Pattern Analysis* and states three deliverables;
+        # `ml/router.py:399` builds the palette straight off those
+        # recommendations — `title=get("title") or rid` — so the core's title
+        # arrived on a Guided chip that opens per-column blank rates and a
+        # question. The label above was already on the wire and already right.
+        #
+        # UNROUTED AND ABSENT ARE DIFFERENT AND BOTH ARE HERE, so `MISC-014`'s
+        # distinction is drawn item by item rather than gestured at:
+        #   · the rate per column IS delivered here;
+        #   · the association-with-target test IS BUILT IN THE CORE —
+        #     `ml/eda_actions.py:255-330` runs a two-sample location test or a
+        #     categorical association test per high-missing column, reached
+        #     from `pages/02_EDA.py:1771` — and is UNROUTED in this door, which
+        #     asks the user instead of computing it;
+        #   · the MCAR/MAR/MNAR reading is ABSENT FROM BOTH DOORS. Nothing
+        #     under `ml/` computes one; `pages/11_Theory_Reference.py` explains
+        #     Little's test and no module runs it.
+        # So the sentence says *computed by neither door*, which is a claim a
+        # reader can check, rather than *coming soon*, which is not.
+        "instead_of": {
+            "core_title": "Missingness Pattern Analysis",
+            "core_source": "ml/eda_recommender.py:292",
+            "delivered_here": [
+                "Which columns have missing data and at what rate"],
+            "asked_here_not_computed": [
+                "Whether missingness is associated with target "
+                "(informative missingness)"],
+            "built_in_core_unrouted_here": [
+                "ml/eda_actions.py:217 missingness_scan — a two-sample "
+                "location test or a categorical association test of the "
+                "target against each high-missing column's blank mask"],
+            "absent_from_both_doors": [
+                "Patterns suggesting MCAR (Missing Completely At Random) vs "
+                "MAR (Missing At Random) vs MNAR (Missing Not At Random)"],
+            "sentence": (
+                "This is not the core's Missingness Pattern Analysis: it "
+                "names each column's blank rate and asks you whether the "
+                "blanks mean something. The association-with-target test that "
+                "title promises is built in Classic and not wired here; the "
+                "MCAR/MAR/MNAR reading it promises is computed by neither "
+                "door."),
+        },
     },
     "look::r8_collinearity": {
         "built": True, "endpoint": "correlations",
@@ -1366,6 +1427,13 @@ async def repair_group(project_id: str, fix_kind: str) -> Dict[str, Any]:
     Every member carries its own row count, because *"nine features"* is not the
     number a user needs to decide with; *"`sex`: 400 rows, `batch`: 400 rows,
     `qc_flag`: 12 rows"* is.
+
+    **And every member carries its own encoding** (`GUIDED-157`). The worked
+    example is the FIRST member's, so before this the card said which value
+    became 1 for one column out of N and said nothing about the other N−1 — the
+    user selected `sex`, `site` and `batch` and could see the direction of one
+    of them. `encoding` is `None` for a kind that has no mapping, which is every
+    kind except `read_as_binary`.
     """
     from turbotab import repairs as _repairs
 
@@ -1396,7 +1464,20 @@ async def repair_group(project_id: str, fix_kind: str) -> Dict[str, Any]:
         error = str(exc)
     payload["example"] = example
     payload["example_error"] = error
-    payload["effect"] = _repairs.sentence(the_group.label, the_group.columns)
+
+    encodings: Dict[str, Dict[str, Any]] = {}
+    for member in payload["members"]:
+        try:
+            live = engine.find_shape_finding(structural, member["id"])
+        except engine.EngineRefusal:
+            member["encoding"] = None
+            continue
+        member["encoding"] = engine.fix_encoding(project.df, live)
+        if member["encoding"]:
+            encodings[member["encoding"]["column"]] = member["encoding"]
+    payload["encodings"] = encodings
+    payload["effect"] = _repairs.sentence(the_group.label, the_group.columns,
+                                          encodings=encodings)
     return payload
 
 
@@ -1422,8 +1503,20 @@ async def evidence_plausibility(project_id: str) -> Dict[str, Any]:
     The impossible tier carries a repair proposal; the improbable tier stays
     advisory. A diastolic pressure of ~0 is an entry error, not a rare patient
     (GUIDED-004).
+
+    **And it carries all three routes, not one** (`GUIDED-166`). Setting the
+    entries to missing is clause §06's row-local repair; excluding the rows is
+    clause §04's eligibility criterion and is a different object with different
+    rules; marking the column untrustworthy is `GUIDED-096`'s split and is not
+    built. Each route travels with the decision that takes it, so a client
+    holding this payload can act. Composed by `turbotab.eligibility`, which
+    owns §04's rules, rather than restated here.
     """
-    return engine.plausibility(_project(project_id).working_table)
+    from turbotab import eligibility as _elig
+    report = engine.plausibility(_project(project_id).working_table)
+    for block in report.get("impossible", []):
+        block.update(_elig.routes_from_impossible(block))
+    return report
 
 
 @app.get("/project/{project_id}/evidence/reverse-coding")
@@ -1631,8 +1724,21 @@ async def evidence_missingness(project_id: str) -> Dict[str, Any]:
     now, statistical transforms are recorded and fitted inside the per-model
     pipeline on training folds. Stated as methods prose in the decision
     sentence, never as a note about the software (GUIDED-002).
+
+    Every option also says whether clause §07 would refuse it, and the ones it
+    can refuse are ordered after the ones it cannot (`GUIDED-163`). The
+    mechanism the app already has on the record travels with the request, so a
+    column whose question has been answered gets the definite sentence rather
+    than the conditional one — and a column that has not been asked gets
+    `None`, which is what `mechanism` has always meant here.
     """
-    return {"cards": engine.missingness(_project(project_id).working_table)}
+    project = _project(project_id)
+    return {"cards": engine.missingness(
+        project.working_table,
+        mechanisms={str(d["column"]): d["mechanism"]
+                    for d in (project.missingness or [])
+                    if d.get("mechanism")},
+        provenance=project.blank_provenance())}
 
 
 @app.get("/project/{project_id}/evidence/imputation/{column}")
@@ -2133,12 +2239,18 @@ async def preview_feature(project_id: str, transform: str, columns: str,
 
 
 @app.get("/project/{project_id}/selection/evidence")
-async def selection_evidence(project_id: str) -> Dict[str, Any]:
+async def selection_evidence(project_id: str, method: str = "") -> Dict[str, Any]:
     """What a selection CHOICE is shown beside — ranked on training rows only.
 
     Ranks, does not choose. Nothing is stored and the response is marked
     `preview_not_applied`, the same distinction clause §06 draws for a deferred
     transform's preview.
+
+    `method` is the choice this is evidence FOR (`GUIDED-177`). The page sends
+    the method sitting in its own dropdown; a project that has already recorded
+    a spec falls back to that, so the preview cannot show a correlation ranking
+    under a sentence reading *by mutual information*. Omitted on both, the
+    table is a plain correlation and says so.
     """
     project = _project(project_id)
     if not project.target:
@@ -2146,9 +2258,12 @@ async def selection_evidence(project_id: str) -> Dict[str, Any]:
     candidates = [str(c) for c in project.df.columns
                   if str(c) != project.target
                   and pd.api.types.is_numeric_dtype(project.df[c])]
+    chosen = method or str((project.selection_spec or {}).get("method") or "")
     try:
         return sel_mod.evidence(project.df, project.target, candidates,
-                                project.training_mask)
+                                project.training_mask,
+                                method=chosen or None,
+                                task_type=project.task_type)
     except sel_mod.SelectionRefusal as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -2919,6 +3034,34 @@ async def get_interview(project_id: str, step: str = "data") -> Dict[str, Any]:
             d["not_built_reason"] = (
                 None if d["built"]
                 else (cap or {}).get("not_built_reason") or NOT_BUILT_REASON)
+            # `GUIDED-168`. THE CHIP IS TITLED BY THIS DOOR'S OWN CAPABILITY
+            # TABLE, not by the core recommendation it was built from.
+            #
+            # `ml/router.py:399` titles a palette entry `get("title") or rid`,
+            # reading `ml.eda_recommender`'s card — and the core's title
+            # describes the CORE's analysis. Measured on `clinic_visits.csv`:
+            # three of the five built chips carried a title the capability
+            # table disagreed with, and one of the three, *Missingness Pattern
+            # Analysis*, names an analysis with an MCAR/MAR/MNAR deliverable
+            # over an endpoint that returns per-column blank rates.
+            #
+            # The same correction `GUIDED-084` made one surface along: the
+            # server already serves an accurate account of each affordance, so
+            # nothing downstream should compose its own. The core keeps its
+            # title for the Classic door; `core_title` keeps the borrowed one
+            # on the record rather than dropping it.
+            if cap and cap.get("title") and cap["title"] != d.get("title"):
+                d["core_title"] = d.get("title")
+                d["title"] = cap["title"]
+            instead = (cap or {}).get("instead_of")
+            if instead and instead.get("sentence"):
+                # ON THE CHIP, not only in the payload. `why` is what the page
+                # renders as the chip's `data-tip`; a difference recorded in a
+                # field nothing draws is trap #6, which is how the label got
+                # away with it for as long as it did.
+                d["why"] = ((d.get("why") or "").rstrip(". ") + ". "
+                            + instead["sentence"]).strip()
+                d["instead_of"] = instead
             # A gated figure says so ON THE CHIP, before it is opened. A caveat
             # discovered after looking is a caveat applied to a reading the user
             # has already taken.

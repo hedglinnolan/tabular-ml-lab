@@ -613,6 +613,79 @@ def apply_fix(df: pd.DataFrame, finding: ShapeFinding,
     return _dispatch_fix(df.copy(deep=True), finding, choice=choice)
 
 
+def fix_encoding(df: pd.DataFrame,
+                 finding: ShapeFinding) -> Optional[Dict[str, Any]]:
+    """WHICH ORIGINAL VALUE BECOMES 1, for a fix that rewrites a column to 0/1.
+
+    `GUIDED-157`. The bulk repair recorded the columns it touched and not the
+    mapping, so a record saying *"1 feature (`gender`) was read as binary"*
+    left *"is the coefficient on `male` or on `female`"* with no answer
+    anywhere. No number was wrong; a reported number was uninterpretable, which
+    is trap #7's shape — the machine-readable form lossier than the sentence —
+    crossed with the governing rule.
+
+    **This reports what the transform does; it does not decide anything.** The
+    plan comes from `ml.binary_text.read_as_binary_plan`, which is the same
+    call `apply_read_as_binary` makes on the same frame one line later, so the
+    record and the rewrite cannot disagree. Nothing here re-derives a mapping.
+
+    **The spellings are the file's own**, for the reason `apply_read_as_binary`
+    already states about its description: the tokens the plan compares on are
+    normalized, and a methods sentence saying `true = 1` about a column written
+    `True` describes a frame nobody uploaded. `positive`/`negative` are the
+    spelling the transform's own sentence quotes; `positive_values` /
+    `negative_values` are **every** spelling that maps to that side, because a
+    column holding `Male` and `male` has two of them and a record naming one
+    would be a claim about half the rows.
+
+    Returns **None** for every other fix kind, and None where the column is no
+    longer binary. A kind with no encoding gets no encoding — trap 9's rule at
+    the record layer: return nothing rather than a mapping that was invented
+    here.
+    """
+    if finding is None or finding.fix_kind != "read_as_binary":
+        return None
+    params = finding.params or {}
+    column = params.get("column") or (finding.affected_columns or [None])[0]
+    if column is None or column not in df.columns:
+        return None
+    series = df[column]
+    if isinstance(series, pd.DataFrame):                # duplicate labels
+        return None
+    plan = binary_text.read_as_binary_plan(series)
+    if not plan:
+        return None
+
+    positive, negative = plan["positive"], plan["negative"]
+    spellings: Dict[str, List[str]] = {positive: [], negative: []}
+    for value in series.tolist():
+        token = binary_text._normalize(value)
+        if token in spellings and str(value) not in spellings[token]:
+            spellings[token].append(str(value))
+
+    pos_values = spellings[positive] or [str(positive)]
+    neg_values = spellings[negative] or [str(negative)]
+    mapping = {v: 1 for v in pos_values}
+    mapping.update({v: 0 for v in neg_values})
+    return {
+        "column": str(column),
+        "positive": pos_values[0],
+        "negative": neg_values[0],
+        "positive_values": pos_values,
+        "negative_values": neg_values,
+        "mapping": mapping,
+        # Whether the direction came from `KNOWN_PAIRS` or from the plan's
+        # declared sorted-order fallback. The finding already says this to the
+        # user; the record says it to everything downstream, because "the
+        # engine recognized this pair" and "the engine picked deterministically
+        # and said so" are different claims about the same 1.
+        "positive_known": bool(plan["positive_known"]),
+        "n_positive": int(plan["counts"][positive]),
+        "n_negative": int(plan["counts"][negative]),
+        "n_missing": int(plan["n_missing"]),
+    }
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Evidence
 #
@@ -643,9 +716,20 @@ def column_histogram(df: pd.DataFrame, column: str) -> Optional[Dict[str, Any]]:
     return _plain(card_evidence.histogram(df[column]))
 
 
-def missingness(df: pd.DataFrame) -> List[Dict[str, Any]]:
-    """Dtype-routed missingness decisions, each naming its column."""
-    return _plain(missingness_plan.missingness_cards(df))
+def missingness(df: pd.DataFrame,
+                mechanisms: Optional[Dict[str, str]] = None,
+                provenance: Optional[Dict[str, Any]] = None
+                ) -> List[Dict[str, Any]]:
+    """Dtype-routed missingness decisions, each naming its column.
+
+    `mechanisms` is what the user has ALREADY answered to §07's question, per
+    column, and it is passed through rather than computed here — the engine
+    takes a frame and knows nothing about a project. It decides whether the
+    card's concern about a signal-destroying fill reads *"this is refused"* or
+    *"this would be refused if you answered yes"* (`GUIDED-163`).
+    """
+    return _plain(missingness_plan.missingness_cards(
+        df, mechanisms=mechanisms, provenance=provenance))
 
 
 def imputation_preview(df: pd.DataFrame, column: str,

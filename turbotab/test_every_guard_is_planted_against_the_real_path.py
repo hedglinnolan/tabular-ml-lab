@@ -149,6 +149,12 @@ PLANTED = {
         "test_a_cascade_that_does_not_fire_is_caught_on_the_real_path",
     "no_post_seal_operation_changes_a_surviving_rows_label":
         "test_a_post_seal_renumbering_is_caught_on_the_real_path",
+    # L48-C. The plant is the defect this guard was built for, exactly: a live
+    # decision kind with no disposition in either table. Planting it by
+    # REMOVING a kind from both is the honest direction — adding a fake kind to
+    # `api.py` would be planting a defect the app cannot have.
+    "every_decision_kind_has_a_disposition":
+        "test_an_undispositioned_kind_is_caught_on_the_real_path",
 }
 
 # Still synthetic-only, each with what a planted test would have to do. Filed as
@@ -187,7 +193,7 @@ def test_every_guard_is_classified_as_planted_or_filed():
         f"these guards are neither planted against nor filed: {unclassified}. "
         f"Add a real-path test, or an entry in SYNTHETIC_ONLY saying what one "
         f"would have to do.")
-    assert len(PLANTED) == 5 and len(SYNTHETIC_ONLY) == 3, (
+    assert len(PLANTED) == 6 and len(SYNTHETIC_ONLY) == 3, (
         "the split moved without the ledger note moving with it")
 
 
@@ -419,3 +425,52 @@ def test_a_post_seal_renumbering_is_caught_on_the_real_path(on, monkeypatch):
         "a post-seal operation relabeled the rows and no guard fired on the "
         "real path; the lockbox now names different rows and still looks "
         "perfectly well-formed")
+
+
+# ── 6 · every decision kind has a disposition ────────────────────────────────
+
+def test_an_undispositioned_kind_is_caught_on_the_real_path(on, monkeypatch):
+    """L48-C's guard, planted where it would actually break.
+
+    The defect this watches for is *a kind was added and nobody decided* —
+    which arrives as a kind live in `api.py` and absent from both
+    `ACTION_CONTRACT` and `UNCLASSIFIED`. So the plant REMOVES a real kind from
+    both tables and drives that kind over HTTP, rather than adding a fake kind
+    to `api.py`: a plant has to be a defect the app can actually have, and an
+    invented decision kind is not one.
+
+    `set_target` is the subject because the drive posts it first, so the
+    violation lands on the real transition rather than on a synthetic one.
+    """
+    contract = dict(devchecks.ACTION_CONTRACT)
+    contract.pop("set_target")
+    monkeypatch.setattr(devchecks, "ACTION_CONTRACT", contract)
+    unclassified = dict(devchecks.UNCLASSIFIED)
+    unclassified.pop("set_target", None)
+    monkeypatch.setattr(devchecks, "UNCLASSIFIED", unclassified)
+
+    client = _client()
+    with open(DATA / "dietary_recalls.csv", "rb") as fh:
+        pid = client.post("/project", files={
+            "file": ("dietary_recalls.csv", fh, "text/csv")}).json()["id"]
+    got = client.post(f"/project/{pid}/decision", json={
+        "kind": "set_target", "subject": "", "payload": {"column": "hba1c"}})
+    assert got.status_code == 200, got.text
+
+    caught = _fired(on, "a_decision_kind_has_no_disposition")
+    assert caught, (
+        "a live decision kind was dispositioned nowhere and the drive ran "
+        "clean. All three contract checks `.get(kind)` and return [], so an "
+        "undispositioned kind is silently unchecked — which is the whole of "
+        "`GUIDED-180`")
+    assert "set_target" in caught[0]["message"], caught[0]["message"]
+
+    # AND THE OTHER DIRECTION, on the same real path: a kind that IS
+    # dispositioned does not fire. A guard that fires on a correct drive gets
+    # switched off within a day.
+    quiet = [v for v in on.violations
+             if v["check"] == "a_decision_kind_has_no_disposition"
+             and "set_target" not in v["message"]]
+    assert not quiet, (
+        f"the guard fired on kinds that ARE dispositioned: "
+        f"{[v['message'] for v in quiet]}")

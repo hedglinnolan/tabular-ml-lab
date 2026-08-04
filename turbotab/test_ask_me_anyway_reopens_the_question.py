@@ -32,6 +32,38 @@ instance — the same move `DRIVE-001` needed. Every rendered skip the Router
 serves is reopenable the day it exists, including the pack-settled missingness
 blocks, where a single skip stands for hundreds of columns and the cost of
 being unable to reopen it is correspondingly larger.
+
+## `GUIDED-156` — and where the reopened question then RENDERED
+
+Every assertion in the six tests above is true, and none of them renders the page
+after the reopen. That coverage gap was the finding: `unskip` worked perfectly on
+the wire and the question it brought back appeared **nowhere on screen**.
+
+Two correct rules composing into a hole. `renderSkips` draws only
+`status === "skipped"`, so the reopened question left the skip list. `renderAsked`
+draws `!handledElsewhere(q.key)`, and `confirm_task_type` is on
+`HANDLED_QUESTION_KEYS` — so the generic channel refused it too. And the surface
+that claims to handle it, the task-type row inside the target card, was gated on
+`conf !== "high" || P.task_overridden`: at high confidence it renders a SENTENCE
+into the transcript and no control at all. High confidence is exactly the state a
+skip is granted in, and the engine does not stop being certain because a human
+disagreed with it — so after the reopen all three surfaces declined.
+
+Driven here on the unfixed page: `#askedQuestions` was byte-identical at 12,852
+characters before and after with `confirm_task_type` absent from both, `#skipNote`
+dropped from 904 characters to zero, and `#taskOverride` held zero characters in
+both states. Nothing to press, on either fixture shape.
+
+The fix reads the ROUTER'S STATUS for the key instead of re-deriving Decision B
+from the confidence tier. `_skip_is_permitted` is the one place that rule lives;
+the tier test in the page was a second copy of it, and the two copies disagreeing
+is what opened the hole.
+
+**The class is bigger than this instance and is not closed here.** Every key the
+Router can serve as `status="skipped"` is also matched by `handledElsewhere` —
+three families, three of three: `confirm_task_type` (an exact key),
+`missingness_settled::` and `missingness::` (prefixes). The last test in this
+file is the strict `xfail` naming the consumer the other two still do not have.
 """
 from __future__ import annotations
 
@@ -259,3 +291,284 @@ def test_the_page_sends_a_reopen_and_not_an_answer():
     replay = client.post(f"/project/{pid}/decision", json=body["body"])
     assert replay.status_code == 200, replay.text
     assert "confirm_task_type" in _asked(client, pid)
+
+
+# ── `GUIDED-156` · and then where does it RENDER? ────────────────────────────
+
+#: NOT COVERED, said out loud (`GUIDED-097`, and §10 rule 4).
+SHAPES_NOT_COVERED = (
+    "Whether the control is on screen. `pageharness.py` knows nothing about "
+    "pixels and says so in its own docstring; this asserts that a control is "
+    "rendered and pressable, never that a person can see it.",
+    "A MULTICLASS target. `multiclass_stage.csv`'s `stage` is a four-level "
+    "string and the engine does not read it at `high` confidence, so the "
+    "question is asked outright and there is no skip to reopen — the reopen "
+    "hole does not arise on that shape.",
+    "A target the engine reads at LOW confidence, for the same reason: no "
+    "skip, so nothing to reopen. The two runs below are both `high`, which is "
+    "the only tier `_skip_is_permitted` admits.",
+    "The other two skippable families — `missingness_settled::` and "
+    "`missingness::`. They are the strict `xfail` at the bottom of this file, "
+    "not a covered case.",
+)
+
+#: Two fixtures of different target shape (`GUIDED-097`). Both must produce
+#: `confirm_task_type` with `status="skipped"`, which is what makes a reopen
+#: possible at all — the fixture is asserted to do so inside the test rather
+#: than assumed here.
+REOPEN_FIXTURES = [
+    ("clinic_visits.csv", "outcome", "classification"),
+    ("dietary_recalls.csv", "bmi", "regression"),
+]
+
+
+def _routes(client, pid):
+    """Every response one render of this page asks for.
+
+    Measured rather than guessed: one render of this project issues 19 distinct
+    fetches, three of them per-column histograms composed from a variable and
+    one of them `/dev/status`. A harness that stubs four gets a controller that
+    throws, and a throw here reads as "the control did not render".
+    """
+    out = {f"/project/{pid}": client.get(f"/project/{pid}").json()}
+    for path in ("interview?step=data", "interview?step=explore",
+                 "interview?step=features", "capabilities", "features",
+                 "recipes", "preprocess", "figures", "draft", "manuscript",
+                 "models", "training", "instability", "explain", "sensitivity",
+                 "evidence/plausibility", "evidence/missingness"):
+        resp = client.get(f"/project/{pid}/{path}")
+        out[f"/project/{pid}/{path}"] = (resp.json() if resp.status_code == 200
+                                         else {})
+    return out
+
+
+#: THE PRESS IS BUILT FROM THE RENDER, NEVER HAND-SPECIFIED — trap #3.
+#:
+#: A synthetic `{'data-task': 'regression', 'data-ac': 'task'}` would let the
+#: fixture supply the very attribute whose absence is the defect: the handler is
+#: a document-level delegate and answers a press whether or not anything drew
+#: the button. So every attribute pressed below is read off the button the page
+#: actually emitted, which is what a user's press is.
+_BUTTONS_FROM_RENDER = """
+function buttons(html){
+  var re = /<button\\b([^>]*)>/g, m, out = [];
+  while ((m = re.exec(html))){
+    var attrs = {}, a = /([a-zA-Z-]+)="([^"]*)"/g, k;
+    while ((k = a.exec(m[1]))) attrs[k[1]] = k[2];
+    out.push(attrs);
+  }
+  return out;
+}
+"""
+
+
+@pytest.mark.parametrize("fixture,column,shape", REOPEN_FIXTURES,
+                         ids=["classification target", "regression target"])
+def test_the_reopened_question_renders_a_control_the_user_can_press(
+        fixture, column, shape):
+    """`GUIDED-156`, driven — the assertion the six tests above never made.
+
+    They watched the wire and they watched the record, and every one of them is
+    correct. None rendered the page after the reopen, and the page is where the
+    defect was: the question came back `asked`, and `renderSkips`, `renderAsked`
+    and the target card all declined to draw it.
+
+    Four things are observed here, in the order a person meets them: the skip
+    row is gone, the generic channel did not pick the question up, a control for
+    it EXISTS, and pressing that control posts the answer. The third is the one
+    that was false.
+    """
+    if not H.available():
+        pytest.skip("no JS engine on this machine")
+
+    client = _client()
+    project = _upload(client, fixture.replace(".csv", ""))
+    pid = project["id"]
+    client.post(f"/project/{pid}/decision",
+                json={"kind": "set_target", "payload": {"column": column}})
+
+    before = client.get(f"/project/{pid}").json()
+    assert before["task_type"] == shape, (
+        f"{fixture}:{column} is no longer read as {shape}, so this run is not "
+        f"the target shape it claims to be ({before['task_type']})")
+    skipped = _skipped(client, pid)
+    assert "confirm_task_type" in skipped, (
+        f"the task-type question is not skipped on {fixture}:{column}, so "
+        f"there is nothing to reopen and this test proves nothing")
+    assert skipped["confirm_task_type"]["confidence"] == "high", (
+        "the skip was granted below high confidence, which Decision B does not "
+        "permit; this test is about the high-confidence reopen")
+
+    r = client.post(f"/project/{pid}/decision",
+                    json={"kind": "unskip", "subject": "confirm_task_type",
+                          "payload": {"key": "confirm_task_type"}})
+    assert r.status_code == 200, r.text
+    q = _asked(client, pid)["confirm_task_type"]
+    assert q["skip_reason"] is None and len(q["options"]) == 2, (
+        "the server no longer brings the question back clean, so the page is "
+        f"not being driven through the reopen this test is about: {q}")
+
+    routes = _routes(client, pid)
+    # The POST answers with the project UNCHANGED, so the controller survives
+    # the first press and a second one can be made. The harness is not the
+    # server; what the server does with the body is replayed below, against it.
+    routes[f"POST /project/{pid}/decision"] = routes[f"/project/{pid}"]
+
+    out = H.run(
+        _BUTTONS_FROM_RENDER +
+        "var ov = __harness.html('taskOverride') || '';\n"
+        "var btns = buttons(ov).filter(function(b){ return b['data-task']; });\n"
+        "for (var i = 0; i < btns.length; i++){\n"
+        "  __harness.dispatch('click', __harness.target(btns[i]));\n"
+        "  for (var j = 0; j < 6; j++) await new Promise(function(r){ setTimeout(r, 0); });\n"
+        "}\n"
+        "__emit({ov: ov.length, tasks: btns.map(function(b){ return b['data-task']; }),\n"
+        "        slot: btns.map(function(b){ return b['data-ac']; }),\n"
+        "        skip: (__harness.html('skipNote') || '').length,\n"
+        "        generic: (__harness.html('askedQuestions') || '')\n"
+        "                   .indexOf('confirm_task_type') !== -1,\n"
+        "        posts: __harness.posts()});",
+        routes=routes, search=f"?project={pid}")
+
+    # 1 · the skip row is gone, because the question is no longer skipped.
+    assert out["skip"] == 0, (
+        "the reopened question is still being drawn as a skip, so `renderSkips` "
+        "is now claiming a question the Router says is asked")
+    # 2 · and the generic channel refused it, because it is handled elsewhere.
+    assert out["generic"] is False, (
+        "`renderAsked` drew the question. That is not wrong for a user, but it "
+        "means `HANDLED_QUESTION_KEYS` no longer holds `confirm_task_type` — "
+        "the shelf was shortened instead of the surface being fixed")
+    # 3 · SO THE ONLY SURFACE LEFT HAS TO DRAW IT. This is the reproduction.
+    assert out["tasks"], (
+        f"the reopened question renders NOWHERE. `#skipNote` is empty, "
+        f"`#askedQuestions` does not carry it, and `#taskOverride` held "
+        f"{out['ov']} characters — so pressing *Ask me anyway* on a "
+        f"{shape} target leads to a page with nothing on it to answer")
+    assert sorted(out["tasks"]) == ["classification", "regression"], (
+        f"the control does not offer both readings, so the user who disputed "
+        f"the engine cannot record the other one: {out['tasks']}")
+    assert set(out["slot"]) == {"task"}, (
+        "the rendered control names no at-control slot, so the server's answer "
+        f"to the press lands where nobody is looking: {out['slot']}")
+
+    # 4 · and pressing them records answers — a control that renders and does
+    #     nothing is `DRIVE-001`, which is the defect with a nicer surface.
+    #     BOTH are pressed, because a reopened question the user can only agree
+    #     with is not a question.
+    bodies = [p["body"] for p in out["posts"]]
+    assert len(bodies) == 2, (
+        f"two rendered controls were pressed and {len(bodies)} request(s) went "
+        f"out: {bodies}")
+    assert all(b["kind"] == "set_task_type" for b in bodies), (
+        f"a press on the reopened control sent something other than the "
+        f"answer to it: {bodies}")
+    assert sorted(b["payload"]["task_type"] for b in bodies) == [
+        "classification", "regression"], (
+        f"the two controls do not post the two readings: {bodies}")
+
+    # And the real server accepts the press, and the question settles.
+    #
+    # THE CONFIRMING PRESS IS THE ONE REPLAYED, and that is a limit rather than
+    # a preference: `set_task_type("regression")` on a two-level STRING target
+    # raises an uncaught `TypeError` out of `compute_target_profile`, which the
+    # strict `xfail` below records. Replaying it here would make this test red
+    # for a defect it is not about. The body is still the page's own — taken
+    # from the requests the presses produced, never composed here.
+    confirm = next(b for b in bodies if b["payload"]["task_type"] == shape)
+    replay = client.post(f"/project/{pid}/decision", json=confirm)
+    assert replay.status_code == 200, replay.text
+    assert "confirm_task_type" not in _asked(client, pid)
+    assert "confirm_task_type" not in _skipped(client, pid)
+    kinds = [d["kind"] for d in client.get(f"/project/{pid}").json()["decisions"]]
+    assert kinds.index("unskip") < kinds.index("set_task_type"), (
+        "the record no longer carries *the user asked to be asked, and then "
+        "answered it themselves* as two sentences")
+
+
+@pytest.mark.xfail(strict=True, raises=TypeError, reason=(
+    "FOUND WHILE FIXING `GUIDED-156`, and filed rather than fixed. Overriding "
+    "a high-confidence CLASSIFICATION reading to `regression` on a two-level "
+    "STRING target raises an uncaught TypeError out of pandas `nanmean`, via "
+    "`ml/dataset_profile.compute_target_profile`. It is a 500 with no body, "
+    "not a refusal, and the governing rule permits refusing. `GUIDED-097`'s "
+    "class one surface over: every test of this path used a numeric target. "
+    "It is reachable through the API today on any string target, and it is "
+    "reachable through the PAGE only once `GUIDED-156`'s fix renders the "
+    "override at high confidence — which is why it is recorded here."))
+def test_overriding_a_string_target_to_regression_refuses_rather_than_crashing():
+    """The other half of the reopened control, named with a failing test.
+
+    Two fixtures of different target shape would be the rule; there is only one
+    shape that can reach this, because a numeric target overridden to
+    `classification` is answerable and does not crash. That asymmetry IS the
+    defect, so it is stated rather than padded.
+    """
+    client = _client()
+    project = _upload(client, "clinic_visits")
+    pid = project["id"]
+    client.post(f"/project/{pid}/decision",
+                json={"kind": "set_target", "payload": {"column": "outcome"}})
+    assert client.get(f"/project/{pid}").json()["task_type"] == "classification"
+
+    r = client.post(f"/project/{pid}/decision",
+                    json={"kind": "set_task_type",
+                          "payload": {"task_type": "regression"}})
+    assert r.status_code in (400, 409), (
+        f"the server neither refused nor crashed; it returned {r.status_code}")
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "GUIDED-156's CLASS, which this loop did not close. Every key the Router "
+    "can serve as `status=skipped` is also matched by `handledElsewhere` — "
+    "three of three. `confirm_task_type` is fixed above; the other two "
+    "families, `missingness_settled::` and `missingness::`, are served at "
+    "step=preprocess and THE PAGE NEVER FETCHES THAT STEP. So the skip row "
+    "never renders, `Ask me anyway` never renders, and the reopened question "
+    "has no surface either. The missing consumer is named rather than left in "
+    "prose: a renderer for the preprocess-step plan."))
+def test_a_reopened_settled_missingness_block_renders_somewhere():
+    """The consumer that does not exist, named and failing (`AGENT_ONBOARD` §07.1).
+
+    `test_a_pack_settled_missingness_block_is_reopenable_too` above asserts the
+    server half and is correct. This is the half it does not reach: one skip
+    standing for 306 columns, reopened, and rendered by nothing at all. Driven,
+    because *does a surface exist* is a behavior question and a grep would only
+    answer *does the string appear*.
+
+    Strict, so the day somebody builds the surface this stops passing quietly
+    and reports that the row can be closed.
+    """
+    if not H.available():
+        pytest.skip("no JS engine on this machine")
+
+    client = _client()
+    project = _upload(client, "metabolomics_untargeted")
+    pid = project["id"]
+    client.post(f"/project/{pid}/decision",
+                json={"kind": "set_target", "payload": {"column": "responder"}})
+    client.post(f"/project/{pid}/decision",
+                json={"kind": "set_lens", "payload": {"lens": ["metabolomics"]}})
+    settled = [k for k in _skipped(client, pid, "preprocess")
+               if k.startswith("missingness_settled::")]
+    assert settled, "no pack-settled missingness block on this fixture"
+    key = settled[0]
+    client.post(f"/project/{pid}/decision",
+                json={"kind": "unskip", "payload": {"key": key}})
+    assert key in _asked(client, pid, "preprocess")
+
+    out = H.run(
+        "var K = %r;\n"
+        "__emit({skip: (__harness.html('skipNote') || '').indexOf(K) !== -1,\n"
+        "        generic: (__harness.html('askedQuestions') || '').indexOf(K) !== -1,\n"
+        "        miss: (__harness.html('missBox') || '').indexOf(K) !== -1,\n"
+        "        steps: __harness.calls().map(function(c){ return c.path; })\n"
+        "                 .filter(function(p){ return p.indexOf('interview') !== -1; })});"
+        % key,
+        routes=_routes(client, pid), search=f"?project={pid}")
+
+    assert any("step=preprocess" in p for p in out["steps"]), (
+        "the page never asks for the preprocess-step plan, so no surface in it "
+        f"can know this question exists: {out['steps']}")
+    assert out["skip"] or out["generic"] or out["miss"], (
+        f"{key} renders nowhere after the reopen")

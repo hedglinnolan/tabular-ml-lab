@@ -36,7 +36,7 @@ Finding: GUIDED-002.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -266,7 +266,8 @@ def _timing_of(spec: Dict[str, Any]) -> str:
 
 
 def _options_for(column: str, branch: str, series: pd.Series,
-                 n_missing: int) -> List[Dict[str, Any]]:
+                 n_missing: int,
+                 mechanism: Optional[str] = None) -> List[Dict[str, Any]]:
     """The strategies this branch offers, FROM THE ONE TABLE THAT DECIDES.
 
     `GUIDED-090`. This used to be three hand-written lists, and they disagreed
@@ -284,6 +285,22 @@ def _options_for(column: str, branch: str, series: pd.Series,
     The decision sentence is `missingness.sentence_for`, so the sentence on the
     card and the sentence on the record are one object rather than two that
     used to contradict each other (`GUIDED-098`).
+
+    **AND THE LIST IS ORDERED, WITH THE APP'S CONCERN ON THE OPTIONS IT IS
+    ABOUT** (`GUIDED-163`). `turbotab.missingness` already refused a median
+    fill over an informatively-missing column with a typed 409; what it did not
+    do was say so *before* the click. On the drive's `meds_hbp` — observed
+    `{True: 5527, False: 770}`, 15,552 blanks, median 1 — the fill that puts
+    every person of unknown medication status on blood pressure medication was
+    offered as an equal peer of the two routes that keep the signal.
+
+    The shelf is not shortened: every strategy the branch permits is still
+    here, and `blocked` never removes one. `missingness.shelf_rank` decides the
+    order and `missingness.concern` writes the sentence, so the rule lives with
+    `blocks` and this composes what it says. The concern is folded into the
+    option's `consequence` as well as carried structurally, because
+    `consequence` is the field a person reads and a concern nothing renders is
+    trap #6.
     """
     from turbotab import missingness as _miss
 
@@ -291,14 +308,24 @@ def _options_for(column: str, branch: str, series: pd.Series,
     for key in _miss.STRATEGIES_BY_BRANCH[branch]:
         spec = _miss.strategy(key)
         consequence = _CONSEQUENCE.get(key)
-        out.append(_option(
+        option = _option(
             key, spec["label"].replace("`", ""),
             _miss.sentence_for(column, branch, key),
             _timing_of(spec),
             consequence(column, n_missing, series) if consequence else
             spec["because"],
             recommended=(key == _RECOMMENDED.get(branch)),
-        ))
+        )
+        option.update(_miss.reading(column, key, mechanism, n_missing))
+        if option["concern"]:
+            option["consequence"] = (option["consequence"] + " "
+                                     + option["concern"])
+        out.append(option)
+    # STABLE, so the branch table still decides everything the constitution has
+    # no opinion about. `sorted` on one key preserves the order of equals, and
+    # that order is `STRATEGIES_BY_BRANCH` — which is where the coach's pick
+    # already sits first.
+    out.sort(key=lambda o: o["shelf_rank"])
 
     # THE ONE OFFER THAT IS NOT A STRATEGY, and it stays on the card.
     #
@@ -315,6 +342,17 @@ def _options_for(column: str, branch: str, series: pd.Series,
              f"from the analysis."),
             TIMING_IMMEDIATE, reason)
         option["is_strategy"] = False
+        # THE CONSTITUTIONAL FIELDS, STATED RATHER THAN DERIVED, because the
+        # derivation would say a false thing here. `blocks` answers a question
+        # about MISSINGNESS STRATEGIES, and `drop_rows` is not one — so
+        # `blocked_under('drop_rows')` is empty, and copying that onto the
+        # option as `blocked: False` would assert the constitution permits a
+        # route `declare` refuses under every mechanism. `None` is *this field
+        # does not answer for this option*; the reason it is refused is clause
+        # §04's and is already the whole of its `consequence`.
+        option.update({"blocked": None, "blocked_under": [], "concern": None,
+                       "shelf_rank": max(
+                           [o["shelf_rank"] for o in out] or [0]) + 1})
         out.append(option)
     for option in out:
         option.setdefault("is_strategy", True)
@@ -323,15 +361,28 @@ def _options_for(column: str, branch: str, series: pd.Series,
 
 def missingness_cards(df: pd.DataFrame,
                       columns: Optional[Sequence[str]] = None,
-                      threshold: float = HIGH_MISSING_SHARE) -> List[Dict[str, Any]]:
+                      threshold: float = HIGH_MISSING_SHARE,
+                      mechanisms: Optional[Mapping[str, str]] = None,
+                      provenance: Optional[Mapping[str, Any]] = None
+                      ) -> List[Dict[str, Any]]:
     """One decision card per column with meaningful missingness.
 
     The card names the column, states the count and share, routes by dtype, and
     carries the decision sentence each option would write — so the transcript
     the user is agreeing to is visible before they agree to it.
+
+    `mechanisms` is the answer ALREADY ON THE RECORD for a column, keyed by
+    column name, and it is the difference between the app saying *"this is
+    refused"* and *"this would be refused if you answered yes"*. Absent, and
+    absent per column, is the normal case and is `None` — *not yet asked* —
+    which is `GUIDED-091`'s rule and is why this is not defaulted to
+    `not_sure`. Nothing is inferred from the data here; the only source is a
+    `route_missingness` decision the user already made.
     """
     if df is None or df.empty:
         return []
+    answered = {str(k): v for k, v in (mechanisms or {}).items()}
+    made = {str(k): v for k, v in (provenance or {}).items()}
     cols = list(columns) if columns is not None else list(df.columns)
     cards: List[Dict[str, Any]] = []
 
@@ -364,7 +415,8 @@ def missingness_cards(df: pd.DataFrame,
         # the offer, keyed on the branch the record keys on.
         branch = ("numeric" if pd.api.types.is_numeric_dtype(series)
                   else "categorical")
-        options = _options_for(str(col), branch, series, n_missing)
+        mechanism = answered.get(str(col))
+        options = _options_for(str(col), branch, series, n_missing, mechanism)
         if kind == "binary":
             question = (f"Is the missingness in `{col}` informative?")
             because = ("A binary variable that was not recorded is not the same "
@@ -396,8 +448,20 @@ def missingness_cards(df: pd.DataFrame,
             # clause §07's blocker unreachable from this door by any user on
             # any column. `None` is *not yet asked*, and the strategies are not
             # offered until it is answered, exactly as Preprocess does it.
-            "mechanism": None,
+            #
+            # It is `None` UNLESS THE USER ALREADY ANSWERED IT — a column that
+            # carries a `route_missingness` decision has the answer on the
+            # record, and re-asking a question the transcript already holds is
+            # the app forgetting what it was told (`GUIDED-163`). Still never
+            # inferred: `mechanisms` comes from decisions and from nowhere else.
+            "mechanism": mechanism,
             "mechanism_question": _mechanism_question(str(col)),
+            # WHERE THESE BLANKS CAME FROM (`GUIDED-166`), or `None` where the
+            # app made none of them. Composed by `turbotab.missingness` and
+            # passed in, because the Preprocess survey says the same thing from
+            # the same reading and two doors answering one question differently
+            # is what `GUIDED-091` was.
+            "provenance": made.get(str(col)),
             "options": options,
             # THE ACTUAL ROWS (`DRIVE-008`). The panel stated a count, a share
             # and what each option would write into the transcript, and showed

@@ -252,3 +252,139 @@ def disclosure(record: Optional[Dict[str, Any]]) -> str:
     return (record["sentence"] + " Those rows are gone before anything is held "
             "out, so the held-out set describes the population you studied "
             "rather than a wider one.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# THE THREE INSTINCTS AT THE IMPOSSIBILITY CARD — `GUIDED-166`
+#
+# The product owner, looking at four `sbp` entries outside 40–300 mmHg, named
+# three things he might want. They are three different objects and the app
+# offered exactly one:
+#
+#   set the entries to missing   constitution clause 06's row-local repair.
+#                                BUILT — `project.set_impossible_missing`.
+#   exclude the rows             clause 04's ELIGIBILITY CRITERION, which is
+#                                this module. BUILT — `set_eligibility`,
+#                                applied pre-seal, changing N, reported in
+#                                participant flow. `ml/pipeline.py`'s
+#                                `apply_plausibility_filter` is the same idea
+#                                on the Streamlit door and is reached from
+#                                `pages/05_Preprocess.py`. It was UNROUTED from
+#                                this door, which is `MISC-014`'s distinction:
+#                                unrouted is not absent.
+#   mark the column corrupted    `GUIDED-096`'s split, and deliberately
+#                                UNBUILT. It is named here rather than omitted,
+#                                because a shelf that silently holds two of
+#                                three tells the user the third is not a thing
+#                                you may want.
+#
+# **Why the composer lives in this module.** The route that was missing is §04's,
+# and §04's rules are what make the route hard: pre-seal only, grain answered
+# first, N changes, a reason is required because participant flow reports one.
+# A composer that lived beside the card would restate those four things, and a
+# restated rule is a rule that drifts from the one `set_eligibility` enforces.
+#
+# **Nothing here applies anything.** Each route carries the decision that takes
+# it, in the shape `POST /project/{id}/decision` accepts, so a client holding
+# the payload can act — which is this project's standing test for whether a
+# capability is reachable rather than merely present.
+
+#: The one field the app must not fill in. `build_criterion` refuses a
+#: criterion with no reason because participant flow reports WHY, and a reason
+#: the app invented would be a methods sentence nobody wrote. The route says so
+#: rather than shipping a payload that 400s with no explanation.
+ELIGIBILITY_NEEDS_A_REASON = (
+    "Why this restriction, in your words. Participant flow reports how many "
+    "rows were excluded and why, so this becomes a sentence in your methods "
+    "section — which is why the app will not write it for you.")
+
+
+def routes_from_impossible(block: Dict[str, Any]) -> Dict[str, Any]:
+    """What may be done about one impossible-tier block, all three of it.
+
+    Returns the routes AND, for a column whose reading is itself in doubt, the
+    reason there are none — because an empty list with no explanation asserts
+    that nothing can be done, and what is true there is that the question is
+    the column's reading rather than its outliers.
+    """
+    column = str(block.get("column"))
+    low, high = block.get("low"), block.get("high")
+    unit = block.get("unit") or ""
+    n_flagged = int(block.get("n_flagged") or 0)
+
+    if block.get("whole_column_suspect"):
+        return {
+            "routes": [],
+            "withheld": (
+                f"`{column}` reads as a whole-column unit or coding problem "
+                f"rather than as entry errors, so none of the three routes "
+                f"below applies: repairing individual values would delete real "
+                f"data and leave the reading wrong. The column's reading is "
+                f"the question. " + str(block.get("suspect_reason") or "")).strip(),
+        }
+
+    return {"withheld": None, "routes": [
+        {
+            "id": "set_to_missing",
+            "label": "Set these entries to missing",
+            "built": True,
+            "clause": "06",
+            "what_it_does": (
+                f"{n_flagged} cell(s) become blank and every other value on "
+                f"those rows is kept. Row-local, so it happens now — and the "
+                f"blanks it makes are recorded as this app's, so the "
+                f"missingness question later can tell them from blanks the "
+                f"file arrived with."),
+            "decision": {"kind": "set_impossible_missing", "subject": column,
+                         "payload": {"column": column}},
+            "typed": None,
+        },
+        {
+            "id": "exclude_the_rows",
+            "label": "Exclude those rows from the study",
+            "built": True,
+            "clause": "04",
+            "what_it_does": (
+                f"The whole row leaves the table — every other measurement on "
+                f"it too — before anything is held out, and N changes. That "
+                f"makes it an eligibility criterion rather than a repair: "
+                f"TRIPOD+AI reports it in participant flow with its count and "
+                f"its reason. Keeping `{column}` between {low} and {high} "
+                f"{unit} is the criterion this would record."),
+            "decision": {
+                "kind": "set_eligibility", "subject": column,
+                "payload": {"answer": RESTRICTED, "column": column,
+                            "minimum": low, "maximum": high, "reason": ""}},
+            # The route names its own preconditions rather than failing at
+            # them. §01 fixes the order and `set_eligibility` enforces it; a
+            # route that did not say so would read as available at a moment it
+            # is not.
+            "needs": [
+                "the grain question answered — §01 puts it before eligibility",
+                "the held-out set not yet sealed — §04 refuses an exclusion "
+                "afterwards, because the held-out rows were drawn from a "
+                "population that included the rows you are excluding",
+            ],
+            "typed": {"field": "reason", "prompt": ELIGIBILITY_NEEDS_A_REASON},
+        },
+        {
+            "id": "mark_the_column_corrupted",
+            "label": "Mark the whole column as not trustworthy",
+            "built": False,
+            "clause": None,
+            "what_it_does": (
+                "Withdraws `{column}` from the models and says in the methods "
+                "section that it was withdrawn and why — rather than repairing "
+                "entries in a column you do not believe."
+            ).format(column=column),
+            "not_built_reason": (
+                "`GUIDED-096`'s split, and it is not built. It is named here "
+                "rather than left off the shelf: the two routes above are what "
+                "the app can do, and a list of two with no third would say "
+                "that distrusting the column is not a thing you may want. "
+                "Until it exists, the app can record that you do not trust "
+                "this column and cannot act on it."),
+            "decision": None,
+            "typed": None,
+        },
+    ]}

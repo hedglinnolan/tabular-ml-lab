@@ -1324,13 +1324,43 @@ class AnalysisProject:
     # ── the Preprocess step (constitution §07) ──────────────────────────────
 
     def missingness_survey(self) -> List[Dict[str, Any]]:
-        """Which columns have blanks, and which branch each is on."""
+        """Which columns have blanks, which branch each is on, and WHERE THE
+        BLANKS CAME FROM.
+
+        `GUIDED-166`. The impossibility pass creates blanks, so a column can
+        arrive at this question holding blanks the app wrote and blanks the
+        file arrived with, and nothing distinguished them. `provenance` is
+        `None` on every column the app never touched — the common case, and a
+        zero-filled block on each of them would be noise where the row's own
+        `n_missing` already says everything.
+        """
         from turbotab import missingness as _miss
         answered = {d["column"] for d in self.missingness}
+        made = _miss.blanks_the_app_made(self.decisions)
         out = []
         for row in _miss.survey(self.df, self.target):
             row["answered"] = row["column"] in answered
+            row["provenance"] = _miss.provenance(
+                row["column"], row["n_missing"], made.get(row["column"]))
             out.append(row)
+        return out
+
+    def blank_provenance(self) -> Dict[str, Dict[str, Any]]:
+        """Per column, the provenance block the missingness card carries.
+
+        The same reading `missingness_survey` attaches, keyed for the OTHER
+        door. Two doors ask one question and they may not answer it
+        differently, which is what `GUIDED-090`/`091`/`098` each cost a loop —
+        so the Explore card reads this rather than composing its own.
+        """
+        from turbotab import missingness as _miss
+        made = _miss.blanks_the_app_made(self.decisions)
+        out: Dict[str, Dict[str, Any]] = {}
+        for row in _miss.survey(self.df, self.target):
+            block = _miss.provenance(row["column"], row["n_missing"],
+                                     made.get(row["column"]))
+            if block is not None:
+                out[row["column"]] = block
         return out
 
     def route_missingness(self, column: str, mechanism: str, strategy: str,
@@ -1496,6 +1526,17 @@ class AnalysisProject:
                 f"disagree. Refusing rather than recording a repair that did "
                 f"not happen.")
 
+        # WHICH CELLS, not only how many (`GUIDED-166`). The impossibility pass
+        # MAKES blanks, and two cards later the missingness step asks the user
+        # what a blank in this column MEANS. Nothing marked a blank's
+        # provenance, so a blank this app wrote — because 300 mmHg cannot be a
+        # measurement — was indistinguishable from a blank the clinic never
+        # recorded, and the mechanism question was being asked about both at
+        # once. The labels are read off the same comparison `n_set` counts, so
+        # the count and the list cannot disagree.
+        made_blank = [_label(l) for l in
+                      self.df.index[(~before.isna()) & pd.isna(gated)]]
+
         self._history.append((f"impossible::{name}", self.df))
         out = self.df.copy()
         out[name] = pd.Series(gated, index=self.df.index)
@@ -1519,7 +1560,13 @@ class AnalysisProject:
                      "n_flagged": int(block["n_flagged"]),
                      "low": block["low"], "high": block["high"],
                      "unit": block["unit"], "tier": "impossible",
-                     "band": "impossibility"})
+                     "band": "impossibility",
+                     # The provenance of every blank this decision created.
+                     # `rows` is the list; `made_blanks` is the flag anything
+                     # reading decisions keys on, so a future kind that also
+                     # creates blanks joins the same reader rather than needing
+                     # a second one.
+                     "made_blanks": True, "rows": made_blank})
 
     def keep_impossible(self, column: str) -> Decision:
         """Record that the impossible entries in `column` stay as recorded.

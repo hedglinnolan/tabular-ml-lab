@@ -105,6 +105,26 @@
   .map-step.now .md{border-color:var(--accent);background:var(--accent);box-shadow:0 0 0 3.5px var(--accent-tint)}
   .map-step.stale{color:var(--warn)}
   .map-step.stale .md{border-color:var(--warn);background:var(--warn-tint)}
+  /* GUIDED-159 · THE FOURTH STATE, which was specified and never built.
+     §04 names four — `done · now · waiting · stale` — and three existed, so a
+     step NOBODY HAS REACHED YET wore the bare `--faint` hollow default. The
+     product owner read that default as a verdict about availability: greyed
+     out, not for you. §09's recorded-absence rule is the general form — an
+     absence must be legible AS AN ABSENCE, never as a verdict — so `waiting`
+     says "not yet" in its own treatment instead of being the absence of one.
+
+     IT TAKES NO HUE. §02 is that every hue is a claim, and "not yet" is not a
+     claim about recording, currency or staleness; borrowing `--ok`, `--accent`
+     or `--warn` would make it assert one. So the whole distinction is carried
+     on the neutral plane and by SHAPE — readable `--muted` ink rather than the
+     disabled-looking `--faint`, and a DASHED ring, an outline waiting to be
+     filled, which survives color being removed (§09's register rule).
+
+     STATIC. §05.2 holds a closed list of four motion slots and `GUIDED-073` is
+     deliberately unbuilt, so a state is a treatment and never a motion. */
+  .map-step.waiting{color:var(--muted)}
+  .map-step.waiting .md{border-style:dashed;border-color:var(--muted);
+                        background:var(--ground)}
   .map-step:hover{background:var(--surface-2)}
 
   .dock{border:1px solid var(--line);border-radius:11px;background:var(--surface);
@@ -931,6 +951,12 @@
   .answer.notbuilt:hover{border-color:var(--line-soft);background:var(--surface)}
   .answer.notbuilt .nb{font-family:var(--mono);font-size:9px;letter-spacing:.05em;
                        text-transform:uppercase;margin-left:6px;color:var(--faint)}
+  /* WHICH VALUE BECOMES 1, on a bulk repair's per-feature picker (GUIDED-157).
+     Quieter than the column name and beside it rather than under it, because
+     the column is what you are choosing and the direction is what choosing it
+     means. Mono, because it is a value out of the file rather than prose. */
+  .answer .rg-map{font-family:var(--mono);font-size:10px;margin-left:7px;
+                  color:var(--muted);font-weight:500}
   .answer[disabled]{opacity:.6;cursor:not-allowed}
   .answer.primary[disabled]{background:var(--surface);color:var(--muted);
                             border-color:var(--line);filter:none}
@@ -1090,14 +1116,14 @@
         <div class="rail-label">This analysis</div>
         <nav class="map" id="map">
           <span class="track" aria-hidden="true"></span>
-          <button class="map-step now" data-map="data" type="button"><span class="md"></span>Data</button>
-          <button class="map-step" data-map="target" type="button"><span class="md"></span>Target</button>
-          <button class="map-step" data-map="eda" type="button"><span class="md"></span>Explore</button>
-          <button class="map-step" data-map="features" type="button"><span class="md"></span>Features</button>
-          <button class="map-step" data-map="preprocess" type="button"><span class="md"></span>Preprocess</button>
-          <button class="map-step" data-map="train" type="button"><span class="md"></span>Train</button>
-          <button class="map-step" data-map="explain" type="button"><span class="md"></span>Explain</button>
-          <button class="map-step" data-map="report" type="button"><span class="md"></span>Report</button>
+          <button class="map-step now" id="map-data" data-map="data" data-map-state="now" aria-current="step" type="button"><span class="md"></span>Data</button>
+          <button class="map-step waiting" id="map-target" data-map="target" data-map-state="waiting" type="button"><span class="md"></span>Target</button>
+          <button class="map-step waiting" id="map-eda" data-map="eda" data-map-state="waiting" type="button"><span class="md"></span>Explore</button>
+          <button class="map-step waiting" id="map-features" data-map="features" data-map-state="waiting" type="button"><span class="md"></span>Features</button>
+          <button class="map-step waiting" id="map-preprocess" data-map="preprocess" data-map-state="waiting" type="button"><span class="md"></span>Preprocess</button>
+          <button class="map-step waiting" id="map-train" data-map="train" data-map-state="waiting" type="button"><span class="md"></span>Train</button>
+          <button class="map-step waiting" id="map-explain" data-map="explain" data-map-state="waiting" type="button"><span class="md"></span>Explain</button>
+          <button class="map-step waiting" id="map-report" data-map="report" data-map-state="waiting" type="button"><span class="md"></span>Report</button>
         </nav>
       </div>
       <div class="jobchip" id="jobChip"><span class="spin" aria-hidden="true"></span><span id="jobText">Working…</span></div>
@@ -1626,14 +1652,77 @@
     if (!el || !el.classList.contains("is-hidden")) return false;
     el.classList.remove("is-hidden");
     anim(el, "arrive", 360);
-    setMap(key, "now");
+    /* GUIDED-159 · UNCOVERING A SECTION IS NOT THE USER STANDING IN IT.
+       This used to `setMap(key, "now")`, and `renderAll` uncovers every
+       downstream section the moment a target exists — so one render left six
+       steps wearing `now` at once and the last writer won. Where the user is
+       is a fold over the record, and `paintMap` is the one place that does
+       it. */
     return true;
   }
+  /* ═════════ THE MAP IS A FOLD OVER THE RECORD ═════════ `GUIDED-159`.
+
+     It used to be eight independent writes into the DOM, and two things were
+     wrong with that at once.
+
+     **`now` was not exclusive.** `reveal()` set it on every section it
+     uncovered, so on `clinic_visits.csv` a single render past the seal left
+     SIX steps wearing `now` — eda, features, preprocess, train, explain,
+     report — and which one landed last depended on which fetch resolved last.
+     §02 gives `--accent` one meaning and one budget, *the current position,
+     one accent moment per viewport*; six of them is not a highlight.
+
+     **And nothing could ever say `now` deliberately except two steps.** Of the
+     eleven `setMap` call sites, exactly two passed `now` on purpose —
+     `renderTarget`'s unanswered branch and `renderEda`, which passed it
+     unconditionally and therefore forever. Every other `now` on the map was
+     `reveal()`'s leftover, so the dot the user was actually standing on was
+     never a thing this page computed.
+
+     So it is computed, in one place, from what each step recorded. A step
+     renderer still says only the thing it knows — `done`, `stale`, or nothing
+     — and the map derives the rest:
+
+       · the FRONT is the furthest step carrying a record;
+       · the step after the front is `now`: everything behind it has concluded
+         and this one has not, which is where the user is standing;
+       · everything past that is `waiting`, and SAYS SO rather than rendering
+         as the absence of a state (§09, and the CSS above);
+       · a step behind the front with no record of its own is `done`, because a
+         later step could not have concluded without passing this one. Explore
+         is the only such step — it is a reading rather than a decision, so it
+         has nothing to record.
+
+     Deterministic by construction: the paint is recomputed from `MAP_STATE`
+     every time, so it no longer depends on which of eleven writers ran last. */
+  var MAP_ORDER = ["data", "target", "eda", "features", "preprocess",
+                   "train", "explain", "report"];
+  var MAP_STATE = {};
+
   function setMap(key, state){
-    var b = document.querySelector('.map-step[data-map="'+key+'"]');
-    if (!b) return;
-    b.classList.remove("now","done","stale");
-    if (state) b.classList.add(state);
+    if (state) MAP_STATE[key] = state; else delete MAP_STATE[key];
+    paintMap();
+  }
+  function paintMap(){
+    var front = -1, i;
+    for (i = MAP_ORDER.length - 1; i >= 0; i--){
+      if (MAP_STATE[MAP_ORDER[i]]){ front = i; break; }
+    }
+    for (i = 0; i < MAP_ORDER.length; i++){
+      var key = MAP_ORDER[i];
+      var b = $("map-" + key);
+      if (!b) continue;
+      var st = MAP_STATE[key] ||
+               (i < front ? "done" : (i === front + 1 ? "now" : "waiting"));
+      b.classList.remove("now", "done", "stale", "waiting");
+      b.classList.add(st);
+      /* Trap 7 · the machine-readable form is not allowed to be lossier than
+         the treatment beside it, so the state is an attribute as well as a
+         class, and `now` carries the landmark a screen reader already reads. */
+      b.setAttribute("data-map-state", st);
+      if (st === "now") b.setAttribute("aria-current", "step");
+      else b.removeAttribute("aria-current");
+    }
   }
   function sectState(key, state, label){
     var el = $(SEC[key]); if (!el) return;
@@ -1990,9 +2079,29 @@
       chips += '<span class="chip scope">' + esc(shape.subject_line ||
                "About this study as a whole") + "</span>";
     } else {
-      (f.affected_columns || []).slice(0, 5).forEach(function(c){
+      /* GUIDED-164 · FIVE CHIPS, AND NEVER A COUNT.
+         The cap has always been five and nothing said so, so a finding about
+         twenty-three columns and a finding about four rendered an identical
+         row — a reader could not tell a COMPLETE list from a TRUNCATED one.
+         That is §09's recorded-absence rule from its other side: a truncation
+         nobody records reads as a complete answer, and the card's own title
+         ("23 features with outliers") then disagrees with the five names
+         underneath it with nothing to reconcile them.
+
+         So the row closes with what it is showing out of what, in both
+         directions — a truncated row and a whole one each say so — and the two
+         numbers are attributes as well as prose, because the count is data
+         (§03) and trap 7 is the machine-readable form ending up lossier. */
+      var subject = f.affected_columns || [];
+      var shown = subject.slice(0, 5);
+      shown.forEach(function(c){
         chips += '<span class="chip">' + esc(c) + '</span>';
       });
+      chips += '<span class="chip scope" data-chip-showing="' + shown.length +
+               '" data-chip-of="' + subject.length + '">' +
+               (subject.length > shown.length
+                 ? shown.length + " of " + subject.length + " columns"
+                 : "all " + subject.length + " columns") + "</span>";
     }
 
     /* GUIDED-142 · THE BADGE, ON THE FINDING RATHER THAN ONLY ON THE QUESTION.
@@ -2153,6 +2262,46 @@
     return evBlock(head, note, body, "");
   }
 
+  /* THE OTHER TWO INSTINCTS (`GUIDED-166`). Setting the entries to missing
+     is clause §06's row-local repair and is the button above; excluding the
+     rows is clause §04's eligibility criterion, which is a different object
+     with different rules; marking the column untrustworthy is `GUIDED-096` and
+     is not built. All three come from the server with their reasons, and the
+     unbuilt one renders as a stated absence rather than as nothing — a shelf
+     silently holding two of three says the third is not a thing you may want.
+
+     Nothing here decides which routes exist or what they cost. `set_to_missing`
+     is skipped because the button above already is it. */
+  function plausRoutes(b){
+    var routes = (b.routes || []).filter(function(r){
+      return r.id !== "set_to_missing"; });
+    if (!routes.length) return "";
+    var h = '<div class="opts">';
+    routes.forEach(function(r){
+      h += '<div class="optrow"><div class="otop"><span class="oname">' +
+           esc(r.label) + "</span>" +
+           (r.built ? "" : '<span class="chip">not built</span>') + "</div>" +
+           '<p class="conseq">' + esc(r.what_it_does) + "</p>";
+      (r.needs || []).forEach(function(n){
+        h += '<p class="feat-note">Needs ' + esc(n) + "</p>"; });
+      if (!r.built){
+        h += '<p class="feat-note">' + esc(r.not_built_reason) + "</p>";
+      } else {
+        if (r.typed){
+          h += '<p class="feat-note">' + esc(r.typed.prompt) + "</p>" +
+               '<input data-plaus-reason="' + esc(b.column) + '" type="text" ' +
+               'style="width:100%;padding:7px 9px;font-size:13px;">';
+        }
+        h += '<div class="oacts"><button class="cbtn" data-plaus-route="' +
+             esc(r.id) + '" data-plaus-col="' + esc(b.column) +
+             '" data-ac="imp-' + esc(b.column) + '" type="button">' +
+             esc(r.label) + "</button></div>";
+      }
+      h += "</div>";
+    });
+    return h + "</div>";
+  }
+
   function evBlock(label, note, body, more){
     return '<div class="ev"><div class="ev-head"><span class="ev-lab">' + esc(label) +
            '</span><span class="ev-note">' + esc(note) + "</span></div>" +
@@ -2190,6 +2339,10 @@
          would touch, is what keeps the impossible tier worth its authority. */
       if (b.whole_column_suspect){
         h += readingCorrection(b);
+        /* WHY THERE ARE NO ROUTES, in the server's words (`GUIDED-166`). An
+           empty action row with no sentence asserts that nothing can be done;
+           what is true is that the column's reading is the question. */
+        if (b.withheld) h += '<p class="feat-note">' + esc(b.withheld) + "</p>";
         return;
       }
       h += evBlock(
@@ -2210,6 +2363,7 @@
            '<button class="cbtn" data-keep-impossible="' + esc(b.column) + '" data-ac="imp-' +
            esc(b.column) + '" type="button">' +
            'Keep as is</button>' + atControlSlot("imp-" + b.column) + "</div>";
+      h += plausRoutes(b);
     });
     /* ═════════ ONE CARD, PAGED SIDEWAYS ═════════ `DRIVE-005`.
        Ten features with improbable values produced ten stacked blocks with no
@@ -2298,19 +2452,57 @@
       if (cat !== "distribution" && cat !== "skew" && cat !== "outliers") return;
       var slot = $("ev-" + f.id);
       if (!slot || slot.innerHTML) return;
-      var cols = (f.affected_columns || []).slice(0, 3);
-      if (!cols.length) cols = skewCandidates().slice(0, 3);
+      var pool = f.affected_columns || [];
+      if (!pool.length) pool = skewCandidates();
+      var cols = pool.slice(0, 3);
       if (!cols.length) return;
-      cols.forEach(function(col){
+      /* GUIDED-164 · THREE PLOTS FOR A TWENTY-THREE-COLUMN FINDING, AND
+         NOTHING SAYING SO — beside a pager that was already built.
+
+         `/evidence/histograms` has served `page`, `n_pages`, `per_page` and
+         `n_features` since `GUIDED-005`, the delegate below has handled
+         `data-hist-page` for as long, and the only thing that ever pressed it
+         was the pager's own Previous/Next — which cannot be reached until the
+         gallery is already open. So the ONE card that motivates a per-feature
+         gallery, the shape claim that is showing three of them, was the single
+         surface with no way in. Trap 1, exactly: the capability shipped and
+         its consumer did not.
+
+         Two things change. The block says three OF HOW MANY, so a reader can
+         tell a sample from a set; and it carries the press that opens the
+         gallery, so "show me the other three hundred and seventy" is an action
+         rather than a thing the user has to know to go looking for.
+
+         A STATED LIMIT, here rather than found later: the gallery renders in
+         the Explore palette (`#paletteBox`), which is where this evidence has
+         always rendered and is further down the same section. The page never
+         moves the viewport (`DRIVE-006`), so the press does not scroll to it.
+
+         And the plots are APPENDED AS OWNED CHILDREN rather than through
+         `insertAdjacentHTML`, which was this file's only use of it. That was
+         not a style preference: the `.catch` below swallows a failed append,
+         so under `pageharness` the whole block rendered as an empty slot and
+         every claim about it was unfalsifiable. §05's mutate-in-place rule and
+         `ownChild` are what the rest of the file already does. */
+      var plots = ownChild(slot, "sm-plots-" + f.id, "");
+      cols.forEach(function(col, i){
+        var cell = ownChild(plots, "sm-cell-" + f.id + "-" + i, "");
         api("/project/" + P.id + "/evidence/histogram/" + encodeURIComponent(col))
           .then(function(h){
-            slot.insertAdjacentHTML("beforeend", evBlock(
+            cell.innerHTML = evBlock(
               col, "skew = " + num(h.skew, 2) + " · median " + num(h.median, 3) +
                    " · mean " + num(h.mean, 3),
-              histSVG(h), ""));
+              histSVG(h), "");
           })
           .catch(function(){ /* a column with no shape simply contributes none */ });
       });
+      var bar = ownChild(slot, "sm-bar-" + f.id, "choice-acts");
+      bar.innerHTML =
+        '<span class="said" data-plots-showing="' + cols.length +
+        '" data-plots-of="' + pool.length + '">Showing ' + cols.length +
+        " of " + pool.length + " distributions behind this claim.</span>" +
+        '<button class="cbtn" type="button" data-hist-page="0" ' +
+        'data-hist-from="' + esc(f.id) + '">See every distribution</button>';
     });
   }
   function skewCandidates(){
@@ -3026,6 +3218,25 @@
     return out;
   }
 
+  /* ═════════ IS THE ROUTER ASKING THIS? ═════════ `GUIDED-156`.
+     `HANDLED_QUESTION_KEYS` says a question is drawn by a dedicated surface and
+     `renderAsked` believes it UNCONDITIONALLY. The surfaces do not: each draws
+     its control under its own condition, and where that condition is a second
+     copy of a rule the Router already applied, the two answers drift. When they
+     do, the question renders NOWHERE — `renderSkips` will not draw it (it is
+     not skipped), `renderAsked` will not draw it (it is handled elsewhere), and
+     the surface that claims it drew a sentence instead of a control.
+
+     There is one true answer to *is this being asked*, and it is the Router's
+     own status for the key. A surface sitting on that seam asks for it here
+     rather than re-deriving Decision B from a confidence tier. */
+  function askedInPlan(key){
+    var qs = (LAST_DATA_PLAN || {}).questions || [];
+    for (var i = 0; i < qs.length; i++)
+      if (qs[i].key === key && qs[i].status === "asked") return true;
+    return false;
+  }
+
   function renderTarget(){
     reveal("target");
     var box = $("targetCols");
@@ -3068,7 +3279,25 @@
       // confidence tier the rule reserves for the user. The engine says as much
       // in its own reason text: "Verify or override below."
       var ov = $("taskOverride");
-      if (conf !== "high" || P.task_overridden){
+      /* ═════════ AND WHENEVER THE ROUTER IS ASKING IT ═════════ `GUIDED-156`.
+         `confirm_task_type` is on `HANDLED_QUESTION_KEYS`, so `renderAsked`
+         never draws it — THIS row is the surface that claims to handle it. The
+         claim was only conditionally true: at high confidence the branch above
+         writes a SENTENCE into the transcript and no control at all, which is
+         right while the question is a rendered skip and wrong the instant the
+         user presses *"Ask me anyway"*. `unskip` brings the question back
+         `asked` at the SAME `high` confidence — the engine does not stop being
+         certain because a human disagreed with it — so `renderSkips` dropped
+         the row, `renderAsked` refused the question, and this branch drew
+         nothing. The reopen affordance led to an empty page.
+
+         So the condition reads the ROUTER'S STATUS rather than re-deriving
+         Decision B from the tier. `_skip_is_permitted` is the one place that
+         rule lives; the tier test in here was a second copy of it, and two
+         copies disagreeing is what opened the hole. The tier disjunct is KEPT:
+         `renderAll` runs this once before the plan lands, and the shelf is
+         never shortened. */
+      if (askedInPlan("confirm_task_type") || conf !== "high" || P.task_overridden){
         var other = P.task_type === "classification" ? "regression" : "classification";
         ov.innerHTML =
           '<details class="whyask" id="why-task" style="margin-top:14px;">' +
@@ -3091,7 +3320,10 @@
       setMap("target", "done");
     } else {
       sectState("target", "live", "open");
-      setMap("target", "now");
+      /* GUIDED-159. An unanswered target records NOTHING; `paintMap` puts the
+         `now` here because Data is the front. Writing `now` from a step is how
+         six of them came to claim it at once. */
+      setMap("target", null);
     }
   }
 
@@ -3614,7 +3846,25 @@
     h += '<p class="feat-why">' + esc(row.because) + "</p>";
     h += '<div class="feat-ctl">' + featPickerHTML(row);
     if (ready){
+      /* ═════════ AND IT NAMES A SLOT ═════════ `GUIDED-176`.
+         This control is a GET rather than a post, so L48-A's sweep over the
+         POSTING controls did not reach it and it carried no `data-ac`. A GET
+         refuses exactly as a post does: `bin_fixed` is *binning by supplied
+         cut-points* and this button sends none, so the server answers with a
+         400 whose `detail` is a STRING — `api()` attaches `err.detail` only for
+         objects, `showRefusal` is not called from this handler at all, and
+         `setErr` was left writing to `#upErr`, which `renderData()` hides from
+         the first render after upload. The app refused, correctly, into a
+         hidden node.
+
+         The slot is the ROW's, shared with *Add it* — the same argument the
+         target column list makes (`GUIDED-167`): these are alternative actions
+         on one row and only one of them was pressed, so one slot is the
+         mechanism working rather than a special case. It is also self-clearing:
+         the delegate blanks `AT_CONTROL`'s slot on every press, so a refusal
+         about one pick cannot survive into the next. */
       h += '<button class="pill" type="button" data-feat-preview="' + esc(row.key) +
+           '" data-ac="feat-add-' + esc(row.key) +
            '">Show me what it does</button>';
       h += '<button class="answer primary" type="button" data-feat-add="' +
            esc(row.key) + '" data-ac="feat-add-' + esc(row.key) +
@@ -3641,11 +3891,27 @@
     h += '<p class="feat-note">This ran on a copy. Nothing in your table has ' +
          "changed — the column below does not exist until you add it.</p>";
     if (body.rows && body.rows.length){
-      h += '<table class="data"><tr><th>row</th><th>before</th><th>' +
-           esc(body.new_column || "after") + "</th></tr>";
+      /* ONE COLUMN PER OPERAND, NAMED. `GUIDED-171`. This was a fixed
+         three-column table — row, before, after — so a two-column formula
+         previewed as one: `ratio` on `weight_kg` and `height_cm` showed 95.8
+         becoming 0.5682 and never showed the 168.6 the division used. A
+         before/after table missing half of what the after was computed from
+         is not a preview of that transform, and this is the surface where the
+         user consents to it.
+
+         `inputs` names them in the order the computation consumed them, and
+         `operands` carries each row's value for each. The fallback arms are
+         the old shape exactly, so a payload without them renders as before —
+         which is what `before` is still on the response for. */
+      var ins = (body.inputs && body.inputs.length) ? body.inputs : ["before"];
+      h += '<table class="data"><tr><th>row</th>';
+      ins.forEach(function(c){ h += "<th>" + esc(c) + "</th>"; });
+      h += "<th>" + esc(body.new_column || "after") + "</th></tr>";
       body.rows.slice(0, 5).forEach(function(r){
-        h += "<tr><td>" + esc(r.label) + "</td><td>" + num(r.before, 4) +
-             "</td><td>" + num(r.after, 4) + "</td></tr>";
+        var vals = (r.operands && r.operands.length) ? r.operands : [r.before];
+        h += "<tr><td>" + esc(r.label) + "</td>";
+        ins.forEach(function(_c, i){ h += "<td>" + num(vals[i], 4) + "</td>"; });
+        h += "<td>" + num(r.after, 4) + "</td></tr>";
       });
       h += "</table>";
     }
@@ -3722,7 +3988,13 @@
       });
       h += "</select>";
     }
-    h += '<button class="pill" type="button" data-sel-rank="1">Rank them for me</button>';
+    /* `GUIDED-176`'s class, one control over. This is a GET and its `.catch`
+       is `setErr(err.message)` — so a refused ranking went to `#upErr` inside
+       the hidden `#sub-upload` subtree and nowhere else. It shares the row's
+       slot with *Record this method*, which is the same argument the target
+       list makes: two actions on one question, one of them pressed. */
+    h += '<button class="pill" type="button" data-sel-rank="1" data-ac="sel-set">' +
+         "Rank them for me</button>";
     h += '<button class="answer primary" type="button" data-sel-set="1" data-ac="sel-set">' +
          (SEL_PICK.method ? "Record this method" : "Use every column") + "</button>";
     h += atControlSlot("sel-set");
@@ -3738,12 +4010,20 @@
     h += '<p class="feat-note">This ranks and does not choose. Nothing here is ' +
          "recorded, and the app has not narrowed anything.</p>";
     h += '<p class="feat-note">' + esc(body.note || "") + "</p>";
-    h += '<table class="data"><tr><th>column</th><th>' +
-         esc((body.ranked[0] || {}).measure || "score") + "</th></tr>";
+    /* THE HEADING IS THE RESPONSE'S OWN `measure`, not whichever row sorted
+       first. A method with no per-column score returns every row null, so the
+       old heading read the first candidate's reason and the table was headed by
+       an accident of ordering (`GUIDED-177`). Where a row's own reason DIFFERS
+       from the heading the cell says it — that reason used to be composed and
+       then rendered as "not computable" either way, which is trap #6. */
+    var head = body.measure || (body.ranked[0] || {}).measure || "score";
+    h += '<table class="data"><tr><th>column</th><th>' + esc(head) + "</th></tr>";
     body.ranked.forEach(function(r){
-      h += "<tr><td>" + esc(r.feature) + "</td><td>" +
-           (r.score === null || r.score === undefined
-              ? "not computable" : num(r.score, 4)) + "</td></tr>";
+      var cell = num(r.score, 4);
+      if (r.score === null || r.score === undefined){
+        cell = esc(r.measure && r.measure !== head ? r.measure : "not computable");
+      }
+      h += "<tr><td>" + esc(r.feature) + "</td><td>" + cell + "</td></tr>";
     });
     h += "</table></div>";
     return h;
@@ -4538,7 +4818,14 @@
        and the ORDER goes back to the server's. */
     renderExploreStack();
     sectState("eda", "live", P.findings_stale ? "stale" : "open");
-    setMap("eda", P.findings_stale ? "stale" : "now");
+    /* GUIDED-159 · EXPLORE RECORDS ITS STALENESS AND NOTHING ELSE.
+       This said `now` unconditionally, on every render, for the whole life of
+       the project — so the map pointed at Explore while the user was fitting
+       models, and Train could not have the dot even after `paintMap` existed
+       to give it. Explore is a reading rather than a decision and has no
+       conclusion to record; the fold reads it as passed once a later step
+       concludes. */
+    setMap("eda", P.findings_stale ? "stale" : null);
 
     // The evidence behind each claim, fetched once the cards exist to hold it.
     api("/project/" + P.id + "/evidence/plausibility")
@@ -4712,6 +4999,14 @@
            plan is what says so — so it is re-rendered here, after the plan
            lands, rather than in `renderData` which runs before it. */
         renderData();
+        /* AND THE TARGET CARD, for the same reason as the line above: the
+           task-type row inside it is drawn from the Router's status for
+           `confirm_task_type` (`GUIDED-156`), and `renderAll` runs
+           `renderTarget` BEFORE this fetch resolves. Without this the reopened
+           question would appear on some later render and not on the one the
+           reopen itself caused, which to a person pressing the button is the
+           same as not appearing at all. */
+        renderTarget();
         fillConsumers();
       })
       .catch(function(){ /* the interview is an overlay on findings, not a gate */ });
@@ -4860,11 +5155,26 @@
     h += '<div class="rg-picks">';
     g.members.forEach(function(m){
       var on = chosen.indexOf(m.id) !== -1;
+      /* WHICH VALUE BECOMES 1, ON EVERY MEMBER. `GUIDED-157`. The worked
+         example above is the FIRST member's by design — `api.repair_group`
+         says why — so before this a user selecting three columns was shown the
+         direction of one of them, and the direction is the sign of every
+         coefficient for that variable. `encoding` is null for every repair
+         kind that has no mapping, and then this renders nothing: the server
+         returns None rather than inventing one, and so does the page. */
+      var e = m.encoding, pos = "", neg = "", map = "";
+      if (e){
+        pos = (e.positive_values || [e.positive]).join(", ");
+        neg = (e.negative_values || [e.negative]).join(", ");
+        map = ' <span class="rg-map">' + esc(pos) + " = 1, " +
+              esc(neg) + " = 0</span>";
+      }
       h += '<button class="answer multi" type="button" ' +
            'data-rg-pick="' + esc(kind) + '" data-rg-id="' + esc(m.id) + '" ' +
            'aria-pressed="' + (on ? "true" : "false") + '" ' +
-           'data-tip="' + esc(m.title) + '">' +
-           esc((m.columns || []).join(", ") || m.id) + "</button>";
+           'data-tip="' + esc(m.title + (e ? " — " + pos +
+             " becomes 1, " + neg + " becomes 0." : "")) + '">' +
+           esc((m.columns || []).join(", ") || m.id) + map + "</button>";
     });
     h += "</div>";
     h += '<div class="choice-acts" style="margin-top:11px;">' +
@@ -5745,6 +6055,7 @@
       "[data-pick-model],[data-train-start],[data-train-cancel],[data-instab],[data-keep-id],[data-promote]," +
       "[data-sel-rank],[data-sel-set]," +
       "[data-impossible],[data-keep-impossible],[data-miss-choose]," +
+      "[data-plaus-route]," +
       "[data-miss-mech-for],[data-miss-preview]," +
       "[data-hist-page],[data-pg-step],[data-copy-rows]," +
       "[data-stack-more]," +
@@ -6058,7 +6369,12 @@
       return;
     }
     if (t.hasAttribute("data-sel-rank")){
-      api("/project/" + P.id + "/selection/evidence")
+      /* GUIDED-177 · THE PREVIEW IS EVIDENCE FOR THE METHOD IN THE DROPDOWN.
+         Without this parameter the server ranked by absolute Pearson
+         correlation for all five methods and headed the table with it, under a
+         recorded sentence reading "the top 5 features by mutual information". */
+      api("/project/" + P.id + "/selection/evidence" +
+          (SEL_PICK.method ? "?method=" + encodeURIComponent(SEL_PICK.method) : ""))
         .then(function(body){ $("selEvidence").innerHTML = selEvidenceHTML(body); })
         .catch(function(err){ setErr(err.message); });
       return;
@@ -6165,6 +6481,29 @@
       decide("set_impossible_missing", t.dataset.impossible,
              { column: t.dataset.impossible },
              "Setting those entries to missing…");
+      return;
+    }
+    if (t.hasAttribute("data-plaus-route")){
+      /* THE PAYLOAD IS THE SERVER'S, looked up rather than composed — the same
+         rule the exit retry follows. A route with no decision is one the app
+         cannot take, and the card has already said so in words. */
+      var prCol = t.dataset.plausCol, prId = t.dataset.plausRoute, pr = null;
+      ((LAST_PLAUSIBILITY || {}).impossible || []).forEach(function(b){
+        if (b.column !== prCol) return;
+        (b.routes || []).forEach(function(r){ if (r.id === prId) pr = r; });
+      });
+      if (!pr || !pr.decision){
+        setErr("That route was served without a payload, so it cannot be " +
+               "taken from here.");
+        return;
+      }
+      var prPay = Object.assign({}, pr.decision.payload || {});
+      if (pr.typed){
+        var prBox = document.querySelector(
+          '[data-plaus-reason="' + prCol.replace(/"/g, '\\"') + '"]');
+        prPay[pr.typed.field] = prBox ? String(prBox.value || "").trim() : "";
+      }
+      decide(pr.decision.kind, pr.decision.subject, prPay, "Recording that…");
       return;
     }
     if (t.hasAttribute("data-keep-impossible")){
