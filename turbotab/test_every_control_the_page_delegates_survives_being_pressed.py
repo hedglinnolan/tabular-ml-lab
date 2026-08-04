@@ -54,21 +54,45 @@ import pytest
 PAGE = Path(__file__).resolve().parent / "web" / "index.html"
 DATA = Path(__file__).resolve().parent / "sample_data"
 
-#: **Derived from the delegate itself.** The page declares which attributes it
-#: handles in one `closest(...)` selector; hand-copying it here is how a control
+#: **Derived from the delegates themselves.** The page declares which attributes
+#: it handles in `closest(...)` selectors; hand-copying them here is how a control
 #: added next loop goes undriven, which is this file's own subject one level up.
-_DELEGATE = re.compile(r"e\.target\.closest\(\s*((?:\"[^\"]*\"\s*\+?\s*)+)\)")
+#:
+#: **AND IT WAS DERIVING ONLY ONE OF THREE.** Found at L47-D. This pattern was
+#: `e\.target\.closest\(`, and the page's second and third click delegates are
+#: written `ev.target.closest(` — so it matched neither, and the winner-takes-all
+#: below then discarded whatever it did match beyond the largest. **Two
+#: independent structural bugs, either of which alone hides a delegate:**
+#:
+#: 1. The event parameter's NAME was hard-coded. Any delegate whose parameter is
+#:    not `e` was invisible.
+#: 2. `if len(found) > len(best): best = found` keeps the single largest match
+#:    and drops the rest. The second and third delegates dispatch through five
+#:    separate one- and two-selector `closest` calls, so even with the name fixed
+#:    each would have lost the length race to the 47-attribute one.
+#:
+#: The cost: **five delegated attributes were never pressed by this file** —
+#: `data-earmark`, `data-offer-preview`, `data-answer-key`, `data-answer-commit`,
+#: `data-teach` — and three of those five post. One of them, `data-earmark`, is
+#: `GUIDED-161`'s own control: the guard that would have caught it could not see
+#: it.
+_DELEGATE = re.compile(
+    r"[A-Za-z_$][\w$]*\.target\.closest\(\s*((?:\"[^\"]*\"\s*\+?\s*)+)\)")
 
 
 def delegated_attributes(page: str) -> list:
-    """Every `data-*` attribute the click delegate dispatches on."""
-    best: list = []
+    """Every `data-*` attribute any click delegate dispatches on.
+
+    A UNION, not the largest single match — see the second bug above.
+    """
+    found: set = set()
     for match in _DELEGATE.finditer(page):
         selector = "".join(re.findall(r'"([^"]*)"', match.group(1)))
-        found = sorted(set(re.findall(r"\[([a-z-]+)\]", selector)))
-        if len(found) > len(best):
-            best = found
-    return best
+        found |= set(re.findall(r"\[([a-z-]+)\]", selector))
+    # `data-tip` is dispatched from the MOUSEMOVE delegate, not a click one. It
+    # is not pressable and pressing it would be this file inventing a control.
+    found.discard("data-tip")
+    return sorted(found)
 
 
 #: NOT COVERED, said out loud.
